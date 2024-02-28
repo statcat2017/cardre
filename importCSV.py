@@ -2,11 +2,9 @@ import pandas as pd
 import os
 import sys
 
-def load_csv():
-    data_file = input('Enter the path of the file you want to load: ')
-
+def load_csv(data_file="", UID="", outcomes=""):
     if data_file == "":
-        data_file = "input/titanic/train.csv"
+        data_file = input('Enter the path of the file you want to load: ')
 
     try:
         df = pd.read_csv(data_file)
@@ -17,7 +15,8 @@ def load_csv():
         print(f'Error loading DataFrame: {str(e)}')
         sys.exit()
 
-    UID = input('Enter the name of the unique identifer: ')
+    if UID =="":
+        UID = input('Enter the name of the unique identifer: ')
 
     while UID not in df.columns:
         print(f'Field {UID} not found in DataFrame')
@@ -25,7 +24,8 @@ def load_csv():
         if UID == "quit":
             sys.exit()
 
-    outcomes = input('Enter the name of the field containing the outcomes: ')
+    if outcomes == "":
+        outcomes = input('Enter the name of the field containing the outcomes: ')
 
     while outcomes not in df.columns:
         print(f'Field {outcomes} not found in DataFrame')
@@ -36,6 +36,7 @@ def load_csv():
     column_info = [{'name': name, 'dtype': dtype} for name, dtype in zip(df.columns, df.dtypes)]
 
     print(f"Loaded {len(df)} rows and {len(df.columns)} columns")
+    print(column_info)
 
     return df
 
