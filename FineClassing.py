@@ -2,58 +2,50 @@ import pandas as pd
 import numpy as np
 import importCSV
 
-in_df = importCSV.load_csv('input/titanic/train.csv', 'PassengerId', 'Survived')
+yes = ["y","Y","Yes","YES","yes"]
+no = ["n","N","No","NO","no"]
 
-def iv_numeric_series(in_df, independent, response, null_value, bins=20):
-    bins = np.linspace(in_df[independent].min(), in_df[independent].max()+1, bins)
-    bins = np.round(bins).astype(int)
-    bins = np.append(bins, null_value)
+df = importCSV.load_csv('input/titanic/train.csv', 'PassengerId', 'Survived')
 
-    # Replace missing values in the independent variable with the null value
-    in_df[independent] = in_df[independent].fillna(null_value)
+#iteratively print the datatype of each column in the dataframe
+def typeClassifier(df,response):
+    cols = {}
+    for column in df.columns:
+        if column == response:
+            print(f"Skipping response variable {response}")
+            continue
+        print(f"Evaluating {column}: {df[column].dtype}")
+        if df[column].dtype in ['int64','float64']:
+            print(f"Determined {column} is numeric by default - classifying based on unique values")
+            if contOrDiscrete(df, column) == "Continuous":
+                print(f"{column} has {df[column].nunique()} unique values - classifying as continuous\n") 
+                cols[column] = "Continuous"
+            else:
+                print(f"{column} has {df[column].nunique()} unique values - classifying as ordinal\n")
+                cols[column] = "Ordinal"
+        if df[column].dtype == 'object':
+            print(f"Determined {column} contains string - classifying based on unique values")
+            if contOrDiscrete(df, column,20) == "Discrete":
+                print(f"{column} has {df[column].nunique()} unique values - classifying as categorical\n")
+                cols[column] = 'Categorical'
+            else:
+                print(f"{column} has {df[column].nunique()} unique values - skipping as likely descriptive\n")
+                continue
+    return cols
 
-    # Create the bin_df
-    bin_df = pd.DataFrame(columns=['Variable', 'Bin_Start_Inc', 'Bin_End_Exc'])
-    bin_df['Bin_Start_Inc'] = bins[:-1]
-    bin_df['Bin_End_Exc'] = bins[1:]
-    
-        # Remove last bin
-    bin_df = bin_df[:-1]
-    bin_df = pd.concat([bin_df, pd.DataFrame({'Bin_Start_Inc': [null_value], 'Bin_End_Exc': [null_value]})], ignore_index=True)
+def fineClassNumeric(df, independent, bins):
+    _, edges = pd.qcut(df[independent], bins, retbins=True)
+    df[independent + "_bin"] = pd.qcut(df[independent], bins, labels=edges[:-1])
+    df[independent + "_bin"] = df[independent + "_bin"].cat.add_categories('Missing').fillna('Missing')
+    return df
 
-    #Create the bin count
-    bin_df['Bin_Count'] = bin_df.apply(lambda x: in_df[(in_df[independent] >= x['Bin_Start_Inc']) & (in_df[independent] < x['Bin_End_Exc'])].shape[0], axis=1)
-    #Update the bin count for the final null value bin only
-    bin_df.loc[bin_df['Bin_Start_Inc'] == null_value, 'Bin_Count'] = (in_df[independent] == null_value).sum()
+#determines whether a numeric variable is continuous or discrete
+#defaults to 20 or fewer bins = discrete and more than 20 bins = continuous
+def contOrDiscrete(df, independent, tolerance = 20):
+    if df[independent].nunique() <= tolerance:
+        return "Discrete"
+    return "Continuous"
 
-    # Create the bads and goods by bin
-    bin_df['Bin_Bad'] = bin_df.apply(lambda x: in_df[(in_df[independent] >= x['Bin_Start_Inc']) & (in_df[independent] < x['Bin_End_Exc'])][response].sum(), axis=1)
-    #Update bin bads for the final null value bin only
-    bin_df.loc[bin_df['Bin_Start_Inc'] == null_value, 'Bin_Bad'] = in_df[in_df[independent] == null_value][response].sum()  
-    bin_df['Bin_Good'] = bin_df['Bin_Count'] - bin_df['Bin_Bad']
-
-    #create bad rate and good rate by bin
-    bin_df['Bin_Bad_Rate'] = bin_df['Bin_Bad'] / bin_df['Bin_Count']
-    bin_df['Bin_Good_Rate'] = bin_df['Bin_Good'] / bin_df['Bin_Count']
-
-    #create bin iv
-    bin_df['IV'] = (bin_df['Bin_Bad_Rate'] - bin_df['Bin_Good_Rate']) * np.log(bin_df['Bin_Bad_Rate'] / bin_df['Bin_Good_Rate'])
-    #add variable name
-    bin_df['Variable'] = independent
-
-    return bin_df
-
-#if if_df exists create it as the output of the function, otherwise append to it
-
-def numeric_series(in_df,independent, response,null_value = -1, bins = 20):
-    try:
-        iv_df
-    except NameError:
-        return iv_numeric_series(in_df, independent, response, null_value, bins)
-    else:
-        return pd.concat([iv_df, iv_numeric_series(in_df, independent, response, null_value, bins)], ignore_index=True)
-
-iv_df = numeric_series(in_df, 'Fare', 'Survived', -1,50)
-iv_df = numeric_series(in_df, 'Age', 'Survived', -1,20)
-
-print(iv_df)
+colTypes = typeClassifier(df, 'Survived')
+print(colTypes)
+print(df.dtypes)

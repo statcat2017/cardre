@@ -33,10 +33,7 @@ def load_csv(data_file="", UID="", outcomes=""):
         if outcomes == "quit":
             sys.exit()
 
-    column_info = [{'name': name, 'dtype': dtype} for name, dtype in zip(df.columns, df.dtypes)]
-
     print(f"Loaded {len(df)} rows and {len(df.columns)} columns")
-    print(column_info)
 
     return df
 
