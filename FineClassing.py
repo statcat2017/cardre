@@ -7,12 +7,11 @@ no = ["n","N","No","NO","no"]
 
 df = importCSV.load_csv('input/titanic/train.csv', 'PassengerId', 'Survived')
 
-#iteratively print the datatype of each column in the dataframe
-def typeClassifier(df,response):
+def typeClassifier(df, col_exclusions):
     cols = {}
     for column in df.columns:
-        if column == response:
-            print(f"Skipping response variable {response}")
+        if column in col_exclusions:
+            print(f"Skipping excluded variable {column}\n")
             continue
         print(f"Evaluating {column}: {df[column].dtype}")
         if df[column].dtype in ['int64','float64']:
@@ -33,12 +32,6 @@ def typeClassifier(df,response):
                 continue
     return cols
 
-def fineClassNumeric(df, independent, bins):
-    _, edges = pd.qcut(df[independent], bins, retbins=True)
-    df[independent + "_bin"] = pd.qcut(df[independent], bins, labels=edges[:-1])
-    df[independent + "_bin"] = df[independent + "_bin"].cat.add_categories('Missing').fillna('Missing')
-    return df
-
 #determines whether a numeric variable is continuous or discrete
 #defaults to 20 or fewer bins = discrete and more than 20 bins = continuous
 def contOrDiscrete(df, independent, tolerance = 20):
@@ -46,6 +39,32 @@ def contOrDiscrete(df, independent, tolerance = 20):
         return "Discrete"
     return "Continuous"
 
-colTypes = typeClassifier(df, 'Survived')
-print(colTypes)
-print(df.dtypes)
+def fineClassNumeric(df, independent, bins):
+    _, edges = pd.qcut(df[independent], bins, retbins=True)
+    df[independent + "_bin"] = pd.qcut(df[independent], bins, labels=edges[:-1])
+    df[independent + "_bin"] = df[independent + "_bin"].cat.add_categories('Missing').fillna('Missing')
+    return df
+
+def fineClassOrdinal(df, independent):
+    df[independent + "_bin"] = df[independent].astype('category').cat.add_categories('Missing').fillna('Missing')
+    return df
+
+def fineClassCategorical(df, independent):
+    df[independent + "_bin"] = df[independent].astype('category').cat.add_categories('Missing').fillna('Missing')
+    return df
+
+colTypes = typeClassifier(df, ['Survived', 'PassengerId'])
+
+for col in colTypes:
+    if colTypes[col] == ("Continuous"):
+        print(f"Fine classing continuous variable {col}...")
+        df = fineClassNumeric(df, col, min(20,df[col].nunique()-1))
+    elif colTypes[col] == ("Ordinal"):
+        print(f"Fine classing ordinal variable {col}...")
+        df = fineClassOrdinal(df, col)
+    elif colTypes[col] == ("Categorical"):
+        print(f"Fine classing categorical variable {col}...")
+        df = fineClassCategorical(df, col)
+    else:
+        print(f"Skipping fine classing for {col} as it requires different methodoloy")
+
