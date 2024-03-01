@@ -100,3 +100,4 @@ plt.title('IV by Variable')
 plt.show()
 
 
+
