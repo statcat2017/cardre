@@ -44,7 +44,7 @@ def fineClassOrdinal(df, independent):
     df[independent + "_bin"] = df[independent].astype('category').cat.add_categories('Missing').fillna('Missing')
     return df
 
-def fineClassCategorical(df, indepimport numpyendent):
+def fineClassCategorical(df, independent):
     df[independent + "_bin"] = df[independent].astype('category').cat.add_categories('Missing').fillna('Missing')
     return df
 
