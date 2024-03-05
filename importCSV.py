@@ -2,7 +2,7 @@ import pandas as pd
 import os
 import sys
 
-def load_csv(data_file="", UID="", outcomes=""):
+def load_csv(data_file="", UID = "", outcomes = ""):
     if data_file == "":
         data_file = input('Enter the path of the file you want to load: ')
 
@@ -20,9 +20,13 @@ def load_csv(data_file="", UID="", outcomes=""):
 
     while UID not in df.columns:
         print(f'Field {UID} not found in DataFrame')
-        UID = input('Enter the name of the field containing the outcomes: ')
+        UID = input('Enter the name of the field containing the outcomes\nor "None" to create generic UID\nor "quit" to exit: ')
         if UID == "quit":
             sys.exit()
+        if UID == "None":
+            UID = "UID"
+            df['UID'] = range(1, len(df) + 1)
+            print(f"Created generic UID field {UID}")
 
     if outcomes == "":
         outcomes = input('Enter the name of the field containing the outcomes: ')
@@ -35,7 +39,7 @@ def load_csv(data_file="", UID="", outcomes=""):
 
     print(f"Loaded {len(df)} rows and {len(df.columns)} columns")
 
-    return df
+    return df, UID, outcomes
 
 
 
