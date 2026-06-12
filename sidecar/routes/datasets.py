@@ -30,9 +30,10 @@ def _update_plan_import_params(store: ProjectStore, project_id: str, source_path
     Creates a new plan version so the import step knows which file to load.
     """
     plans = store.get_plans_for_project(project_id)
-    if not plans:
+    proof_plan = next((p for p in plans if p["name"] == "Proof Pathway"), None)
+    if proof_plan is None:
         return
-    plan_id = plans[0]["plan_id"]
+    plan_id = proof_plan["plan_id"]
     latest_pv_id = store.get_latest_plan_version_id(plan_id)
     if latest_pv_id is None:
         return

@@ -364,21 +364,19 @@ class TestFullRoundTrip:
         assert len(plan_resp.json()["steps"]) == 6
 
     def test_import_does_not_overwrite_proof_pathway(self, client, tmp_dir, sample_german_credit):
-        """After import, the proof pathway plan must still have 6 steps."""
+        """After import, the proof pathway plan must still have 6 steps and
+        the __import__ plan must exist separately."""
         proj_path = tmp_dir / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
         pid = proj["project_id"]
 
         store = ProjectStore(proj_path)
 
-        # Find the proof pathway plan
-        plans = store.get_plans_for_project(pid)
-        proof_plan_id = None
-        for p in plans:
-            if p["name"] == "Proof Pathway":
-                proof_plan_id = p["plan_id"]
-                break
-        assert proof_plan_id is not None
+        # Verify proof pathway exists before import
+        plans_before = store.get_plans_for_project(pid)
+        proof_before = [p for p in plans_before if p["name"] == "Proof Pathway"]
+        assert len(proof_before) == 1
+        proof_plan_id = proof_before[0]["plan_id"]
 
         # Import via API
         client.post("/datasets/import", json={
@@ -386,24 +384,21 @@ class TestFullRoundTrip:
             "dataset_id": "uci-statlog-german-credit",
         })
 
+        # Re-fetch plans after import
+        plans_after = store.get_plans_for_project(pid)
+
         # Proof pathway should still have 6 steps
-        latest_pv_id = store.get_latest_plan_version_id(proof_plan_id)
+        proof_after = [p for p in plans_after if p["name"] == "Proof Pathway"]
+        assert len(proof_after) == 1
+        latest_pv_id = store.get_latest_plan_version_id(proof_after[0]["plan_id"])
         assert latest_pv_id is not None
         steps = store.get_plan_version_steps(latest_pv_id)
         assert len(steps) == 6, f"Proof pathway has {len(steps)} steps, expected 6"
 
-        # Import plan should be separate and have 1 step
-        import_plan_id = None
-        for p in plans:
-            if p["name"] == "Proof Pathway":
-                continue
-            import_plan_id = p["plan_id"]
-        if import_plan_id:
-            import_pv_id = store.get_latest_plan_version_id(import_plan_id)
-            if import_pv_id:
-                import_steps = store.get_plan_version_steps(import_pv_id)
-                # Import plan version may have more versions from re-import
-                pass
+        # __import__ plan should exist as a separate plan
+        import_plans = [p for p in plans_after if p["name"] == "__import__"]
+        assert len(import_plans) == 1, "Expected __import__ plan to exist after import"
+        assert import_plans[0]["plan_id"] != proof_plan_id, "Import plan must be distinct from proof pathway"
 
     def test_unknown_node_type_produces_failed_run(self, client, tmp_dir, sample_german_credit):
         """A plan step with an unknown node type must produce a failed
