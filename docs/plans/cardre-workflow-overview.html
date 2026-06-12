@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cardre Workflow Overview</title>
+    <style>
+      :root {
+        --ink: #15211f;
+        --muted: #61706c;
+        --paper: #fffaf0;
+        --panel: #ffffff;
+        --line: #d8cdb8;
+        --green: #17493f;
+        --green-2: #2f7d68;
+        --gold: #d49a2a;
+        --gold-soft: #fff1c6;
+        --blue: #315f8f;
+        --blue-soft: #e8f1fb;
+        --red: #b85c4a;
+        --red-soft: #ffebe5;
+        --shadow: 0 22px 70px rgba(34, 31, 20, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 12% 5%, rgba(212, 154, 42, 0.2), transparent 28rem),
+          radial-gradient(circle at 90% 12%, rgba(47, 125, 104, 0.18), transparent 24rem),
+          linear-gradient(135deg, #fffaf0 0%, #f6efe1 55%, #f2e7d4 100%);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.45;
+      }
+
+      .page {
+        max-width: 1220px;
+        margin: 0 auto;
+        padding: 48px 24px 72px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+        gap: 28px;
+        align-items: stretch;
+      }
+
+      .hero-card,
+      .panel {
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(216, 205, 184, 0.9);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+      }
+
+      .hero-card {
+        border-radius: 34px;
+        padding: 42px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .hero-card::after {
+        content: "";
+        position: absolute;
+        width: 260px;
+        height: 260px;
+        right: -80px;
+        bottom: -90px;
+        border-radius: 50%;
+        background: rgba(212, 154, 42, 0.18);
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: #183f37;
+        color: #fff7df;
+        font-size: 0.82rem;
+        font-weight: 750;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+        background: var(--gold);
+      }
+
+      h1 {
+        max-width: 760px;
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(2.7rem, 7vw, 6rem);
+        line-height: 0.92;
+        letter-spacing: -0.07em;
+      }
+
+      .lede {
+        max-width: 760px;
+        margin: 26px 0 0;
+        color: #354642;
+        font-size: clamp(1.05rem, 2vw, 1.35rem);
+      }
+
+      .hero-summary {
+        border-radius: 34px;
+        padding: 28px;
+        background: #163f36;
+        color: #fff9e9;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 390px;
+      }
+
+      .summary-title {
+        margin: 0 0 16px;
+        color: #ffda88;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .summary-list {
+        display: grid;
+        gap: 14px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .summary-list li {
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
+      .summary-list strong {
+        display: block;
+        color: #fff;
+        margin-bottom: 4px;
+      }
+
+      .summary-list span {
+        color: #d9e6df;
+        font-size: 0.96rem;
+      }
+
+      .section {
+        margin-top: 34px;
+      }
+
+      .section-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+        gap: 18px;
+        margin-bottom: 16px;
+      }
+
+      h2 {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(2rem, 4vw, 3.4rem);
+        line-height: 1;
+        letter-spacing: -0.04em;
+      }
+
+      .section-heading p {
+        max-width: 520px;
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .workflow {
+        display: grid;
+        gap: 18px;
+      }
+
+      .rail {
+        position: relative;
+        display: grid;
+        grid-template-columns: 170px repeat(4, minmax(150px, 1fr));
+        gap: 14px;
+        align-items: stretch;
+      }
+
+      .rail-label {
+        border-radius: 24px;
+        padding: 18px;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 145px;
+      }
+
+      .rail-label.build {
+        background: linear-gradient(145deg, #163f36, #276a58);
+      }
+
+      .rail-label.eval {
+        background: linear-gradient(145deg, #243f65, #315f8f);
+      }
+
+      .rail-label strong {
+        font-size: 1.15rem;
+      }
+
+      .rail-label span {
+        margin-top: 8px;
+        color: rgba(255, 255, 255, 0.78);
+        font-size: 0.94rem;
+      }
+
+      .step {
+        position: relative;
+        min-height: 145px;
+        padding: 18px;
+        border-radius: 24px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        box-shadow: 0 12px 30px rgba(36, 32, 23, 0.08);
+      }
+
+      .step::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        right: -14px;
+        width: 14px;
+        height: 2px;
+        background: var(--line);
+      }
+
+      .step:last-child::after {
+        display: none;
+      }
+
+      .step-number {
+        display: inline-flex;
+        width: 30px;
+        height: 30px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        background: var(--gold-soft);
+        color: #75510d;
+        font-weight: 850;
+        font-size: 0.9rem;
+      }
+
+      .step h3 {
+        margin: 12px 0 8px;
+        font-size: 1.08rem;
+        letter-spacing: -0.02em;
+      }
+
+      .step p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.94rem;
+      }
+
+      .split-band {
+        display: grid;
+        grid-template-columns: 170px 1fr;
+        gap: 14px;
+        align-items: stretch;
+      }
+
+      .split-card {
+        padding: 22px;
+        border-radius: 28px;
+        background: linear-gradient(135deg, #fff, #fff5d8);
+        border: 1px solid #e7d49a;
+        box-shadow: 0 12px 34px rgba(90, 67, 26, 0.11);
+      }
+
+      .split-card h3 {
+        margin: 0 0 8px;
+        font-size: 1.25rem;
+      }
+
+      .sample-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .tag {
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-weight: 800;
+        font-size: 0.88rem;
+      }
+
+      .tag.train {
+        background: #dff2ea;
+        color: var(--green);
+      }
+
+      .tag.test {
+        background: var(--blue-soft);
+        color: var(--blue);
+      }
+
+      .tag.oot {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .capability-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .panel {
+        border-radius: 28px;
+        padding: 24px;
+      }
+
+      .panel h3 {
+        margin: 0 0 10px;
+        font-size: 1.16rem;
+      }
+
+      .panel p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        margin-bottom: 14px;
+        border-radius: 16px;
+        background: #173f36;
+        color: #ffdf8a;
+        font-weight: 900;
+      }
+
+      .evidence {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+        gap: 18px;
+      }
+
+      .audit-pack {
+        position: relative;
+        min-height: 360px;
+        border-radius: 34px;
+        padding: 30px;
+        color: #fff9e9;
+        background:
+          linear-gradient(135deg, rgba(20, 55, 48, 0.95), rgba(41, 95, 78, 0.95)),
+          repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.04) 10px, rgba(255,255,255,0.04) 20px);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .audit-pack h3 {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(2rem, 4vw, 3.1rem);
+        line-height: 0.98;
+        letter-spacing: -0.04em;
+      }
+
+      .audit-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .audit-item {
+        padding: 12px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.1);
+        color: #ecf5ef;
+        font-size: 0.94rem;
+      }
+
+      .comparison {
+        display: grid;
+        gap: 14px;
+      }
+
+      .compare-card {
+        display: grid;
+        grid-template-columns: 120px 1fr auto;
+        gap: 16px;
+        align-items: center;
+        padding: 18px;
+        border-radius: 24px;
+        background: #fff;
+        border: 1px solid var(--line);
+      }
+
+      .metric {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .bar {
+        height: 9px;
+        flex: 1;
+        border-radius: 999px;
+        background: #efe6d6;
+        overflow: hidden;
+      }
+
+      .bar span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--green-2), var(--gold));
+      }
+
+      .score {
+        font-weight: 900;
+        color: var(--green);
+      }
+
+      .footer-note {
+        margin-top: 30px;
+        padding: 22px 26px;
+        border-radius: 26px;
+        background: #fff8e8;
+        border: 1px solid #ead7a6;
+        color: #5c4a22;
+      }
+
+      @media (max-width: 980px) {
+        .hero,
+        .evidence {
+          grid-template-columns: 1fr;
+        }
+
+        .rail {
+          grid-template-columns: 1fr;
+        }
+
+        .rail-label {
+          min-height: auto;
+        }
+
+        .step::after {
+          display: none;
+        }
+
+        .split-band {
+          grid-template-columns: 1fr;
+        }
+
+        .capability-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 620px) {
+        .page {
+          padding: 28px 14px 44px;
+        }
+
+        .hero-card,
+        .hero-summary,
+        .panel,
+        .audit-pack {
+          border-radius: 24px;
+          padding: 22px;
+        }
+
+        .section-heading {
+          display: block;
+        }
+
+        .section-heading p {
+          margin-top: 10px;
+        }
+
+        .capability-grid,
+        .audit-list {
+          grid-template-columns: 1fr;
+        }
+
+        .compare-card {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="hero-card">
+          <div class="eyebrow"><span class="dot"></span> Cardre scorecard workflow</div>
+          <h1>Build scorecards that can be explained, replayed, and reviewed.</h1>
+          <p class="lede">Cardre guides a credit-risk modeller from local data to a governance-ready scorecard pack. The workflow keeps model development transparent: every population definition, sample window, split, bin, variable choice, score, and validation result is visible and auditable.</p>
+        </div>
+
+        <aside class="hero-summary">
+          <div>
+            <p class="summary-title">What Cardre gives the modeller</p>
+            <ul class="summary-list">
+              <li><strong>Local-first modelling</strong><span>Portfolio data stays on the user's machine.</span></li>
+              <li><strong>Structured leakage control</strong><span>Only train data is used to build the scorecard; holdout samples are scored later.</span></li>
+              <li><strong>Manual judgement where it matters</strong><span>Segmentation, coarse classing, overrides, and inclusion decisions are recorded with reasons.</span></li>
+              <li><strong>Governance evidence by default</strong><span>The final export explains what happened and why.</span></li>
+            </ul>
+          </div>
+        </aside>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <h2>The modelling journey</h2>
+          <p>A fixed pathway keeps the first product simple while matching the professional scorecard workflow: build on train, then score and evaluate train/test/OOT consistently.</p>
+        </div>
+
+        <div class="workflow">
+          <div class="rail">
+            <div class="rail-label build"><strong>Prepare data</strong><span>Start with a local dataset and define the modelling population.</span></div>
+            <div class="step"><span class="step-number">1</span><h3>Load local data</h3><p>Import a CSV or similar file, profile the fields, and identify IDs, dates, and candidate predictors.</p></div>
+            <div class="step"><span class="step-number">2</span><h3>Define population</h3><p>Record product, segment, target, good/bad/indeterminate rules, and observation/performance windows.</p></div>
+            <div class="step"><span class="step-number">3</span><h3>Build sample</h3><p>Apply exclusions, check maturity, and record sampling method, weights, and base bad rate.</p></div>
+            <div class="step"><span class="step-number">4</span><h3>Profile risk signals</h3><p>Inspect missingness, outliers, distributions, special codes, and candidate derivations.</p></div>
+          </div>
+
+          <div class="split-band">
+            <div class="rail-label build"><strong>Controlled split</strong><span>The train sample builds the scorecard. Test and OOT are held aside.</span></div>
+            <div class="split-card">
+              <h3>One dataset becomes three role-tagged samples</h3>
+              <p>Cardre makes the split visible so a modeller can prove that model-fitting decisions were learned from train only.</p>
+              <div class="sample-tags">
+                <span class="tag train">Train: build</span>
+                <span class="tag test">Test: holdout</span>
+                <span class="tag oot">OOT: time stability</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="rail">
+            <div class="rail-label build"><strong>Build stream</strong><span>Fit the scorecard using train only.</span></div>
+            <div class="step"><span class="step-number">5</span><h3>Fine class all variables</h3><p>Create initial bins and calculate early WOE/IV diagnostics across candidate variables.</p></div>
+            <div class="step"><span class="step-number">6</span><h3>Cluster and select</h3><p>Group correlated variables, then keep candidates using IV, stability, business admissibility, and judgement.</p></div>
+            <div class="step"><span class="step-number">7</span><h3>Coarse class manually</h3><p>Merge bins, isolate missing and special codes, and record every override reason.</p></div>
+            <div class="step"><span class="step-number">8</span><h3>Fit scorecard</h3><p>Calculate final WOE, fit logistic regression, and scale coefficients into scorecard points.</p></div>
+          </div>
+
+          <div class="rail">
+            <div class="rail-label eval"><strong>Scoring and evaluation</strong><span>Apply the built scorecard without refitting.</span></div>
+            <div class="step"><span class="step-number">9</span><h3>Score train</h3><p>Score the development sample for benchmark performance and overfit checks.</p></div>
+            <div class="step"><span class="step-number">10</span><h3>Score test</h3><p>Apply the same bins and coefficients to the holdout sample.</p></div>
+            <div class="step"><span class="step-number">11</span><h3>Score OOT</h3><p>Measure time-based stability using the out-of-time sample where available.</p></div>
+            <div class="step"><span class="step-number">12</span><h3>Compare evidence</h3><p>Review gains, cutoff trade-offs, Gini, KS, calibration, PSI, fallbacks, and implementation parity.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <h2>Capabilities that matter</h2>
+          <p>The product focuses on the parts of scorecard development that are hard to govern in notebooks and spreadsheets.</p>
+        </div>
+        <div class="capability-grid">
+          <article class="panel"><span class="icon">B</span><h3>Manual binning</h3><p>Inspect WOE and event-rate charts, merge sparse bins, isolate special codes, and require a reason for every judgement call.</p></article>
+          <article class="panel"><span class="icon">V</span><h3>Variable selection</h3><p>Track why variables were included or excluded: IV, correlation cluster, stability, business inadmissibility, or analyst override.</p></article>
+          <article class="panel"><span class="icon">L</span><h3>Leakage prevention</h3><p>The workflow separates scorecard building from holdout scoring so test and OOT samples cannot accidentally influence fitting.</p></article>
+          <article class="panel"><span class="icon">R</span><h3>Replayable runs</h3><p>Change a binning decision or threshold and rerun only the affected downstream work while preserving previous evidence.</p></article>
+        </div>
+      </section>
+
+      <section class="section evidence">
+        <div class="audit-pack">
+          <h3>Audit pack, not just a model file.</h3>
+          <div class="audit-list">
+            <div class="audit-item">Target, population, and sample windows</div>
+            <div class="audit-item">Exclusions and sample construction</div>
+            <div class="audit-item">Train/test/OOT split evidence</div>
+            <div class="audit-item">Binning and override reasons</div>
+            <div class="audit-item">Variable clustering and selection rationale</div>
+            <div class="audit-item">WOE, IV, scorecard points</div>
+            <div class="audit-item">Gains, cutoff, Gini, KS, calibration, PSI</div>
+            <div class="audit-item">Fallback usage and warnings</div>
+            <div class="audit-item">Scoring code and parity checks</div>
+          </div>
+        </div>
+
+        <div class="panel comparison">
+          <h2>Compare branches</h2>
+          <p>Future branching lets modellers test alternative binning, variable selection, or modelling choices side by side before marking a champion.</p>
+          <div class="compare-card">
+            <strong>Champion</strong>
+            <div class="metric"><span>Gini</span><div class="bar"><span style="width: 72%"></span></div></div>
+            <span class="score">0.72</span>
+          </div>
+          <div class="compare-card">
+            <strong>Challenger A</strong>
+            <div class="metric"><span>Gini</span><div class="bar"><span style="width: 68%"></span></div></div>
+            <span class="score">0.68</span>
+          </div>
+          <div class="compare-card">
+            <strong>Challenger B</strong>
+            <div class="metric"><span>PSI</span><div class="bar"><span style="width: 32%"></span></div></div>
+            <span class="score">0.08</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="footer-note">
+        <strong>Plain-English promise:</strong> Cardre helps a modeller build a traditional WOE/logistic-regression scorecard while preserving the evidence needed to explain it later: what data was used, how variables were binned, why choices were made, how the scorecard performed, and whether the production scoring implementation matches the development result.
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,264 @@
+"""Audit-trail data structures and hashing utilities.
+
+Phase 1: every artifact has both physical_hash (raw file bytes) and
+logical_hash (canonical representation) for reproducibility and staleness.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+import polars as pl
+
+if TYPE_CHECKING:
+    from cardre.store import ProjectStore
+
+
+JsonDict = dict[str, Any]
+
+
+CHUNK_SIZE = 1024 * 1024
+
+
+def utc_now_iso() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
+
+
+def parse_iso(value: str) -> datetime:
+    return datetime.fromisoformat(value)
+
+
+def relative_path(path: Path, root: Path) -> str:
+    return path.resolve().relative_to(root.resolve()).as_posix()
+
+
+def physical_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(CHUNK_SIZE), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def json_logical_hash(data: JsonDict) -> str:
+    payload = json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def table_logical_hash(table: pl.DataFrame) -> str:
+    sorted_cols = sorted(table.columns)
+    table = table.select(sorted_cols)
+    arrow_table = table.to_arrow()
+    import io
+    import pyarrow as pa
+    buf = io.BytesIO()
+    with pa.ipc.new_file(buf, arrow_table.schema) as writer:
+        writer.write_table(arrow_table)
+    return hashlib.sha256(buf.getvalue()).hexdigest()
+
+
+def params_hash(params: JsonDict) -> str:
+    return json_logical_hash(params)
+
+
+@dataclass(frozen=True)
+class ArtifactRef:
+    artifact_id: str
+    artifact_type: str
+    role: str
+    path: str
+    physical_hash: str
+    logical_hash: str
+    media_type: str = "application/octet-stream"
+    metadata: JsonDict = field(default_factory=dict)
+
+    def to_dict(self) -> JsonDict:
+        return {
+            "artifact_id": self.artifact_id,
+            "artifact_type": self.artifact_type,
+            "role": self.role,
+            "path": self.path,
+            "physical_hash": self.physical_hash,
+            "logical_hash": self.logical_hash,
+            "media_type": self.media_type,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, data: JsonDict) -> ArtifactRef:
+        return cls(
+            artifact_id=data["artifact_id"],
+            artifact_type=data["artifact_type"],
+            role=data["role"],
+            path=data["path"],
+            physical_hash=data["physical_hash"],
+            logical_hash=data["logical_hash"],
+            media_type=data.get("media_type", "application/octet-stream"),
+            metadata=dict(data.get("metadata", {})),
+        )
+
+
+@dataclass(frozen=True)
+class StepRecord:
+    step_id: str
+    name: str
+    version: str
+    params: JsonDict
+    params_hash: str
+    parent_step_ids: list[str]
+    inputs: list[ArtifactRef]
+    outputs: list[ArtifactRef]
+    branch_label: str = ""
+    metrics: JsonDict = field(default_factory=dict)
+    status: str = "succeeded"
+    started_at: str = field(default_factory=utc_now_iso)
+    completed_at: str = field(default_factory=utc_now_iso)
+    notes: str = ""
+
+    def to_dict(self) -> JsonDict:
+        return {
+            "step_id": self.step_id,
+            "name": self.name,
+            "version": self.version,
+            "params": self.params,
+            "params_hash": self.params_hash,
+            "parent_step_ids": self.parent_step_ids,
+            "inputs": [a.to_dict() for a in self.inputs],
+            "outputs": [a.to_dict() for a in self.outputs],
+            "branch_label": self.branch_label,
+            "metrics": self.metrics,
+            "status": self.status,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "notes": self.notes,
+        }
+
+    @classmethod
+    def from_dict(cls, data: JsonDict) -> StepRecord:
+        return cls(
+            step_id=data["step_id"],
+            name=data["name"],
+            version=data["version"],
+            params=dict(data.get("params", {})),
+            params_hash=data.get("params_hash", json_logical_hash(dict(data.get("params", {})))),
+            parent_step_ids=list(data.get("parent_step_ids", [])),
+            inputs=[ArtifactRef.from_dict(i) for i in data.get("inputs", [])],
+            outputs=[ArtifactRef.from_dict(i) for i in data.get("outputs", [])],
+            branch_label=data.get("branch_label", ""),
+            metrics=dict(data.get("metrics", {})),
+            status=data.get("status", "succeeded"),
+            started_at=data.get("started_at", utc_now_iso()),
+            completed_at=data.get("completed_at", utc_now_iso()),
+            notes=data.get("notes", ""),
+        )
+
+
+class NodeType(ABC):
+    node_type: str
+    version: str
+    category: str
+    input_roles: list[str]
+    output_roles: list[str]
+
+    @abstractmethod
+    def run(self, context: ExecutionContext) -> NodeOutput:
+        ...
+
+
+@dataclass
+class ExecutionContext:
+    store: ProjectStore
+    run_id: str
+    plan_version_id: str
+    step_spec: StepSpec
+    parent_run_steps: list[RunStepRecord]
+    input_artifacts: list[ArtifactRef]
+    validated_params: JsonDict
+    runtime_metadata: JsonDict
+
+
+@dataclass
+class NodeOutput:
+    artifacts: list[ArtifactRef]
+    metrics: JsonDict
+    execution_fingerprint: JsonDict
+
+
+@dataclass(frozen=True)
+class StepSpec:
+    step_id: str
+    node_type: str
+    node_version: str
+    category: str
+    params: JsonDict
+    params_hash: str
+    parent_step_ids: list[str]
+    branch_label: str
+    position: int
+
+    def to_dict(self) -> JsonDict:
+        return {
+            "step_id": self.step_id,
+            "node_type": self.node_type,
+            "node_version": self.node_version,
+            "category": self.category,
+            "params": self.params,
+            "params_hash": self.params_hash,
+            "parent_step_ids": self.parent_step_ids,
+            "branch_label": self.branch_label,
+            "position": self.position,
+        }
+
+    @classmethod
+    def from_dict(cls, data: JsonDict) -> StepSpec:
+        return cls(
+            step_id=data["step_id"],
+            node_type=data["node_type"],
+            node_version=data["node_version"],
+            category=data["category"],
+            params=dict(data.get("params", {})),
+            params_hash=data.get("params_hash", json_logical_hash(dict(data.get("params", {})))),
+            parent_step_ids=list(data.get("parent_step_ids", [])),
+            branch_label=data.get("branch_label", ""),
+            position=data.get("position", 0),
+        )
+
+
+@dataclass(frozen=True)
+class RunStepRecord:
+    run_step_id: str
+    run_id: str
+    step_id: str
+    plan_version_id: str
+    status: str
+    started_at: str
+    finished_at: str | None
+    input_artifact_ids: list[str]
+    output_artifact_ids: list[str]
+    execution_fingerprint: JsonDict
+    warnings: list[JsonDict]
+    errors: list[JsonDict]
+
+
+__all__ = [
+    "ArtifactRef",
+    "ExecutionContext",
+    "JsonDict",
+    "NodeOutput",
+    "NodeType",
+    "RunStepRecord",
+    "StepRecord",
+    "StepSpec",
+    "json_logical_hash",
+    "params_hash",
+    "physical_hash",
+    "relative_path",
+    "table_logical_hash",
+    "utc_now_iso",
+]

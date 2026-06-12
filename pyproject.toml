@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cardre"
+version = "0.1.0"
+description = "Auditable open-source credit scorecard builder"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "polars",
+    "pyarrow",
+    "pydantic",
+]
+
+[project.optional-dependencies]
+sidecar = ["fastapi", "uvicorn"]
+
+[tool.setuptools.packages.find]
+include = ["cardre*", "sidecar*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

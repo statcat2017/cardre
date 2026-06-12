@@ -1,2 +1,6 @@
 __pycache__/
 /input/credit/*
+.pytest_cache/
+.cardre/
+frontend/node_modules/
+frontend/dist/
