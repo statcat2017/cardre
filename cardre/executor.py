@@ -3,7 +3,8 @@
 The executor walks plan_steps in topological order, resolves input
 artifacts from parent run-step outputs, validates role access, runs each
 node, records outputs, and creates run_step evidence. Every failed step
-is recorded as auditable run-step evidence with structured errors.
+is recorded as auditable run-step evidence with structured errors and
+whatever input evidence was resolved before the failure.
 """
 
 from __future__ import annotations
@@ -66,9 +67,10 @@ class PlanExecutor:
     ) -> str:
         """Execute all steps in a plan version. Returns the run_id.
 
-        Each step is wrapped in its own try/except. If a step fails, a
-        failed RunStepRecord with structured errors is saved, the run is
-        marked failed, and descendants are skipped.
+        Every step is wrapped in its own per-step try/except to ensure
+        that even if node instantiation or step execution fails, a
+        RunStepRecord with structured errors is saved and the run is
+        finished as FAILED. The run is never left in 'running' state.
         """
         steps = store.get_plan_version_steps(plan_version_id)
         self._validate_topology(steps)
@@ -79,24 +81,31 @@ class PlanExecutor:
         run_step_records: dict[str, RunStepRecord] = {}
         has_failure = False
 
-        for spec in steps:
+        try:
+            for spec in steps:
+                if has_failure:
+                    break
+
+                rs = self._execute_step(
+                    store, spec, plan_version_id, run_id,
+                    step_outputs, run_step_records,
+                )
+                run_step_records[spec.step_id] = rs
+                step_outputs[spec.step_id] = self._resolve_output_artifacts(store, rs)
+
+                if rs.status == STATUS_FAILED:
+                    has_failure = True
+        finally:
             if has_failure:
-                break
-
-            rs = self._execute_step(
-                store, spec, plan_version_id, run_id,
-                step_outputs, run_step_records,
-            )
-            run_step_records[spec.step_id] = rs
-            step_outputs[spec.step_id] = self._resolve_output_artifacts(store, rs)
-
-            if rs.status == STATUS_FAILED:
-                has_failure = True
-
-        if has_failure:
-            store.finish_run(run_id, STATUS_FAILED)
-        else:
-            store.finish_run(run_id, STATUS_SUCCEEDED)
+                store.finish_run(run_id, STATUS_FAILED)
+            else:
+                # Only finish as succeeded if all steps were actually
+                # processed and none failed
+                all_processed = len(run_step_records) == len(steps)
+                if all_processed and not has_failure:
+                    store.finish_run(run_id, STATUS_SUCCEEDED)
+                else:
+                    store.finish_run(run_id, STATUS_FAILED)
 
         return run_id
 
@@ -109,12 +118,19 @@ class PlanExecutor:
         step_outputs: dict[str, list[ArtifactRef]],
         run_step_records: dict[str, RunStepRecord],
     ) -> RunStepRecord:
-        node = self.registry.instantiate(spec.node_type)
+        # Initialise before try so failure can still record partial
+        # evidence.
+        raw_inputs: list[ArtifactRef] = []
+        input_artifacts: list[ArtifactRef] = []
+        parent_run_steps: list[RunStepRecord] = []
 
         try:
+            node = self.registry.instantiate(spec.node_type)
+
             raw_inputs = self._resolve_inputs(spec, step_outputs)
             input_artifacts = self._filter_inputs_by_role(node, raw_inputs)
             self._validate_role_access(node, spec, input_artifacts, raw_inputs)
+            self._validate_node_input_roles(node, input_artifacts)
 
             parent_run_steps = [
                 rs for pid in spec.parent_step_ids
@@ -153,11 +169,33 @@ class PlanExecutor:
 
         except BaseException:
             tb = traceback.format_exc()
+            exc_type = sys.exc_info()[0]
+            exc_value = sys.exc_info()[1]
             error_entry = {
                 "code": "STEP_FAILED",
-                "message": f"{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}",
+                "message": f"{exc_type.__name__ if exc_type else 'Unknown'}: {exc_value}",
                 "traceback": tb,
             }
+
+            # If node was never instantiated, do it now for metadata
+            try:
+                node = self.registry.instantiate(spec.node_type)
+            except BaseException:
+                node = None
+
+            # Include whatever input evidence was resolved before
+            # failure (may be partial if node instantiation itself
+            # failed).
+            recorded_input_ids = [a.artifact_id for a in input_artifacts]
+            recorded_input_logical_hashes = [a.logical_hash for a in input_artifacts]
+            recorded_parent_run_step_ids = [rs.run_step_id for rs in parent_run_steps]
+
+            # Build parent output hashes from whatever was resolved
+            parent_outputs: dict[str, list[str]] = {}
+            for rs in parent_run_steps:
+                parent_outputs[rs.step_id] = rs.execution_fingerprint.get(
+                    "output_artifact_logical_hashes", []
+                )
 
             output = NodeOutput(
                 artifacts=[],
@@ -168,13 +206,10 @@ class PlanExecutor:
                     "node_type": spec.node_type,
                     "node_version": spec.node_version,
                     "params_hash": spec.params_hash,
-                    "parent_run_step_ids": [
-                        rs.run_step_id
-                        for pid in spec.parent_step_ids
-                        if (rs := run_step_records.get(pid)) is not None
-                    ],
-                    "input_artifact_logical_hashes": [],
+                    "parent_run_step_ids": recorded_parent_run_step_ids,
+                    "input_artifact_logical_hashes": recorded_input_logical_hashes,
                     "output_artifact_logical_hashes": [],
+                    "parent_output_logical_hashes_by_step": parent_outputs,
                     "python_version": sys.version.split()[0],
                     "cardre_version": "0.1.0",
                 },
@@ -186,11 +221,8 @@ class PlanExecutor:
                 spec=spec,
                 plan_version_id=plan_version_id,
                 output=output,
-                input_artifact_ids=[],
-                parent_run_steps=[
-                    rs for pid in spec.parent_step_ids
-                    if (rs := run_step_records.get(pid)) is not None
-                ],
+                input_artifact_ids=recorded_input_ids,
+                parent_run_steps=parent_run_steps,
                 status=STATUS_FAILED,
                 errors=[error_entry],
             )
@@ -251,8 +283,6 @@ class PlanExecutor:
         if permitted_roles is None or not permitted_roles:
             return
 
-        # If the node has parents but after filtering there are no
-        # matching artifacts, the graph is wired incorrectly.
         if spec.parent_step_ids and not filtered_artifacts:
             raw_roles = sorted({a.role for a in raw_inputs})
             raise RoleAccessError(
@@ -270,6 +300,33 @@ class PlanExecutor:
                     f"cannot consume artifact role {artifact.role!r}. "
                     f"Permitted roles: {sorted(permitted_roles)}"
                 )
+
+    def _validate_node_input_roles(
+        self,
+        node: NodeType,
+        artifacts: list[ArtifactRef],
+    ) -> None:
+        """Validate that at least one of the node's declared
+        input_roles is present in the resolved artifacts.
+
+        input_roles on proof nodes represent *permitted* roles.
+        Category-level role filtering (fit→train, apply→train/test/oot)
+        is handled by CATEGORY_ROLE_MAP separately. This check ensures
+        the node's own capability contract is not violated.
+        """
+        if not node.input_roles:
+            return
+        if not artifacts:
+            return
+
+        actual_roles = {a.role for a in artifacts}
+        matching = set(node.input_roles) & actual_roles
+        if not matching:
+            raise RoleAccessError(
+                f"Node {node.node_type!r} permits input roles "
+                f"{node.input_roles} but receives only "
+                f"{sorted(actual_roles)}. No permitted role matched."
+            )
 
     # ------------------------------------------------------------------
     # Execution fingerprint
@@ -460,8 +517,11 @@ class PlanExecutor:
         description: str = "Replay from changed step",
     ) -> str:
         """Incremental replay: create a new plan version, copy unchanged
-        ancestor run-step references into the new run, and execute only
+        ancestor run-step evidence into the new run, and execute only
         the affected subgraph (changed step + descendants).
+
+        Copied fingerprints are rewritten with the new plan_version_id
+        to maintain internal consistency.
         """
         previous_steps = store.get_plan_version_steps(previous_plan_version_id)
         previous_plan = store.get_plan_version(previous_plan_version_id)
@@ -512,13 +572,20 @@ class PlanExecutor:
 
         for spec in new_steps:
             if spec.step_id not in affected:
-                # Copy previous run-step evidence into the new run
+                # Copy previous run-step evidence into the new run,
+                # rewriting the fingerprint to reference the new context
                 prev_rs = prev_rs_by_step.get(spec.step_id)
                 if prev_rs is None:
                     raise ValueError(
                         f"Cannot retain missing prior record for {spec.step_id!r}"
                     )
-                # Re-save the previous run-step under the new run_id
+                # Rewrite the copied fingerprint to match the new
+                # plan_version_id
+                copied_fp = dict(prev_rs.execution_fingerprint)
+                copied_fp["plan_version_id"] = new_plan_version_id
+                copied_fp["cardre_step_carried_forward"] = True
+                copied_fp["carried_forward_from_run_step_id"] = prev_rs.run_step_id
+
                 copied_rs = RunStepRecord(
                     run_step_id=str(uuid.uuid4()),
                     run_id=run_id,
@@ -529,7 +596,7 @@ class PlanExecutor:
                     finished_at=prev_rs.finished_at,
                     input_artifact_ids=prev_rs.input_artifact_ids,
                     output_artifact_ids=prev_rs.output_artifact_ids,
-                    execution_fingerprint=prev_rs.execution_fingerprint,
+                    execution_fingerprint=copied_fp,
                     warnings=prev_rs.warnings,
                     errors=prev_rs.errors,
                 )

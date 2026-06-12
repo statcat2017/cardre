@@ -39,10 +39,16 @@ def get_plan(plan_id: str, project_id: str | None = None):
     executor = PlanExecutor(NodeRegistry.with_defaults())
     staleness = executor.compute_staleness(store, latest_pv_id)
 
-    run_steps_map = {}
-    run_id = store.get_latest_successful_run_id(latest_pv_id)
-    if run_id is not None:
-        for rs in store.get_run_steps(run_id):
+    # Use the latest run (any status) for step statuses so that
+    # a failed latest run surfaces its failed steps.
+    # Staleness/currentness is computed from the latest SUCCESSFUL
+    # run separately (above).
+    run_steps_map: dict[str, Any] = {}
+
+    all_runs = store.list_runs(latest_pv_id)
+    if all_runs:
+        latest_run_id = all_runs[0]["run_id"]
+        for rs in store.get_run_steps(latest_run_id):
             run_steps_map[rs.step_id] = rs
 
     step_items = []

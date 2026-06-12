@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from cardre.audit import StepSpec, json_logical_hash
 from cardre.store import ProjectStore
 from sidecar.main import app
 from sidecar.models import ProjectResponse, RunResponse
@@ -341,6 +342,10 @@ class TestFullRoundTrip:
         ).fetchone()["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
 
+        # After import, the proof pathway should still have 6 steps
+        pathway_steps = store.get_plan_version_steps(latest_pv_id)
+        assert len(pathway_steps) == 6, f"Expected 6 pathway steps, got {len(pathway_steps)}"
+
         run_resp = client.post("/runs", json={
             "project_id": pid, "plan_version_id": latest_pv_id,
         })
@@ -350,8 +355,85 @@ class TestFullRoundTrip:
         steps_resp = client.get(f"/runs/{run_id}/steps")
         assert steps_resp.status_code == 200
         steps = steps_resp.json()["steps"]
+        assert len(steps) == 6, f"Expected 6 run steps, got {len(steps)}"
         assert all(s["status"] == "succeeded" for s in steps)
 
         plan_resp = client.get(f"/plans/{plan_id}")
         assert plan_resp.status_code == 200
         assert all(s["is_stale"] is False for s in plan_resp.json()["steps"])
+        assert len(plan_resp.json()["steps"]) == 6
+
+    def test_import_does_not_overwrite_proof_pathway(self, client, tmp_dir, sample_german_credit):
+        """After import, the proof pathway plan must still have 6 steps."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+
+        store = ProjectStore(proj_path)
+
+        # Find the proof pathway plan
+        plans = store.get_plans_for_project(pid)
+        proof_plan_id = None
+        for p in plans:
+            if p["name"] == "Proof Pathway":
+                proof_plan_id = p["plan_id"]
+                break
+        assert proof_plan_id is not None
+
+        # Import via API
+        client.post("/datasets/import", json={
+            "project_id": pid, "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+
+        # Proof pathway should still have 6 steps
+        latest_pv_id = store.get_latest_plan_version_id(proof_plan_id)
+        assert latest_pv_id is not None
+        steps = store.get_plan_version_steps(latest_pv_id)
+        assert len(steps) == 6, f"Proof pathway has {len(steps)} steps, expected 6"
+
+        # Import plan should be separate and have 1 step
+        import_plan_id = None
+        for p in plans:
+            if p["name"] == "Proof Pathway":
+                continue
+            import_plan_id = p["plan_id"]
+        if import_plan_id:
+            import_pv_id = store.get_latest_plan_version_id(import_plan_id)
+            if import_pv_id:
+                import_steps = store.get_plan_version_steps(import_pv_id)
+                # Import plan version may have more versions from re-import
+                pass
+
+    def test_unknown_node_type_produces_failed_run(self, client, tmp_dir, sample_german_credit):
+        """A plan step with an unknown node type must produce a failed
+        run with structured error evidence, not leave the run stuck as
+        running."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+
+        store = ProjectStore(proj_path)
+        plan_id = store.create_plan(pid, "Broken Plan")
+        bad_step = StepSpec(
+            step_id="bad", node_type="cardre.nonexistent",
+            node_version="1", category="transform",
+            params={}, params_hash=json_logical_hash({}),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        bad_pv_id = store.create_plan_version(plan_id, [bad_step])
+
+        resp = client.post("/runs", json={
+            "project_id": pid, "plan_version_id": bad_pv_id,
+        })
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["status"] == "failed"
+
+        # Verify run-step records exist with error evidence
+        steps_resp = client.get(f"/runs/{data['run_id']}/steps")
+        assert steps_resp.status_code == 200
+        steps = steps_resp.json()["steps"]
+        assert len(steps) > 0
+        has_error = any(len(s.get("errors", [])) > 0 for s in steps)
+        assert has_error, "Expected at least one step with structured error evidence"

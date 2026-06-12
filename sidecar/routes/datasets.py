@@ -59,6 +59,15 @@ def _update_plan_import_params(store: ProjectStore, project_id: str, source_path
     store.create_plan_version(plan_id, new_steps, description="Import configured")
 
 
+def _get_or_create_import_plan(store: ProjectStore, project_id: str) -> str:
+    """Find or create a dedicated import plan (separate from proof pathway)."""
+    plans = store.get_plans_for_project(project_id)
+    for p in plans:
+        if p["name"] == "__import__":
+            return p["plan_id"]
+    return store.create_plan(project_id, "__import__")
+
+
 @router.post("/import", response_model=ArtifactResponse, status_code=201)
 def import_dataset(body: ImportDatasetRequest):
     source = Path(body.source_path)
@@ -70,9 +79,9 @@ def import_dataset(body: ImportDatasetRequest):
     if proj is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found"})
 
-    plans = store.get_plans_for_project(body.project_id)
+    # Use a dedicated hidden import plan, not the proof pathway plan
+    import_plan_id = _get_or_create_import_plan(store, body.project_id)
 
-    # Create a one-step import plan version and run it through the executor
     params = {"source_path": str(source.resolve())}
     import_step = StepSpec(
         step_id="import",
@@ -85,11 +94,6 @@ def import_dataset(body: ImportDatasetRequest):
         branch_label="",
         position=0,
     )
-
-    if plans:
-        import_plan_id = plans[0]["plan_id"]
-    else:
-        import_plan_id = store.create_plan(body.project_id, "Import")
 
     import_pv_id = store.create_plan_version(
         import_plan_id, [import_step],
@@ -106,7 +110,6 @@ def import_dataset(body: ImportDatasetRequest):
             detail={"code": "IMPORT_FAILED", "message": f"Dataset import failed: {source.name}"},
         )
 
-    # Get the artifact from the run-step output
     run_steps = store.get_run_steps(run_id)
     if not run_steps:
         raise HTTPException(status_code=500, detail={"code": "NO_RUN_STEPS", "message": "No run steps recorded for import"})
@@ -119,9 +122,9 @@ def import_dataset(body: ImportDatasetRequest):
     if artifact is None:
         raise HTTPException(status_code=500, detail={"code": "ARTIFACT_NOT_FOUND", "message": "Import artifact not found in store"})
 
-    # Update proof pathway params
-    if plans:
-        _update_plan_import_params(store, body.project_id, str(source.resolve()))
+    # Update proof pathway's import params (creates new version of proof
+    # pathway plan with the correct source_path, preserving all 6 steps)
+    _update_plan_import_params(store, body.project_id, str(source.resolve()))
 
     return ArtifactResponse(
         artifact_id=artifact.artifact_id,
