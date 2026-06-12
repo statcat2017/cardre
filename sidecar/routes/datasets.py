@@ -1,14 +1,14 @@
-"""Dataset import endpoint."""
+"""Dataset import endpoint — routes through the executor for audit trail."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
-from cardre.nodes import ImportGermanCreditNode
+from cardre.audit import StepSpec, json_logical_hash
+from cardre.executor import PlanExecutor
+from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 from sidecar.models import ArtifactResponse, ImportDatasetRequest
 from sidecar.routes.projects import _load_registry
@@ -71,10 +71,10 @@ def import_dataset(body: ImportDatasetRequest):
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found"})
 
     plans = store.get_plans_for_project(body.project_id)
-    plan_version_id = store.get_latest_plan_version_id(plans[0]["plan_id"]) if plans else "manual-import"
 
+    # Create a one-step import plan version and run it through the executor
     params = {"source_path": str(source.resolve())}
-    spec = StepSpec(
+    import_step = StepSpec(
         step_id="import",
         node_type="cardre.import_dataset",
         node_version="1",
@@ -85,21 +85,43 @@ def import_dataset(body: ImportDatasetRequest):
         branch_label="",
         position=0,
     )
-    ctx = ExecutionContext(
-        store=store,
-        run_id="api-import",
-        plan_version_id=plan_version_id or "manual-import",
-        step_spec=spec,
-        parent_run_steps=[],
-        input_artifacts=[],
-        validated_params=params,
-        runtime_metadata={},
-    )
-    node = ImportGermanCreditNode()
-    output = node.run(ctx)
-    artifact = output.artifacts[0]
 
-    _update_plan_import_params(store, body.project_id, str(source.resolve()))
+    if plans:
+        import_plan_id = plans[0]["plan_id"]
+    else:
+        import_plan_id = store.create_plan(body.project_id, "Import")
+
+    import_pv_id = store.create_plan_version(
+        import_plan_id, [import_step],
+        description=f"Import {source.name}",
+    )
+
+    executor = PlanExecutor(NodeRegistry.with_defaults())
+    run_id = executor.run_plan_version(store, import_pv_id)
+    run = store.get_run(run_id)
+
+    if run["status"] == "failed":
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "IMPORT_FAILED", "message": f"Dataset import failed: {source.name}"},
+        )
+
+    # Get the artifact from the run-step output
+    run_steps = store.get_run_steps(run_id)
+    if not run_steps:
+        raise HTTPException(status_code=500, detail={"code": "NO_RUN_STEPS", "message": "No run steps recorded for import"})
+
+    import_rs = run_steps[0]
+    if not import_rs.output_artifact_ids:
+        raise HTTPException(status_code=500, detail={"code": "NO_ARTIFACT", "message": "Import produced no output artifact"})
+
+    artifact = store.get_artifact(import_rs.output_artifact_ids[0])
+    if artifact is None:
+        raise HTTPException(status_code=500, detail={"code": "ARTIFACT_NOT_FOUND", "message": "Import artifact not found in store"})
+
+    # Update proof pathway params
+    if plans:
+        _update_plan_import_params(store, body.project_id, str(source.resolve()))
 
     return ArtifactResponse(
         artifact_id=artifact.artifact_id,

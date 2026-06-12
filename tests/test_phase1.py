@@ -559,17 +559,17 @@ class ExecutorTests(unittest.TestCase):
         reg.register(FailOnPurposeNode)
         executor = PlanExecutor(reg)
 
-        with self.assertRaises(RuntimeError):
-            executor.run_plan_version(store, pv_id)
+        run_id = executor.run_plan_version(store, pv_id)
 
-        run = store.get_run(store.get_latest_successful_run_id(pv_id))
-        self.assertIsNone(run, "Failed run should not be marked successful")
+        run = store.get_run(run_id)
+        self.assertEqual(run["status"], "failed", "Failed run should be marked failed")
 
-        # Check the failing run exists with failed status
-        all_runs = store.list_runs(pv_id)
-        self.assertGreaterEqual(len(all_runs), 1)
-        last_run = all_runs[0]
-        self.assertEqual(last_run["status"], "failed")
+        # Check the failed run-step has structured errors
+        run_steps = store.get_run_steps(run_id)
+        fail_step = [rs for rs in run_steps if rs.step_id == "fail-step"]
+        self.assertEqual(len(fail_step), 1, "Expected one run-step for fail-step")
+        self.assertEqual(fail_step[0].status, "failed")
+        self.assertGreater(len(fail_step[0].errors), 0, "Expected structured error evidence")
 
 
 # ======================================================================
@@ -703,8 +703,21 @@ class SplitAndRoleTests(unittest.TestCase):
         reg = NodeRegistry.with_defaults()
         executor = PlanExecutor(reg)
 
-        with self.assertRaises(RoleAccessError):
-            executor.run_plan_version(store, pv_id)
+        run_id = executor.run_plan_version(store, pv_id)
+        run = store.get_run(run_id)
+        self.assertEqual(run["status"], "failed",
+                         "Fit node wired to import should produce a failed run")
+
+        # The fit step should have a run-step with role access errors
+        run_steps = store.get_run_steps(run_id)
+        fit_steps = [rs for rs in run_steps if rs.step_id == "fit-on-import"]
+        self.assertEqual(len(fit_steps), 1)
+        # The import step succeeded, fit step should show error evidence
+        any_role_error = any(
+            "role" in str(e.get("message", "")) for rs in run_steps for e in rs.errors
+        )
+        self.assertTrue(any_role_error,
+                        "Expected role-access error in failed run-step")
 
     def test_apply_node_consumes_train_test_oot_and_definition(self) -> None:
         store, tmp = make_store()
@@ -718,7 +731,7 @@ class SplitAndRoleTests(unittest.TestCase):
                 node_version="1", category="apply",
                 params={},
                 params_hash=json_logical_hash({}),
-                parent_step_ids=["fit"], branch_label="", position=3,
+                parent_step_ids=["split", "fit"], branch_label="", position=3,
             ),
         ]
         pv_id = store.create_plan_version(plan_id, steps)

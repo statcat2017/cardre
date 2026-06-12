@@ -471,6 +471,16 @@ class DummyApplyNode(NodeType):
         if def_artifact is None:
             raise ValueError("Dummy apply requires a definition artifact")
 
+        input_roles = {a.role for a in data_artifacts}
+        required_roles = {"train", "test", "oot"}
+        missing = required_roles - input_roles
+        if missing:
+            raise ValueError(
+                f"Dummy apply requires train, test, and oot artifacts. "
+                f"Missing: {sorted(missing)}. "
+                f"Received roles: {sorted(input_roles)}"
+            )
+
         outputs = []
         for data_art in data_artifacts:
             df = pl.read_parquet(store.artifact_path(data_art))
