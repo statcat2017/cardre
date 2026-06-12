@@ -15,7 +15,6 @@ from cardre.audit import (
     ExecutionContext,
     NodeOutput,
     RunStepRecord,
-    StepRecord,
     StepSpec,
     json_logical_hash,
     params_hash,

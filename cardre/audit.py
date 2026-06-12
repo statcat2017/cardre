@@ -107,61 +107,6 @@ class ArtifactRef:
         )
 
 
-@dataclass(frozen=True)
-class StepRecord:
-    step_id: str
-    name: str
-    version: str
-    params: JsonDict
-    params_hash: str
-    parent_step_ids: list[str]
-    inputs: list[ArtifactRef]
-    outputs: list[ArtifactRef]
-    branch_label: str = ""
-    metrics: JsonDict = field(default_factory=dict)
-    status: str = "succeeded"
-    started_at: str = field(default_factory=utc_now_iso)
-    completed_at: str = field(default_factory=utc_now_iso)
-    notes: str = ""
-
-    def to_dict(self) -> JsonDict:
-        return {
-            "step_id": self.step_id,
-            "name": self.name,
-            "version": self.version,
-            "params": self.params,
-            "params_hash": self.params_hash,
-            "parent_step_ids": self.parent_step_ids,
-            "inputs": [a.to_dict() for a in self.inputs],
-            "outputs": [a.to_dict() for a in self.outputs],
-            "branch_label": self.branch_label,
-            "metrics": self.metrics,
-            "status": self.status,
-            "started_at": self.started_at,
-            "completed_at": self.completed_at,
-            "notes": self.notes,
-        }
-
-    @classmethod
-    def from_dict(cls, data: JsonDict) -> StepRecord:
-        return cls(
-            step_id=data["step_id"],
-            name=data["name"],
-            version=data["version"],
-            params=dict(data.get("params", {})),
-            params_hash=data.get("params_hash", json_logical_hash(dict(data.get("params", {})))),
-            parent_step_ids=list(data.get("parent_step_ids", [])),
-            inputs=[ArtifactRef.from_dict(i) for i in data.get("inputs", [])],
-            outputs=[ArtifactRef.from_dict(i) for i in data.get("outputs", [])],
-            branch_label=data.get("branch_label", ""),
-            metrics=dict(data.get("metrics", {})),
-            status=data.get("status", "succeeded"),
-            started_at=data.get("started_at", utc_now_iso()),
-            completed_at=data.get("completed_at", utc_now_iso()),
-            notes=data.get("notes", ""),
-        )
-
-
 class NodeType(ABC):
     node_type: str
     version: str
@@ -256,7 +201,6 @@ __all__ = [
     "NodeOutput",
     "NodeType",
     "RunStepRecord",
-    "StepRecord",
     "StepSpec",
     "json_logical_hash",
     "params_hash",

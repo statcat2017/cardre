@@ -4,3 +4,4 @@ __pycache__/
 .cardre/
 frontend/node_modules/
 frontend/dist/
+_legacy/

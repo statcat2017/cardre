@@ -6,7 +6,6 @@ from cardre.audit import (
     NodeOutput,
     NodeType,
     RunStepRecord,
-    StepRecord,
     StepSpec,
     json_logical_hash,
     params_hash,
@@ -15,7 +14,7 @@ from cardre.audit import (
     table_logical_hash,
     utc_now_iso,
 )
-from cardre.executor import PlanExecutor, RoleAccessError, _output_logical_hashes as output_logical_hashes
+from cardre.executor import PlanExecutor, RoleAccessError
 from cardre.nodes import (
     DummyApplyNode,
     DummyFitNode,
@@ -42,11 +41,9 @@ __all__ = [
     "RoleAccessError",
     "RunStepRecord",
     "SplitTrainTestOotNode",
-    "StepRecord",
     "StepSpec",
     "ValidateBinaryTargetNode",
     "json_logical_hash",
-    "output_logical_hashes",
     "params_hash",
     "physical_hash",
     "relative_path",

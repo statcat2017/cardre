@@ -32,6 +32,9 @@ FIT_ROLES = {"train"}
 APPLY_ROLES = {"train", "test", "oot", "definition"}
 SELECTION_ROLES = {"report", "definition"}
 REFINEMENT_ROLES = {"definition"}
+# Transform nodes are general-purpose and may consume any artifact
+# role. The empty set means _filter_inputs_by_role returns the full
+# unfiltered list (no role restriction).
 TRANSFORM_ROLES: set[str] = set()
 
 CATEGORY_ROLE_MAP: dict[str, set[str]] = {

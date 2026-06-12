@@ -32,18 +32,15 @@ def run_plan(body: RunRequest):
         raise HTTPException(status_code=404, detail={"code": "PLAN_VERSION_NOT_FOUND", "message": "Plan version not found"})
 
     executor = PlanExecutor(NodeRegistry.with_defaults())
-    previous_run_id = None
+    run_id = None
     try:
         run_id = executor.run_plan_version(store, body.plan_version_id)
     except Exception as exc:
-        run_id = None
-        latest_id = store.get_latest_successful_run_id(body.plan_version_id)
-        failed_runs = [r for r in store.list_runs(body.plan_version_id) if r["status"] == "failed"]
-        if failed_runs:
-            run_id = failed_runs[0]["run_id"]
+        # run_plan_version may have created the run before the
+        # exception. If not, create and finish a failed run.
         if run_id is None:
             run_id = store.create_run(body.plan_version_id)
-            store.finish_run(run_id, "failed")
+        store.finish_run(run_id, "failed")
         run = store.get_run(run_id)
         steps = store.get_run_steps(run_id)
         return RunResponse(
