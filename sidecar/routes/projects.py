@@ -28,12 +28,28 @@ def _load_registry() -> dict:
 
 def _save_registry(registry: dict) -> None:
     REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REGISTRY_PATH.write_text(json.dumps(registry, indent=2))
+    tmp = REGISTRY_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(registry, indent=2))
+    tmp.rename(REGISTRY_PATH)
 
 
 @router.post("", response_model=ProjectResponse, status_code=201)
 def create_project(body: CreateProjectRequest):
-    path = Path(body.path)
+    path = Path(body.path).resolve()
+
+    if path.is_symlink():
+        raise HTTPException(status_code=400, detail={"code": "SYMLINK", "message": "Project path must not be a symlink"})
+
+    if not body.name.strip():
+        raise HTTPException(status_code=400, detail={"code": "INVALID_NAME", "message": "Project name must not be empty"})
+
+    blocked_prefixes = Path("/etc"), Path("/proc"), Path("/sys"), Path("/dev"), Path("/boot"), Path("/var")
+    if any(str(path).startswith(str(p)) for p in blocked_prefixes):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "BLOCKED_PATH", "message": "Project path must not be under system directories"},
+        )
+
     if path.exists():
         if (path / "cardre.sqlite").exists():
             raise HTTPException(
@@ -80,13 +96,8 @@ def get_project(project_id: str):
     if proj is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found in SQLite"})
 
-    plans = store._connect().execute(
-        "SELECT COUNT(*) FROM plans WHERE project_id = ?", (project_id,)
-    ).fetchone()[0]
-    runs = store._connect().execute(
-        "SELECT COUNT(*) FROM runs r JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-        "JOIN plans p ON pv.plan_id = p.plan_id WHERE p.project_id = ?", (project_id,)
-    ).fetchone()[0]
+    plans = len(store.get_plans_for_project(project_id))
+    runs = len(store.list_runs())
 
     return ProjectDetailResponse(
         project_id=proj["project_id"],

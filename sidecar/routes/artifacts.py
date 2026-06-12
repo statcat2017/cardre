@@ -33,7 +33,7 @@ def get_artifact(artifact_id: str):
                 physical_hash=artifact.physical_hash,
                 logical_hash=artifact.logical_hash,
                 media_type=artifact.media_type,
-                created_at=artifact.metadata.get("created_at", ""),
+                created_at=artifact.created_at,
                 metadata=artifact.metadata,
             )
     raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id}"})

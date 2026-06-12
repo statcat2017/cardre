@@ -16,9 +16,16 @@ from sidecar.routes import artifacts, datasets, health, plans, projects, runs
 
 app = FastAPI(title="cardre-api", version="0.1.0")
 
+TAURI_DEV_ORIGINS = [
+    "http://localhost:1420",
+    "http://127.0.0.1:1420",
+    "tauri://localhost",
+    "https://tauri.localhost",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=TAURI_DEV_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

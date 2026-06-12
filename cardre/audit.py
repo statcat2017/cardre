@@ -76,6 +76,7 @@ class ArtifactRef:
     physical_hash: str
     logical_hash: str
     media_type: str = "application/octet-stream"
+    created_at: str = ""
     metadata: JsonDict = field(default_factory=dict)
 
     def to_dict(self) -> JsonDict:
@@ -87,6 +88,7 @@ class ArtifactRef:
             "physical_hash": self.physical_hash,
             "logical_hash": self.logical_hash,
             "media_type": self.media_type,
+            "created_at": self.created_at,
             "metadata": self.metadata,
         }
 
@@ -100,6 +102,7 @@ class ArtifactRef:
             physical_hash=data["physical_hash"],
             logical_hash=data["logical_hash"],
             media_type=data.get("media_type", "application/octet-stream"),
+            created_at=data.get("created_at", ""),
             metadata=dict(data.get("metadata", {})),
         )
 

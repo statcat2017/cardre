@@ -11,7 +11,9 @@ import type {
   RunStepsResponse,
 } from "../types";
 
-const BASE = (window as unknown as Record<string, string>).__API_URL__ || "http://127.0.0.1:8752";
+function getBaseUrl(): string {
+  return (window as unknown as Record<string, string>).__API_URL__ || "http://127.0.0.1:8752";
+}
 
 class ApiError extends Error {
   status: number;
@@ -25,7 +27,7 @@ class ApiError extends Error {
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${getBaseUrl()}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });

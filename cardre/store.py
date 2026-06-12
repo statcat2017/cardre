@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS projects (
 
 CREATE TABLE IF NOT EXISTS plans (
     plan_id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     created_at TEXT NOT NULL,
     metadata_json TEXT NOT NULL DEFAULT '{}'
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS plans (
 
 CREATE TABLE IF NOT EXISTS plan_versions (
     plan_version_id TEXT PRIMARY KEY,
-    plan_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL REFERENCES plans(plan_id) ON DELETE CASCADE,
     version_number INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS plan_versions (
 
 CREATE TABLE IF NOT EXISTS plan_steps (
     step_id TEXT NOT NULL,
-    plan_version_id TEXT NOT NULL,
+    plan_version_id TEXT NOT NULL REFERENCES plan_versions(plan_version_id) ON DELETE CASCADE,
     node_type TEXT NOT NULL,
     node_version TEXT NOT NULL,
     category TEXT NOT NULL,
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS plan_steps (
 
 CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
-    plan_version_id TEXT NOT NULL,
+    plan_version_id TEXT NOT NULL REFERENCES plan_versions(plan_version_id) ON DELETE CASCADE,
     status TEXT NOT NULL,
     started_at TEXT NOT NULL,
     finished_at TEXT,
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS runs (
 
 CREATE TABLE IF NOT EXISTS run_steps (
     run_step_id TEXT PRIMARY KEY,
-    run_id TEXT NOT NULL,
+    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
     step_id TEXT NOT NULL,
     plan_version_id TEXT NOT NULL,
     status TEXT NOT NULL,
@@ -230,6 +230,7 @@ class ProjectStore:
             physical_hash=row["physical_hash"],
             logical_hash=row["logical_hash"],
             media_type=row["media_type"],
+            created_at=row["created_at"],
             metadata=json.loads(row["metadata_json"]),
         )
 
@@ -246,10 +247,46 @@ class ProjectStore:
                 physical_hash=r["physical_hash"],
                 logical_hash=r["logical_hash"],
                 media_type=r["media_type"],
+                created_at=r["created_at"],
                 metadata=json.loads(r["metadata_json"]),
             )
             for r in rows
         ]
+
+    def list_artifacts_for_project(self, project_id: str) -> list[ArtifactRef]:
+        rows = self._connect().execute(
+            "SELECT a.* FROM artifacts a "
+            "JOIN run_steps rs ON a.artifact_id IN ("
+            "  SELECT value FROM json_each(rs.output_artifact_ids_json)"
+            ") "
+            "JOIN runs r ON rs.run_id = r.run_id "
+            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
+            "JOIN plans p ON pv.plan_id = p.plan_id "
+            "WHERE p.project_id = ? "
+            "ORDER BY a.created_at",
+            (project_id,),
+        ).fetchall()
+        return [
+            ArtifactRef(
+                artifact_id=r["artifact_id"],
+                artifact_type=r["artifact_type"],
+                role=r["role"],
+                path=r["path"],
+                physical_hash=r["physical_hash"],
+                logical_hash=r["logical_hash"],
+                media_type=r["media_type"],
+                created_at=r["created_at"],
+                metadata=json.loads(r["metadata_json"]),
+            )
+            for r in rows
+        ]
+
+    def get_plans_for_project(self, project_id: str) -> list[dict]:
+        rows = self._connect().execute(
+            "SELECT plan_id, name, created_at FROM plans WHERE project_id = ? ORDER BY created_at",
+            (project_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def artifact_path(self, artifact: ArtifactRef) -> Path:
         return self.root / artifact.path
@@ -301,7 +338,9 @@ class ProjectStore:
         stored_path = self.root / "datasets" / f"{phys[:16]}-{source_path.name}"
         if not stored_path.exists():
             stored_path.parent.mkdir(parents=True, exist_ok=True)
-            stored_path.write_bytes(source_path.read_bytes())
+            tmp_path = stored_path.with_suffix(stored_path.suffix + ".tmp")
+            tmp_path.write_bytes(source_path.read_bytes())
+            tmp_path.rename(stored_path)
         ref = ArtifactRef(
             artifact_id=artifact_id,
             artifact_type=artifact_type,

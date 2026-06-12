@@ -29,12 +29,10 @@ def _update_plan_import_params(store: ProjectStore, project_id: str, source_path
 
     Creates a new plan version so the import step knows which file to load.
     """
-    plan_rows = store._connect().execute(
-        "SELECT plan_id FROM plans WHERE project_id = ? LIMIT 1", (project_id,)
-    ).fetchall()
-    if not plan_rows:
+    plans = store.get_plans_for_project(project_id)
+    if not plans:
         return
-    plan_id = plan_rows[0]["plan_id"]
+    plan_id = plans[0]["plan_id"]
     latest_pv_id = store.get_latest_plan_version_id(plan_id)
     if latest_pv_id is None:
         return
@@ -72,10 +70,8 @@ def import_dataset(body: ImportDatasetRequest):
     if proj is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found"})
 
-    plan_row = store._connect().execute(
-        "SELECT plan_id FROM plans WHERE project_id = ? LIMIT 1", (body.project_id,)
-    ).fetchone()
-    plan_version_id = store.get_latest_plan_version_id(plan_row["plan_id"]) if plan_row else "manual-import"
+    plans = store.get_plans_for_project(body.project_id)
+    plan_version_id = store.get_latest_plan_version_id(plans[0]["plan_id"]) if plans else "manual-import"
 
     params = {"source_path": str(source.resolve())}
     spec = StepSpec(
@@ -113,7 +109,7 @@ def import_dataset(body: ImportDatasetRequest):
         physical_hash=artifact.physical_hash,
         logical_hash=artifact.logical_hash,
         media_type=artifact.media_type,
-        created_at=artifact.metadata.get("created_at", ""),
+        created_at=artifact.created_at,
         metadata={
             "source_dataset_id": artifact.metadata.get("source_dataset_id", ""),
             "row_count": artifact.metadata.get("row_count", 0),

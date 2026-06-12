@@ -15,16 +15,16 @@ router = APIRouter(prefix="/plans", tags=["plans"])
 
 
 @router.get("/{plan_id}", response_model=PlanResponse)
-def get_plan(plan_id: str):
+def get_plan(plan_id: str, project_id: str | None = None):
     registry = _load_registry()
-    project_id = None
-    for pid, entry in registry.items():
-        store = _get_store(entry["path"])
-        plan = store.get_plan(plan_id)
-        if plan is not None:
-            project_id = pid
-            break
     if project_id is None:
+        for pid, entry in registry.items():
+            store = _get_store(entry["path"])
+            plan = store.get_plan(plan_id)
+            if plan is not None:
+                project_id = pid
+                break
+    if project_id is None or project_id not in registry:
         raise HTTPException(status_code=404, detail={"code": "PLAN_NOT_FOUND", "message": f"No plan with ID {plan_id}"})
 
     entry = registry[project_id]

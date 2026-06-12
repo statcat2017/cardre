@@ -729,6 +729,39 @@ class SplitAndRoleTests(unittest.TestCase):
         run = store.get_run(run_id)
         self.assertEqual(run["status"], "succeeded")
 
+    def test_apply_with_multi_parent_produces_three_prediction_artifacts(self) -> None:
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+        source = make_sample_german_credit_file(tmp)
+
+        steps = self.make_proof_plan_steps(source) + [
+            StepSpec(
+                step_id="apply", node_type="cardre.dummy_apply",
+                node_version="1", category="apply",
+                params={},
+                params_hash=json_logical_hash({}),
+                parent_step_ids=["split", "fit"],
+                branch_label="", position=3,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry.with_defaults()
+        executor = PlanExecutor(reg)
+
+        run_id = executor.run_plan_version(store, pv_id)
+        run_steps = store.get_run_steps(run_id)
+        apply_rs = [rs for rs in run_steps if rs.step_id == "apply"][0]
+
+        self.assertGreaterEqual(len(apply_rs.output_artifact_ids), 1)
+
+        roles = set()
+        for aid in apply_rs.output_artifact_ids:
+            art = store.get_artifact(aid)
+            if art is not None:
+                roles.add(art.role)
+        self.assertIn("prediction", roles)
+
 
 # ======================================================================
 # Slice 7: Staleness + Replay

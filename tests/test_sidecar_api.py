@@ -238,6 +238,36 @@ class TestRuns:
         assert resp.status_code == 200
         assert resp.json()["status"] == "succeeded"
 
+    def test_run_failure_path(self, client, tmp_dir):
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+
+        store = ProjectStore(proj_path)
+        plan_id = store._connect().execute(
+            "SELECT plan_id FROM plans WHERE project_id = ?", (proj["project_id"],)
+        ).fetchone()["plan_id"]
+        latest_pv_id = store.get_latest_plan_version_id(plan_id)
+
+        # Run without importing data — the import step has no source_path
+        # and should fail
+        resp = client.post("/runs", json={
+            "project_id": proj["project_id"],
+            "plan_version_id": latest_pv_id,
+        })
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["status"] == "failed"
+
+        # Verify only one run record exists for this plan version
+        all_runs = store.list_runs(data["plan_version_id"])
+        matching = [r for r in all_runs if r["run_id"] == data["run_id"]]
+        assert len(matching) == 1, "Expected exactly one run record for the failed run"
+
+        # Verify only one run record exists for this plan version
+        all_runs = store.list_runs(data["plan_version_id"])
+        matching = [r for r in all_runs if r["run_id"] == data["run_id"]]
+        assert len(matching) == 1, "Expected exactly one run record for the failed run"
+
     def test_get_run_steps(self, client, tmp_dir, sample_german_credit):
         proj_path = tmp_dir / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
