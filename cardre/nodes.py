@@ -1810,8 +1810,138 @@ class VariableSelectionNode(NodeType):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2A: Manual Binning
+# Phase 2A: Manual Binning — shared helpers
 # ---------------------------------------------------------------------------
+
+
+def validate_manual_binning_overrides(bin_def: dict, overrides: list[dict]) -> list[str]:
+    """Validate overrides against fine-classing bin definitions.
+
+    Checks that each override references a real variable, uses a supported
+    action, has a reason, mentions only existing bin IDs, and for numeric
+    merge_bins the source bins are adjacent in the original ordering.
+
+    Returns a list of error messages (empty = valid).
+    """
+    errors: list[str] = []
+    var_map = {v["variable"]: v for v in bin_def.get("variables", [])}
+
+    for i, override in enumerate(overrides):
+        prefix = f"overrides[{i}]"
+        variable = override.get("variable", "")
+        action = override.get("action", "")
+        reason = override.get("reason", "")
+        source_bin_ids = override.get("source_bin_ids", [])
+
+        if not reason:
+            errors.append(f"{prefix}: override for '{variable}' requires a non-empty reason")
+            continue
+        if variable not in var_map:
+            errors.append(f"{prefix}: references unknown variable '{variable}'")
+            continue
+        if action not in ("merge_bins", "group_categories", "isolate_missing", "isolate_special_value"):
+            errors.append(f"{prefix}: unsupported action '{action}'")
+            continue
+
+        var_bins = var_map[variable].get("bins", [])
+        bin_id_map = {b["bin_id"]: b for b in var_bins}
+
+        for bid in source_bin_ids:
+            if bid not in bin_id_map:
+                errors.append(f"{prefix}: bin_id '{bid}' not found in variable '{variable}'")
+
+        if errors:
+            continue
+
+        if action == "merge_bins":
+            if len(source_bin_ids) < 2:
+                errors.append(f"{prefix}: merge_bins requires at least 2 source bins")
+                continue
+            kind = var_map[variable].get("kind", "")
+            if kind == "numeric":
+                bin_positions = [var_bins.index(bin_id_map[bid]) for bid in source_bin_ids]
+                expected_positions = list(range(min(bin_positions), max(bin_positions) + 1))
+                if bin_positions != expected_positions:
+                    errors.append(
+                        f"{prefix}: numeric bin merge requires adjacent bins. "
+                        f"Source bins at positions {bin_positions} are not contiguous."
+                    )
+
+    return errors
+
+
+def apply_manual_binning_overrides(
+    bin_def: dict, overrides: list[dict], selected_vars: set[str] | None = None
+) -> dict:
+    """Apply manual binning overrides to a fine-classing bin definition.
+
+    Returns a new ``bin_def`` dict with merged / grouped bins computed
+    and (if *selected_vars* is given) filtered to the selected variables.
+    Raises ``ValueError`` on invalid overrides — call
+    :func:`validate_manual_binning_overrides` first for user-facing errors.
+    """
+    var_map = {v["variable"]: dict(v) for v in bin_def.get("variables", [])}
+    warnings: list[dict] = []
+
+    for override in overrides:
+        variable = override.get("variable", "")
+        action = override.get("action", "")
+        source_bin_ids = override.get("source_bin_ids", [])
+
+        if variable not in var_map:
+            raise ValueError(f"Override references unknown variable '{variable}'")
+
+        var_info = var_map[variable]
+        var_bins = list(var_info.get("bins", []))
+        bin_id_map = {b["bin_id"]: b for b in var_bins}
+
+        if action == "merge_bins":
+            merged = {
+                "bin_id": f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
+                "label": override.get("new_label", "Merged"),
+                "lower": bin_id_map[source_bin_ids[0]].get("lower"),
+                "upper": bin_id_map[source_bin_ids[-1]].get("upper"),
+                "lower_inclusive": bin_id_map[source_bin_ids[0]].get("lower_inclusive", False),
+                "upper_inclusive": bin_id_map[source_bin_ids[-1]].get("upper_inclusive", True),
+                "categories": None,
+                "is_missing_bin": False,
+                "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
+                "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
+                "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
+            }
+            new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
+            insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
+            new_bins.insert(insert_pos, merged)
+            var_info["bins"] = new_bins
+
+        elif action == "group_categories":
+            grouped = {
+                "bin_id": f"{variable}_manual_grouped",
+                "label": override.get("new_label", "Grouped"),
+                "lower": None, "upper": None,
+                "lower_inclusive": False, "upper_inclusive": False,
+                "categories": sum([bin_id_map[bid].get("categories", []) for bid in source_bin_ids], []),
+                "is_missing_bin": False,
+                "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
+                "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
+                "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
+            }
+            new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
+            insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
+            new_bins.insert(insert_pos, grouped)
+            var_info["bins"] = new_bins
+
+    if selected_vars is not None:
+        var_map = {k: v for k, v in var_map.items() if k in selected_vars}
+
+    if not overrides:
+        warnings.append({"message": "No manual overrides applied; passing through auto bins for selected variables"})
+
+    return {
+        "variables": list(var_map.values()),
+        "warnings": bin_def.get("warnings", []) + warnings,
+    }
+
 
 class ManualBinningNode(NodeType):
     node_type = "cardre.manual_binning"
@@ -1856,99 +1986,16 @@ class ManualBinningNode(NodeType):
                                   None)
 
         bin_def = json.loads(store.artifact_path(bin_artifact).read_text())
-        selected_vars = set()
+        selected_vars: set[str] = set()
         if selection_artifact:
             sel = json.loads(store.artifact_path(selection_artifact).read_text())
             selected_vars = {s["variable"] for s in sel.get("selected", [])}
 
-        var_map = {v["variable"]: v for v in bin_def.get("variables", [])}
+        errors = validate_manual_binning_overrides(bin_def, overrides)
+        if errors:
+            raise ValueError("; ".join(errors))
 
-        warnings: list[dict] = []
-
-        for override in overrides:
-            variable = override.get("variable", "")
-            action = override.get("action", "")
-            reason = override.get("reason", "")
-            if not reason:
-                raise ValueError(f"Override for '{variable}' requires a non-empty reason")
-            if variable not in var_map:
-                raise ValueError(f"Override references unknown variable '{variable}'")
-            if action not in ("merge_bins", "group_categories", "isolate_missing", "isolate_special_value"):
-                raise ValueError(f"Unsupported manual_binning action '{action}'")
-
-            source_bin_ids = override.get("source_bin_ids", [])
-            var_bins = var_map[variable]["bins"]
-            bin_id_map = {b["bin_id"]: b for b in var_bins}
-
-            for bid in source_bin_ids:
-                if bid not in bin_id_map:
-                    raise ValueError(f"bin_id '{bid}' not found in variable '{variable}'")
-
-            if action == "merge_bins":
-                if len(source_bin_ids) < 2:
-                    raise ValueError(f"merge_bins requires at least 2 source bins, got {len(source_bin_ids)}")
-                kind = var_map[variable].get("kind", "")
-                if kind == "numeric":
-                    bin_positions = [var_bins.index(bin_id_map[bid]) for bid in source_bin_ids]
-                    expected_positions = list(range(min(bin_positions), max(bin_positions) + 1))
-                    if bin_positions != expected_positions:
-                        raise ValueError(
-                            f"Numeric bin merge for {variable!r} requires adjacent bins. "
-                            f"Source bins at positions {bin_positions} are not contiguous. "
-                            f"Expected adjacent positions {expected_positions}"
-                        )
-                new_label = override.get("new_label", "Merged")
-                merged = {
-                    "bin_id": f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
-                    "label": new_label,
-                    "lower": bin_id_map[source_bin_ids[0]].get("lower"),
-                    "upper": bin_id_map[source_bin_ids[-1]].get("upper"),
-                    "lower_inclusive": bin_id_map[source_bin_ids[0]].get("lower_inclusive", False),
-                    "upper_inclusive": bin_id_map[source_bin_ids[-1]].get("upper_inclusive", True),
-                    "categories": None,
-                    "is_missing_bin": False,
-                    "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
-                    "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
-                    "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
-                }
-                new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
-                new_bins.insert(
-                    min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids),
-                    merged,
-                )
-                var_map[variable]["bins"] = new_bins
-
-            elif action == "group_categories":
-                new_label = override.get("new_label", "Grouped")
-                grouped = {
-                    "bin_id": f"{variable}_manual_grouped",
-                    "label": new_label,
-                    "lower": None, "upper": None,
-                    "lower_inclusive": False, "upper_inclusive": False,
-                    "categories": sum([bin_id_map[bid].get("categories", []) for bid in source_bin_ids], []),
-                    "is_missing_bin": False,
-                    "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
-                    "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
-                    "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
-                }
-                new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
-                new_bins.insert(
-                    min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids),
-                    grouped,
-                )
-                var_map[variable]["bins"] = new_bins
-
-        # Filter to only selected variables if selection artifact exists
-        if selected_vars:
-            var_map = {k: v for k, v in var_map.items() if k in selected_vars}
-
-        if not overrides:
-            warnings.append({"message": "No manual overrides applied; passing through auto bins for selected variables"})
-
-        refined = {
-            "variables": list(var_map.values()),
-            "warnings": bin_def.get("warnings", []) + warnings,
-        }
+        refined = apply_manual_binning_overrides(bin_def, overrides, selected_vars if selected_vars else None)
 
         artifact = write_json_artifact(
             store, artifact_type="definition", role="definition",

@@ -966,3 +966,129 @@ class TestE2EWithNewEndpoints:
         # Check editor state
         editor_resp = client.get(f"/plans/{plan_id}/steps/manual-binning/editor-state?project_id={pid}")
         assert editor_resp.status_code == 200
+
+
+@pytest.fixture
+def larger_german_credit(tmp_dir):
+    """~100 rows so the Scorecard Pathway can actually split + fine-class."""
+    p = tmp_dir / "german.data"
+    # Base row with good credit risk
+    good = "A11 6 A34 A43 1169 A65 A75 4 A93 A101 4 A121 67 A143 A152 2 A173 1 A192 A201 1"
+    # Base row with bad credit risk
+    bad = "A12 24 A32 A43 5951 A61 A73 2 A92 A101 4 A121 22 A142 A152 2 A173 1 A191 A201 2"
+    lines = []
+    # Generate ~50 good / ~50 bad with slight variations
+    for i in range(50):
+        parts_g = good.split()
+        parts_g[0] = f"A{i % 11 + 11}"  # vary checking_account_status
+        parts_g[1] = str(6 + (i % 48))  # vary duration
+        parts_g[4] = str(1000 + i * 100)  # vary credit_amount
+        parts_g[10] = str(i % 4 + 1)  # vary present_residence_since
+        parts_g[12] = str(20 + (i % 60))  # vary age
+        lines.append(" ".join(parts_g))
+
+        parts_b = bad.split()
+        parts_b[0] = f"A{i % 11 + 11}"
+        parts_b[1] = str(12 + (i % 36))
+        parts_b[4] = str(2000 + i * 200)
+        parts_b[10] = str(i % 4 + 1)
+        parts_b[12] = str(25 + (i % 55))
+        lines.append(" ".join(parts_b))
+
+    p.write_text("\n".join(lines))
+    return p
+
+
+class TestScorecardPathwayE2E:
+    """End-to-end test of the Scorecard Pathway including run, params update,
+    staleness correctness, manual-binning validation, and manifest ordering."""
+
+    def test_scorecard_pathway_full_run(self, client, tmp_dir, larger_german_credit):
+        proj_path = tmp_dir / "scorecard-e2e.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Scorecard E2E"}).json()
+        pid = proj["project_id"]
+
+        # 1. Discover the Scorecard Pathway
+        plans_resp = client.get(f"/projects/{pid}/plans")
+        assert plans_resp.status_code == 200
+        plans = plans_resp.json()["plans"]
+        scorecard = [p for p in plans if p["name"] == "Scorecard Pathway"]
+        assert len(scorecard) == 1
+        assert scorecard[0]["is_default"] is True
+        plan_id = scorecard[0]["plan_id"]
+
+        # 2. Verify plan endpoint returns 23 steps with params
+        plan_resp = client.get(f"/plans/{plan_id}?project_id={pid}")
+        assert plan_resp.status_code == 200
+        plan_data = plan_resp.json()
+        assert len(plan_data["steps"]) == 23
+        for step in plan_data["steps"]:
+            assert "params" in step
+            assert step["params"] is not None
+
+        step_ids = [s["step_id"] for s in plan_data["steps"]]
+
+        # Verify technical-manifest-stub is last
+        assert step_ids[-1] == "technical-manifest-stub", (
+            f"Expected technical-manifest-stub at end, got {step_ids[-1]}"
+        )
+
+        # 3. Import the larger dataset
+        import_resp = client.post("/datasets/import", json={
+            "project_id": pid, "source_path": str(larger_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+        assert import_resp.status_code == 201
+
+        # 4. Run the Scorecard Pathway
+        store = ProjectStore(proj_path)
+        pv_id = store.get_latest_plan_version_id(plan_id)
+        run_resp = client.post("/runs", json={
+            "project_id": pid, "plan_version_id": pv_id,
+        })
+        assert run_resp.status_code == 201
+        assert run_resp.json()["status"] == "succeeded", (
+            f"Scorecard pathway run failed: {run_resp.json()}"
+        )
+
+        # 5. Update step params and verify staleness is scoped
+        new_pv_id = store.get_latest_plan_version_id(plan_id)
+        params_resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+            "project_id": pid,
+            "base_plan_version_id": new_pv_id,
+            "params": {"max_bins": 15},
+        })
+        assert params_resp.status_code == 200
+        params_data = params_resp.json()
+        assert params_data["changed_step_id"] == "fine-classing"
+
+        # Stale should only include fine-classing + its descendants,
+        # NOT e.g. import, define-modelling-metadata, apply-exclusions, etc.
+        stale_ids = set(params_data["stale_step_ids"])
+        assert "fine-classing" in stale_ids
+        non_stale_ancestors = {"import", "define-modelling-metadata", "apply-exclusions",
+                                "development-sample-definition", "split"}
+        for anc in non_stale_ancestors:
+            assert anc not in stale_ids, (
+                f"Unchanged ancestor {anc} should not be stale after fine-classing param update"
+            )
+
+        # 6. Manual-binning save with invalid overrides is rejected
+        new_pv_id2 = store.get_latest_plan_version_id(plan_id)
+        bad_override_resp = client.post(f"/plans/{plan_id}/steps/manual-binning/params", json={
+            "project_id": pid,
+            "base_plan_version_id": new_pv_id2,
+            "params": {
+                "overrides": [
+                    {
+                        "variable": "age_years",
+                        "action": "merge_bins",
+                        "source_bin_ids": ["nonexistent_bin"],
+                        "reason": "testing validation",
+                    }
+                ],
+            },
+        })
+        assert bad_override_resp.status_code == 422, (
+            f"Expected 422 for invalid bin ID, got {bad_override_resp.status_code}: {bad_override_resp.json()}"
+        )

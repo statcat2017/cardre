@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from cardre.executor import PlanExecutor
+from cardre.nodes import validate_manual_binning_overrides, apply_manual_binning_overrides
 from cardre.registry import NodeRegistry
 from sidecar.models import (
     PlanResponse,
@@ -131,6 +132,13 @@ def update_step_params(plan_id: str, step_id: str, req: UpdateStepParamsRequest)
             })
     except KeyError:
         pass
+
+    # Blocker PR#7.2: For manual-binning, validate overrides against
+    # fine-classing source bins + adjacency before saving
+    if step_id == "manual-binning":
+        overrides = list(new_params.get("overrides", []))
+        if overrides:
+            _validate_manual_binning_overrides(store, plan_id, latest_pv_id, overrides)
 
     from cardre.audit import json_logical_hash, StepSpec
 
@@ -410,52 +418,8 @@ def preview_manual_binning_overrides(plan_id: str, req: ManualBinningPreviewRequ
         )
 
     selected_vars = {s["variable"] for s in vs_def.get("selected", [])}
-    var_map = {v["variable"]: dict(v) for v in fc_def.get("variables", []) if v["variable"] in selected_vars}
 
-    validation_warnings: list[str] = []
-
-    for override in req.overrides:
-        variable = override.get("variable", "")
-        action = override.get("action", "")
-        reason = override.get("reason", "")
-        source_bin_ids = override.get("source_bin_ids", [])
-
-        if not reason:
-            validation_warnings.append(f"Override for '{variable}' requires a non-empty reason")
-            continue
-        if variable not in var_map:
-            validation_warnings.append(f"Override references unknown variable '{variable}'")
-            continue
-        if action not in ("merge_bins", "group_categories", "isolate_missing", "isolate_special_value"):
-            validation_warnings.append(f"Unsupported manual_binning action '{action}' for '{variable}'")
-            continue
-
-        var_info = var_map[variable]
-        var_bins = list(var_info.get("bins", []))
-        bin_id_map = {b["bin_id"]: b for b in var_bins}
-
-        for bid in source_bin_ids:
-            if bid not in bin_id_map:
-                validation_warnings.append(f"bin_id '{bid}' not found in variable '{variable}'")
-
-        if validation_warnings:
-            continue
-
-        if action == "merge_bins":
-            if len(source_bin_ids) < 2:
-                validation_warnings.append(f"merge_bins for '{variable}' requires at least 2 source bins")
-                continue
-            kind = var_info.get("kind", "")
-            if kind == "numeric":
-                bin_positions = [var_bins.index(bin_id_map[bid]) for bid in source_bin_ids]
-                expected_positions = list(range(min(bin_positions), max(bin_positions) + 1))
-                if bin_positions != expected_positions:
-                    validation_warnings.append(
-                        f"Numeric bin merge for '{variable}' requires adjacent bins. "
-                        f"Source bins at positions {bin_positions} are not contiguous."
-                    )
-                    continue
-
+    validation_warnings = validate_manual_binning_overrides(fc_def, req.overrides)
     if validation_warnings:
         return ManualBinningPreviewResponse(
             valid=False,
@@ -465,66 +429,64 @@ def preview_manual_binning_overrides(plan_id: str, req: ManualBinningPreviewRequ
             ),
         )
 
-    refined: dict[str, Any] = {}
-    for var_name, var_info in var_map.items():
-        var_info = dict(var_info)
-        var_bins = list(var_info.get("bins", []))
-        bin_id_map = {b["bin_id"]: b for b in var_bins}
+    refined = apply_manual_binning_overrides(fc_def, req.overrides, selected_vars)
 
-        if not var_bins:
-            refined[var_name] = var_info
-            continue
-
-        for override in req.overrides:
-            if override["variable"] != var_name:
-                continue
-            variable = override["variable"]
-            action = override["action"]
-            source_bin_ids = override.get("source_bin_ids", [])
-
-            if action == "merge_bins":
-                merged = {
-                    "bin_id": f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
-                    "label": override.get("new_label", "Merged"),
-                    "lower": bin_id_map[source_bin_ids[0]].get("lower"),
-                    "upper": bin_id_map[source_bin_ids[-1]].get("upper"),
-                    "lower_inclusive": bin_id_map[source_bin_ids[0]].get("lower_inclusive", False),
-                    "upper_inclusive": bin_id_map[source_bin_ids[-1]].get("upper_inclusive", True),
-                    "categories": None,
-                    "is_missing_bin": False,
-                    "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
-                    "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
-                    "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
-                }
-                new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
-                insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
-                new_bins.insert(insert_pos, merged)
-                var_info["bins"] = new_bins
-
-            elif action == "group_categories":
-                grouped = {
-                    "bin_id": f"{variable}_manual_grouped",
-                    "label": override.get("new_label", "Grouped"),
-                    "lower": None, "upper": None,
-                    "lower_inclusive": False, "upper_inclusive": False,
-                    "categories": sum([bin_id_map[bid].get("categories", []) for bid in source_bin_ids], []),
-                    "is_missing_bin": False,
-                    "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
-                    "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
-                    "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
-                }
-                new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
-                insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
-                new_bins.insert(insert_pos, grouped)
-                var_info["bins"] = new_bins
-
-        refined[var_name] = var_info
+    refined_by_var: dict[str, Any] = {}
+    for v in refined.get("variables", []):
+        refined_by_var[v["variable"]] = v
 
     return ManualBinningPreviewResponse(
         valid=True,
-        refined_bins_by_variable=refined,
+        refined_bins_by_variable=refined_by_var,
         diagnostics=PreviewDiagnostics(
             override_count=len(req.overrides),
             warnings=[],
         ),
     )
+
+
+def _validate_manual_binning_overrides(
+    store, plan_id: str, plan_version_id: str, overrides: list[dict],
+) -> None:
+    """Validate manual-binning overrides against upstream artefact evidence.
+
+    Raises ``HTTPException(422)`` if any override references an unknown
+    variable, missing bin ID, or non-adjacent numeric merge.
+    """
+    from cardre.executor import PlanExecutor
+    from cardre.registry import NodeRegistry
+
+    executor = PlanExecutor(NodeRegistry.with_defaults())
+    run_id = store.get_latest_successful_run_id(plan_version_id)
+    if run_id is None:
+        return  # defer validation to execution time
+
+    run_steps = store.get_run_steps(run_id)
+    rs_by_step = {rs.step_id: rs for rs in run_steps}
+
+    fc_rs = rs_by_step.get("fine-classing")
+    vs_rs = rs_by_step.get("variable-selection")
+    if fc_rs is None or vs_rs is None:
+        return
+
+    fc_aid = fc_rs.output_artifact_ids[0] if fc_rs.output_artifact_ids else None
+    vs_aid = vs_rs.output_artifact_ids[0] if vs_rs.output_artifact_ids else None
+    if fc_aid is None or vs_aid is None:
+        return
+
+    fc_art = store.get_artifact(fc_aid)
+    vs_art = store.get_artifact(vs_aid)
+    if fc_art is None or vs_art is None:
+        return
+
+    try:
+        fc_def = json.loads(store.artifact_path(fc_art).read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return
+
+    errors = validate_manual_binning_overrides(fc_def, overrides)
+    if errors:
+        raise HTTPException(status_code=422, detail={
+            "code": "PARAMS_VALIDATION_FAILED",
+            "message": "; ".join(errors),
+        })

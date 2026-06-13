@@ -78,10 +78,12 @@ export const api = {
   getProjectRuns: (projectId: string) =>
     fetchJson<ProjectRunsResponse>(`/projects/${projectId}/runs`),
 
-  getProjectArtifacts: (projectId: string, params?: { role?: string; artifact_type?: string; limit?: number; offset?: number }) => {
+  getProjectArtifacts: (projectId: string, params?: { role?: string; artifact_type?: string; producing_step_id?: string; run_id?: string; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
     if (params?.role) qs.set("role", params.role);
     if (params?.artifact_type) qs.set("artifact_type", params.artifact_type);
+    if (params?.producing_step_id) qs.set("producing_step_id", params.producing_step_id);
+    if (params?.run_id) qs.set("run_id", params.run_id);
     if (params?.limit) qs.set("limit", String(params.limit));
     if (params?.offset) qs.set("offset", String(params.offset));
     const query = qs.toString();
