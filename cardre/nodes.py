@@ -1454,7 +1454,7 @@ class CalculateWoeIvNode(NodeType):
             "variable_count": len(iv_rows),
             "warnings": warnings_list,
         }
-        write_json_artifact(
+        summary_art = write_json_artifact(
             store, artifact_type="report", role="report",
             stem=f"woe-summary-{purpose}-{context.step_spec.step_id}",
             payload=summary,
@@ -1469,12 +1469,15 @@ class CalculateWoeIvNode(NodeType):
             params_hash=context.step_spec.params_hash,
             parent_run_steps=context.parent_run_steps,
             input_artifacts=context.input_artifacts,
-            output_artifacts=[woe_art, iv_art],
+            output_artifacts=[woe_art, iv_art, summary_art],
         )
 
         return NodeOutput(
-            artifacts=[woe_art, iv_art],
-            metrics={"variable_count": len(iv_rows)},
+            artifacts=[woe_art, iv_art, summary_art],
+            metrics={
+                "variable_count": len(iv_rows),
+                "zero_cell_warning_count": len(warnings_list),
+            },
             execution_fingerprint=fingerprint,
         )
 

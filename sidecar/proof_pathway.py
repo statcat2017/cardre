@@ -329,7 +329,11 @@ PHASE2A_PATHWAY_STEPS_CONFIG = [
         "category": "selection",
         "params": {
             "zero_cell_policy": "block",
-            "smoothing": None,
+            "smoothing": {
+                "method": "additive",
+                "alpha": 0.5,
+                "rationale": "Default smoothing to ensure the auto-registered pathway is runnable on realistic data without manual binning edits.",
+            },
             "purpose": "final",
         },
         "parent_step_ids": ["explicit-missing-outlier-treatment", "manual-binning", "define-metadata"],
