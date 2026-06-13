@@ -2,18 +2,30 @@ import type {
   ArtifactPreviewResponse,
   ArtifactResponse,
   ArtifactSummaryResponse,
+  AssignChampionBody,
+  BranchListResponse,
+  BranchResponse,
+  ChampionResponse,
+  ComparisonResponse,
+  ComparisonSnapshotResponse,
+  CreateBranchBody,
+  CreateBranchResponse,
   CreateProjectBody,
+  ExportAuditPackBody,
+  ExportAuditPackResponse,
   HealthResponse,
   ImportBody,
   ManualBinningEditorStateResponse,
   ManualBinningPreviewBody,
   ManualBinningPreviewResponse,
+  MigrateResponse,
   PlanResponse,
   ProjectArtifactsResponse,
   ProjectDetailResponse,
   ProjectPlansResponse,
   ProjectResponse,
   ProjectRunsResponse,
+  RefreshComparisonResponse,
   RunBody,
   RunResponse,
   RunStepsResponse,
@@ -113,6 +125,67 @@ export const api = {
 
   previewManualBinning: (planId: string, body: ManualBinningPreviewBody) =>
     fetchJson<ManualBinningPreviewResponse>(`/plans/${planId}/steps/manual-binning/preview`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // Phase 4 — Branches
+  listBranches: (projectId: string, params?: { plan_id?: string; branch_type?: string; status?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.plan_id) qs.set("plan_id", params.plan_id);
+    if (params?.branch_type) qs.set("branch_type", params.branch_type);
+    if (params?.status) qs.set("status", params.status);
+    const query = qs.toString();
+    return fetchJson<BranchListResponse>(`/projects/${projectId}/branches${query ? `?${query}` : ""}`);
+  },
+
+  getBranch: (branchId: string, projectId?: string) => {
+    const qs = projectId ? `?project_id=${projectId}` : "";
+    return fetchJson<BranchResponse>(`/branches/${branchId}${qs}`);
+  },
+
+  createBranch: (planId: string, body: CreateBranchBody) =>
+    fetchJson<CreateBranchResponse>(`/plans/${planId}/branches`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  migrateBaseline: (projectId: string) =>
+    fetchJson<MigrateResponse>("/migrations/baseline", {
+      method: "POST",
+      body: JSON.stringify({ project_id: projectId }),
+    }),
+
+  // Phase 4 — Comparisons
+  createComparison: (body: { project_id: string; plan_id: string; baseline_branch_id: string; challenger_branch_ids: string[]; comparison_spec?: Record<string, unknown>; created_reason?: string }) =>
+    fetchJson<ComparisonResponse>("/branch-comparisons", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  getComparison: (id: string) => fetchJson<ComparisonResponse>(`/branch-comparisons/${id}`),
+
+  refreshComparison: (id: string) =>
+    fetchJson<RefreshComparisonResponse>(`/branch-comparisons/${id}/refresh`, {
+      method: "POST",
+    }),
+
+  getComparisonSnapshot: (id: string) =>
+    fetchJson<ComparisonSnapshotResponse>(`/branch-comparison-snapshots/${id}`),
+
+  // Phase 4 — Champion
+  assignChampion: (planId: string, body: AssignChampionBody) =>
+    fetchJson<ChampionResponse>(`/plans/${planId}/champion`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  getChampion: (planId: string, projectId: string) =>
+    fetchJson<ChampionResponse>(`/plans/${planId}/champion?project_id=${projectId}`),
+
+  // Phase 4 — Export
+  exportAuditPack: (body: ExportAuditPackBody) =>
+    fetchJson<ExportAuditPackResponse>("/exports/audit-pack", {
       method: "POST",
       body: JSON.stringify(body),
     }),

@@ -98,6 +98,116 @@ class PlanExecutor:
 
         return run_id
 
+    def run_branch(
+        self,
+        store: ProjectStore,
+        plan_version_id: str,
+        branch_id: str,
+    ) -> str:
+        """Execute only branch-owned steps for a single branch.
+
+        Shared upstream steps are left untouched. Blocks if shared
+        upstream evidence is stale.
+
+        Returns the run_id.
+        """
+        branch = store.get_branch(branch_id)
+        if branch is None:
+            raise ValueError(f"Branch {branch_id} not found")
+        if branch.get("status") != "active":
+            raise ValueError(f"Branch {branch_id} is not active")
+
+        if branch["head_plan_version_id"] != plan_version_id:
+            raise ValueError(
+                f"BRANCH_VERSION_MISMATCH: Branch head is {branch['head_plan_version_id']}, "
+                f"requested {plan_version_id}"
+            )
+
+        step_map = store.get_branch_step_map(branch_id, plan_version_id)
+        branch_owned_step_ids = {
+            r["step_id"] for r in step_map if r["is_branch_owned"]
+        }
+        shared_upstream_step_ids = {
+            r["step_id"] for r in step_map if r["is_shared_upstream"]
+        }
+
+        steps = store.get_plan_version_steps(plan_version_id)
+        self._validate_topology(steps)
+
+        # Check shared upstream staleness
+        staleness = self.compute_staleness(store, plan_version_id)
+        stale_shared = [
+            sid for sid in shared_upstream_step_ids
+            if staleness.get(sid, True)
+        ]
+        if stale_shared:
+            raise ValueError(
+                f"SHARED_UPSTREAM_STALE: Cannot run branch {branch_id} because "
+                f"shared upstream steps {stale_shared} are stale. "
+                "Run the shared pathway first."
+            )
+
+        # Create run with branch association
+        run_id = store.create_run(plan_version_id, branch_id=branch_id)
+
+        step_outputs: dict[str, list[ArtifactRef]] = {}
+        run_step_records: dict[str, RunStepRecord] = {}
+        has_failure = False
+        executed_ids: list[str] = []
+
+        try:
+            for spec in steps:
+                if has_failure:
+                    break
+                if spec.step_id not in branch_owned_step_ids:
+                    continue
+
+                # Skip if step is already current (not stale and has a successful run)
+                if not staleness.get(spec.step_id, True):
+                    rs_id = self._latest_successful_run_step(store, plan_version_id, spec.step_id)
+                    if rs_id is not None:
+                        rs = store.get_run_steps(rs_id)
+                        if rs and rs[0].status == STATUS_SUCCEEDED:
+                            run_step_records[spec.step_id] = rs[0]
+                            step_outputs[spec.step_id] = self._resolve_output_artifacts(store, rs[0])
+                            continue
+
+                executed_ids.append(spec.step_id)
+                rs = self._execute_step(
+                    store, spec, plan_version_id, run_id,
+                    step_outputs, run_step_records,
+                )
+                run_step_records[spec.step_id] = rs
+                step_outputs[spec.step_id] = self._resolve_output_artifacts(store, rs)
+
+                if rs.status == STATUS_FAILED:
+                    has_failure = True
+        finally:
+            if has_failure:
+                store.finish_run(run_id, STATUS_FAILED)
+            else:
+                all_processed = len(run_step_records) == len(branch_owned_step_ids)
+                if all_processed and not has_failure:
+                    store.finish_run(run_id, STATUS_SUCCEEDED)
+                else:
+                    store.finish_run(run_id, STATUS_FAILED)
+
+        return run_id
+
+    def _latest_successful_run_step(
+        self,
+        store: ProjectStore,
+        plan_version_id: str,
+        step_id: str,
+    ) -> str | None:
+        run_id = store.get_latest_successful_run_id(plan_version_id)
+        if run_id is None:
+            return None
+        for rs in store.get_run_steps(run_id):
+            if rs.step_id == step_id and rs.status == STATUS_SUCCEEDED:
+                return rs.run_step_id
+        return None
+
     def _execute_step(
         self,
         store: ProjectStore,

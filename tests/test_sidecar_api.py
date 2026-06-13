@@ -829,7 +829,7 @@ class TestManualBinningEditor:
         proof_pv_id = store.get_latest_plan_version_id(proof["plan_id"])
 
         # Try previewing scorecard plan with proof plan's version
-        resp = client.post(f"/plans/{plan_id}/steps/manual-binning/preview", json={
+        resp = client.post(f"/plans/{plan_id}/steps/manual-binning/manual-binning/preview", json={
             "project_id": pid,
             "plan_version_id": proof_pv_id,
             "overrides": [],
@@ -850,7 +850,7 @@ class TestManualBinningEditor:
         pv_id = store.get_latest_plan_version_id(plan_id)
 
         # Send non-list overrides — should be a 422 from FastAPI (list expected)
-        resp = client.post(f"/plans/{plan_id}/steps/manual-binning/preview", json={
+        resp = client.post(f"/plans/{plan_id}/steps/manual-binning/manual-binning/preview", json={
             "project_id": pid,
             "plan_version_id": pv_id,
             "overrides": "not-a-list",

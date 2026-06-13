@@ -1,4 +1,4 @@
-"""Run execution endpoints."""
+"""Run execution endpoints — full-plan and branch-scoped."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from sidecar.routes.projects import _load_registry, _get_store_for_project
 router = APIRouter(prefix="/runs", tags=["runs"])
 
 
-def _build_run_response(store: ProjectStore, run_id: str) -> RunResponse:
+def _build_run_response(store: ProjectStore, run_id: str, executed_ids: list[str] | None = None) -> RunResponse:
     run = store.get_run(run_id)
     steps = store.get_run_steps(run_id)
     return RunResponse(
@@ -25,6 +25,8 @@ def _build_run_response(store: ProjectStore, run_id: str) -> RunResponse:
         started_at=run["started_at"],
         finished_at=run.get("finished_at"),
         step_count=len(steps),
+        branch_id=run.get("branch_id"),
+        executed_step_ids=executed_ids or [],
     )
 
 
@@ -37,18 +39,26 @@ def run_plan(body: RunRequest):
         raise HTTPException(status_code=404, detail={"code": "PLAN_VERSION_NOT_FOUND", "message": "Plan version not found"})
 
     executor = PlanExecutor(NodeRegistry.with_defaults())
-    run_id = None
-    try:
-        run_id = executor.run_plan_version(store, body.plan_version_id)
-    except Exception as exc:
-        # run_plan_version may have created the run before the
-        # exception. If not, create and finish a failed run.
-        if run_id is None:
-            run_id = store.create_run(body.plan_version_id)
-        store.finish_run(run_id, "failed")
-        return _build_run_response(store, run_id)
 
-    return _build_run_response(store, run_id)
+    if body.run_scope == "branch" and body.branch_id:
+        try:
+            run_id = executor.run_branch(store, body.plan_version_id, body.branch_id)
+            run = store.get_run(run_id)
+            executed_ids = [rs.step_id for rs in store.get_run_steps(run_id)]
+            return _build_run_response(store, run_id, executed_ids)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail={"code": "BRANCH_RUN_FAILED", "message": str(exc)})
+    else:
+        run_id = None
+        try:
+            run_id = executor.run_plan_version(store, body.plan_version_id)
+        except Exception as exc:
+            if run_id is None:
+                run_id = store.create_run(body.plan_version_id)
+            store.finish_run(run_id, "failed")
+            return _build_run_response(store, run_id)
+
+        return _build_run_response(store, run_id)
 
 
 @router.get("/{run_id}", response_model=RunResponse)

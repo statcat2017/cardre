@@ -154,6 +154,12 @@ class StepSpec:
     parent_step_ids: list[str]
     branch_label: str
     position: int
+    canonical_step_id: str = field(default="", kw_only=True)
+    branch_id: str | None = field(default=None, kw_only=True)
+
+    def __post_init__(self) -> None:
+        if not self.canonical_step_id:
+            object.__setattr__(self, "canonical_step_id", self.step_id)
 
     def to_dict(self) -> JsonDict:
         return {
@@ -166,6 +172,8 @@ class StepSpec:
             "parent_step_ids": self.parent_step_ids,
             "branch_label": self.branch_label,
             "position": self.position,
+            "canonical_step_id": self.canonical_step_id,
+            "branch_id": self.branch_id,
         }
 
     @classmethod
@@ -180,6 +188,8 @@ class StepSpec:
             parent_step_ids=list(data.get("parent_step_ids", [])),
             branch_label=data.get("branch_label", ""),
             position=data.get("position", 0),
+            canonical_step_id=data.get("canonical_step_id", data["step_id"]),
+            branch_id=data.get("branch_id"),
         )
 
 
@@ -216,6 +226,8 @@ def replace_step_params(
             parent_step_ids=s.parent_step_ids,
             branch_label=s.branch_label,
             position=s.position,
+            canonical_step_id=s.canonical_step_id,
+            branch_id=s.branch_id,
         )
         for s in steps
     ]

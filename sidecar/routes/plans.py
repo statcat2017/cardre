@@ -53,24 +53,24 @@ def update_step_params(plan_id: str, step_id: str, req: UpdateStepParamsRequest)
     return PlanService(store).update_params(plan_id, step_id, req.base_plan_version_id, dict(req.params))
 
 
-@router.get("/{plan_id}/steps/manual-binning/editor-state", response_model=ManualBinningEditorStateResponse)
-def get_manual_binning_editor_state(plan_id: str, project_id: str):
+@router.get("/{plan_id}/steps/{step_id}/editor-state", response_model=ManualBinningEditorStateResponse)
+def get_manual_binning_editor_state(plan_id: str, step_id: str, project_id: str):
     registry = _load_registry()
     entry = registry.get(project_id)
     if entry is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
 
     store = _get_store(entry["path"])
-    return PlanService(store).get_manual_binning_editor_state(plan_id)
+    return PlanService(store).get_manual_binning_editor_state(plan_id, step_id=step_id)
 
 
-@router.post("/{plan_id}/steps/manual-binning/preview", response_model=ManualBinningPreviewResponse)
-def preview_manual_binning_overrides(plan_id: str, req: ManualBinningPreviewRequest):
+@router.post("/{plan_id}/steps/{step_id}/manual-binning/preview", response_model=ManualBinningPreviewResponse)
+def preview_manual_binning_overrides(plan_id: str, step_id: str, req: ManualBinningPreviewRequest):
     registry = _load_registry()
     entry = registry.get(req.project_id)
     if entry is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {req.project_id}"})
 
     store = _get_store(entry["path"])
-    return PlanService(store).preview_manual_binning(plan_id, req.plan_version_id, req.overrides)
+    return PlanService(store).preview_manual_binning(plan_id, req.plan_version_id, req.overrides, step_id=step_id)
 

@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from cardre.services import PlanValidationError
-from sidecar.routes import artifacts, datasets, health, plans, projects, runs
+from sidecar.routes import artifacts, branches, champion, comparisons, datasets, exports, health, plans, projects, runs
 
 app = FastAPI(title="cardre-api", version="0.1.0")
 
@@ -42,6 +42,10 @@ app.include_router(projects.router)
 app.include_router(datasets.router)
 app.include_router(plans.router)
 app.include_router(runs.router)
+app.include_router(branches.router)
+app.include_router(comparisons.router)
+app.include_router(champion.router)
+app.include_router(exports.router)
 app.include_router(artifacts.router)
 
 
