@@ -78,7 +78,7 @@ PHASE2B_PATHWAY_STEPS_CONFIG = [
         "node_version": "1",
         "category": "fit",
         "params": {},
-        "parent_step_ids": ["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv"],
+        "parent_step_ids": ["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv", "variable-selection"],
         "branch_label": "",
     },
     {

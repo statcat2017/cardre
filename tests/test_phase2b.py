@@ -672,5 +672,73 @@ class Phase2BEndToEndTests(unittest.TestCase):
             executor._validate_leakage_rules(node, [test_art])
 
 
+    def test_woe_transform_selects_only_selected_vars(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+
+        df = pl.DataFrame({
+            "age": [25.0, 30.0, 35.0, 40.0],
+            "income": [50000.0, 60000.0, 70000.0, 80000.0],
+            "target": ["good", "bad", "good", "bad"],
+        })
+        train_art = _make_train_artifact(store, df)
+        meta_art = _make_json_artifact(
+            store, {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}, stem="meta"
+        )
+
+        bin_def = {
+            "variables": [
+                {"variable": "age", "kind": "numeric",
+                 "bins": [{"bin_id": "age_b1", "label": "Young", "lower": 0, "upper": 30,
+                           "lower_inclusive": True, "upper_inclusive": True,
+                           "categories": None, "is_missing_bin": False,
+                           "row_count": 2, "good_count": 1, "bad_count": 1},
+                          {"bin_id": "age_b2", "label": "Old", "lower": 30, "upper": None,
+                           "lower_inclusive": False, "upper_inclusive": True,
+                           "categories": None, "is_missing_bin": False,
+                           "row_count": 2, "good_count": 1, "bad_count": 1}]},
+                {"variable": "income", "kind": "numeric",
+                 "bins": [{"bin_id": "inc_b1", "label": "Low", "lower": 0, "upper": 60000,
+                           "lower_inclusive": True, "upper_inclusive": True,
+                           "categories": None, "is_missing_bin": False,
+                           "row_count": 2, "good_count": 1, "bad_count": 1},
+                          {"bin_id": "inc_b2", "label": "High", "lower": 60000, "upper": None,
+                           "lower_inclusive": False, "upper_inclusive": True,
+                           "categories": None, "is_missing_bin": False,
+                           "row_count": 2, "good_count": 1, "bad_count": 1}]},
+            ],
+            "warnings": [],
+        }
+        bin_art = _make_json_artifact(store, bin_def, stem="bins")
+
+        woe_df = pl.DataFrame({
+            "variable": ["age", "age", "income", "income"],
+            "bin_id": ["age_b1", "age_b2", "inc_b1", "inc_b2"],
+            "label": ["Young", "Old", "Low", "High"],
+            "row_count": [2, 2, 2, 2], "good_count": [1, 1, 1, 1], "bad_count": [1, 1, 1, 1],
+            "good_distribution": [0.5, 0.5, 0.5, 0.5], "bad_distribution": [0.5, 0.5, 0.5, 0.5],
+            "woe": [0.2, -0.2, 0.3, -0.3], "iv_component": [0.0, 0.0, 0.0, 0.0],
+        })
+        woe_art = _make_parquet_report(store, woe_df, stem="woe")
+
+        selection = {"selected": [{"variable": "age", "reason": "IV above threshold"}],
+                     "rejected": [{"variable": "income", "reason": "Lower IV"}]}
+        sel_art = _make_json_artifact(store, selection, stem="selection")
+
+        params = {}
+        spec = StepSpec(step_id="wt", node_type="cardre.woe_transform_train", node_version="1", category="fit",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[], input_artifacts=[train_art, bin_art, woe_art, sel_art, meta_art],
+                               validated_params=params, runtime_metadata={})
+        output = WoeTransformTrainNode().run(ctx)
+
+        transformed = pl.read_parquet(store.artifact_path(output.artifacts[0]))
+        self.assertIn("age_woe", transformed.columns)
+        self.assertNotIn("income_woe", transformed.columns,
+                         "unselected variable should not appear in WOE transform output")
+
+
 if __name__ == "__main__":
     unittest.main()

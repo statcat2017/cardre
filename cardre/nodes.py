@@ -2087,13 +2087,17 @@ class WoeTransformTrainNode(NodeType):
 
         bin_artifact = None
         meta_artifact = None
+        selection_artifact = None
         for a in context.input_artifacts:
             if a.role != "definition":
                 continue
             try:
                 payload = json.loads(store.artifact_path(a).read_text())
-                if "variables" in payload:
+                if "variables" in payload and "selected" not in payload:
                     bin_artifact = a
+                    continue
+                if "selected" in payload:
+                    selection_artifact = a
                     continue
                 if "target_column" in payload and "good_values" in payload:
                     meta_artifact = a
@@ -2153,7 +2157,25 @@ class WoeTransformTrainNode(NodeType):
                 f"{', '.join(missing_woe_bins[:10])}"
             )
 
-        selected_vars = [v for v in bin_def.get("variables", [])]
+        selected_names: set[str] | None = None
+        if selection_artifact:
+            try:
+                sel = json.loads(store.artifact_path(selection_artifact).read_text())
+                selected_names = {s["variable"] for s in sel.get("selected", [])}
+            except Exception:
+                pass
+
+        all_var_defs = bin_def.get("variables", [])
+        if selected_names is not None:
+            selected_vars = [v for v in all_var_defs if v["variable"] in selected_names]
+            if not selected_vars:
+                raise ValueError(
+                    f"WOE transform: variable-selection defined {len(selected_names)} selected "
+                    f"variable(s) but none found in bin definitions"
+                )
+        else:
+            selected_vars = list(all_var_defs)
+
         woe_columns = []
         result_df = df
 
@@ -2219,6 +2241,7 @@ class WoeTransformTrainNode(NodeType):
         transform_report = {
             "target_column": target_column,
             "transformed_variables": woe_columns,
+            "selected_only": selected_names is not None,
             "row_count": df.height,
         }
         report_artifact_ref = write_json_artifact(
@@ -2441,8 +2464,32 @@ class ScoreScalingNode(NodeType):
         store = context.store
         params = context.validated_params
         model_artifact = next(a for a in context.input_artifacts if a.role == "model")
-        bin_artifact = next(a for a in context.input_artifacts if a.role == "definition")
-        woe_report_artifact = next((a for a in context.input_artifacts if a.role == "report"), None)
+
+        bin_artifact = None
+        woe_report_artifact = None
+        for a in context.input_artifacts:
+            if a.role == "definition":
+                try:
+                    payload = json.loads(store.artifact_path(a).read_text())
+                    if "variables" in payload and "selected" not in payload:
+                        bin_artifact = a
+                except Exception:
+                    continue
+            elif a.role == "report":
+                try:
+                    content = store.artifact_path(a).read_bytes()
+                    if content[:4] != b"PAR1":
+                        continue
+                    temp = pl.read_parquet(store.artifact_path(a))
+                    if "woe" in temp.columns and "bin_id" in temp.columns and "variable" in temp.columns:
+                        woe_report_artifact = a
+                except Exception:
+                    continue
+
+        if bin_artifact is None:
+            raise ValueError("Score scaling requires a bin definition artifact with 'variables'")
+        if woe_report_artifact is None:
+            raise ValueError("Score scaling requires a WOE table report (Parquet with woe, bin_id, variable columns)")
 
         model = json.loads(store.artifact_path(model_artifact).read_text())
         bin_def = json.loads(store.artifact_path(bin_artifact).read_text())
@@ -2486,12 +2533,18 @@ class ScoreScalingNode(NodeType):
         for var_def in bin_def.get("variables", []):
             variable = var_def["variable"]
             woe_key = f"{variable}_woe"
-            coef = float(coefficients.get(woe_key, 0))
+            if woe_key not in coefficients:
+                continue
+            coef = float(coefficients[woe_key])
 
             for bin_entry in var_def.get("bins", []):
                 bin_id = bin_entry["bin_id"]
                 label = bin_entry["label"]
-                woe_val = all_woe_map.get(variable, {}).get(bin_id, 0.0)
+                woe_val = all_woe_map.get(variable, {}).get(bin_id)
+                if woe_val is None:
+                    raise ValueError(
+                        f"Score scaling: missing WOE value for variable {variable!r} bin {bin_id!r}"
+                    )
                 raw_points = direction * factor * coef * woe_val
                 point_value = round(raw_points, 2)
                 attributes.append({
