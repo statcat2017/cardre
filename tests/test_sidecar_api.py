@@ -12,8 +12,7 @@ from fastapi.testclient import TestClient
 from cardre.audit import StepSpec, json_logical_hash
 from cardre.store import ProjectStore
 from sidecar.main import app
-from sidecar.models import ProjectResponse, RunResponse
-from sidecar.routes.projects import _load_registry, _save_registry
+
 
 # Reset registry for fresh state per test
 pytest_plugins = []
