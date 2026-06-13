@@ -1,5 +1,10 @@
 """Cardre: auditable open-source credit scorecard builder."""
 
+from cardre.artifacts import (
+    make_fingerprint,
+    write_json_artifact,
+    write_parquet_artifact,
+)
 from cardre.audit import (
     ArtifactRef,
     ExecutionContext,
@@ -16,22 +21,39 @@ from cardre.audit import (
 )
 from cardre.executor import PlanExecutor, RoleAccessError
 from cardre.nodes import (
+    ApplyExclusionsNode,
+    CalculateWoeIvNode,
+    DefineModellingMetadataNode,
+    DevelopmentSampleDefinitionNode,
     DummyApplyNode,
     DummyFitNode,
+    ExplicitMissingOutlierTreatmentNode,
+    FineClassingNode,
     ImportGermanCreditNode,
+    ManualBinningNode,
     ProfileDatasetNode,
     SplitTrainTestOotNode,
+    TechnicalManifestExportNode,
     ValidateBinaryTargetNode,
+    VariableClusteringNode,
+    VariableSelectionNode,
 )
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 
 __all__ = [
+    "ApplyExclusionsNode",
     "ArtifactRef",
+    "CalculateWoeIvNode",
+    "DefineModellingMetadataNode",
+    "DevelopmentSampleDefinitionNode",
     "DummyApplyNode",
     "DummyFitNode",
     "ExecutionContext",
+    "ExplicitMissingOutlierTreatmentNode",
+    "FineClassingNode",
     "ImportGermanCreditNode",
+    "ManualBinningNode",
     "NodeOutput",
     "NodeRegistry",
     "NodeType",
@@ -42,11 +64,17 @@ __all__ = [
     "RunStepRecord",
     "SplitTrainTestOotNode",
     "StepSpec",
+    "TechnicalManifestExportNode",
     "ValidateBinaryTargetNode",
+    "VariableClusteringNode",
+    "VariableSelectionNode",
     "json_logical_hash",
+    "make_fingerprint",
     "params_hash",
     "physical_hash",
     "relative_path",
     "table_logical_hash",
     "utc_now_iso",
+    "write_json_artifact",
+    "write_parquet_artifact",
 ]

@@ -13,7 +13,7 @@ from sidecar.models import (
     ProjectDetailResponse,
     ProjectResponse,
 )
-from sidecar.proof_pathway import register_proof_pathway
+from sidecar.proof_pathway import register_proof_pathway, register_scorecard_pathway
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -71,6 +71,7 @@ def create_project(body: CreateProjectRequest):
     _save_registry(registry)
 
     register_proof_pathway(store, project_id)
+    register_scorecard_pathway(store, project_id)
 
     return ProjectResponse(
         project_id=project_id,
