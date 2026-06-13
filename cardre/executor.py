@@ -134,8 +134,8 @@ class PlanExecutor:
         steps = store.get_plan_version_steps(plan_version_id)
         self._validate_topology(steps)
 
-        # Check shared upstream staleness
-        staleness = self.compute_staleness(store, plan_version_id)
+        # Check shared upstream staleness using branch-scoped plan evidence
+        staleness = self.compute_staleness(store, plan_version_id, branch_id=branch_id)
         stale_shared = [
             sid for sid in shared_upstream_step_ids
             if staleness.get(sid, True)
@@ -147,11 +147,34 @@ class PlanExecutor:
                 "Run the shared pathway first."
             )
 
-        # Create run with branch association
-        run_id = store.create_run(plan_version_id, branch_id=branch_id)
+        # Seed step_outputs and run_step_records from latest successful
+        # run evidence for shared upstream steps. This ensures
+        # _resolve_inputs() can find parent outputs.
+        # First try current plan version, then fall back to any version of the plan.
+        def _find_shared_evidence(step_id: str) -> RunStepRecord | None:
+            rs = store.get_latest_successful_run_step_for_step(
+                plan_version_id, step_id, branch_id=None,
+            )
+            if rs is not None:
+                return rs
+            plan_run_id = store.get_latest_successful_run_id_for_plan(branch["plan_id"])
+            if plan_run_id is not None:
+                for prs in store.get_run_steps(plan_run_id):
+                    if prs.step_id == step_id and prs.status == STATUS_SUCCEEDED:
+                        return prs
+            return None
 
         step_outputs: dict[str, list[ArtifactRef]] = {}
         run_step_records: dict[str, RunStepRecord] = {}
+        for sid in shared_upstream_step_ids:
+            rs = _find_shared_evidence(sid)
+            if rs is not None:
+                run_step_records[sid] = rs
+                step_outputs[sid] = self._resolve_output_artifacts(store, rs)
+
+        # Create run with branch association
+        run_id = store.create_run(plan_version_id, branch_id=branch_id)
+
         has_failure = False
         executed_ids: list[str] = []
 
@@ -162,15 +185,14 @@ class PlanExecutor:
                 if spec.step_id not in branch_owned_step_ids:
                     continue
 
-                # Skip if step is already current (not stale and has a successful run)
-                if not staleness.get(spec.step_id, True):
-                    rs_id = self._latest_successful_run_step(store, plan_version_id, spec.step_id)
-                    if rs_id is not None:
-                        rs = store.get_run_steps(rs_id)
-                        if rs and rs[0].status == STATUS_SUCCEEDED:
-                            run_step_records[spec.step_id] = rs[0]
-                            step_outputs[spec.step_id] = self._resolve_output_artifacts(store, rs[0])
-                            continue
+                # Seed shared upstream parent outputs that were missed
+                # because the shared step is not in branch_owned_step_ids
+                for pid in spec.parent_step_ids:
+                    if pid in shared_upstream_step_ids and pid not in step_outputs:
+                        rs = _find_shared_evidence(pid)
+                        if rs is not None:
+                            run_step_records[pid] = rs
+                            step_outputs[pid] = self._resolve_output_artifacts(store, rs)
 
                 executed_ids.append(spec.step_id)
                 rs = self._execute_step(
@@ -186,27 +208,13 @@ class PlanExecutor:
             if has_failure:
                 store.finish_run(run_id, STATUS_FAILED)
             else:
-                all_processed = len(run_step_records) == len(branch_owned_step_ids)
-                if all_processed and not has_failure:
+                all_processed = len(executed_ids) == len(branch_owned_step_ids) if not has_failure else False
+                if all_processed:
                     store.finish_run(run_id, STATUS_SUCCEEDED)
                 else:
                     store.finish_run(run_id, STATUS_FAILED)
 
         return run_id
-
-    def _latest_successful_run_step(
-        self,
-        store: ProjectStore,
-        plan_version_id: str,
-        step_id: str,
-    ) -> str | None:
-        run_id = store.get_latest_successful_run_id(plan_version_id)
-        if run_id is None:
-            return None
-        for rs in store.get_run_steps(run_id):
-            if rs.step_id == step_id and rs.status == STATUS_SUCCEEDED:
-                return rs.run_step_id
-        return None
 
     def _execute_step(
         self,
@@ -510,8 +518,13 @@ class PlanExecutor:
         self,
         store: ProjectStore,
         plan_version_id: str,
+        branch_id: str | None = None,
     ) -> dict[str, bool]:
         """Return {step_id: is_stale} for each step in the plan version.
+
+        When branch_id is provided, looks for run evidence specific to
+        that branch.  When branch_id is None, looks for full-plan
+        (non-branch) runs only.
 
         Compares:
         - current params_hash, node_type, node_version
@@ -524,7 +537,7 @@ class PlanExecutor:
         after a param-update creates a brand-new plan version.
         """
         steps = store.get_plan_version_steps(plan_version_id)
-        run_id = store.get_latest_successful_run_id(plan_version_id)
+        run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=branch_id)
 
         if run_id is None:
             pv = store.get_plan_version(plan_version_id)

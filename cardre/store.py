@@ -524,6 +524,53 @@ class ProjectStore:
                 )
         return plan_version_id
 
+    def create_plan_version_in_transaction(
+        self,
+        conn: sqlite3.Connection,
+        plan_id: str,
+        steps: list[StepSpec],
+        description: str = "",
+    ) -> str:
+        """Create a new plan version inside an existing transaction.
+
+        Useful for atomic branch creation where plan version, branch
+        metadata, and branch step maps must be committed together.
+        """
+        plan_version_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        max_ver = conn.execute(
+            "SELECT COALESCE(MAX(version_number), 0) + 1 FROM plan_versions WHERE plan_id = ?",
+            (plan_id,),
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, created_at, description) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (plan_version_id, plan_id, max_ver, now, description),
+        )
+        for step in steps:
+            conn.execute(
+                "INSERT INTO plan_steps "
+                "(step_id, plan_version_id, node_type, node_version, category, "
+                " params_json, params_hash, parent_step_ids_json, branch_label, position, "
+                " canonical_step_id, branch_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    step.step_id,
+                    plan_version_id,
+                    step.node_type,
+                    step.node_version,
+                    step.category,
+                    json.dumps(step.params),
+                    step.params_hash,
+                    json.dumps(step.parent_step_ids),
+                    step.branch_label,
+                    step.position,
+                    step.canonical_step_id,
+                    step.branch_id,
+                ),
+            )
+        return plan_version_id
+
     def get_plan_version(self, plan_version_id: str) -> JsonDict | None:
         row = self._connect().execute(
             "SELECT * FROM plan_versions WHERE plan_version_id = ?", (plan_version_id,)
@@ -791,12 +838,23 @@ class ProjectStore:
         ).fetchall()
         return {r["artifact_id"] for r in rows}
 
-    def get_latest_successful_run_id(self, plan_version_id: str) -> str | None:
-        row = self._connect().execute(
-            "SELECT run_id FROM runs WHERE plan_version_id = ? AND status = 'succeeded' "
-            "ORDER BY started_at DESC LIMIT 1",
-            (plan_version_id,),
-        ).fetchone()
+    def get_latest_successful_run_id(
+        self,
+        plan_version_id: str,
+        branch_id: str | None = None,
+    ) -> str | None:
+        if branch_id:
+            row = self._connect().execute(
+                "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id = ? AND status = 'succeeded' "
+                "ORDER BY started_at DESC LIMIT 1",
+                (plan_version_id, branch_id),
+            ).fetchone()
+        else:
+            row = self._connect().execute(
+                "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id IS NULL AND status = 'succeeded' "
+                "ORDER BY started_at DESC LIMIT 1",
+                (plan_version_id,),
+            ).fetchone()
         return None if row is None else row["run_id"]
 
     def get_latest_successful_run_id_for_plan(self, plan_id: str) -> str | None:
@@ -804,11 +862,74 @@ class ProjectStore:
         row = self._connect().execute(
             "SELECT r.run_id FROM runs r "
             "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-            "WHERE pv.plan_id = ? AND r.status = 'succeeded' "
+            "WHERE pv.plan_id = ? AND r.status = 'succeeded' AND r.branch_id IS NULL "
             "ORDER BY r.started_at DESC LIMIT 1",
             (plan_id,),
         ).fetchone()
         return None if row is None else row["run_id"]
+
+    def get_run_step(self, run_step_id: str) -> RunStepRecord | None:
+        row = self._connect().execute(
+            "SELECT * FROM run_steps WHERE run_step_id = ?",
+            (run_step_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return RunStepRecord(
+            run_step_id=row["run_step_id"],
+            run_id=row["run_id"],
+            step_id=row["step_id"],
+            plan_version_id=row["plan_version_id"],
+            status=row["status"],
+            started_at=row["started_at"],
+            finished_at=row["finished_at"],
+            input_artifact_ids=json.loads(row["input_artifact_ids_json"]),
+            output_artifact_ids=json.loads(row["output_artifact_ids_json"]),
+            execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
+            warnings=json.loads(row["warnings_json"]),
+            errors=json.loads(row["errors_json"]),
+        )
+
+    def get_latest_successful_run_step_for_step(
+        self,
+        plan_version_id: str,
+        step_id: str,
+        branch_id: str | None = None,
+    ) -> RunStepRecord | None:
+        if branch_id:
+            row = self._connect().execute(
+                "SELECT rs.* FROM run_steps rs "
+                "JOIN runs r ON rs.run_id = r.run_id "
+                "WHERE rs.plan_version_id = ? AND rs.step_id = ? "
+                "AND r.branch_id = ? AND rs.status = 'succeeded' "
+                "ORDER BY rs.started_at DESC LIMIT 1",
+                (plan_version_id, step_id, branch_id),
+            ).fetchone()
+        else:
+            row = self._connect().execute(
+                "SELECT rs.* FROM run_steps rs "
+                "JOIN runs r ON rs.run_id = r.run_id "
+                "WHERE rs.plan_version_id = ? AND rs.step_id = ? "
+                "AND r.branch_id IS NULL AND rs.status = 'succeeded' "
+                "ORDER BY rs.started_at DESC LIMIT 1",
+                (plan_version_id, step_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return RunStepRecord(
+            run_step_id=row["run_step_id"],
+            run_id=row["run_id"],
+            step_id=row["step_id"],
+            plan_version_id=row["plan_version_id"],
+            status=row["status"],
+            started_at=row["started_at"],
+            finished_at=row["finished_at"],
+            input_artifact_ids=json.loads(row["input_artifact_ids_json"]),
+            output_artifact_ids=json.loads(row["output_artifact_ids_json"]),
+            execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
+            warnings=json.loads(row["warnings_json"]),
+            errors=json.loads(row["errors_json"]),
+        )
 
     def get_plan_id_for_version(self, plan_version_id: str) -> str | None:
         row = self._connect().execute(

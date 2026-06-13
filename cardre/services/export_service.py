@@ -11,6 +11,8 @@ from typing import Any
 from cardre.audit import utc_now_iso
 from cardre.store import ProjectStore
 
+ROW_LEVEL_ARTIFACT_TYPES = {"dataset", "tabular"}
+
 
 def export_branch_audit_pack(
     store: ProjectStore,
@@ -34,7 +36,8 @@ def export_branch_audit_pack(
       - Comparison snapshot (if provided)
       - Champion assignment (if branch is champion)
 
-    Excludes row-level data by default.
+    Excludes row-level dataset artifacts unless include_row_level_data is True.
+    Uses branch-scoped evidence lookup.
     """
     branch = store.get_branch(branch_id)
     if branch is None:
@@ -78,8 +81,10 @@ def export_branch_audit_pack(
     (export_dir / "plan_steps.json").write_text(json.dumps(steps_data, indent=2))
     file_count += 1
 
-    # 5. Run evidence
-    run_id = store.get_latest_successful_run_id(branch["head_plan_version_id"])
+    # 5. Run evidence — branch-scoped lookup
+    run_id = store.get_latest_successful_run_id(
+        branch["head_plan_version_id"], branch_id=branch_id,
+    )
     runs_data: list[dict] = []
     run_steps_data: list[dict] = []
     if run_id:
@@ -107,7 +112,7 @@ def export_branch_audit_pack(
     (export_dir / "run_steps.json").write_text(json.dumps(run_steps_data, indent=2))
     file_count += 1
 
-    # 6. Artifact references
+    # 6. Artifact references — filter row-level data unless explicitly requested
     artifact_ids: set[str] = set()
     for rs_data in run_steps_data:
         artifact_ids.update(rs_data.get("input_artifact_ids", []))
@@ -116,6 +121,10 @@ def export_branch_audit_pack(
     for aid in sorted(artifact_ids):
         art = store.get_artifact(aid)
         if art:
+            # Skip row-level dataset artifacts unless explicitly requested
+            if not include_row_level_data and art.artifact_type in ROW_LEVEL_ARTIFACT_TYPES:
+                continue
+
             artifacts_list.append({
                 "artifact_id": art.artifact_id,
                 "artifact_type": art.artifact_type,
@@ -126,7 +135,7 @@ def export_branch_audit_pack(
                 "media_type": art.media_type,
                 "created_at": art.created_at,
             })
-            # Copy artifact files
+            # Copy non-row-level artifact files
             src = store.artifact_path(art)
             if src.exists():
                 dst = export_dir / "artifacts" / f"{art.artifact_id}_{src.name}"

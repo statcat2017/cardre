@@ -8,9 +8,10 @@ and catch ``PlanValidationError`` to map to HTTP responses.
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any
 
-from cardre.audit import StepSpec, json_logical_hash, replace_step_params
+from cardre.audit import StepSpec, json_logical_hash, replace_step_params, utc_now_iso
 from cardre.executor import PlanExecutor
 from cardre.nodes import validate_manual_binning_overrides, apply_manual_binning_overrides
 from cardre.registry import NodeRegistry
@@ -133,7 +134,11 @@ class PlanService:
         base_plan_version_id: str,
         params: dict[str, Any],
     ) -> UpdateStepParamsResponse:
-        """Validate params, create a new plan version, return stale steps."""
+        """Validate params, create a new plan version, return stale steps.
+
+        If the target step is branch-owned, updates the branch head
+        and copies branch_step_map entries atomically.
+        """
         plan = self._store.get_plan(plan_id)
         if plan is None:
             raise PlanValidationError(
@@ -168,6 +173,30 @@ class PlanService:
                 status_code=404,
             )
 
+        branch_id = target_step.branch_id
+        branch = None
+        if branch_id:
+            branch = self._store.get_branch(branch_id)
+            if branch is None:
+                raise PlanValidationError(
+                    "BRANCH_NOT_FOUND",
+                    f"Branch {branch_id} for step {step_id} not found.",
+                    status_code=404,
+                )
+            if branch.get("status") != "active":
+                raise PlanValidationError(
+                    "BRANCH_INACTIVE",
+                    f"Branch {branch_id} is not active.",
+                    status_code=400,
+                )
+            if branch["head_plan_version_id"] != base_plan_version_id:
+                raise PlanValidationError(
+                    "STALE_BRANCH_VERSION",
+                    "Branch head has changed since your last read. Refresh and retry.",
+                    status_code=409,
+                    extra={"branch_head_version_id": branch["head_plan_version_id"]},
+                )
+
         new_params = dict(params)
 
         # Validate params against node schema
@@ -182,19 +211,52 @@ class PlanService:
         except KeyError:
             pass
 
-        # Manual-binning: validate overrides against upstream artefacts
-        if step_id == "manual-binning":
+        # Manual-binning: validate by canonical step ID or node type
+        if target_step.canonical_step_id == "manual-binning" or target_step.node_type == "cardre.manual_binning":
             overrides = list(new_params.get("overrides", []))
             if overrides:
-                self._validate_manual_binning_overrides(plan_id, latest_pv_id, overrides)
+                self._validate_manual_binning_overrides(
+                    plan_id, latest_pv_id, overrides,
+                    fc_step_id=_find_mb_step_id(steps, "fine-classing", branch_id),
+                    vs_step_id=_find_mb_step_id(steps, "variable-selection", branch_id),
+                )
 
         new_steps = replace_step_params(steps, step_id, new_params)
+        now = utc_now_iso()
 
-        new_pv_id = self._store.create_plan_version(
-            plan_id=plan_id,
-            steps=new_steps,
-            description=f"Updated params for {step_id}",
-        )
+        if branch_id and branch is not None:
+            # Branch-owned: create plan version inside branch's transaction
+            connection = self._store._connect()
+            with self._store.transaction() as conn:
+                new_pv_id = self._store.create_plan_version_in_transaction(
+                    conn=conn, plan_id=plan_id, steps=new_steps,
+                    description=f"Updated params for {step_id} (branch {branch_id})",
+                )
+                # Update branch head
+                conn.execute(
+                    "UPDATE plan_branches SET head_plan_version_id = ?, updated_at = ? WHERE branch_id = ?",
+                    (new_pv_id, now, branch_id),
+                )
+                # Copy branch_step_map for new plan version
+                existing_map = self._store.get_branch_step_map(branch_id, latest_pv_id)
+                for row in existing_map:
+                    conn.execute(
+                        "INSERT INTO branch_step_map "
+                        "(branch_step_map_id, branch_id, plan_version_id, canonical_step_id, step_id, "
+                        " source_branch_id, source_step_id, is_shared_upstream, is_branch_owned, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            str(uuid.uuid4()),
+                            branch_id, new_pv_id, row["canonical_step_id"], row["step_id"],
+                            row.get("source_branch_id"), row.get("source_step_id"),
+                            row["is_shared_upstream"], row["is_branch_owned"], now,
+                        ),
+                    )
+        else:
+            new_pv_id = self._store.create_plan_version(
+                plan_id=plan_id, steps=new_steps,
+                description=f"Updated params for {step_id}",
+            )
 
         staleness = self._executor.compute_staleness(self._store, new_pv_id)
         stale_ids = [sid for sid, is_stale in staleness.items() if is_stale]
@@ -545,16 +607,24 @@ class PlanService:
 
     def _validate_manual_binning_overrides(
         self, plan_id: str, plan_version_id: str, overrides: list[dict],
+        fc_step_id: str = "fine-classing",
+        vs_step_id: str = "variable-selection",
     ) -> None:
         """Validate manual-binning overrides against upstream artefacts.
 
         Raises ``PlanValidationError`` if any override references an unknown
         variable, missing bin ID, or non-adjacent numeric merge.
+
+        Supports baseline and branch-owned fine-classing/variable-selection steps.
         """
         if not overrides:
             return
 
-        (fc_def, _, _, _), err = self._resolve_mb_upstream_defs(plan_version_id, plan_id)
+        (fc_def, _, _, _), err = self._resolve_mb_upstream_defs(
+            plan_version_id, plan_id,
+            fc_step_id=fc_step_id,
+            vs_step_id=vs_step_id,
+        )
         if err is not None:
             raise PlanValidationError("PARAMS_VALIDATION_FAILED", err)
 
@@ -563,3 +633,16 @@ class PlanService:
             raise PlanValidationError(
                 "PARAMS_VALIDATION_FAILED", "; ".join(errors),
             )
+
+
+def _find_mb_step_id(steps: list[StepSpec], canonical: str, branch_id: str | None) -> str:
+    """Find the actual step_id in steps matching a canonical step ID,
+    preferring a branch-owned instance if branch_id is given."""
+    candidate = None
+    for s in steps:
+        if s.canonical_step_id == canonical:
+            if branch_id and s.branch_id == branch_id:
+                return s.step_id
+            if candidate is None:
+                candidate = s.step_id
+    return candidate or canonical

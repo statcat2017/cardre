@@ -27,32 +27,64 @@ def _check_branch_readiness(
     branch_id: str,
     plan_version_id: str,
     required_steps: list[str],
+    is_baseline: bool = False,
 ) -> list[dict[str, str]]:
     """Check if a branch has current successful evidence for required canonical steps.
+
+    Uses branch-scoped evidence lookup. For baseline branches, falls back
+    to full-plan (branch_id=NULL) evidence since baseline runs pre-date
+    the branch model.
 
     Returns a list of missing-or-stale entries; empty list = ready.
     """
     step_map = store.get_branch_step_map(branch_id, plan_version_id)
     canon_to_actual: dict[str, str] = {}
     for row in step_map:
-        if row["is_branch_owned"]:
-            canon_to_actual[row["canonical_step_id"]] = row["step_id"]
+        canon_to_actual[row["canonical_step_id"]] = row["step_id"]
 
-    executor = PlanExecutor(NodeRegistry.with_defaults())
-    staleness = executor.compute_staleness(store, plan_version_id)
+    staleness = PlanExecutor(NodeRegistry.with_defaults()).compute_staleness(
+        store, plan_version_id, branch_id=branch_id if not is_baseline else None,
+    )
 
     missing: list[dict[str, str]] = []
     for cs in required_steps:
         actual_id = canon_to_actual.get(cs, cs)
-        run_id = store.get_latest_successful_run_id(plan_version_id)
-        if run_id is None:
-            missing.append({"branch_id": branch_id, "canonical_step_id": cs, "step_id": actual_id, "status": "not_run"})
-            continue
-        run_steps = store.get_run_steps(run_id)
-        found = any(rs.step_id == actual_id and rs.status == "succeeded" for rs in run_steps)
-        if not found or staleness.get(actual_id, True):
-            missing.append({"branch_id": branch_id, "canonical_step_id": cs, "step_id": actual_id, "status": "stale" if staleness.get(actual_id, True) else "not_run"})
+        evidence_branch = branch_id if not is_baseline else None
+        rs = store.get_latest_successful_run_step_for_step(
+            plan_version_id, actual_id, branch_id=evidence_branch,
+        )
+        if rs is None and not is_baseline:
+            # Also try plan-level evidence (run before branch existed)
+            plan_run_id = store.get_latest_successful_run_id_for_plan(
+                store.get_plan_version(plan_version_id)["plan_id"],
+            )
+            if plan_run_id:
+                for prs in store.get_run_steps(plan_run_id):
+                    if prs.step_id == actual_id and prs.status == "succeeded":
+                        rs = prs
+                        break
+        if rs is None:
+            status = "stale" if staleness.get(actual_id, True) else "not_run"
+            missing.append({
+                "branch_id": branch_id,
+                "canonical_step_id": cs,
+                "step_id": actual_id,
+                "status": status,
+            })
     return missing
+
+
+def _read_artifact_json(store: ProjectStore, artifact_id: str) -> dict[str, Any] | None:
+    art = store.get_artifact(artifact_id)
+    if art is None:
+        return None
+    if art.media_type != "application/json":
+        return None
+    try:
+        path = store.artifact_path(art)
+        return json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
 
 
 def _build_comparison_content(
@@ -63,7 +95,11 @@ def _build_comparison_content(
     branch_id_challenger: str,
     spec: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build comparison JSON content from branch evidence."""
+    """Build comparison JSON content from branch evidence.
+
+    Reads WOE/IV, model, validation, and cutoff artifacts.
+    No modelling execution. No run records created.
+    """
     content: dict[str, Any] = {
         "comparison_type": "challenger_vs_baseline",
         "baseline_branch_id": branch_id_baseline,
@@ -78,40 +114,27 @@ def _build_comparison_content(
     step_map_b = store.get_branch_step_map(branch_id_baseline, plan_version_id_baseline)
     step_map_c = store.get_branch_step_map(branch_id_challenger, plan_version_id_challenger)
 
-    def _find_artifact_for_step(
-        step_map: list[dict], canonical_step_id: str, pv_id: str
-    ) -> dict[str, Any] | None:
+    def _find_artifact(step_map: list[dict], cs: str, pv_id: str, b_id: str) -> dict[str, Any] | None:
         for row in step_map:
-            if row["canonical_step_id"] == canonical_step_id:
-                run_id = store.get_latest_successful_run_id(pv_id)
-                if run_id is None:
-                    return None
-                for rs in store.get_run_steps(run_id):
-                    if rs.step_id == row["step_id"] and rs.output_artifact_ids:
-                        art = store.get_artifact(rs.output_artifact_ids[0])
-                        if art:
-                            try:
-                                path = store.artifact_path(art)
-                                data = json.loads(path.read_text())
-                                return data
-                            except (FileNotFoundError, json.JSONDecodeError):
-                                return None
+            if row["canonical_step_id"] == cs:
+                rs = store.get_latest_successful_run_step_for_step(pv_id, row["step_id"], branch_id=b_id)
+                if rs and rs.output_artifact_ids:
+                    for aid in rs.output_artifact_ids:
+                        art = store.get_artifact(aid)
+                        if art and art.media_type == "application/json":
+                            result = _read_artifact_json(store, aid)
+                            if result is not None:
+                                return result
         return None
 
-    # WOE/IV comparison
-    fw_b = _find_artifact_for_step(step_map_b, "final-woe-iv", plan_version_id_baseline)
-    fw_c = _find_artifact_for_step(step_map_c, "final-woe-iv", plan_version_id_challenger)
-    if fw_b and fw_c:
-        all_vars = set()
-        for v in fw_b.get("variables", []):
-            all_vars.add(v.get("variable", ""))
-        for v in fw_c.get("variables", []):
-            all_vars.add(v.get("variable", ""))
-        b_vars = {v.get("variable"): v for v in fw_b.get("variables", [])}
-        c_vars = {v.get("variable"): v for v in fw_c.get("variables", [])}
-
+    woe_b = _find_artifact(step_map_b, "final-woe-iv", plan_version_id_baseline, branch_id_baseline) if spec.get("include_woe_iv") else None
+    woe_c = _find_artifact(step_map_c, "final-woe-iv", plan_version_id_challenger, branch_id_challenger) if spec.get("include_woe_iv") else None
+    if woe_b and woe_c:
+        b_vars = {v.get("variable"): v for v in woe_b.get("variables", [])}
+        c_vars = {v.get("variable"): v for v in woe_c.get("variables", [])}
+        all_vars = sorted(set(b_vars) | set(c_vars))
         woe_vars = []
-        for var_name in sorted(all_vars):
+        for var_name in all_vars:
             bv = b_vars.get(var_name, {})
             cv = c_vars.get(var_name, {})
             woe_vars.append({
@@ -119,18 +142,18 @@ def _build_comparison_content(
                 "baseline": {
                     "iv": bv.get("iv", 0),
                     "bin_count": len(bv.get("bins", [])),
-                    "zero_cell_warning_count": 0,
-                    "sparse_bin_warning_count": 0,
-                    "monotonicity_warning": False,
+                    "zero_cell_warning_count": len([w for w in bv.get("warnings", []) if "zero" in str(w).lower()]),
+                    "sparse_bin_warning_count": len([w for w in bv.get("warnings", []) if "sparse" in str(w).lower()]),
+                    "monotonicity_warning": any("monotonic" in str(w).lower() for w in bv.get("warnings", [])),
                 },
                 "challengers": {
                     branch_id_challenger: {
                         "iv": cv.get("iv", 0),
                         "bin_count": len(cv.get("bins", [])),
-                        "zero_cell_warning_count": 0,
-                        "sparse_bin_warning_count": 0,
-                        "monotonicity_warning": False,
-                    }
+                        "zero_cell_warning_count": len([w for w in cv.get("warnings", []) if "zero" in str(w).lower()]),
+                        "sparse_bin_warning_count": len([w for w in cv.get("warnings", []) if "sparse" in str(w).lower()]),
+                        "monotonicity_warning": any("monotonic" in str(w).lower() for w in cv.get("warnings", [])),
+                    },
                 },
                 "difference": {
                     "iv_delta_vs_baseline": cv.get("iv", 0) - bv.get("iv", 0),
@@ -139,13 +162,12 @@ def _build_comparison_content(
             })
         content["woe_iv"]["variables"] = woe_vars
 
-    # Model comparison
-    lr_b = _find_artifact_for_step(step_map_b, "logistic-regression", plan_version_id_baseline)
-    lr_c = _find_artifact_for_step(step_map_c, "logistic-regression", plan_version_id_challenger)
+    lr_b = _find_artifact(step_map_b, "logistic-regression", plan_version_id_baseline, branch_id_baseline) if spec.get("include_model") else None
+    lr_c = _find_artifact(step_map_c, "logistic-regression", plan_version_id_challenger, branch_id_challenger) if spec.get("include_model") else None
     if lr_b and lr_c:
-        model_vars = []
         b_coeffs = {c.get("variable"): c for c in lr_b.get("coefficients", [])}
         c_coeffs = {c.get("variable"): c for c in lr_c.get("coefficients", [])}
+        model_vars = []
         for var_name in sorted(set(b_coeffs) | set(c_coeffs)):
             model_vars.append({
                 "variable": var_name,
@@ -155,6 +177,67 @@ def _build_comparison_content(
         content["model"]["variables"] = model_vars
         content["model"]["branch_level"]["baseline"] = {"feature_count": len(b_coeffs), "converged": lr_b.get("converged", True), "warnings": lr_b.get("warnings", [])}
         content["model"]["branch_level"][branch_id_challenger] = {"feature_count": len(c_coeffs), "converged": lr_c.get("converged", True), "warnings": lr_c.get("warnings", [])}
+
+    # Validation metrics by role
+    if spec.get("include_validation"):
+        vm_b = _find_artifact(step_map_b, "validation-metrics", plan_version_id_baseline, branch_id_baseline)
+        vm_c = _find_artifact(step_map_c, "validation-metrics", plan_version_id_challenger, branch_id_challenger)
+        for role_name in ("train", "test", "oot"):
+            b_role = (vm_b or {}).get(role_name, {}) if vm_b else {}
+            c_role = (vm_c or {}).get(role_name, {}) if vm_c else {}
+            role_data = {}
+            if b_role:
+                role_data["baseline"] = {
+                    "auc": b_role.get("auc"),
+                    "gini": b_role.get("gini"),
+                    "ks": b_role.get("ks"),
+                    "calibration": b_role.get("calibration", {}),
+                }
+            if c_role:
+                role_data[branch_id_challenger] = {
+                    "auc": c_role.get("auc"),
+                    "gini": c_role.get("gini"),
+                    "ks": c_role.get("ks"),
+                    "calibration": c_role.get("calibration", {}),
+                }
+            content["validation"]["roles"][role_name] = role_data
+
+    # Cutoff comparison
+    if spec.get("include_cutoff"):
+        co_b = _find_artifact(step_map_b, "cutoff-analysis", plan_version_id_baseline, branch_id_baseline)
+        co_c = _find_artifact(step_map_c, "cutoff-analysis", plan_version_id_challenger, branch_id_challenger)
+        for role_name in ("train", "test", "oot"):
+            b_bands = []
+            if co_b:
+                b_bands = (co_b.get(role_name) or co_b.get("bands") or []) if isinstance(co_b, dict) else []
+            c_bands = []
+            if co_c:
+                c_bands = (co_c.get(role_name) or co_c.get("bands") or []) if isinstance(co_c, dict) else []
+
+            # Pair up bands by cutoff value
+            b_by_cutoff = {b.get("cutoff"): b for b in b_bands if isinstance(b, dict)}
+            c_by_cutoff = {c.get("cutoff"): c for c in c_bands if isinstance(c, dict)}
+            all_cutoffs = sorted(set(b_by_cutoff) | set(c_by_cutoff))
+            bands = []
+            for cutoff in all_cutoffs[:20]:
+                b_entry = b_by_cutoff.get(cutoff, {})
+                c_entry = c_by_cutoff.get(cutoff, {})
+                bands.append({
+                    "cutoff": cutoff,
+                    "baseline": {
+                        "approval_rate": b_entry.get("approval_rate"),
+                        "bad_rate": b_entry.get("bad_rate"),
+                        "capture_rate": b_entry.get("capture_rate"),
+                        "population_count": b_entry.get("population_count"),
+                    },
+                    branch_id_challenger: {
+                        "approval_rate": c_entry.get("approval_rate"),
+                        "bad_rate": c_entry.get("bad_rate"),
+                        "capture_rate": c_entry.get("capture_rate"),
+                        "population_count": c_entry.get("population_count"),
+                    },
+                })
+            content["cutoff"]["roles"][role_name] = bands
 
     return content
 
@@ -222,6 +305,7 @@ def refresh_comparison(
 ) -> dict[str, Any]:
     """Refresh a comparison intent — check readiness and create snapshot if ready.
 
+    Checks both baseline and all challenger branches.
     Does NOT execute modelling nodes. Does NOT create run records.
     """
     row = store._connect().execute(
@@ -237,12 +321,26 @@ def refresh_comparison(
     spec = json.loads(comparison["comparison_spec_json"])
 
     baseline = store.get_branch(baseline_branch_id)
+    if baseline is None:
+        raise ValueError(f"BASELINE_BRANCH_NOT_FOUND: {baseline_branch_id}")
 
-    all_missing: list[dict[str, str]] = []
+    required = REQUIRED_EVIDENCE_CANONICAL_STEPS
+
+    # Check baseline readiness (uses full-plan evidence, not branch-scoped)
+    all_missing: list[dict[str, str]] = _check_branch_readiness(
+        store, baseline_branch_id, baseline["head_plan_version_id"], required,
+        is_baseline=True,
+    )
+
+    # Check each challenger
     for cid in challenger_ids:
         challenger = store.get_branch(cid)
-        required = spec.get("include_woe_iv", True) and REQUIRED_EVIDENCE_CANONICAL_STEPS or ["cutoff-analysis"]
-        missing = _check_branch_readiness(store, cid, challenger["head_plan_version_id"], required)
+        if challenger is None:
+            all_missing.append({"branch_id": cid, "canonical_step_id": "", "step_id": "", "status": "not_found"})
+            continue
+        missing = _check_branch_readiness(
+            store, cid, challenger["head_plan_version_id"], required,
+        )
         all_missing.extend(missing)
 
     if all_missing:
@@ -257,13 +355,14 @@ def refresh_comparison(
             "warnings": [],
         }
 
-    # Build comparison content
+    # Build comparison snapshots — one per challenger
     now = utc_now_iso()
-    snapshot_id = str(uuid.uuid4())
-
-    # Build content for each challenger vs baseline
+    last_snapshot_id = None
     for cid in challenger_ids:
         challenger = store.get_branch(cid)
+        if challenger is None:
+            continue
+
         content = _build_comparison_content(
             store,
             baseline["head_plan_version_id"],
@@ -278,10 +377,13 @@ def refresh_comparison(
             role="comparison",
             stem=f"comparison_{comparison_id}_{cid}",
             payload=content,
-            metadata={"comparison_id": comparison_id, "snapshot_id": snapshot_id},
+            metadata={"comparison_id": comparison_id, "challenger_branch_id": cid},
         )
 
+        snapshot_id = str(uuid.uuid4())
         source_pv_ids = json.dumps([baseline["head_plan_version_id"], challenger["head_plan_version_id"]])
+        readiness_data = json.dumps({"ready": True, "missing": []})
+
         with store.transaction() as conn:
             conn.execute(
                 "INSERT INTO branch_comparison_snapshots "
@@ -291,34 +393,24 @@ def refresh_comparison(
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     snapshot_id, comparison_id, comparison["project_id"], comparison["plan_id"],
-                    artifact.artifact_id,
-                    json.dumps({"ready": True, "missing": []}),
-                    source_pv_ids, now, "Comparison refresh",
+                    artifact.artifact_id, readiness_data, source_pv_ids,
+                    now, "Comparison refresh",
                 ),
             )
             conn.execute(
-                "UPDATE branch_comparisons SET latest_snapshot_id = ?, latest_ready = 1, latest_readiness_json = ? WHERE comparison_id = ?",
-                (snapshot_id, json.dumps({"ready": True}), comparison_id),
+                "UPDATE branch_comparisons SET latest_snapshot_id = ?, latest_ready = 1 "
+                "WHERE comparison_id = ?",
+                (snapshot_id, comparison_id),
             )
-
-        return {
-            "comparison_id": comparison_id,
-            "comparison_snapshot_id": snapshot_id,
-            "ready": True,
-            "comparison_artifact_id": artifact.artifact_id,
-            "refreshed_at": now,
-            "blocked_reason": None,
-            "missing_or_stale": [],
-            "warnings": [],
-        }
+        last_snapshot_id = snapshot_id
 
     return {
         "comparison_id": comparison_id,
-        "comparison_snapshot_id": None,
-        "ready": False,
-        "comparison_artifact_id": None,
+        "comparison_snapshot_id": last_snapshot_id,
+        "ready": True,
+        "comparison_artifact_id": artifact.artifact_id if challenger_ids else None,
         "refreshed_at": now,
-        "blocked_reason": "No challengers to compare.",
+        "blocked_reason": None,
         "missing_or_stale": [],
         "warnings": [],
     }

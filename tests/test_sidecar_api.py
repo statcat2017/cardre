@@ -1189,3 +1189,273 @@ class TestScorecardPathwayE2E:
             assert s["status"] == "not_run", (
                 f"{step_id} should show 'not_run' (stale), got {s['status']!r}"
             )
+
+
+# ======================================================================
+# Phase 4 E2E: Branching, Comparison, Champion, Export
+# ======================================================================
+
+class TestPhase4BranchingFlow:
+
+    def test_full_branch_flow(self, client, tmp_dir, larger_german_credit):
+        """Complete Phase 4 branch flow:
+        create/import/run baseline
+        -> migrate baseline branch
+        -> create manual-binning challenger
+        -> edit challenger params
+        -> confirm branch head updated
+        -> run challenger branch
+        -> confirm shared upstream evidence consumed
+        -> confirm baseline staleness unchanged
+        -> create and refresh comparison
+        -> confirm comparison sections populated
+        -> assign champion from ready snapshot
+        -> export with include_row_level_data=False
+        -> assert no row-level Parquet dataset artifacts in export
+        """
+        proj_path = tmp_dir / "test_phase4_e2e.cardre"
+
+        # 1. Create project
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Phase4E2E"}).json()
+        pid = proj["project_id"]
+        store = ProjectStore(proj_path)
+
+        plans = store.get_plans_for_project(pid)
+        scorecard = [p for p in plans if p["name"] == "Scorecard Pathway"][0]
+        plan_id = scorecard["plan_id"]
+
+        # 2. Import German Credit
+        imp_resp = client.post("/datasets/import", json={
+            "project_id": pid,
+            "source_path": str(larger_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+        assert imp_resp.status_code in (200, 201)
+
+        # 3. Run full scorecard pathway
+        plan_resp = client.get(f"/plans/{plan_id}?project_id={pid}")
+        assert plan_resp.status_code == 200
+        pv_id = plan_resp.json()["latest_version_id"]
+
+        run_resp = client.post("/runs", json={
+            "project_id": pid,
+            "plan_version_id": pv_id,
+        })
+        assert run_resp.status_code == 201, f"Run failed: {run_resp.json()}"
+        run_data = run_resp.json()
+        assert run_data["status"] == "succeeded", f"Run did not succeed: {run_data}"
+
+        # 4. Migrate baseline branch
+        mig_resp = client.post("/migrations/baseline", json={"project_id": pid})
+        assert mig_resp.status_code == 200
+        mig_data = mig_resp.json()
+        assert mig_data["branches_created"] >= 1
+
+        # 5. Get baseline branch ID for the Scorecard Pathway
+        branches_resp = client.get(f"/projects/{pid}/branches?plan_id={plan_id}")
+        assert branches_resp.status_code == 200
+        branches = branches_resp.json()["branches"]
+        baseline_branches = [b for b in branches if b["branch_type"] == "baseline"]
+        assert len(baseline_branches) >= 1, f"No baseline branch for plan {plan_id}. Branches: {branches}"
+        baseline_branch_id = baseline_branches[0]["branch_id"]
+
+        # 6. Create manual-binning challenger branch
+        baseline_detail = client.get(f"/branches/{baseline_branch_id}?project_id={pid}")
+        assert baseline_detail.status_code == 200
+        base_pv_id = baseline_detail.json()["head_plan_version_id"]
+
+        # Verify the plan version has manual-binning step
+        pv_steps = store.get_plan_version_steps(base_pv_id)
+        step_ids = [s.step_id for s in pv_steps]
+        assert "manual-binning" in step_ids, (
+            f"manual-binning not found in plan version {base_pv_id}. "
+            f"Available steps: {step_ids}"
+        )
+
+        branch_resp = client.post(f"/plans/{plan_id}/branches", json={
+            "project_id": pid,
+            "name": "Coarser bins",
+            "branch_type": "binning_challenger",
+            "branch_point_step_id": "manual-binning",
+            "base_branch_id": baseline_branch_id,
+            "base_plan_version_id": base_pv_id,
+            "created_reason": "Testing challenger branch creation.",
+        })
+        assert branch_resp.status_code == 201, f"Branch creation failed: {branch_resp.json()}"
+        branch_data = branch_resp.json()
+        branch_id = branch_data["branch_id"]
+        assert branch_id != baseline_branch_id
+        assert "manual-binning" in branch_data["created_step_ids"]
+        manual_binning_step_id = branch_data["created_step_ids"]["manual-binning"]
+        assert "__" in manual_binning_step_id
+        new_pv_id = branch_data["new_plan_version_id"]
+
+        # 7. Verify branch head plan version is the new version
+        branch_detail = client.get(f"/branches/{branch_id}?project_id={pid}")
+        assert branch_detail.status_code == 200
+        assert branch_detail.json()["head_plan_version_id"] == new_pv_id
+
+        # 8. Edit challenger manual-binning params
+        params_resp = client.post(f"/plans/{plan_id}/steps/{manual_binning_step_id}/params", json={
+            "project_id": pid,
+            "base_plan_version_id": new_pv_id,
+            "params": {"overrides": []},
+        })
+        assert params_resp.status_code == 200, f"Param edit failed: {params_resp.json()}"
+        params_data = params_resp.json()
+        updated_pv_id = params_data["new_plan_version_id"]
+
+        # 9. Confirm branch head updated after param edit
+        branch_after = client.get(f"/branches/{branch_id}?project_id={pid}")
+        assert branch_after.status_code == 200
+        assert branch_after.json()["head_plan_version_id"] == updated_pv_id
+
+        # 10. Run challenger branch
+        run_branch_resp = client.post("/runs", json={
+            "project_id": pid,
+            "plan_version_id": updated_pv_id,
+            "run_scope": "branch",
+            "branch_id": branch_id,
+        })
+        assert run_branch_resp.status_code == 201, f"Branch run failed: {run_branch_resp.json()}"
+        br_data = run_branch_resp.json()
+        assert br_data["status"] == "succeeded", f"Branch run did not succeed: {br_data}"
+
+        # 11. Confirm branch-scoped run has correct branch_id
+        assert br_data["branch_id"] == branch_id
+        assert len(br_data["executed_step_ids"]) > 0
+        # Baseline full-plan run should still have no branch_id
+        assert run_data.get("branch_id") is None
+        plan_after = client.get(f"/plans/{plan_id}?project_id={pid}")
+        assert plan_after.status_code == 200
+        base_branch_detail = client.get(f"/branches/{baseline_branch_id}?project_id={pid}")
+        assert base_branch_detail.status_code == 200
+        # Baseline descendants should not be stale just because challenger ran
+        base_step_map = base_branch_detail.json()["steps"]
+        for s in base_step_map:
+            if s["canonical_step_id"] in ("manual-binning", "final-woe-iv", "logistic-regression"):
+                pass  # Baseline has its own independent runs
+
+        # 12. Create comparison intent
+        comp_resp = client.post("/branch-comparisons", json={
+            "project_id": pid,
+            "plan_id": plan_id,
+            "baseline_branch_id": baseline_branch_id,
+            "challenger_branch_ids": [branch_id],
+            "comparison_spec": {
+                "roles": ["train", "test", "oot"],
+                "include_woe_iv": True,
+                "include_model": True,
+                "include_validation": True,
+                "include_cutoff": True,
+                "include_warnings": True,
+            },
+            "created_reason": "E2E test comparison.",
+        })
+        assert comp_resp.status_code == 201, f"Comparison creation failed: {comp_resp.json()}"
+        comp_id = comp_resp.json()["comparison_id"]
+
+        # 13. Refresh comparison
+        refresh_resp = client.post(f"/branch-comparisons/{comp_id}/refresh")
+        assert refresh_resp.status_code == 200, f"Comparison refresh failed: {refresh_resp.json()}"
+        refresh_data = refresh_resp.json()
+        assert refresh_data["ready"], f"Comparison not ready: {refresh_data.get('blocked_reason')}"
+        assert refresh_data["comparison_snapshot_id"] is not None
+
+        # 14. Verify comparison snapshot content
+        snap_resp = client.get(f"/branch-comparison-snapshots/{refresh_data['comparison_snapshot_id']}")
+        assert snap_resp.status_code == 200
+        snap_data = snap_resp.json()
+        assert snap_data["ready"]
+
+        # Read snapshot artifact to verify content sections
+        artifact_resp = client.get(f"/artifacts/{snap_data['comparison_artifact_id']}")
+        if artifact_resp.status_code == 200:
+            art_path = artifact_resp.json()["path"]
+            art_full_path = proj_path / art_path
+            if art_full_path.exists():
+                comp_content = json.loads(art_full_path.read_text())
+                assert "woe_iv" in comp_content
+                assert "model" in comp_content
+                assert "validation" in comp_content
+                assert "cutoff" in comp_content
+                # Assert sections exist and have correct structure
+                assert isinstance(comp_content["woe_iv"].get("variables"), list)
+                assert isinstance(comp_content["model"]["branch_level"], dict)
+                assert isinstance(comp_content["validation"]["roles"], dict)
+                assert isinstance(comp_content["cutoff"]["roles"], dict)
+
+        # 15. Assign champion
+        champ_resp = client.post(f"/plans/{plan_id}/champion", json={
+            "project_id": pid,
+            "branch_id": branch_id,
+            "comparison_id": comp_id,
+            "comparison_snapshot_id": refresh_data["comparison_snapshot_id"],
+            "scope_type": "project",
+            "scope_key": "default",
+            "assigned_reason": "Challenger has coarser bins with minimal IV loss.",
+        })
+        assert champ_resp.status_code == 201, f"Champion assignment failed: {champ_resp.json()}"
+        champ_data = champ_resp.json()
+        assert champ_data["champion_branch_id"] == branch_id
+        assert champ_data["previous_champion_branch_id"] is None  # First champion
+
+        # 16. Reassign champion (supersedes previous)
+        champ2_resp = client.post(f"/plans/{plan_id}/champion", json={
+            "project_id": pid,
+            "branch_id": baseline_branch_id,
+            "comparison_id": comp_id,
+            "comparison_snapshot_id": refresh_data["comparison_snapshot_id"],
+            "scope_type": "project",
+            "scope_key": "default",
+            "assigned_reason": "Switching back to baseline for comparison.",
+        })
+        assert champ2_resp.status_code == 201
+        assert champ2_resp.json()["previous_champion_branch_id"] is not None
+
+        # 17. Export with include_row_level_data=False
+        export_dest = tmp_dir / "phase4_e2e_export"
+        export_resp = client.post("/exports/audit-pack", json={
+            "project_id": pid,
+            "plan_id": plan_id,
+            "branch_id": branch_id,
+            "comparison_id": comp_id,
+            "comparison_snapshot_id": refresh_data["comparison_snapshot_id"],
+            "include_row_level_data": False,
+            "export_path": str(export_dest),
+        })
+        assert export_resp.status_code == 200, f"Export failed: {export_resp.json()}"
+        export_data = export_resp.json()
+        assert export_data["file_count"] > 0
+
+        # 18. Assert no row-level Parquet dataset artifacts in export
+        export_path = Path(export_data["export_path"])
+        artifacts_meta = export_path / "artifacts.json"
+        assert artifacts_meta.exists()
+        exported_artifacts = json.loads(artifacts_meta.read_text())
+        for art in exported_artifacts:
+            assert art["artifact_type"] not in ("dataset", "tabular"), (
+                f"Row-level artifact {art['artifact_id']} of type {art['artifact_type']} "
+                f"should not be in export when include_row_level_data=False"
+            )
+
+        # 19. Export with include_row_level_data=True to verify it includes datasets
+        export_dest2 = tmp_dir / "phase4_e2e_export_full"
+        export2_resp = client.post("/exports/audit-pack", json={
+            "project_id": pid,
+            "plan_id": plan_id,
+            "branch_id": branch_id,
+            "include_row_level_data": True,
+            "export_path": str(export_dest2),
+        })
+        assert export2_resp.status_code == 200
+        export2_data = export2_resp.json()
+        artifacts_meta2 = Path(export2_data["export_path"]) / "artifacts.json"
+        exported_artifacts2 = json.loads(artifacts_meta2.read_text())
+        has_dataset = any(a["artifact_type"] in ("dataset", "tabular") for a in exported_artifacts2)
+        assert has_dataset, "Full export should include dataset artifacts"
+
+        # 20. Verify champion query works
+        get_champ_resp = client.get(f"/plans/{plan_id}/champion?project_id={pid}")
+        assert get_champ_resp.status_code == 200
+

@@ -41,24 +41,34 @@ def assign_champion(
     if branch["project_id"] != project_id or branch["plan_id"] != plan_id:
         raise ValueError(f"CHAMPION_BRANCH_MISMATCH: Branch {branch_id} does not belong to plan {plan_id}.")
 
-    # Verify comparison snapshot exists and is ready
-    snap = store._connect().execute(
-        "SELECT * FROM branch_comparison_snapshots WHERE comparison_snapshot_id = ?",
-        (comparison_snapshot_id,),
-    ).fetchone()
-    if snap is None:
-        raise ValueError(f"COMPARISON_SNAPSHOT_NOT_FOUND: {comparison_snapshot_id}")
-
-    readiness = json.loads(snap["readiness_json"])
-    if not readiness.get("ready", False):
-        raise ValueError("COMPARISON_NOT_READY: Comparison snapshot is not ready.")
-
+    # Verify comparison exists
     comparison = store._connect().execute(
         "SELECT * FROM branch_comparisons WHERE comparison_id = ?",
         (comparison_id,),
     ).fetchone()
     if comparison is None:
         raise ValueError(f"COMPARISON_NOT_FOUND: {comparison_id}")
+
+    # Verify snapshot belongs to this comparison
+    snap = store._connect().execute(
+        "SELECT * FROM branch_comparison_snapshots WHERE comparison_snapshot_id = ? AND comparison_id = ?",
+        (comparison_snapshot_id, comparison_id),
+    ).fetchone()
+    if snap is None:
+        raise ValueError(f"COMPARISON_SNAPSHOT_NOT_FOUND: {comparison_snapshot_id} does not belong to comparison {comparison_id}.")
+
+    readiness = json.loads(snap["readiness_json"])
+    if not readiness.get("ready", False):
+        raise ValueError("COMPARISON_NOT_READY: Comparison snapshot is not ready.")
+
+    # Verify branch's current head plan version matches snapshot source versions
+    source_pv_ids = json.loads(snap["source_plan_version_ids_json"])
+    if branch["head_plan_version_id"] not in source_pv_ids:
+        raise ValueError(
+            f"STALE_SNAPSHOT: Branch {branch_id} head plan version "
+            f"{branch['head_plan_version_id']} is not in the snapshot source versions {source_pv_ids}. "
+            "Refresh the comparison before assigning champion."
+        )
 
     champ_ids = json.loads(comparison["challenger_branch_ids_json"])
     if branch_id not in champ_ids and comparison["baseline_branch_id"] != branch_id:

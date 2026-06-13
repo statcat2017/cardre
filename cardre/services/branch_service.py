@@ -5,10 +5,11 @@ Follows the constrained branching model from the Phase 4 technical spec.
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
-from cardre.audit import StepSpec, json_logical_hash, utc_now_iso
+from cardre.audit import StepSpec, utc_now_iso
 from cardre.store import ProjectStore
 
 
@@ -60,6 +61,9 @@ class BranchService:
     ) -> dict[str, Any]:
         """Create a constrained challenger branch from a permitted branch point.
 
+        Atomic: plan version, branch metadata, and branch step maps
+        are committed in a single transaction.
+
         Returns a dict with branch metadata, created step IDs, and shared
         upstream step IDs.
         """
@@ -89,6 +93,13 @@ class BranchService:
                 "SEGMENT_FILTER_REQUIRED: Segment challenger branches "
                 "require a non-empty segment_filter_spec."
             )
+
+        # Validate plan belongs to project
+        plan = self._store.get_plan(plan_id)
+        if plan is None:
+            raise ValueError(f"PLAN_NOT_FOUND: No plan with ID {plan_id}")
+        if plan.get("project_id") != project_id:
+            raise ValueError(f"PLAN_PROJECT_MISMATCH: Plan {plan_id} does not belong to project {project_id}")
 
         # Load base branch
         base_branch = self._store.get_branch(base_branch_id) if base_branch_id else None
@@ -122,15 +133,10 @@ class BranchService:
         # --- Generate branch ID and step IDs ---
 
         branch_id = f"br_{uuid.uuid4().hex[:6]}"
-
         duplicate_closure = _descendant_closure(branch_point_step_id, steps)
 
-        # Build the new step list
-        new_steps: list[StepSpec] = []
-
-        # Track mapping from original step_id to generated step_id
+        # Build step_id mapping: original -> generated (for duplicated steps)
         step_id_map: dict[str, str] = {}
-
         for s in steps:
             if s.step_id in duplicate_closure:
                 new_step_id = f"{s.canonical_step_id}__{branch_id}"
@@ -141,9 +147,14 @@ class BranchService:
         created_step_ids: dict[str, str] = {}
         shared_upstream_step_ids: list[str] = []
 
+        new_steps: list[StepSpec] = []
+        # Remember original step_id for each new step for source_step_id
+        source_of_new_step: dict[str, str] = {}
+
         for s in steps:
             if s.step_id in duplicate_closure:
                 new_step_id = step_id_map[s.step_id]
+                source_of_new_step[new_step_id] = s.step_id
 
                 remapped_parents = [
                     step_id_map[pid] if pid in step_id_map else pid
@@ -169,18 +180,20 @@ class BranchService:
                 new_steps.append(s)
                 shared_upstream_step_ids.append(s.step_id)
 
-        # --- Create plan version ---
-
-        new_pv_id = self._store.create_plan_version(
-            plan_id=plan_id,
-            steps=new_steps,
-            description=f"Branch '{name}' created from {branch_point_step_id}",
-        )
-
-        # --- Create branch metadata ---
+        # --- Atomic creation: plan version + branch metadata + step maps ---
 
         now = utc_now_iso()
+        segment_filter_json = json.dumps(segment_filter_spec, sort_keys=True) if segment_filter_spec else None
+
+        connection = self._store._connect()
         with self._store.transaction() as conn:
+            new_pv_id = self._store.create_plan_version_in_transaction(
+                conn=conn,
+                plan_id=plan_id,
+                steps=new_steps,
+                description=f"Branch '{name}' created from {branch_point_step_id}",
+            )
+
             conn.execute(
                 "INSERT INTO plan_branches "
                 "(branch_id, project_id, plan_id, name, description, branch_type, status, "
@@ -192,13 +205,16 @@ class BranchService:
                     branch_id, project_id, plan_id, name, description, branch_type,
                     base_branch_id, head_pv_id, new_pv_id,
                     branch_point_step_id, bp_step.canonical_step_id,
-                    json_logical_hash(segment_filter_spec) if segment_filter_spec else None,
+                    segment_filter_json,
                     created_reason, now, now,
                 ),
             )
 
             for s in new_steps:
-                is_shared = s.step_id not in [v for v in created_step_ids.values()]
+                was_duplicated = s.step_id in [v for v in created_step_ids.values()]
+                is_shared = not was_duplicated
+                original_step_id = source_of_new_step.get(s.step_id) if was_duplicated else s.step_id
+
                 conn.execute(
                     "INSERT INTO branch_step_map "
                     "(branch_step_map_id, branch_id, plan_version_id, canonical_step_id, step_id, "
@@ -207,8 +223,8 @@ class BranchService:
                     (
                         str(uuid.uuid4()),
                         branch_id, new_pv_id, s.canonical_step_id, s.step_id,
-                        None if is_shared else base_branch_id,
-                        None if is_shared else s.step_id,
+                        base_branch_id if was_duplicated else None,
+                        original_step_id if was_duplicated else None,
                         1 if is_shared else 0,
                         0 if is_shared else 1,
                         now,
