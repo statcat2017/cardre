@@ -1400,5 +1400,306 @@ class ScorecardPathwayTests(unittest.TestCase):
             self.assertTrue(report_found, f"No report artifact for {woe_step}")
 
 
+# ======================================================================
+# Blocker Verification Tests (PR #4 review findings)
+# ======================================================================
+
+class BlockerVerificationTests(unittest.TestCase):
+    """Direct tests locking down the PR #4 review blocker fixes."""
+
+    def test_blank_target_column_fails(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({"col1": [1, 2]})
+        import io
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        path = store.root / "datasets" / "test.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(buf.getvalue())
+        from cardre.audit import physical_hash, relative_path
+        art = ArtifactRef(
+            artifact_id="a1", artifact_type="dataset", role="input",
+            path=relative_path(path, store.root),
+            physical_hash=physical_hash(path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet", metadata={},
+        )
+        store.register_artifact(art)
+
+        params = {"target_column": "", "good_values": ["1"], "bad_values": ["2"]}
+        spec = StepSpec(
+            step_id="meta", node_type="cardre.define_modelling_metadata",
+            node_version="1", category="transform",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[art], validated_params=params, runtime_metadata={},
+        )
+        node = DefineModellingMetadataNode()
+        with self.assertRaises(ValueError):
+            node.run(ctx)
+
+    def test_final_woe_zero_cell_block_fails_without_smoothing(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "var1": [1.0, 2.0, 3.0],
+            "target": ["good", "good", "bad"],
+        })
+        import io
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        path = store.root / "datasets" / "train.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(buf.getvalue())
+        from cardre.audit import physical_hash, relative_path
+        train = ArtifactRef(
+            artifact_id="t1", artifact_type="dataset", role="train",
+            path=relative_path(path, store.root),
+            physical_hash=physical_hash(path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet", metadata={},
+        )
+        store.register_artifact(train)
+
+        bin_def = {
+            "variables": [{
+                "variable": "var1", "kind": "numeric",
+                "bins": [
+                    {"bin_id": "v1_b1", "label": "A", "lower": 0, "upper": 2,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 2, "good_count": 2, "bad_count": 0},
+                    {"bin_id": "v1_b2", "label": "B", "lower": 2, "upper": None,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 1, "good_count": 0, "bad_count": 1},
+                ],
+            }],
+            "warnings": [],
+        }
+        bin_path = store.root / "artifacts" / "bins.json"
+        bin_path.write_text(json.dumps(bin_def, sort_keys=True))
+        bin_art = ArtifactRef(
+            artifact_id="b1", artifact_type="definition", role="definition",
+            path=relative_path(bin_path, store.root),
+            physical_hash=physical_hash(bin_path),
+            logical_hash=json_logical_hash(bin_def),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(bin_art)
+
+        meta_params = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_path = store.root / "artifacts" / "meta.json"
+        meta_path.write_text(json.dumps(meta_params, sort_keys=True))
+        meta_art = ArtifactRef(
+            artifact_id="m1", artifact_type="definition", role="definition",
+            path=relative_path(meta_path, store.root),
+            physical_hash=physical_hash(meta_path),
+            logical_hash=json_logical_hash(meta_params),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(meta_art)
+
+        params = {"zero_cell_policy": "block", "smoothing": None, "purpose": "final"}
+        spec = StepSpec(
+            step_id="woe", node_type="cardre.calculate_woe_iv",
+            node_version="1", category="selection",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[train, bin_art, meta_art],
+            validated_params=params, runtime_metadata={},
+        )
+        node = CalculateWoeIvNode()
+        with self.assertRaises(ValueError):
+            node.run(ctx)
+
+    def test_non_adjacent_numeric_merge_fails(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        bin_def = {
+            "variables": [{
+                "variable": "x", "kind": "numeric",
+                "bins": [
+                    {"bin_id": "b1", "label": "A", "lower": 0, "upper": 10,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 100, "good_count": 80, "bad_count": 20},
+                    {"bin_id": "b2", "label": "B", "lower": 10, "upper": 20,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 100, "good_count": 80, "bad_count": 20},
+                    {"bin_id": "b3", "label": "C", "lower": 20, "upper": 30,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 100, "good_count": 80, "bad_count": 20},
+                ],
+            }],
+            "warnings": [],
+        }
+        bin_path = store.root / "artifacts" / "bins.json"
+        bin_path.parent.mkdir(parents=True, exist_ok=True)
+        bin_path.write_text(json.dumps(bin_def, sort_keys=True))
+        from cardre.audit import physical_hash, relative_path
+        bin_art = ArtifactRef(
+            artifact_id="b1", artifact_type="definition", role="definition",
+            path=relative_path(bin_path, store.root),
+            physical_hash=physical_hash(bin_path),
+            logical_hash=json_logical_hash(bin_def),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(bin_art)
+
+        params = {
+            "overrides": [{
+                "variable": "x",
+                "action": "merge_bins",
+                "source_bin_ids": ["b1", "b3"],
+                "new_label": "Non-adjacent",
+                "reason": "Testing adjacency enforcement",
+            }]
+        }
+        spec = StepSpec(
+            step_id="mb", node_type="cardre.manual_binning",
+            node_version="1", category="refinement",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[bin_art],
+            validated_params=params, runtime_metadata={},
+        )
+        node = ManualBinningNode()
+        with self.assertRaises(ValueError):
+            node.run(ctx)
+
+    def test_high_cardinality_creates_other_bin(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "cat_var": [f"level_{i}" for i in range(60)],
+            "target": ["good"] * 30 + ["bad"] * 30,
+        })
+        import io
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        path = store.root / "datasets" / "train.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(buf.getvalue())
+        from cardre.audit import physical_hash, relative_path
+        train = ArtifactRef(
+            artifact_id="t1", artifact_type="dataset", role="train",
+            path=relative_path(path, store.root),
+            physical_hash=physical_hash(path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet", metadata={},
+        )
+        store.register_artifact(train)
+
+        meta_params = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_path = store.root / "artifacts" / "meta.json"
+        meta_path.write_text(json.dumps(meta_params, sort_keys=True))
+        meta_art = ArtifactRef(
+            artifact_id="m1", artifact_type="definition", role="definition",
+            path=relative_path(meta_path, store.root),
+            physical_hash=physical_hash(meta_path),
+            logical_hash=json_logical_hash(meta_params),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(meta_art)
+
+        params = {
+            "max_bins": 20, "min_bin_fraction": 0.01,
+            "missing_policy": "separate_bin",
+            "max_categorical_levels": 10,
+            "exclude_columns": [],
+        }
+        spec = StepSpec(
+            step_id="fc", node_type="cardre.fine_classing",
+            node_version="1", category="fit",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[train, meta_art],
+            validated_params=params, runtime_metadata={},
+        )
+        node = FineClassingNode()
+        output = node.run(ctx)
+
+        payload = json.loads(store.artifact_path(output.artifacts[0]).read_text())
+        cat_var = next(v for v in payload["variables"] if v["variable"] == "cat_var")
+        bin_labels = [b["label"] for b in cat_var["bins"]]
+        self.assertIn("Other", bin_labels, "High-cardinality categorical should create an 'Other' bin")
+
+    def test_variable_selection_requires_reasons_for_dict_entries(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        iv_df = pl.DataFrame({
+            "variable": ["v1"], "iv": [0.3], "bin_count": [2],
+            "zero_cell_count": [0], "warning_count": [0],
+        })
+        import io
+        buf = io.BytesIO()
+        iv_df.write_parquet(buf)
+        iv_path = store.root / "datasets" / "iv.parquet"
+        iv_path.parent.mkdir(parents=True, exist_ok=True)
+        iv_path.write_bytes(buf.getvalue())
+        from cardre.audit import physical_hash, relative_path
+        iv_art = ArtifactRef(
+            artifact_id="iv1", artifact_type="report", role="report",
+            path=relative_path(iv_path, store.root),
+            physical_hash=physical_hash(iv_path),
+            logical_hash=table_logical_hash(iv_df),
+            media_type="application/vnd.apache.parquet", metadata={},
+        )
+        store.register_artifact(iv_art)
+
+        clustering = {"clusters": [{"cluster_id": "c1", "variables": ["v1"], "reason": "Single"}], "warnings": []}
+        clust_path = store.root / "artifacts" / "clust.json"
+        clust_path.write_text(json.dumps(clustering, sort_keys=True))
+        clust_art = ArtifactRef(
+            artifact_id="cl1", artifact_type="report", role="report",
+            path=relative_path(clust_path, store.root),
+            physical_hash=physical_hash(clust_path),
+            logical_hash=json_logical_hash(clustering),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(clust_art)
+
+        params = {
+            "min_iv": 0.02, "max_variables": 15,
+            "manual_includes": ["v1"],
+            "manual_excludes": [],
+        }
+        spec = StepSpec(
+            step_id="sel", node_type="cardre.variable_selection",
+            node_version="1", category="selection",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[iv_art, clust_art],
+            validated_params=params, runtime_metadata={},
+        )
+        node = VariableSelectionNode()
+        with self.assertRaises(ValueError):
+            node.run(ctx)
+
+
 if __name__ == "__main__":
     unittest.main()

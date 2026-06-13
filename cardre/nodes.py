@@ -608,7 +608,9 @@ class DefineModellingMetadataNode(NodeType):
         good_values = params.get("good_values", [])
         bad_values = params.get("bad_values", [])
 
-        if target_column and target_column not in df.columns:
+        if not target_column:
+            raise ValueError("Target column must be non-empty")
+        if target_column not in df.columns:
             raise ValueError(f"Target column '{target_column}' not found in dataset")
         if not good_values:
             raise ValueError("Good values must be non-empty")
@@ -1606,18 +1608,25 @@ class VariableSelectionNode(NodeType):
         params = context.validated_params
         min_iv = float(params.get("min_iv", 0.02))
         max_variables = int(params.get("max_variables", 15))
-        manual_includes_raw = list(params.get("manual_includes", []))
+        manual_entries_raw = list(params.get("manual_includes", []))
         manual_excludes_raw = list(params.get("manual_excludes", []))
-        manual_includes = [v if isinstance(v, str) else v.get("variable", "") for v in manual_includes_raw]
-        manual_excludes = [v if isinstance(v, str) else v.get("variable", "") for v in manual_excludes_raw]
-        manual_include_reasons = {
-            v["variable"]: v.get("reason", "Manual inclusion")
-            for v in manual_includes_raw if not isinstance(v, str)
-        }
-        manual_exclude_reasons = {
-            v["variable"]: v.get("reason", "Manual exclusion")
-            for v in manual_excludes_raw if not isinstance(v, str)
-        }
+        for entry in manual_entries_raw + manual_excludes_raw:
+            if isinstance(entry, str):
+                raise ValueError(
+                    f"Manual include/exclude entry {entry!r} must be a dict "
+                    f"with 'variable' and 'reason' keys"
+                )
+            if not entry.get("variable"):
+                raise ValueError("Manual include/exclude entry missing 'variable'")
+            if not entry.get("reason"):
+                raise ValueError(
+                    f"Manual include/exclude for variable {entry.get('variable')!r} "
+                    f"requires a non-empty 'reason'"
+                )
+        manual_includes = [v["variable"] for v in manual_entries_raw]
+        manual_excludes = [v["variable"] for v in manual_excludes_raw]
+        manual_include_reasons = {v["variable"]: v["reason"] for v in manual_entries_raw}
+        manual_exclude_reasons = {v["variable"]: v["reason"] for v in manual_excludes_raw}
 
         iv_artifact = None
         clustering_artifact = None
