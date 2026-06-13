@@ -81,31 +81,40 @@ def export_branch_audit_pack(
     (export_dir / "plan_steps.json").write_text(json.dumps(steps_data, indent=2))
     file_count += 1
 
-    # 5. Run evidence — branch-scoped lookup
+    # 5. Run evidence — branch-scoped lookup + shared-upstream lineage
     run_id = store.get_latest_successful_run_id(
         branch["head_plan_version_id"], branch_id=branch_id,
     )
     runs_data: list[dict] = []
     run_steps_data: list[dict] = []
+
+    # Branch-owned run steps
     if run_id:
         run = store.get_run(run_id)
         if run:
             runs_data.append(dict(run))
             for rs in store.get_run_steps(run_id):
-                run_steps_data.append({
-                    "run_step_id": rs.run_step_id,
-                    "run_id": rs.run_id,
-                    "step_id": rs.step_id,
-                    "plan_version_id": rs.plan_version_id,
-                    "status": rs.status,
-                    "started_at": rs.started_at,
-                    "finished_at": rs.finished_at,
-                    "input_artifact_ids": rs.input_artifact_ids,
-                    "output_artifact_ids": rs.output_artifact_ids,
-                    "execution_fingerprint": rs.execution_fingerprint,
-                    "warnings": rs.warnings,
-                    "errors": rs.errors,
-                })
+                run_steps_data.append(_run_step_to_dict(rs))
+
+    # Shared upstream run-step evidence consumed by the branch
+    step_map = store.get_branch_step_map(branch_id, branch["head_plan_version_id"])
+    for row in step_map:
+        if row["is_shared_upstream"]:
+            step_id = row["step_id"]
+            upstream_rs = store.get_latest_successful_run_step_for_step(
+                branch["head_plan_version_id"], step_id, branch_id=None,
+            )
+            if upstream_rs is None:
+                plan_run_id = store.get_latest_successful_run_id_for_plan(
+                    branch["plan_id"],
+                )
+                if plan_run_id:
+                    for prs in store.get_run_steps(plan_run_id):
+                        if prs.step_id == step_id and prs.status == "succeeded":
+                            upstream_rs = prs
+                            break
+            if upstream_rs is not None:
+                run_steps_data.append(_run_step_to_dict(upstream_rs))
 
     (export_dir / "runs.json").write_text(json.dumps(runs_data, indent=2))
     file_count += 1
@@ -206,3 +215,21 @@ def export_branch_audit_pack(
 def _write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, sort_keys=True))
+
+
+def _run_step_to_dict(rs) -> dict:
+    from cardre.audit import RunStepRecord
+    return {
+        "run_step_id": rs.run_step_id,
+        "run_id": rs.run_id,
+        "step_id": rs.step_id,
+        "plan_version_id": rs.plan_version_id,
+        "status": rs.status,
+        "started_at": rs.started_at,
+        "finished_at": rs.finished_at,
+        "input_artifact_ids": rs.input_artifact_ids,
+        "output_artifact_ids": rs.output_artifact_ids,
+        "execution_fingerprint": rs.execution_fingerprint,
+        "warnings": rs.warnings,
+        "errors": rs.errors,
+    }

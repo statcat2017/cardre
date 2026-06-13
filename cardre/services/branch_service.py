@@ -88,11 +88,13 @@ class BranchService:
         if not created_reason:
             raise ValueError("BRANCH_REASON_REQUIRED: Branch creation requires a non-empty reason.")
 
-        if branch_type == "segment_challenger" and not segment_filter_spec:
-            raise ValueError(
-                "SEGMENT_FILTER_REQUIRED: Segment challenger branches "
-                "require a non-empty segment_filter_spec."
-            )
+        if branch_type == "segment_challenger":
+            if not segment_filter_spec:
+                raise ValueError(
+                    "SEGMENT_FILTER_REQUIRED: Segment challenger branches "
+                    "require a non-empty segment_filter_spec."
+                )
+            _validate_segment_filter_rules(segment_filter_spec)
 
         # Validate plan belongs to project
         plan = self._store.get_plan(plan_id)
@@ -243,3 +245,39 @@ class BranchService:
             "status": "not_run",
             "warnings": [],
         }
+
+
+SUPPORTED_FILTER_OPERATORS = {"==", "!=", "<", "<=", ">", ">=", "in", "not_in", "is_null", "is_not_null"}
+
+
+def _validate_segment_filter_rules(spec: dict) -> None:
+    """Validate segment filter rules match the ApplyExclusions operator contract."""
+    rules = spec.get("rules", [])
+    if not rules:
+        raise ValueError("SEGMENT_FILTER_RULES_REQUIRED: Segment filter must have at least one rule.")
+
+    for rule in rules:
+        column = rule.get("column", "")
+        operator = rule.get("operator", "")
+        reason = rule.get("reason", "")
+        value = rule.get("value")
+
+        if not column:
+            raise ValueError("SEGMENT_FILTER_INVALID: Rule must specify a non-empty 'column'.")
+        if not operator:
+            raise ValueError("SEGMENT_FILTER_INVALID: Rule must specify an 'operator'.")
+        if operator not in SUPPORTED_FILTER_OPERATORS:
+            raise ValueError(
+                f"SEGMENT_FILTER_UNSUPPORTED_OPERATOR: '{operator}' is not supported. "
+                f"Allowed: {sorted(SUPPORTED_FILTER_OPERATORS)}"
+            )
+        if not reason:
+            raise ValueError(
+                f"SEGMENT_FILTER_REASON_REQUIRED: Rule for column '{column}' "
+                f"requires a non-empty 'reason'."
+            )
+        if operator not in ("is_null", "is_not_null") and value is None:
+            raise ValueError(
+                f"SEGMENT_FILTER_VALUE_REQUIRED: Rule for column '{column}' "
+                f"with operator '{operator}' requires a 'value'."
+            )

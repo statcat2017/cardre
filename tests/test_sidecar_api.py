@@ -1330,11 +1330,20 @@ class TestPhase4BranchingFlow:
         assert plan_after.status_code == 200
         base_branch_detail = client.get(f"/branches/{baseline_branch_id}?project_id={pid}")
         assert base_branch_detail.status_code == 200
-        # Baseline descendants should not be stale just because challenger ran
-        base_step_map = base_branch_detail.json()["steps"]
-        for s in base_step_map:
-            if s["canonical_step_id"] in ("manual-binning", "final-woe-iv", "logistic-regression"):
-                pass  # Baseline has its own independent runs
+        # The plan-level response shows staleness against full-plan (branch_id=NULL)
+        # evidence, not branch-scoped. Branch-specific evidence is verified via
+        # the branch run's own records and the comparison snapshot below.
+
+        # Second branch run should succeed (not false-stale on shared upstream)
+        run_branch2_resp = client.post("/runs", json={
+            "project_id": pid,
+            "plan_version_id": updated_pv_id,
+            "run_scope": "branch",
+            "branch_id": branch_id,
+        })
+        assert run_branch2_resp.status_code == 201, f"Second branch run failed: {run_branch2_resp.json()}"
+        br2_data = run_branch2_resp.json()
+        assert br2_data["status"] == "succeeded", f"Second branch run did not succeed: {br2_data}"
 
         # 12. Create comparison intent
         comp_resp = client.post("/branch-comparisons", json={
@@ -1379,11 +1388,17 @@ class TestPhase4BranchingFlow:
                 assert "model" in comp_content
                 assert "validation" in comp_content
                 assert "cutoff" in comp_content
-                # Assert sections exist and have correct structure
+                # Assert sections exist with baseline and challenger content
                 assert isinstance(comp_content["woe_iv"].get("variables"), list)
                 assert isinstance(comp_content["model"]["branch_level"], dict)
                 assert isinstance(comp_content["validation"]["roles"], dict)
                 assert isinstance(comp_content["cutoff"]["roles"], dict)
+                # Baseline and challenger should have entries
+                assert "baseline" in comp_content["model"]["branch_level"] or comp_content["model"]["branch_level"] != {}
+                for role_name in ("train", "test", "oot"):
+                    role_data = comp_content["validation"]["roles"].get(role_name, {})
+                    if role_data:
+                        assert "baseline" in role_data or branch_id in role_data
 
         # 15. Assign champion
         champ_resp = client.post(f"/plans/{plan_id}/champion", json={
@@ -1438,6 +1453,15 @@ class TestPhase4BranchingFlow:
                 f"Row-level artifact {art['artifact_id']} of type {art['artifact_type']} "
                 f"should not be in export when include_row_level_data=False"
             )
+
+        # Verify export includes shared-upstream run-step evidence
+        run_steps_file = export_path / "run_steps.json"
+        assert run_steps_file.exists()
+        exported_run_steps = json.loads(run_steps_file.read_text())
+        exported_step_ids = {rs["step_id"] for rs in exported_run_steps}
+        # Should have both branch-owned steps AND shared upstream steps
+        has_shared = any("import" in sid or "define-metadata" in sid for sid in exported_step_ids)
+        assert has_shared, f"Export should include shared-upstream run steps, got: {exported_step_ids}"
 
         # 19. Export with include_row_level_data=True to verify it includes datasets
         export_dest2 = tmp_dir / "phase4_e2e_export_full"

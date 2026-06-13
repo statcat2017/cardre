@@ -11,7 +11,7 @@ import json
 import uuid
 from typing import Any
 
-from cardre.audit import StepSpec, json_logical_hash, replace_step_params, utc_now_iso
+from cardre.audit import RunStepRecord, StepSpec, json_logical_hash, replace_step_params, utc_now_iso
 from cardre.executor import PlanExecutor
 from cardre.nodes import validate_manual_binning_overrides, apply_manual_binning_overrides
 from cardre.registry import NodeRegistry
@@ -258,8 +258,14 @@ class PlanService:
                 description=f"Updated params for {step_id}",
             )
 
-        staleness = self._executor.compute_staleness(self._store, new_pv_id)
-        stale_ids = [sid for sid, is_stale in staleness.items() if is_stale]
+        staleness = self._executor.compute_staleness(
+            self._store, new_pv_id,
+            branch_id=branch_id,
+        )
+        stale_ids = [
+            sid for sid, is_stale in staleness.items()
+            if is_stale and (not branch_id or any(s.branch_id == branch_id for s in new_steps if s.step_id == sid))
+        ]
 
         return UpdateStepParamsResponse(
             plan_id=plan_id,
@@ -564,6 +570,7 @@ class PlanService:
         self, plan_version_id: str, plan_id: str,
         fc_step_id: str = "fine-classing",
         vs_step_id: str = "variable-selection",
+        branch_id: str | None = None,
     ) -> tuple:
         """Return (fc_def, vs_def, fc_artifact_id, vs_artifact_id) on success
         or ((None, None, None, None), error_msg) on failure.
@@ -572,19 +579,29 @@ class PlanService:
         from the most recent successful run (falling back to any version).
 
         Supports both baseline (fine-classing) and branch-owned step IDs
-        (fine-classing__br_xxx).
+        (fine-classing__br_xxx). When branch_id is provided and the step
+        is branch-owned, uses branch-scoped evidence.
         """
-        run_id = self._store.get_latest_successful_run_id(plan_version_id)
-        if run_id is None:
-            run_id = self._store.get_latest_successful_run_id_for_plan(plan_id)
-        if run_id is None:
-            return (None, None, None, None), "Run fine-classing and variable-selection before editing manual bins."
+        def _find_run_step(step_id: str) -> RunStepRecord | None:
+            if branch_id and "__" in step_id:
+                rs = self._store.get_latest_successful_run_step_for_step(
+                    plan_version_id, step_id, branch_id=branch_id,
+                )
+                if rs is not None:
+                    return rs
+            # Fall back to full-plan evidence
+            run_id = self._store.get_latest_successful_run_id(plan_version_id)
+            if run_id is None:
+                run_id = self._store.get_latest_successful_run_id_for_plan(plan_id)
+            if run_id is None:
+                return None
+            for rs in self._store.get_run_steps(run_id):
+                if rs.step_id == step_id and rs.status == "succeeded":
+                    return rs
+            return None
 
-        run_steps = self._store.get_run_steps(run_id)
-        rs_by_step = {rs.step_id: rs for rs in run_steps}
-
-        fc_rs = rs_by_step.get(fc_step_id)
-        vs_rs = rs_by_step.get(vs_step_id)
+        fc_rs = _find_run_step(fc_step_id)
+        vs_rs = _find_run_step(vs_step_id)
         if fc_rs is None or vs_rs is None:
             return (None, None, None, None), "Run fine-classing and variable-selection before editing manual bins."
 

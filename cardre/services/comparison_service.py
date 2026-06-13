@@ -114,10 +114,15 @@ def _build_comparison_content(
     step_map_b = store.get_branch_step_map(branch_id_baseline, plan_version_id_baseline)
     step_map_c = store.get_branch_step_map(branch_id_challenger, plan_version_id_challenger)
 
-    def _find_artifact(step_map: list[dict], cs: str, pv_id: str, b_id: str) -> dict[str, Any] | None:
+    def _find_artifact(step_map: list[dict], cs: str, pv_id: str, evidence_branch_id: str | None) -> dict[str, Any] | None:
+        """Find the JSON artifact for a canonical step, using evidence_branch_id
+        for branch-scoped lookup or None for full-plan (baseline) evidence."""
         for row in step_map:
             if row["canonical_step_id"] == cs:
-                rs = store.get_latest_successful_run_step_for_step(pv_id, row["step_id"], branch_id=b_id)
+                rs = store.get_latest_successful_run_step_for_step(pv_id, row["step_id"], branch_id=evidence_branch_id)
+                if rs is None and evidence_branch_id is not None:
+                    # Fall back to full-plan evidence for challenger shared upstreams
+                    rs = store.get_latest_successful_run_step_for_step(pv_id, row["step_id"], branch_id=None)
                 if rs and rs.output_artifact_ids:
                     for aid in rs.output_artifact_ids:
                         art = store.get_artifact(aid)
@@ -127,11 +132,17 @@ def _build_comparison_content(
                                 return result
         return None
 
-    woe_b = _find_artifact(step_map_b, "final-woe-iv", plan_version_id_baseline, branch_id_baseline) if spec.get("include_woe_iv") else None
+    woe_b = _find_artifact(step_map_b, "final-woe-iv", plan_version_id_baseline, None) if spec.get("include_woe_iv") else None
     woe_c = _find_artifact(step_map_c, "final-woe-iv", plan_version_id_challenger, branch_id_challenger) if spec.get("include_woe_iv") else None
     if woe_b and woe_c:
-        b_vars = {v.get("variable"): v for v in woe_b.get("variables", [])}
-        c_vars = {v.get("variable"): v for v in woe_c.get("variables", [])}
+        b_vars = {}
+        c_vars = {}
+        for v in woe_b.get("variables", []):
+            if isinstance(v, dict) and "variable" in v:
+                b_vars[v["variable"]] = v
+        for v in woe_c.get("variables", []):
+            if isinstance(v, dict) and "variable" in v:
+                c_vars[v["variable"]] = v
         all_vars = sorted(set(b_vars) | set(c_vars))
         woe_vars = []
         for var_name in all_vars:
@@ -162,11 +173,19 @@ def _build_comparison_content(
             })
         content["woe_iv"]["variables"] = woe_vars
 
-    lr_b = _find_artifact(step_map_b, "logistic-regression", plan_version_id_baseline, branch_id_baseline) if spec.get("include_model") else None
+    lr_b = _find_artifact(step_map_b, "logistic-regression", plan_version_id_baseline, None) if spec.get("include_model") else None
     lr_c = _find_artifact(step_map_c, "logistic-regression", plan_version_id_challenger, branch_id_challenger) if spec.get("include_model") else None
     if lr_b and lr_c:
-        b_coeffs = {c.get("variable"): c for c in lr_b.get("coefficients", [])}
-        c_coeffs = {c.get("variable"): c for c in lr_c.get("coefficients", [])}
+        b_coeffs_raw = lr_b.get("coefficients", [])
+        c_coeffs_raw = lr_c.get("coefficients", [])
+        b_coeffs = {}
+        c_coeffs = {}
+        for c in b_coeffs_raw:
+            if isinstance(c, dict) and "variable" in c:
+                b_coeffs[c["variable"]] = c
+        for c in c_coeffs_raw:
+            if isinstance(c, dict) and "variable" in c:
+                c_coeffs[c["variable"]] = c
         model_vars = []
         for var_name in sorted(set(b_coeffs) | set(c_coeffs)):
             model_vars.append({
@@ -175,25 +194,33 @@ def _build_comparison_content(
                 "challengers": {branch_id_challenger: {"included": var_name in c_coeffs, "coefficient": c_coeffs.get(var_name, {}).get("coefficient", 0), "points_range": 0}},
             })
         content["model"]["variables"] = model_vars
-        content["model"]["branch_level"]["baseline"] = {"feature_count": len(b_coeffs), "converged": lr_b.get("converged", True), "warnings": lr_b.get("warnings", [])}
-        content["model"]["branch_level"][branch_id_challenger] = {"feature_count": len(c_coeffs), "converged": lr_c.get("converged", True), "warnings": lr_c.get("warnings", [])}
+        content["model"]["branch_level"]["baseline"] = {
+            "feature_count": len(b_coeffs),
+            "converged": bool(lr_b.get("converged", True)) if isinstance(lr_b, dict) else False,
+            "warnings": lr_b.get("warnings", []) if isinstance(lr_b, dict) else [],
+        }
+        content["model"]["branch_level"][branch_id_challenger] = {
+            "feature_count": len(c_coeffs),
+            "converged": bool(lr_c.get("converged", True)) if isinstance(lr_c, dict) else False,
+            "warnings": lr_c.get("warnings", []) if isinstance(lr_c, dict) else [],
+        }
 
     # Validation metrics by role
     if spec.get("include_validation"):
-        vm_b = _find_artifact(step_map_b, "validation-metrics", plan_version_id_baseline, branch_id_baseline)
+        vm_b = _find_artifact(step_map_b, "validation-metrics", plan_version_id_baseline, None)
         vm_c = _find_artifact(step_map_c, "validation-metrics", plan_version_id_challenger, branch_id_challenger)
         for role_name in ("train", "test", "oot"):
-            b_role = (vm_b or {}).get(role_name, {}) if vm_b else {}
-            c_role = (vm_c or {}).get(role_name, {}) if vm_c else {}
+            b_role = vm_b.get(role_name, {}) if isinstance(vm_b, dict) else {}
+            c_role = vm_c.get(role_name, {}) if isinstance(vm_c, dict) else {}
             role_data = {}
-            if b_role:
+            if b_role and isinstance(b_role, dict):
                 role_data["baseline"] = {
                     "auc": b_role.get("auc"),
                     "gini": b_role.get("gini"),
                     "ks": b_role.get("ks"),
                     "calibration": b_role.get("calibration", {}),
                 }
-            if c_role:
+            if c_role and isinstance(c_role, dict):
                 role_data[branch_id_challenger] = {
                     "auc": c_role.get("auc"),
                     "gini": c_role.get("gini"),
@@ -204,15 +231,15 @@ def _build_comparison_content(
 
     # Cutoff comparison
     if spec.get("include_cutoff"):
-        co_b = _find_artifact(step_map_b, "cutoff-analysis", plan_version_id_baseline, branch_id_baseline)
+        co_b = _find_artifact(step_map_b, "cutoff-analysis", plan_version_id_baseline, None)
         co_c = _find_artifact(step_map_c, "cutoff-analysis", plan_version_id_challenger, branch_id_challenger)
         for role_name in ("train", "test", "oot"):
             b_bands = []
-            if co_b:
-                b_bands = (co_b.get(role_name) or co_b.get("bands") or []) if isinstance(co_b, dict) else []
+            if isinstance(co_b, dict):
+                b_bands = co_b.get(role_name) or co_b.get("bands") or []
             c_bands = []
-            if co_c:
-                c_bands = (co_c.get(role_name) or co_c.get("bands") or []) if isinstance(co_c, dict) else []
+            if isinstance(co_c, dict):
+                c_bands = co_c.get(role_name) or co_c.get("bands") or []
 
             # Pair up bands by cutoff value
             b_by_cutoff = {b.get("cutoff"): b for b in b_bands if isinstance(b, dict)}
