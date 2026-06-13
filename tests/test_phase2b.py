@@ -151,7 +151,7 @@ class WoeTransformTrainTests(unittest.TestCase):
         node = WoeTransformTrainNode()
         output = node.run(ctx)
 
-        self.assertEqual(len(output.artifacts), 1)
+        self.assertEqual(len(output.artifacts), 2)
         transformed = pl.read_parquet(store.artifact_path(output.artifacts[0]))
         self.assertIn("var1_woe", transformed.columns)
         self.assertEqual(transformed.height, 4)
@@ -379,8 +379,20 @@ class ScoreScalingTests(unittest.TestCase):
         self.assertGreater(scorecard["base_points"], 0)
 
         factor = 20 / math.log(2)
-        expected_base = round(600 - factor * math.log(50) + factor * (-0.5), 2)
+        offset = 600 - factor * math.log(50)
+        intercept = -0.5
+        direction = -1.0  # higher_score_is_lower_risk=True
+        # base_points = offset + direction * factor * intercept
+        expected_base = round(offset + direction * factor * intercept, 2)
         self.assertAlmostEqual(scorecard["base_points"], expected_base, delta=0.1)
+
+        # Parity: score for any row should equal offset + direction * factor * (intercept + sum(coef * woe))
+        coef_x = 0.8
+        woe_low = 0.3
+        expected_score_low = round(offset + direction * factor * (intercept + coef_x * woe_low), 2)
+        attr_low = next(a for a in scorecard["attributes"] if a["bin_id"] == "x_b1")
+        computed_score = scorecard["base_points"] + attr_low["points"]
+        self.assertAlmostEqual(computed_score, expected_score_low, delta=0.1)
 
     def test_score_scaling_validation(self) -> None:
         store, tmp = make_store()
