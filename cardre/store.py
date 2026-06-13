@@ -549,6 +549,24 @@ class ProjectStore:
         ).fetchone()
         return None if row is None else row["run_id"]
 
+    def get_latest_successful_run_id_for_plan(self, plan_id: str) -> str | None:
+        """Return the most recent successful run_id across all versions of a plan."""
+        row = self._connect().execute(
+            "SELECT r.run_id FROM runs r "
+            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
+            "WHERE pv.plan_id = ? AND r.status = 'succeeded' "
+            "ORDER BY r.started_at DESC LIMIT 1",
+            (plan_id,),
+        ).fetchone()
+        return None if row is None else row["run_id"]
+
+    def get_plan_id_for_version(self, plan_version_id: str) -> str | None:
+        row = self._connect().execute(
+            "SELECT plan_id FROM plan_versions WHERE plan_version_id = ?",
+            (plan_version_id,),
+        ).fetchone()
+        return None if row is None else row["plan_id"]
+
     def list_runs(self, plan_version_id: str | None = None) -> list[JsonDict]:
         if plan_version_id is not None:
             rows = self._connect().execute(

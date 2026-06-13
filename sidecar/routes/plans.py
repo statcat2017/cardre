@@ -1,25 +1,19 @@
 """Plan endpoints — step status, staleness, param updates, and manual binning editor."""
+
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from cardre.executor import PlanExecutor
-from cardre.nodes import validate_manual_binning_overrides, apply_manual_binning_overrides
-from cardre.registry import NodeRegistry
+from cardre.services import PlanService
 from sidecar.models import (
     PlanResponse,
-    StepStatusItem,
     UpdateStepParamsRequest,
     UpdateStepParamsResponse,
     ManualBinningEditorStateResponse,
-    ManualBinningSourceInfo,
     ManualBinningPreviewResponse,
     ManualBinningPreviewRequest,
-    PreviewDiagnostics,
 )
 from sidecar.routes.projects import _load_registry
 
@@ -28,6 +22,7 @@ router = APIRouter(prefix="/plans", tags=["plans"])
 
 def _get_store(project_path: str):
     from cardre.store import ProjectStore
+
     return ProjectStore(Path(project_path))
 
 
@@ -37,78 +32,14 @@ def get_plan(plan_id: str, project_id: str | None = None):
     if project_id is None:
         for pid, entry in registry.items():
             store = _get_store(entry["path"])
-            plan = store.get_plan(plan_id)
-            if plan is not None:
+            if store.get_plan(plan_id) is not None:
                 project_id = pid
                 break
     if project_id is None or project_id not in registry:
         raise HTTPException(status_code=404, detail={"code": "PLAN_NOT_FOUND", "message": f"No plan with ID {plan_id}"})
 
-    entry = registry[project_id]
-    store = _get_store(entry["path"])
-    plan = store.get_plan(plan_id)
-    latest_pv_id = store.get_latest_plan_version_id(plan_id)
-    if latest_pv_id is None:
-        raise HTTPException(status_code=404, detail={"code": "NO_VERSION", "message": "Plan has no versions"})
-
-    steps = store.get_plan_version_steps(latest_pv_id)
-
-    executor = PlanExecutor(NodeRegistry.with_defaults())
-    staleness = executor.compute_staleness(store, latest_pv_id)
-
-    # Build run_steps_map from current version's runs
-    run_steps_map: dict[str, Any] = {}
-    all_runs = store.list_runs(latest_pv_id)
-    if all_runs:
-        latest_run_id = all_runs[0]["run_id"]
-        for rs in store.get_run_steps(latest_run_id):
-            run_steps_map[rs.step_id] = rs
-
-    # Fallback: when the current version has no runs, use the most recent
-    # successful run from any version of this plan for non-stale steps.
-    # This keeps status consistent with staleness: if step params haven't
-    # changed and upstream hasn't changed, the previous run evidence is
-    # still meaningful.
-    fallback_run_steps_map: dict[str, Any] = {}
-    if not all_runs:
-        pv = store.get_plan_version(latest_pv_id)
-        if pv is not None:
-            conn = store._connect()
-            row = conn.execute(
-                "SELECT r.run_id FROM runs r "
-                "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-                "WHERE pv.plan_id = ? AND r.status = 'succeeded' "
-                "ORDER BY r.started_at DESC LIMIT 1",
-                (pv["plan_id"],),
-            ).fetchone()
-            if row is not None:
-                for rs in store.get_run_steps(row["run_id"]):
-                    fallback_run_steps_map[rs.step_id] = rs
-
-    step_items = []
-    for s in steps:
-        is_stale = staleness.get(s.step_id, True)
-        rs = run_steps_map.get(s.step_id)
-        if rs is None and not is_stale:
-            rs = fallback_run_steps_map.get(s.step_id)
-        status = rs.status if rs else "not_run"
-        step_items.append(StepStatusItem(
-            step_id=s.step_id,
-            node_type=s.node_type,
-            category=s.category,
-            status=status,
-            is_stale=is_stale,
-            position=s.position,
-            params=s.params,
-        ))
-
-    return PlanResponse(
-        plan_id=plan_id,
-        project_id=project_id,
-        name=plan["name"],
-        latest_version_id=latest_pv_id,
-        steps=step_items,
-    )
+    store = _get_store(registry[project_id]["path"])
+    return PlanService(store).get_plan_with_status(plan_id, project_id)
 
 
 @router.post("/{plan_id}/steps/{step_id}/params", response_model=UpdateStepParamsResponse)
@@ -119,88 +50,7 @@ def update_step_params(plan_id: str, step_id: str, req: UpdateStepParamsRequest)
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {req.project_id}"})
 
     store = _get_store(entry["path"])
-    plan = store.get_plan(plan_id)
-    if plan is None:
-        raise HTTPException(status_code=404, detail={"code": "PLAN_NOT_FOUND", "message": f"No plan with ID {plan_id}"})
-
-    latest_pv_id = store.get_latest_plan_version_id(plan_id)
-    if latest_pv_id is None:
-        raise HTTPException(status_code=404, detail={"code": "NO_VERSION", "message": "Plan has no versions"})
-
-    # P1#1: Optimistic concurrency — reject stale base_plan_version_id
-    if req.base_plan_version_id != latest_pv_id:
-        raise HTTPException(status_code=409, detail={
-            "code": "STALE_VERSION",
-            "message": "Plan version has changed since your last read. Refresh and retry.",
-            "latest_version_id": latest_pv_id,
-        })
-
-    steps = store.get_plan_version_steps(latest_pv_id)
-    target_step = None
-    for s in steps:
-        if s.step_id == step_id:
-            target_step = s
-            break
-
-    if target_step is None:
-        raise HTTPException(status_code=404, detail={"code": "STEP_NOT_FOUND", "message": f"No step {step_id} in plan {plan_id}"})
-
-    # P1#2: Validate params against the node's schema before persisting
-    new_params = dict(req.params)
-    try:
-        node = NodeRegistry.with_defaults().instantiate(target_step.node_type)
-        validation_errors = node.validate_params(new_params)
-        if validation_errors:
-            raise HTTPException(status_code=422, detail={
-                "code": "PARAMS_VALIDATION_FAILED",
-                "message": "; ".join(validation_errors),
-            })
-    except KeyError:
-        pass
-
-    # Blocker PR#7.2: For manual-binning, validate overrides against
-    # fine-classing source bins + adjacency before saving
-    if step_id == "manual-binning":
-        overrides = list(new_params.get("overrides", []))
-        if overrides:
-            _validate_manual_binning_overrides(store, plan_id, latest_pv_id, overrides)
-
-    from cardre.audit import json_logical_hash, StepSpec
-
-    new_steps = []
-    for s in steps:
-        if s.step_id == step_id:
-            new_steps.append(StepSpec(
-                step_id=s.step_id,
-                node_type=s.node_type,
-                node_version=s.node_version,
-                category=s.category,
-                params=new_params,
-                params_hash=json_logical_hash(new_params),
-                parent_step_ids=s.parent_step_ids,
-                branch_label=s.branch_label,
-                position=s.position,
-            ))
-        else:
-            new_steps.append(s)
-
-    new_pv_id = store.create_plan_version(
-        plan_id=plan_id,
-        steps=new_steps,
-        description=f"Updated params for {step_id}",
-    )
-
-    executor = PlanExecutor(NodeRegistry.with_defaults())
-    staleness = executor.compute_staleness(store, new_pv_id)
-
-    stale_ids = [sid for sid, is_stale in staleness.items() if is_stale]
-
-    return UpdateStepParamsResponse(
-        plan_id=plan_id,
-        new_plan_version_id=new_pv_id,
-        changed_step_id=step_id,
-        stale_step_ids=stale_ids,
-    )
+    return PlanService(store).update_params(plan_id, step_id, req.base_plan_version_id, dict(req.params))
 
 
 @router.get("/{plan_id}/steps/manual-binning/editor-state", response_model=ManualBinningEditorStateResponse)
@@ -211,154 +61,7 @@ def get_manual_binning_editor_state(plan_id: str, project_id: str):
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
 
     store = _get_store(entry["path"])
-    plan = store.get_plan(plan_id)
-    if plan is None:
-        raise HTTPException(status_code=404, detail={"code": "PLAN_NOT_FOUND", "message": f"No plan with ID {plan_id}"})
-
-    latest_pv_id = store.get_latest_plan_version_id(plan_id)
-    if latest_pv_id is None:
-        raise HTTPException(status_code=404, detail={"code": "NO_VERSION", "message": "Plan has no versions"})
-
-    steps = store.get_plan_version_steps(latest_pv_id)
-
-    mb_spec = None
-    for s in steps:
-        if s.step_id == "manual-binning":
-            mb_spec = s
-            break
-
-    if mb_spec is None:
-        return ManualBinningEditorStateResponse(
-            plan_id=plan_id,
-            plan_version_id=latest_pv_id,
-            ready=False,
-            blocked_reason="Manual binning step not found in this plan.",
-        )
-
-    executor = PlanExecutor(NodeRegistry.with_defaults())
-    ancestors = executor.find_ancestors("manual-binning", steps)
-    if "fine-classing" not in ancestors:
-        return ManualBinningEditorStateResponse(
-            plan_id=plan_id,
-            plan_version_id=latest_pv_id,
-            ready=False,
-            blocked_reason="Fine-classing step is not an ancestor of manual-binning.",
-            required_steps=["fine-classing"],
-        )
-
-    if "variable-selection" not in mb_spec.parent_step_ids:
-        return ManualBinningEditorStateResponse(
-            plan_id=plan_id,
-            plan_version_id=latest_pv_id,
-            ready=False,
-            blocked_reason="Variable-selection is not a direct parent of manual-binning.",
-            required_steps=["variable-selection"],
-        )
-
-    staleness = executor.compute_staleness(store, latest_pv_id)
-    fc_stale = staleness.get("fine-classing", True)
-    vs_stale = staleness.get("variable-selection", True)
-
-    if fc_stale or vs_stale:
-        blocked = []
-        if fc_stale:
-            blocked.append("fine-classing")
-        if vs_stale:
-            blocked.append("variable-selection")
-        return ManualBinningEditorStateResponse(
-            plan_id=plan_id,
-            plan_version_id=latest_pv_id,
-            ready=False,
-            blocked_reason=f"Upstream steps stale: {', '.join(blocked)}. Run the pathway to refresh.",
-            required_steps=blocked,
-        )
-
-    run_id = store.get_latest_successful_run_id(latest_pv_id)
-    if run_id is None:
-        return ManualBinningEditorStateResponse(
-            plan_id=plan_id,
-            plan_version_id=latest_pv_id,
-            ready=False,
-            blocked_reason="Run the pathway before editing manual bins.",
-            required_steps=["fine-classing", "variable-selection"],
-        )
-
-    run_steps = store.get_run_steps(run_id)
-    rs_by_step = {rs.step_id: rs for rs in run_steps}
-
-    fc_rs = rs_by_step.get("fine-classing")
-    vs_rs = rs_by_step.get("variable-selection")
-    if fc_rs is None or vs_rs is None:
-        return ManualBinningEditorStateResponse(
-            plan_id=plan_id,
-            plan_version_id=latest_pv_id,
-            ready=False,
-            blocked_reason="Run fine-classing and variable-selection before editing manual bins.",
-            required_steps=["fine-classing", "variable-selection"],
-        )
-
-    fc_artifact_id = fc_rs.output_artifact_ids[0] if fc_rs.output_artifact_ids else None
-    vs_artifact_id = vs_rs.output_artifact_ids[0] if vs_rs.output_artifact_ids else None
-
-    if fc_artifact_id is None or vs_artifact_id is None:
-        return ManualBinningEditorStateResponse(
-            plan_id=plan_id,
-            plan_version_id=latest_pv_id,
-            ready=False,
-            blocked_reason="Fine-classing or variable-selection produced no output artifacts.",
-        )
-
-    fc_artifact = store.get_artifact(fc_artifact_id)
-    vs_artifact = store.get_artifact(vs_artifact_id)
-    if fc_artifact is None or vs_artifact is None:
-        return ManualBinningEditorStateResponse(
-            plan_id=plan_id,
-            plan_version_id=latest_pv_id,
-            ready=False,
-            blocked_reason="Fine-classing or variable-selection artifacts not found.",
-        )
-
-    try:
-        fc_def = json.loads(store.artifact_path(fc_artifact).read_text())
-        vs_def = json.loads(store.artifact_path(vs_artifact).read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
-        return ManualBinningEditorStateResponse(
-            plan_id=plan_id,
-            plan_version_id=latest_pv_id,
-            ready=False,
-            blocked_reason="Could not read fine-classing or variable-selection artifact contents.",
-        )
-
-    selected_vars = [s["variable"] for s in vs_def.get("selected", [])]
-
-    source_bins = {}
-    for v in fc_def.get("variables", []):
-        if v["variable"] in selected_vars:
-            source_bins[v["variable"]] = v
-
-    current_overrides = mb_spec.params.get("overrides", [])
-
-    warnings = []
-    if not selected_vars:
-        warnings.append({"message": "No variables selected by variable selection."})
-    if not source_bins:
-        warnings.append({"message": "No source bins found for selected variables from fine-classing."})
-
-    return ManualBinningEditorStateResponse(
-        plan_id=plan_id,
-        plan_version_id=latest_pv_id,
-        ready=True,
-        source=ManualBinningSourceInfo(
-            fine_classing_step_id="fine-classing",
-            fine_classing_artifact_id=fc_artifact_id,
-            variable_selection_step_id="variable-selection",
-            variable_selection_artifact_id=vs_artifact_id,
-        ),
-        selected_variables=selected_vars,
-        source_bins_by_variable=source_bins,
-        current_overrides=current_overrides,
-        warnings=warnings,
-    )
+    return PlanService(store).get_manual_binning_editor_state(plan_id)
 
 
 @router.post("/{plan_id}/steps/manual-binning/preview", response_model=ManualBinningPreviewResponse)
@@ -369,180 +72,5 @@ def preview_manual_binning_overrides(plan_id: str, req: ManualBinningPreviewRequ
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {req.project_id}"})
 
     store = _get_store(entry["path"])
-    plan = store.get_plan(plan_id)
-    if plan is None:
-        raise HTTPException(status_code=404, detail={"code": "PLAN_NOT_FOUND", "message": f"No plan with ID {plan_id}"})
+    return PlanService(store).preview_manual_binning(plan_id, req.plan_version_id, req.overrides)
 
-    # P2#6: Verify plan_version_id belongs to plan_id
-    pv = store.get_plan_version(req.plan_version_id)
-    if pv is None or pv["plan_id"] != plan_id:
-        raise HTTPException(status_code=400, detail={
-            "code": "VERSION_NOT_IN_PLAN",
-            "message": "Provided plan_version_id does not belong to this plan.",
-        })
-
-    steps = store.get_plan_version_steps(req.plan_version_id)
-
-    executor = PlanExecutor(NodeRegistry.with_defaults())
-    run_id = store.get_latest_successful_run_id(req.plan_version_id)
-    if run_id is None:
-        return ManualBinningPreviewResponse(
-            valid=False,
-            diagnostics=PreviewDiagnostics(
-                override_count=0,
-                warnings=["No successful run exists for this plan version."],
-            ),
-        )
-
-    run_steps = store.get_run_steps(run_id)
-    rs_by_step = {rs.step_id: rs for rs in run_steps}
-
-    fc_rs = rs_by_step.get("fine-classing")
-    vs_rs = rs_by_step.get("variable-selection")
-    if fc_rs is None or vs_rs is None:
-        return ManualBinningPreviewResponse(
-            valid=False,
-            diagnostics=PreviewDiagnostics(
-                override_count=0,
-                warnings=["Run fine-classing and variable-selection before previewing."],
-            ),
-        )
-
-    fc_artifact_id = fc_rs.output_artifact_ids[0] if fc_rs.output_artifact_ids else None
-    vs_artifact_id = vs_rs.output_artifact_ids[0] if vs_rs.output_artifact_ids else None
-    if fc_artifact_id is None or vs_artifact_id is None:
-        return ManualBinningPreviewResponse(
-            valid=False,
-            diagnostics=PreviewDiagnostics(
-                override_count=0,
-                warnings=["Fine-classing or variable-selection artifacts not found."],
-            ),
-        )
-
-    fc_artifact = store.get_artifact(fc_artifact_id)
-    vs_artifact = store.get_artifact(vs_artifact_id)
-    if fc_artifact is None or vs_artifact is None:
-        return ManualBinningPreviewResponse(
-            valid=False,
-            diagnostics=PreviewDiagnostics(
-                override_count=0,
-                warnings=["Fine-classing or variable-selection artifacts not found."],
-            ),
-        )
-
-    try:
-        fc_def = json.loads(store.artifact_path(fc_artifact).read_text())
-        vs_def = json.loads(store.artifact_path(vs_artifact).read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
-        return ManualBinningPreviewResponse(
-            valid=False,
-            diagnostics=PreviewDiagnostics(
-                override_count=0,
-                warnings=["Could not read artifact contents."],
-            ),
-        )
-
-    selected_vars = {s["variable"] for s in vs_def.get("selected", [])}
-
-    validation_warnings = validate_manual_binning_overrides(fc_def, req.overrides)
-    if validation_warnings:
-        return ManualBinningPreviewResponse(
-            valid=False,
-            diagnostics=PreviewDiagnostics(
-                override_count=len(req.overrides),
-                warnings=validation_warnings,
-            ),
-        )
-
-    refined = apply_manual_binning_overrides(fc_def, req.overrides, selected_vars)
-
-    refined_by_var: dict[str, Any] = {}
-    for v in refined.get("variables", []):
-        refined_by_var[v["variable"]] = v
-
-    return ManualBinningPreviewResponse(
-        valid=True,
-        refined_bins_by_variable=refined_by_var,
-        diagnostics=PreviewDiagnostics(
-            override_count=len(req.overrides),
-            warnings=[],
-        ),
-    )
-
-
-def _validate_manual_binning_overrides(
-    store, plan_id: str, plan_version_id: str, overrides: list[dict],
-) -> None:
-    """Validate manual-binning overrides against upstream artefact evidence.
-
-    Raises ``HTTPException(422)`` if any override references an unknown
-    variable, missing bin ID, or non-adjacent numeric merge.
-    """
-    if not overrides:
-        return
-
-    from cardre.executor import PlanExecutor
-    from cardre.registry import NodeRegistry
-
-    executor = PlanExecutor(NodeRegistry.with_defaults())
-
-    # Try current version first, then any successful run from the plan
-    run_id = store.get_latest_successful_run_id(plan_version_id)
-    if run_id is None:
-        pv = store.get_plan_version(plan_version_id)
-        if pv is not None:
-            conn = store._connect()
-            row = conn.execute(
-                "SELECT r.run_id FROM runs r "
-                "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-                "WHERE pv.plan_id = ? AND r.status = 'succeeded' "
-                "ORDER BY r.started_at DESC LIMIT 1",
-                (pv["plan_id"],),
-            ).fetchone()
-            if row is not None:
-                run_id = row["run_id"]
-    if run_id is None:
-        raise HTTPException(status_code=422, detail={
-            "code": "PARAMS_VALIDATION_FAILED",
-            "message": "Run fine-classing and variable-selection before saving manual binning overrides.",
-        })
-
-    run_steps = store.get_run_steps(run_id)
-    rs_by_step = {rs.step_id: rs for rs in run_steps}
-
-    fc_rs = rs_by_step.get("fine-classing")
-    vs_rs = rs_by_step.get("variable-selection")
-    if fc_rs is None or vs_rs is None:
-        raise HTTPException(status_code=422, detail={
-            "code": "PARAMS_VALIDATION_FAILED",
-            "message": "Run fine-classing and variable-selection before saving manual binning overrides.",
-        })
-
-    fc_aid = fc_rs.output_artifact_ids[0] if fc_rs.output_artifact_ids else None
-    if fc_aid is None:
-        raise HTTPException(status_code=422, detail={
-            "code": "PARAMS_VALIDATION_FAILED",
-            "message": "Fine-classing produced no output artifact. Run the pathway first.",
-        })
-
-    fc_art = store.get_artifact(fc_aid)
-    if fc_art is None:
-        raise HTTPException(status_code=422, detail={
-            "code": "PARAMS_VALIDATION_FAILED",
-            "message": "Fine-classing artifact not found. Run the pathway first.",
-        })
-
-    try:
-        fc_def = json.loads(store.artifact_path(fc_art).read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
-        raise HTTPException(status_code=422, detail={
-            "code": "PARAMS_VALIDATION_FAILED",
-            "message": "Could not read fine-classing artifact. Run the pathway first.",
-        })
-
-    errors = validate_manual_binning_overrides(fc_def, overrides)
-    if errors:
-        raise HTTPException(status_code=422, detail={
-            "code": "PARAMS_VALIDATION_FAILED",
-            "message": "; ".join(errors),
-        })

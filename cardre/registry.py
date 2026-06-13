@@ -6,8 +6,6 @@ input/output roles, params schema, and an executable run method.
 
 from __future__ import annotations
 
-from typing import Any
-
 from cardre.audit import ExecutionContext, NodeOutput, NodeType
 
 

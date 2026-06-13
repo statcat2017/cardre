@@ -22,6 +22,7 @@ from cardre.audit import (
     RunStepRecord,
     StepSpec,
     json_logical_hash,
+    replace_step_params,
     utc_now_iso,
 )
 from cardre.registry import NodeRegistry
@@ -179,12 +180,7 @@ class PlanExecutor:
             recorded_input_logical_hashes = [a.logical_hash for a in input_artifacts]
             recorded_parent_run_step_ids = [rs.run_step_id for rs in parent_run_steps]
 
-            # Build parent output hashes from whatever was resolved
-            parent_outputs: dict[str, list[str]] = {}
-            for rs in parent_run_steps:
-                parent_outputs[rs.step_id] = rs.execution_fingerprint.get(
-                    "output_artifact_logical_hashes", []
-                )
+            parent_outputs = _build_parent_output_hashes(parent_run_steps)
 
             output = NodeOutput(
                 artifacts=[],
@@ -348,17 +344,7 @@ class PlanExecutor:
         fp["input_artifact_logical_hashes"] = [a.logical_hash for a in input_artifacts]
         fp["output_artifact_logical_hashes"] = [a.logical_hash for a in output.artifacts]
 
-        # Store parent output logical hashes keyed by parent step_id
-        # for staleness comparison
-        parent_outputs: dict[str, list[str]] = {}
-        for rs in parent_run_steps:
-            parent_outputs[rs.step_id] = rs.execution_fingerprint.get(
-                "output_artifact_logical_hashes", []
-            )
-        fp["parent_output_logical_hashes_by_step"] = parent_outputs
-
-        fp["python_version"] = sys.version.split()[0]
-        fp["cardre_version"] = "0.1.0"
+        fp["parent_output_logical_hashes_by_step"] = _build_parent_output_hashes(parent_run_steps)
         return output
 
     def _resolve_output_artifacts(
@@ -433,19 +419,7 @@ class PlanExecutor:
         if run_id is None:
             pv = store.get_plan_version(plan_version_id)
             if pv is not None:
-                conn = store._connect()
-                row = conn.execute(
-                    """
-                    SELECT r.run_id FROM runs r
-                    JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id
-                    WHERE pv.plan_id = ? AND r.status = 'succeeded'
-                    ORDER BY r.started_at DESC
-                    LIMIT 1
-                    """,
-                    (pv["plan_id"],),
-                ).fetchone()
-                if row is not None:
-                    run_id = row["run_id"]
+                run_id = store.get_latest_successful_run_id_for_plan(pv["plan_id"])
 
             if run_id is None:
                 return {s.step_id: True for s in steps}
@@ -561,21 +535,7 @@ class PlanExecutor:
         all_step_ids = {s.step_id for s in previous_steps}
         affected = self._descendants(changed_step_id, previous_steps)
 
-        new_steps = [
-            StepSpec(
-                step_id=s.step_id,
-                node_type=s.node_type,
-                node_version=s.node_version,
-                category=s.category,
-                params=new_params if s.step_id == changed_step_id else s.params,
-                params_hash=json_logical_hash(new_params) if s.step_id == changed_step_id else s.params_hash,
-                parent_step_ids=s.parent_step_ids,
-                branch_label=s.branch_label,
-                position=s.position,
-            )
-            if s.step_id == changed_step_id else s
-            for s in previous_steps
-        ]
+        new_steps = replace_step_params(previous_steps, changed_step_id, new_params)
 
         new_plan_version_id = store.create_plan_version(
             plan_id=plan_id,
@@ -689,3 +649,12 @@ class RoleAccessError(ValueError):
 
 def _output_logical_hashes(rs: RunStepRecord) -> list[str]:
     return rs.execution_fingerprint.get("output_artifact_logical_hashes", [])
+
+
+def _build_parent_output_hashes(
+    parent_run_steps: list[RunStepRecord],
+) -> dict[str, list[str]]:
+    return {
+        rs.step_id: rs.execution_fingerprint.get("output_artifact_logical_hashes", [])
+        for rs in parent_run_steps
+    }

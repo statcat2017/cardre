@@ -6,22 +6,14 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from cardre.audit import StepSpec, json_logical_hash
+from cardre.audit import StepSpec, json_logical_hash, replace_step_params
 from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 from sidecar.models import ArtifactResponse, ImportDatasetRequest
-from sidecar.routes.projects import _load_registry
+from sidecar.routes.projects import _load_registry, _get_store_for_project
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
-
-
-def _get_store(project_id: str) -> ProjectStore:
-    registry = _load_registry()
-    entry = registry.get(project_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
-    return ProjectStore(Path(entry["path"]))
 
 
 def _update_plan_import_params(store: ProjectStore, project_id: str, source_path: str) -> None:
@@ -45,23 +37,8 @@ def _update_single_plan_import_params(store: ProjectStore, plan_id: str, source_
         return
 
     steps = store.get_plan_version_steps(latest_pv_id)
-    new_steps = []
-    for s in steps:
-        if s.step_id == "import":
-            params = {"source_path": str(Path(source_path).resolve())}
-            new_steps.append(StepSpec(
-                step_id=s.step_id,
-                node_type=s.node_type,
-                node_version=s.node_version,
-                category=s.category,
-                params=params,
-                params_hash=json_logical_hash(params),
-                parent_step_ids=s.parent_step_ids,
-                branch_label=s.branch_label,
-                position=s.position,
-            ))
-        else:
-            new_steps.append(s)
+    params = {"source_path": str(Path(source_path).resolve())}
+    new_steps = replace_step_params(steps, "import", params)
 
     store.create_plan_version(plan_id, new_steps, description="Import configured")
 
@@ -81,7 +58,7 @@ def import_dataset(body: ImportDatasetRequest):
     if not source.exists():
         raise HTTPException(status_code=400, detail={"code": "FILE_NOT_FOUND", "message": f"Source file not found: {source}"})
 
-    store = _get_store(body.project_id)
+    store = _get_store_for_project(body.project_id)
     proj = store.get_project(body.project_id)
     if proj is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found"})

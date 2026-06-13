@@ -199,6 +199,28 @@ class RunStepRecord:
     errors: list[JsonDict]
 
 
+def replace_step_params(
+    steps: list[StepSpec],
+    step_id: str,
+    new_params: JsonDict,
+) -> list[StepSpec]:
+    new_params_hash = json_logical_hash(new_params)
+    return [
+        StepSpec(
+            step_id=s.step_id,
+            node_type=s.node_type,
+            node_version=s.node_version,
+            category=s.category,
+            params=new_params if s.step_id == step_id else s.params,
+            params_hash=new_params_hash if s.step_id == step_id else s.params_hash,
+            parent_step_ids=s.parent_step_ids,
+            branch_label=s.branch_label,
+            position=s.position,
+        )
+        for s in steps
+    ]
+
+
 __all__ = [
     "ArtifactRef",
     "ExecutionContext",
@@ -211,6 +233,7 @@ __all__ = [
     "params_hash",
     "physical_hash",
     "relative_path",
+    "replace_step_params",
     "table_logical_hash",
     "utc_now_iso",
 ]

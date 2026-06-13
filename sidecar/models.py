@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -187,16 +186,8 @@ class ProjectRunsResponse(BaseModel):
 # Project Artifacts (Phase 3D)
 # ---------------------------------------------------------------------------
 
-class ArtifactListItem(BaseModel):
-    artifact_id: str
-    artifact_type: str
-    role: str
-    path: str
-    physical_hash: str
-    logical_hash: str
-    media_type: str
-    created_at: str
-    metadata: dict[str, Any]
+class ArtifactListItem(ArtifactResponse):
+    pass
 
 
 class ProjectArtifactsResponse(BaseModel):
