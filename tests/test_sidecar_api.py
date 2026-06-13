@@ -432,3 +432,775 @@ class TestFullRoundTrip:
         assert len(steps) > 0
         has_error = any(len(s.get("errors", [])) > 0 for s in steps)
         assert has_error, "Expected at least one step with structured error evidence"
+
+
+# ======================================================================
+# Project Plans Discovery
+# ======================================================================
+
+class TestProjectPlans:
+    def test_get_project_plans(self, client, tmp_dir):
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+
+        resp = client.get(f"/projects/{pid}/plans")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["project_id"] == pid
+        assert len(data["plans"]) >= 2
+
+        names = [p["name"] for p in data["plans"]]
+        assert "Scorecard Pathway" in names
+        assert "Proof Pathway" in names
+
+    def test_scorecard_is_default(self, client, tmp_dir):
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        resp = client.get(f"/projects/{proj['project_id']}/plans")
+        scorecard = [p for p in resp.json()["plans"] if p["name"] == "Scorecard Pathway"]
+        assert len(scorecard) == 1
+        assert scorecard[0]["is_default"] is True
+
+    def test_hidden_import_excluded(self, client, tmp_dir, sample_german_credit):
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+
+        client.post("/datasets/import", json={
+            "project_id": pid, "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+
+        resp = client.get(f"/projects/{pid}/plans")
+        names = [p["name"] for p in resp.json()["plans"]]
+        assert "__import__" not in names
+
+    def test_plans_have_latest_version_id(self, client, tmp_dir):
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        resp = client.get(f"/projects/{proj['project_id']}/plans")
+        for plan in resp.json()["plans"]:
+            assert plan["latest_version_id"] is not None
+            assert len(plan["latest_version_id"]) > 0
+
+    def test_project_not_found(self, client):
+        resp = client.get("/projects/nonexistent/plans")
+        assert resp.status_code == 404
+
+
+# ======================================================================
+# Manifest Ordering
+# ======================================================================
+
+class TestManifestOrdering:
+    def test_scorecard_pathway_has_manifest_at_end(self, client, tmp_dir):
+        """The technical-manifest-stub step should be at the end of the
+        Scorecard Pathway, after cutoff-analysis."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+
+        store = ProjectStore(proj_path)
+        # Find the Scorecard Pathway plan
+        all_plans = store.get_plans_for_project(pid)
+        scorecard_plans = [p for p in all_plans if p["name"] == "Scorecard Pathway"]
+        assert len(scorecard_plans) == 1
+        plan_id = scorecard_plans[0]["plan_id"]
+
+        latest_pv_id = store.get_latest_plan_version_id(plan_id)
+        steps = store.get_plan_version_steps(latest_pv_id)
+
+        step_ids = [s.step_id for s in steps]
+        assert "technical-manifest-stub" in step_ids
+        assert "cutoff-analysis" in step_ids
+
+        manifest_pos = step_ids.index("technical-manifest-stub")
+        cutoff_pos = step_ids.index("cutoff-analysis")
+        assert manifest_pos > cutoff_pos, (
+            f"technical-manifest-stub (pos {manifest_pos}) should be after "
+            f"cutoff-analysis (pos {cutoff_pos})"
+        )
+
+    def test_manifest_depends_on_cutoff_and_model_steps(self, client, tmp_dir):
+        """The manifest step should depend on model, scoring, validation, and cutoff steps."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+
+        store = ProjectStore(proj_path)
+        all_plans = store.get_plans_for_project(pid)
+        scorecard_plans = [p for p in all_plans if p["name"] == "Scorecard Pathway"]
+        plan_id = scorecard_plans[0]["plan_id"]
+
+        latest_pv_id = store.get_latest_plan_version_id(plan_id)
+        steps = store.get_plan_version_steps(latest_pv_id)
+
+        manifest_step = [s for s in steps if s.step_id == "technical-manifest-stub"][0]
+        assert "cutoff-analysis" in manifest_step.parent_step_ids
+        assert "validation-metrics" in manifest_step.parent_step_ids
+        assert "logistic-regression" in manifest_step.parent_step_ids
+        assert "score-scaling" in manifest_step.parent_step_ids
+
+
+# ======================================================================
+# Step Params Update (Phase 3C)
+# ======================================================================
+
+class TestStepParamsUpdate:
+    def test_update_step_params_creates_new_version(self, client, tmp_dir):
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+
+        store = ProjectStore(proj_path)
+        plans = store.get_plans_for_project(pid)
+        scorecard = [p for p in plans if p["name"] == "Scorecard Pathway"][0]
+        plan_id = scorecard["plan_id"]
+        orig_pv_id = store.get_latest_plan_version_id(plan_id)
+
+        resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+            "project_id": pid,
+            "base_plan_version_id": orig_pv_id,
+            "params": {"max_bins": 25, "min_bin_fraction": 0.03},
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["plan_id"] == plan_id
+        assert data["new_plan_version_id"] != orig_pv_id
+        assert data["changed_step_id"] == "fine-classing"
+        assert len(data["stale_step_ids"]) > 0
+
+    def test_update_params_invalid_step(self, client, tmp_dir):
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+
+        store = ProjectStore(proj_path)
+        plans = store.get_plans_for_project(pid)
+        scorecard = [p for p in plans if p["name"] == "Scorecard Pathway"][0]
+        plan_id = scorecard["plan_id"]
+        orig_pv_id = store.get_latest_plan_version_id(plan_id)
+
+        resp = client.post(f"/plans/{plan_id}/steps/nonexistent-step/params", json={
+            "project_id": pid,
+            "base_plan_version_id": orig_pv_id,
+            "params": {},
+        })
+        assert resp.status_code == 404
+
+    def test_update_params_rejects_stale_version(self, client, tmp_dir):
+        """P1#1: Stale base_plan_version_id must be rejected with 409."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+
+        store = ProjectStore(proj_path)
+        plans = store.get_plans_for_project(pid)
+        scorecard = [p for p in plans if p["name"] == "Scorecard Pathway"][0]
+        plan_id = scorecard["plan_id"]
+        v1_pv_id = store.get_latest_plan_version_id(plan_id)
+
+        # Update once to create v2
+        client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+            "project_id": pid, "base_plan_version_id": v1_pv_id,
+            "params": {"max_bins": 30},
+        })
+
+        # Try updating with stale v1 id — should get 409
+        resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+            "project_id": pid, "base_plan_version_id": v1_pv_id,
+            "params": {"max_bins": 25},
+        })
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["code"] == "STALE_VERSION"
+
+    def test_update_params_validates_params(self, client, tmp_dir):
+        """P1#2: Invalid params must be rejected with 422."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+
+        store = ProjectStore(proj_path)
+        plans = store.get_plans_for_project(pid)
+        scorecard = [p for p in plans if p["name"] == "Scorecard Pathway"][0]
+        plan_id = scorecard["plan_id"]
+        orig_pv_id = store.get_latest_plan_version_id(plan_id)
+
+        # max_bins=1 is invalid (must be >= 2)
+        resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+            "project_id": pid, "base_plan_version_id": orig_pv_id,
+            "params": {"max_bins": 1},
+        })
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert detail["code"] == "PARAMS_VALIDATION_FAILED"
+
+
+# ======================================================================
+# Project Runs (Phase 3C)
+# ======================================================================
+
+class TestProjectRuns:
+    def test_list_project_runs(self, client, tmp_dir, sample_german_credit):
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+        client.post("/datasets/import", json={
+            "project_id": pid, "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+
+        resp = client.get(f"/projects/{pid}/runs")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["project_id"] == pid
+        assert isinstance(data["runs"], list)
+
+
+# ======================================================================
+# Project Artifacts (Phase 3D)
+# ======================================================================
+
+class TestProjectArtifacts:
+    def test_list_project_artifacts(self, client, tmp_dir, sample_german_credit):
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+        client.post("/datasets/import", json={
+            "project_id": pid, "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+
+        resp = client.get(f"/projects/{pid}/artifacts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["project_id"] == pid
+        assert isinstance(data["artifacts"], list)
+
+    def test_artifact_summary(self, client, tmp_dir, sample_german_credit):
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        import_resp = client.post("/datasets/import", json={
+            "project_id": proj["project_id"], "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+        artifact_id = import_resp.json()["artifact_id"]
+
+        resp = client.get(f"/artifacts/{artifact_id}/summary")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["artifact_id"] == artifact_id
+        assert data["artifact_type"] == "dataset"
+
+    def test_artifact_filters_by_run_id(self, client, tmp_dir, sample_german_credit):
+        """P1#3: Filter project artifacts by run_id using run-step evidence."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+        client.post("/datasets/import", json={
+            "project_id": pid, "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+
+        store = ProjectStore(proj_path)
+        proof_plans = [p for p in store.get_plans_for_project(pid) if p["name"] == "Proof Pathway"]
+        proof_pv_id = store.get_latest_plan_version_id(proof_plans[0]["plan_id"])
+
+        run_resp = client.post("/runs", json={
+            "project_id": pid, "plan_version_id": proof_pv_id,
+        })
+        assert run_resp.status_code == 201
+        run_id = run_resp.json()["run_id"]
+
+        # Filter by run_id
+        resp = client.get(f"/projects/{pid}/artifacts?run_id={run_id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["artifacts"]) > 0
+
+    def test_artifact_filters_by_producing_step(self, client, tmp_dir, sample_german_credit):
+        """P1#3: Filter project artifacts by producing_step_id using run-step evidence."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+        client.post("/datasets/import", json={
+            "project_id": pid, "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+
+        store = ProjectStore(proj_path)
+        proof_plans = [p for p in store.get_plans_for_project(pid) if p["name"] == "Proof Pathway"]
+        proof_pv_id = store.get_latest_plan_version_id(proof_plans[0]["plan_id"])
+        client.post("/runs", json={"project_id": pid, "plan_version_id": proof_pv_id})
+
+        # Filter by producing step ID (e.g. "split" produces train/test/oot artifacts in proof pathway)
+        resp = client.get(f"/projects/{pid}/artifacts?producing_step_id=split")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["artifacts"]) > 0
+
+    def test_json_artifact_summary(self, client, tmp_dir):
+        """P2#4: JSON artifact summary reads via store.artifact_path()."""
+        import json as jmod
+
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+
+        store = ProjectStore(proj_path)
+        artifact = store.write_artifact_bytes(
+            jmod.dumps({"score": 95, "rank": "A", "details": {"passed": 10, "failed": 0}}).encode(),
+            artifact_type="report",
+            role="report",
+            filename="test.json",
+            media_type="application/json",
+        )
+
+        resp = client.get(f"/artifacts/{artifact.artifact_id}/summary")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["summary_preview"] is not None
+        assert data["summary_preview"]["score"] == 95
+
+    def test_json_artifact_preview(self, client, tmp_dir):
+        """P2#4: JSON artifact preview reads via store.artifact_path()."""
+        import json as jmod
+
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+
+        store = ProjectStore(proj_path)
+        artifact = store.write_artifact_bytes(
+            jmod.dumps({"alpha": 1, "beta": 2, "gamma": 3}).encode(),
+            artifact_type="report",
+            role="report",
+            filename="test.json",
+            media_type="application/json",
+        )
+
+        resp = client.get(f"/artifacts/{artifact.artifact_id}/preview?limit=5&offset=0")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["media_type"] == "application/json"
+        assert data["json_content"] is not None
+
+    def test_artifact_preview(self, client, tmp_dir, sample_german_credit):
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        import_resp = client.post("/datasets/import", json={
+            "project_id": proj["project_id"], "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+        artifact_id = import_resp.json()["artifact_id"]
+
+        resp = client.get(f"/artifacts/{artifact_id}/preview?limit=5&offset=0")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["artifact_id"] == artifact_id
+        assert data["media_type"] == "application/vnd.apache.parquet"
+        assert isinstance(data["columns"], list)
+        assert isinstance(data["rows"], list)
+
+
+# ======================================================================
+# Manual Binning Editor (Phase 3E)
+# ======================================================================
+
+class TestManualBinningEditor:
+    def test_editor_state_requires_run(self, client, tmp_dir, sample_german_credit):
+        """Without a run, the editor should be blocked."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+
+        store = ProjectStore(proj_path)
+        plans = store.get_plans_for_project(pid)
+        scorecard = [p for p in plans if p["name"] == "Scorecard Pathway"][0]
+        plan_id = scorecard["plan_id"]
+
+        resp = client.get(f"/plans/{plan_id}/steps/manual-binning/editor-state?project_id={pid}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["step_id"] == "manual-binning"
+        # Without a run, should be blocked
+        if not data["ready"]:
+            assert data["blocked_reason"] is not None
+
+    def test_preview_rejects_wrong_plan_version(self, client, tmp_dir):
+        """P2#6: preview must reject plan_version_id not belonging to plan_id."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+
+        store = ProjectStore(proj_path)
+
+        # Get the scorecard plan's version
+        plans = store.get_plans_for_project(pid)
+        scorecard = [p for p in plans if p["name"] == "Scorecard Pathway"][0]
+        plan_id = scorecard["plan_id"]
+
+        # Get a version from another plan (Proof Pathway)
+        proof = [p for p in plans if p["name"] == "Proof Pathway"][0]
+        proof_pv_id = store.get_latest_plan_version_id(proof["plan_id"])
+
+        # Try previewing scorecard plan with proof plan's version
+        resp = client.post(f"/plans/{plan_id}/steps/manual-binning/preview", json={
+            "project_id": pid,
+            "plan_version_id": proof_pv_id,
+            "overrides": [],
+        })
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "VERSION_NOT_IN_PLAN"
+
+    def test_preview_validates_override_structure(self, client, tmp_dir):
+        """P2#5: malformed override bodies should produce 422 from FastAPI validation."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+
+        store = ProjectStore(proj_path)
+        plans = store.get_plans_for_project(pid)
+        scorecard = [p for p in plans if p["name"] == "Scorecard Pathway"][0]
+        plan_id = scorecard["plan_id"]
+        pv_id = store.get_latest_plan_version_id(plan_id)
+
+        # Send non-list overrides — should be a 422 from FastAPI (list expected)
+        resp = client.post(f"/plans/{plan_id}/steps/manual-binning/preview", json={
+            "project_id": pid,
+            "plan_version_id": pv_id,
+            "overrides": "not-a-list",
+        })
+        assert resp.status_code == 422
+
+    def test_parquet_preview_pagination(self, client, tmp_dir, sample_german_credit):
+        """P2#8: Parquet preview with offset reads correct rows."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        import_resp = client.post("/datasets/import", json={
+            "project_id": proj["project_id"], "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+        artifact_id = import_resp.json()["artifact_id"]
+
+        resp0 = client.get(f"/artifacts/{artifact_id}/preview?limit=1&offset=0")
+        assert resp0.status_code == 200
+        resp1 = client.get(f"/artifacts/{artifact_id}/preview?limit=1&offset=1")
+        assert resp1.status_code == 200
+
+        rows0 = resp0.json()["rows"]
+        rows1 = resp1.json()["rows"]
+        assert len(rows0) == 1
+        assert len(rows1) == 1
+        # Different offsets should return different rows (unless dataset has 1 row)
+        if len(rows0) == 1 and len(rows1) == 1:
+            assert rows0 != rows1, "Offset=0 and offset=1 must return different rows"
+
+
+# ======================================================================
+# Complete end-to-end flow with new endpoints
+# ======================================================================
+
+class TestE2EWithNewEndpoints:
+    def test_full_flow_with_params_and_artifacts(self, client, tmp_dir, sample_german_credit):
+        proj_path = tmp_dir / "full-flow-new.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Full Flow"}).json()
+        pid = proj["project_id"]
+
+        # Discover plans
+        plans_resp = client.get(f"/projects/{pid}/plans")
+        assert plans_resp.status_code == 200
+        plans = plans_resp.json()["plans"]
+        scorecard = [p for p in plans if p["name"] == "Scorecard Pathway"]
+        assert len(scorecard) == 1, "Scorecard Pathway must be discoverable"
+        assert scorecard[0]["is_default"] is True
+        plan_id = scorecard[0]["plan_id"]
+
+        # Import dataset
+        import_resp = client.post("/datasets/import", json={
+            "project_id": pid, "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+        assert import_resp.status_code == 201
+
+        # Run proof pathway to generate artifacts
+        store = ProjectStore(proj_path)
+        proof_plans = [p for p in store.get_plans_for_project(pid) if p["name"] == "Proof Pathway"]
+        proof_pv_id = store.get_latest_plan_version_id(proof_plans[0]["plan_id"])
+
+        run_resp = client.post("/runs", json={
+            "project_id": pid, "plan_version_id": proof_pv_id,
+        })
+        assert run_resp.status_code == 201
+        assert run_resp.json()["status"] == "succeeded"
+
+        # List project runs
+        runs_resp = client.get(f"/projects/{pid}/runs")
+        assert runs_resp.status_code == 200
+        assert len(runs_resp.json()["runs"]) >= 1
+
+        # List project artifacts
+        arts_resp = client.get(f"/projects/{pid}/artifacts")
+        assert arts_resp.status_code == 200
+        assert len(arts_resp.json()["artifacts"]) >= 1
+
+        # Get artifact summary for first artifact
+        artifacts = arts_resp.json()["artifacts"]
+        summary_resp = client.get(f"/artifacts/{artifacts[0]['artifact_id']}/summary")
+        assert summary_resp.status_code == 200
+
+        # Preview first dataset artifact
+        preview_resp = client.get(f"/artifacts/{artifacts[0]['artifact_id']}/preview?limit=3&offset=0")
+        assert preview_resp.status_code == 200
+
+        # Update step params
+        scorecard_pv_id = store.get_latest_plan_version_id(plan_id)
+        params_resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+            "project_id": pid,
+            "base_plan_version_id": scorecard_pv_id,
+            "params": {"max_bins": 15},
+        })
+        assert params_resp.status_code == 200
+        params_data = params_resp.json()
+        assert params_data["changed_step_id"] == "fine-classing"
+
+        # Check editor state
+        editor_resp = client.get(f"/plans/{plan_id}/steps/manual-binning/editor-state?project_id={pid}")
+        assert editor_resp.status_code == 200
+
+
+@pytest.fixture
+def larger_german_credit(tmp_dir):
+    """~100 rows so the Scorecard Pathway can actually split + fine-class."""
+    p = tmp_dir / "german.data"
+    # Base row with good credit risk
+    good = "A11 6 A34 A43 1169 A65 A75 4 A93 A101 4 A121 67 A143 A152 2 A173 1 A192 A201 1"
+    # Base row with bad credit risk
+    bad = "A12 24 A32 A43 5951 A61 A73 2 A92 A101 4 A121 22 A142 A152 2 A173 1 A191 A201 2"
+    lines = []
+    # Generate ~50 good / ~50 bad with slight variations
+    for i in range(50):
+        parts_g = good.split()
+        parts_g[0] = f"A{i % 11 + 11}"  # vary checking_account_status
+        parts_g[1] = str(6 + (i % 48))  # vary duration
+        parts_g[4] = str(1000 + i * 100)  # vary credit_amount
+        parts_g[10] = str(i % 4 + 1)  # vary present_residence_since
+        parts_g[12] = str(20 + (i % 60))  # vary age
+        lines.append(" ".join(parts_g))
+
+        parts_b = bad.split()
+        parts_b[0] = f"A{i % 11 + 11}"
+        parts_b[1] = str(12 + (i % 36))
+        parts_b[4] = str(2000 + i * 200)
+        parts_b[10] = str(i % 4 + 1)
+        parts_b[12] = str(25 + (i % 55))
+        lines.append(" ".join(parts_b))
+
+    p.write_text("\n".join(lines))
+    return p
+
+
+class TestScorecardPathwayE2E:
+    """End-to-end test of the Scorecard Pathway including run, params update,
+    staleness correctness, manual-binning validation, and manifest ordering."""
+
+    def test_scorecard_pathway_full_run(self, client, tmp_dir, larger_german_credit):
+        proj_path = tmp_dir / "scorecard-e2e.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Scorecard E2E"}).json()
+        pid = proj["project_id"]
+
+        # 1. Discover the Scorecard Pathway
+        plans_resp = client.get(f"/projects/{pid}/plans")
+        assert plans_resp.status_code == 200
+        plans = plans_resp.json()["plans"]
+        scorecard = [p for p in plans if p["name"] == "Scorecard Pathway"]
+        assert len(scorecard) == 1
+        assert scorecard[0]["is_default"] is True
+        plan_id = scorecard[0]["plan_id"]
+
+        # 2. Verify plan endpoint returns 23 steps with params
+        plan_resp = client.get(f"/plans/{plan_id}?project_id={pid}")
+        assert plan_resp.status_code == 200
+        plan_data = plan_resp.json()
+        assert len(plan_data["steps"]) == 23
+        for step in plan_data["steps"]:
+            assert "params" in step
+            assert step["params"] is not None
+
+        step_ids = [s["step_id"] for s in plan_data["steps"]]
+
+        # Verify technical-manifest-stub is last
+        assert step_ids[-1] == "technical-manifest-stub", (
+            f"Expected technical-manifest-stub at end, got {step_ids[-1]}"
+        )
+
+        # 3. Import the larger dataset
+        import_resp = client.post("/datasets/import", json={
+            "project_id": pid, "source_path": str(larger_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+        assert import_resp.status_code == 201
+
+        # 4. Run the Scorecard Pathway
+        store = ProjectStore(proj_path)
+        pv_id = store.get_latest_plan_version_id(plan_id)
+        run_resp = client.post("/runs", json={
+            "project_id": pid, "plan_version_id": pv_id,
+        })
+        assert run_resp.status_code == 201
+        assert run_resp.json()["status"] == "succeeded", (
+            f"Scorecard pathway run failed: {run_resp.json()}"
+        )
+
+        # 5. Update step params and verify staleness is scoped
+        new_pv_id = store.get_latest_plan_version_id(plan_id)
+        params_resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+            "project_id": pid,
+            "base_plan_version_id": new_pv_id,
+            "params": {"max_bins": 15},
+        })
+        assert params_resp.status_code == 200
+        params_data = params_resp.json()
+        assert params_data["changed_step_id"] == "fine-classing"
+
+        # Stale should only include fine-classing + its descendants,
+        # NOT e.g. import, define-modelling-metadata, apply-exclusions, etc.
+        stale_ids = set(params_data["stale_step_ids"])
+        assert "fine-classing" in stale_ids
+        non_stale_ancestors = {"import", "define-modelling-metadata", "apply-exclusions",
+                                "development-sample-definition", "split"}
+        for anc in non_stale_ancestors:
+            assert anc not in stale_ids, (
+                f"Unchanged ancestor {anc} should not be stale after fine-classing param update"
+            )
+
+        # 6. Manual-binning save with invalid overrides is rejected
+        new_pv_id2 = store.get_latest_plan_version_id(plan_id)
+        bad_override_resp = client.post(f"/plans/{plan_id}/steps/manual-binning/params", json={
+            "project_id": pid,
+            "base_plan_version_id": new_pv_id2,
+            "params": {
+                "overrides": [
+                    {
+                        "variable": "age_years",
+                        "action": "merge_bins",
+                        "source_bin_ids": ["nonexistent_bin"],
+                        "reason": "testing validation",
+                    }
+                ],
+            },
+        })
+        assert bad_override_resp.status_code == 422, (
+            f"Expected 422 for invalid bin ID, got {bad_override_resp.status_code}: {bad_override_resp.json()}"
+        )
+
+        # 7. Manual-binning save works via fallback to previous run's artifacts
+        valid_override_resp = client.post(f"/plans/{plan_id}/steps/manual-binning/params", json={
+            "project_id": pid,
+            "base_plan_version_id": new_pv_id2,
+            "params": {
+                "overrides": [{"variable": "age_years", "action": "merge_bins",
+                              "source_bin_ids": ["age_years_bin_001", "age_years_bin_002"],
+                              "reason": "test merge"}],
+            },
+        })
+        assert valid_override_resp.status_code == 200, (
+            f"Expected 200 (fallback to previous run artifacts), "
+            f"got {valid_override_resp.status_code}: {valid_override_resp.json()}"
+        )
+
+    def test_manual_binning_save_rejected_without_upstream_run(self, client, tmp_dir, larger_german_credit):
+        """Manual-binning save without any successful run is rejected."""
+        proj_path = tmp_dir / "no-run-mb.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "No Run MB"}).json()
+        pid = proj["project_id"]
+
+        plans_resp = client.get(f"/projects/{pid}/plans")
+        scorecard = [p for p in plans_resp.json()["plans"] if p["name"] == "Scorecard Pathway"]
+        plan_id = scorecard[0]["plan_id"]
+
+        store = ProjectStore(proj_path)
+        pv_id = store.get_latest_plan_version_id(plan_id)
+
+        resp = client.post(f"/plans/{plan_id}/steps/manual-binning/params", json={
+            "project_id": pid,
+            "base_plan_version_id": pv_id,
+            "params": {
+                "overrides": [{"variable": "age_years", "action": "merge_bins",
+                              "source_bin_ids": ["age_years_bin_001", "age_years_bin_002"],
+                              "reason": "test"}],
+            },
+        })
+        assert resp.status_code == 422, (
+            f"Expected 422 without any successful run, got {resp.status_code}: {resp.json()}"
+        )
+        assert "Run fine-classing" in resp.json()["detail"]["message"]
+
+    def test_staleness_and_status_after_param_update(self, client, tmp_dir, larger_german_credit):
+        """Regression test: after a param update, unchanged upstream steps
+        must be non-stale and show their previous run status, while
+        changed descendants are stale and show 'not_run'."""
+        proj_path = tmp_dir / "staleness-regression.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Staleness Test"}).json()
+        pid = proj["project_id"]
+
+        # Discover Scorecard Pathway
+        plans_resp = client.get(f"/projects/{pid}/plans")
+        scorecard = [p for p in plans_resp.json()["plans"] if p["name"] == "Scorecard Pathway"]
+        plan_id = scorecard[0]["plan_id"]
+
+        # Import dataset
+        client.post("/datasets/import", json={
+            "project_id": pid, "source_path": str(larger_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+
+        # Run the Scorecard Pathway
+        store = ProjectStore(proj_path)
+        pv_id = store.get_latest_plan_version_id(plan_id)
+        run_resp = client.post("/runs", json={
+            "project_id": pid, "plan_version_id": pv_id,
+        })
+        assert run_resp.status_code == 201
+        assert run_resp.json()["status"] == "succeeded"
+
+        # Update fine-classing params
+        new_pv_id = store.get_latest_plan_version_id(plan_id)
+        params_resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+            "project_id": pid,
+            "base_plan_version_id": new_pv_id,
+            "params": {"max_bins": 12},
+        })
+        assert params_resp.status_code == 200
+
+        # GET /plans/{plan_id} — staleness and statuses should be consistent
+        plan_resp = client.get(f"/plans/{plan_id}?project_id={pid}")
+        assert plan_resp.status_code == 200
+        plan_data = plan_resp.json()
+        steps_map = {s["step_id"]: s for s in plan_data["steps"]}
+
+        # Unchanged upstream steps: non-stale, status from previous run
+        non_stale_upstream = ["import", "define-metadata", "apply-exclusions",
+                              "profile", "validate-target", "sample-definition",
+                              "split", "explicit-missing-outlier-treatment"]
+        for step_id in non_stale_upstream:
+            s = steps_map[step_id]
+            assert not s["is_stale"], f"{step_id} should not be stale"
+            assert s["status"] == "succeeded", (
+                f"{step_id} should show 'succeeded' (carried forward), got {s['status']!r}"
+            )
+
+        # The changed step is stale
+        assert steps_map["fine-classing"]["is_stale"]
+        # Its transitive descendants are stale
+        stale_downstream = ["initial-woe-iv", "variable-clustering", "variable-selection",
+                            "manual-binning", "final-woe-iv", "woe-transform-train",
+                            "logistic-regression", "score-scaling", "build-summary-report",
+                            "apply-woe", "apply-model",
+                            "validation-metrics", "cutoff-analysis", "technical-manifest-stub"]
+        for step_id in stale_downstream:
+            s = steps_map[step_id]
+            assert s["is_stale"], f"{step_id} should be stale (descendant of fine-classing)"
+            # Stale steps should show "not_run" (no run on new version for them)
+            assert s["status"] == "not_run", (
+                f"{step_id} should show 'not_run' (stale), got {s['status']!r}"
+            )

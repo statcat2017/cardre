@@ -10,8 +10,14 @@ from fastapi import APIRouter, HTTPException
 from cardre.store import ProjectStore
 from sidecar.models import (
     CreateProjectRequest,
+    PlanListItem,
     ProjectDetailResponse,
+    ProjectPlansResponse,
     ProjectResponse,
+    ProjectRunsResponse,
+    RunListItem,
+    ProjectArtifactsResponse,
+    ArtifactListItem,
 )
 from sidecar.proof_pathway import register_proof_pathway, register_scorecard_pathway
 
@@ -108,3 +114,120 @@ def get_project(project_id: str):
         plan_count=plans,
         run_count=runs,
     )
+
+
+@router.get("/{project_id}/plans", response_model=ProjectPlansResponse)
+def get_project_plans(project_id: str):
+    registry = _load_registry()
+    entry = registry.get(project_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
+
+    path = Path(entry["path"])
+    if not (path / "cardre.sqlite").exists():
+        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project directory no longer exists"})
+
+    store = ProjectStore(path)
+    proj = store.get_project(project_id)
+    if proj is None:
+        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found in SQLite"})
+
+    raw_plans = store.get_plans_for_project(project_id)
+    plan_items = []
+    for p in raw_plans:
+        plan_id = p["plan_id"]
+        name = p["name"]
+        is_hidden = name == "__import__"
+        is_default = name == "Scorecard Pathway"
+        latest_pv_id = store.get_latest_plan_version_id(plan_id)
+        if latest_pv_id is None:
+            continue
+        plan_items.append(PlanListItem(
+            plan_id=plan_id,
+            name=name,
+            latest_version_id=latest_pv_id,
+            is_default=is_default,
+            is_hidden=is_hidden,
+        ))
+
+    # Exclude hidden plans from normal user-facing results
+    visible_plans = [p for p in plan_items if not p.is_hidden]
+
+    return ProjectPlansResponse(
+        project_id=project_id,
+        plans=visible_plans,
+    )
+
+
+@router.get("/{project_id}/runs", response_model=ProjectRunsResponse)
+def get_project_runs(project_id: str):
+    registry = _load_registry()
+    entry = registry.get(project_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
+
+    store = ProjectStore(Path(entry["path"]))
+    runs = store.list_runs_for_project(project_id)
+
+    items = []
+    for r in runs:
+        pv_id = r["plan_version_id"]
+        step_count = len(store.get_run_steps(r["run_id"]))
+        items.append(RunListItem(
+            run_id=r["run_id"],
+            plan_version_id=pv_id,
+            status=r["status"],
+            started_at=r["started_at"],
+            finished_at=r.get("finished_at"),
+            step_count=step_count,
+        ))
+
+    return ProjectRunsResponse(project_id=project_id, runs=items)
+
+
+@router.get("/{project_id}/artifacts", response_model=ProjectArtifactsResponse)
+def get_project_artifacts(
+    project_id: str,
+    role: str | None = None,
+    artifact_type: str | None = None,
+    producing_step_id: str | None = None,
+    run_id: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+):
+    registry = _load_registry()
+    entry = registry.get(project_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
+
+    store = ProjectStore(Path(entry["path"]))
+    artifacts = store.list_artifacts_for_project(project_id)
+
+    # Apply optional filters
+    if role:
+        artifacts = [a for a in artifacts if a.role == role]
+    if artifact_type:
+        artifacts = [a for a in artifacts if a.artifact_type == artifact_type]
+    if producing_step_id:
+        artifact_ids = store.get_artifact_ids_for_producing_step(producing_step_id)
+        artifacts = [a for a in artifacts if a.artifact_id in artifact_ids]
+    if run_id:
+        artifact_ids = store.get_artifact_ids_for_run(run_id)
+        artifacts = [a for a in artifacts if a.artifact_id in artifact_ids]
+
+    items = [
+        ArtifactListItem(
+            artifact_id=a.artifact_id,
+            artifact_type=a.artifact_type,
+            role=a.role,
+            path=a.path,
+            physical_hash=a.physical_hash,
+            logical_hash=a.logical_hash,
+            media_type=a.media_type,
+            created_at=a.created_at,
+            metadata=a.metadata,
+        )
+        for a in artifacts[offset:offset + limit]
+    ]
+
+    return ProjectArtifactsResponse(project_id=project_id, artifacts=items)

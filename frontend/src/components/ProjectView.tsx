@@ -1,10 +1,17 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { StepCardGrid } from "./StepCardGrid";
-import { ArtifactList } from "./ArtifactList";
-import { ProfileOutput } from "./ProfileOutput";
-import type { PlanResponse, RunStepsResponse, StepStatus } from "../types";
+import { TopBar } from "./TopBar";
+import { LeftNav } from "./LeftNav";
+import { PathwayView } from "./PathwayView";
+import { StepInspector } from "./StepInspector";
+import { BottomDrawer } from "./BottomDrawer";
+import { DatasetImport } from "./DatasetImport";
+import { RunHistoryPanel } from "./RunHistoryPanel";
+import { ArtifactBrowser } from "./ArtifactBrowser";
+import { ManualBinningEditor } from "./ManualBinningEditor";
+import { ExportPanel } from "./ExportPanel";
+import type { PlanResponse, StepStatus, UpdateStepParamsResponse } from "../types";
 
 interface Props {
   projectId: string;
@@ -12,100 +19,108 @@ interface Props {
 }
 
 export function ProjectView({ projectId, onBack }: Props) {
+  const queryClient = useQueryClient();
   const [running, setRunning] = useState(false);
-  const [planId, setPlanId] = useState<string | null>(null);
-  const [plan, setPlan] = useState<PlanResponse | null>(null);
+  const [activeSection, setActiveSection] = useState("pathway");
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<string[]>([]);
 
   const { data: project, isLoading: projectLoading } = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => api.getProject(projectId),
-    refetchInterval: 5000,
   });
 
-  // Look up plan_id from project details
-  useEffect(() => {
-    if (!project) return;
-    const lookupPlan = async () => {
-      const base = (window as any).__API_URL__ || "http://127.0.0.1:8752";
-      const planResp = await fetch(`${base}/plans`).catch(() => null);
-      if (!planResp) return;
-      const plans = await planResp.json().catch(() => null);
-    };
-    lookupPlan();
-  }, [project]);
-
-  const [importPath, setImportPath] = useState("");
-
-  // Fetch the plan from the API once we have planId
-  const { data: planData, refetch: refetchPlan } = useQuery({
-    queryKey: ["plan", planId],
-    queryFn: () => api.getPlan(planId!),
-    enabled: !!planId,
-    refetchInterval: 5000,
-  });
-
-  useEffect(() => {
-    if (planData) setPlan(planData);
-  }, [planData]);
-
-  // Fetch artifacts
-  const { data: allArtifacts } = useQuery({
-    queryKey: ["artifacts", projectId],
-    queryFn: async () => {
-      const base = (window as any).__API_URL__ || "http://127.0.0.1:8752";
-      const resp = await fetch(`${base}/artifacts`).catch(() => null);
-      if (!resp) return [];
-      const list = await resp.json().catch(() => []);
-      return Array.isArray(list) ? list : [];
-    },
+  const { data: projectPlans } = useQuery({
+    queryKey: ["projectPlans", projectId],
+    queryFn: () => api.getProjectPlans(projectId),
     enabled: !!projectId,
-    refetchInterval: 10000,
   });
 
-  const artifacts = Array.isArray(allArtifacts) ? allArtifacts : [];
+  // Find the default scorecard plan
+  const scorecardPlan = projectPlans?.plans?.find((p) => p.is_default);
 
-  // Handle import
-  const handleImport = async () => {
-    if (!importPath.trim()) return;
-    setError(null);
-    try {
-      await api.importDataset({
-        project_id: projectId,
-        source_path: importPath.trim(),
-        dataset_id: "uci-statlog-german-credit",
-      });
-      // After import, find and load the plan
-      const projDetail = await api.getProject(projectId);
-      if (projDetail.plan_count > 0) {
-        const base = (window as any).__API_URL__ || "http://127.0.0.1:8752";
-        const planResp = await fetch(`${base}/plans`).then((r) => r.json()).catch(() => null);
-        if (planResp && planResp.length > 0) {
-          setPlanId(planResp[0].plan_id);
-        }
+  const { data: planData, refetch: refetchPlan } = useQuery({
+    queryKey: ["plan", scorecardPlan?.plan_id],
+    queryFn: () => api.getPlan(scorecardPlan!.plan_id, projectId),
+    enabled: !!scorecardPlan?.plan_id,
+  });
+
+  const handlePlanRefreshed = useCallback(
+    (detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string }) => {
+      refetchPlan();
+      if ("latest_version_id" in detailOrResp && detailOrResp.latest_version_id) {
+        setDiagnostics((prev) => [
+          ...prev,
+          `[${new Date().toLocaleTimeString()}] Plan refreshed to version ${(detailOrResp.latest_version_id as string).slice(0, 8)}…`,
+        ]);
+      } else if ("new_plan_version_id" in detailOrResp) {
+        setDiagnostics((prev) => [
+          ...prev,
+          `[${new Date().toLocaleTimeString()}] New plan version created: ${detailOrResp.new_plan_version_id.slice(0, 8)}…`,
+        ]);
       }
-    } catch (e: any) {
-      setError(e.message);
-    }
+    },
+    [refetchPlan],
+  );
+
+  // After import, re-fetch project plans
+  const handleImported = () => {
+    queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["projectPlans", projectId] });
+    setDiagnostics((prev) => [
+      ...prev,
+      `[${new Date().toLocaleTimeString()}] Dataset imported — pathway import step configured`,
+    ]);
   };
 
-  // Handle run
   const handleRun = async () => {
-    if (!planId || !plan) return;
+    if (!scorecardPlan || !planData) return;
     setRunning(true);
     setError(null);
+    setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Starting pathway run...`]);
     try {
       await api.runPlan({
         project_id: projectId,
-        plan_version_id: plan.latest_version_id,
+        plan_version_id: planData.latest_version_id,
       });
+      queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["projectRuns", projectId] });
       await refetchPlan();
+      setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Run completed`]);
     } catch (e: any) {
       setError(e.message);
+      setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Run failed: ${e.message}`]);
     } finally {
       setRunning(false);
     }
   };
+
+  const handleStepSelect = (stepId: string) => {
+    if (selectedStepId === stepId) {
+      setSelectedStepId(null);
+    } else {
+      setSelectedStepId(stepId);
+      setEditingStepId(null);
+    }
+  };
+
+  const handleEditManualBinning = () => {
+    setEditingStepId("manual-binning");
+    setActiveSection("pathway"); // Keep pathway visible in nav
+  };
+
+  const handleBackFromEdit = () => {
+    setEditingStepId(null);
+  };
+
+  const selectedStep: StepStatus | null =
+    planData?.steps?.find((s: StepStatus) => s.step_id === selectedStepId) ?? null;
+
+  const planName = planData?.name ?? null;
+  const basePlanVersionId = planData?.latest_version_id ?? null;
+  const planId = scorecardPlan?.plan_id ?? null;
 
   if (projectLoading) {
     return <div style={{ padding: 24 }}>Loading project...</div>;
@@ -115,164 +130,99 @@ export function ProjectView({ projectId, onBack }: Props) {
     return <div style={{ padding: 24 }}>Project not found.</div>;
   }
 
+  const diagnosticsMessages = [
+    ...diagnostics,
+    error ? `[error] ${error}` : null,
+  ].filter(Boolean) as string[];
+
   return (
-    <div style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 24,
-        }}
-      >
-        <div>
-          <button
-            onClick={onBack}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#3b82f6",
-              cursor: "pointer",
-              fontSize: 14,
-              padding: 0,
-              marginBottom: 4,
-            }}
-          >
-            &larr; Back
-          </button>
-          <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>{project.name}</h1>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>{project.path}</div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-            Plans: {project.plan_count} | Runs: {project.run_count}
-          </div>
-        </div>
-        <button
-          onClick={handleRun}
-          disabled={running || !plan}
-          style={{
-            padding: "10px 24px",
-            borderRadius: 6,
-            border: "none",
-            backgroundColor: running ? "#93c5fd" : plan ? "#22c55e" : "#d1d5db",
-            color: "#fff",
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: running || !plan ? "not-allowed" : "pointer",
-          }}
-        >
-          {running ? "Running..." : plan ? "Run Pathway" : "Import First"}
-        </button>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+      <TopBar
+        project={project}
+        planName={planName}
+        running={running}
+        onRun={handleRun}
+        canRun={!!scorecardPlan && !running}
+      />
 
-      {error && (
-        <div
-          style={{
-            padding: "8px 12px",
-            backgroundColor: "#fef2f2",
-            color: "#dc2626",
-            borderRadius: 6,
-            marginBottom: 16,
-            fontSize: 13,
-          }}
-        >
-          {error}
-        </div>
-      )}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        <LeftNav activeSection={activeSection} onSectionChange={setActiveSection} />
 
-      {/* Import section */}
-      {(!plan || plan.steps.every((s) => s.status === "not_run")) && (
-        <div
-          style={{
-            padding: 16,
-            border: "1px solid #e5e7eb",
-            borderRadius: 8,
-            marginBottom: 24,
-            backgroundColor: "#f9fafb",
-          }}
-        >
-          <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
-            Import Dataset
-          </h3>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              type="text"
-              value={importPath}
-              onChange={(e) => setImportPath(e.target.value)}
-              placeholder="/path/to/german.data"
-              style={{
-                flex: 1,
-                padding: "8px 12px",
-                border: "1px solid #d1d5db",
-                borderRadius: 6,
-                fontSize: 14,
-              }}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {/* Manual Binning Editor takes over center when editing */}
+          {editingStepId === "manual-binning" && planId && basePlanVersionId && (
+            <ManualBinningEditor
+              planId={planId}
+              projectId={projectId}
+              basePlanVersionId={basePlanVersionId}
+              onBack={handleBackFromEdit}
+              onPlanRefreshed={handlePlanRefreshed}
             />
-            <button
-              onClick={handleImport}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 6,
-                border: "none",
-                backgroundColor: "#3b82f6",
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Import
-            </button>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* Plan / Step cards */}
-      {plan && (
-        <div style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
-            {plan.name}
-            <span style={{ fontSize: 13, color: "#6b7280", marginLeft: 8 }}>
-              ({plan.steps.filter((s) => s.status === "succeeded").length}/{plan.steps.length} succeeded)
-            </span>
-          </h2>
-          <StepCardGrid steps={plan.steps} />
-        </div>
-      )}
+          {/* Pathway View */}
+          {activeSection === "pathway" && !editingStepId && planData && (
+            <PathwayView
+              steps={planData.steps}
+              selectedStepId={selectedStepId}
+              onStepSelect={handleStepSelect}
+            />
+          )}
 
-      {!plan && project.plan_count > 0 && (
-        <div style={{ marginBottom: 24 }}>
-          <button
-            onClick={async () => {
-              try {
-                const projDetail = await api.getProject(projectId);
-                const base = (window as any).__API_URL__ || "http://127.0.0.1:8752";
-                const planResp = await fetch(`${base}/plans`).then((r) => r.json()).catch(() => null);
-                if (planResp && planResp.length > 0) {
-                  setPlanId(planResp[0].plan_id);
-                }
-              } catch {}
-            }}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 6,
-              border: "1px solid #d1d5db",
-              backgroundColor: "#fff",
-              cursor: "pointer",
-              fontSize: 13,
-            }}
-          >
-            Load Plan
-          </button>
-        </div>
-      )}
+          {activeSection === "pathway" && !editingStepId && !planData && (
+            <div style={{ padding: 24, color: "#64748b" }}>
+              No scorecard pathway found. Create a project to get started.
+            </div>
+          )}
 
-      {/* Artifacts */}
-      <div style={{ marginTop: 16 }}>
-        <ArtifactList
-          artifacts={artifacts as any[]}
-          loading={false}
+          {activeSection === "dataset" && (
+            <DatasetImport projectId={projectId} onImported={handleImported} />
+          )}
+
+          {activeSection === "runs" && <RunHistoryPanel projectId={projectId} />}
+
+          {activeSection === "artifacts" && <ArtifactBrowser projectId={projectId} />}
+
+          {activeSection === "exports" && <ExportPanel projectId={projectId} />}
+
+          {activeSection === "diagnostics" && (
+            <div style={{ padding: 16, overflowY: "auto", flex: 1 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Diagnostics</h3>
+              {diagnosticsMessages.length === 0 ? (
+                <div style={{ color: "#64748b", fontSize: 13 }}>No diagnostics yet.</div>
+              ) : (
+                diagnosticsMessages.map((msg, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      fontFamily: "monospace",
+                      fontSize: 12,
+                      lineHeight: 1.8,
+                      padding: "4px 0",
+                      borderBottom: "1px solid #f1f5f9",
+                      color: msg.startsWith("[error]") ? "#dc2626" : "#475569",
+                    }}
+                  >
+                    {msg}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        <StepInspector
+          step={selectedStep}
+          planId={planId}
+          projectId={projectId}
+          basePlanVersionId={basePlanVersionId}
+          currentParams={selectedStep?.params ?? {}}
+          onPlanRefreshed={handlePlanRefreshed}
+          onEditManualBinning={handleEditManualBinning}
         />
       </div>
+
+      <BottomDrawer messages={diagnosticsMessages} />
     </div>
   );
 }

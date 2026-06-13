@@ -943,6 +943,22 @@ class FineClassingNode(NodeType):
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["definition"]
 
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        max_bins = params.get("max_bins", 20)
+        try:
+            if int(max_bins) < 2:
+                errors.append("max_bins must be >= 2")
+        except (ValueError, TypeError):
+            errors.append("max_bins must be an integer")
+        min_bin_fraction = params.get("min_bin_fraction", 0.05)
+        try:
+            if not (0 < float(min_bin_fraction) < 1):
+                errors.append("min_bin_fraction must be between 0 and 1")
+        except (ValueError, TypeError):
+            errors.append("min_bin_fraction must be a number")
+        return errors
+
     def run(self, context: ExecutionContext) -> NodeOutput:
         from cardre.artifacts import make_fingerprint, write_json_artifact
 
@@ -1493,6 +1509,16 @@ class VariableClusteringNode(NodeType):
     input_roles: list[str] = ["train", "report"]
     output_roles: list[str] = ["report"]
 
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        correlation_threshold = params.get("correlation_threshold", 0.7)
+        try:
+            if not (0 < float(correlation_threshold) < 1):
+                errors.append("correlation_threshold must be between 0 and 1")
+        except (ValueError, TypeError):
+            errors.append("correlation_threshold must be a number")
+        return errors
+
     def run(self, context: ExecutionContext) -> NodeOutput:
         from cardre.artifacts import make_fingerprint, write_json_artifact
 
@@ -1615,6 +1641,19 @@ class VariableSelectionNode(NodeType):
     category = "selection"
     input_roles: list[str] = ["report"]
     output_roles: list[str] = ["definition"]
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        for key in ("manual_includes", "manual_excludes"):
+            for entry in list(params.get(key, [])):
+                if not isinstance(entry, dict):
+                    errors.append(f"Each entry in {key} must be a dict with 'variable' and 'reason'")
+                    continue
+                if not entry.get("variable"):
+                    errors.append(f"Entry in {key} missing 'variable'")
+                if not entry.get("reason"):
+                    errors.append(f"Entry in {key} for '{entry.get('variable', '')}' missing 'reason'")
+        return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         from cardre.artifacts import make_fingerprint, write_json_artifact
@@ -1771,8 +1810,138 @@ class VariableSelectionNode(NodeType):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2A: Manual Binning
+# Phase 2A: Manual Binning — shared helpers
 # ---------------------------------------------------------------------------
+
+
+def validate_manual_binning_overrides(bin_def: dict, overrides: list[dict]) -> list[str]:
+    """Validate overrides against fine-classing bin definitions.
+
+    Checks that each override references a real variable, uses a supported
+    action, has a reason, mentions only existing bin IDs, and for numeric
+    merge_bins the source bins are adjacent in the original ordering.
+
+    Returns a list of error messages (empty = valid).
+    """
+    errors: list[str] = []
+    var_map = {v["variable"]: v for v in bin_def.get("variables", [])}
+
+    for i, override in enumerate(overrides):
+        prefix = f"overrides[{i}]"
+        variable = override.get("variable", "")
+        action = override.get("action", "")
+        reason = override.get("reason", "")
+        source_bin_ids = override.get("source_bin_ids", [])
+
+        if not reason:
+            errors.append(f"{prefix}: override for '{variable}' requires a non-empty reason")
+            continue
+        if variable not in var_map:
+            errors.append(f"{prefix}: references unknown variable '{variable}'")
+            continue
+        if action not in ("merge_bins", "group_categories", "isolate_missing", "isolate_special_value"):
+            errors.append(f"{prefix}: unsupported action '{action}'")
+            continue
+
+        var_bins = var_map[variable].get("bins", [])
+        bin_id_map = {b["bin_id"]: b for b in var_bins}
+
+        for bid in source_bin_ids:
+            if bid not in bin_id_map:
+                errors.append(f"{prefix}: bin_id '{bid}' not found in variable '{variable}'")
+
+        if errors:
+            continue
+
+        if action == "merge_bins":
+            if len(source_bin_ids) < 2:
+                errors.append(f"{prefix}: merge_bins requires at least 2 source bins")
+                continue
+            kind = var_map[variable].get("kind", "")
+            if kind == "numeric":
+                bin_positions = [var_bins.index(bin_id_map[bid]) for bid in source_bin_ids]
+                expected_positions = list(range(min(bin_positions), max(bin_positions) + 1))
+                if bin_positions != expected_positions:
+                    errors.append(
+                        f"{prefix}: numeric bin merge requires adjacent bins. "
+                        f"Source bins at positions {bin_positions} are not contiguous."
+                    )
+
+    return errors
+
+
+def apply_manual_binning_overrides(
+    bin_def: dict, overrides: list[dict], selected_vars: set[str] | None = None
+) -> dict:
+    """Apply manual binning overrides to a fine-classing bin definition.
+
+    Returns a new ``bin_def`` dict with merged / grouped bins computed
+    and (if *selected_vars* is given) filtered to the selected variables.
+    Raises ``ValueError`` on invalid overrides — call
+    :func:`validate_manual_binning_overrides` first for user-facing errors.
+    """
+    var_map = {v["variable"]: dict(v) for v in bin_def.get("variables", [])}
+    warnings: list[dict] = []
+
+    for override in overrides:
+        variable = override.get("variable", "")
+        action = override.get("action", "")
+        source_bin_ids = override.get("source_bin_ids", [])
+
+        if variable not in var_map:
+            raise ValueError(f"Override references unknown variable '{variable}'")
+
+        var_info = var_map[variable]
+        var_bins = list(var_info.get("bins", []))
+        bin_id_map = {b["bin_id"]: b for b in var_bins}
+
+        if action == "merge_bins":
+            merged = {
+                "bin_id": f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
+                "label": override.get("new_label", "Merged"),
+                "lower": bin_id_map[source_bin_ids[0]].get("lower"),
+                "upper": bin_id_map[source_bin_ids[-1]].get("upper"),
+                "lower_inclusive": bin_id_map[source_bin_ids[0]].get("lower_inclusive", False),
+                "upper_inclusive": bin_id_map[source_bin_ids[-1]].get("upper_inclusive", True),
+                "categories": None,
+                "is_missing_bin": False,
+                "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
+                "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
+                "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
+            }
+            new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
+            insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
+            new_bins.insert(insert_pos, merged)
+            var_info["bins"] = new_bins
+
+        elif action == "group_categories":
+            grouped = {
+                "bin_id": f"{variable}_manual_grouped",
+                "label": override.get("new_label", "Grouped"),
+                "lower": None, "upper": None,
+                "lower_inclusive": False, "upper_inclusive": False,
+                "categories": sum([bin_id_map[bid].get("categories", []) for bid in source_bin_ids], []),
+                "is_missing_bin": False,
+                "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
+                "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
+                "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
+            }
+            new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
+            insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
+            new_bins.insert(insert_pos, grouped)
+            var_info["bins"] = new_bins
+
+    if selected_vars is not None:
+        var_map = {k: v for k, v in var_map.items() if k in selected_vars}
+
+    if not overrides:
+        warnings.append({"message": "No manual overrides applied; passing through auto bins for selected variables"})
+
+    return {
+        "variables": list(var_map.values()),
+        "warnings": bin_def.get("warnings", []) + warnings,
+    }
+
 
 class ManualBinningNode(NodeType):
     node_type = "cardre.manual_binning"
@@ -1780,6 +1949,29 @@ class ManualBinningNode(NodeType):
     category = "refinement"
     input_roles: list[str] = ["definition"]
     output_roles: list[str] = ["definition"]
+
+    VALID_ACTIONS = {"merge_bins", "group_categories", "isolate_missing", "isolate_special_value"}
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        for i, override in enumerate(list(params.get("overrides", []))):
+            prefix = f"overrides[{i}]"
+            if not isinstance(override, dict):
+                errors.append(f"{prefix} must be a dict")
+                continue
+            variable = override.get("variable", "")
+            action = override.get("action", "")
+            reason = override.get("reason", "")
+            if not reason:
+                errors.append(f"{prefix}: override for '{variable}' requires a non-empty reason")
+            if action not in self.VALID_ACTIONS:
+                errors.append(f"{prefix}: unsupported action '{action}'")
+            source_bin_ids = override.get("source_bin_ids", [])
+            if not isinstance(source_bin_ids, list):
+                errors.append(f"{prefix}: source_bin_ids must be a list")
+            if action == "merge_bins" and len(source_bin_ids) < 2:
+                errors.append(f"{prefix}: merge_bins requires at least 2 source bins")
+        return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         from cardre.artifacts import make_fingerprint, write_json_artifact
@@ -1794,99 +1986,16 @@ class ManualBinningNode(NodeType):
                                   None)
 
         bin_def = json.loads(store.artifact_path(bin_artifact).read_text())
-        selected_vars = set()
+        selected_vars: set[str] = set()
         if selection_artifact:
             sel = json.loads(store.artifact_path(selection_artifact).read_text())
             selected_vars = {s["variable"] for s in sel.get("selected", [])}
 
-        var_map = {v["variable"]: v for v in bin_def.get("variables", [])}
+        errors = validate_manual_binning_overrides(bin_def, overrides)
+        if errors:
+            raise ValueError("; ".join(errors))
 
-        warnings: list[dict] = []
-
-        for override in overrides:
-            variable = override.get("variable", "")
-            action = override.get("action", "")
-            reason = override.get("reason", "")
-            if not reason:
-                raise ValueError(f"Override for '{variable}' requires a non-empty reason")
-            if variable not in var_map:
-                raise ValueError(f"Override references unknown variable '{variable}'")
-            if action not in ("merge_bins", "group_categories", "isolate_missing", "isolate_special_value"):
-                raise ValueError(f"Unsupported manual_binning action '{action}'")
-
-            source_bin_ids = override.get("source_bin_ids", [])
-            var_bins = var_map[variable]["bins"]
-            bin_id_map = {b["bin_id"]: b for b in var_bins}
-
-            for bid in source_bin_ids:
-                if bid not in bin_id_map:
-                    raise ValueError(f"bin_id '{bid}' not found in variable '{variable}'")
-
-            if action == "merge_bins":
-                if len(source_bin_ids) < 2:
-                    raise ValueError(f"merge_bins requires at least 2 source bins, got {len(source_bin_ids)}")
-                kind = var_map[variable].get("kind", "")
-                if kind == "numeric":
-                    bin_positions = [var_bins.index(bin_id_map[bid]) for bid in source_bin_ids]
-                    expected_positions = list(range(min(bin_positions), max(bin_positions) + 1))
-                    if bin_positions != expected_positions:
-                        raise ValueError(
-                            f"Numeric bin merge for {variable!r} requires adjacent bins. "
-                            f"Source bins at positions {bin_positions} are not contiguous. "
-                            f"Expected adjacent positions {expected_positions}"
-                        )
-                new_label = override.get("new_label", "Merged")
-                merged = {
-                    "bin_id": f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
-                    "label": new_label,
-                    "lower": bin_id_map[source_bin_ids[0]].get("lower"),
-                    "upper": bin_id_map[source_bin_ids[-1]].get("upper"),
-                    "lower_inclusive": bin_id_map[source_bin_ids[0]].get("lower_inclusive", False),
-                    "upper_inclusive": bin_id_map[source_bin_ids[-1]].get("upper_inclusive", True),
-                    "categories": None,
-                    "is_missing_bin": False,
-                    "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
-                    "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
-                    "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
-                }
-                new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
-                new_bins.insert(
-                    min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids),
-                    merged,
-                )
-                var_map[variable]["bins"] = new_bins
-
-            elif action == "group_categories":
-                new_label = override.get("new_label", "Grouped")
-                grouped = {
-                    "bin_id": f"{variable}_manual_grouped",
-                    "label": new_label,
-                    "lower": None, "upper": None,
-                    "lower_inclusive": False, "upper_inclusive": False,
-                    "categories": sum([bin_id_map[bid].get("categories", []) for bid in source_bin_ids], []),
-                    "is_missing_bin": False,
-                    "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
-                    "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
-                    "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
-                }
-                new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
-                new_bins.insert(
-                    min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids),
-                    grouped,
-                )
-                var_map[variable]["bins"] = new_bins
-
-        # Filter to only selected variables if selection artifact exists
-        if selected_vars:
-            var_map = {k: v for k, v in var_map.items() if k in selected_vars}
-
-        if not overrides:
-            warnings.append({"message": "No manual overrides applied; passing through auto bins for selected variables"})
-
-        refined = {
-            "variables": list(var_map.values()),
-            "warnings": bin_def.get("warnings", []) + warnings,
-        }
+        refined = apply_manual_binning_overrides(bin_def, overrides, selected_vars if selected_vars else None)
 
         artifact = write_json_artifact(
             store, artifact_type="definition", role="definition",
@@ -2303,6 +2412,31 @@ class LogisticRegressionNode(NodeType):
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
 
+    VALID_PENALTIES = {"l1", "l2", "elasticnet", None}
+    VALID_SOLVERS = {"lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"}
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        penalty = params.get("penalty")
+        if penalty is not None and penalty not in self.VALID_PENALTIES:
+            errors.append(f"penalty must be one of {self.VALID_PENALTIES}, got '{penalty}'")
+        solver = params.get("solver", "lbfgs")
+        if solver not in self.VALID_SOLVERS:
+            errors.append(f"solver must be one of {self.VALID_SOLVERS}, got '{solver}'")
+        C = params.get("C", 1.0)
+        try:
+            if float(C) <= 0:
+                errors.append("C must be positive")
+        except (ValueError, TypeError):
+            errors.append("C must be a number")
+        max_iter = params.get("max_iter", 1000)
+        try:
+            if int(max_iter) < 1:
+                errors.append("max_iter must be >= 1")
+        except (ValueError, TypeError):
+            errors.append("max_iter must be an integer")
+        return errors
+
     def run(self, context: ExecutionContext) -> NodeOutput:
         import numpy as np
         from cardre.artifacts import make_fingerprint, write_json_artifact
@@ -2467,6 +2601,22 @@ class ScoreScalingNode(NodeType):
     category = "fit"
     input_roles: list[str] = ["model", "definition", "report"]
     output_roles: list[str] = ["scorecard"]
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        base_odds = params.get("base_odds", 50.0)
+        try:
+            if float(base_odds) <= 0:
+                errors.append("base_odds must be positive")
+        except (ValueError, TypeError):
+            errors.append("base_odds must be a number")
+        pdo = params.get("points_to_double_odds", 20)
+        try:
+            if float(pdo) <= 0:
+                errors.append("points_to_double_odds must be positive")
+        except (ValueError, TypeError):
+            errors.append("points_to_double_odds must be a number")
+        return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         import math
@@ -3127,6 +3277,16 @@ class CutoffAnalysisNode(NodeType):
     category = "apply"
     input_roles: list[str] = ["train", "test", "oot"]
     output_roles: list[str] = ["report"]
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        band_count = params.get("band_count", 20)
+        try:
+            if int(band_count) < 2:
+                errors.append("band_count must be at least 2")
+        except (ValueError, TypeError):
+            errors.append("band_count must be an integer")
+        return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         from cardre.artifacts import make_fingerprint, write_json_artifact

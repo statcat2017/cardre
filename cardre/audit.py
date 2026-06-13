@@ -118,6 +118,11 @@ class NodeType(ABC):
     def run(self, context: ExecutionContext) -> NodeOutput:
         ...
 
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        """Validate param values and return a list of error messages.
+        An empty list means the params are valid."""
+        return []
+
 
 @dataclass
 class ExecutionContext:

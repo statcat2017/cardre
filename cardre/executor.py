@@ -421,11 +421,34 @@ class PlanExecutor:
         - current params_hash, node_type, node_version
         - parent output logical hashes (has a parent been re-run?)
         - all ancestors recursively
+
+        When the current plan version has no successful run, falls back
+        to the most recent successful run from any version of the same
+        plan.  This prevents every step from appearing stale immediately
+        after a param-update creates a brand-new plan version.
         """
         steps = store.get_plan_version_steps(plan_version_id)
         run_id = store.get_latest_successful_run_id(plan_version_id)
+
         if run_id is None:
-            return {s.step_id: True for s in steps}
+            pv = store.get_plan_version(plan_version_id)
+            if pv is not None:
+                conn = store._connect()
+                row = conn.execute(
+                    """
+                    SELECT r.run_id FROM runs r
+                    JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id
+                    WHERE pv.plan_id = ? AND r.status = 'succeeded'
+                    ORDER BY r.started_at DESC
+                    LIMIT 1
+                    """,
+                    (pv["plan_id"],),
+                ).fetchone()
+                if row is not None:
+                    run_id = row["run_id"]
+
+            if run_id is None:
+                return {s.step_id: True for s in steps}
 
         run_steps = store.get_run_steps(run_id)
         rs_by_step = {rs.step_id: rs for rs in run_steps}

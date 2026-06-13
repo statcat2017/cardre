@@ -255,7 +255,7 @@ class ProjectStore:
 
     def list_artifacts_for_project(self, project_id: str) -> list[ArtifactRef]:
         rows = self._connect().execute(
-            "SELECT a.* FROM artifacts a "
+            "SELECT DISTINCT a.* FROM artifacts a "
             "JOIN run_steps rs ON a.artifact_id IN ("
             "  SELECT value FROM json_each(rs.output_artifact_ids_json)"
             ") "
@@ -523,6 +523,24 @@ class ProjectStore:
             for r in rows
         ]
 
+    def get_artifact_ids_for_run(self, run_id: str) -> set[str]:
+        rows = self._connect().execute(
+            "SELECT DISTINCT json_each.value AS artifact_id "
+            "FROM run_steps, json_each(run_steps.output_artifact_ids_json) "
+            "WHERE run_steps.run_id = ?",
+            (run_id,),
+        ).fetchall()
+        return {r["artifact_id"] for r in rows}
+
+    def get_artifact_ids_for_producing_step(self, step_id: str) -> set[str]:
+        rows = self._connect().execute(
+            "SELECT DISTINCT json_each.value AS artifact_id "
+            "FROM run_steps, json_each(run_steps.output_artifact_ids_json) "
+            "WHERE run_steps.step_id = ?",
+            (step_id,),
+        ).fetchall()
+        return {r["artifact_id"] for r in rows}
+
     def get_latest_successful_run_id(self, plan_version_id: str) -> str | None:
         row = self._connect().execute(
             "SELECT run_id FROM runs WHERE plan_version_id = ? AND status = 'succeeded' "
@@ -541,6 +559,17 @@ class ProjectStore:
             rows = self._connect().execute(
                 "SELECT * FROM runs ORDER BY started_at DESC"
             ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_runs_for_project(self, project_id: str) -> list[JsonDict]:
+        rows = self._connect().execute(
+            "SELECT r.* FROM runs r "
+            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
+            "JOIN plans p ON pv.plan_id = p.plan_id "
+            "WHERE p.project_id = ? "
+            "ORDER BY r.started_at DESC",
+            (project_id,),
+        ).fetchall()
         return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------
