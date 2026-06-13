@@ -51,20 +51,25 @@ The report generator must consume from these sources:
 
 ## 5A — Report Evidence Model
 
-The first PR should build a structured JSON report model:
+The first PR builds a structured JSON report model with evidence tracing.
+
+**Existing scaffold:** `cardre/services/report_service.py` — defines
+`GovernanceReport`, `ReportSection`, `EvidenceRef`, `SECTION_MANIFEST`,
+and `create_empty_report()`.
 
 ```python
-@dataclass
-class ReportSection:
-    section_id: str
-    title: str
-    evidence_refs: list[EvidenceRef]
-
-@dataclass
-class EvidenceRef:
-    source_type: str  # "branch", "run_step", "artifact", "comparison", "champion"
-    source_id: str
-    claim: str
+# Example usage:
+from cardre.services.report_service import create_empty_report
+report = create_empty_report(
+    project_id="...",
+    branch_id="...",
+    report_id=str(uuid.uuid4()),
+    created_at=utc_now_iso(),
+)
+report.sections[0].content = {"project_name": "...", "version": "0.4.0"}
+report.sections[0].evidence_refs.append(
+    EvidenceRef(source_type="branch", source_id=branch_id, claim="selected branch")
+)
 ```
 
 Section manifest (initial):
