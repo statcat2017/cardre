@@ -71,6 +71,45 @@ PROOF_PATHWAY_STEPS_CONFIG = [
     },
 ]
 
+PHASE2C_PATHWAY_STEPS_CONFIG = [
+    {
+        "step_id": "apply-woe",
+        "node_type": "cardre.apply_woe_mapping",
+        "node_version": "1",
+        "category": "apply",
+        "params": {},
+        "parent_step_ids": ["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv"],
+        "branch_label": "",
+    },
+    {
+        "step_id": "apply-model",
+        "node_type": "cardre.apply_model",
+        "node_version": "1",
+        "category": "apply",
+        "params": {},
+        "parent_step_ids": ["apply-woe", "logistic-regression", "score-scaling"],
+        "branch_label": "",
+    },
+    {
+        "step_id": "validation-metrics",
+        "node_type": "cardre.validation_metrics",
+        "node_version": "1",
+        "category": "apply",
+        "params": {},
+        "parent_step_ids": ["apply-model", "define-metadata"],
+        "branch_label": "",
+    },
+    {
+        "step_id": "cutoff-analysis",
+        "node_type": "cardre.cutoff_analysis",
+        "node_version": "1",
+        "category": "apply",
+        "params": {"band_count": 20},
+        "parent_step_ids": ["apply-model", "validation-metrics"],
+        "branch_label": "",
+    },
+]
+
 PHASE2B_PATHWAY_STEPS_CONFIG = [
     {
         "step_id": "woe-transform-train",
@@ -346,9 +385,9 @@ def register_proof_pathway(store: ProjectStore, project_id: str) -> str:
 
 
 def register_scorecard_pathway(store: ProjectStore, project_id: str) -> str:
-    """Register the full Phase 2A + 2B scorecard pathway in the given project."""
+    """Register the full Phase 2A + 2B + 2C scorecard pathway in the given project."""
     plan_id = store.create_plan(project_id, "Scorecard Pathway")
-    full_config = list(PHASE2A_PATHWAY_STEPS_CONFIG) + list(PHASE2B_PATHWAY_STEPS_CONFIG)
+    full_config = list(PHASE2A_PATHWAY_STEPS_CONFIG) + list(PHASE2B_PATHWAY_STEPS_CONFIG) + list(PHASE2C_PATHWAY_STEPS_CONFIG)
     steps = _build_steps(full_config)
-    store.create_plan_version(plan_id, steps, description="Auto-registered scorecard pathway (Phase 2A + 2B)")
+    store.create_plan_version(plan_id, steps, description="Auto-registered scorecard pathway (Phase 2A + 2B + 2C)")
     return plan_id

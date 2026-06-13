@@ -56,8 +56,11 @@ class NodeRegistry:
 def _register_proof_nodes(reg: NodeRegistry) -> None:
     from cardre.nodes import (
         ApplyExclusionsNode,
+        ApplyModelNode,
+        ApplyWoeMappingNode,
         BuildSummaryReportNode,
         CalculateWoeIvNode,
+        CutoffAnalysisNode,
         DefineModellingMetadataNode,
         DevelopmentSampleDefinitionNode,
         DummyApplyNode,
@@ -72,6 +75,7 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
         SplitTrainTestOotNode,
         TechnicalManifestExportNode,
         ValidateBinaryTargetNode,
+        ValidationMetricsNode,
         VariableClusteringNode,
         VariableSelectionNode,
         WoeTransformTrainNode,
@@ -98,5 +102,9 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
         LogisticRegressionNode,
         ScoreScalingNode,
         BuildSummaryReportNode,
+        ApplyWoeMappingNode,
+        ApplyModelNode,
+        ValidationMetricsNode,
+        CutoffAnalysisNode,
     ]:
         reg.register(n)
