@@ -1,9 +1,10 @@
 # Phase 2 Implementation Plan
 
 Phase 2 turns the Phase 1 proof pathway into the first real scorecard engine.
-The goal is a deterministic local run that imports a binary-target credit dataset,
-fits scorecard definitions on train data only, applies the finalized scorecard to
-train/test/OOT, writes auditable artifacts, and exports a technical manifest.
+The full Phase 2 target is a deterministic local run that imports a binary-target
+credit dataset, fits scorecard definitions on train data only, applies the
+finalized scorecard to train/test/OOT, writes auditable artifacts, and exports a
+technical manifest.
 
 Phase 2 is engine-first. The desktop shell should be able to trigger and inspect
 the run through existing sidecar APIs, but the full node editor, manual binning
@@ -22,9 +23,9 @@ Phase 1 already provides:
 - `sidecar/`: FastAPI project, dataset, plan, run, and artifact endpoints.
 - `frontend/`: Tauri/React scaffold for the Phase 1 desktop shell.
 
-## Phase 2 Scope
+## Phase 2 Full Target
 
-Implement a fixed minimum viable scorecard pathway:
+The complete Phase 2 target is a fixed minimum viable scorecard pathway:
 
 ```text
 Import Dataset
@@ -44,13 +45,53 @@ Import Dataset
 -> WOE Transform Train
 -> Logistic Regression
 -> Score Scaling
--> Gains + Characteristic Reports
+-> Build Summary Report
 -> Apply WOE Mapping to train/test/oot
 -> Apply Model to train/test/oot
 -> Validation Metrics by Role
 -> Cutoff / Strategy Analysis
 -> Technical Manifest Export
 ```
+
+Do not attempt the full target in one implementation pass. The next implementable
+slice is Phase 2A.
+
+## Phase 2A MVP Scope
+
+Phase 2A is the immediate implementation target. It proves the binning/WOE spine
+without requiring model fitting, scoring, validation metrics, or cutoff analysis.
+
+Minimum green path:
+
+```text
+German Credit import
+-> Define Modelling Metadata
+-> Apply Exclusions
+-> Profile Dataset
+-> Validate Binary Target
+-> Development Sample Definition
+-> Train/Test/OOT Split with recorded strategy
+-> Explicit Missing/Outlier Treatment, or pass-through
+-> Automatic Fine Classing on train only
+-> Initial WOE/IV Diagnostics
+-> Variable Clustering
+-> Variable Selection
+-> Manual Binning pass-through plus JSON overrides
+-> Final WOE/IV Calculation
+-> Technical Manifest Stub
+```
+
+Phase 2A definition of done:
+
+- A fresh project can register the fixed scorecard pathway with Phase 2A steps.
+- German Credit can run through final WOE/IV and selected-variable artifacts.
+- Fit/selection/refinement nodes cannot consume `test` or `oot` tabular data.
+- The manifest stub is generated from the current `run_id`, `plan_version_id`,
+  parent run-step evidence, and immutable artifact IDs.
+- The run preserves all artifact hashes, params hashes, node versions, warnings,
+  and structured errors needed for replay.
+- Model, scorecard, scoring, validation metrics, cutoff analysis, and final audit
+  export remain Phase 2B/2C work.
 
 ## Workstream 1: Foundation Cleanup And Contracts
 
@@ -63,6 +104,9 @@ Objectives:
 - Keep SQLite metadata-only. Tabular outputs remain Parquet; definitions and
   reports remain JSON.
 - Keep train/test/OOT access enforced by the executor rather than node convention.
+- Replace category-only role filtering with explicit node-level input contracts.
+- Retain a hard leakage rule: fitting or learning logic may not consume `test` or
+  `oot` tabular artifacts.
 
 Acceptance criteria:
 
@@ -70,12 +114,16 @@ Acceptance criteria:
 - Shared artifact helpers preserve `physical_hash`, `logical_hash`, media type,
   role, and metadata.
 - New node outputs are replayable through existing execution fingerprints.
+- Mixed-input nodes receive the exact roles they declare without being marked as
+  `transform` to bypass filtering.
+- Tests prove fit/learning nodes reject `test` and `oot` datasets even when those
+  artifacts are wired as parents.
 
 ## Workstream 2: Scorecard Pathway Template
 
 Objectives:
 
-- Add a fixed Phase 2 scorecard pathway registered on project creation.
+- Add a fixed Phase 2A scorecard pathway registered on project creation.
 - Keep the Phase 1 proof pathway only if useful for smoke tests.
 - Use stable step IDs that match domain language and remain suitable for audit
   manifests.
@@ -89,26 +137,22 @@ Suggested step IDs:
 - `validate-target`
 - `sample-definition`
 - `split`
-- `missing-outlier-treatment`
+- `explicit-missing-outlier-treatment`
 - `fine-classing`
 - `initial-woe-iv`
 - `variable-clustering`
 - `variable-selection`
 - `manual-binning`
 - `final-woe-iv`
-- `woe-transform-train`
-- `logistic-regression`
-- `score-scaling`
-- `build-reports`
-- `apply-woe`
-- `apply-model`
-- `validation-metrics`
-- `cutoff-analysis`
-- `technical-manifest`
+- `technical-manifest-stub`
+
+Phase 2B adds `woe-transform-train`, `logistic-regression`, `score-scaling`, and
+`build-summary-report`. Phase 2C adds `apply-woe`, `apply-model`,
+`validation-metrics`, `cutoff-analysis`, and the final technical manifest.
 
 Acceptance criteria:
 
-- Creating a project registers a fixed scorecard pathway.
+- Creating a project registers a fixed Phase 2A scorecard pathway.
 - `GET /plans/{plan_id}` returns all scorecard steps with backend-computed
   status and staleness.
 - Dummy fit/apply nodes are no longer part of the primary scorecard path.
@@ -138,21 +182,27 @@ Acceptance criteria:
 
 ## Workstream 4: Data Preparation
 
-Implement `cardre.missing_outlier_treatment`.
+For Phase 2A, implement explicit-only treatment as
+`cardre.explicit_missing_outlier_treatment`.
 
 Minimum behavior:
 
 - Pass-through by default.
-- Optional simple numeric/categorical imputation.
-- Optional numeric cap/floor by explicit bounds or configured percentiles.
+- Optional simple numeric/categorical imputation using user-supplied constants.
+- Optional numeric cap/floor using user-supplied explicit bounds.
+- No learned percentiles, means, medians, modes, or other parameters in Phase 2A.
 - Do not conflate imputation with fine-classing `missing_policy`.
 
 Acceptance criteria:
 
 - Treatment definitions are JSON artifacts.
 - Transformed datasets remain Parquet artifacts.
-- Learned treatment parameters, if any, are fit on train only and then applied to
-  validation roles through apply semantics.
+- The node records all explicit treatment parameters and affected counts.
+- The node does not learn from combined train/test/OOT data.
+
+Future learned treatment must be split into `fit_missing_outlier_treatment`
+(`fit`, consumes `train` only) and `apply_missing_outlier_treatment` (`apply`,
+consumes train/test/OOT plus the treatment definition).
 
 ## Workstream 5: Automatic Fine Classing
 
@@ -184,6 +234,9 @@ Rules:
 - This is a diagnostic/selection node, not a dataset transform.
 - It consumes train data and bin definitions.
 - It computes WOE and IV by variable/bin.
+- It uses a documented event convention: event = bad, non-event = good.
+- It uses `woe = ln(non_event_distribution / event_distribution)` and
+  `iv_component = (non_event_distribution - event_distribution) * woe`.
 - Infinite WOE is not allowed silently.
 - Default zero-cell policy blocks final WOE use unless explicit smoothing is
   configured with a rationale.
@@ -240,6 +293,8 @@ Acceptance criteria:
 
 ## Workstream 9: WOE Transform
 
+Phase 2B workstream.
+
 Implement:
 
 - `cardre.woe_transform_train`
@@ -258,6 +313,8 @@ Acceptance criteria:
 
 ## Workstream 10: Logistic Regression
 
+Phase 2B workstream.
+
 Implement `cardre.logistic_regression` as a fit node consuming WOE-transformed
 train data only.
 
@@ -273,11 +330,15 @@ Outputs:
 Acceptance criteria:
 
 - Model fit is deterministic for fixed params.
+- `predicted_bad_probability` orientation is explicit and does not depend on
+  scikit-learn's implicit class ordering.
 - Coefficient signs and convergence status are recorded.
 - Perfect separation or convergence failure surfaces as structured warnings or
   errors.
 
 ## Workstream 11: Score Scaling
+
+Phase 2B workstream.
 
 Implement `cardre.score_scaling`.
 
@@ -300,6 +361,8 @@ Acceptance criteria:
 
 ## Workstream 12: Apply Model And Validation Metrics
 
+Phase 2C workstream.
+
 Implement:
 
 - `cardre.apply_model`
@@ -321,6 +384,9 @@ Acceptance criteria:
 
 Implement `cardre.technical_manifest_export`.
 
+Phase 2A implements a manifest stub that covers evidence through final WOE/IV.
+Phase 2C extends it with model, scorecard, validation, and cutoff evidence.
+
 Minimum manifest contents:
 
 - Project ID and name.
@@ -332,23 +398,26 @@ Minimum manifest contents:
 - Modelling metadata.
 - Selected variables.
 - Final bin definitions.
-- Model coefficients.
-- Score scaling params.
-- Validation metrics.
+- Model coefficients when Phase 2B is implemented.
+- Score scaling params when Phase 2B is implemented.
+- Validation metrics when Phase 2C is implemented.
 - Warnings and errors summary.
 
 Acceptance criteria:
 
 - Manifest is JSON and registered as an artifact.
 - Raw datasets are not exported by default.
+- Manifest generation uses `context.run_id`, `context.plan_version_id`, parent
+  run-step evidence, and immutable artifact IDs. It must not infer from latest
+  run or mutable project state.
 - Manifest generation is deterministic for the same run evidence.
 
 ## Workstream 14: Sidecar/API Updates
 
 Keep API changes minimal:
 
-- Register the Phase 2 scorecard pathway on project creation.
-- Ensure imports update the scorecard pathway import step params.
+- Register the Phase 2A scorecard pathway on project creation.
+- Ensure imports update the Phase 2A pathway import step params.
 - Add artifact content/summary endpoints only where required for report
   inspection.
 - Keep run triggering through `POST /runs` unless asynchronous execution becomes
@@ -358,9 +427,9 @@ Acceptance criteria:
 
 - Existing `/projects`, `/datasets/import`, `/plans/{plan_id}`, and `/runs`
   behavior remains compatible.
-- API tests can run the full German Credit scorecard pathway.
-- Final scorecard, validation metrics, and technical manifest are discoverable
-  from API responses.
+- API tests can run the German Credit pathway through final WOE/IV.
+- Final WOE/IV, selected-variable artifacts, refined-bin artifacts, and the
+  manifest stub are discoverable from API responses.
 
 ## Milestones
 
@@ -368,10 +437,14 @@ Acceptance criteria:
 
 - Pathway template.
 - Metadata/exclusion/sample nodes.
+- Node-level input contracts and hard leakage tests.
+- Split strategy contract with recorded train/test/OOT assignment evidence.
+- Explicit-only missing/outlier treatment or pass-through.
 - Fine classing.
 - WOE/IV.
 - Variable clustering/selection.
 - Manual binning pass-through and JSON overrides.
+- Manifest stub through final WOE/IV.
 
 ### Phase 2B: Model And Scorecard
 
@@ -386,7 +459,7 @@ Acceptance criteria:
 - Apply WOE/model to train/test/OOT.
 - Metrics by role.
 - Cutoff analysis.
-- Technical manifest export.
+- Final technical manifest export.
 - Minimal sidecar/report access polish.
 
 ## Out Of Scope

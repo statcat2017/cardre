@@ -1,8 +1,8 @@
 # Phase 2 Technical Specification
 
 This specification defines the implementation contracts for Cardre Phase 2:
-Minimum Viable Scorecard Engine. It is intended for implementation agents working
-from the Phase 1 codebase.
+Minimum Viable Scorecard Engine. The immediate implementation target is Phase 2A,
+the binning/WOE spine. Phase 2B and Phase 2C remain explicit follow-up slices.
 
 Follow the existing architecture:
 
@@ -20,6 +20,37 @@ Follow the existing architecture:
 - Do not export raw datasets by default.
 - Do not allow fitting nodes to read `test` or `oot` artifacts.
 - Do not store tabular data or blobs in SQLite.
+- Do not implement model fitting, score scaling, role-based scoring, validation
+  metrics, or cutoff analysis in Phase 2A.
+
+## Phase 2A Green Path
+
+Phase 2A must produce a complete auditable run through final WOE/IV, but it does
+not need a model or scorecard.
+
+Minimum green path:
+
+```text
+German Credit import
+-> Define Modelling Metadata
+-> Apply Exclusions
+-> Profile Dataset
+-> Validate Binary Target
+-> Development Sample Definition
+-> Train/Test/OOT Split with recorded strategy
+-> Explicit Missing/Outlier Treatment, or pass-through
+-> Automatic Fine Classing on train only
+-> Initial WOE/IV Diagnostics
+-> Variable Clustering
+-> Variable Selection
+-> Manual Binning pass-through plus JSON overrides
+-> Final WOE/IV Calculation
+-> Technical Manifest Stub
+```
+
+Phase 2B adds WOE transform, logistic regression, score scaling, and a build
+summary report. Phase 2C adds apply-to-role scoring, validation metrics, cutoff
+analysis, and final manifest export.
 
 ## Dependencies
 
@@ -132,6 +163,26 @@ Every new node type must define:
 - `output_roles`
 - deterministic `run(context)` implementation
 
+Node-level input contracts are mandatory. Do not rely on category-only filtering
+for Phase 2 nodes.
+
+Each node must declare the exact artifact roles it accepts and whether each role
+is tabular data or non-tabular evidence. The executor must use those declarations
+to select node inputs, then apply separate leakage rules.
+
+Hard leakage rule:
+
+- Any node that fits, learns, selects, ranks, clusters, refines fitted modelling
+  definitions, or computes WOE/IV must not consume `test` or `oot` tabular
+  artifacts.
+- Such nodes may consume non-tabular `definition` and `report` artifacts produced
+  upstream, as long as those artifacts were themselves produced without test/OOT
+  leakage.
+- Apply nodes may consume `train`, `test`, and `oot` tabular artifacts plus fitted
+  definitions, but must not update fitted definitions.
+- Transform nodes must not be used as a workaround for leakage-sensitive learning.
+  If a node learns parameters, it is a `fit` node.
+
 Recommended optional fields:
 
 - `display_name`
@@ -165,6 +216,9 @@ Use these roles consistently:
 - `scorecard`: finalized scorecard definition.
 - `manifest`: technical export manifest.
 
+Role names identify artifacts, not whether a node may use them. Permission is the
+combination of node-level input contract plus leakage rules.
+
 Use these artifact types consistently:
 
 - `dataset`
@@ -174,9 +228,10 @@ Use these artifact types consistently:
 - `scorecard`
 - `manifest`
 
-## Fixed Phase 2 Pathway
+## Fixed Phase 2A Pathway
 
-Register this pathway as the default scorecard plan for new projects.
+Register this pathway as the default scorecard plan for new projects during the
+Phase 2A implementation.
 
 | Position | Step ID | Node Type | Category | Parents |
 |---:|---|---|---|---|
@@ -187,28 +242,34 @@ Register this pathway as the default scorecard plan for new projects.
 | 4 | `validate-target` | `cardre.validate_binary_target` | `transform` | `apply-exclusions`, `define-metadata` |
 | 5 | `sample-definition` | `cardre.development_sample_definition` | `transform` | `apply-exclusions`, `define-metadata` |
 | 6 | `split` | `cardre.split_train_test_oot` | `transform` | `apply-exclusions` |
-| 7 | `missing-outlier-treatment` | `cardre.missing_outlier_treatment` | `transform` | `split` |
-| 8 | `fine-classing` | `cardre.fine_classing` | `fit` | `missing-outlier-treatment`, `define-metadata` |
-| 9 | `initial-woe-iv` | `cardre.calculate_woe_iv` | `selection` | `missing-outlier-treatment`, `fine-classing`, `define-metadata` |
-| 10 | `variable-clustering` | `cardre.variable_clustering` | `selection` | `missing-outlier-treatment`, `initial-woe-iv` |
+| 7 | `explicit-missing-outlier-treatment` | `cardre.explicit_missing_outlier_treatment` | `apply` | `split` |
+| 8 | `fine-classing` | `cardre.fine_classing` | `fit` | `explicit-missing-outlier-treatment`, `define-metadata` |
+| 9 | `initial-woe-iv` | `cardre.calculate_woe_iv` | `selection` | `explicit-missing-outlier-treatment`, `fine-classing`, `define-metadata` |
+| 10 | `variable-clustering` | `cardre.variable_clustering` | `selection` | `explicit-missing-outlier-treatment`, `initial-woe-iv` |
 | 11 | `variable-selection` | `cardre.variable_selection` | `selection` | `initial-woe-iv`, `variable-clustering` |
 | 12 | `manual-binning` | `cardre.manual_binning` | `refinement` | `fine-classing`, `variable-selection` |
-| 13 | `final-woe-iv` | `cardre.calculate_woe_iv` | `selection` | `missing-outlier-treatment`, `manual-binning`, `define-metadata` |
-| 14 | `woe-transform-train` | `cardre.woe_transform_train` | `fit` | `missing-outlier-treatment`, `manual-binning`, `final-woe-iv` |
-| 15 | `logistic-regression` | `cardre.logistic_regression` | `fit` | `woe-transform-train`, `define-metadata` |
-| 16 | `score-scaling` | `cardre.score_scaling` | `fit` | `logistic-regression`, `manual-binning`, `final-woe-iv` |
-| 17 | `build-reports` | `cardre.build_reports` | `fit` | `score-scaling`, `logistic-regression`, `final-woe-iv` |
-| 18 | `apply-woe` | `cardre.apply_woe_mapping` | `apply` | `missing-outlier-treatment`, `manual-binning`, `final-woe-iv` |
-| 19 | `apply-model` | `cardre.apply_model` | `apply` | `apply-woe`, `logistic-regression`, `score-scaling` |
-| 20 | `validation-metrics` | `cardre.validation_metrics` | `apply` | `apply-model`, `define-metadata` |
-| 21 | `cutoff-analysis` | `cardre.cutoff_analysis` | `apply` | `apply-model`, `validation-metrics` |
-| 22 | `technical-manifest` | `cardre.technical_manifest_export` | `transform` | `cutoff-analysis`, `build-reports` |
+| 13 | `final-woe-iv` | `cardre.calculate_woe_iv` | `selection` | `explicit-missing-outlier-treatment`, `manual-binning`, `define-metadata` |
+| 14 | `technical-manifest-stub` | `cardre.technical_manifest_export` | `transform` | `final-woe-iv`, `variable-selection` |
 
-Implementation note: the current executor filters inputs by category role. If a
-selection/refinement node needs both train data and definition/report artifacts,
-adjust category-role filtering or add explicit node-level input selection without
-weakening leakage prevention. Fit nodes must still be restricted to train-only
-tabular data plus non-tabular definitions/reports.
+Phase 2B pathway extension:
+
+- `woe-transform-train`: `cardre.woe_transform_train`, `fit`.
+- `logistic-regression`: `cardre.logistic_regression`, `fit`.
+- `score-scaling`: `cardre.score_scaling`, `fit`.
+- `build-summary-report`: `cardre.build_summary_report`, `fit`.
+
+Phase 2C pathway extension:
+
+- `apply-woe`: `cardre.apply_woe_mapping`, `apply`.
+- `apply-model`: `cardre.apply_model`, `apply`.
+- `validation-metrics`: `cardre.validation_metrics`, `apply`.
+- `cutoff-analysis`: `cardre.cutoff_analysis`, `apply`.
+- `technical-manifest`: extended `cardre.technical_manifest_export`.
+
+Implementation blocker: before adding the Phase 2A pathway, replace category-only
+role filtering with explicit node-level input contracts. The current category map
+cannot safely support mixed inputs such as train datasets plus definition/report
+artifacts.
 
 ## Node Specifications
 
@@ -320,9 +381,58 @@ Validation:
 
 - If `weight_column` is set, it must exist and be numeric.
 
-### `cardre.missing_outlier_treatment`
+### `cardre.split_train_test_oot`
 
 Category: `transform`
+
+Inputs:
+
+- Filtered input dataset artifact.
+- Optional modelling metadata definition.
+
+Params:
+
+```json
+{
+  "strategy": "random_stratified",
+  "train_fraction": 0.6,
+  "test_fraction": 0.2,
+  "oot_fraction": 0.2,
+  "target_column": "credit_risk_class",
+  "role_column": null,
+  "random_seed": 42
+}
+```
+
+Supported Phase 2A strategies:
+
+- `random_stratified`: deterministic random assignment stratified by target.
+- `preassigned_role_column`: consumes an existing role column with values that
+  map to `train`, `test`, and `oot`.
+
+Deferred strategy:
+
+- `date_based_oot`: required for production credit-risk projects with real time
+  windows, but optional until a fixture with a usable date column is available.
+
+Outputs:
+
+- Parquet dataset artifact with role `train`.
+- Parquet dataset artifact with role `test`.
+- Parquet dataset artifact with role `oot`.
+- JSON split report with exact strategy, seed, fractions, role counts, target
+  rates by role, and, for preassigned roles, source role mappings.
+
+Validation:
+
+- Role assignments must be deterministic for identical input and params.
+- `random_stratified` requires a binary target column.
+- `preassigned_role_column` requires every row to map to exactly one valid role.
+- Output artifact role metadata is immutable after registration.
+
+### `cardre.explicit_missing_outlier_treatment`
+
+Category: `apply`
 
 Inputs:
 
@@ -332,9 +442,15 @@ Params:
 
 ```json
 {
-  "imputations": {},
-  "caps": {},
-  "floors": {}
+  "imputations": {
+    "column_name": {"value": 0, "reason": "Explicit analyst-defined fill"}
+  },
+  "caps": {
+    "column_name": {"value": 99999, "reason": "Known operational maximum"}
+  },
+  "floors": {
+    "column_name": {"value": 0, "reason": "Known non-negative quantity"}
+  }
 }
 ```
 
@@ -347,6 +463,16 @@ Validation:
 
 - Explicit imputation and cap/floor configs must reference existing columns.
 - Numeric operations on non-numeric columns fail.
+- Every configured treatment requires a reason.
+- Phase 2A treatments are explicit-only. The node must not learn means, medians,
+  modes, quantiles, or caps from the combined train/test/OOT inputs.
+
+Future learned treatment must be split into:
+
+- `cardre.fit_missing_outlier_treatment`, category `fit`, consumes `train` only
+  and produces a treatment definition.
+- `cardre.apply_missing_outlier_treatment`, category `apply`, consumes
+  train/test/OOT plus the treatment definition.
 
 ### `cardre.fine_classing`
 
@@ -428,6 +554,25 @@ Params:
 }
 ```
 
+Event convention and formulas:
+
+- `event = bad`.
+- `non_event = good`.
+- `event_distribution = bad_count / total_bad_count`.
+- `non_event_distribution = good_count / total_good_count`.
+- `woe = ln(non_event_distribution / event_distribution)`.
+- `iv_component = (non_event_distribution - event_distribution) * woe`.
+- `iv = sum(iv_component)` per variable.
+
+Smoothing policy:
+
+- Default `zero_cell_policy` is `block`.
+- If smoothing is enabled, use additive smoothing consistently:
+  `smoothed_good_count = good_count + alpha` and
+  `smoothed_bad_count = bad_count + alpha`.
+- Smoothing config must include `method = "additive"`, `alpha > 0`, affected
+  bins in the output report, and a user rationale.
+
 Outputs:
 
 - Parquet bin-level WOE table with role `report`.
@@ -459,6 +604,8 @@ Validation:
 
 - If `zero_cell_policy == "block"`, zero good/bad bins fail final WOE use.
 - If smoothing is configured, method, value, and rationale are required.
+- The WOE sign convention must be recorded in the output summary so downstream
+  model and scorecard artifacts are interpretable.
 
 ### `cardre.variable_clustering`
 
@@ -700,7 +847,7 @@ Validation:
 - `base_odds > 0`.
 - `points_to_double_odds > 0`.
 
-### `cardre.build_reports`
+### `cardre.build_summary_report`
 
 Category: `fit`
 
@@ -712,10 +859,10 @@ Inputs:
 
 Outputs:
 
-- JSON gains/characteristic report for train or build evidence.
+- JSON build summary report for model, scorecard, and characteristic evidence.
 
-Phase 2 may keep this report basic if role-based validation metrics are covered
-by later apply nodes.
+Do not call this a gains report unless it consumes scored observations. Gains,
+lift, and cutoff reports belong after `apply_model` in Phase 2C.
 
 ### `cardre.apply_model`
 
@@ -737,6 +884,17 @@ Prediction columns:
 - `predicted_bad_probability`.
 - `score`.
 - optional row ID.
+
+Probability orientation:
+
+- `predicted_bad_probability` is always the probability of the configured bad
+  class from modelling metadata.
+- The implementation must not rely on scikit-learn class ordering implicitly.
+- The model artifact must store the bad-class label and the coefficient/intercept
+  orientation used to calculate bad probability.
+- A parity test must assert that persisted coefficients, intercept, and feature
+  order reproduce node output `predicted_bad_probability` and `score` for a tiny
+  fixture.
 
 Validation:
 
@@ -798,10 +956,11 @@ Category: `transform`
 
 Inputs:
 
-- Build reports.
+- Build summary reports when Phase 2B is implemented.
 - Validation/cutoff reports.
-- It may query the store for complete run-step and artifact evidence for the
-  current run.
+- In Phase 2A, final WOE/IV and variable-selection reports.
+- The node may query the store for complete run-step and artifact evidence only
+  for `context.run_id` and `context.plan_version_id`.
 
 Outputs:
 
@@ -830,22 +989,36 @@ Requirements:
 - Include physical and logical hashes for referenced artifacts.
 - Include node versions and params hashes.
 - Do not include raw row-level data by default.
+- Use `context.run_id`, `context.plan_version_id`, parent run-step evidence, and
+  immutable artifact IDs.
+- Do not infer from the latest run, latest plan version, latest artifact, or any
+  mutable project-level state.
+- Phase 2A manifest stub includes evidence through final WOE/IV and selected
+  variables. Phase 2C extends the same manifest with model, scorecard,
+  validation, and cutoff evidence.
 
-## Executor Considerations
+## Executor Input Contract Requirement
 
-The current category role filtering is intentionally conservative. Phase 2 nodes
-need mixed inputs such as train datasets plus definition/report artifacts. Before
-implementing scorecard nodes, decide one of these approaches:
+The current category role filtering is intentionally conservative but
+insufficient for Phase 2. Phase 2 nodes need mixed inputs such as train datasets
+plus definition/report artifacts. This must be solved before implementing the
+Phase 2A pathway.
 
-1. Prefer node-level input role filtering.
-   - Each node declares exact accepted roles.
-   - Executor validates category leakage constraints separately.
-   - Best long-term fit.
-2. Expand category maps carefully.
-   - Allow fit nodes to consume `train`, `definition`, `report`, `model`, and
-     `scorecard` roles.
-   - Still reject `test` and `oot` for fit nodes.
-   - Simpler but less precise.
+Required approach:
+
+- Implement node-level input role filtering.
+- Each node declares exact accepted roles and whether each accepted role is
+  tabular or non-tabular evidence.
+- The executor selects inputs using the node contract.
+- The executor then applies separate leakage validation.
+- Fit, selection, and refinement nodes must reject `test` and `oot` tabular
+  inputs unless a future node explicitly proves it is non-learning and safe.
+- Apply nodes may consume `train`, `test`, and `oot` tabular inputs plus fitted
+  definitions, but must not update definitions.
+
+Forbidden shortcut:
+
+- Do not mark learning nodes as `transform` to bypass role filtering.
 
 Do not make transform nodes a backdoor for leakage-sensitive fitting work. If a
 node learns parameters, classify it as `fit`.
@@ -865,8 +1038,8 @@ Existing endpoints should remain compatible:
 
 Phase 2 additions should be minimal:
 
-- Ensure project creation registers the scorecard pathway.
-- Ensure dataset import updates the scorecard pathway import params.
+- Ensure project creation registers the Phase 2A scorecard pathway.
+- Ensure dataset import updates the Phase 2A pathway import params.
 - Add report/artifact content retrieval only if current artifact endpoints cannot
   inspect JSON reports and summaries.
 
@@ -877,46 +1050,69 @@ too slow for the local API tests.
 
 ### Unit Tests
 
+- Node-level input contracts select mixed inputs correctly.
+- Fit, selection, and refinement nodes reject `test` and `oot` tabular artifacts.
+- Split creates deterministic `train`, `test`, and `oot` artifacts and records the
+  strategy used.
+- Explicit missing/outlier treatment does not learn from combined role data.
 - Fine classing creates deterministic numeric bins.
 - Fine classing creates categorical bins and handles high cardinality.
 - WOE/IV calculation matches hand-calculated small fixtures.
+- WOE/IV uses event = bad, non-event = good, and the documented WOE formula.
 - Zero-cell WOE blocks final use by default.
 - Smoothing requires explicit method, parameter, and rationale.
 - Variable selection includes/rejects candidates with reasons.
 - Manual bin overrides merge by `bin_id` and reject invalid merges.
+
+Phase 2B/2C unit tests:
+
 - WOE transform maps bins to expected WOE values.
 - Score scaling produces deterministic points.
+- Persisted model coefficients reproduce `predicted_bad_probability` and score
+  for a tiny fixture.
 - Validation metrics match small hand-checkable fixtures.
 
 ### Executor Integration Tests
 
-- Fit nodes cannot consume `test` or `oot` datasets.
+- Fit, selection, and refinement nodes cannot consume `test` or `oot` datasets.
 - Apply nodes consume definitions plus role-tagged datasets without fitting.
 - Changing fine-classing params makes downstream steps stale.
 - Re-running preserves old run records and artifacts.
 - Failed scorecard node records a failed run step with structured errors.
+- Manifest generation uses `context.run_id` and does not read latest-run state.
 
 ### End-To-End API Tests
 
 - Create project.
 - Import German Credit.
-- Run the Phase 2 scorecard pathway.
+- Run the Phase 2A scorecard pathway.
 - Assert run succeeds.
-- Assert final scorecard artifact exists.
-- Assert validation metrics by role exist.
-- Assert technical manifest exists and references run/step/artifact hashes.
+- Assert final WOE/IV artifacts exist.
+- Assert selected-variable artifact exists with inclusion/exclusion reasons.
+- Assert manifest stub exists and references run/step/artifact hashes through
+  final WOE/IV.
+
+Phase 2B/2C end-to-end tests add final scorecard artifacts, scored
+train/test/OOT outputs, validation metrics by role, cutoff analysis, and the final
+manifest.
 
 ## Definition Of Done
 
-Phase 2 is complete when:
+Phase 2A is complete when:
 
-- A fresh project gets a fixed scorecard pathway.
-- German Credit can be imported and run through the full pathway.
-- Fitting steps operate only on train data.
-- The run produces final bin definitions, WOE/IV, selected variables, a logistic
-  model, a scorecard, scored train/test/OOT outputs, validation metrics, cutoff
-  analysis, and a technical manifest.
-- The full run is reproducible from persisted plan params, input artifact hashes,
+- A fresh project gets the fixed Phase 2A scorecard pathway.
+- German Credit can be imported and run through final WOE/IV.
+- Node-level input contracts are implemented and leakage tests pass.
+- Fitting, selection, and refinement steps operate only on train tabular data plus
+  non-tabular upstream evidence.
+- The run produces split artifacts, fine-classing definitions, initial WOE/IV,
+  variable clustering, selected variables, refined/manual bins, final WOE/IV, and
+  a manifest stub.
+- The Phase 2A run is reproducible from persisted plan params, input artifact hashes,
   node versions, and run-step evidence.
 - Tests cover node behavior, role enforcement, staleness, and the end-to-end API
   flow.
+
+Full Phase 2 is complete after Phase 2B/2C add the logistic model, scorecard,
+scored train/test/OOT outputs, validation metrics, cutoff analysis, and final
+technical manifest.
