@@ -610,14 +610,13 @@ class DefineModellingMetadataNode(NodeType):
 
         if target_column and target_column not in df.columns:
             raise ValueError(f"Target column '{target_column}' not found in dataset")
-        if good_values and bad_values:
-            overlap = set(good_values) & set(bad_values)
-            if overlap:
-                raise ValueError(f"Good and bad value sets overlap: {overlap}")
-            if not good_values:
-                raise ValueError("Good values must be non-empty")
-            if not bad_values:
-                raise ValueError("Bad values must be non-empty")
+        if not good_values:
+            raise ValueError("Good values must be non-empty")
+        if not bad_values:
+            raise ValueError("Bad values must be non-empty")
+        overlap = set(good_values) & set(bad_values)
+        if overlap:
+            raise ValueError(f"Good and bad value sets overlap: {overlap}")
 
         metadata = {
             "target_column": target_column,
@@ -1111,6 +1110,17 @@ class FineClassingNode(NodeType):
                 "bad_count": bin_counts["bad_count"],
             })
 
+        total_n = non_null.height
+        for b in bins:
+            if not b.get("is_missing_bin") and total_n > 0:
+                frac = b["row_count"] / total_n
+                if frac < min_bin_fraction:
+                    warnings.append({
+                        "variable": col,
+                        "bin_id": b["bin_id"],
+                        "message": f"Bin fraction {frac:.4f} is below min_bin_fraction {min_bin_fraction}",
+                    })
+
         if bin_counter == 0 and non_null.height > 0:
             bin_counter += 1
             bin_counts = self._make_bin_counts(non_null, col, target_column, good_values, bad_values)
@@ -1142,14 +1152,15 @@ class FineClassingNode(NodeType):
         value_counts = non_null[col].value_counts().sort(col, descending=True)
         all_levels = value_counts[col].to_list()
 
+        other_categories: list = []
         if len(all_levels) > max_categorical_levels:
             top_levels = all_levels[:max_categorical_levels]
-            other_count = len(all_levels) - max_categorical_levels
+            other_categories = all_levels[max_categorical_levels:]
             warnings.append({
                 "variable": col,
                 "message": f"High cardinality: {len(all_levels)} categories, "
                           f"using top {max_categorical_levels} plus 'Other'",
-                "dropped_categories": other_count,
+                "dropped_categories": len(other_categories),
             })
             all_levels = top_levels
 
@@ -1189,6 +1200,23 @@ class FineClassingNode(NodeType):
                 "good_count": bin_counts["good_count"],
                 "bad_count": bin_counts["bad_count"],
             })
+
+        if other_categories:
+            bin_counter += 1
+            other_df = non_null.filter(pl.col(col).is_in(other_categories))
+            if other_df.height > 0:
+                bin_counts = self._make_bin_counts(other_df, col, target_column, good_values, bad_values)
+                bins.append({
+                    "bin_id": f"{col}_bin_{bin_counter:03d}",
+                    "label": "Other",
+                    "lower": None, "upper": None,
+                    "lower_inclusive": False, "upper_inclusive": False,
+                    "categories": other_categories,
+                    "is_missing_bin": False,
+                    "row_count": bin_counts["row_count"],
+                    "good_count": bin_counts["good_count"],
+                    "bad_count": bin_counts["bad_count"],
+                })
 
         return bins
 
@@ -1322,13 +1350,28 @@ class CalculateWoeIvNode(NodeType):
                 if good_dist == 0.0 or bad_dist == 0.0:
                     zero_cell_count += 1
                     if zero_cell_policy == "block" and purpose == "final":
-                        warnings_list.append({
-                            "variable": variable,
-                            "bin_id": bin_id,
-                            "message": f"Zero cell (good_dist={good_dist:.4f}, bad_dist={bad_dist:.4f}) "
-                                      f"blocks final WOE use",
-                        })
-                    if smoothing and smoothing.get("method") == "additive":
+                        if smoothing and smoothing.get("method") == "additive":
+                            alpha = float(smoothing.get("alpha", 0.5))
+                            if not smoothing.get("rationale"):
+                                raise ValueError(
+                                    f"Zero cell in variable {variable!r} bin {bin_id!r}: "
+                                    f"smoothing configured without a rationale"
+                                )
+                            good_dist = (bin_good + alpha) / (total_good + alpha * len(bins)) if total_good > 0 else alpha / (alpha * len(bins))
+                            bad_dist = (bin_bad + alpha) / (total_bad + alpha * len(bins)) if total_bad > 0 else alpha / (alpha * len(bins))
+                            warnings_list.append({
+                                "variable": variable,
+                                "bin_id": bin_id,
+                                "message": f"Zero cell smoothed with additive alpha={alpha}",
+                            })
+                        else:
+                            raise ValueError(
+                                f"Zero cell in variable {variable!r} bin {bin_id!r}: "
+                                f"good_dist={good_dist:.4f}, bad_dist={bad_dist:.4f}. "
+                                f"Final WOE blocked by zero_cell_policy={zero_cell_policy!r}. "
+                                f"Configure smoothing with a rationale to proceed."
+                            )
+                    elif smoothing and smoothing.get("method") == "additive":
                         alpha = float(smoothing.get("alpha", 0.5))
                         good_dist = (bin_good + alpha) / (total_good + alpha * len(bins)) if total_good > 0 else alpha / (alpha * len(bins))
                         bad_dist = (bin_bad + alpha) / (total_bad + alpha * len(bins)) if total_bad > 0 else alpha / (alpha * len(bins))
@@ -1563,8 +1606,18 @@ class VariableSelectionNode(NodeType):
         params = context.validated_params
         min_iv = float(params.get("min_iv", 0.02))
         max_variables = int(params.get("max_variables", 15))
-        manual_includes = list(params.get("manual_includes", []))
-        manual_excludes = list(params.get("manual_excludes", []))
+        manual_includes_raw = list(params.get("manual_includes", []))
+        manual_excludes_raw = list(params.get("manual_excludes", []))
+        manual_includes = [v if isinstance(v, str) else v.get("variable", "") for v in manual_includes_raw]
+        manual_excludes = [v if isinstance(v, str) else v.get("variable", "") for v in manual_excludes_raw]
+        manual_include_reasons = {
+            v["variable"]: v.get("reason", "Manual inclusion")
+            for v in manual_includes_raw if not isinstance(v, str)
+        }
+        manual_exclude_reasons = {
+            v["variable"]: v.get("reason", "Manual exclusion")
+            for v in manual_excludes_raw if not isinstance(v, str)
+        }
 
         iv_artifact = None
         clustering_artifact = None
@@ -1617,14 +1670,16 @@ class VariableSelectionNode(NodeType):
 
         for var in candidates:
             if var in manual_excludes:
-                rejected.append({"variable": var, "reason": "Manual exclusion"})
+                reason = manual_exclude_reasons.get(var, "Manual exclusion")
+                rejected.append({"variable": var, "reason": reason})
                 continue
 
         for var in candidates:
             if var in manual_excludes:
                 continue
             if var in manual_includes:
-                selected.append({"variable": var, "reason": "Manual inclusion"})
+                reason = manual_include_reasons.get(var, "Manual inclusion")
+                selected.append({"variable": var, "reason": reason})
                 seen_clusters.add(cluster_map.get(var, var))
                 continue
 
@@ -1744,6 +1799,18 @@ class ManualBinningNode(NodeType):
                     raise ValueError(f"bin_id '{bid}' not found in variable '{variable}'")
 
             if action == "merge_bins":
+                if len(source_bin_ids) < 2:
+                    raise ValueError(f"merge_bins requires at least 2 source bins, got {len(source_bin_ids)}")
+                kind = var_map[variable].get("kind", "")
+                if kind == "numeric":
+                    bin_positions = [var_bins.index(bin_id_map[bid]) for bid in source_bin_ids]
+                    expected_positions = list(range(min(bin_positions), max(bin_positions) + 1))
+                    if bin_positions != expected_positions:
+                        raise ValueError(
+                            f"Numeric bin merge for {variable!r} requires adjacent bins. "
+                            f"Source bins at positions {bin_positions} are not contiguous. "
+                            f"Expected adjacent positions {expected_positions}"
+                        )
                 new_label = override.get("new_label", "Merged")
                 merged = {
                     "bin_id": f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
@@ -1923,8 +1990,7 @@ class TechnicalManifestExportNode(NodeType):
             "run": {
                 "run_id": run_id,
                 "plan_version_id": plan_version_id,
-                "status": run["status"] if run else "unknown",
-            } if run else {"run_id": run_id, "plan_version_id": plan_version_id},
+            },
             "steps": steps_evidence,
             "artifacts": artifacts_evidence,
             "modelling_metadata": modelling_metadata,

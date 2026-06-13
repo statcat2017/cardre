@@ -1315,10 +1315,22 @@ class ScorecardPathwayTests(unittest.TestCase):
                 step_id="final-woe-iv", node_type="cardre.calculate_woe_iv",
                 node_version="1", category="selection",
                 params={
-                    "zero_cell_policy": "block", "smoothing": None, "purpose": "final",
+                    "zero_cell_policy": "block",
+                    "smoothing": {
+                        "method": "additive",
+                        "alpha": 0.5,
+                        "rationale": "Small sample test fixture with sparse bins",
+                    },
+                    "purpose": "final",
                 },
                 params_hash=json_logical_hash({
-                    "zero_cell_policy": "block", "smoothing": None, "purpose": "final",
+                    "zero_cell_policy": "block",
+                    "smoothing": {
+                        "method": "additive",
+                        "alpha": 0.5,
+                        "rationale": "Small sample test fixture with sparse bins",
+                    },
+                    "purpose": "final",
                 }),
                 parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "define-metadata"],
                 branch_label="", position=13,
