@@ -71,6 +71,55 @@ PROOF_PATHWAY_STEPS_CONFIG = [
     },
 ]
 
+PHASE2B_PATHWAY_STEPS_CONFIG = [
+    {
+        "step_id": "woe-transform-train",
+        "node_type": "cardre.woe_transform_train",
+        "node_version": "1",
+        "category": "fit",
+        "params": {},
+        "parent_step_ids": ["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv"],
+        "branch_label": "",
+    },
+    {
+        "step_id": "logistic-regression",
+        "node_type": "cardre.logistic_regression",
+        "node_version": "1",
+        "category": "fit",
+        "params": {
+            "C": 1.0,
+            "max_iter": 1000,
+            "solver": "lbfgs",
+            "random_seed": 42,
+        },
+        "parent_step_ids": ["woe-transform-train", "define-metadata"],
+        "branch_label": "",
+    },
+    {
+        "step_id": "score-scaling",
+        "node_type": "cardre.score_scaling",
+        "node_version": "1",
+        "category": "fit",
+        "params": {
+            "base_score": 600,
+            "base_odds": 50.0,
+            "points_to_double_odds": 20,
+            "higher_score_is_lower_risk": True,
+        },
+        "parent_step_ids": ["logistic-regression", "manual-binning", "final-woe-iv"],
+        "branch_label": "",
+    },
+    {
+        "step_id": "build-summary-report",
+        "node_type": "cardre.build_summary_report",
+        "node_version": "1",
+        "category": "fit",
+        "params": {},
+        "parent_step_ids": ["score-scaling", "logistic-regression", "final-woe-iv"],
+        "branch_label": "",
+    },
+]
+
 PHASE2A_PATHWAY_STEPS_CONFIG = [
     {
         "step_id": "import",
@@ -297,8 +346,9 @@ def register_proof_pathway(store: ProjectStore, project_id: str) -> str:
 
 
 def register_scorecard_pathway(store: ProjectStore, project_id: str) -> str:
-    """Register the Phase 2A scorecard pathway in the given project."""
+    """Register the full Phase 2A + 2B scorecard pathway in the given project."""
     plan_id = store.create_plan(project_id, "Scorecard Pathway")
-    steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG)
-    store.create_plan_version(plan_id, steps, description="Auto-registered Phase 2A scorecard pathway")
+    full_config = list(PHASE2A_PATHWAY_STEPS_CONFIG) + list(PHASE2B_PATHWAY_STEPS_CONFIG)
+    steps = _build_steps(full_config)
+    store.create_plan_version(plan_id, steps, description="Auto-registered scorecard pathway (Phase 2A + 2B)")
     return plan_id
