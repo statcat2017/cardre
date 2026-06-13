@@ -339,25 +339,34 @@ PHASE2A_PATHWAY_STEPS_CONFIG = [
         "parent_step_ids": ["explicit-missing-outlier-treatment", "manual-binning", "define-metadata"],
         "branch_label": "",
     },
-    {
-        "step_id": "technical-manifest-stub",
-        "node_type": "cardre.technical_manifest_export",
-        "node_version": "1",
-        "category": "transform",
-        "params": {},
-        "parent_step_ids": [
-            "define-metadata",
-            "sample-definition",
-            "split",
-            "explicit-missing-outlier-treatment",
-            "fine-classing",
-            "variable-selection",
-            "manual-binning",
-            "final-woe-iv",
-        ],
-        "branch_label": "",
-    },
 ]
+
+TECHNICAL_MANIFEST_STEP_CONFIG = {
+    "step_id": "technical-manifest-stub",
+    "node_type": "cardre.technical_manifest_export",
+    "node_version": "1",
+    "category": "transform",
+    "params": {},
+    "parent_step_ids": [
+        "define-metadata",
+        "sample-definition",
+        "split",
+        "explicit-missing-outlier-treatment",
+        "fine-classing",
+        "variable-selection",
+        "manual-binning",
+        "final-woe-iv",
+        "woe-transform-train",
+        "logistic-regression",
+        "score-scaling",
+        "build-summary-report",
+        "apply-woe",
+        "apply-model",
+        "validation-metrics",
+        "cutoff-analysis",
+    ],
+    "branch_label": "",
+}
 
 
 def _build_steps(config: list[dict]) -> list[StepSpec]:
@@ -389,9 +398,18 @@ def register_proof_pathway(store: ProjectStore, project_id: str) -> str:
 
 
 def register_scorecard_pathway(store: ProjectStore, project_id: str) -> str:
-    """Register the full Phase 2A + 2B + 2C scorecard pathway in the given project."""
+    """Register the full Phase 2A + 2B + 2C scorecard pathway in the given project.
+
+    The technical-manifest-stub step is placed at the end, after cutoff-analysis,
+    so that the manifest executes after all evidence-producing steps have completed.
+    """
     plan_id = store.create_plan(project_id, "Scorecard Pathway")
-    full_config = list(PHASE2A_PATHWAY_STEPS_CONFIG) + list(PHASE2B_PATHWAY_STEPS_CONFIG) + list(PHASE2C_PATHWAY_STEPS_CONFIG)
+    full_config = (
+        list(PHASE2A_PATHWAY_STEPS_CONFIG)
+        + list(PHASE2B_PATHWAY_STEPS_CONFIG)
+        + list(PHASE2C_PATHWAY_STEPS_CONFIG)
+        + [TECHNICAL_MANIFEST_STEP_CONFIG]
+    )
     steps = _build_steps(full_config)
     store.create_plan_version(plan_id, steps, description="Auto-registered scorecard pathway (Phase 2A + 2B + 2C)")
     return plan_id

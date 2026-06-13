@@ -2,9 +2,14 @@ use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+
+struct AppState {
+    child: Mutex<Option<Child>>,
+    api_url: String,
+}
 
 fn find_free_port() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to ephemeral port");
@@ -24,7 +29,7 @@ fn start_sidecar(port: u16) -> Child {
 
 fn wait_for_health(port: u16, max_retries: u32) -> Result<(), String> {
     let url = format!("http://127.0.0.1:{}/health", port);
-    for attempt in 0..max_retries {
+    for _ in 0..max_retries {
         if reqwest::blocking::get(&url).is_ok() {
             return Ok(());
         }
@@ -50,8 +55,9 @@ fn main() {
 
     let mut child = start_sidecar(port);
 
-    if let Some(ref mut stdout) = child.stdout {
-        let reader = BufReader::new(stdout.take().unwrap());
+    // Take stdout/stderr ownership cleanly to avoid borrow issues
+    if let Some(stdout) = child.stdout.take() {
+        let reader = BufReader::new(stdout);
         thread::spawn(move || {
             for line in reader.lines() {
                 if let Ok(l) = line {
@@ -61,8 +67,8 @@ fn main() {
         });
     }
 
-    if let Some(ref mut stderr) = child.stderr {
-        let reader = BufReader::new(stderr.take().unwrap());
+    if let Some(stderr) = child.stderr.take() {
+        let reader = BufReader::new(stderr);
         thread::spawn(move || {
             for line in reader.lines() {
                 if let Ok(l) = line {
@@ -85,8 +91,8 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .manage(crate::AppState {
-            child: std::sync::Mutex::new(Some(child)),
+        .manage(AppState {
+            child: Mutex::new(Some(child)),
             api_url: api_url.clone(),
         })
         .setup(|app| {
@@ -97,7 +103,7 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                if let Some(state) = window.try_state::<crate::AppState>() {
+                if let Some(state) = window.try_state::<AppState>() {
                     if let Ok(mut child_opt) = state.child.lock() {
                         if let Some(ref mut child) = *child_opt {
                             let _ = child.kill();
@@ -110,9 +116,4 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-struct AppState {
-    child: std::sync::Mutex<Option<std::process::Child>>,
-    api_url: String,
 }

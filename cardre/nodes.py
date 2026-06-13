@@ -943,6 +943,22 @@ class FineClassingNode(NodeType):
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["definition"]
 
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        max_bins = params.get("max_bins", 20)
+        try:
+            if int(max_bins) < 2:
+                errors.append("max_bins must be >= 2")
+        except (ValueError, TypeError):
+            errors.append("max_bins must be an integer")
+        min_bin_fraction = params.get("min_bin_fraction", 0.05)
+        try:
+            if not (0 < float(min_bin_fraction) < 1):
+                errors.append("min_bin_fraction must be between 0 and 1")
+        except (ValueError, TypeError):
+            errors.append("min_bin_fraction must be a number")
+        return errors
+
     def run(self, context: ExecutionContext) -> NodeOutput:
         from cardre.artifacts import make_fingerprint, write_json_artifact
 
@@ -1493,6 +1509,16 @@ class VariableClusteringNode(NodeType):
     input_roles: list[str] = ["train", "report"]
     output_roles: list[str] = ["report"]
 
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        correlation_threshold = params.get("correlation_threshold", 0.7)
+        try:
+            if not (0 < float(correlation_threshold) < 1):
+                errors.append("correlation_threshold must be between 0 and 1")
+        except (ValueError, TypeError):
+            errors.append("correlation_threshold must be a number")
+        return errors
+
     def run(self, context: ExecutionContext) -> NodeOutput:
         from cardre.artifacts import make_fingerprint, write_json_artifact
 
@@ -1615,6 +1641,19 @@ class VariableSelectionNode(NodeType):
     category = "selection"
     input_roles: list[str] = ["report"]
     output_roles: list[str] = ["definition"]
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        for key in ("manual_includes", "manual_excludes"):
+            for entry in list(params.get(key, [])):
+                if not isinstance(entry, dict):
+                    errors.append(f"Each entry in {key} must be a dict with 'variable' and 'reason'")
+                    continue
+                if not entry.get("variable"):
+                    errors.append(f"Entry in {key} missing 'variable'")
+                if not entry.get("reason"):
+                    errors.append(f"Entry in {key} for '{entry.get('variable', '')}' missing 'reason'")
+        return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         from cardre.artifacts import make_fingerprint, write_json_artifact
@@ -1780,6 +1819,29 @@ class ManualBinningNode(NodeType):
     category = "refinement"
     input_roles: list[str] = ["definition"]
     output_roles: list[str] = ["definition"]
+
+    VALID_ACTIONS = {"merge_bins", "group_categories", "isolate_missing", "isolate_special_value"}
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        for i, override in enumerate(list(params.get("overrides", []))):
+            prefix = f"overrides[{i}]"
+            if not isinstance(override, dict):
+                errors.append(f"{prefix} must be a dict")
+                continue
+            variable = override.get("variable", "")
+            action = override.get("action", "")
+            reason = override.get("reason", "")
+            if not reason:
+                errors.append(f"{prefix}: override for '{variable}' requires a non-empty reason")
+            if action not in self.VALID_ACTIONS:
+                errors.append(f"{prefix}: unsupported action '{action}'")
+            source_bin_ids = override.get("source_bin_ids", [])
+            if not isinstance(source_bin_ids, list):
+                errors.append(f"{prefix}: source_bin_ids must be a list")
+            if action == "merge_bins" and len(source_bin_ids) < 2:
+                errors.append(f"{prefix}: merge_bins requires at least 2 source bins")
+        return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         from cardre.artifacts import make_fingerprint, write_json_artifact
@@ -2303,6 +2365,31 @@ class LogisticRegressionNode(NodeType):
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
 
+    VALID_PENALTIES = {"l1", "l2", "elasticnet", None}
+    VALID_SOLVERS = {"lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"}
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        penalty = params.get("penalty")
+        if penalty is not None and penalty not in self.VALID_PENALTIES:
+            errors.append(f"penalty must be one of {self.VALID_PENALTIES}, got '{penalty}'")
+        solver = params.get("solver", "lbfgs")
+        if solver not in self.VALID_SOLVERS:
+            errors.append(f"solver must be one of {self.VALID_SOLVERS}, got '{solver}'")
+        C = params.get("C", 1.0)
+        try:
+            if float(C) <= 0:
+                errors.append("C must be positive")
+        except (ValueError, TypeError):
+            errors.append("C must be a number")
+        max_iter = params.get("max_iter", 1000)
+        try:
+            if int(max_iter) < 1:
+                errors.append("max_iter must be >= 1")
+        except (ValueError, TypeError):
+            errors.append("max_iter must be an integer")
+        return errors
+
     def run(self, context: ExecutionContext) -> NodeOutput:
         import numpy as np
         from cardre.artifacts import make_fingerprint, write_json_artifact
@@ -2467,6 +2554,22 @@ class ScoreScalingNode(NodeType):
     category = "fit"
     input_roles: list[str] = ["model", "definition", "report"]
     output_roles: list[str] = ["scorecard"]
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        base_odds = params.get("base_odds", 50.0)
+        try:
+            if float(base_odds) <= 0:
+                errors.append("base_odds must be positive")
+        except (ValueError, TypeError):
+            errors.append("base_odds must be a number")
+        pdo = params.get("points_to_double_odds", 20)
+        try:
+            if float(pdo) <= 0:
+                errors.append("points_to_double_odds must be positive")
+        except (ValueError, TypeError):
+            errors.append("points_to_double_odds must be a number")
+        return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         import math
@@ -3127,6 +3230,16 @@ class CutoffAnalysisNode(NodeType):
     category = "apply"
     input_roles: list[str] = ["train", "test", "oot"]
     output_roles: list[str] = ["report"]
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        band_count = params.get("band_count", 20)
+        try:
+            if int(band_count) < 2:
+                errors.append("band_count must be at least 2")
+        except (ValueError, TypeError):
+            errors.append("band_count must be an integer")
+        return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         from cardre.artifacts import make_fingerprint, write_json_artifact
