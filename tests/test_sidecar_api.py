@@ -1092,3 +1092,115 @@ class TestScorecardPathwayE2E:
         assert bad_override_resp.status_code == 422, (
             f"Expected 422 for invalid bin ID, got {bad_override_resp.status_code}: {bad_override_resp.json()}"
         )
+
+        # 7. Manual-binning save works via fallback to previous run's artifacts
+        valid_override_resp = client.post(f"/plans/{plan_id}/steps/manual-binning/params", json={
+            "project_id": pid,
+            "base_plan_version_id": new_pv_id2,
+            "params": {
+                "overrides": [{"variable": "age_years", "action": "merge_bins",
+                              "source_bin_ids": ["age_years_bin_001", "age_years_bin_002"],
+                              "reason": "test merge"}],
+            },
+        })
+        assert valid_override_resp.status_code == 200, (
+            f"Expected 200 (fallback to previous run artifacts), "
+            f"got {valid_override_resp.status_code}: {valid_override_resp.json()}"
+        )
+
+    def test_manual_binning_save_rejected_without_upstream_run(self, client, tmp_dir, larger_german_credit):
+        """Manual-binning save without any successful run is rejected."""
+        proj_path = tmp_dir / "no-run-mb.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "No Run MB"}).json()
+        pid = proj["project_id"]
+
+        plans_resp = client.get(f"/projects/{pid}/plans")
+        scorecard = [p for p in plans_resp.json()["plans"] if p["name"] == "Scorecard Pathway"]
+        plan_id = scorecard[0]["plan_id"]
+
+        store = ProjectStore(proj_path)
+        pv_id = store.get_latest_plan_version_id(plan_id)
+
+        resp = client.post(f"/plans/{plan_id}/steps/manual-binning/params", json={
+            "project_id": pid,
+            "base_plan_version_id": pv_id,
+            "params": {
+                "overrides": [{"variable": "age_years", "action": "merge_bins",
+                              "source_bin_ids": ["age_years_bin_001", "age_years_bin_002"],
+                              "reason": "test"}],
+            },
+        })
+        assert resp.status_code == 422, (
+            f"Expected 422 without any successful run, got {resp.status_code}: {resp.json()}"
+        )
+        assert "Run fine-classing" in resp.json()["detail"]["message"]
+
+    def test_staleness_and_status_after_param_update(self, client, tmp_dir, larger_german_credit):
+        """Regression test: after a param update, unchanged upstream steps
+        must be non-stale and show their previous run status, while
+        changed descendants are stale and show 'not_run'."""
+        proj_path = tmp_dir / "staleness-regression.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Staleness Test"}).json()
+        pid = proj["project_id"]
+
+        # Discover Scorecard Pathway
+        plans_resp = client.get(f"/projects/{pid}/plans")
+        scorecard = [p for p in plans_resp.json()["plans"] if p["name"] == "Scorecard Pathway"]
+        plan_id = scorecard[0]["plan_id"]
+
+        # Import dataset
+        client.post("/datasets/import", json={
+            "project_id": pid, "source_path": str(larger_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+
+        # Run the Scorecard Pathway
+        store = ProjectStore(proj_path)
+        pv_id = store.get_latest_plan_version_id(plan_id)
+        run_resp = client.post("/runs", json={
+            "project_id": pid, "plan_version_id": pv_id,
+        })
+        assert run_resp.status_code == 201
+        assert run_resp.json()["status"] == "succeeded"
+
+        # Update fine-classing params
+        new_pv_id = store.get_latest_plan_version_id(plan_id)
+        params_resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+            "project_id": pid,
+            "base_plan_version_id": new_pv_id,
+            "params": {"max_bins": 12},
+        })
+        assert params_resp.status_code == 200
+
+        # GET /plans/{plan_id} — staleness and statuses should be consistent
+        plan_resp = client.get(f"/plans/{plan_id}?project_id={pid}")
+        assert plan_resp.status_code == 200
+        plan_data = plan_resp.json()
+        steps_map = {s["step_id"]: s for s in plan_data["steps"]}
+
+        # Unchanged upstream steps: non-stale, status from previous run
+        non_stale_upstream = ["import", "define-metadata", "apply-exclusions",
+                              "profile", "validate-target", "sample-definition",
+                              "split", "explicit-missing-outlier-treatment"]
+        for step_id in non_stale_upstream:
+            s = steps_map[step_id]
+            assert not s["is_stale"], f"{step_id} should not be stale"
+            assert s["status"] == "succeeded", (
+                f"{step_id} should show 'succeeded' (carried forward), got {s['status']!r}"
+            )
+
+        # The changed step is stale
+        assert steps_map["fine-classing"]["is_stale"]
+        # Its transitive descendants are stale
+        stale_downstream = ["initial-woe-iv", "variable-clustering", "variable-selection",
+                            "manual-binning", "final-woe-iv", "woe-transform-train",
+                            "logistic-regression", "score-scaling", "build-summary-report",
+                            "apply-woe", "apply-model",
+                            "validation-metrics", "cutoff-analysis", "technical-manifest-stub"]
+        for step_id in stale_downstream:
+            s = steps_map[step_id]
+            assert s["is_stale"], f"{step_id} should be stale (descendant of fine-classing)"
+            # Stale steps should show "not_run" (no run on new version for them)
+            assert s["status"] == "not_run", (
+                f"{step_id} should show 'not_run' (stale), got {s['status']!r}"
+            )
