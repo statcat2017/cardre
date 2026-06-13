@@ -22,6 +22,7 @@ from cardre.audit import (
 from cardre.executor import PlanExecutor, RoleAccessError
 from cardre.nodes import (
     ApplyExclusionsNode,
+    BuildSummaryReportNode,
     CalculateWoeIvNode,
     DefineModellingMetadataNode,
     DevelopmentSampleDefinitionNode,
@@ -30,13 +31,16 @@ from cardre.nodes import (
     ExplicitMissingOutlierTreatmentNode,
     FineClassingNode,
     ImportGermanCreditNode,
+    LogisticRegressionNode,
     ManualBinningNode,
     ProfileDatasetNode,
+    ScoreScalingNode,
     SplitTrainTestOotNode,
     TechnicalManifestExportNode,
     ValidateBinaryTargetNode,
     VariableClusteringNode,
     VariableSelectionNode,
+    WoeTransformTrainNode,
 )
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
@@ -44,6 +48,7 @@ from cardre.store import ProjectStore
 __all__ = [
     "ApplyExclusionsNode",
     "ArtifactRef",
+    "BuildSummaryReportNode",
     "CalculateWoeIvNode",
     "DefineModellingMetadataNode",
     "DevelopmentSampleDefinitionNode",
@@ -53,6 +58,7 @@ __all__ = [
     "ExplicitMissingOutlierTreatmentNode",
     "FineClassingNode",
     "ImportGermanCreditNode",
+    "LogisticRegressionNode",
     "ManualBinningNode",
     "NodeOutput",
     "NodeRegistry",
@@ -62,12 +68,14 @@ __all__ = [
     "ProjectStore",
     "RoleAccessError",
     "RunStepRecord",
+    "ScoreScalingNode",
     "SplitTrainTestOotNode",
     "StepSpec",
     "TechnicalManifestExportNode",
     "ValidateBinaryTargetNode",
     "VariableClusteringNode",
     "VariableSelectionNode",
+    "WoeTransformTrainNode",
     "json_logical_hash",
     "make_fingerprint",
     "params_hash",

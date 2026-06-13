@@ -56,6 +56,7 @@ class NodeRegistry:
 def _register_proof_nodes(reg: NodeRegistry) -> None:
     from cardre.nodes import (
         ApplyExclusionsNode,
+        BuildSummaryReportNode,
         CalculateWoeIvNode,
         DefineModellingMetadataNode,
         DevelopmentSampleDefinitionNode,
@@ -64,13 +65,16 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
         ExplicitMissingOutlierTreatmentNode,
         FineClassingNode,
         ImportGermanCreditNode,
+        LogisticRegressionNode,
         ManualBinningNode,
         ProfileDatasetNode,
+        ScoreScalingNode,
         SplitTrainTestOotNode,
         TechnicalManifestExportNode,
         ValidateBinaryTargetNode,
         VariableClusteringNode,
         VariableSelectionNode,
+        WoeTransformTrainNode,
     )
 
     for n in [
@@ -90,5 +94,9 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
         VariableSelectionNode,
         ManualBinningNode,
         TechnicalManifestExportNode,
+        WoeTransformTrainNode,
+        LogisticRegressionNode,
+        ScoreScalingNode,
+        BuildSummaryReportNode,
     ]:
         reg.register(n)

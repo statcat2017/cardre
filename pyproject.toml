@@ -12,6 +12,7 @@ dependencies = [
     "polars",
     "pyarrow",
     "pydantic",
+    "scikit-learn",
 ]
 
 [project.optional-dependencies]

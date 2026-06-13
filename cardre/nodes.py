@@ -1079,38 +1079,50 @@ class FineClassingNode(NodeType):
         n_bins = min(max_bins, n)
         bin_size = max(1, n // n_bins)
 
-        for i in range(0, n, bin_size):
-            if len(bins) - (1 if missing.height > 0 and missing_policy == "separate_bin" else 0) >= max_bins:
-                break
-            chunk = sorted_vals[i:i + bin_size]
+        is_first_bin = True
+        pre_bin_count = 1 if missing.height > 0 and missing_policy == "separate_bin" else 0
+        max_non_missing = max_bins - pre_bin_count
+        i = 0
+        while i < n and len(bins) - pre_bin_count < max_non_missing:
+            non_missing = len(bins) - pre_bin_count
+            is_last = non_missing >= max_non_missing - 1
+            chunk = sorted_vals[i:i + bin_size] if not is_last else sorted_vals[i:]
             lower = chunk[0]
-            upper = chunk[-1]
-            if i > 0:
+            upper = chunk[-1] if not is_last else None
+            if i > 0 and not is_last:
                 lower = sorted_vals[i]
-            mask = (pl.col(col).is_not_null()) & (pl.col(col) >= lower) & (pl.col(col) <= upper)
-            # For the last bin, include everything above
-            if i + bin_size >= n:
-                mask = (pl.col(col).is_not_null()) & (pl.col(col) >= lower)
-
-            bin_df = non_null.filter(
-                (pl.col(col) >= lower) & (pl.col(col) <= upper)
-            ) if i + bin_size < n else non_null.filter(pl.col(col) >= lower)
+            lower_inc = bool(is_first_bin or is_last or lower == upper)
+            if is_last:
+                label = f"{'[' if lower_inc else '('}{lower:.4g}, +inf)"
+                bin_df = non_null.filter(
+                    pl.col(col) >= lower if lower_inc else pl.col(col) > lower
+                )
+            else:
+                label = f"{'[' if lower_inc else '('}{lower:.4g}, {upper:.4g}]"
+                bin_df = non_null.filter(
+                    (pl.col(col) >= lower if lower_inc else pl.col(col) > lower) & (pl.col(col) <= upper)
+                )
 
             bin_counter += 1
             bin_counts = self._make_bin_counts(bin_df, col, target_column, good_values, bad_values)
             bins.append({
                 "bin_id": f"{col}_bin_{bin_counter:03d}",
-                "label": f"({lower:.4g}, {upper:.4g}]" if i + bin_size < n else f"({lower:.4g}, +inf)",
+                "label": label,
                 "lower": lower,
-                "upper": upper if i + bin_size < n else None,
-                "lower_inclusive": False,
-                "upper_inclusive": True,
+                "upper": upper,
+                "lower_inclusive": lower_inc,
+                "upper_inclusive": not is_last,
                 "categories": None,
                 "is_missing_bin": False,
                 "row_count": bin_counts["row_count"],
                 "good_count": bin_counts["good_count"],
                 "bad_count": bin_counts["bad_count"],
             })
+            is_first_bin = False
+            if is_last:
+                i = n
+            else:
+                i += bin_size
 
         total_n = non_null.height
         for b in bins:
@@ -1971,25 +1983,27 @@ class TechnicalManifestExportNode(NodeType):
 
         modelling_metadata = {}
         selected_variables = []
+        model_artifact_data: dict = {}
+        scorecard_artifact_data: dict = {}
 
         for rs in all_run_steps:
-            if rs.execution_fingerprint.get("node_type") == "cardre.define_modelling_metadata":
-                for aid in rs.output_artifact_ids:
-                    art = store.get_artifact(aid)
-                    if art:
-                        try:
-                            modelling_metadata = json.loads(store.artifact_path(art).read_text())
-                        except (FileNotFoundError, json.JSONDecodeError):
-                            pass
-            if rs.execution_fingerprint.get("node_type") == "cardre.variable_selection":
-                for aid in rs.output_artifact_ids:
-                    art = store.get_artifact(aid)
-                    if art:
-                        try:
-                            sel = json.loads(store.artifact_path(art).read_text())
-                            selected_variables = sel.get("selected", [])
-                        except (FileNotFoundError, json.JSONDecodeError):
-                            pass
+            node_type = rs.execution_fingerprint.get("node_type", "")
+            for aid in rs.output_artifact_ids:
+                art = store.get_artifact(aid)
+                if art is None:
+                    continue
+                try:
+                    if node_type == "cardre.define_modelling_metadata":
+                        modelling_metadata = json.loads(store.artifact_path(art).read_text())
+                    elif node_type == "cardre.variable_selection":
+                        sel = json.loads(store.artifact_path(art).read_text())
+                        selected_variables = sel.get("selected", [])
+                    elif node_type == "cardre.logistic_regression" and art.artifact_type == "model":
+                        model_artifact_data = json.loads(store.artifact_path(art).read_text())
+                    elif node_type == "cardre.score_scaling" and art.artifact_type == "scorecard":
+                        scorecard_artifact_data = json.loads(store.artifact_path(art).read_text())
+                except (FileNotFoundError, json.JSONDecodeError):
+                    pass
 
         manifest = {
             "project": {
@@ -2004,6 +2018,8 @@ class TechnicalManifestExportNode(NodeType):
             "artifacts": artifacts_evidence,
             "modelling_metadata": modelling_metadata,
             "selected_variables": selected_variables,
+            "model": model_artifact_data,
+            "scorecard": scorecard_artifact_data,
             "warnings": all_warnings,
             "errors": all_errors,
         }
@@ -2029,5 +2045,643 @@ class TechnicalManifestExportNode(NodeType):
         return NodeOutput(
             artifacts=[artifact],
             metrics={"step_count": len(steps_evidence), "artifact_count": len(artifacts_evidence)},
+            execution_fingerprint=fingerprint,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Phase 2B: WOE Transform Train
+# ---------------------------------------------------------------------------
+
+class WoeTransformTrainNode(NodeType):
+    node_type = "cardre.woe_transform_train"
+    version = "1"
+    category = "fit"
+    input_roles: list[str] = ["train", "definition", "report"]
+    output_roles: list[str] = ["train"]
+
+    @staticmethod
+    def _find_artifact_by_node_type(artifacts: list, store, node_type: str) -> ArtifactRef | None:
+        for a in artifacts:
+            try:
+                content = store.artifact_path(a).read_bytes()
+                if content[:4] == b"PAR1":
+                    df = pl.read_parquet(store.artifact_path(a))
+                    if "bin_id" in df.columns and "woe" in df.columns and "variable" in df.columns:
+                        return a
+                    continue
+                obj = json.loads(content)
+                if obj.get("target_column") is not None and "good_values" in obj:
+                    return a
+                if "selected" in obj or "variables" in obj:
+                    return a
+            except Exception:
+                continue
+        return None
+
+    def run(self, context: ExecutionContext) -> NodeOutput:
+        from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
+
+        store = context.store
+        train_artifact = next(a for a in context.input_artifacts if a.role == "train")
+
+        bin_artifact = None
+        meta_artifact = None
+        selection_artifact = None
+        for a in context.input_artifacts:
+            if a.role != "definition":
+                continue
+            try:
+                payload = json.loads(store.artifact_path(a).read_text())
+                if "variables" in payload and "selected" not in payload:
+                    bin_artifact = a
+                    continue
+                if "selected" in payload:
+                    selection_artifact = a
+                    continue
+                if "target_column" in payload and "good_values" in payload:
+                    meta_artifact = a
+            except Exception:
+                continue
+
+        if bin_artifact is None:
+            raise ValueError("WOE transform requires a bin definition artifact")
+
+        woe_report_artifact = None
+        for a in context.input_artifacts:
+            if a.role != "report":
+                continue
+            try:
+                content = store.artifact_path(a).read_bytes()
+                if content[:4] != b"PAR1":
+                    continue
+                df = pl.read_parquet(store.artifact_path(a))
+                if "bin_id" in df.columns and "woe" in df.columns and "variable" in df.columns:
+                    woe_report_artifact = a
+                    break
+            except Exception:
+                continue
+
+        if woe_report_artifact is None:
+            raise ValueError(
+                "WOE transform requires a WOE table report artifact "
+                "(Parquet with bin_id, woe, variable columns)"
+            )
+
+        df = pl.read_parquet(store.artifact_path(train_artifact))
+        bin_def = json.loads(store.artifact_path(bin_artifact).read_text())
+        target_column = (meta_artifact and json.loads(store.artifact_path(meta_artifact).read_text()) or {}).get("target_column", "")
+
+        woe_map: dict[str, dict] = {}
+        woe_df = pl.read_parquet(store.artifact_path(woe_report_artifact))
+        woe_cols_list = woe_df.columns
+        for row in woe_df.iter_rows():
+            var = str(row[woe_cols_list.index("variable")])
+            bin_id = str(row[woe_cols_list.index("bin_id")])
+            woe_val = float(row[woe_cols_list.index("woe")])
+            if var not in woe_map:
+                woe_map[var] = {}
+            woe_map[var][bin_id] = woe_val
+
+        missing_woe_bins: list[str] = []
+        for var_def in bin_def.get("variables", []):
+            variable = var_def["variable"]
+            for bin_entry in var_def.get("bins", []):
+                bin_id = bin_entry["bin_id"]
+                if woe_map.get(variable, {}).get(bin_id) is None:
+                    missing_woe_bins.append(f"{variable}:{bin_id}")
+
+        if missing_woe_bins:
+            raise ValueError(
+                f"WOE transform: {len(missing_woe_bins)} bin(s) have no WOE mapping: "
+                f"{', '.join(missing_woe_bins[:10])}"
+            )
+
+        selected_names: set[str] | None = None
+        if selection_artifact:
+            try:
+                sel = json.loads(store.artifact_path(selection_artifact).read_text())
+                selected_names = {s["variable"] for s in sel.get("selected", [])}
+            except Exception:
+                pass
+
+        all_var_defs = bin_def.get("variables", [])
+        if selected_names is not None:
+            selected_vars = [v for v in all_var_defs if v["variable"] in selected_names]
+            if not selected_vars:
+                raise ValueError(
+                    f"WOE transform: variable-selection defined {len(selected_names)} selected "
+                    f"variable(s) but none found in bin definitions"
+                )
+        else:
+            selected_vars = list(all_var_defs)
+
+        woe_columns = []
+        result_df = df
+
+        for var_def in selected_vars:
+            variable = var_def["variable"]
+            kind = var_def["kind"]
+            bins = var_def["bins"]
+            woe_col = f"{variable}_woe"
+
+            if variable not in df.columns:
+                continue
+
+            woe_expr = None
+            for bin_def_entry in bins:
+                bin_id = bin_def_entry["bin_id"]
+                is_missing = bin_def_entry.get("is_missing_bin", False)
+
+                if kind == "numeric":
+                    lower = bin_def_entry.get("lower")
+                    upper = bin_def_entry.get("upper")
+                    lower_inc = bin_def_entry.get("lower_inclusive", False)
+                    upper_inc = bin_def_entry.get("upper_inclusive", True)
+                    if is_missing:
+                        mask_expr = pl.col(variable).is_null()
+                    else:
+                        c = pl.col(variable)
+                        parts = []
+                        if lower is not None:
+                            parts.append((c >= lower) if lower_inc else (c > lower))
+                        if upper is not None:
+                            parts.append((c <= upper) if upper_inc else (c < upper))
+                        mask_expr = parts[0]
+                        for p in parts[1:]:
+                            mask_expr = mask_expr & p
+                else:
+                    categories = bin_def_entry.get("categories", [])
+                    if is_missing:
+                        mask_expr = pl.col(variable).is_null()
+                    elif categories:
+                        mask_expr = pl.col(variable).is_in(categories)
+                    else:
+                        mask_expr = pl.lit(False)
+
+                woe_val = woe_map.get(variable, {}).get(bin_id, 0.0)
+                when_clause = pl.when(mask_expr).then(pl.lit(woe_val))
+                woe_expr = when_clause if woe_expr is None else woe_expr.when(mask_expr).then(pl.lit(woe_val))
+
+            if woe_expr is None:
+                raise ValueError(f"WOE transform: variable '{variable}' has no bins defined")
+
+            woe_expr = woe_expr.otherwise(pl.lit(None, dtype=pl.Float64))
+            result_df = result_df.with_columns(woe_expr.alias(woe_col))
+
+            unmatched = result_df.filter(pl.col(woe_col).is_null()).height
+            if unmatched > 0:
+                raise ValueError(
+                    f"WOE transform: {unmatched} row(s) in variable '{variable}' "
+                    f"did not match any bin. All training rows must belong to a defined bin."
+                )
+
+            woe_columns.append(woe_col)
+
+        transform_report = {
+            "target_column": target_column,
+            "transformed_variables": woe_columns,
+            "selected_only": selected_names is not None,
+            "row_count": df.height,
+        }
+        report_artifact_ref = write_json_artifact(
+            store, artifact_type="report", role="report",
+            stem=f"woe-transform-report-{context.step_spec.step_id}",
+            payload=transform_report,
+            metadata={},
+        )
+
+        dataset_artifact = write_parquet_artifact(
+            store, artifact_type="dataset", role="train",
+            stem=f"woe-transformed-train-{context.step_spec.step_id}",
+            frame=result_df,
+            metadata={
+                "source_artifact_id": train_artifact.artifact_id,
+                "woe_columns": woe_columns,
+                "target_column": target_column,
+            },
+        )
+
+        all_outputs = [dataset_artifact, report_artifact_ref]
+        fingerprint = make_fingerprint(
+            plan_version_id=context.plan_version_id,
+            step_id=context.step_spec.step_id,
+            node_type=self.node_type,
+            node_version=self.version,
+            params_hash=context.step_spec.params_hash,
+            parent_run_steps=context.parent_run_steps,
+            input_artifacts=context.input_artifacts,
+            output_artifacts=all_outputs,
+        )
+
+        return NodeOutput(
+            artifacts=all_outputs,
+            metrics={"variable_count": len(woe_columns)},
+            execution_fingerprint=fingerprint,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Phase 2B: Logistic Regression
+# ---------------------------------------------------------------------------
+
+class LogisticRegressionNode(NodeType):
+    node_type = "cardre.logistic_regression"
+    version = "1"
+    category = "fit"
+    input_roles: list[str] = ["train", "definition"]
+    output_roles: list[str] = ["model"]
+
+    def run(self, context: ExecutionContext) -> NodeOutput:
+        import numpy as np
+        from cardre.artifacts import make_fingerprint, write_json_artifact
+        from sklearn.linear_model import LogisticRegression as SkLearnLR
+
+        store = context.store
+        params = context.validated_params
+        train_artifact = next(a for a in context.input_artifacts if a.role == "train")
+
+        meta_artifact = None
+        for a in context.input_artifacts:
+            if a.role == "definition":
+                try:
+                    candidate = json.loads(store.artifact_path(a).read_text())
+                    if "target_column" in candidate and "good_values" in candidate:
+                        meta_artifact = a
+                        break
+                except Exception:
+                    continue
+
+        df = pl.read_parquet(store.artifact_path(train_artifact))
+
+        meta = {}
+        if meta_artifact:
+            meta = json.loads(store.artifact_path(meta_artifact).read_text())
+
+        target_column = meta.get("target_column", "")
+        good_values = set(str(v) for v in meta.get("good_values", []))
+        bad_values = set(str(v) for v in meta.get("bad_values", []))
+
+        if not target_column:
+            raise ValueError("Target column is required for logistic regression")
+        if not good_values:
+            raise ValueError("Good values must be defined for logistic regression")
+        if not bad_values:
+            raise ValueError("Bad values must be defined for logistic regression")
+
+        woe_cols = [c for c in df.columns if c.endswith("_woe")]
+        if not woe_cols:
+            raise ValueError("No WOE-transformed columns found in training data")
+
+        X = df.select(woe_cols).to_numpy()
+
+        if target_column not in df.columns:
+            raise ValueError(f"Target column '{target_column}' not found in training data")
+
+        raw_target = df[target_column].cast(pl.String)
+        y = raw_target.to_list()
+        all_known = good_values | bad_values
+        unknown = [str(v) for v in y if str(v) not in all_known]
+        if unknown:
+            unique_unknown = sorted(set(unknown))
+            raise ValueError(
+                f"Target column '{target_column}' contains {len(unknown)} value(s) "
+                f"not declared as good or bad: {unique_unknown[:10]}. "
+                f"Every row must be explicitly classified."
+            )
+
+        y_binary = [1 if str(v) in bad_values else 0 for v in y]
+        n_bad = sum(y_binary)
+        n_good = len(y_binary) - n_bad
+        if n_bad == 0:
+            raise ValueError(f"Logistic regression: no bad-class rows found (bad_values={sorted(bad_values)})")
+        if n_good == 0:
+            raise ValueError(f"Logistic regression: no good-class rows found (good_values={sorted(good_values)})")
+
+        penalty = params.get("penalty")
+        C = float(params.get("C", 1.0))
+        max_iter = int(params.get("max_iter", 1000))
+        solver = str(params.get("solver", "lbfgs"))
+        random_seed = int(params.get("random_seed", 42))
+
+        lr_params = {"C": C, "max_iter": max_iter, "solver": solver, "random_state": random_seed}
+        if penalty is not None:
+            lr_params["penalty"] = penalty
+
+        lr = SkLearnLR(**lr_params)
+        lr.fit(X, y_binary)
+
+        bad_class = sorted(bad_values)[0] if bad_values else "1"
+        good_class = sorted(good_values)[0] if good_values else "0"
+        class_map = {idx: label for idx, label in enumerate(lr.classes_)}
+        bad_class_idx = 1 if len(lr.classes_) > 1 else 0
+        if bad_class_idx == 0:
+            class_mapping = {"good": str(good_class), "bad": str(bad_class)}
+        else:
+            class_mapping = {"good": str(good_class), "bad": str(bad_class)}
+
+        features_list = woe_cols
+        coefficients = {col: round(float(coef), 6) for col, coef in zip(features_list, lr.coef_[0])}
+
+        warnings_list: list[dict] = []
+        if not lr.n_iter_[0] < max_iter:
+            warnings_list.append({
+                "code": "CONVERGENCE_FAILURE",
+                "message": f"Logistic regression did not converge after {max_iter} iterations",
+            })
+
+        converged = bool(lr.n_iter_[0] < max_iter)
+        training_params = {}
+        for k, v in lr_params.items():
+            if isinstance(v, np.bool_):
+                training_params[k] = bool(v)
+            elif isinstance(v, np.integer):
+                training_params[k] = int(v)
+            elif isinstance(v, np.floating):
+                training_params[k] = float(v)
+            else:
+                training_params[k] = v
+
+        model = {
+            "target_column": target_column,
+            "features": features_list,
+            "intercept": round(float(lr.intercept_[0]), 6),
+            "coefficients": coefficients,
+            "class_mapping": class_mapping,
+            "bad_class_label": str(bad_class),
+            "training": {
+                "row_count": X.shape[0],
+                "converged": converged,
+                "iterations": int(lr.n_iter_[0]),
+                "params": training_params,
+            },
+            "warnings": warnings_list,
+        }
+
+        artifact = write_json_artifact(
+            store, artifact_type="model", role="model",
+            stem=f"logistic-model-{context.step_spec.step_id}",
+            payload=model,
+            metadata={
+                "feature_count": len(features_list),
+                "target_column": target_column,
+            },
+        )
+
+        fingerprint = make_fingerprint(
+            plan_version_id=context.plan_version_id,
+            step_id=context.step_spec.step_id,
+            node_type=self.node_type,
+            node_version=self.version,
+            params_hash=context.step_spec.params_hash,
+            parent_run_steps=context.parent_run_steps,
+            input_artifacts=context.input_artifacts,
+            output_artifacts=[artifact],
+        )
+
+        return NodeOutput(
+            artifacts=[artifact],
+            metrics={"feature_count": len(features_list), "converged": lr.n_iter_[0] < max_iter},
+            execution_fingerprint=fingerprint,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Phase 2B: Score Scaling
+# ---------------------------------------------------------------------------
+
+class ScoreScalingNode(NodeType):
+    node_type = "cardre.score_scaling"
+    version = "1"
+    category = "fit"
+    input_roles: list[str] = ["model", "definition", "report"]
+    output_roles: list[str] = ["scorecard"]
+
+    def run(self, context: ExecutionContext) -> NodeOutput:
+        import math
+        from cardre.artifacts import make_fingerprint, write_json_artifact
+
+        store = context.store
+        params = context.validated_params
+        model_artifact = next(a for a in context.input_artifacts if a.role == "model")
+
+        bin_artifact = None
+        woe_report_artifact = None
+        for a in context.input_artifacts:
+            if a.role == "definition":
+                try:
+                    payload = json.loads(store.artifact_path(a).read_text())
+                    if "variables" in payload and "selected" not in payload:
+                        bin_artifact = a
+                except Exception:
+                    continue
+            elif a.role == "report":
+                try:
+                    content = store.artifact_path(a).read_bytes()
+                    if content[:4] != b"PAR1":
+                        continue
+                    temp = pl.read_parquet(store.artifact_path(a))
+                    if "woe" in temp.columns and "bin_id" in temp.columns and "variable" in temp.columns:
+                        woe_report_artifact = a
+                except Exception:
+                    continue
+
+        if bin_artifact is None:
+            raise ValueError("Score scaling requires a bin definition artifact with 'variables'")
+        if woe_report_artifact is None:
+            raise ValueError("Score scaling requires a WOE table report (Parquet with woe, bin_id, variable columns)")
+
+        model = json.loads(store.artifact_path(model_artifact).read_text())
+        bin_def = json.loads(store.artifact_path(bin_artifact).read_text())
+
+        base_score = float(params.get("base_score", 600))
+        base_odds = float(params.get("base_odds", 50.0))
+        pdo = float(params.get("points_to_double_odds", 20))
+        higher_is_lower_risk = bool(params.get("higher_score_is_lower_risk", True))
+
+        if base_odds <= 0:
+            raise ValueError(f"base_odds must be positive, got {base_odds}")
+        if pdo <= 0:
+            raise ValueError(f"points_to_double_odds must be positive, got {pdo}")
+
+        factor = pdo / math.log(2)
+        offset = base_score - factor * math.log(base_odds)
+        intercept = float(model.get("intercept", 0))
+        coefficients = model.get("coefficients", {})
+
+        direction = -1.0 if higher_is_lower_risk else 1.0
+        # Score = offset + direction * factor * (intercept + sum(coef_i * woe_i))
+        #       = base_points + sum(attribute_points_i)
+        # where:
+        #   base_points = offset + direction * factor * intercept
+        #   attribute_points_i = direction * factor * coef_i * woe_i
+        base_points = round(offset + direction * factor * intercept, 2)
+
+        attributes: list[dict] = []
+        all_woe_map: dict[str, dict[str, float]] = {}
+        if woe_report_artifact:
+            woe_df = pl.read_parquet(store.artifact_path(woe_report_artifact))
+            for row in woe_df.iter_rows():
+                cols = woe_df.columns
+                var = str(row[cols.index("variable")])
+                bin_id = str(row[cols.index("bin_id")])
+                woe_val = float(row[cols.index("woe")])
+                if var not in all_woe_map:
+                    all_woe_map[var] = {}
+                all_woe_map[var][bin_id] = woe_val
+
+        for var_def in bin_def.get("variables", []):
+            variable = var_def["variable"]
+            woe_key = f"{variable}_woe"
+            if woe_key not in coefficients:
+                continue
+            coef = float(coefficients[woe_key])
+
+            for bin_entry in var_def.get("bins", []):
+                bin_id = bin_entry["bin_id"]
+                label = bin_entry["label"]
+                woe_val = all_woe_map.get(variable, {}).get(bin_id)
+                if woe_val is None:
+                    raise ValueError(
+                        f"Score scaling: missing WOE value for variable {variable!r} bin {bin_id!r}"
+                    )
+                raw_points = direction * factor * coef * woe_val
+                point_value = round(raw_points, 2)
+                attributes.append({
+                    "variable": variable,
+                    "bin_id": bin_id,
+                    "label": label,
+                    "woe": round(woe_val, 6),
+                    "coefficient": coef,
+                    "points": point_value,
+                })
+
+        scorecard = {
+            "base_score": base_score,
+            "base_odds": base_odds,
+            "points_to_double_odds": pdo,
+            "factor": round(factor, 6),
+            "offset": round(offset, 6),
+            "higher_score_is_lower_risk": higher_is_lower_risk,
+            "intercept": intercept,
+            "base_points": base_points,
+            "attributes": attributes,
+            "target_column": model.get("target_column", ""),
+        }
+
+        artifact = write_json_artifact(
+            store, artifact_type="scorecard", role="scorecard",
+            stem=f"scorecard-{context.step_spec.step_id}",
+            payload=scorecard,
+            metadata={
+                "base_score": base_score,
+                "attribute_count": len(attributes),
+            },
+        )
+
+        fingerprint = make_fingerprint(
+            plan_version_id=context.plan_version_id,
+            step_id=context.step_spec.step_id,
+            node_type=self.node_type,
+            node_version=self.version,
+            params_hash=context.step_spec.params_hash,
+            parent_run_steps=context.parent_run_steps,
+            input_artifacts=context.input_artifacts,
+            output_artifacts=[artifact],
+        )
+
+        return NodeOutput(
+            artifacts=[artifact],
+            metrics={"attribute_count": len(attributes)},
+            execution_fingerprint=fingerprint,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Phase 2B: Build Summary Report
+# ---------------------------------------------------------------------------
+
+class BuildSummaryReportNode(NodeType):
+    node_type = "cardre.build_summary_report"
+    version = "1"
+    category = "fit"
+    input_roles: list[str] = ["scorecard", "model", "report"]
+    output_roles: list[str] = ["report"]
+
+    def run(self, context: ExecutionContext) -> NodeOutput:
+        from cardre.artifacts import make_fingerprint, write_json_artifact
+
+        store = context.store
+        scorecard_artifact = next(a for a in context.input_artifacts if a.role == "scorecard")
+        model_artifact = next(a for a in context.input_artifacts if a.role == "model")
+        woe_report_artifacts = [a for a in context.input_artifacts if a.role == "report"]
+
+        scorecard = json.loads(store.artifact_path(scorecard_artifact).read_text())
+        model = json.loads(store.artifact_path(model_artifact).read_text())
+
+        woe_summaries = []
+        for a in woe_report_artifacts:
+            try:
+                content = store.artifact_path(a).read_bytes()
+                if content[:4] == b"PAR1":
+                    woe_df = pl.read_parquet(store.artifact_path(a))
+                    if "iv" in woe_df.columns:
+                        woe_summaries.append({
+                            "artifact_id": a.artifact_id,
+                            "type": "iv_ranking",
+                            "row_count": woe_df.height,
+                            "columns": woe_df.columns,
+                        })
+                    elif "woe" in woe_df.columns:
+                        woe_summaries.append({
+                            "artifact_id": a.artifact_id,
+                            "type": "woe_table",
+                            "row_count": woe_df.height,
+                            "columns": woe_df.columns,
+                        })
+            except Exception:
+                pass
+
+        report = {
+            "model_summary": {
+                "target_column": model.get("target_column", ""),
+                "features": model.get("features", []),
+                "intercept": model.get("intercept", 0),
+                "coefficient_count": len(model.get("coefficients", {})),
+                "converged": model.get("training", {}).get("converged", False),
+                "row_count": model.get("training", {}).get("row_count", 0),
+            },
+            "scorecard_summary": {
+                "base_score": scorecard.get("base_score", 0),
+                "base_odds": scorecard.get("base_odds", 0),
+                "points_to_double_odds": scorecard.get("points_to_double_odds", 0),
+                "attribute_count": len(scorecard.get("attributes", [])),
+                "higher_score_is_lower_risk": scorecard.get("higher_score_is_lower_risk", True),
+            },
+            "woe_iv_references": woe_summaries,
+            "warnings": model.get("warnings", []),
+        }
+
+        artifact = write_json_artifact(
+            store, artifact_type="report", role="report",
+            stem=f"build-summary-{context.step_spec.step_id}",
+            payload=report,
+            metadata={},
+        )
+
+        fingerprint = make_fingerprint(
+            plan_version_id=context.plan_version_id,
+            step_id=context.step_spec.step_id,
+            node_type=self.node_type,
+            node_version=self.version,
+            params_hash=context.step_spec.params_hash,
+            parent_run_steps=context.parent_run_steps,
+            input_artifacts=context.input_artifacts,
+            output_artifacts=[artifact],
+        )
+
+        return NodeOutput(
+            artifacts=[artifact],
+            metrics={"feature_count": len(model.get("features", []))},
             execution_fingerprint=fingerprint,
         )
