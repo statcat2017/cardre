@@ -155,6 +155,8 @@ Acceptance criteria:
 - Creating a project registers a fixed Phase 2A scorecard pathway.
 - `GET /plans/{plan_id}` returns all scorecard steps with backend-computed
   status and staleness.
+- `split` consumes `sample-definition`, and `technical-manifest-stub` explicitly
+  depends on the evidence-producing Phase 2A steps it must summarize.
 - Dummy fit/apply nodes are no longer part of the primary scorecard path.
 
 ## Workstream 3: Metadata, Exclusion, And Sample Nodes
@@ -199,6 +201,8 @@ Acceptance criteria:
 - Transformed datasets remain Parquet artifacts.
 - The node records all explicit treatment parameters and affected counts.
 - The node does not learn from combined train/test/OOT data.
+- In the normal Phase 2A pathway, the node outputs one treated `train`, one
+  treated `test`, and one treated `oot` artifact.
 
 Future learned treatment must be split into `fit_missing_outlier_treatment`
 (`fit`, consumes `train` only) and `apply_missing_outlier_treatment` (`apply`,
@@ -259,6 +263,8 @@ Implement:
 - `cardre.variable_clustering`
   - Computes train-only correlation/redundancy groups.
   - Phase 2 may use numeric correlations on candidate variables or WOE features.
+  - If a robust Phase 2A correlation basis is not available, emits singleton
+    clusters for IV candidates and records a pass-through warning.
 - `cardre.variable_selection`
   - Selects variables by IV threshold, maximum variable count, missing/sparse-bin
     warnings, and cluster de-duplication.

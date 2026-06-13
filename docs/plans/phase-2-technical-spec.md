@@ -241,7 +241,7 @@ Phase 2A implementation.
 | 3 | `profile` | `cardre.profile_dataset` | `transform` | `apply-exclusions` |
 | 4 | `validate-target` | `cardre.validate_binary_target` | `transform` | `apply-exclusions`, `define-metadata` |
 | 5 | `sample-definition` | `cardre.development_sample_definition` | `transform` | `apply-exclusions`, `define-metadata` |
-| 6 | `split` | `cardre.split_train_test_oot` | `transform` | `apply-exclusions` |
+| 6 | `split` | `cardre.split_train_test_oot` | `transform` | `apply-exclusions`, `sample-definition` |
 | 7 | `explicit-missing-outlier-treatment` | `cardre.explicit_missing_outlier_treatment` | `apply` | `split` |
 | 8 | `fine-classing` | `cardre.fine_classing` | `fit` | `explicit-missing-outlier-treatment`, `define-metadata` |
 | 9 | `initial-woe-iv` | `cardre.calculate_woe_iv` | `selection` | `explicit-missing-outlier-treatment`, `fine-classing`, `define-metadata` |
@@ -249,7 +249,7 @@ Phase 2A implementation.
 | 11 | `variable-selection` | `cardre.variable_selection` | `selection` | `initial-woe-iv`, `variable-clustering` |
 | 12 | `manual-binning` | `cardre.manual_binning` | `refinement` | `fine-classing`, `variable-selection` |
 | 13 | `final-woe-iv` | `cardre.calculate_woe_iv` | `selection` | `explicit-missing-outlier-treatment`, `manual-binning`, `define-metadata` |
-| 14 | `technical-manifest-stub` | `cardre.technical_manifest_export` | `transform` | `final-woe-iv`, `variable-selection` |
+| 14 | `technical-manifest-stub` | `cardre.technical_manifest_export` | `transform` | `define-metadata`, `sample-definition`, `split`, `explicit-missing-outlier-treatment`, `fine-classing`, `variable-selection`, `manual-binning`, `final-woe-iv` |
 
 Phase 2B pathway extension:
 
@@ -389,6 +389,8 @@ Inputs:
 
 - Filtered input dataset artifact.
 - Optional modelling metadata definition.
+- Optional development sample definition. In Phase 2A, split must at least record
+  this evidence in its report even if advanced sample weighting is not applied.
 
 Params:
 
@@ -457,6 +459,8 @@ Params:
 Outputs:
 
 - Treated Parquet artifacts preserving input roles.
+- In the normal Phase 2A pathway, this means one treated `train` artifact, one
+  treated `test` artifact, and one treated `oot` artifact.
 - JSON treatment definition/report artifact.
 
 Validation:
@@ -628,6 +632,9 @@ Params:
 Outputs:
 
 - JSON or Parquet clustering report with role `report`.
+- If a robust correlation basis is not available in Phase 2A, emit singleton
+  clusters for all IV candidates and record a warning that clustering was
+  pass-through.
 
 Validation:
 
