@@ -671,10 +671,11 @@ class CalculateWoeIvTests(unittest.TestCase):
         node = CalculateWoeIvNode()
         output = node.run(ctx)
 
-        self.assertEqual(len(output.artifacts), 2)
+        self.assertEqual(len(output.artifacts), 3)
 
         woe_art = output.artifacts[0]
         iv_art = output.artifacts[1]
+        summary_art = output.artifacts[2]
         woe_df = pl.read_parquet(store.artifact_path(woe_art))
         iv_df = pl.read_parquet(store.artifact_path(iv_art))
 
