@@ -39,6 +39,14 @@ def _save_registry(registry: dict) -> None:
     tmp.rename(REGISTRY_PATH)
 
 
+def _get_store_for_project(project_id: str) -> ProjectStore:
+    registry = _load_registry()
+    entry = registry.get(project_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
+    return ProjectStore(Path(entry["path"]))
+
+
 @router.post("", response_model=ProjectResponse, status_code=201)
 def create_project(body: CreateProjectRequest):
     path = Path(body.path).resolve()

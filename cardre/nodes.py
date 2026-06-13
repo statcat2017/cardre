@@ -6,26 +6,19 @@ and artifact lifecycle. Phase 2+ will replace these with real scorecard nodes.
 
 from __future__ import annotations
 
-import io
 import json
-import uuid
+import math
 import zipfile
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 
+from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
 from cardre.audit import (
-    ArtifactRef,
     ExecutionContext,
     NodeOutput,
     NodeType,
-    json_logical_hash,
-    params_hash,
-    physical_hash,
-    relative_path,
-    table_logical_hash,
-    utc_now_iso,
 )
 
 
@@ -76,43 +69,27 @@ class ImportGermanCreditNode(NodeType):
         else:
             df = self._read_from_file(source_path)
 
-        artifact_metadata["row_count"] = df.height
-        artifact_metadata["column_count"] = df.width
-
-        table_logical = table_logical_hash(df)
         store = context.store
 
-        buf = io.BytesIO()
-        df.write_parquet(buf, statistics=False, compression="zstd")
-        parquet_bytes = buf.getvalue()
-        parquet_path = store.root / "datasets" / f"{table_logical[:16]}-german-credit.parquet"
-        parquet_path.parent.mkdir(parents=True, exist_ok=True)
-        parquet_path.write_bytes(parquet_bytes)
-
-        phys = physical_hash(parquet_path)
-        artifact_id = str(uuid.uuid4())
-        artifact = ArtifactRef(
-            artifact_id=artifact_id,
+        artifact = write_parquet_artifact(
+            store,
             artifact_type="dataset",
             role="input",
-            path=relative_path(parquet_path, store.root),
-            physical_hash=phys,
-            logical_hash=table_logical,
-            media_type="application/vnd.apache.parquet",
+            stem="german-credit",
+            frame=df,
             metadata=artifact_metadata,
         )
-        store.register_artifact(artifact)
 
-        fingerprint = {
-            "plan_version_id": context.plan_version_id,
-            "step_id": context.step_spec.step_id,
-            "node_type": self.node_type,
-            "node_version": self.version,
-            "params_hash": context.step_spec.params_hash,
-            "parent_run_step_ids": [],
-            "input_artifact_logical_hashes": [],
-            "output_artifact_logical_hashes": [table_logical],
-        }
+        fingerprint = make_fingerprint(
+            plan_version_id=context.plan_version_id,
+            step_id=context.step_spec.step_id,
+            node_type=self.node_type,
+            node_version=self.version,
+            params_hash=context.step_spec.params_hash,
+            parent_run_steps=context.parent_run_steps,
+            input_artifacts=context.input_artifacts,
+            output_artifacts=[artifact],
+        )
 
         return NodeOutput(
             artifacts=[artifact],
@@ -159,8 +136,8 @@ class ProfileDatasetNode(NodeType):
     output_roles: list[str] = ["report"]
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        input_artifact = context.input_artifacts[0]
         store = context.store
+        input_artifact = context.input_artifacts[0]
 
         path = store.artifact_path(input_artifact)
         df = pl.read_parquet(path)
@@ -175,38 +152,25 @@ class ProfileDatasetNode(NodeType):
             "profile_steps": [],
         }
 
-        report_bytes = json.dumps(report, indent=2, sort_keys=True).encode("utf-8")
-        logical = json_logical_hash(report)
-        report_path = (
-            store.root / "artifacts" / f"{logical[:16]}-profile-{context.step_spec.step_id}.json"
-        )
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_bytes(report_bytes)
-
-        phys = physical_hash(report_path)
-        artifact_id = str(uuid.uuid4())
-        artifact = ArtifactRef(
-            artifact_id=artifact_id,
+        artifact = write_json_artifact(
+            store,
             artifact_type="report",
             role="report",
-            path=relative_path(report_path, store.root),
-            physical_hash=phys,
-            logical_hash=logical,
-            media_type="application/json",
+            stem=f"profile-{context.step_spec.step_id}",
+            payload=report,
             metadata={"source_artifact_id": input_artifact.artifact_id},
         )
-        store.register_artifact(artifact)
 
-        fingerprint = {
-            "plan_version_id": context.plan_version_id,
-            "step_id": context.step_spec.step_id,
-            "node_type": self.node_type,
-            "node_version": self.version,
-            "params_hash": context.step_spec.params_hash,
-            "parent_run_step_ids": [rs.run_step_id for rs in context.parent_run_steps],
-            "input_artifact_logical_hashes": [a.logical_hash for a in context.input_artifacts],
-            "output_artifact_logical_hashes": [logical],
-        }
+        fingerprint = make_fingerprint(
+            plan_version_id=context.plan_version_id,
+            step_id=context.step_spec.step_id,
+            node_type=self.node_type,
+            node_version=self.version,
+            params_hash=context.step_spec.params_hash,
+            parent_run_steps=context.parent_run_steps,
+            input_artifacts=context.input_artifacts,
+            output_artifacts=[artifact],
+        )
 
         return NodeOutput(
             artifacts=[artifact],
@@ -236,8 +200,8 @@ class ValidateBinaryTargetNode(NodeType):
     output_roles: list[str] = ["report"]
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        input_artifact = context.input_artifacts[0]
         store = context.store
+        input_artifact = context.input_artifacts[0]
         params = context.validated_params
         target_col = params.get("target_column", "credit_risk_class")
 
@@ -262,38 +226,25 @@ class ValidateBinaryTargetNode(NodeType):
                 f"Target column {target_col!r} has {len(unique_values)} unique values, expected 2"
             )
 
-        report_bytes = json.dumps(report, indent=2, sort_keys=True).encode("utf-8")
-        logical = json_logical_hash(report)
-        report_path = (
-            store.root / "artifacts" / f"{logical[:16]}-target-validate-{context.step_spec.step_id}.json"
-        )
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_bytes(report_bytes)
-
-        phys = physical_hash(report_path)
-        artifact_id = str(uuid.uuid4())
-        artifact = ArtifactRef(
-            artifact_id=artifact_id,
+        artifact = write_json_artifact(
+            store,
             artifact_type="report",
             role="report",
-            path=relative_path(report_path, store.root),
-            physical_hash=phys,
-            logical_hash=logical,
-            media_type="application/json",
+            stem=f"target-validate-{context.step_spec.step_id}",
+            payload=report,
             metadata={"source_artifact_id": input_artifact.artifact_id},
         )
-        store.register_artifact(artifact)
 
-        fingerprint = {
-            "plan_version_id": context.plan_version_id,
-            "step_id": context.step_spec.step_id,
-            "node_type": self.node_type,
-            "node_version": self.version,
-            "params_hash": context.step_spec.params_hash,
-            "parent_run_step_ids": [rs.run_step_id for rs in context.parent_run_steps],
-            "input_artifact_logical_hashes": [a.logical_hash for a in context.input_artifacts],
-            "output_artifact_logical_hashes": [logical],
-        }
+        fingerprint = make_fingerprint(
+            plan_version_id=context.plan_version_id,
+            step_id=context.step_spec.step_id,
+            node_type=self.node_type,
+            node_version=self.version,
+            params_hash=context.step_spec.params_hash,
+            parent_run_steps=context.parent_run_steps,
+            input_artifacts=context.input_artifacts,
+            output_artifacts=[artifact],
+        )
 
         return NodeOutput(
             artifacts=[artifact],
@@ -310,7 +261,6 @@ class SplitTrainTestOotNode(NodeType):
     output_roles: list[str] = ["train", "test", "oot"]
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
 
         dataset_artifact = next(a for a in context.input_artifacts if a.role == "input")
         store = context.store
@@ -453,8 +403,8 @@ class DummyFitNode(NodeType):
     output_roles: list[str] = ["definition"]
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        input_artifact = context.input_artifacts[0]
         store = context.store
+        input_artifact = context.input_artifacts[0]
         params = context.validated_params
 
         df = pl.read_parquet(store.artifact_path(input_artifact))
@@ -466,38 +416,25 @@ class DummyFitNode(NodeType):
             "row_count": df.height,
         }
 
-        report_bytes = json.dumps(dummy_def, indent=2, sort_keys=True).encode("utf-8")
-        logical = json_logical_hash(dummy_def)
-        def_path = (
-            store.root / "artifacts" / f"{logical[:16]}-dummy-fit-{context.step_spec.step_id}.json"
-        )
-        def_path.parent.mkdir(parents=True, exist_ok=True)
-        def_path.write_bytes(report_bytes)
-
-        phys = physical_hash(def_path)
-        artifact_id = str(uuid.uuid4())
-        artifact = ArtifactRef(
-            artifact_id=artifact_id,
+        artifact = write_json_artifact(
+            store,
             artifact_type="definition",
             role="definition",
-            path=relative_path(def_path, store.root),
-            physical_hash=phys,
-            logical_hash=logical,
-            media_type="application/json",
+            stem=f"dummy-fit-{context.step_spec.step_id}",
+            payload=dummy_def,
             metadata={"source_artifact_id": input_artifact.artifact_id},
         )
-        store.register_artifact(artifact)
 
-        fingerprint = {
-            "plan_version_id": context.plan_version_id,
-            "step_id": context.step_spec.step_id,
-            "node_type": self.node_type,
-            "node_version": self.version,
-            "params_hash": context.step_spec.params_hash,
-            "parent_run_step_ids": [rs.run_step_id for rs in context.parent_run_steps],
-            "input_artifact_logical_hashes": [a.logical_hash for a in context.input_artifacts],
-            "output_artifact_logical_hashes": [logical],
-        }
+        fingerprint = make_fingerprint(
+            plan_version_id=context.plan_version_id,
+            step_id=context.step_spec.step_id,
+            node_type=self.node_type,
+            node_version=self.version,
+            params_hash=context.step_spec.params_hash,
+            parent_run_steps=context.parent_run_steps,
+            input_artifacts=context.input_artifacts,
+            output_artifacts=[artifact],
+        )
 
         return NodeOutput(
             artifacts=[artifact],
@@ -539,44 +476,30 @@ class DummyApplyNode(NodeType):
                 "row_id": list(range(df.height)),
             })
 
-            table_logical = table_logical_hash(pred)
-            buf = io.BytesIO()
-            pred.write_parquet(buf, statistics=False, compression="zstd")
-            parquet_bytes = buf.getvalue()
-            fname = f"{table_logical[:16]}-apply-{data_art.role}-{context.step_spec.step_id}.parquet"
-            pred_path = store.root / "artifacts" / fname
-            pred_path.parent.mkdir(parents=True, exist_ok=True)
-            pred_path.write_bytes(parquet_bytes)
-
-            phys = physical_hash(pred_path)
-            artifact_id = str(uuid.uuid4())
-            artifact = ArtifactRef(
-                artifact_id=artifact_id,
+            artifact = write_parquet_artifact(
+                store,
                 artifact_type="dataset",
                 role="prediction",
-                path=relative_path(pred_path, store.root),
-                physical_hash=phys,
-                logical_hash=table_logical,
-                media_type="application/vnd.apache.parquet",
+                stem=f"apply-{data_art.role}-{context.step_spec.step_id}",
+                frame=pred,
                 metadata={
                     "source_artifact_id": data_art.artifact_id,
                     "definition_artifact_id": def_artifact.artifact_id,
                 },
+                directory="artifacts",
             )
-            store.register_artifact(artifact)
             outputs.append(artifact)
 
-        logical_hashes = [a.logical_hash for a in outputs]
-        fingerprint = {
-            "plan_version_id": context.plan_version_id,
-            "step_id": context.step_spec.step_id,
-            "node_type": self.node_type,
-            "node_version": self.version,
-            "params_hash": context.step_spec.params_hash,
-            "parent_run_step_ids": [rs.run_step_id for rs in context.parent_run_steps],
-            "input_artifact_logical_hashes": [a.logical_hash for a in context.input_artifacts],
-            "output_artifact_logical_hashes": logical_hashes,
-        }
+        fingerprint = make_fingerprint(
+            plan_version_id=context.plan_version_id,
+            step_id=context.step_spec.step_id,
+            node_type=self.node_type,
+            node_version=self.version,
+            params_hash=context.step_spec.params_hash,
+            parent_run_steps=context.parent_run_steps,
+            input_artifacts=context.input_artifacts,
+            output_artifacts=outputs,
+        )
 
         return NodeOutput(
             artifacts=outputs,
@@ -597,7 +520,6 @@ class DefineModellingMetadataNode(NodeType):
     output_roles: list[str] = ["definition"]
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact
 
         store = context.store
         params = context.validated_params
@@ -669,7 +591,6 @@ class ApplyExclusionsNode(NodeType):
     output_roles: list[str] = ["input", "train"]
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
 
         store = context.store
         params = context.validated_params
@@ -782,7 +703,6 @@ class DevelopmentSampleDefinitionNode(NodeType):
     output_roles: list[str] = ["definition"]
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact
 
         store = context.store
         params = context.validated_params
@@ -840,7 +760,6 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
     output_roles: list[str] = ["train", "test", "oot"]
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
 
         store = context.store
         params = context.validated_params
@@ -960,7 +879,6 @@ class FineClassingNode(NodeType):
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact
 
         store = context.store
         params = context.validated_params
@@ -1277,7 +1195,6 @@ class CalculateWoeIvNode(NodeType):
     output_roles: list[str] = ["report"]
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
 
         store = context.store
         params = context.validated_params
@@ -1410,7 +1327,7 @@ class CalculateWoeIvNode(NodeType):
                     woe_val = 0.0
                     iv_comp = 0.0
                 else:
-                    woe_val = float(__import__("math").log(good_dist / bad_dist))
+                    woe_val = float(math.log(good_dist / bad_dist))
                     iv_comp = (good_dist - bad_dist) * woe_val
 
                 var_iv += iv_comp
@@ -1520,7 +1437,6 @@ class VariableClusteringNode(NodeType):
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact
 
         store = context.store
         params = context.validated_params
@@ -1656,7 +1572,6 @@ class VariableSelectionNode(NodeType):
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact
 
         store = context.store
         params = context.validated_params
@@ -1974,7 +1889,6 @@ class ManualBinningNode(NodeType):
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact
 
         store = context.store
         params = context.validated_params
@@ -2034,7 +1948,6 @@ class TechnicalManifestExportNode(NodeType):
     output_roles: list[str] = ["manifest"]
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact
 
         store = context.store
         run_id = context.run_id
@@ -2045,12 +1958,9 @@ class TechnicalManifestExportNode(NodeType):
         plan = None
         project = None
         if plan_version:
-            plan_id_result = store._connect().execute(
-                "SELECT plan_id FROM plan_versions WHERE plan_version_id = ?",
-                (plan_version_id,),
-            ).fetchone()
-            if plan_id_result:
-                plan = store.get_plan(plan_id_result["plan_id"])
+            plan_id = store.get_plan_id_for_version(plan_version_id)
+            if plan_id:
+                plan = store.get_plan(plan_id)
                 if plan:
                     project = store.get_project(plan["project_id"])
 
@@ -2180,27 +2090,7 @@ class WoeTransformTrainNode(NodeType):
     input_roles: list[str] = ["train", "definition", "report"]
     output_roles: list[str] = ["train"]
 
-    @staticmethod
-    def _find_artifact_by_node_type(artifacts: list, store, node_type: str) -> ArtifactRef | None:
-        for a in artifacts:
-            try:
-                content = store.artifact_path(a).read_bytes()
-                if content[:4] == b"PAR1":
-                    df = pl.read_parquet(store.artifact_path(a))
-                    if "bin_id" in df.columns and "woe" in df.columns and "variable" in df.columns:
-                        return a
-                    continue
-                obj = json.loads(content)
-                if obj.get("target_column") is not None and "good_values" in obj:
-                    return a
-                if "selected" in obj or "variables" in obj:
-                    return a
-            except Exception:
-                continue
-        return None
-
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
 
         store = context.store
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
@@ -2439,7 +2329,6 @@ class LogisticRegressionNode(NodeType):
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         import numpy as np
-        from cardre.artifacts import make_fingerprint, write_json_artifact
         from sklearn.linear_model import LogisticRegression as SkLearnLR
 
         store = context.store
@@ -2620,7 +2509,6 @@ class ScoreScalingNode(NodeType):
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         import math
-        from cardre.artifacts import make_fingerprint, write_json_artifact
 
         store = context.store
         params = context.validated_params
@@ -2770,7 +2658,6 @@ class BuildSummaryReportNode(NodeType):
     output_roles: list[str] = ["report"]
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact
 
         store = context.store
         scorecard_artifact = next(a for a in context.input_artifacts if a.role == "scorecard")
@@ -2888,7 +2775,6 @@ class ApplyWoeMappingNode(NodeType):
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         import math
-        from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
 
         store = context.store
         data_arts, bin_art, woe_art, sel_art = self._find_artifacts(context.input_artifacts, store)
@@ -3019,7 +2905,6 @@ class ApplyModelNode(NodeType):
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         import numpy as np
-        from cardre.artifacts import make_fingerprint, write_parquet_artifact
 
         store = context.store
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
@@ -3097,7 +2982,6 @@ class ValidationMetricsNode(NodeType):
     output_roles: list[str] = ["report"]
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact
         from sklearn.metrics import roc_auc_score
 
         store = context.store
@@ -3289,7 +3173,6 @@ class CutoffAnalysisNode(NodeType):
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.artifacts import make_fingerprint, write_json_artifact
 
         store = context.store
         params = context.validated_params

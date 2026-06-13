@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import sys
 import uuid
 from pathlib import Path
 from typing import Any
@@ -120,4 +121,6 @@ def make_fingerprint(
         "input_artifact_logical_hashes": [a.logical_hash for a in input_artifacts],
         "output_artifact_logical_hashes": [a.logical_hash for a in output_artifacts],
         "parent_output_logical_hashes_by_step": parent_outputs,
+        "python_version": sys.version.split()[0],
+        "cardre_version": "0.1.0",
     }

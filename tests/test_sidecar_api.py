@@ -153,9 +153,7 @@ class TestPlans:
 
         from cardre.store import ProjectStore
         store = ProjectStore(proj_path)
-        plans = store._connect().execute(
-            "SELECT plan_id FROM plans WHERE project_id = ?", (proj["project_id"],)
-        ).fetchall()
+        plans = store.get_plans_for_project(proj["project_id"])
         plan_id = plans[0]["plan_id"]
 
         resp = client.get(f"/plans/{plan_id}")
@@ -173,9 +171,7 @@ class TestPlans:
         })
 
         store = ProjectStore(proj_path)
-        plan_id = store._connect().execute(
-            "SELECT plan_id FROM plans WHERE project_id = ?", (proj["project_id"],)
-        ).fetchone()["plan_id"]
+        plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
 
         client.post("/runs", json={
@@ -202,9 +198,7 @@ class TestRuns:
         })
 
         store = ProjectStore(proj_path)
-        plan_id = store._connect().execute(
-            "SELECT plan_id FROM plans WHERE project_id = ?", (proj["project_id"],)
-        ).fetchone()["plan_id"]
+        plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
 
         resp = client.post("/runs", json={
@@ -225,9 +219,7 @@ class TestRuns:
         })
 
         store = ProjectStore(proj_path)
-        plan_id = store._connect().execute(
-            "SELECT plan_id FROM plans WHERE project_id = ?", (proj["project_id"],)
-        ).fetchone()["plan_id"]
+        plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
         run_resp = client.post("/runs", json={
             "project_id": proj["project_id"], "plan_version_id": latest_pv_id,
@@ -243,9 +235,7 @@ class TestRuns:
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
 
         store = ProjectStore(proj_path)
-        plan_id = store._connect().execute(
-            "SELECT plan_id FROM plans WHERE project_id = ?", (proj["project_id"],)
-        ).fetchone()["plan_id"]
+        plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
 
         # Run without importing data — the import step has no source_path
@@ -277,9 +267,7 @@ class TestRuns:
         })
 
         store = ProjectStore(proj_path)
-        plan_id = store._connect().execute(
-            "SELECT plan_id FROM plans WHERE project_id = ?", (proj["project_id"],)
-        ).fetchone()["plan_id"]
+        plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
         run_resp = client.post("/runs", json={
             "project_id": proj["project_id"], "plan_version_id": latest_pv_id,
@@ -336,9 +324,7 @@ class TestFullRoundTrip:
         assert import_resp.status_code == 201
 
         store = ProjectStore(proj_path)
-        plan_id = store._connect().execute(
-            "SELECT plan_id FROM plans WHERE project_id = ?", (pid,)
-        ).fetchone()["plan_id"]
+        plan_id = store.get_plans_for_project(pid)[0]["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
 
         # After import, the proof pathway should still have 6 steps
