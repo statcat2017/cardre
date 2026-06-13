@@ -1345,6 +1345,23 @@ class TestPhase4BranchingFlow:
         br2_data = run_branch2_resp.json()
         assert br2_data["status"] == "succeeded", f"Second branch run did not succeed: {br2_data}"
 
+        # Third branch run: since the second was a no-op (all steps already current),
+        # this should still succeed and return the same run_id as the second.
+        run_branch3_resp = client.post("/runs", json={
+            "project_id": pid,
+            "plan_version_id": updated_pv_id,
+            "run_scope": "branch",
+            "branch_id": branch_id,
+        })
+        assert run_branch3_resp.status_code == 201, f"Third branch run failed: {run_branch3_resp.json()}"
+        br3_data = run_branch3_resp.json()
+        assert br3_data["status"] == "succeeded", f"Third branch run did not succeed: {br3_data}"
+        # Third run should return the same run_id as the second (no-op short-circuit)
+        assert br3_data["run_id"] == br2_data["run_id"], (
+            f"No-op branch run should return same run_id as prior successful run. "
+            f"Got {br3_data['run_id']}, expected {br2_data['run_id']}"
+        )
+
         # 12. Create comparison intent
         comp_resp = client.post("/branch-comparisons", json={
             "project_id": pid,

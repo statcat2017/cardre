@@ -176,6 +176,25 @@ class PlanExecutor:
                         return prs
             return None
 
+        # Identify stale branch-owned steps that need execution
+        stale_branch_step_ids = [
+            sid for sid in branch_owned_step_ids
+            if branch_staleness.get(sid, True)
+        ]
+
+        # Short-circuit if no branch-owned steps are stale — don't create
+        # an empty successful run that poisons future staleness.
+        if not stale_branch_step_ids:
+            existing_run_id = store.get_latest_successful_run_id(
+                plan_version_id, branch_id=branch_id,
+            )
+            if existing_run_id is not None:
+                return existing_run_id
+            raise ValueError(
+                f"BRANCH_NO_OP_FAILED: All branch-owned steps are current "
+                f"but no prior successful branch run exists for branch {branch_id}."
+            )
+
         step_outputs: dict[str, list[ArtifactRef]] = {}
         run_step_records: dict[str, RunStepRecord] = {}
         for sid in shared_upstream_step_ids:
@@ -569,6 +588,21 @@ class PlanExecutor:
         steps = store.get_plan_version_steps(plan_version_id)
         run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=branch_id)
 
+        if run_id is None and branch_id:
+            # Branch-scoped fallback: try any successful run for this plan
+            # (including branch runs on other plan versions).
+            pv = store.get_plan_version(plan_version_id)
+            if pv is not None:
+                row = store._connect().execute(
+                    "SELECT r.run_id FROM runs r "
+                    "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
+                    "WHERE pv.plan_id = ? AND r.status = 'succeeded' "
+                    "ORDER BY r.started_at DESC LIMIT 1",
+                    (pv["plan_id"],),
+                ).fetchone()
+                if row is not None:
+                    run_id = row["run_id"]
+
         if run_id is None:
             pv = store.get_plan_version(plan_version_id)
             if pv is not None:
@@ -579,6 +613,20 @@ class PlanExecutor:
 
         run_steps = store.get_run_steps(run_id)
         rs_by_step = {rs.step_id: rs for rs in run_steps}
+
+        # For branch-scoped staleness, seed shared upstream evidence into
+        # rs_by_step so parent recursion can find shared upstream records
+        # (which are stored in full-plan runs, not branch-scoped ones).
+        if branch_id:
+            pv = store.get_plan_version(plan_version_id)
+            if pv is not None:
+                full_run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=None)
+                if full_run_id is None:
+                    full_run_id = store.get_latest_successful_run_id_for_plan(pv["plan_id"])
+                if full_run_id is not None and full_run_id != run_id:
+                    for prs in store.get_run_steps(full_run_id):
+                        if prs.step_id not in rs_by_step:
+                            rs_by_step[prs.step_id] = prs
 
         stale: dict[str, bool] = {}
         for spec in steps:
