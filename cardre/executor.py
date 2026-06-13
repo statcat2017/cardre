@@ -28,22 +28,7 @@ from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 
 
-FIT_ROLES = {"train"}
-APPLY_ROLES = {"train", "test", "oot", "definition"}
-SELECTION_ROLES = {"report", "definition"}
-REFINEMENT_ROLES = {"definition"}
-# Transform nodes are general-purpose and may consume any artifact
-# role. The empty set means _filter_inputs_by_role returns the full
-# unfiltered list (no role restriction).
-TRANSFORM_ROLES: set[str] = set()
-
-CATEGORY_ROLE_MAP: dict[str, set[str]] = {
-    "fit": FIT_ROLES,
-    "apply": APPLY_ROLES,
-    "selection": SELECTION_ROLES,
-    "refinement": REFINEMENT_ROLES,
-    "transform": TRANSFORM_ROLES,
-}
+LEAKAGE_SENSITIVE_CATEGORIES = {"fit", "selection", "refinement"}
 
 STATUS_NOT_RUN = "not_run"
 STATUS_QUEUED = "queued"
@@ -134,6 +119,7 @@ class PlanExecutor:
             input_artifacts = self._filter_inputs_by_role(node, raw_inputs)
             self._validate_role_access(node, spec, input_artifacts, raw_inputs)
             self._validate_node_input_roles(node, input_artifacts)
+            self._validate_leakage_rules(node, input_artifacts)
 
             parent_run_steps = [
                 rs for pid in spec.parent_step_ids
@@ -270,10 +256,10 @@ class PlanExecutor:
         node: NodeType,
         artifacts: list[ArtifactRef],
     ) -> list[ArtifactRef]:
-        permitted_roles = CATEGORY_ROLE_MAP.get(node.category)
-        if permitted_roles is None or not permitted_roles:
+        if not node.input_roles:
             return artifacts
-        return [a for a in artifacts if a.role in permitted_roles]
+        permitted = set(node.input_roles)
+        return [a for a in artifacts if a.role in permitted]
 
     def _validate_role_access(
         self,
@@ -282,26 +268,26 @@ class PlanExecutor:
         filtered_artifacts: list[ArtifactRef],
         raw_inputs: list[ArtifactRef],
     ) -> None:
-        permitted_roles = CATEGORY_ROLE_MAP.get(node.category)
-        if permitted_roles is None or not permitted_roles:
+        if not node.input_roles:
             return
 
         if spec.parent_step_ids and not filtered_artifacts:
             raw_roles = sorted({a.role for a in raw_inputs})
             raise RoleAccessError(
-                f"Node {node.node_type!r} (category={node.category!r}) "
-                f"receives no artifacts with permitted roles {sorted(permitted_roles)}. "
+                f"Node {node.node_type!r} declares input roles "
+                f"{node.input_roles} but receives no matching artifacts. "
                 f"Raw parent roles: {raw_roles}. "
                 f"Check plan wiring: step {spec.step_id!r} parents "
-                f"{spec.parent_step_ids!r} must produce {sorted(permitted_roles)}."
+                f"{spec.parent_step_ids!r}."
             )
 
+        permitted = set(node.input_roles)
         for artifact in filtered_artifacts:
-            if artifact.role not in permitted_roles:
+            if artifact.role not in permitted:
                 raise RoleAccessError(
-                    f"Node {node.node_type!r} (category={node.category!r}) "
-                    f"cannot consume artifact role {artifact.role!r}. "
-                    f"Permitted roles: {sorted(permitted_roles)}"
+                    f"Node {node.node_type!r} declares input roles "
+                    f"{sorted(permitted)} but cannot consume artifact "
+                    f"role {artifact.role!r}."
                 )
 
     def _validate_node_input_roles(
@@ -309,19 +295,10 @@ class PlanExecutor:
         node: NodeType,
         artifacts: list[ArtifactRef],
     ) -> None:
-        """Validate that at least one of the node's declared
-        input_roles is present in the resolved artifacts.
-
-        input_roles on proof nodes represent *permitted* roles.
-        Category-level role filtering (fit→train, apply→train/test/oot)
-        is handled by CATEGORY_ROLE_MAP separately. This check ensures
-        the node's own capability contract is not violated.
-        """
         if not node.input_roles:
             return
         if not artifacts:
             return
-
         actual_roles = {a.role for a in artifacts}
         matching = set(node.input_roles) & actual_roles
         if not matching:
@@ -330,6 +307,22 @@ class PlanExecutor:
                 f"{node.input_roles} but receives only "
                 f"{sorted(actual_roles)}. No permitted role matched."
             )
+
+    def _validate_leakage_rules(
+        self,
+        node: NodeType,
+        artifacts: list[ArtifactRef],
+    ) -> None:
+        if node.category not in LEAKAGE_SENSITIVE_CATEGORIES:
+            return
+        for a in artifacts:
+            if a.role in ("test", "oot") and a.artifact_type == "dataset":
+                raise RoleAccessError(
+                    f"Node {node.node_type!r} (category={node.category!r}) "
+                    f"cannot consume {a.role!r} dataset artifact. "
+                    f"Leakage-sensitive nodes must not consume test or OOT "
+                    f"tabular data. Artifact ID: {a.artifact_id}"
+                )
 
     # ------------------------------------------------------------------
     # Execution fingerprint

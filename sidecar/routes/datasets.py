@@ -25,15 +25,21 @@ def _get_store(project_id: str) -> ProjectStore:
 
 
 def _update_plan_import_params(store: ProjectStore, project_id: str, source_path: str) -> None:
-    """Update the proof pathway's import step with the given source_path.
+    """Update the scorecard pathway's import step with the given source_path.
 
     Creates a new plan version so the import step knows which file to load.
+    Updates both Proof Pathway and Scorecard Pathway if they exist.
     """
     plans = store.get_plans_for_project(project_id)
-    proof_plan = next((p for p in plans if p["name"] == "Proof Pathway"), None)
-    if proof_plan is None:
-        return
-    plan_id = proof_plan["plan_id"]
+    for plan_name in ("Proof Pathway", "Scorecard Pathway"):
+        pathway_plan = next((p for p in plans if p["name"] == plan_name), None)
+        if pathway_plan is None:
+            continue
+        plan_id = pathway_plan["plan_id"]
+        _update_single_plan_import_params(store, plan_id, source_path)
+
+
+def _update_single_plan_import_params(store: ProjectStore, plan_id: str, source_path: str) -> None:
     latest_pv_id = store.get_latest_plan_version_id(plan_id)
     if latest_pv_id is None:
         return
