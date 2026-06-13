@@ -28,6 +28,8 @@ export interface StepStatus {
   is_stale: boolean;
   position: number;
   params: Record<string, unknown>;
+  canonical_step_id?: string;
+  branch_id?: string | null;
 }
 
 export type StepStatusCode =
@@ -62,6 +64,8 @@ export interface PlanResponse {
 export interface RunBody {
   project_id: string;
   plan_version_id: string;
+  run_scope?: string;
+  branch_id?: string | null;
 }
 
 export interface RunResponse {
@@ -71,6 +75,8 @@ export interface RunResponse {
   started_at: string;
   finished_at: string | null;
   step_count: number;
+  branch_id?: string | null;
+  executed_step_ids?: string[];
 }
 
 export interface RunStepItem {
@@ -218,4 +224,162 @@ export interface ManualBinningPreviewResponse {
   valid: boolean;
   refined_bins_by_variable: Record<string, unknown>;
   diagnostics: PreviewDiagnostics | null;
+}
+
+export interface BranchStepItem {
+  step_id: string;
+  canonical_step_id: string;
+  branch_id?: string | null;
+  is_shared_upstream: boolean;
+  is_branch_owned: boolean;
+}
+
+export interface BranchResponse {
+  branch_id: string;
+  project_id: string;
+  plan_id: string;
+  name: string;
+  description?: string | null;
+  branch_type: string;
+  status: string;
+  base_branch_id?: string | null;
+  base_plan_version_id: string;
+  head_plan_version_id: string;
+  branch_point_step_id?: string | null;
+  branch_point_canonical_step_id?: string | null;
+  created_reason: string;
+  steps: BranchStepItem[];
+  is_champion?: boolean;
+  latest_run_id?: string | null;
+  readiness?: string;
+  warning_count?: number;
+  error_count?: number;
+}
+
+export interface BranchListItem {
+  branch_id: string;
+  plan_id: string;
+  name: string;
+  branch_type: string;
+  status: string;
+  base_branch_id?: string | null;
+  base_plan_version_id: string;
+  head_plan_version_id: string;
+  branch_point_step_id?: string | null;
+  branch_point_canonical_step_id?: string | null;
+  is_champion?: boolean;
+  latest_run_id?: string | null;
+  readiness?: string;
+  warning_count?: number;
+  error_count?: number;
+}
+
+export interface BranchListResponse {
+  project_id: string;
+  branches: BranchListItem[];
+}
+
+export interface MigrateResponse {
+  project_id: string;
+  branches_created: number;
+  plan_versions_mapped: number;
+  steps_mapped: number;
+}
+
+export interface CreateBranchBody {
+  project_id: string;
+  base_plan_version_id: string;
+  base_branch_id?: string | null;
+  branch_point_step_id: string;
+  name: string;
+  description?: string | null;
+  branch_type: string;
+  created_reason: string;
+  segment_filter_spec?: Record<string, unknown> | null;
+}
+
+export interface CreateBranchResponse {
+  branch_id: string;
+  plan_id: string;
+  new_plan_version_id: string;
+  name: string;
+  branch_type: string;
+  branch_point_step_id?: string | null;
+  branch_point_canonical_step_id?: string | null;
+  created_step_ids: Record<string, string>;
+  shared_upstream_step_ids: string[];
+  status: string;
+  warnings: string[];
+}
+
+export interface ComparisonResponse {
+  comparison_id: string;
+  project_id: string;
+  plan_id: string;
+  baseline_branch_id: string;
+  challenger_branch_ids: string[];
+  latest_snapshot_id?: string | null;
+  latest_ready?: boolean | null;
+  blocked_reason?: string | null;
+  missing_or_stale?: { branch_id: string; canonical_step_id: string; step_id: string; status: string }[];
+  warnings?: string[];
+  created_at?: string;
+}
+
+export interface RefreshComparisonResponse {
+  comparison_id: string;
+  comparison_snapshot_id?: string | null;
+  ready: boolean;
+  comparison_artifact_id?: string | null;
+  refreshed_at?: string;
+  blocked_reason?: string | null;
+  missing_or_stale?: { branch_id: string; canonical_step_id: string; step_id: string; status: string }[];
+  warnings?: string[];
+}
+
+export interface ComparisonSnapshotResponse {
+  comparison_snapshot_id: string;
+  comparison_id: string;
+  comparison_artifact_id: string;
+  ready: boolean;
+  created_at?: string;
+}
+
+export interface AssignChampionBody {
+  project_id: string;
+  branch_id: string;
+  comparison_id: string;
+  comparison_snapshot_id: string;
+  scope_type?: string;
+  scope_key?: string;
+  assigned_reason: string;
+}
+
+export interface ChampionResponse {
+  champion_assignment_id: string;
+  plan_id: string;
+  champion_branch_id: string;
+  previous_champion_branch_id?: string | null;
+  scope_type: string;
+  scope_key: string;
+  assigned_at?: string;
+  assigned_reason?: string;
+}
+
+export interface ExportAuditPackBody {
+  project_id: string;
+  plan_id: string;
+  branch_id: string;
+  comparison_id?: string | null;
+  comparison_snapshot_id?: string | null;
+  include_row_level_data?: boolean;
+  export_path?: string | null;
+}
+
+export interface ExportAuditPackResponse {
+  export_path: string;
+  export_id: string;
+  file_count: number;
+  warnings?: string[];
+  diagnostics?: { code: string; message: string }[];
 }

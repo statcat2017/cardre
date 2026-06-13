@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS plan_steps (
     parent_step_ids_json TEXT NOT NULL,
     branch_label TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL,
+    canonical_step_id TEXT NOT NULL DEFAULT '',
+    branch_id TEXT,
     PRIMARY KEY (plan_version_id, step_id)
 );
 
@@ -135,6 +137,111 @@ class ProjectStore:
         self.root = Path(root)
         self._db: sqlite3.Connection | None = None
 
+    def run_migrations(self) -> None:
+        """Apply Phase 4 schema migrations to existing stores.
+
+        Adds new columns and creates new tables for the branch model.
+        Safe to call on fresh stores (idempotent).
+        """
+        conn = self._connect()
+
+        # Create branch tables (IF NOT EXISTS so it's idempotent for fresh stores)
+        branch_tables_sql = """
+        CREATE TABLE IF NOT EXISTS plan_branches (
+            branch_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            plan_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            branch_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            base_branch_id TEXT,
+            base_plan_version_id TEXT NOT NULL,
+            head_plan_version_id TEXT NOT NULL,
+            branch_point_step_id TEXT,
+            branch_point_canonical_step_id TEXT,
+            segment_filter_spec_json TEXT,
+            created_reason TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            archived_at TEXT,
+            FOREIGN KEY(project_id) REFERENCES projects(project_id),
+            FOREIGN KEY(plan_id) REFERENCES plans(plan_id)
+        );
+        CREATE TABLE IF NOT EXISTS branch_step_map (
+            branch_step_map_id TEXT PRIMARY KEY,
+            branch_id TEXT NOT NULL,
+            plan_version_id TEXT NOT NULL,
+            canonical_step_id TEXT NOT NULL,
+            step_id TEXT NOT NULL,
+            source_branch_id TEXT,
+            source_step_id TEXT,
+            is_shared_upstream INTEGER NOT NULL DEFAULT 0,
+            is_branch_owned INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(branch_id) REFERENCES plan_branches(branch_id)
+        );
+        CREATE TABLE IF NOT EXISTS branch_comparisons (
+            comparison_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            plan_id TEXT NOT NULL,
+            baseline_branch_id TEXT NOT NULL,
+            challenger_branch_ids_json TEXT NOT NULL,
+            comparison_spec_json TEXT NOT NULL,
+            latest_snapshot_id TEXT,
+            latest_ready INTEGER,
+            latest_readiness_json TEXT,
+            created_at TEXT NOT NULL,
+            created_reason TEXT,
+            FOREIGN KEY(baseline_branch_id) REFERENCES plan_branches(branch_id)
+        );
+        CREATE TABLE IF NOT EXISTS branch_comparison_snapshots (
+            comparison_snapshot_id TEXT PRIMARY KEY,
+            comparison_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            plan_id TEXT NOT NULL,
+            comparison_artifact_id TEXT NOT NULL,
+            readiness_json TEXT NOT NULL,
+            source_plan_version_ids_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            created_reason TEXT,
+            FOREIGN KEY(comparison_id) REFERENCES branch_comparisons(comparison_id)
+        );
+        CREATE TABLE IF NOT EXISTS champion_assignments (
+            champion_assignment_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            plan_id TEXT NOT NULL,
+            scope_type TEXT NOT NULL,
+            scope_key TEXT NOT NULL,
+            champion_branch_id TEXT NOT NULL,
+            comparison_id TEXT NOT NULL,
+            comparison_snapshot_id TEXT NOT NULL,
+            comparison_artifact_id TEXT NOT NULL,
+            selected_plan_version_id TEXT NOT NULL,
+            assigned_reason TEXT NOT NULL,
+            assigned_by TEXT,
+            assigned_at TEXT NOT NULL,
+            superseded_at TEXT,
+            superseded_by_assignment_id TEXT,
+            FOREIGN KEY(champion_branch_id) REFERENCES plan_branches(branch_id),
+            FOREIGN KEY(comparison_id) REFERENCES branch_comparisons(comparison_id),
+            FOREIGN KEY(comparison_snapshot_id) REFERENCES branch_comparison_snapshots(comparison_snapshot_id)
+        );
+        """
+        conn.executescript(branch_tables_sql)
+
+        # Add new columns to plan_steps if missing
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(plan_steps)").fetchall()}
+        if "canonical_step_id" not in cols:
+            conn.execute("ALTER TABLE plan_steps ADD COLUMN canonical_step_id TEXT NOT NULL DEFAULT ''")
+        if "branch_id" not in cols:
+            conn.execute("ALTER TABLE plan_steps ADD COLUMN branch_id TEXT")
+
+        # Add branch_id to runs table if missing
+        run_cols = {r["name"] for r in conn.execute("PRAGMA table_info(runs)").fetchall()}
+        if "branch_id" not in run_cols:
+            conn.execute("ALTER TABLE runs ADD COLUMN branch_id TEXT")
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -145,6 +252,7 @@ class ProjectStore:
             (self.root / sub).mkdir(exist_ok=True)
         with self._connect() as conn:
             conn.executescript(SCHEMA_SQL)
+        self.run_migrations()
 
     def _connect(self) -> sqlite3.Connection:
         if self._db is not None:
@@ -396,8 +504,9 @@ class ProjectStore:
                 conn.execute(
                     "INSERT INTO plan_steps "
                     "(step_id, plan_version_id, node_type, node_version, category, "
-                    " params_json, params_hash, parent_step_ids_json, branch_label, position) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " params_json, params_hash, parent_step_ids_json, branch_label, position, "
+                    " canonical_step_id, branch_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         step.step_id,
                         plan_version_id,
@@ -409,8 +518,57 @@ class ProjectStore:
                         json.dumps(step.parent_step_ids),
                         step.branch_label,
                         step.position,
+                        step.canonical_step_id,
+                        step.branch_id,
                     ),
                 )
+        return plan_version_id
+
+    def create_plan_version_in_transaction(
+        self,
+        conn: sqlite3.Connection,
+        plan_id: str,
+        steps: list[StepSpec],
+        description: str = "",
+    ) -> str:
+        """Create a new plan version inside an existing transaction.
+
+        Useful for atomic branch creation where plan version, branch
+        metadata, and branch step maps must be committed together.
+        """
+        plan_version_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        max_ver = conn.execute(
+            "SELECT COALESCE(MAX(version_number), 0) + 1 FROM plan_versions WHERE plan_id = ?",
+            (plan_id,),
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, created_at, description) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (plan_version_id, plan_id, max_ver, now, description),
+        )
+        for step in steps:
+            conn.execute(
+                "INSERT INTO plan_steps "
+                "(step_id, plan_version_id, node_type, node_version, category, "
+                " params_json, params_hash, parent_step_ids_json, branch_label, position, "
+                " canonical_step_id, branch_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    step.step_id,
+                    plan_version_id,
+                    step.node_type,
+                    step.node_version,
+                    step.category,
+                    json.dumps(step.params),
+                    step.params_hash,
+                    json.dumps(step.parent_step_ids),
+                    step.branch_label,
+                    step.position,
+                    step.canonical_step_id,
+                    step.branch_id,
+                ),
+            )
         return plan_version_id
 
     def get_plan_version(self, plan_version_id: str) -> JsonDict | None:
@@ -424,6 +582,11 @@ class ProjectStore:
             "SELECT * FROM plan_steps WHERE plan_version_id = ? ORDER BY position",
             (plan_version_id,),
         ).fetchall()
+        if not rows:
+            return []
+        col_names = rows[0].keys()
+        has_canonical = "canonical_step_id" in col_names
+        has_branch = "branch_id" in col_names
         return [
             StepSpec(
                 step_id=r["step_id"],
@@ -435,6 +598,8 @@ class ProjectStore:
                 parent_step_ids=json.loads(r["parent_step_ids_json"]),
                 branch_label=r["branch_label"],
                 position=r["position"],
+                canonical_step_id=r["canonical_step_id"] if has_canonical else r["step_id"],
+                branch_id=r["branch_id"] if has_branch else None,
             )
             for r in rows
         ]
@@ -447,17 +612,149 @@ class ProjectStore:
         ).fetchone()
         return None if row is None else row["plan_version_id"]
 
+    def list_plan_versions(self, plan_id: str) -> list[JsonDict]:
+        rows = self._connect().execute(
+            "SELECT * FROM plan_versions WHERE plan_id = ? ORDER BY version_number",
+            (plan_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Branches
+    # ------------------------------------------------------------------
+
+    def create_branch(
+        self,
+        project_id: str,
+        plan_id: str,
+        name: str,
+        branch_type: str,
+        base_plan_version_id: str,
+        head_plan_version_id: str,
+        created_reason: str,
+        branch_id: str | None = None,
+        description: str | None = None,
+        base_branch_id: str | None = None,
+        branch_point_step_id: str | None = None,
+        branch_point_canonical_step_id: str | None = None,
+        segment_filter_spec_json: str | None = None,
+    ) -> str:
+        bid = branch_id or str(uuid.uuid4())
+        now = utc_now_iso()
+        with self.transaction() as conn:
+            conn.execute(
+                "INSERT INTO plan_branches "
+                "(branch_id, project_id, plan_id, name, description, branch_type, status, "
+                " base_branch_id, base_plan_version_id, head_plan_version_id, "
+                " branch_point_step_id, branch_point_canonical_step_id, "
+                " segment_filter_spec_json, created_reason, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    bid, project_id, plan_id, name, description, branch_type,
+                    base_branch_id, base_plan_version_id, head_plan_version_id,
+                    branch_point_step_id, branch_point_canonical_step_id,
+                    segment_filter_spec_json, created_reason, now, now,
+                ),
+            )
+        return bid
+
+    def get_branch(self, branch_id: str) -> JsonDict | None:
+        row = self._connect().execute(
+            "SELECT * FROM plan_branches WHERE branch_id = ?", (branch_id,)
+        ).fetchone()
+        return None if row is None else dict(row)
+
+    def list_branches(
+        self,
+        project_id: str,
+        plan_id: str | None = None,
+        branch_type: str | None = None,
+        status: str | None = None,
+    ) -> list[JsonDict]:
+        sql = "SELECT * FROM plan_branches WHERE project_id = ?"
+        params: list[Any] = [project_id]
+        if plan_id is not None:
+            sql += " AND plan_id = ?"
+            params.append(plan_id)
+        if branch_type is not None:
+            sql += " AND branch_type = ?"
+            params.append(branch_type)
+        if status is not None:
+            sql += " AND status = ?"
+            params.append(status)
+        sql += " ORDER BY created_at"
+        rows = self._connect().execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_branch_head(
+        self,
+        branch_id: str,
+        head_plan_version_id: str,
+    ) -> None:
+        now = utc_now_iso()
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE plan_branches SET head_plan_version_id = ?, updated_at = ? WHERE branch_id = ?",
+                (head_plan_version_id, now, branch_id),
+            )
+
+    def create_branch_step_map(
+        self,
+        branch_id: str,
+        plan_version_id: str,
+        canonical_step_id: str,
+        step_id: str,
+        is_shared_upstream: bool = False,
+        is_branch_owned: bool = True,
+        source_branch_id: str | None = None,
+        source_step_id: str | None = None,
+    ) -> str:
+        map_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        with self.transaction() as conn:
+            conn.execute(
+                "INSERT INTO branch_step_map "
+                "(branch_step_map_id, branch_id, plan_version_id, canonical_step_id, step_id, "
+                " source_branch_id, source_step_id, is_shared_upstream, is_branch_owned, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    map_id, branch_id, plan_version_id, canonical_step_id, step_id,
+                    source_branch_id, source_step_id,
+                    1 if is_shared_upstream else 0,
+                    1 if is_branch_owned else 0,
+                    now,
+                ),
+            )
+        return map_id
+
+    def get_branch_step_map(
+        self,
+        branch_id: str,
+        plan_version_id: str | None = None,
+    ) -> list[JsonDict]:
+        if plan_version_id is not None:
+            rows = self._connect().execute(
+                "SELECT * FROM branch_step_map WHERE branch_id = ? AND plan_version_id = ?",
+                (branch_id, plan_version_id),
+            ).fetchall()
+        else:
+            rows = self._connect().execute(
+                "SELECT * FROM branch_step_map WHERE branch_id = ?",
+                (branch_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     # ------------------------------------------------------------------
     # Runs / Run Steps
     # ------------------------------------------------------------------
 
-    def create_run(self, plan_version_id: str) -> str:
+    def create_run(self, plan_version_id: str, branch_id: str | None = None) -> str:
         run_id = str(uuid.uuid4())
         now = utc_now_iso()
         with self.transaction() as conn:
             conn.execute(
-                "INSERT INTO runs (run_id, plan_version_id, status, started_at) VALUES (?, ?, ?, ?)",
-                (run_id, plan_version_id, "running", now),
+                "INSERT INTO runs (run_id, plan_version_id, status, started_at, branch_id) VALUES (?, ?, ?, ?, ?)",
+                (run_id, plan_version_id, "running", now, branch_id),
             )
         return run_id
 
@@ -541,12 +838,23 @@ class ProjectStore:
         ).fetchall()
         return {r["artifact_id"] for r in rows}
 
-    def get_latest_successful_run_id(self, plan_version_id: str) -> str | None:
-        row = self._connect().execute(
-            "SELECT run_id FROM runs WHERE plan_version_id = ? AND status = 'succeeded' "
-            "ORDER BY started_at DESC LIMIT 1",
-            (plan_version_id,),
-        ).fetchone()
+    def get_latest_successful_run_id(
+        self,
+        plan_version_id: str,
+        branch_id: str | None = None,
+    ) -> str | None:
+        if branch_id:
+            row = self._connect().execute(
+                "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id = ? AND status = 'succeeded' "
+                "ORDER BY started_at DESC LIMIT 1",
+                (plan_version_id, branch_id),
+            ).fetchone()
+        else:
+            row = self._connect().execute(
+                "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id IS NULL AND status = 'succeeded' "
+                "ORDER BY started_at DESC LIMIT 1",
+                (plan_version_id,),
+            ).fetchone()
         return None if row is None else row["run_id"]
 
     def get_latest_successful_run_id_for_plan(self, plan_id: str) -> str | None:
@@ -554,11 +862,74 @@ class ProjectStore:
         row = self._connect().execute(
             "SELECT r.run_id FROM runs r "
             "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-            "WHERE pv.plan_id = ? AND r.status = 'succeeded' "
+            "WHERE pv.plan_id = ? AND r.status = 'succeeded' AND r.branch_id IS NULL "
             "ORDER BY r.started_at DESC LIMIT 1",
             (plan_id,),
         ).fetchone()
         return None if row is None else row["run_id"]
+
+    def get_run_step(self, run_step_id: str) -> RunStepRecord | None:
+        row = self._connect().execute(
+            "SELECT * FROM run_steps WHERE run_step_id = ?",
+            (run_step_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return RunStepRecord(
+            run_step_id=row["run_step_id"],
+            run_id=row["run_id"],
+            step_id=row["step_id"],
+            plan_version_id=row["plan_version_id"],
+            status=row["status"],
+            started_at=row["started_at"],
+            finished_at=row["finished_at"],
+            input_artifact_ids=json.loads(row["input_artifact_ids_json"]),
+            output_artifact_ids=json.loads(row["output_artifact_ids_json"]),
+            execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
+            warnings=json.loads(row["warnings_json"]),
+            errors=json.loads(row["errors_json"]),
+        )
+
+    def get_latest_successful_run_step_for_step(
+        self,
+        plan_version_id: str,
+        step_id: str,
+        branch_id: str | None = None,
+    ) -> RunStepRecord | None:
+        if branch_id:
+            row = self._connect().execute(
+                "SELECT rs.* FROM run_steps rs "
+                "JOIN runs r ON rs.run_id = r.run_id "
+                "WHERE rs.plan_version_id = ? AND rs.step_id = ? "
+                "AND r.branch_id = ? AND rs.status = 'succeeded' "
+                "ORDER BY rs.started_at DESC LIMIT 1",
+                (plan_version_id, step_id, branch_id),
+            ).fetchone()
+        else:
+            row = self._connect().execute(
+                "SELECT rs.* FROM run_steps rs "
+                "JOIN runs r ON rs.run_id = r.run_id "
+                "WHERE rs.plan_version_id = ? AND rs.step_id = ? "
+                "AND r.branch_id IS NULL AND rs.status = 'succeeded' "
+                "ORDER BY rs.started_at DESC LIMIT 1",
+                (plan_version_id, step_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return RunStepRecord(
+            run_step_id=row["run_step_id"],
+            run_id=row["run_id"],
+            step_id=row["step_id"],
+            plan_version_id=row["plan_version_id"],
+            status=row["status"],
+            started_at=row["started_at"],
+            finished_at=row["finished_at"],
+            input_artifact_ids=json.loads(row["input_artifact_ids_json"]),
+            output_artifact_ids=json.loads(row["output_artifact_ids_json"]),
+            execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
+            warnings=json.loads(row["warnings_json"]),
+            errors=json.loads(row["errors_json"]),
+        )
 
     def get_plan_id_for_version(self, plan_version_id: str) -> str | None:
         row = self._connect().execute(
@@ -610,6 +981,12 @@ class ProjectStore:
             ("run_steps", "output_artifact_ids_json"),
             ("run_steps", "execution_fingerprint_json"),
             ("runs", "metadata_json"),
+            ("plan_branches", "segment_filter_spec_json"),
+            ("branch_comparisons", "challenger_branch_ids_json"),
+            ("branch_comparisons", "comparison_spec_json"),
+            ("branch_comparisons", "latest_readiness_json"),
+            ("branch_comparison_snapshots", "readiness_json"),
+            ("branch_comparison_snapshots", "source_plan_version_ids_json"),
         ]
         conn = self._connect()
         for table, col in json_cols:

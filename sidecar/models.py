@@ -71,6 +71,8 @@ class StepStatusItem(BaseModel):
     is_stale: bool = False
     position: int = 0
     params: dict[str, Any] = Field(default_factory=dict)
+    canonical_step_id: str = ""
+    branch_id: str | None = None
 
 
 class PlanResponse(BaseModel):
@@ -88,6 +90,8 @@ class PlanResponse(BaseModel):
 class RunRequest(BaseModel):
     project_id: str
     plan_version_id: str
+    run_scope: str = "full_plan"
+    branch_id: str | None = None
 
 
 class RunResponse(BaseModel):
@@ -97,6 +101,8 @@ class RunResponse(BaseModel):
     started_at: str
     finished_at: str | None = None
     step_count: int = 0
+    branch_id: str | None = None
+    executed_step_ids: list[str] = Field(default_factory=list)
 
 
 class RunStepItem(BaseModel):
@@ -268,3 +274,213 @@ class ManualBinningPreviewResponse(BaseModel):
     valid: bool = False
     refined_bins_by_variable: dict[str, Any] = Field(default_factory=dict)
     diagnostics: PreviewDiagnostics | None = None
+
+
+# ---------------------------------------------------------------------------
+# Branches (Phase 4)
+# ---------------------------------------------------------------------------
+
+class BranchStepItem(BaseModel):
+    step_id: str
+    canonical_step_id: str
+    branch_id: str | None = None
+    is_shared_upstream: bool = False
+    is_branch_owned: bool = True
+
+
+class BranchResponse(BaseModel):
+    branch_id: str
+    project_id: str
+    plan_id: str
+    name: str
+    description: str | None = None
+    branch_type: str
+    status: str = "active"
+    base_branch_id: str | None = None
+    base_plan_version_id: str
+    head_plan_version_id: str
+    branch_point_step_id: str | None = None
+    branch_point_canonical_step_id: str | None = None
+    created_reason: str = ""
+    steps: list[BranchStepItem] = Field(default_factory=list)
+    is_champion: bool = False
+    latest_run_id: str | None = None
+    readiness: str = "not_run"
+    warning_count: int = 0
+    error_count: int = 0
+
+
+class BranchListItem(BaseModel):
+    branch_id: str
+    plan_id: str
+    name: str
+    branch_type: str
+    status: str = "active"
+    base_branch_id: str | None = None
+    base_plan_version_id: str
+    head_plan_version_id: str
+    branch_point_step_id: str | None = None
+    branch_point_canonical_step_id: str | None = None
+    is_champion: bool = False
+    latest_run_id: str | None = None
+    readiness: str = "not_run"
+    warning_count: int = 0
+    error_count: int = 0
+
+
+class BranchListResponse(BaseModel):
+    project_id: str
+    branches: list[BranchListItem]
+
+
+class MigrateRequest(BaseModel):
+    project_id: str
+
+
+class MigrateResponse(BaseModel):
+    project_id: str
+    branches_created: int
+    plan_versions_mapped: int
+    steps_mapped: int
+
+
+# ---------------------------------------------------------------------------
+# Branch Creation (Phase 4B)
+# ---------------------------------------------------------------------------
+
+class CreateBranchRequest(BaseModel):
+    project_id: str
+    base_plan_version_id: str
+    base_branch_id: str | None = None
+    branch_point_step_id: str
+    name: str
+    description: str | None = None
+    branch_type: str
+    created_reason: str
+    segment_filter_spec: dict[str, Any] | None = None
+
+
+class CreateBranchResponse(BaseModel):
+    branch_id: str
+    plan_id: str
+    new_plan_version_id: str
+    name: str
+    branch_type: str
+    branch_point_step_id: str | None = None
+    branch_point_canonical_step_id: str | None = None
+    created_step_ids: dict[str, str] = Field(default_factory=dict)
+    shared_upstream_step_ids: list[str] = Field(default_factory=list)
+    status: str = "not_run"
+    warnings: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Comparison (Phase 4D)
+# ---------------------------------------------------------------------------
+
+class CreateComparisonRequest(BaseModel):
+    project_id: str
+    plan_id: str
+    baseline_branch_id: str
+    challenger_branch_ids: list[str]
+    comparison_spec: dict[str, Any] = Field(default_factory=lambda: {
+        "roles": ["train", "test", "oot"],
+        "include_woe_iv": True,
+        "include_model": True,
+        "include_validation": True,
+        "include_cutoff": True,
+        "include_warnings": True,
+    })
+    created_reason: str | None = None
+
+
+class MissingStaleEvidence(BaseModel):
+    branch_id: str
+    canonical_step_id: str
+    step_id: str
+    status: str
+
+
+class ComparisonResponse(BaseModel):
+    comparison_id: str
+    project_id: str
+    plan_id: str
+    baseline_branch_id: str
+    challenger_branch_ids: list[str]
+    latest_snapshot_id: str | None = None
+    latest_ready: bool | None = None
+    blocked_reason: str | None = None
+    missing_or_stale: list[MissingStaleEvidence] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    created_at: str = ""
+
+
+class RefreshComparisonResponse(BaseModel):
+    comparison_id: str
+    comparison_snapshot_id: str | None = None
+    ready: bool = False
+    comparison_artifact_id: str | None = None
+    refreshed_at: str = ""
+    blocked_reason: str | None = None
+    missing_or_stale: list[MissingStaleEvidence] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ComparisonSnapshotResponse(BaseModel):
+    comparison_snapshot_id: str
+    comparison_id: str
+    comparison_artifact_id: str
+    ready: bool = False
+    created_at: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Champion (Phase 4E)
+# ---------------------------------------------------------------------------
+
+class AssignChampionRequest(BaseModel):
+    project_id: str
+    branch_id: str
+    comparison_id: str
+    comparison_snapshot_id: str
+    scope_type: str = "project"
+    scope_key: str = "default"
+    assigned_reason: str
+
+
+class ChampionResponse(BaseModel):
+    champion_assignment_id: str
+    plan_id: str
+    champion_branch_id: str
+    previous_champion_branch_id: str | None = None
+    scope_type: str
+    scope_key: str
+    assigned_at: str = ""
+    assigned_reason: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Export (Phase 4E)
+# ---------------------------------------------------------------------------
+
+class ExportAuditPackRequest(BaseModel):
+    project_id: str
+    plan_id: str
+    branch_id: str
+    comparison_id: str | None = None
+    comparison_snapshot_id: str | None = None
+    include_row_level_data: bool = False
+    export_path: str | None = None
+
+
+class ExportDiagnostic(BaseModel):
+    code: str
+    message: str
+
+
+class ExportAuditPackResponse(BaseModel):
+    export_path: str
+    export_id: str
+    file_count: int = 0
+    warnings: list[str] = Field(default_factory=list)
+    diagnostics: list[ExportDiagnostic] = Field(default_factory=list)
