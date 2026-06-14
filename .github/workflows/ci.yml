@@ -20,9 +20,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Install dependencies
         run: |
-          pip install -e .
-          pip install -e ".[sidecar]"
-          pip install pytest
+          pip install -e ".[sidecar,test]"
       - name: Run tests
         run: python3 -m pytest tests/ -q --tb=short
 
@@ -54,7 +52,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pyinstaller
-          pip install -e .
           pip install -e ".[sidecar]"
       - name: Build sidecar
         run: bash scripts/build-sidecar.sh

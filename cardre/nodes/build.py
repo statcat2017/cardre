@@ -1012,11 +1012,11 @@ class ManualBinningNode(NodeType):
             sel = json.loads(store.artifact_path(selection_artifact).read_text())
             selected_vars = {s["variable"] for s in sel.get("selected", [])}
 
-        errors = validate_manual_binning_overrides(bin_def, overrides, selected_vars if selected_vars else None)
+        errors = validate_manual_binning_overrides(bin_def, overrides, selected_vars if selection_artifact else None)
         if errors:
             raise ValueError("; ".join(errors))
 
-        refined = apply_manual_binning_overrides(bin_def, overrides, selected_vars if selected_vars else None)
+        refined = apply_manual_binning_overrides(bin_def, overrides, selected_vars if selection_artifact else None)
 
         artifact = write_json_artifact(
             store, artifact_type="definition", role="definition",

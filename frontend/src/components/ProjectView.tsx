@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { TopBar } from "./TopBar";
@@ -26,6 +26,18 @@ export function ProjectView({ projectId, onBack }: Props) {
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<string[]>([]);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      if (pollRef.current !== null) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, []);
 
   const { data: project, isLoading: projectLoading } = useQuery({
     queryKey: ["project", projectId],
@@ -90,13 +102,17 @@ export function ProjectView({ projectId, onBack }: Props) {
 
       queryClient.invalidateQueries({ queryKey: ["projectRuns", projectId] });
 
-      // Poll for completion
-      const pollInterval = setInterval(async () => {
+      let consecutiveErrors = 0;
+      const MAX_CONSECUTIVE_ERRORS = 5;
+
+      const checkProgress = async () => {
+        if (!mountedRef.current) return;
         try {
           const [run, steps] = await Promise.all([
             api.getRun(runId),
             api.getRunSteps(runId),
           ]);
+          consecutiveErrors = 0;
           const stepStatuses = steps.steps.map((s) => `${s.step_id}: ${s.status}${s.is_carried_forward ? " (carried forward)" : ""}`);
           setDiagnostics((prev) => {
             const prevCleaned = prev.filter((m) => !m.startsWith("  └ "));
@@ -104,7 +120,10 @@ export function ProjectView({ projectId, onBack }: Props) {
           });
 
           if (run.status !== "running") {
-            clearInterval(pollInterval);
+            if (pollRef.current !== null) {
+              clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
             queryClient.invalidateQueries({ queryKey: ["project", projectId] });
             queryClient.invalidateQueries({ queryKey: ["projectRuns", projectId] });
             await refetchPlan();
@@ -112,9 +131,20 @@ export function ProjectView({ projectId, onBack }: Props) {
             setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Run ${run.status}`]);
           }
         } catch {
-          // Poll may fail transiently during execution; continue
+          consecutiveErrors++;
+          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            if (pollRef.current !== null) {
+              clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+            setRunning(false);
+            setError("Run polling failed after multiple retries. Check the diagnostics panel.");
+            setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Polling failed after ${MAX_CONSECUTIVE_ERRORS} consecutive errors`]);
+          }
         }
-      }, 2000);
+      };
+
+      pollRef.current = setInterval(checkProgress, 2000);
     } catch (e: any) {
       setError(e.message);
       setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Run failed: ${e.message}`]);

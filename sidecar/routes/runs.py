@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
-from cardre.services.project_registry import get_store_for_project, load_registry
+from cardre.services.project_registry import get_store_for_project, load_registry, ProjectNotFoundError, ProjectPathMissingError
 from cardre.store import ProjectStore
 from sidecar.models import RunRequest, RunResponse, RunStepsResponse, RunStepItem
 
@@ -97,7 +97,10 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
 def get_run(run_id: str):
     registry = load_registry()
     for pid, entry in registry.items():
-        store = get_store_for_project(pid)
+        try:
+            store = get_store_for_project(pid)
+        except (ProjectNotFoundError, ProjectPathMissingError):
+            continue
         run = store.get_run(run_id)
         if run is not None:
             return _build_run_response(store, run_id)
@@ -108,7 +111,10 @@ def get_run(run_id: str):
 def get_run_steps(run_id: str):
     registry = load_registry()
     for pid in registry:
-        store = get_store_for_project(pid)
+        try:
+            store = get_store_for_project(pid)
+        except (ProjectNotFoundError, ProjectPathMissingError):
+            continue
         run = store.get_run(run_id)
         if run is not None:
             steps = store.get_run_steps(run_id)

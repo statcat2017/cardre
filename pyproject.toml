@@ -13,10 +13,12 @@ dependencies = [
     "pyarrow",
     "pydantic",
     "scikit-learn",
+    "jinja2",
 ]
 
 [project.optional-dependencies]
 sidecar = ["fastapi", "uvicorn"]
+test = ["pytest", "httpx2", "starlette"]
 
 [tool.setuptools.packages.find]
 include = ["cardre*", "sidecar*"]
