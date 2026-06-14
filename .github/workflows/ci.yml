@@ -50,6 +50,13 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-workspaces: "frontend/src-tauri"
+      - name: Create placeholder sidecar for cargo check
+        working-directory: frontend/src-tauri
+        run: |
+          TARGET="$(rustc -vV | awk '/host:/ {print $2}')"
+          mkdir -p binaries
+          printf '#!/usr/bin/env sh\necho cardre-api placeholder\n' > "binaries/cardre-api-${TARGET}"
+          chmod +x "binaries/cardre-api-${TARGET}"
       - name: cargo check
         working-directory: frontend/src-tauri
         run: cargo check
