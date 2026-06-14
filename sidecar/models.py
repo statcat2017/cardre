@@ -116,6 +116,7 @@ class RunStepItem(BaseModel):
     output_artifact_ids: list[str] = Field(default_factory=list)
     warnings: list[dict[str, Any]] = Field(default_factory=list)
     errors: list[dict[str, Any]] = Field(default_factory=list)
+    is_carried_forward: bool = False
 
 
 class RunStepsResponse(BaseModel):

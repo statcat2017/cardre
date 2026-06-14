@@ -22,6 +22,10 @@ class ProjectNotFoundError(KeyError):
     """Raised when a project ID is not found in the registry."""
 
 
+class ProjectPathMissingError(Exception):
+    """Raised when the project entry exists but the cardre.sqlite path is missing."""
+
+
 def load_registry() -> dict:
     path = _registry_path()
     if path.exists():
@@ -43,8 +47,13 @@ def get_store_for_project(project_id: str) -> ProjectStore:
     registry = load_registry()
     entry = registry.get(project_id)
     if entry is None:
-        raise ProjectNotFoundError(f"PROJECT_NOT_FOUND: No project with ID {project_id}")
-    return ProjectStore(Path(entry["path"]))
+        raise ProjectNotFoundError(f"No project with ID {project_id}")
+    project_path = Path(entry["path"])
+    if not (project_path / "cardre.sqlite").exists():
+        raise ProjectPathMissingError(
+            f"Project directory at {project_path} no longer exists or is missing cardre.sqlite"
+        )
+    return ProjectStore(project_path)
 
 
 def get_entry(project_id: str) -> dict | None:

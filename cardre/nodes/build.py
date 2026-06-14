@@ -1012,11 +1012,11 @@ class ManualBinningNode(NodeType):
             sel = json.loads(store.artifact_path(selection_artifact).read_text())
             selected_vars = {s["variable"] for s in sel.get("selected", [])}
 
-        errors = validate_manual_binning_overrides(bin_def, overrides)
+        errors = validate_manual_binning_overrides(bin_def, overrides, selected_vars if selection_artifact else None)
         if errors:
             raise ValueError("; ".join(errors))
 
-        refined = apply_manual_binning_overrides(bin_def, overrides, selected_vars if selected_vars else None)
+        refined = apply_manual_binning_overrides(bin_def, overrides, selected_vars if selection_artifact else None)
 
         artifact = write_json_artifact(
             store, artifact_type="definition", role="definition",
@@ -1870,12 +1870,17 @@ class DummyFitNode(NodeType):
         )
 
 
-def validate_manual_binning_overrides(bin_def: dict, overrides: list[dict]) -> list[str]:
+def validate_manual_binning_overrides(
+    bin_def: dict, overrides: list[dict], selected_vars: set[str] | None = None
+) -> list[str]:
     """Validate overrides against fine-classing bin definitions.
 
     Checks that each override references a real variable, uses a supported
     action, has a reason, mentions only existing bin IDs, and for numeric
     merge_bins the source bins are adjacent in the original ordering.
+
+    When *selected_vars* is provided, rejects overrides for variables that
+    are not in the selected-variables set.
 
     Returns a list of error messages (empty = valid).
     """
@@ -1894,6 +1899,12 @@ def validate_manual_binning_overrides(bin_def: dict, overrides: list[dict]) -> l
             continue
         if variable not in var_map:
             errors.append(f"{prefix}: references unknown variable '{variable}'")
+            continue
+        if selected_vars is not None and variable not in selected_vars:
+            errors.append(
+                f"{prefix}: variable '{variable}' was not selected by variable-selection "
+                f"and cannot accept manual binning overrides"
+            )
             continue
         if action not in ("merge_bins", "group_categories", "isolate_missing", "isolate_special_value"):
             errors.append(f"{prefix}: unsupported action '{action}'")

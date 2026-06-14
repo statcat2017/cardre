@@ -57,6 +57,49 @@ material while the project is rebuilt around the new architecture.
 5. Add exportable audit packs for model governance.
 
 See `docs/plans/cardre-application-plan.md` for the end-to-end application plan.
-See `docs/plans/phase-1-execution-plan.md` for the current Phase 1 build plan.
-See `docs/plans/phase-1-technical-implementation-plan.md` for the execution-ready
-technical plan.
+
+## Development
+
+### Prerequisites
+
+**Python** (3.11+):
+```bash
+pip install -e .
+pip install -e ".[sidecar]"   # for the FastAPI sidecar
+```
+
+**Frontend** (Node 20+):
+```bash
+cd frontend && npm install
+```
+
+**Tauri Desktop** (for `npm run tauri dev`):
+- Linux: `sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`
+- macOS: Xcode CLI tools
+- Windows: WebView2 (included in Windows 10+)
+
+### Build Sidecar Binary
+
+```bash
+pip install pyinstaller
+./scripts/build-sidecar.sh
+```
+
+Produces `frontend/src-tauri/binaries/cardre-api-{target-triple}` for Tauri bundling.
+
+### Run Tests
+
+```bash
+python3 -m pytest tests/ -q
+```
+
+### CI
+
+See `.github/workflows/ci.yml` — runs Python tests, frontend typecheck, and sidecar build on push/PR to `main`.
+
+## Architecture
+
+- **`cardre/`** — pure-Python scorecard engine (no GUI dependency)
+- **`sidecar/`** — FastAPI local API server (bundled as sidecar binary)
+- **`frontend/`** — React + TypeScript UI (Vite)
+- **`frontend/src-tauri/`** — Tauri v2 Rust desktop shell

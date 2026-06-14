@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from cardre.services import PlanValidationError
-from cardre.services.project_registry import ProjectNotFoundError
+from cardre.services.project_registry import ProjectNotFoundError, ProjectPathMissingError
 from sidecar.routes import artifacts, branches, champion, comparisons, datasets, exports, health, plans, projects, reports, runs
 
 app = FastAPI(title="cardre-api", version="0.1.0")
@@ -42,6 +42,11 @@ def plan_validation_error_handler(_request: Request, exc: PlanValidationError) -
 @app.exception_handler(ProjectNotFoundError)
 def project_not_found_handler(_request: Request, exc: ProjectNotFoundError) -> JSONResponse:
     return JSONResponse(status_code=404, content={"detail": {"code": "PROJECT_NOT_FOUND", "message": str(exc)}})
+
+
+@app.exception_handler(ProjectPathMissingError)
+def project_path_missing_handler(_request: Request, exc: ProjectPathMissingError) -> JSONResponse:
+    return JSONResponse(status_code=410, content={"detail": {"code": "PROJECT_PATH_MISSING", "message": str(exc)}})
 
 
 app.include_router(health.router)
