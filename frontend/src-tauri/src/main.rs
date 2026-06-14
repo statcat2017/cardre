@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use tauri::Manager;
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
@@ -85,23 +86,22 @@ fn main() {
                         eprintln!("Started cardre-api via Tauri sidecar");
                         child_pid = Some(tauri_child.pid());
                         // Store handle so Drop doesn't kill the process early
-                        if let Some(state) = app.try_state::<AppState>() {
-                            if let Ok(mut guard) = state.sidecar_child.lock() {
-                                *guard = Some(tauri_child);
-                            }
+                        let state = app.state::<AppState>();
+                        if let Ok(mut guard) = state.sidecar_child.lock() {
+                            *guard = Some(tauri_child);
                         }
-                        // Capture sidecar logs in background
-                        thread::spawn(move || {
-                            while let Some(event) = rx.recv() {
-                                match event {
-                                    tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
-                                        eprintln!("[sidecar] {}", String::from_utf8_lossy(&line).trim());
-                                    }
-                                    tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
-                                        eprintln!("[sidecar:err] {}", String::from_utf8_lossy(&line).trim());
-                                    }
-                                    _ => {}
+                        // Drain the event receiver in a background thread to
+                        // prevent the channel from blocking. Log to stderr.
+                        thread::spawn(move || loop {
+                            match rx.recv() {
+                                Some(tauri_plugin_shell::process::CommandEvent::Stdout(line)) => {
+                                    eprintln!("[sidecar] {}", String::from_utf8_lossy(&line).trim());
                                 }
+                                Some(tauri_plugin_shell::process::CommandEvent::Stderr(line)) => {
+                                    eprintln!("[sidecar:err] {}", String::from_utf8_lossy(&line).trim());
+                                }
+                                None => break,
+                                _ => {}
                             }
                         });
                     }
@@ -180,16 +180,15 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                if let Some(state) = window.try_state::<AppState>() {
-                    if let Ok(mut guard) = state.sidecar_child.lock() {
-                        // Take the Tauri sidecar handle (if any) and kill the
-                        // process. For the fallback PATH path the std::process::Child
-                        // was already detached; CI and production will use the Tauri
-                        // sidecar, so missing fallback PID tracking is acceptable.
-                        if let Some(child) = guard.take() {
-                            let _ = child.kill();
-                            let _ = child.wait();
-                        }
+                let state = window.state::<AppState>();
+                if let Ok(mut guard) = state.sidecar_child.lock() {
+                    // Take the Tauri sidecar handle (if any) and kill the
+                    // process. For the fallback PATH path the std::process::Child
+                    // was already detached; CI and production will use the Tauri
+                    // sidecar, so missing fallback PID tracking is acceptable.
+                    if let Some(child) = guard.take() {
+                        let _ = child.kill();
+                        let _ = child.wait();
                     }
                 }
             }
