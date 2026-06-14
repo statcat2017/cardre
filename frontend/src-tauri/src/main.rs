@@ -184,8 +184,7 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                let state = window.state::<AppState>();
-                if let Ok(mut guard) = state.sidecar_child.lock() {
+                if let Ok(mut guard) = window.state::<AppState>().sidecar_child.lock() {
                     // Take the Tauri sidecar handle (if any) and kill the
                     // process. For the fallback PATH path the std::process::Child
                     // was already detached; CI and production will use the Tauri
