@@ -870,6 +870,77 @@ class TestCollectorRegression:
         # Should NOT have LEGACY_WOE_SUMMARY_USED since v1 evidence exists
         assert LimitationCode.LEGACY_WOE_SUMMARY_USED not in codes
 
+    def test_exact_step_missing_from_run_blocks_instead_of_borrowing(self):
+        """An exact branch-owned step missing from the requested run blocks
+        rather than silently borrowing latest-successful evidence from another run."""
+        tmp = Path(tempfile.mkdtemp())
+        store = ProjectStore(tmp / "test.cardre")
+        store.initialize()
+        project_id = store.create_project("Test")
+        plan_id = store.create_plan(project_id, "Test Plan")
+        pv_id = store.create_plan_version(plan_id, [], description="v1")
+
+        # Create a "wrong" run that has the step (should not be borrowed from)
+        wrong_run_id = store.create_run(pv_id)
+        store.finish_run(wrong_run_id, "succeeded")
+        store.save_run_step(RunStepRecord(
+            run_step_id="rs_wrong",
+            run_id=wrong_run_id,
+            step_id="final-woe-iv",
+            plan_version_id=pv_id,
+            status="succeeded",
+            started_at="2026-01-01T00:00:00Z",
+            finished_at="2026-01-01T01:00:00Z",
+            input_artifact_ids=[],
+            output_artifact_ids=[],
+            execution_fingerprint={},
+            warnings=[],
+            errors=[],
+        ))
+
+        # Create a "report" run that has NO step for final-woe-iv
+        report_run_id = store.create_run(pv_id)
+        store.finish_run(report_run_id, "succeeded")
+        # Add an unrelated step to the report run
+        store.save_run_step(RunStepRecord(
+            run_step_id="rs_report_other",
+            run_id=report_run_id,
+            step_id="import",
+            plan_version_id=pv_id,
+            status="succeeded",
+            started_at="2026-01-01T00:00:00Z",
+            finished_at="2026-01-01T01:00:00Z",
+            input_artifact_ids=[],
+            output_artifact_ids=[],
+            execution_fingerprint={},
+            warnings=[],
+            errors=[],
+        ))
+
+        branch_id = store.create_branch(
+            project_id=project_id, plan_id=plan_id,
+            name="Branch", branch_type="model_challenger",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="Test.",
+        )
+        store.create_branch_step_map(
+            branch_id=branch_id, plan_version_id=pv_id,
+            canonical_step_id="final-woe-iv", step_id="final-woe-iv",
+            is_shared_upstream=False, is_branch_owned=True,
+        )
+
+        bundle = generate_report_bundle(
+            store=store, project_id=project_id,
+            run_id=report_run_id,
+            target_branch_id=branch_id, report_mode="branch",
+        )
+        codes = {l.code for l in bundle.limitations}
+        # Must NOT borrow from wrong_run — exact step missing from report run
+        # means MISSING_WOE_IV_EVIDENCE_V1 blocker, not silent success
+        assert LimitationCode.MISSING_WOE_IV_EVIDENCE_V1 in codes, (
+            f"Expected MISSING_WOE_IV_EVIDENCE_V1 blocker, got codes: {codes}"
+        )
+
 
 # =========================================================================
 # Fixture helpers for the above regression tests

@@ -613,11 +613,19 @@ class ReportCollector:
     def _resolve_run_step(
         self, ref: ResolvedStepRef, plan_version_id: str,
     ) -> RunStepRecord | None:
-        return resolve_run_step(
+        rs = resolve_run_step(
             self.store, plan_version_id, ref.step_id,
             ref.resolved_branch_id, ref.resolution,
             run_id=self.run_id,
         )
+        # Disclose when inherited/ancestor evidence is used
+        if rs is not None and ref.resolution == "ancestor":
+            self.limitations.append(Limitation(
+                severity="warning", code=LimitationCode.INHERITED_BRANCH_EVIDENCE,
+                message=f"Step {ref.canonical_step_id} inherited from branch "
+                f"{ref.resolved_branch_id} (ancestor resolution).",
+            ))
+        return rs
 
 
 def generate_report_bundle(

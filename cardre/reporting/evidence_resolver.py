@@ -74,20 +74,27 @@ def resolve_run_step(
 ) -> RunStepRecord | None:
     """Resolve a successful run step for the given step_id, with fallback.
 
-    When run_id is provided, first searches the requested run's steps.
-    Only falls back to latest-successful-step lookup when the step is
-    not found in the requested run.
+    When run_id is provided, first searches the requested run's own steps.
+    Only falls back to the latest successful step when:
+      - resolution is "ancestor" (inherited/shared-upstream evidence), OR
+      - no run_id was provided (caller did not constrain to a specific run).
 
-    When resolution is "exact" and resolved_branch_id is set, the
-    branch-scoped fallback uses branch_id for the latest-successful lookup.
+    When resolution is "exact", a miss in the requested run returns None
+    (the step must be present in this run to count as evidence).  This
+    prevents silently borrowing evidence from a different run.
     """
-    # 1. Try the requested run's own run steps first (run-scoped evidence)
+    # 1. Try the requested run's own run steps first (governance-grade)
     if run_id is not None:
         for rs in store.get_run_steps(run_id):
             if rs.step_id == step_id and rs.status == "succeeded":
                 return rs
 
-    # 2. Fall back to latest successful step (cross-run / inherited)
+    # 2. Fall back: only ancestor/inherited evidence may come from outside
+    #    the requested run.  Exact branch-owned steps missing from the run
+    #    are treated as not found (the caller will emit a blocker).
+    if resolution == "exact":
+        return None
+
     branch_id_for_lookup = resolved_branch_id if resolution == "exact" else None
     rs = store.get_latest_successful_run_step_for_step(
         plan_version_id, step_id, branch_id=branch_id_for_lookup,
