@@ -7,11 +7,9 @@ use std::thread;
 use std::time::Duration;
 
 use tauri::Manager;
-use tauri_plugin_shell::process::CommandChild;
-use tauri_plugin_shell::ShellExt;
 
 struct AppState {
-    sidecar_child: Mutex<Option<CommandChild>>,
+    sidecar_pid: Mutex<Option<u32>>,
     api_url: String,
 }
 
@@ -73,106 +71,65 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
-            sidecar_child: Mutex::new(None),
+            sidecar_pid: Mutex::new(None),
             api_url: api_url.clone(),
         })
         .setup(move |app| {
-            let child_pid: Option<u32>;
-
-            // Try Tauri sidecar first
-            match app.shell().sidecar("cardre-api") {
-                Ok(cmd) => match cmd.args([port.to_string()]).spawn() {
-                    Ok((mut rx, tauri_child)) => {
-                        eprintln!("Started cardre-api via Tauri sidecar");
-                        child_pid = Some(tauri_child.pid());
-                        // Store handle so Drop doesn't kill the process early
-                        let state = app.state::<AppState>();
-                        if let Ok(mut guard) = state.sidecar_child.lock() {
-                            *guard = Some(tauri_child);
-                        }
-                        // Drain the event receiver in a background thread to
-                        // prevent the channel from blocking. Log to stderr.
-                        thread::spawn(move || {
-                            tauri::async_runtime::block_on(async move {
-                                loop {
-                                    match rx.recv().await {
-                                        Some(tauri_plugin_shell::process::CommandEvent::Stdout(line)) => {
-                                            eprintln!("[sidecar] {}", String::from_utf8_lossy(&line).trim());
-                                        }
-                                        Some(tauri_plugin_shell::process::CommandEvent::Stderr(line)) => {
-                                            eprintln!("[sidecar:err] {}", String::from_utf8_lossy(&line).trim());
-                                        }
-                                        None => break,
-                                        _ => {}
-                                    }
-                                }
-                            });
-                        });
-                    }
-                    Err(e) => {
-                        eprintln!("Tauri sidecar spawn failed: {}; trying PATH fallback", e);
-                        child_pid = None;
-                    }
-                },
-                Err(e) => {
-                    eprintln!("Tauri sidecar binary not found: {}; trying PATH fallback", e);
-                    child_pid = None;
+            let child: std::process::Child = match Command::new("cardre-api")
+                .arg(port.to_string())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+            {
+                Ok(c) => {
+                    eprintln!("Started cardre-api sidecar");
+                    c
                 }
-            }
-
-            // Fallback: cardre-api from PATH
-            let child_pid = match child_pid {
-                Some(p) => Some(p),
-                None => {
-                    match Command::new("cardre-api")
-                        .arg(port.to_string())
-                        .stdout(Stdio::piped())
-                        .stderr(Stdio::piped())
-                        .spawn()
-                    {
-                        Ok(mut fallback_child) => {
-                            eprintln!("Started cardre-api via PATH fallback");
-                            let pid = fallback_child.id();
-                            if let Some(stdout) = fallback_child.stdout.take() {
-                                let reader = BufReader::new(stdout);
-                                thread::spawn(move || {
-                                    for line in reader.lines() {
-                                        if let Ok(l) = line {
-                                            eprintln!("[sidecar] {}", l);
-                                        }
-                                    }
-                                });
-                            }
-                            if let Some(stderr) = fallback_child.stderr.take() {
-                                let reader = BufReader::new(stderr);
-                                thread::spawn(move || {
-                                    for line in reader.lines() {
-                                        if let Ok(l) = line {
-                                            eprintln!("[sidecar:err] {}", l);
-                                        }
-                                    }
-                                });
-                            }
-                            // Detach the std::process::Child handle — it does not
-                            // kill on drop. Track by PID for cleanup.
-                            drop(fallback_child);
-                            Some(pid)
-                        }
-                        Err(e) => {
-                            eprintln!("FATAL: Could not start cardre-api: {}", e);
-                            std::process::exit(1);
-                        }
-                    }
+                Err(e) => {
+                    eprintln!("FATAL: Could not start cardre-api: {}", e);
+                    std::process::exit(1);
                 }
             };
+
+            let child_pid = child.id();
+
+            // Capture stdout
+            if let Some(stdout) = child.stdout.take() {
+                let reader = BufReader::new(stdout);
+                thread::spawn(move || {
+                    for line in reader.lines() {
+                        if let Ok(l) = line {
+                            eprintln!("[sidecar] {}", l);
+                        }
+                    }
+                });
+            }
+
+            // Capture stderr
+            if let Some(stderr) = child.stderr.take() {
+                let reader = BufReader::new(stderr);
+                thread::spawn(move || {
+                    for line in reader.lines() {
+                        if let Ok(l) = line {
+                            eprintln!("[sidecar:err] {}", l);
+                        }
+                    }
+                });
+            }
+
+            // Store PID for cleanup — the Child handle is detached
+            // (std::process::Child::drop does not kill the process).
+            if let Ok(mut guard) = app.state::<AppState>().sidecar_pid.lock() {
+                *guard = Some(child_pid);
+            }
+
+            drop(child);
 
             match wait_for_health(port, 30) {
                 Ok(()) => eprintln!("Sidecar is healthy on port {}", port),
                 Err(e) => {
                     eprintln!("FATAL: {}", e);
-                    if let Some(pid) = child_pid {
-                        kill_process(pid);
-                    }
+                    kill_process(child_pid);
                     std::process::exit(1);
                 }
             }
@@ -184,13 +141,9 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                if let Ok(mut guard) = window.state::<AppState>().sidecar_child.lock() {
-                    // Take the Tauri sidecar handle (if any) and kill the
-                    // process. For the fallback PATH path the std::process::Child
-                    // was already detached; CI and production will use the Tauri
-                    // sidecar, so missing fallback PID tracking is acceptable.
-                    if let Some(child) = guard.take() {
-                        let _ = child.kill();
+                if let Ok(mut guard) = window.state::<AppState>().sidecar_pid.lock() {
+                    if let Some(pid) = guard.take() {
+                        kill_process(pid);
                     }
                 }
             }
