@@ -192,7 +192,6 @@ fn main() {
                     // sidecar, so missing fallback PID tracking is acceptable.
                     if let Some(child) = guard.take() {
                         let _ = child.kill();
-                        let _ = tauri::async_runtime::block_on(child.wait());
                     }
                 }
             }
