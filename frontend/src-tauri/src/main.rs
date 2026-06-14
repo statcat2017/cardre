@@ -1,15 +1,16 @@
 use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
 struct AppState {
-    sidecar_pid: Mutex<Option<u32>>,
+    sidecar_child: Mutex<Option<CommandChild>>,
     api_url: String,
 }
 
@@ -71,18 +72,24 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
-            sidecar_pid: Mutex::new(None),
+            sidecar_child: Mutex::new(None),
             api_url: api_url.clone(),
         })
         .setup(move |app| {
-            let pid: Option<u32>;
+            let child_pid: Option<u32>;
 
             // Try Tauri sidecar first
             match app.shell().sidecar("cardre-api") {
                 Ok(cmd) => match cmd.args([port.to_string()]).spawn() {
                     Ok((mut rx, tauri_child)) => {
                         eprintln!("Started cardre-api via Tauri sidecar");
-                        pid = Some(tauri_child.pid());
+                        child_pid = Some(tauri_child.pid());
+                        // Store handle so Drop doesn't kill the process early
+                        if let Some(state) = app.try_state::<AppState>() {
+                            if let Ok(mut guard) = state.sidecar_child.lock() {
+                                *guard = Some(tauri_child);
+                            }
+                        }
                         // Capture sidecar logs in background
                         thread::spawn(move || {
                             while let Some(event) = rx.recv() {
@@ -100,17 +107,17 @@ fn main() {
                     }
                     Err(e) => {
                         eprintln!("Tauri sidecar spawn failed: {}; trying PATH fallback", e);
-                        pid = None;
+                        child_pid = None;
                     }
                 },
                 Err(e) => {
                     eprintln!("Tauri sidecar binary not found: {}; trying PATH fallback", e);
-                    pid = None;
+                    child_pid = None;
                 }
             }
 
             // Fallback: cardre-api from PATH
-            let pid = match pid {
+            let child_pid = match child_pid {
                 Some(p) => Some(p),
                 None => {
                     match Command::new("cardre-api")
@@ -121,7 +128,7 @@ fn main() {
                     {
                         Ok(mut fallback_child) => {
                             eprintln!("Started cardre-api via PATH fallback");
-                            let child_pid = fallback_child.id();
+                            let pid = fallback_child.id();
                             if let Some(stdout) = fallback_child.stdout.take() {
                                 let reader = BufReader::new(stdout);
                                 thread::spawn(move || {
@@ -142,9 +149,10 @@ fn main() {
                                     }
                                 });
                             }
-                            // Detach the child handle — the process lives on.
-                            // We track it by PID for cleanup.
-                            Some(child_pid)
+                            // Detach the std::process::Child handle — it does not
+                            // kill on drop. Track by PID for cleanup.
+                            drop(fallback_child);
+                            Some(pid)
                         }
                         Err(e) => {
                             eprintln!("FATAL: Could not start cardre-api: {}", e);
@@ -154,19 +162,12 @@ fn main() {
                 }
             };
 
-            // Store PID for cleanup
-            if let Some(state) = app.try_state::<AppState>() {
-                if let Ok(mut guard) = state.sidecar_pid.lock() {
-                    *guard = pid;
-                }
-            }
-
             match wait_for_health(port, 30) {
                 Ok(()) => eprintln!("Sidecar is healthy on port {}", port),
                 Err(e) => {
                     eprintln!("FATAL: {}", e);
-                    if let Some(p) = pid {
-                        kill_process(p);
+                    if let Some(pid) = child_pid {
+                        kill_process(pid);
                     }
                     std::process::exit(1);
                 }
@@ -180,9 +181,14 @@ fn main() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(state) = window.try_state::<AppState>() {
-                    if let Ok(mut guard) = state.sidecar_pid.lock() {
-                        if let Some(pid) = guard.take() {
-                            kill_process(pid);
+                    if let Ok(mut guard) = state.sidecar_child.lock() {
+                        // Take the Tauri sidecar handle (if any) and kill the
+                        // process. For the fallback PATH path the std::process::Child
+                        // was already detached; CI and production will use the Tauri
+                        // sidecar, so missing fallback PID tracking is acceptable.
+                        if let Some(child) = guard.take() {
+                            let _ = child.kill();
+                            let _ = child.wait();
                         }
                     }
                 }
