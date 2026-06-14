@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cardre Governance Report</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;color:#1e293b;background:#fff;line-height:1.5}
+.container{max-width:1100px;margin:0 auto;padding:2em}
+header{border-bottom:3px solid #0369a1;padding-bottom:1em;margin-bottom:2em}
+header h1{font-size:1.6em;color:#0369a1}
+header p{color:#64748b;margin-top:.3em;font-size:.9em}
+h2{font-size:1.15em;color:#0369a1;margin:2em 0 .8em;padding-bottom:.3em;border-bottom:1px solid #e2e8f0}
+h3{font-size:1em;color:#334155;margin:1.2em 0 .5em}
+table{width:100%;border-collapse:collapse;margin:.8em 0 1.5em;font-size:.85em}
+th{background:#f1f5f9;font-weight:600;text-align:left;padding:.5em .6em;border:1px solid #e2e8f0;white-space:nowrap}
+td{padding:.4em .6em;border:1px solid #e2e8f0;vertical-align:top}
+tr:nth-child(even){background:#f8fafc}
+code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.85em;background:#f1f5f9;padding:.1em .3em;border-radius:3px}
+.warning{background:#fef3c7;border:1px solid #f59e0b;padding:.6em 1em;margin:.5em 0;border-radius:6px;font-size:.85em}
+.blocker{background:#fee2e2;border:1px solid #ef4444;padding:.6em 1em;margin:.5em 0;border-radius:6px;font-size:.85em}
+.info{background:#e0f2fe;border:1px solid #0ea5e9;padding:.6em 1em;margin:.5em 0;border-radius:6px;font-size:.85em}
+.section{page-break-inside:avoid}
+.badge{display:inline-block;padding:.15em .5em;border-radius:4px;font-size:.8em;font-weight:600}
+.badge-champion{background:#dbeafe;color:#1e40af}
+.badge-target{background:#dcfce7;color:#166534}
+.badge-warning{background:#fef3c7;color:#92400e}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1em;margin:.5em 0 1em}
+.stat-card{border:1px solid #e2e8f0;border-radius:6px;padding:.8em;background:#fafafa}
+.stat-card .label{font-size:.75em;color:#64748b;text-transform:uppercase;letter-spacing:.03em}
+.stat-card .value{font-size:1.2em;font-weight:600;color:#1e293b;margin-top:.2em}
+.footer{margin-top:3em;padding-top:1em;border-top:1px solid #e2e8f0;font-size:.8em;color:#94a3b8}
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+<h1>Cardre Governance Report</h1>
+<p>
+<strong>Project:</strong> {{ project_name }} &middot;
+<strong>Run:</strong> <code>{{ run_id[:12] }}&hellip;</code> &middot;
+<strong>Target Branch:</strong> <code>{{ target_branch_id }}</code> &middot;
+<strong>Mode:</strong> {{ report_mode }} &middot;
+<strong>Status:</strong> <span class="badge badge-{{ 'warning' if report_status and 'warning' in report_status else 'target' }}">{{ report_status }}</span>
+</p>
+<p>
+<strong>Generated:</strong> {{ generated_at }}
+</p>
+</header>
+
+{% if limitations %}
+<section class="section">
+<h2>Limitations and Warnings</h2>
+{% for w in limitations %}
+<div class="{{ w.severity if w.severity in ('warning','blocker','info') else 'warning' }}">
+<strong>{{ w.code }}:</strong> {{ w.message }}
+</div>
+{% endfor %}
+</section>
+{% endif %}
+
+{% if summary %}
+<section class="section">
+<h2>Executive Summary</h2>
+<div class="grid-2">
+<div class="stat-card"><div class="label">Model Name</div><div class="value">{{ summary.model_name or 'N/A' }}</div></div>
+<div class="stat-card"><div class="label">Target Column</div><div class="value">{{ summary.target_column or 'N/A' }}</div></div>
+<div class="stat-card"><div class="label">Final Variables</div><div class="value">{{ summary.final_variable_count }}</div></div>
+<div class="stat-card"><div class="label">Excluded Variables</div><div class="value">{{ summary.excluded_variable_count }}</div></div>
+<div class="stat-card"><div class="label">Champion Branch</div><div class="value"><code>{{ summary.champion_branch_id or 'None' }}</code></div></div>
+<div class="stat-card"><div class="label">Target Branch</div><div class="value"><code>{{ summary.target_branch_id }}</code></div></div>
+</div>
+</section>
+{% endif %}
+
+{% if branches.branches %}
+<section class="section">
+<h2>Branches and Champion Selection</h2>
+<table>
+<thead><tr>
+<th>Branch</th><th>Type</th><th>Status</th><th>Role</th>
+</tr></thead>
+<tbody>
+{% for b in branches.branches %}
+<tr>
+<td><code>{{ b.branch_id }}</code></td>
+<td>{{ b.name or b.branch_id }}</td>
+<td>{{ b.status }}</td>
+<td>
+{% if b.is_champion %}<span class="badge badge-champion">Champion</span>{% endif %}
+{% if b.is_target_branch %}<span class="badge badge-target">Target</span>{% endif %}
+</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% if champion %}
+<h3>Champion Assignment</h3>
+<table>
+<thead><tr><th>Field</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>Status</td><td>{{ champion.champion_status }}</td></tr>
+<tr><td>Branch</td><td><code>{{ champion.champion_branch_id or 'N/A' }}</code></td></tr>
+{% if champion.rationale %}<tr><td>Rationale</td><td>{{ champion.rationale }}</td></tr>{% endif %}
+{% if champion.comparison_artifact_id %}<tr><td>Comparison Artifact</td><td><code>{{ champion.comparison_artifact_id[:16] }}&hellip;</code></td></tr>{% endif %}
+</tbody>
+</table>
+{% endif %}
+</section>
+{% endif %}
+
+{% if variables %}
+<section class="section">
+<h2>Variable Information and WOE / IV Evidence</h2>
+<table>
+<thead><tr>
+<th>Variable</th><th>IV</th><th>Bins</th><th>Monotonicity</th><th>Smoothing</th><th>Zero Cells</th>
+</tr></thead>
+<tbody>
+{% for v in variables %}
+<tr>
+<td><code>{{ v.variable_name }}</code></td>
+<td>{{ v.iv | fmt(".4f") }}</td>
+<td>{{ v.final_bin_count }}</td>
+<td>{{ v.monotonicity_status or 'N/A' }}</td>
+<td>{{ 'Yes' if v.woe_smoothing and v.woe_smoothing.smoothing_applied else 'No' }}</td>
+<td>{{ 'Yes' if v.woe_smoothing and v.woe_smoothing.zero_cell_encountered else 'No' }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+{% for v in variables %}
+{% if v.woe_smoothing and v.woe_smoothing.smoothing_applied %}
+<h3>Smoothing: {{ v.variable_name }}</h3>
+<table>
+<thead><tr><th>Property</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>Smoothing Enabled</td><td>{{ 'Yes' if v.woe_smoothing.enabled else 'No' }}</td></tr>
+<tr><td>Method</td><td>{{ v.woe_smoothing.method }}</td></tr>
+<tr><td>Alpha</td><td>{{ v.woe_smoothing.alpha }}</td></tr>
+<tr><td>Zero-cell Policy</td><td>{{ v.woe_smoothing.zero_cell_policy }}</td></tr>
+<tr><td>Affected Bins</td><td>{{ v.woe_smoothing.affected_bin_count }}</td></tr>
+</tbody>
+</table>
+{% if v.affected_bins %}
+<h4>Affected Bins Detail</h4>
+<table>
+<thead><tr>
+<th>Bin</th><th>Reason</th><th>Raw Good</th><th>Raw Bad</th><th>Smoothed Good</th><th>Smoothed Bad</th><th>Final WOE</th>
+</tr></thead>
+<tbody>
+{% for ab in v.affected_bins %}
+<tr>
+<td>{{ ab.bin_id }}</td>
+<td>{{ ab.reason }}</td>
+<td>{{ ab.raw_good_count }}</td>
+<td>{{ ab.raw_bad_count }}</td>
+<td>{{ ab.smoothed_good_count | fmt(".1f") }}</td>
+<td>{{ ab.smoothed_bad_count | fmt(".1f") }}</td>
+<td>{{ ab.final_woe | fmt(".4f") }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+{% endif %}
+{% endfor %}
+
+{% for v in variables %}
+{% if v.bins %}
+<h3>Bins: {{ v.variable_name }}</h3>
+<table>
+<thead><tr>
+<th>Bin</th><th>Label</th><th>Good</th><th>Bad</th><th>Bad Rate</th><th>WOE</th><th>IV Contribution</th>
+</tr></thead>
+<tbody>
+{% for b in v.bins %}
+<tr>
+<td>{{ b.bin_id }}</td>
+<td>{{ b.label }}</td>
+<td>{{ b.good_count }}</td>
+<td>{{ b.bad_count }}</td>
+<td>{{ b.bad_rate | fmt(".4f") }}</td>
+<td>{{ b.woe | fmt(".4f") }}</td>
+<td>{{ b.iv_contribution | fmt(".4f") }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+{% endfor %}
+</section>
+{% endif %}
+
+{% if model and model.features %}
+<section class="section">
+<h2>Model Specification</h2>
+<p><strong>Type:</strong> {{ model.model_type }} &middot;
+<strong>Branch:</strong> <code>{{ model.branch_id }}</code> &middot;
+<strong>Target:</strong> {{ model.target }}
+</p>
+<table>
+<thead><tr>
+<th>Variable</th><th>Coefficient</th><th>Std Error</th><th>P-Value</th>
+</tr></thead>
+<tbody>
+{% for f in model.features %}
+<tr>
+<td><code>{{ f.variable_name }}</code></td>
+<td>{{ f.coefficient | fmt(".6f") }}</td>
+<td>{{ f.standard_error | fmt(".4f") }}</td>
+<td>{{ f.p_value | fmt(".4f") }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</section>
+{% endif %}
+
+{% if score_scaling and score_scaling.factor %}
+<section class="section">
+<h2>Score Scaling</h2>
+<table>
+<thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>Base Score</td><td>{{ score_scaling.base_score }}</td></tr>
+<tr><td>Base Odds</td><td>{{ score_scaling.base_odds }}</td></tr>
+<tr><td>Points to Double Odds (PDO)</td><td>{{ score_scaling.pdo }}</td></tr>
+<tr><td>Factor</td><td>{{ score_scaling.factor | fmt(".4f") }}</td></tr>
+<tr><td>Offset</td><td>{{ score_scaling.offset | fmt(".4f") }}</td></tr>
+<tr><td>Direction</td><td>{{ score_scaling.score_direction }}</td></tr>
+<tr><td>Rounding</td><td>{{ score_scaling.rounding }}</td></tr>
+<tr><td>Score Range</td><td>{{ score_scaling.min_score }} &ndash; {{ score_scaling.max_score }}</td></tr>
+</tbody>
+</table>
+</section>
+{% endif %}
+
+{% if validation and validation.metrics_by_role %}
+<section class="section">
+<h2>Validation Metrics</h2>
+<table>
+<thead><tr>
+<th>Role</th><th>Rows</th><th>AUC</th><th>Gini</th><th>KS</th><th>Bad Rate</th>
+</tr></thead>
+<tbody>
+{% for m in validation.metrics_by_role %}
+<tr>
+<td>{{ m.role }}</td>
+<td>{{ m.row_count }}</td>
+<td>{{ m.auc | fmt(".4f") }}</td>
+<td>{{ m.gini | fmt(".4f") }}</td>
+<td>{{ m.ks | fmt(".4f") }}</td>
+<td>{{ m.bad_rate | fmt(".4f") }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% if validation.stability and validation.stability.psi_by_role %}
+<h3>Population Stability</h3>
+<table>
+<thead><tr><th>Comparison</th><th>Score PSI</th></tr></thead>
+<tbody>
+{% for p in validation.stability.psi_by_role %}
+<tr><td>{{ p.comparison }}</td><td>{{ p.score_psi | fmt(".4f") }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+</section>
+{% endif %}
+
+{% if cutoffs and cutoffs.cutoff_tables %}
+<section class="section">
+<h2>Cutoff Analysis</h2>
+{% for ct in cutoffs.cutoff_tables %}
+<h3>Role: {{ ct.role }}</h3>
+<table>
+<thead><tr>
+<th>Score</th><th>Approval Rate</th><th>Bad Rate</th><th>Capture Rate</th>
+</tr></thead>
+<tbody>
+{% for r in ct.rows %}
+<tr>
+<td>{{ r.score_cutoff }}</td>
+<td>{{ r.approval_rate | fmt(".4f") }}</td>
+<td>{{ r.bad_rate | fmt(".4f") }}</td>
+<td>{{ r.capture_rate | fmt(".4f") }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endfor %}
+{% if cutoffs.selected_cutoff and cutoffs.selected_cutoff.score %}
+<p><strong>Selected cutoff:</strong> {{ cutoffs.selected_cutoff.score }} &middot;
+<em>{{ cutoffs.selected_cutoff.selection_reason }}</em></p>
+{% endif %}
+</section>
+{% endif %}
+
+{% if manual_interventions %}
+<section class="section">
+<h2>Manual Interventions</h2>
+<table>
+<thead><tr>
+<th>Type</th><th>Variable</th><th>Reason</th><th>Branch</th>
+</tr></thead>
+<tbody>
+{% for mi in manual_interventions %}
+<tr>
+<td>{{ mi.type }}</td>
+<td>{{ mi.variable_name }}</td>
+<td>{{ mi.reason or 'No reason provided' }}</td>
+<td><code>{{ mi.branch_id }}</code></td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</section>
+{% endif %}
+
+{% if reproducibility %}
+<section class="section">
+<h2>Reproducibility Manifest</h2>
+<table>
+<thead><tr><th>Property</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>Run ID</td><td><code>{{ reproducibility.run_id }}</code></td></tr>
+{% if reproducibility.manifest_hash %}<tr><td>Manifest Hash</td><td><code>{{ reproducibility.manifest_hash }}</code></td></tr>{% endif %}
+<tr><td>Cardre Version</td><td>{{ reproducibility.report_generation.cardre_version if reproducibility.report_generation else '0.1.0' }}</td></tr>
+</tbody>
+</table>
+{% if reproducibility.execution_fingerprints %}
+<h3>Execution Fingerprints</h3>
+<table>
+<thead><tr><th>Step</th><th>Python</th><th>Platform</th></tr></thead>
+<tbody>
+{% for fp in reproducibility.execution_fingerprints %}
+<tr>
+<td><code>{{ fp.step_id[:30] }}&hellip;</code></td>
+<td>{{ fp.python_version }}</td>
+<td>{{ fp.platform }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+</section>
+{% endif %}
+
+{% if artifacts %}
+<section class="section">
+<h2>Artifact Index</h2>
+<table>
+<thead><tr>
+<th>ID</th><th>Type</th><th>Role</th><th>Logical Hash</th>
+</tr></thead>
+<tbody>
+{% for a in artifacts %}
+<tr>
+<td><code>{{ a.artifact_id[:12] }}&hellip;</code></td>
+<td>{{ a.artifact_type }}</td>
+<td>{{ a.role }}</td>
+<td><code>{{ a.logical_hash[:12] }}&hellip;</code></td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</section>
+{% endif %}
+
+<div class="footer">
+<p>Generated by Cardre &middot; {{ generated_at }}</p>
+<p>PDF export is out of scope for this report phase. The canonical format is <code>report_bundle.json</code>.</p>
+</div>
+
+</div>
+</body>
+</html>

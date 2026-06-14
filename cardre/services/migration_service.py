@@ -1,7 +1,7 @@
 """Baseline branch migration service.
 
 Migrates existing Phase 3 projects into the Phase 4 branch model
-without rewriting historical run evidence or artefact records.
+without rewriting historical run evidence or artifact records.
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ def migrate_project_to_branch_model(
     This is a metadata-only migration. It does not rewrite:
       - run records
       - run_step records
-      - artefact records
-      - artefact files
+      - artifact records
+      - artifact files
       - execution fingerprints
 
     Returns a dict with migration results.

@@ -470,6 +470,8 @@ class ExportAuditPackRequest(BaseModel):
     comparison_id: str | None = None
     comparison_snapshot_id: str | None = None
     include_row_level_data: bool = False
+    include_report: bool = False
+    report_mode: str = "branch"
     export_path: str | None = None
 
 
@@ -484,3 +486,56 @@ class ExportAuditPackResponse(BaseModel):
     file_count: int = 0
     warnings: list[str] = Field(default_factory=list)
     diagnostics: list[ExportDiagnostic] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — Reports
+# ---------------------------------------------------------------------------
+
+class ReportReadinessRequest(BaseModel):
+    target_branch_id: str
+    report_mode: str = "branch"
+    include_challenger_comparison: bool = False
+
+
+class ReadinessItem(BaseModel):
+    code: str
+    message: str
+
+
+class ReportReadinessResponse(BaseModel):
+    ready: bool = False
+    status: str = ""
+    blockers: list[ReadinessItem] = Field(default_factory=list)
+    warnings: list[ReadinessItem] = Field(default_factory=list)
+
+
+class GenerateReportRequest(BaseModel):
+    target_branch_id: str
+    report_mode: str = "branch"
+    include_challenger_comparison: bool = False
+    include_supporting_artifacts: bool = True
+    output_formats: list[str] = Field(default_factory=lambda: ["json", "html"])
+    export_zip: bool = False
+
+
+class GenerateReportResponse(BaseModel):
+    report_id: str
+    status: str = ""
+    report_bundle_path: str = ""
+    html_path: str = ""
+    export_path: str = ""
+    zip_path: str = ""
+    warnings: list[ReadinessItem] = Field(default_factory=list)
+
+
+class ReportMetadataResponse(BaseModel):
+    report_id: str
+    created_at: str = ""
+    target_branch_id: str = ""
+    report_mode: str = ""
+    html_path: str = ""
+    bundle_path: str = ""
+    export_path: str = ""
+    zip_path: str = ""
+    status: str = ""

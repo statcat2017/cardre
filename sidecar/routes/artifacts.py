@@ -1,42 +1,30 @@
-"""Artifact retrieval, summary, and preview endpoints."""
+"""Artifact retrieval, summary, and preview endpoints — thin route handlers."""
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-import polars as pl
 from fastapi import APIRouter, HTTPException, Query
 
+from cardre.services.artifact_service import (
+    build_json_summary_preview,
+    build_parquet_preview,
+    find_artifact,
+)
 from sidecar.models import (
     ArtifactResponse,
     ArtifactSummaryResponse,
     ArtifactPreviewResponse,
     ColumnInfo,
 )
-from sidecar.routes.projects import _load_registry
 
 router = APIRouter(prefix="/artifacts", tags=["artifacts"])
 
 
-def _scan_all_stores():
-    registry = _load_registry()
-    for pid, entry in registry.items():
-        from cardre.store import ProjectStore
-        store = ProjectStore(Path(entry["path"]))
-        yield pid, store
-
-
-def _find_artifact(artifact_id: str):
-    for pid, store in _scan_all_stores():
-        artifact = store.get_artifact(artifact_id)
-        if artifact is not None:
-            return artifact, store
-    return None, None
-
-
 @router.get("/{artifact_id}", response_model=ArtifactResponse)
 def get_artifact(artifact_id: str):
-    artifact, _ = _find_artifact(artifact_id)
+    artifact, _ = find_artifact(artifact_id)
     if artifact is None:
         raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id}"})
 
@@ -55,7 +43,7 @@ def get_artifact(artifact_id: str):
 
 @router.get("/{artifact_id}/summary", response_model=ArtifactSummaryResponse)
 def get_artifact_summary(artifact_id: str):
-    artifact, store = _find_artifact(artifact_id)
+    artifact, store = find_artifact(artifact_id)
     if artifact is None:
         raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id}"})
 
@@ -68,16 +56,7 @@ def get_artifact_summary(artifact_id: str):
             data = json.loads(store.artifact_path(artifact).read_bytes())
         except Exception:
             data = None
-
-        if isinstance(data, dict):
-            summary_preview = {k: data[k] for k in list(data.keys())[:10]}
-            summary_preview["_key_count"] = len(data)
-        elif isinstance(data, list):
-            summary_preview = {"_item_count": len(data), "_first_items": data[:5]}
-        elif data is not None:
-            summary_preview = {"_value": str(data)[:500]}
-        else:
-            summary_preview = None
+        summary_preview = build_json_summary_preview(data)
 
     return ArtifactSummaryResponse(
         artifact_id=artifact.artifact_id,
@@ -98,7 +77,7 @@ def get_artifact_preview(
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ):
-    artifact, store = _find_artifact(artifact_id)
+    artifact, store = find_artifact(artifact_id)
     if artifact is None or store is None:
         raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id}"})
 
@@ -139,21 +118,14 @@ def get_artifact_preview(
     if artifact.media_type == "application/vnd.apache.parquet":
         try:
             total_rows = artifact.metadata.get("row_count")
-            if total_rows is None:
-                total_rows = pl.scan_parquet(artifact_path).select(pl.len()).collect().item()
-            df = pl.scan_parquet(artifact_path).slice(offset, limit).collect()
-            columns = [
-                ColumnInfo(name=c, dtype=str(df.schema[c]))
-                for c in df.columns
-            ]
-            rows = df.to_dicts()
+            preview = build_parquet_preview(artifact_path, offset, limit, total_rows)
             return ArtifactPreviewResponse(
                 artifact_id=artifact.artifact_id,
                 media_type=artifact.media_type,
-                row_count=total_rows,
-                column_count=len(columns),
-                columns=columns,
-                rows=rows,
+                row_count=preview["total_rows"],
+                column_count=len(preview["columns"]),
+                columns=[ColumnInfo(name=c["name"], dtype=c["dtype"]) for c in preview["columns"]],
+                rows=preview["rows"],
                 limit=limit,
                 offset=offset,
             )

@@ -15,7 +15,7 @@ from sidecar.models import (
     ManualBinningPreviewResponse,
     ManualBinningPreviewRequest,
 )
-from sidecar.routes.projects import _load_registry
+from cardre.services.project_registry import load_registry
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
@@ -28,7 +28,7 @@ def _get_store(project_path: str):
 
 @router.get("/{plan_id}", response_model=PlanResponse)
 def get_plan(plan_id: str, project_id: str | None = None):
-    registry = _load_registry()
+    registry = load_registry()
     if project_id is None:
         for pid, entry in registry.items():
             store = _get_store(entry["path"])
@@ -44,7 +44,7 @@ def get_plan(plan_id: str, project_id: str | None = None):
 
 @router.post("/{plan_id}/steps/{step_id}/params", response_model=UpdateStepParamsResponse)
 def update_step_params(plan_id: str, step_id: str, req: UpdateStepParamsRequest):
-    registry = _load_registry()
+    registry = load_registry()
     entry = registry.get(req.project_id)
     if entry is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {req.project_id}"})
@@ -55,7 +55,7 @@ def update_step_params(plan_id: str, step_id: str, req: UpdateStepParamsRequest)
 
 @router.get("/{plan_id}/steps/{step_id}/editor-state", response_model=ManualBinningEditorStateResponse)
 def get_manual_binning_editor_state(plan_id: str, step_id: str, project_id: str):
-    registry = _load_registry()
+    registry = load_registry()
     entry = registry.get(project_id)
     if entry is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
@@ -66,7 +66,7 @@ def get_manual_binning_editor_state(plan_id: str, step_id: str, project_id: str)
 
 @router.post("/{plan_id}/steps/{step_id}/manual-binning/preview", response_model=ManualBinningPreviewResponse)
 def preview_manual_binning_overrides(plan_id: str, step_id: str, req: ManualBinningPreviewRequest):
-    registry = _load_registry()
+    registry = load_registry()
     entry = registry.get(req.project_id)
     if entry is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {req.project_id}"})

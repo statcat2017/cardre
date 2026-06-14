@@ -327,7 +327,7 @@ class PlanService:
     def get_manual_binning_editor_state(
         self, plan_id: str, step_id: str = "manual-binning"
     ) -> ManualBinningEditorStateResponse:
-        """Assemble manual-binning editor state from upstream artefacts.
+        """Assemble manual-binning editor state from upstream artifacts.
 
         Supports both baseline (manual-binning) and branch-owned steps
         (manual-binning__br_xxx).
@@ -627,7 +627,7 @@ class PlanService:
         fc_step_id: str = "fine-classing",
         vs_step_id: str = "variable-selection",
     ) -> None:
-        """Validate manual-binning overrides against upstream artefacts.
+        """Validate manual-binning overrides against upstream artifacts.
 
         Raises ``PlanValidationError`` if any override references an unknown
         variable, missing bin ID, or non-adjacent numeric merge.

@@ -373,6 +373,8 @@ export interface ExportAuditPackBody {
   comparison_id?: string | null;
   comparison_snapshot_id?: string | null;
   include_row_level_data?: boolean;
+  include_report?: boolean;
+  report_mode?: string;
   export_path?: string | null;
 }
 
@@ -382,4 +384,27 @@ export interface ExportAuditPackResponse {
   file_count: number;
   warnings?: string[];
   diagnostics?: { code: string; message: string }[];
+}
+
+// Phase 5 — Reports
+export interface ReportReadinessItem {
+  code: string;
+  message: string;
+}
+
+export interface ReportReadinessResponse {
+  ready: boolean;
+  status: string;
+  blockers: ReportReadinessItem[];
+  warnings: ReportReadinessItem[];
+}
+
+export interface GenerateReportResponse {
+  report_id: string;
+  status: string;
+  report_bundle_path: string;
+  html_path: string;
+  export_path: string;
+  zip_path: string;
+  warnings: ReportReadinessItem[];
 }

@@ -13,6 +13,7 @@ import type {
   CreateProjectBody,
   ExportAuditPackBody,
   ExportAuditPackResponse,
+  GenerateReportResponse,
   HealthResponse,
   ImportBody,
   ManualBinningEditorStateResponse,
@@ -26,6 +27,7 @@ import type {
   ProjectResponse,
   ProjectRunsResponse,
   RefreshComparisonResponse,
+  ReportReadinessResponse,
   RunBody,
   RunResponse,
   RunStepsResponse,
@@ -189,4 +191,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  // Phase 5 — Reports
+  getReportReadiness: (projectId: string, runId: string, body: { target_branch_id: string; report_mode?: string; include_challenger_comparison?: boolean }) =>
+    fetchJson<ReportReadinessResponse>(`/projects/${projectId}/runs/${runId}/report-readiness`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  generateReport: (projectId: string, runId: string, body: { target_branch_id: string; report_mode?: string; include_challenger_comparison?: boolean; include_supporting_artifacts?: boolean; output_formats?: string[]; export_zip?: boolean }) =>
+    fetchJson<GenerateReportResponse>(`/projects/${projectId}/runs/${runId}/reports`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  getReportMetadata: (projectId: string, runId: string, reportId: string) =>
+    fetchJson<{ report_id: string; created_at: string; target_branch_id: string; report_mode: string; html_path: string; bundle_path: string; export_path: string; status: string }>(
+      `/projects/${projectId}/runs/${runId}/reports/${reportId}`,
+    ),
 };

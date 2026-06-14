@@ -8,9 +8,9 @@ from fastapi import APIRouter, HTTPException
 
 from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
+from cardre.services.project_registry import get_store_for_project, load_registry
 from cardre.store import ProjectStore
 from sidecar.models import RunRequest, RunResponse, RunStepsResponse, RunStepItem
-from sidecar.routes.projects import _load_registry, _get_store_for_project
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -32,7 +32,7 @@ def _build_run_response(store: ProjectStore, run_id: str, executed_ids: list[str
 
 @router.post("", response_model=RunResponse, status_code=201)
 def run_plan(body: RunRequest):
-    store = _get_store_for_project(body.project_id)
+    store = get_store_for_project(body.project_id)
 
     pv = store.get_plan_version(body.plan_version_id)
     if pv is None:
@@ -63,9 +63,9 @@ def run_plan(body: RunRequest):
 
 @router.get("/{run_id}", response_model=RunResponse)
 def get_run(run_id: str):
-    registry = _load_registry()
+    registry = load_registry()
     for pid, entry in registry.items():
-        store = _get_store_for_project(pid)
+        store = get_store_for_project(pid)
         run = store.get_run(run_id)
         if run is not None:
             return _build_run_response(store, run_id)
@@ -74,9 +74,9 @@ def get_run(run_id: str):
 
 @router.get("/{run_id}/steps", response_model=RunStepsResponse)
 def get_run_steps(run_id: str):
-    registry = _load_registry()
+    registry = load_registry()
     for pid in registry:
-        store = _get_store_for_project(pid)
+        store = get_store_for_project(pid)
         run = store.get_run(run_id)
         if run is not None:
             steps = store.get_run_steps(run_id)

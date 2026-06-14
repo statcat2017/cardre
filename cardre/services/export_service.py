@@ -1,7 +1,12 @@
-"""Selected branch export service — audit pack export."""
+"""Selected branch export service — audit pack export.
+
+Phase 5: extended to include governance report generation.
+export_service.py owns packaging; reporting/ owns report collection/rendering.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import uuid
@@ -9,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from cardre.audit import utc_now_iso
+from cardre.services.report_generation_service import ReportGenerationService
 from cardre.store import ProjectStore
 
 ROW_LEVEL_ARTIFACT_TYPES = {"dataset", "tabular"}
@@ -23,6 +29,8 @@ def export_branch_audit_pack(
     comparison_id: str | None = None,
     comparison_snapshot_id: str | None = None,
     include_row_level_data: bool = False,
+    include_report: bool = False,
+    report_mode: str = "branch",
 ) -> dict[str, Any]:
     """Export selected branch evidence as an audit pack.
 
@@ -35,6 +43,7 @@ def export_branch_audit_pack(
       - Technical manifest
       - Comparison snapshot (if provided)
       - Champion assignment (if branch is champion)
+      - Phase 5 governance report (if include_report=True)
 
     Excludes row-level dataset artifacts unless include_row_level_data is True.
     Uses branch-scoped evidence lookup.
@@ -200,6 +209,62 @@ def export_branch_audit_pack(
         (export_dir / "champion_assignment.json").write_text(json.dumps(dict(champ), indent=2))
         file_count += 1
 
+    # 10. Phase 5 governance report
+    if include_report:
+        latest_run_id = store.get_latest_successful_run_id(
+            branch["head_plan_version_id"], branch_id=branch_id,
+        )
+        if latest_run_id is None:
+            latest_run_id = store.get_latest_successful_run_id(
+                branch["head_plan_version_id"], branch_id=None,
+            )
+        if latest_run_id:
+            try:
+                svc = ReportGenerationService(store)
+                readiness = svc.check_readiness(
+                    project_id=project_id,
+                    run_id=latest_run_id,
+                    target_branch_id=branch_id,
+                    report_mode=report_mode,
+                )
+                if readiness.ready:
+                    result = svc.generate_and_write(
+                        project_id=project_id,
+                        run_id=latest_run_id,
+                        target_branch_id=branch_id,
+                        report_mode=report_mode,
+                        report_dir=export_dir / "report",
+                    )
+                    bundle_data = result["bundle_data"]
+                    file_count += 2  # bundle.json + report.html
+
+                    # Supporting report artifacts
+                    report_art_dir = export_dir / "report_artifacts"
+                    report_art_dir.mkdir(parents=True, exist_ok=True)
+                    _copy_report_artifacts(store, bundle_data, report_art_dir, file_count)
+
+                    diagnostics.append({
+                        "code": "REPORT_GENERATED",
+                        "message": f"Phase 5 report generated for branch {branch_id}.",
+                    })
+                else:
+                    warnings.append(f"Report skipped: {[b.code for b in readiness.blockers]}")
+            except Exception as exc:
+                diagnostics.append({
+                    "code": "REPORT_FAILED",
+                    "message": f"Report generation failed: {exc}",
+                })
+
+    # 11. Checksums for all exported files
+    checksums: list[str] = []
+    for fpath in sorted(export_dir.rglob("*"), key=lambda p: str(p.relative_to(export_dir))):
+        if fpath.is_file():
+            rel = str(fpath.relative_to(export_dir))
+            digest = hashlib.sha256(fpath.read_bytes()).hexdigest()
+            checksums.append(f"{digest}  {rel}")
+    (export_dir / "checksums.sha256").write_text("\n".join(checksums) + "\n")
+    file_count += 1
+
     if not include_row_level_data:
         warnings.append("Row-level data excluded from export.")
 
@@ -215,6 +280,29 @@ def export_branch_audit_pack(
 def _write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, sort_keys=True))
+
+
+def _copy_report_artifacts(
+    store: ProjectStore,
+    bundle: dict,
+    report_art_dir: Path,
+    file_count: int,
+) -> None:
+    """Copy supporting artifacts referenced in the report bundle."""
+    artifacts = bundle.get("artifacts", [])
+    from cardre.audit import ArtifactRef
+    for entry in artifacts:
+        art_id = entry.get("artifact_id", "")
+        art = store.get_artifact(art_id)
+        if art is None:
+            continue
+        src = store.artifact_path(art)
+        if not src.exists():
+            continue
+        rel = Path(art.path)
+        dst = report_art_dir / rel.parent.name / src.name
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
 
 
 def _run_step_to_dict(rs) -> dict:

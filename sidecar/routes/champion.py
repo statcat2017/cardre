@@ -6,14 +6,14 @@ from fastapi import APIRouter, HTTPException
 
 from cardre.services.champion_service import assign_champion, get_champion as _get_champion
 from sidecar.models import AssignChampionRequest, ChampionResponse
-from sidecar.routes.projects import _load_registry, _get_store_for_project
+from cardre.services.project_registry import get_store_for_project, load_registry
 
 router = APIRouter(tags=["champion"])
 
 
 @router.post("/plans/{plan_id}/champion", response_model=ChampionResponse, status_code=201)
 def assign_plan_champion(plan_id: str, req: AssignChampionRequest):
-    store = _get_store_for_project(req.project_id)
+    store = get_store_for_project(req.project_id)
     try:
         result = assign_champion(
             store=store,
@@ -43,7 +43,7 @@ def assign_plan_champion(plan_id: str, req: AssignChampionRequest):
 
 @router.get("/plans/{plan_id}/champion", response_model=ChampionResponse)
 def get_plan_champion(plan_id: str, project_id: str, scope_type: str = "project", scope_key: str = "default"):
-    store = _get_store_for_project(project_id)
+    store = get_store_for_project(project_id)
     result = _get_champion(store, plan_id, scope_type=scope_type, scope_key=scope_key)
     if result is None:
         raise HTTPException(status_code=404, detail={"code": "NO_CHAMPION", "message": f"No active champion for plan {plan_id}"})
