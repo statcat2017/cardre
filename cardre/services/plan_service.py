@@ -537,7 +537,7 @@ class PlanService:
 
         selected_vars = {s["variable"] for s in vs_def.get("selected", [])}
 
-        validation_warnings = validate_manual_binning_overrides(fc_def, overrides)
+        validation_warnings = validate_manual_binning_overrides(fc_def, overrides, selected_vars)
         if validation_warnings:
             return ManualBinningPreviewResponse(
                 valid=False,
@@ -637,7 +637,7 @@ class PlanService:
         if not overrides:
             return
 
-        (fc_def, _, _, _), err = self._resolve_mb_upstream_defs(
+        (fc_def, vs_def, _, _), err = self._resolve_mb_upstream_defs(
             plan_version_id, plan_id,
             fc_step_id=fc_step_id,
             vs_step_id=vs_step_id,
@@ -645,7 +645,8 @@ class PlanService:
         if err is not None:
             raise PlanValidationError("PARAMS_VALIDATION_FAILED", err)
 
-        errors = validate_manual_binning_overrides(fc_def, overrides)
+        selected_vars = {s["variable"] for s in vs_def.get("selected", [])} if vs_def else set()
+        errors = validate_manual_binning_overrides(fc_def, overrides, selected_vars)
         if errors:
             raise PlanValidationError(
                 "PARAMS_VALIDATION_FAILED", "; ".join(errors),

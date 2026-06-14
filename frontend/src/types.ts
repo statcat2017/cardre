@@ -90,6 +90,7 @@ export interface RunStepItem {
   output_artifact_ids: string[];
   warnings: string[];
   errors: string[];
+  is_carried_forward: boolean;
 }
 
 export interface RunStepsResponse {

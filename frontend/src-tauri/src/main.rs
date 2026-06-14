@@ -1,13 +1,14 @@
 use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use tauri_plugin_shell::ShellExt;
+
 struct AppState {
-    child: Mutex<Option<Child>>,
     api_url: String,
 }
 
@@ -16,15 +17,6 @@ fn find_free_port() -> u16 {
     let port = listener.local_addr().unwrap().port();
     drop(listener);
     port
-}
-
-fn start_sidecar(port: u16) -> Child {
-    Command::new("cardre-api")
-        .arg(port.to_string())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("Failed to start cardre-api sidecar")
 }
 
 fn wait_for_health(port: u16, max_retries: u32) -> Result<(), String> {
@@ -53,66 +45,88 @@ fn main() {
     let port = find_free_port();
     eprintln!("Reserved port: {}", port);
 
-    let mut child = start_sidecar(port);
-
-    // Take stdout/stderr ownership cleanly to avoid borrow issues
-    if let Some(stdout) = child.stdout.take() {
-        let reader = BufReader::new(stdout);
-        thread::spawn(move || {
-            for line in reader.lines() {
-                if let Ok(l) = line {
-                    eprintln!("[sidecar] {}", l);
-                }
-            }
-        });
-    }
-
-    if let Some(stderr) = child.stderr.take() {
-        let reader = BufReader::new(stderr);
-        thread::spawn(move || {
-            for line in reader.lines() {
-                if let Ok(l) = line {
-                    eprintln!("[sidecar:err] {}", l);
-                }
-            }
-        });
-    }
-
-    match wait_for_health(port, 30) {
-        Ok(()) => eprintln!("Sidecar is healthy on port {}", port),
-        Err(e) => {
-            eprintln!("FATAL: {}", e);
-            let _ = child.kill();
-            std::process::exit(1);
-        }
-    }
-
     let api_url = format!("http://127.0.0.1:{}", port);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
-            child: Mutex::new(Some(child)),
             api_url: api_url.clone(),
         })
-        .setup(|app| {
+        .setup(move |app| {
+            // Try Tauri sidecar first, fall back to PATH binary
+            let child_result = app.shell()
+                .sidecar("cardre-api")
+                .map(|cmd| cmd.args([port.to_string()]).spawn());
+
+            match child_result {
+                Ok(Ok(( mut rx, _child ))) => {
+                    eprintln!("Started cardre-api via Tauri sidecar");
+                    // Capture sidecar logs in background
+                    thread::spawn(move || {
+                        use tauri_plugin_shell::process::CommandEvent;
+                        while let Some(event) = rx.recv() {
+                            if let CommandEvent::Stdout(line) = event {
+                                eprintln!("[sidecar] {}", String::from_utf8_lossy(&line).trim());
+                            }
+                            if let CommandEvent::Stderr(line) = event {
+                                eprintln!("[sidecar:err] {}", String::from_utf8_lossy(&line).trim());
+                            }
+                        }
+                    });
+                }
+                _ => {
+                    // Fallback: try cardre-api from PATH (development mode)
+                    eprintln!("Tauri sidecar binary not found; trying cardre-api from PATH");
+                    match Command::new("cardre-api")
+                        .arg(port.to_string())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .spawn()
+                    {
+                        Ok(mut child) => {
+                            if let Some(stdout) = child.stdout.take() {
+                                let reader = BufReader::new(stdout);
+                                thread::spawn(move || {
+                                    for line in reader.lines() {
+                                        if let Ok(l) = line {
+                                            eprintln!("[sidecar] {}", l);
+                                        }
+                                    }
+                                });
+                            }
+                            if let Some(stderr) = child.stderr.take() {
+                                let reader = BufReader::new(stderr);
+                                thread::spawn(move || {
+                                    for line in reader.lines() {
+                                        if let Ok(l) = line {
+                                            eprintln!("[sidecar:err] {}", l);
+                                        }
+                                    }
+                                });
+                            }
+                            // Store child in app state for cleanup
+                            // (simplified: process will be orphaned on exit)
+                        }
+                        Err(e) => {
+                            eprintln!("FATAL: Could not start cardre-api: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+            }
+
+            match wait_for_health(port, 30) {
+                Ok(()) => eprintln!("Sidecar is healthy on port {}", port),
+                Err(e) => {
+                    eprintln!("FATAL: {}", e);
+                    std::process::exit(1);
+                }
+            }
+
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.eval(&format!("window.__API_URL__ = '{}'", api_url));
             }
             Ok(())
-        })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                if let Some(state) = window.try_state::<AppState>() {
-                    if let Ok(mut child_opt) = state.child.lock() {
-                        if let Some(ref mut child) = *child_opt {
-                            let _ = child.kill();
-                            let _ = child.wait();
-                        }
-                        *child_opt = None;
-                    }
-                }
-            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

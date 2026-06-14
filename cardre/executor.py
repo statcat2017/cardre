@@ -53,6 +53,7 @@ class PlanExecutor:
         self,
         store: ProjectStore,
         plan_version_id: str,
+        run_id: str | None = None,
     ) -> str:
         """Execute all steps in a plan version. Returns the run_id.
 
@@ -60,11 +61,15 @@ class PlanExecutor:
         that even if node instantiation or step execution fails, a
         RunStepRecord with structured errors is saved and the run is
         finished as FAILED. The run is never left in 'running' state.
+
+        When *run_id* is provided, use that existing run (must be in
+        'running' status) instead of creating a new one.
         """
         steps = store.get_plan_version_steps(plan_version_id)
         self._validate_topology(steps)
 
-        run_id = store.create_run(plan_version_id)
+        if run_id is None:
+            run_id = store.create_run(plan_version_id)
 
         step_outputs: dict[str, list[ArtifactRef]] = {}
         run_step_records: dict[str, RunStepRecord] = {}
@@ -103,6 +108,7 @@ class PlanExecutor:
         store: ProjectStore,
         plan_version_id: str,
         branch_id: str,
+        run_id: str | None = None,
     ) -> str:
         """Execute stale/not-run branch-owned steps for a single branch.
 
@@ -111,6 +117,9 @@ class PlanExecutor:
 
         Blocks if shared upstream evidence is stale (checked against
         full-plan evidence, not the branch run's partial record).
+
+        When *run_id* is provided, use that existing run (must be in
+        'running' status) instead of creating a new one.
 
         Returns the run_id.
         """
@@ -214,8 +223,9 @@ class PlanExecutor:
                     run_step_records[spec.step_id] = rs
                     step_outputs[spec.step_id] = self._resolve_output_artifacts(store, rs)
 
-        # Create run with branch association
-        run_id = store.create_run(plan_version_id, branch_id=branch_id)
+        # Create run with branch association (or use existing)
+        if run_id is None:
+            run_id = store.create_run(plan_version_id, branch_id=branch_id)
 
         has_failure = False
         executed_ids: list[str] = []

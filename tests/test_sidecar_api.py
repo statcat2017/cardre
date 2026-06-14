@@ -174,7 +174,7 @@ class TestPlans:
         plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
 
-        client.post("/runs", json={
+        client.post("/runs?sync=true", json={
             "project_id": proj["project_id"],
             "plan_version_id": latest_pv_id,
         })
@@ -201,7 +201,7 @@ class TestRuns:
         plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
 
-        resp = client.post("/runs", json={
+        resp = client.post("/runs?sync=true", json={
             "project_id": proj["project_id"],
             "plan_version_id": latest_pv_id,
         })
@@ -221,7 +221,7 @@ class TestRuns:
         store = ProjectStore(proj_path)
         plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
-        run_resp = client.post("/runs", json={
+        run_resp = client.post("/runs?sync=true", json={
             "project_id": proj["project_id"], "plan_version_id": latest_pv_id,
         })
         run_id = run_resp.json()["run_id"]
@@ -240,7 +240,7 @@ class TestRuns:
 
         # Run without importing data — the import step has no source_path
         # and should fail
-        resp = client.post("/runs", json={
+        resp = client.post("/runs?sync=true", json={
             "project_id": proj["project_id"],
             "plan_version_id": latest_pv_id,
         })
@@ -269,7 +269,7 @@ class TestRuns:
         store = ProjectStore(proj_path)
         plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
-        run_resp = client.post("/runs", json={
+        run_resp = client.post("/runs?sync=true", json={
             "project_id": proj["project_id"], "plan_version_id": latest_pv_id,
         })
         run_id = run_resp.json()["run_id"]
@@ -331,7 +331,7 @@ class TestFullRoundTrip:
         pathway_steps = store.get_plan_version_steps(latest_pv_id)
         assert len(pathway_steps) == 6, f"Expected 6 pathway steps, got {len(pathway_steps)}"
 
-        run_resp = client.post("/runs", json={
+        run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": latest_pv_id,
         })
         assert run_resp.status_code == 201
@@ -403,7 +403,7 @@ class TestFullRoundTrip:
         )
         bad_pv_id = store.create_plan_version(plan_id, [bad_step])
 
-        resp = client.post("/runs", json={
+        resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": bad_pv_id,
         })
         assert resp.status_code == 201
@@ -692,7 +692,7 @@ class TestProjectArtifacts:
         proof_plans = [p for p in store.get_plans_for_project(pid) if p["name"] == "Proof Pathway"]
         proof_pv_id = store.get_latest_plan_version_id(proof_plans[0]["plan_id"])
 
-        run_resp = client.post("/runs", json={
+        run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": proof_pv_id,
         })
         assert run_resp.status_code == 201
@@ -717,7 +717,7 @@ class TestProjectArtifacts:
         store = ProjectStore(proj_path)
         proof_plans = [p for p in store.get_plans_for_project(pid) if p["name"] == "Proof Pathway"]
         proof_pv_id = store.get_latest_plan_version_id(proof_plans[0]["plan_id"])
-        client.post("/runs", json={"project_id": pid, "plan_version_id": proof_pv_id})
+        client.post("/runs?sync=true", json={"project_id": pid, "plan_version_id": proof_pv_id})
 
         # Filter by producing step ID (e.g. "split" produces train/test/oot artifacts in proof pathway)
         resp = client.get(f"/projects/{pid}/artifacts?producing_step_id=split")
@@ -912,7 +912,7 @@ class TestE2EWithNewEndpoints:
         proof_plans = [p for p in store.get_plans_for_project(pid) if p["name"] == "Proof Pathway"]
         proof_pv_id = store.get_latest_plan_version_id(proof_plans[0]["plan_id"])
 
-        run_resp = client.post("/runs", json={
+        run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": proof_pv_id,
         })
         assert run_resp.status_code == 201
@@ -1028,7 +1028,7 @@ class TestScorecardPathwayE2E:
         # 4. Run the Scorecard Pathway
         store = ProjectStore(proj_path)
         pv_id = store.get_latest_plan_version_id(plan_id)
-        run_resp = client.post("/runs", json={
+        run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": pv_id,
         })
         assert run_resp.status_code == 201
@@ -1078,8 +1078,8 @@ class TestScorecardPathwayE2E:
             f"Expected 422 for invalid bin ID, got {bad_override_resp.status_code}: {bad_override_resp.json()}"
         )
 
-        # 7. Manual-binning save works via fallback to previous run's artifacts
-        valid_override_resp = client.post(f"/plans/{plan_id}/steps/manual-binning/params", json={
+        # 7. Manual-binning save for non-selected variable is rejected (#9/#13)
+        unselected_resp = client.post(f"/plans/{plan_id}/steps/manual-binning/params", json={
             "project_id": pid,
             "base_plan_version_id": new_pv_id2,
             "params": {
@@ -1088,10 +1088,35 @@ class TestScorecardPathwayE2E:
                               "reason": "test merge"}],
             },
         })
-        assert valid_override_resp.status_code == 200, (
-            f"Expected 200 (fallback to previous run artifacts), "
-            f"got {valid_override_resp.status_code}: {valid_override_resp.json()}"
+        assert unselected_resp.status_code == 422, (
+            f"Expected 422 for non-selected variable, "
+            f"got {unselected_resp.status_code}: {unselected_resp.json()}"
         )
+        assert "not selected by variable-selection" in unselected_resp.json()["detail"]["message"]
+
+        # 8. Manual-binning save works for a selected variable (pick from editor state)
+        es_resp = client.get(f"/plans/{plan_id}/steps/manual-binning/editor-state?project_id={pid}")
+        if es_resp.status_code == 200 and es_resp.json().get("selected_variables"):
+            selected_var = es_resp.json()["selected_variables"][0]
+            es = es_resp.json()
+            source_bins = es.get("source_bins_by_variable", {})
+            var_bins = source_bins.get(selected_var, {})
+            bins = var_bins.get("bins", [])
+            if len(bins) >= 2:
+                bin_ids = [b["bin_id"] for b in bins[:2]]
+                save_resp = client.post(f"/plans/{plan_id}/steps/manual-binning/params", json={
+                    "project_id": pid,
+                    "base_plan_version_id": new_pv_id2,
+                    "params": {
+                        "overrides": [{"variable": selected_var, "action": "merge_bins",
+                                      "source_bin_ids": bin_ids,
+                                      "reason": "test merge selected"}],
+                    },
+                })
+                assert save_resp.status_code == 200, (
+                    f"Expected 200 for selected variable override, "
+                    f"got {save_resp.status_code}: {save_resp.json()}"
+                )
 
     def test_manual_binning_save_rejected_without_upstream_run(self, client, tmp_dir, larger_german_credit):
         """Manual-binning save without any successful run is rejected."""
@@ -1142,7 +1167,7 @@ class TestScorecardPathwayE2E:
         # Run the Scorecard Pathway
         store = ProjectStore(proj_path)
         pv_id = store.get_latest_plan_version_id(plan_id)
-        run_resp = client.post("/runs", json={
+        run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": pv_id,
         })
         assert run_resp.status_code == 201
@@ -1237,7 +1262,7 @@ class TestPhase4BranchingFlow:
         assert plan_resp.status_code == 200
         pv_id = plan_resp.json()["latest_version_id"]
 
-        run_resp = client.post("/runs", json={
+        run_resp = client.post("/runs?sync=true", json={
             "project_id": pid,
             "plan_version_id": pv_id,
         })
@@ -1311,7 +1336,7 @@ class TestPhase4BranchingFlow:
         assert branch_after.json()["head_plan_version_id"] == updated_pv_id
 
         # 10. Run challenger branch
-        run_branch_resp = client.post("/runs", json={
+        run_branch_resp = client.post("/runs?sync=true", json={
             "project_id": pid,
             "plan_version_id": updated_pv_id,
             "run_scope": "branch",
@@ -1335,7 +1360,7 @@ class TestPhase4BranchingFlow:
         # the branch run's own records and the comparison snapshot below.
 
         # Second branch run should succeed (not false-stale on shared upstream)
-        run_branch2_resp = client.post("/runs", json={
+        run_branch2_resp = client.post("/runs?sync=true", json={
             "project_id": pid,
             "plan_version_id": updated_pv_id,
             "run_scope": "branch",
@@ -1347,7 +1372,7 @@ class TestPhase4BranchingFlow:
 
         # Third branch run: since the second was a no-op (all steps already current),
         # this should still succeed and return the same run_id as the second.
-        run_branch3_resp = client.post("/runs", json={
+        run_branch3_resp = client.post("/runs?sync=true", json={
             "project_id": pid,
             "plan_version_id": updated_pv_id,
             "run_scope": "branch",

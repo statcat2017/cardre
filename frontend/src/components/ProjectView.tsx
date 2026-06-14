@@ -81,18 +81,43 @@ export function ProjectView({ projectId, onBack }: Props) {
     setError(null);
     setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Starting pathway run...`]);
     try {
-      await api.runPlan({
+      const runResp = await api.runPlan({
         project_id: projectId,
         plan_version_id: planData.latest_version_id,
       });
-      queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+      const runId = runResp.run_id;
+      setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Run started (${runId.slice(0, 8)}…)`]);
+
       queryClient.invalidateQueries({ queryKey: ["projectRuns", projectId] });
-      await refetchPlan();
-      setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Run completed`]);
+
+      // Poll for completion
+      const pollInterval = setInterval(async () => {
+        try {
+          const [run, steps] = await Promise.all([
+            api.getRun(runId),
+            api.getRunSteps(runId),
+          ]);
+          const stepStatuses = steps.steps.map((s) => `${s.step_id}: ${s.status}${s.is_carried_forward ? " (carried forward)" : ""}`);
+          setDiagnostics((prev) => {
+            const prevCleaned = prev.filter((m) => !m.startsWith("  └ "));
+            return [...prevCleaned, `  └ steps: [${stepStatuses.join(", ")}]`];
+          });
+
+          if (run.status !== "running") {
+            clearInterval(pollInterval);
+            queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+            queryClient.invalidateQueries({ queryKey: ["projectRuns", projectId] });
+            await refetchPlan();
+            setRunning(false);
+            setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Run ${run.status}`]);
+          }
+        } catch {
+          // Poll may fail transiently during execution; continue
+        }
+      }, 2000);
     } catch (e: any) {
       setError(e.message);
       setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Run failed: ${e.message}`]);
-    } finally {
       setRunning(false);
     }
   };
