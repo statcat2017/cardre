@@ -19,7 +19,7 @@ from sidecar.models import (
     MigrateRequest,
     MigrateResponse,
 )
-from sidecar.routes.projects import _load_registry
+from cardre.services.project_registry import load_registry
 
 router = APIRouter(tags=["branches"])
 
@@ -36,7 +36,7 @@ def list_branches(
     branch_type: str | None = None,
     status: str | None = None,
 ):
-    registry = _load_registry()
+    registry = load_registry()
     entry = registry.get(project_id)
     if entry is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
@@ -68,7 +68,7 @@ def list_branches(
 @router.get("/branches/{branch_id}", response_model=BranchResponse)
 def get_branch(branch_id: str, project_id: str | None = None):
     if project_id is not None:
-        registry = _load_registry()
+        registry = load_registry()
         entry = registry.get(project_id)
         if entry is None:
             raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
@@ -77,7 +77,7 @@ def get_branch(branch_id: str, project_id: str | None = None):
         if branch is None:
             raise HTTPException(status_code=404, detail={"code": "BRANCH_NOT_FOUND", "message": f"No branch with ID {branch_id}"})
     else:
-        registry = _load_registry()
+        registry = load_registry()
         branch = None
         store = None
         for pid, entry in registry.items():
@@ -121,7 +121,7 @@ def get_branch(branch_id: str, project_id: str | None = None):
 
 @router.post("/plans/{plan_id}/branches", response_model=CreateBranchResponse, status_code=201)
 def create_branch(plan_id: str, req: CreateBranchRequest):
-    registry = _load_registry()
+    registry = load_registry()
     entry = registry.get(req.project_id)
     if entry is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {req.project_id}"})
@@ -157,7 +157,7 @@ def create_branch(plan_id: str, req: CreateBranchRequest):
 
 @router.post("/migrations/baseline", response_model=MigrateResponse)
 def migrate_baseline(req: MigrateRequest):
-    registry = _load_registry()
+    registry = load_registry()
     entry = registry.get(req.project_id)
     if entry is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {req.project_id}"})

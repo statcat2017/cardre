@@ -12,14 +12,14 @@ from sidecar.models import (
     RefreshComparisonResponse,
     MissingStaleEvidence,
 )
-from sidecar.routes.projects import _load_registry, _get_store_for_project
+from cardre.services.project_registry import get_store_for_project, load_registry
 
 router = APIRouter(tags=["comparisons"])
 
 
 @router.post("/branch-comparisons", response_model=ComparisonResponse, status_code=201)
 def create_branch_comparison(req: CreateComparisonRequest):
-    store = _get_store_for_project(req.project_id)
+    store = get_store_for_project(req.project_id)
     try:
         result = create_comparison(
             store=store,
@@ -49,9 +49,9 @@ def create_branch_comparison(req: CreateComparisonRequest):
 
 @router.get("/branch-comparisons/{comparison_id}", response_model=ComparisonResponse)
 def get_branch_comparison(comparison_id: str):
-    registry = _load_registry()
+    registry = load_registry()
     for pid, entry in registry.items():
-        store = _get_store_for_project(pid)
+        store = get_store_for_project(pid)
         row = store._connect().execute(
             "SELECT * FROM branch_comparisons WHERE comparison_id = ?",
             (comparison_id,),
@@ -73,9 +73,9 @@ def get_branch_comparison(comparison_id: str):
 
 @router.post("/branch-comparisons/{comparison_id}/refresh", response_model=RefreshComparisonResponse)
 def refresh_branch_comparison(comparison_id: str):
-    registry = _load_registry()
+    registry = load_registry()
     for pid, entry in registry.items():
-        store = _get_store_for_project(pid)
+        store = get_store_for_project(pid)
         row = store._connect().execute(
             "SELECT project_id FROM branch_comparisons WHERE comparison_id = ?",
             (comparison_id,),
@@ -101,9 +101,9 @@ def refresh_branch_comparison(comparison_id: str):
 
 @router.get("/branch-comparison-snapshots/{snapshot_id}", response_model=ComparisonSnapshotResponse)
 def get_comparison_snapshot(snapshot_id: str):
-    registry = _load_registry()
+    registry = load_registry()
     for pid, entry in registry.items():
-        store = _get_store_for_project(pid)
+        store = get_store_for_project(pid)
         row = store._connect().execute(
             "SELECT * FROM branch_comparison_snapshots WHERE comparison_snapshot_id = ?",
             (snapshot_id,),

@@ -1,18 +1,12 @@
-"""Proof node implementations for Phase 1.
-
-These are minimal implementations to exercise the executor, role enforcement,
-and artifact lifecycle. Phase 2+ will replace these with real scorecard nodes.
-"""
-
 from __future__ import annotations
 
 import json
 import math
-import zipfile
 from pathlib import Path
 from typing import Any
 
 import polars as pl
+from sklearn.linear_model import LogisticRegression
 
 from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
 from cardre.audit import (
@@ -22,838 +16,6 @@ from cardre.audit import (
 )
 
 
-GERMAN_CREDIT_COLUMNS = [
-    "checking_account_status",
-    "duration_months",
-    "credit_history",
-    "purpose",
-    "credit_amount",
-    "savings_account_bonds",
-    "present_employment_since",
-    "installment_rate_percent_disposable_income",
-    "personal_status_sex",
-    "other_debtors_guarantors",
-    "present_residence_since",
-    "property",
-    "age_years",
-    "other_installment_plans",
-    "housing",
-    "existing_credits_at_bank",
-    "job",
-    "people_liable_maintenance",
-    "telephone",
-    "foreign_worker",
-    "credit_risk_class",
-]
-
-
-class ImportGermanCreditNode(NodeType):
-    node_type = "cardre.import_dataset"
-    version = "1"
-    category = "transform"
-    input_roles: list[str] = []
-    output_roles: list[str] = ["input"]
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        params = context.validated_params
-        source_path = Path(params["source_path"])
-        artifact_metadata = {
-            "source_dataset_id": "uci-statlog-german-credit",
-            "target_column": "credit_risk_class",
-            "target_mapping": {"1": "good", "2": "bad"},
-            "source_file": source_path.name,
-        }
-
-        if source_path.suffix == ".zip":
-            df = self._read_from_zip(source_path)
-        else:
-            df = self._read_from_file(source_path)
-
-        store = context.store
-
-        artifact = write_parquet_artifact(
-            store,
-            artifact_type="dataset",
-            role="input",
-            stem="german-credit",
-            frame=df,
-            metadata=artifact_metadata,
-        )
-
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"row_count": df.height, "column_count": df.width},
-            execution_fingerprint=fingerprint,
-        )
-
-    def _read_from_zip(self, zip_path: Path) -> pl.DataFrame:
-        with zipfile.ZipFile(zip_path) as zf:
-            names = zf.namelist()
-            data_file = next((n for n in names if n.endswith("german.data")), None)
-            if data_file is None:
-                data_file = next((n for n in names if "german" in n.lower()), None)
-            if data_file is None:
-                data_file = names[0]
-            content = zf.read(data_file).decode("latin-1")
-        return self._parse_content(content)
-
-    def _read_from_file(self, file_path: Path) -> pl.DataFrame:
-        content = file_path.read_text(encoding="latin-1")
-        return self._parse_content(content)
-
-    def _parse_content(self, content: str) -> pl.DataFrame:
-        rows = []
-        for line in content.strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split()
-            if len(parts) == 21:
-                rows.append(parts)
-        return pl.DataFrame(
-            data=rows,
-            schema=GERMAN_CREDIT_COLUMNS,
-            orient="row",
-        )
-
-
-class ProfileDatasetNode(NodeType):
-    node_type = "cardre.profile_dataset"
-    version = "1"
-    category = "transform"
-    input_roles: list[str] = ["input", "train", "test", "oot"]
-    output_roles: list[str] = ["report"]
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        input_artifact = context.input_artifacts[0]
-
-        path = store.artifact_path(input_artifact)
-        df = pl.read_parquet(path)
-
-        report = {
-            "row_count": df.height,
-            "column_count": df.width,
-            "columns": list(df.columns),
-            "dtypes": {c: str(df.schema[c]) for c in df.columns},
-            "null_counts": {c: int(df[c].null_count()) for c in df.columns},
-            "numeric_stats": self._numeric_stats(df),
-            "profile_steps": [],
-        }
-
-        artifact = write_json_artifact(
-            store,
-            artifact_type="report",
-            role="report",
-            stem=f"profile-{context.step_spec.step_id}",
-            payload=report,
-            metadata={"source_artifact_id": input_artifact.artifact_id},
-        )
-
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"row_count": df.height},
-            execution_fingerprint=fingerprint,
-        )
-
-    def _numeric_stats(self, df: pl.DataFrame) -> dict[str, dict[str, float]]:
-        stats = {}
-        for col in df.columns:
-            if df.schema[col] in (pl.Float64, pl.Float32, pl.Int64, pl.Int32, pl.Int16, pl.Int8, pl.UInt32, pl.UInt16, pl.UInt8):
-                series = df[col]
-                stats[col] = {
-                    "min": float(series.min()),
-                    "max": float(series.max()),
-                    "mean": float(series.mean()),
-                    "std": float(series.std()),
-                }
-        return stats
-
-
-class ValidateBinaryTargetNode(NodeType):
-    node_type = "cardre.validate_binary_target"
-    version = "1"
-    category = "transform"
-    input_roles: list[str] = ["input", "train"]
-    output_roles: list[str] = ["report"]
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        input_artifact = context.input_artifacts[0]
-        params = context.validated_params
-        target_col = params.get("target_column", "credit_risk_class")
-
-        df = pl.read_parquet(store.artifact_path(input_artifact))
-        values = df[target_col].unique().to_list()
-        unique_values = sorted(str(v) for v in values)
-
-        report = {
-            "target_column": target_col,
-            "unique_values": unique_values,
-            "count": len(unique_values),
-            "is_binary": len(unique_values) == 2,
-            "value_counts": {
-                str(k): int(v)
-                for k, v in df[target_col].value_counts().rows()
-            },
-            "null_count": int(df[target_col].null_count()),
-        }
-
-        if len(unique_values) != 2:
-            raise ValueError(
-                f"Target column {target_col!r} has {len(unique_values)} unique values, expected 2"
-            )
-
-        artifact = write_json_artifact(
-            store,
-            artifact_type="report",
-            role="report",
-            stem=f"target-validate-{context.step_spec.step_id}",
-            payload=report,
-            metadata={"source_artifact_id": input_artifact.artifact_id},
-        )
-
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"is_binary": report["is_binary"]},
-            execution_fingerprint=fingerprint,
-        )
-
-
-class SplitTrainTestOotNode(NodeType):
-    node_type = "cardre.split_train_test_oot"
-    version = "2"
-    category = "transform"
-    input_roles: list[str] = ["input", "definition"]
-    output_roles: list[str] = ["train", "test", "oot"]
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-
-        dataset_artifact = next(a for a in context.input_artifacts if a.role == "input")
-        store = context.store
-        params = context.validated_params
-
-        strategy = params.get("strategy", "random_stratified")
-        train_frac = float(params.get("train_fraction", 0.6))
-        test_frac = float(params.get("test_fraction", 0.2))
-        oot_frac = float(params.get("oot_fraction", 0.2))
-        seed = int(params.get("random_seed", 42))
-        target_column = params.get("target_column", "credit_risk_class")
-        role_column = params.get("role_column")
-
-        total = train_frac + test_frac + oot_frac
-        if abs(total - 1.0) > 0.001:
-            raise ValueError(f"Split fractions sum to {total}, expected 1.0")
-
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
-
-        if strategy == "preassigned_role_column":
-            if not role_column or role_column not in df.columns:
-                raise ValueError(f"preassigned_role_column '{role_column}' not found in dataset")
-            role_map = {}
-            for role_val in ("train", "test", "oot"):
-                mask = df[role_column] == role_val
-                count = mask.sum()
-                if count == 0:
-                    raise ValueError(f"Role column {role_column} has no rows with value '{role_val}'")
-                role_map[role_val] = df[mask]
-        elif strategy == "random_stratified":
-            if target_column not in df.columns:
-                raise ValueError(f"Target column '{target_column}' not found in dataset")
-            role_map = self._stratified_split(df, target_column, train_frac, test_frac, oot_frac, seed)
-        else:
-            raise ValueError(f"Unknown split strategy: {strategy}")
-
-        artifacts = []
-        for role in ("train", "test", "oot"):
-            subset = role_map[role]
-            artifact = write_parquet_artifact(
-                store,
-                artifact_type="dataset",
-                role=role,
-                stem=f"split-{role}",
-                frame=subset,
-                metadata={
-                    "source_artifact_id": dataset_artifact.artifact_id,
-                    "strategy": strategy,
-                    "row_count": subset.height,
-                },
-            )
-            artifacts.append(artifact)
-
-        target_rates = {}
-        for role, subset in role_map.items():
-            if target_column in subset.columns:
-                col = subset[target_column]
-                vals = col.value_counts()
-                target_rates[role] = {str(r[0]): int(r[1]) for r in vals.iter_rows()}
-
-        split_report = {
-            "strategy": strategy,
-            "random_seed": seed if strategy != "preassigned_role_column" else None,
-            "fractions": {"train": train_frac, "test": test_frac, "oot": oot_frac},
-            "row_counts": {role: subset.height for role, subset in role_map.items()},
-            "target_rates": target_rates,
-            "source_artifact_id": dataset_artifact.artifact_id,
-        }
-        write_json_artifact(
-            store,
-            artifact_type="report",
-            role="report",
-            stem=f"split-report-{context.step_spec.step_id}",
-            payload=split_report,
-            metadata={"source_artifact_id": dataset_artifact.artifact_id},
-        )
-
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=artifacts,
-        )
-
-        return NodeOutput(
-            artifacts=artifacts,
-            metrics={
-                "train_count": role_map["train"].height,
-                "test_count": role_map["test"].height,
-                "oot_count": role_map["oot"].height,
-            },
-            execution_fingerprint=fingerprint,
-        )
-
-    def _stratified_split(
-        self,
-        df: pl.DataFrame,
-        target_column: str,
-        train_frac: float,
-        test_frac: float,
-        oot_frac: float,
-        seed: int,
-    ) -> dict[str, pl.DataFrame]:
-        import random as rng
-        rng.seed(seed)
-
-        df_with_idx = df.with_columns(pl.Series("__row_idx__", range(df.height)))
-        groups = df_with_idx.group_by(target_column).agg(pl.col("__row_idx__"))
-
-        train_indices: list[int] = []
-        test_indices: list[int] = []
-        oot_indices: list[int] = []
-
-        for row in groups.iter_rows():
-            group_indices = list(row[1])
-            rng.shuffle(group_indices)
-            n = len(group_indices)
-            n_train = max(1, int(n * train_frac))
-            n_test = max(1, int(n * test_frac))
-            train_indices.extend(group_indices[:n_train])
-            test_indices.extend(group_indices[n_train:n_train + n_test])
-            oot_indices.extend(group_indices[n_train + n_test:])
-
-        return {
-            "train": df[train_indices],
-            "test": df[test_indices],
-            "oot": df[oot_indices],
-        }
-
-
-class DummyFitNode(NodeType):
-    node_type = "cardre.dummy_fit"
-    version = "1"
-    category = "fit"
-    input_roles: list[str] = ["train"]
-    output_roles: list[str] = ["definition"]
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        input_artifact = context.input_artifacts[0]
-        params = context.validated_params
-
-        df = pl.read_parquet(store.artifact_path(input_artifact))
-        dummy_def = {
-            "model_type": "dummy",
-            "version": self.version,
-            "params": params,
-            "input_columns": list(df.columns),
-            "row_count": df.height,
-        }
-
-        artifact = write_json_artifact(
-            store,
-            artifact_type="definition",
-            role="definition",
-            stem=f"dummy-fit-{context.step_spec.step_id}",
-            payload=dummy_def,
-            metadata={"source_artifact_id": input_artifact.artifact_id},
-        )
-
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"row_count": df.height},
-            execution_fingerprint=fingerprint,
-        )
-
-
-class DummyApplyNode(NodeType):
-    node_type = "cardre.dummy_apply"
-    version = "1"
-    category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "definition"]
-    output_roles: list[str] = ["prediction"]
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        data_artifacts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        def_artifact = next((a for a in context.input_artifacts if a.role == "definition"), None)
-
-        if def_artifact is None:
-            raise ValueError("Dummy apply requires a definition artifact")
-
-        input_roles = {a.role for a in data_artifacts}
-        required_roles = {"train", "test", "oot"}
-        missing = required_roles - input_roles
-        if missing:
-            raise ValueError(
-                f"Dummy apply requires train, test, and oot artifacts. "
-                f"Missing: {sorted(missing)}. "
-                f"Received roles: {sorted(input_roles)}"
-            )
-
-        outputs = []
-        for data_art in data_artifacts:
-            df = pl.read_parquet(store.artifact_path(data_art))
-            pred = pl.DataFrame({
-                "dummy_prediction": [0.5] * df.height,
-                "row_id": list(range(df.height)),
-            })
-
-            artifact = write_parquet_artifact(
-                store,
-                artifact_type="dataset",
-                role="prediction",
-                stem=f"apply-{data_art.role}-{context.step_spec.step_id}",
-                frame=pred,
-                metadata={
-                    "source_artifact_id": data_art.artifact_id,
-                    "definition_artifact_id": def_artifact.artifact_id,
-                },
-                directory="artifacts",
-            )
-            outputs.append(artifact)
-
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=outputs,
-        )
-
-        return NodeOutput(
-            artifacts=outputs,
-            metrics={"output_count": len(outputs)},
-            execution_fingerprint=fingerprint,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Phase 2A: Define Modelling Metadata
-# ---------------------------------------------------------------------------
-
-class DefineModellingMetadataNode(NodeType):
-    node_type = "cardre.define_modelling_metadata"
-    version = "1"
-    category = "transform"
-    input_roles: list[str] = ["input", "train"]
-    output_roles: list[str] = ["definition"]
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-
-        store = context.store
-        params = context.validated_params
-        dataset_artifact = context.input_artifacts[0]
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
-
-        target_column = params.get("target_column", "")
-        good_values = params.get("good_values", [])
-        bad_values = params.get("bad_values", [])
-
-        if not target_column:
-            raise ValueError("Target column must be non-empty")
-        if target_column not in df.columns:
-            raise ValueError(f"Target column '{target_column}' not found in dataset")
-        if not good_values:
-            raise ValueError("Good values must be non-empty")
-        if not bad_values:
-            raise ValueError("Bad values must be non-empty")
-        overlap = set(good_values) & set(bad_values)
-        if overlap:
-            raise ValueError(f"Good and bad value sets overlap: {overlap}")
-
-        metadata = {
-            "target_column": target_column,
-            "good_values": good_values,
-            "bad_values": bad_values,
-            "indeterminate_values": params.get("indeterminate_values", []),
-            "population": params.get("population", ""),
-            "product": params.get("product", ""),
-            "segment": params.get("segment", ""),
-            "observation_window": params.get("observation_window"),
-            "performance_window": params.get("performance_window"),
-        }
-
-        artifact = write_json_artifact(
-            store, artifact_type="definition", role="definition",
-            stem=f"modelling-metadata-{context.step_spec.step_id}",
-            payload=metadata,
-            metadata={"source_artifact_id": dataset_artifact.artifact_id},
-        )
-
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"target_column": target_column},
-            execution_fingerprint=fingerprint,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Phase 2A: Apply Exclusions
-# ---------------------------------------------------------------------------
-
-class ApplyExclusionsNode(NodeType):
-    node_type = "cardre.apply_exclusions"
-    version = "1"
-    category = "transform"
-    input_roles: list[str] = ["input", "train", "definition"]
-    output_roles: list[str] = ["input", "train"]
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-
-        store = context.store
-        params = context.validated_params
-        dataset_artifact = next(a for a in context.input_artifacts if a.role in ("input", "train"))
-        rules = params.get("rules", [])
-
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
-        n_before = df.height
-
-        rule_counts = []
-        for rule in rules:
-            column = rule.get("column", "")
-            operator = rule.get("operator", "")
-            value = rule.get("value")
-            reason = rule.get("reason", "")
-
-            if not reason:
-                raise ValueError(f"Exclusion rule for column '{column}' requires a non-empty reason")
-            if column not in df.columns:
-                raise ValueError(f"Exclusion rule references unknown column '{column}'")
-            if operator not in ("==", "!=", "<", "<=", ">", ">=", "in", "not_in", "is_null", "is_not_null"):
-                raise ValueError(f"Unsupported exclusion operator '{operator}'")
-
-            col_expr = pl.col(column)
-            if df.schema[column] == pl.Utf8 and isinstance(value, (int, float)):
-                col_expr = pl.col(column).cast(pl.Float64)
-
-            n_before_rule = df.height
-            if operator == "==":
-                df = df.filter(col_expr == value)
-            elif operator == "!=":
-                df = df.filter(col_expr != value)
-            elif operator == "<":
-                df = df.filter(col_expr < value)
-            elif operator == "<=":
-                df = df.filter(col_expr <= value)
-            elif operator == ">":
-                df = df.filter(col_expr > value)
-            elif operator == ">=":
-                df = df.filter(col_expr >= value)
-            elif operator == "in":
-                df = df.filter(col_expr.is_in(value))
-            elif operator == "not_in":
-                df = df.filter(~col_expr.is_in(value))
-            elif operator == "is_null":
-                df = df.filter(col_expr.is_null())
-            elif operator == "is_not_null":
-                df = df.filter(col_expr.is_not_null())
-            n_after_rule = df.height
-            rule_counts.append({
-                "column": column,
-                "operator": operator,
-                "value": value,
-                "reason": reason,
-                "rows_removed": n_before_rule - n_after_rule,
-            })
-
-        dataset_artifact = write_parquet_artifact(
-            store, artifact_type="dataset",
-            role=dataset_artifact.role,
-            stem=f"excluded-{context.step_spec.step_id}",
-            frame=df,
-            metadata={
-                "source_artifact_id": dataset_artifact.artifact_id,
-                "rows_before": n_before,
-                "rows_after": df.height,
-            },
-        )
-
-        exclusion_report = {
-            "rows_before": n_before,
-            "rows_after": df.height,
-            "rows_excluded": n_before - df.height,
-            "rules": rule_counts,
-        }
-        write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"exclusion-report-{context.step_spec.step_id}",
-            payload=exclusion_report,
-            metadata={"source_artifact_id": dataset_artifact.artifact_id},
-        )
-
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[dataset_artifact],
-        )
-
-        return NodeOutput(
-            artifacts=[dataset_artifact],
-            metrics={"rows_before": n_before, "rows_after": df.height},
-            execution_fingerprint=fingerprint,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Phase 2A: Development Sample Definition
-# ---------------------------------------------------------------------------
-
-class DevelopmentSampleDefinitionNode(NodeType):
-    node_type = "cardre.development_sample_definition"
-    version = "1"
-    category = "transform"
-    input_roles: list[str] = ["input", "train", "definition"]
-    output_roles: list[str] = ["definition"]
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-
-        store = context.store
-        params = context.validated_params
-
-        weight_column = params.get("weight_column")
-        if weight_column:
-            dataset_artifact = next(a for a in context.input_artifacts if a.role in ("input", "train"))
-            df = pl.read_parquet(store.artifact_path(dataset_artifact))
-            if weight_column not in df.columns:
-                raise ValueError(f"Weight column '{weight_column}' not found in dataset")
-            if not df.schema[weight_column].is_numeric():
-                raise ValueError(f"Weight column '{weight_column}' must be numeric")
-
-        sample_def = {
-            "sample_method": params.get("sample_method", "full_population"),
-            "weight_column": weight_column,
-            "population_bad_rate": params.get("population_bad_rate"),
-            "prior_probability_adjustment": params.get("prior_probability_adjustment"),
-        }
-
-        artifact = write_json_artifact(
-            store, artifact_type="definition", role="definition",
-            stem=f"sample-definition-{context.step_spec.step_id}",
-            payload=sample_def,
-            metadata={},
-        )
-
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"sample_method": sample_def["sample_method"]},
-            execution_fingerprint=fingerprint,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Phase 2A: Explicit Missing/Outlier Treatment
-# ---------------------------------------------------------------------------
-
-class ExplicitMissingOutlierTreatmentNode(NodeType):
-    node_type = "cardre.explicit_missing_outlier_treatment"
-    version = "1"
-    category = "apply"
-    input_roles: list[str] = ["train", "test", "oot"]
-    output_roles: list[str] = ["train", "test", "oot"]
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-
-        store = context.store
-        params = context.validated_params
-        imputations = params.get("imputations", {})
-        caps = params.get("caps", {})
-        floors = params.get("floors", {})
-
-        treatment_report = {"imputations": {}, "caps": {}, "floors": {}}
-
-        output_artifacts = []
-        for input_art in context.input_artifacts:
-            df = pl.read_parquet(store.artifact_path(input_art))
-            affected = {"imputations": {}, "caps": {}, "floors": {}}
-
-            for col_name, config in imputations.items():
-                if col_name not in df.columns:
-                    raise ValueError(f"Imputation target column '{col_name}' not found")
-                reason = config.get("reason", "")
-                if not reason:
-                    raise ValueError(f"Imputation for '{col_name}' requires a reason")
-                val = config.get("value")
-                null_count = int(df[col_name].null_count())
-                df = df.with_columns(pl.col(col_name).fill_null(val))
-                affected["imputations"][col_name] = {"filled_nulls": null_count, "value": val, "reason": reason}
-
-            for col_name, config in caps.items():
-                if col_name not in df.columns:
-                    raise ValueError(f"Cap target column '{col_name}' not found")
-                reason = config.get("reason", "")
-                if not reason:
-                    raise ValueError(f"Cap for '{col_name}' requires a reason")
-                val = config.get("value")
-                if not df.schema[col_name].is_numeric():
-                    raise ValueError(f"Cap column '{col_name}' must be numeric")
-                capped_count = int(df.filter(pl.col(col_name) > val).height)
-                df = df.with_columns(pl.when(pl.col(col_name) > val).then(val).otherwise(pl.col(col_name)).alias(col_name))
-                affected["caps"][col_name] = {"capped_count": capped_count, "value": val, "reason": reason}
-
-            for col_name, config in floors.items():
-                if col_name not in df.columns:
-                    raise ValueError(f"Floor target column '{col_name}' not found")
-                reason = config.get("reason", "")
-                if not reason:
-                    raise ValueError(f"Floor for '{col_name}' requires a reason")
-                val = config.get("value")
-                if not df.schema[col_name].is_numeric():
-                    raise ValueError(f"Floor column '{col_name}' must be numeric")
-                floored_count = int(df.filter(pl.col(col_name) < val).height)
-                df = df.with_columns(pl.when(pl.col(col_name) < val).then(val).otherwise(pl.col(col_name)).alias(col_name))
-                affected["floors"][col_name] = {"floored_count": floored_count, "value": val, "reason": reason}
-
-            output_art = write_parquet_artifact(
-                store, artifact_type="dataset",
-                role=input_art.role,
-                stem=f"treated-{input_art.role}-{context.step_spec.step_id}",
-                frame=df,
-                metadata={
-                    "source_artifact_id": input_art.artifact_id,
-                    "treatment": {k: list(v.keys()) for k, v in affected.items() if v},
-                },
-            )
-            output_artifacts.append(output_art)
-            treatment_report["imputations"].update(affected["imputations"])
-            treatment_report["caps"].update(affected["caps"])
-            treatment_report["floors"].update(affected["floors"])
-
-        write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"treatment-report-{context.step_spec.step_id}",
-            payload=treatment_report,
-            metadata={},
-        )
-
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=output_artifacts,
-        )
-
-        return NodeOutput(
-            artifacts=output_artifacts,
-            metrics={"output_count": len(output_artifacts)},
-            execution_fingerprint=fingerprint,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Phase 2A: Fine Classing
-# ---------------------------------------------------------------------------
 
 class FineClassingNode(NodeType):
     node_type = "cardre.fine_classing"
@@ -1183,10 +345,6 @@ class FineClassingNode(NodeType):
         return {"row_count": row_count, "good_count": good_count, "bad_count": bad_count}
 
 
-# ---------------------------------------------------------------------------
-# Phase 2A: Calculate WOE / IV
-# ---------------------------------------------------------------------------
-
 class CalculateWoeIvNode(NodeType):
     node_type = "cardre.calculate_woe_iv"
     version = "1"
@@ -1227,6 +385,9 @@ class CalculateWoeIvNode(NodeType):
         iv_rows: dict[str, dict] = {}
         warnings_list: list[dict] = []
 
+        # Track per-variable smoothing for controlled evidence artifact
+        evidence_variables: list[dict] = []
+
         for var_def in bin_def_raw.get("variables", []):
             variable = var_def["variable"]
             kind = var_def["kind"]
@@ -1250,6 +411,9 @@ class CalculateWoeIvNode(NodeType):
             var_woe_rows = []
             var_iv = 0.0
             zero_cell_count = 0
+            smoothing_applied = False
+            zero_cell_encountered = False
+            affected_bins: list[dict] = []
 
             for bin_def in bins:
                 bin_id = bin_def["bin_id"]
@@ -1291,11 +455,16 @@ class CalculateWoeIvNode(NodeType):
                     bin_good = bin_def.get("good_count", 0)
                     bin_bad = bin_def.get("bad_count", 0)
 
-                good_dist = bin_good / total_good if total_good > 0 else 0.0
-                bad_dist = bin_bad / total_bad if total_bad > 0 else 0.0
+                raw_good_dist = bin_good / total_good if total_good > 0 else 0.0
+                raw_bad_dist = bin_bad / total_bad if total_bad > 0 else 0.0
+                good_dist = raw_good_dist
+                bad_dist = raw_bad_dist
+                was_smoothed = False
+                raw_woe_val: float | None = None
 
                 if good_dist == 0.0 or bad_dist == 0.0:
                     zero_cell_count += 1
+                    zero_cell_encountered = True
                     if zero_cell_policy == "block" and purpose == "final":
                         if smoothing and smoothing.get("method") == "additive":
                             alpha = float(smoothing.get("alpha", 0.5))
@@ -1306,6 +475,8 @@ class CalculateWoeIvNode(NodeType):
                                 )
                             good_dist = (bin_good + alpha) / (total_good + alpha * len(bins)) if total_good > 0 else alpha / (alpha * len(bins))
                             bad_dist = (bin_bad + alpha) / (total_bad + alpha * len(bins)) if total_bad > 0 else alpha / (alpha * len(bins))
+                            was_smoothed = True
+                            smoothing_applied = True
                             warnings_list.append({
                                 "variable": variable,
                                 "bin_id": bin_id,
@@ -1322,6 +493,8 @@ class CalculateWoeIvNode(NodeType):
                         alpha = float(smoothing.get("alpha", 0.5))
                         good_dist = (bin_good + alpha) / (total_good + alpha * len(bins)) if total_good > 0 else alpha / (alpha * len(bins))
                         bad_dist = (bin_bad + alpha) / (total_bad + alpha * len(bins)) if total_bad > 0 else alpha / (alpha * len(bins))
+                        was_smoothed = True
+                        smoothing_applied = True
 
                 if good_dist == 0.0 or bad_dist == 0.0:
                     woe_val = 0.0
@@ -1329,6 +502,8 @@ class CalculateWoeIvNode(NodeType):
                 else:
                     woe_val = float(math.log(good_dist / bad_dist))
                     iv_comp = (good_dist - bad_dist) * woe_val
+                    if was_smoothed:
+                        raw_woe_val = float(math.log(raw_good_dist / raw_bad_dist)) if raw_good_dist > 0 and raw_bad_dist > 0 else None
 
                 var_iv += iv_comp
 
@@ -1345,6 +520,19 @@ class CalculateWoeIvNode(NodeType):
                     "iv_component": round(iv_comp, 6),
                 })
 
+                if was_smoothed:
+                    alpha = float(smoothing.get("alpha", 0.5))
+                    affected_bins.append({
+                        "bin_id": bin_id,
+                        "reason": "zero_good" if raw_good_dist == 0.0 else "zero_bad",
+                        "raw_good_count": bin_good,
+                        "raw_bad_count": bin_bad,
+                        "smoothed_good_count": bin_good + alpha,
+                        "smoothed_bad_count": bin_bad + alpha,
+                        "raw_woe": raw_woe_val,
+                        "final_woe": round(woe_val, 6),
+                    })
+
             woe_rows.extend(var_woe_rows)
             iv_rows[variable] = {
                 "variable": variable,
@@ -1353,6 +541,30 @@ class CalculateWoeIvNode(NodeType):
                 "zero_cell_count": zero_cell_count,
                 "warning_count": sum(1 for w in warnings_list if w["variable"] == variable),
             }
+
+            var_bins_out = []
+            for bin_def in bins:
+                var_bins_out.append({
+                    "bin_id": bin_def["bin_id"],
+                    "label": bin_def["label"],
+                    "lower": bin_def.get("lower"),
+                    "upper": bin_def.get("upper"),
+                    "good_count": bin_def.get("good_count", 0),
+                    "bad_count": bin_def.get("bad_count", 0),
+                    "bad_rate": round(bin_def.get("bad_count", 0) / max(bin_def.get("good_count", 0) + bin_def.get("bad_count", 0), 1), 4),
+                    "woe": None,
+                    "iv_contribution": None,
+                })
+
+            evidence_variables.append({
+                "variable_name": variable,
+                "status": "included",
+                "iv": round(var_iv, 6),
+                "smoothing_applied": smoothing_applied,
+                "zero_cell_encountered": zero_cell_encountered,
+                "affected_bins": affected_bins,
+                "bins": var_bins_out,
+            })
 
         woe_table = pl.DataFrame(woe_rows) if woe_rows else pl.DataFrame({
             "variable": [], "bin_id": [], "label": [], "row_count": [],
@@ -1394,6 +606,42 @@ class CalculateWoeIvNode(NodeType):
             metadata={"purpose": purpose},
         )
 
+        # Controlled WOE/IV evidence artifact (Phase 5, cardre.woe_iv_evidence.v1)
+        project_id = ""
+        plan_id = store.get_plan_id_for_version(context.plan_version_id)
+        if plan_id:
+            plan = store.get_plan(plan_id)
+            if plan:
+                project_id = plan["project_id"]
+
+        woe_evidence = {
+            "schema_version": "cardre.woe_iv_evidence.v1",
+            "project_id": project_id,
+            "run_id": context.run_id,
+            "branch_id": context.step_spec.branch_id or "",
+            "step_id": context.step_spec.step_id,
+            "canonical_step_id": context.step_spec.canonical_step_id,
+            "dataset_role": "train",
+            "target_column": target_column,
+            "config": {
+                "smoothing": {
+                    "enabled": smoothing is not None,
+                    "method": (smoothing or {}).get("method", "additive"),
+                    "alpha": float((smoothing or {}).get("alpha", 0.5)),
+                    "zero_cell_policy": zero_cell_policy,
+                },
+            },
+            "variables": evidence_variables,
+        }
+        evidence_art = write_json_artifact(
+            store, artifact_type="report", role="report",
+            stem=f"woe-iv-evidence-{purpose}-{context.step_spec.step_id}",
+            payload=woe_evidence,
+            metadata={"purpose": purpose, "schema_version": "cardre.woe_iv_evidence.v1"},
+        )
+
+        all_artifacts = [woe_art, iv_art, summary_art, evidence_art]
+
         fingerprint = make_fingerprint(
             plan_version_id=context.plan_version_id,
             step_id=context.step_spec.step_id,
@@ -1402,11 +650,11 @@ class CalculateWoeIvNode(NodeType):
             params_hash=context.step_spec.params_hash,
             parent_run_steps=context.parent_run_steps,
             input_artifacts=context.input_artifacts,
-            output_artifacts=[woe_art, iv_art, summary_art],
+            output_artifacts=all_artifacts,
         )
 
         return NodeOutput(
-            artifacts=[woe_art, iv_art, summary_art],
+            artifacts=all_artifacts,
             metrics={
                 "variable_count": len(iv_rows),
                 "zero_cell_warning_count": len(warnings_list),
@@ -1414,10 +662,6 @@ class CalculateWoeIvNode(NodeType):
             execution_fingerprint=fingerprint,
         )
 
-
-# ---------------------------------------------------------------------------
-# Phase 2A: Variable Clustering
-# ---------------------------------------------------------------------------
 
 class VariableClusteringNode(NodeType):
     node_type = "cardre.variable_clustering"
@@ -1546,10 +790,6 @@ class VariableClusteringNode(NodeType):
             execution_fingerprint=fingerprint,
         )
 
-
-# ---------------------------------------------------------------------------
-# Phase 2A: Variable Selection
-# ---------------------------------------------------------------------------
 
 class VariableSelectionNode(NodeType):
     node_type = "cardre.variable_selection"
@@ -1724,140 +964,6 @@ class VariableSelectionNode(NodeType):
         )
 
 
-# ---------------------------------------------------------------------------
-# Phase 2A: Manual Binning — shared helpers
-# ---------------------------------------------------------------------------
-
-
-def validate_manual_binning_overrides(bin_def: dict, overrides: list[dict]) -> list[str]:
-    """Validate overrides against fine-classing bin definitions.
-
-    Checks that each override references a real variable, uses a supported
-    action, has a reason, mentions only existing bin IDs, and for numeric
-    merge_bins the source bins are adjacent in the original ordering.
-
-    Returns a list of error messages (empty = valid).
-    """
-    errors: list[str] = []
-    var_map = {v["variable"]: v for v in bin_def.get("variables", [])}
-
-    for i, override in enumerate(overrides):
-        prefix = f"overrides[{i}]"
-        variable = override.get("variable", "")
-        action = override.get("action", "")
-        reason = override.get("reason", "")
-        source_bin_ids = override.get("source_bin_ids", [])
-
-        if not reason:
-            errors.append(f"{prefix}: override for '{variable}' requires a non-empty reason")
-            continue
-        if variable not in var_map:
-            errors.append(f"{prefix}: references unknown variable '{variable}'")
-            continue
-        if action not in ("merge_bins", "group_categories", "isolate_missing", "isolate_special_value"):
-            errors.append(f"{prefix}: unsupported action '{action}'")
-            continue
-
-        var_bins = var_map[variable].get("bins", [])
-        bin_id_map = {b["bin_id"]: b for b in var_bins}
-
-        for bid in source_bin_ids:
-            if bid not in bin_id_map:
-                errors.append(f"{prefix}: bin_id '{bid}' not found in variable '{variable}'")
-
-        if errors:
-            continue
-
-        if action == "merge_bins":
-            if len(source_bin_ids) < 2:
-                errors.append(f"{prefix}: merge_bins requires at least 2 source bins")
-                continue
-            kind = var_map[variable].get("kind", "")
-            if kind == "numeric":
-                bin_positions = [var_bins.index(bin_id_map[bid]) for bid in source_bin_ids]
-                expected_positions = list(range(min(bin_positions), max(bin_positions) + 1))
-                if bin_positions != expected_positions:
-                    errors.append(
-                        f"{prefix}: numeric bin merge requires adjacent bins. "
-                        f"Source bins at positions {bin_positions} are not contiguous."
-                    )
-
-    return errors
-
-
-def apply_manual_binning_overrides(
-    bin_def: dict, overrides: list[dict], selected_vars: set[str] | None = None
-) -> dict:
-    """Apply manual binning overrides to a fine-classing bin definition.
-
-    Returns a new ``bin_def`` dict with merged / grouped bins computed
-    and (if *selected_vars* is given) filtered to the selected variables.
-    Raises ``ValueError`` on invalid overrides — call
-    :func:`validate_manual_binning_overrides` first for user-facing errors.
-    """
-    var_map = {v["variable"]: dict(v) for v in bin_def.get("variables", [])}
-    warnings: list[dict] = []
-
-    for override in overrides:
-        variable = override.get("variable", "")
-        action = override.get("action", "")
-        source_bin_ids = override.get("source_bin_ids", [])
-
-        if variable not in var_map:
-            raise ValueError(f"Override references unknown variable '{variable}'")
-
-        var_info = var_map[variable]
-        var_bins = list(var_info.get("bins", []))
-        bin_id_map = {b["bin_id"]: b for b in var_bins}
-
-        if action == "merge_bins":
-            merged = {
-                "bin_id": f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
-                "label": override.get("new_label", "Merged"),
-                "lower": bin_id_map[source_bin_ids[0]].get("lower"),
-                "upper": bin_id_map[source_bin_ids[-1]].get("upper"),
-                "lower_inclusive": bin_id_map[source_bin_ids[0]].get("lower_inclusive", False),
-                "upper_inclusive": bin_id_map[source_bin_ids[-1]].get("upper_inclusive", True),
-                "categories": None,
-                "is_missing_bin": False,
-                "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
-                "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
-                "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
-            }
-            new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
-            insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
-            new_bins.insert(insert_pos, merged)
-            var_info["bins"] = new_bins
-
-        elif action == "group_categories":
-            grouped = {
-                "bin_id": f"{variable}_manual_grouped",
-                "label": override.get("new_label", "Grouped"),
-                "lower": None, "upper": None,
-                "lower_inclusive": False, "upper_inclusive": False,
-                "categories": sum([bin_id_map[bid].get("categories", []) for bid in source_bin_ids], []),
-                "is_missing_bin": False,
-                "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
-                "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
-                "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
-            }
-            new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
-            insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
-            new_bins.insert(insert_pos, grouped)
-            var_info["bins"] = new_bins
-
-    if selected_vars is not None:
-        var_map = {k: v for k, v in var_map.items() if k in selected_vars}
-
-    if not overrides:
-        warnings.append({"message": "No manual overrides applied; passing through auto bins for selected variables"})
-
-    return {
-        "variables": list(var_map.values()),
-        "warnings": bin_def.get("warnings", []) + warnings,
-    }
-
-
 class ManualBinningNode(NodeType):
     node_type = "cardre.manual_binning"
     version = "1"
@@ -1935,10 +1041,6 @@ class ManualBinningNode(NodeType):
             execution_fingerprint=fingerprint,
         )
 
-
-# ---------------------------------------------------------------------------
-# Phase 2A: Technical Manifest Export (stub)
-# ---------------------------------------------------------------------------
 
 class TechnicalManifestExportNode(NodeType):
     node_type = "cardre.technical_manifest_export"
@@ -2078,10 +1180,6 @@ class TechnicalManifestExportNode(NodeType):
             execution_fingerprint=fingerprint,
         )
 
-
-# ---------------------------------------------------------------------------
-# Phase 2B: WOE Transform Train
-# ---------------------------------------------------------------------------
 
 class WoeTransformTrainNode(NodeType):
     node_type = "cardre.woe_transform_train"
@@ -2291,10 +1389,6 @@ class WoeTransformTrainNode(NodeType):
         )
 
 
-# ---------------------------------------------------------------------------
-# Phase 2B: Logistic Regression
-# ---------------------------------------------------------------------------
-
 class LogisticRegressionNode(NodeType):
     node_type = "cardre.logistic_regression"
     version = "1"
@@ -2480,10 +1574,6 @@ class LogisticRegressionNode(NodeType):
         )
 
 
-# ---------------------------------------------------------------------------
-# Phase 2B: Score Scaling
-# ---------------------------------------------------------------------------
-
 class ScoreScalingNode(NodeType):
     node_type = "cardre.score_scaling"
     version = "1"
@@ -2646,10 +1736,6 @@ class ScoreScalingNode(NodeType):
         )
 
 
-# ---------------------------------------------------------------------------
-# Phase 2B: Build Summary Report
-# ---------------------------------------------------------------------------
-
 class BuildSummaryReportNode(NodeType):
     node_type = "cardre.build_summary_report"
     version = "1"
@@ -2735,516 +1821,178 @@ class BuildSummaryReportNode(NodeType):
         )
 
 
-# ---------------------------------------------------------------------------
-# Phase 2C: Apply WOE Mapping
-# ---------------------------------------------------------------------------
-
-class ApplyWoeMappingNode(NodeType):
-    node_type = "cardre.apply_woe_mapping"
+class DummyFitNode(NodeType):
+    node_type = "cardre.dummy_fit"
     version = "1"
-    category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "definition", "report"]
-    output_roles: list[str] = ["train", "test", "oot"]
-
-    def _find_artifacts(self, artifacts, store):
-        bin_art = woe_art = None
-        sel_art = None
-        data_arts = []
-        for a in artifacts:
-            if a.role in ("train", "test", "oot"):
-                data_arts.append(a)
-            elif a.role == "definition":
-                try:
-                    p = json.loads(store.artifact_path(a).read_text())
-                    if "variables" in p and "selected" not in p:
-                        bin_art = a
-                    elif "selected" in p:
-                        sel_art = a
-                except Exception:
-                    continue
-            elif a.role == "report":
-                try:
-                    c = store.artifact_path(a).read_bytes()
-                    if c[:4] == b"PAR1":
-                        d = pl.read_parquet(store.artifact_path(a))
-                        if "woe" in d.columns and "bin_id" in d.columns and "variable" in d.columns:
-                            woe_art = a
-                except Exception:
-                    continue
-        return data_arts, bin_art, woe_art, sel_art
+    category = "fit"
+    input_roles: list[str] = ["train"]
+    output_roles: list[str] = ["definition"]
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        import math
-
         store = context.store
-        data_arts, bin_art, woe_art, sel_art = self._find_artifacts(context.input_artifacts, store)
-        if bin_art is None:
-            raise ValueError("apply_woe_mapping requires a bin definition artifact")
-        if woe_art is None:
-            raise ValueError("apply_woe_mapping requires a WOE table report")
+        input_artifact = context.input_artifacts[0]
+        params = context.validated_params
 
-        bin_def = json.loads(store.artifact_path(bin_art).read_text())
-
-        selected_names: set[str] | None = None
-        if sel_art:
-            try:
-                s = json.loads(store.artifact_path(sel_art).read_text())
-                selected_names = {x["variable"] for x in s.get("selected", [])}
-            except Exception:
-                pass
-
-        woe_df = pl.read_parquet(store.artifact_path(woe_art))
-        c = woe_df.columns
-        woe_map: dict[str, dict[str, float]] = {}
-        for r in woe_df.iter_rows():
-            var = str(r[c.index("variable")])
-            bid = str(r[c.index("bin_id")])
-            wv = float(r[c.index("woe")])
-            woe_map.setdefault(var, {})[bid] = wv
-
-        var_defs = bin_def.get("variables", [])
-        if selected_names is not None:
-            var_defs = [v for v in var_defs if v["variable"] in selected_names]
-
-        fallback_report: dict[str, dict] = {}
-        outputs = []
-
-        for data_art in data_arts:
-            df = pl.read_parquet(store.artifact_path(data_art))
-            role = data_art.role
-            fallback_counts: dict[str, int] = {}
-
-            for vd in var_defs:
-                var = vd["variable"]
-                kind = vd["kind"]
-                bins = vd["bins"]
-                if var not in df.columns:
-                    continue
-                woe_col = f"{var}_woe"
-                woe_expr = None
-
-                for be in bins:
-                    bid = be["bin_id"]
-                    is_miss = be.get("is_missing_bin", False)
-                    if kind == "numeric":
-                        lo = be.get("lower"); hi = be.get("upper")
-                        li = be.get("lower_inclusive", False); ui = be.get("upper_inclusive", True)
-                        if is_miss:
-                            mask = pl.col(var).is_null()
-                        else:
-                            parts = []
-                            c2 = pl.col(var)
-                            if lo is not None:
-                                parts.append((c2 >= lo) if li else (c2 > lo))
-                            if hi is not None:
-                                parts.append((c2 <= hi) if ui else (c2 < hi))
-                            mask = parts[0]
-                            for p in parts[1:]:
-                                mask = mask & p
-                    else:
-                        cats = be.get("categories", [])
-                        if is_miss:
-                            mask = pl.col(var).is_null()
-                        elif cats:
-                            mask = pl.col(var).is_in(cats)
-                        else:
-                            mask = pl.lit(False)
-
-                    wv = woe_map.get(var, {}).get(bid)
-                    if wv is None:
-                        raise ValueError(f"apply_woe_mapping: missing WOE for {var}:{bid}")
-                    wc = pl.when(mask).then(pl.lit(wv))
-                    woe_expr = wc if woe_expr is None else woe_expr.when(mask).then(pl.lit(wv))
-
-                if woe_expr is not None:
-                    woe_expr = woe_expr.otherwise(pl.lit(None, dtype=pl.Float64))
-                    df = df.with_columns(woe_expr.alias(woe_col))
-                    n_unmatched = df.filter(pl.col(woe_col).is_null()).height
-                    if n_unmatched > 0:
-                        fallback_counts[var] = n_unmatched
-                        df = df.with_columns(pl.col(woe_col).fill_null(0.0))
-
-            fallback_report[role] = fallback_counts
-            art = write_parquet_artifact(
-                store, artifact_type="dataset", role=role,
-                stem=f"woe-apply-{role}-{context.step_spec.step_id}",
-                frame=df,
-                metadata={"source_id": data_art.artifact_id},
-            )
-            outputs.append(art)
-
-        write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"woe-apply-fallback-{context.step_spec.step_id}",
-            payload=fallback_report,
-            metadata={},
-        )
-
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=outputs,
-        )
-        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)}, execution_fingerprint=fp)
-
-
-# ---------------------------------------------------------------------------
-# Phase 2C: Apply Model
-# ---------------------------------------------------------------------------
-
-class ApplyModelNode(NodeType):
-    node_type = "cardre.apply_model"
-    version = "1"
-    category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "model", "scorecard"]
-    output_roles: list[str] = ["train", "test", "oot"]
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        import numpy as np
-
-        store = context.store
-        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
-        scorecard_art = next((a for a in context.input_artifacts if a.role == "scorecard"), None)
-        if model_art is None:
-            raise ValueError("apply_model requires a model artifact")
-        if scorecard_art is None:
-            raise ValueError("apply_model requires a scorecard artifact")
-
-        model = json.loads(store.artifact_path(model_art).read_text())
-        scorecard = json.loads(store.artifact_path(scorecard_art).read_text())
-
-        features = model.get("features", [])
-        intercept = float(model.get("intercept", 0))
-        coefficients = model.get("coefficients", {})
-
-        target_column = model.get("target_column", "")
-        offset = float(scorecard.get("offset", 0))
-        factor = float(scorecard.get("factor", 1))
-        direction = -1.0 if scorecard.get("higher_score_is_lower_risk", True) else 1.0
-
-        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        outputs = []
-
-        for data_art in data_arts:
-            df = pl.read_parquet(store.artifact_path(data_art))
-            role = data_art.role
-            missing = [f for f in features if f not in df.columns]
-            if missing:
-                raise ValueError(
-                    f"apply_model: role {role!r} missing features {missing}"
-                )
-
-            feature_arr = df.select(features).to_numpy()
-            log_odds = np.full(feature_arr.shape[0], intercept, dtype=np.float64)
-            for i, feat in enumerate(features):
-                log_odds += float(coefficients.get(feat, 0)) * feature_arr[:, i]
-
-            pred_bad = 1.0 / (1.0 + np.exp(-log_odds))
-            score_vals = offset + direction * factor * log_odds
-
-            df = df.with_columns([
-                pl.Series("predicted_bad_probability", pred_bad, dtype=pl.Float64),
-                pl.Series("score", score_vals, dtype=pl.Float64),
-            ])
-            art = write_parquet_artifact(
-                store, artifact_type="dataset", role=role,
-                stem=f"scored-{role}-{context.step_spec.step_id}",
-                frame=df,
-                metadata={"model_artifact_id": model_art.artifact_id},
-            )
-            outputs.append(art)
-
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=outputs,
-        )
-        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)}, execution_fingerprint=fp)
-
-
-# ---------------------------------------------------------------------------
-# Phase 2C: Validation Metrics
-# ---------------------------------------------------------------------------
-
-class ValidationMetricsNode(NodeType):
-    node_type = "cardre.validation_metrics"
-    version = "1"
-    category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "definition"]
-    output_roles: list[str] = ["report"]
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        from sklearn.metrics import roc_auc_score
-
-        store = context.store
-        meta_art = None
-        for a in context.input_artifacts:
-            if a.role == "definition":
-                try:
-                    p = json.loads(store.artifact_path(a).read_text())
-                    if "target_column" in p and "good_values" in p:
-                        meta_art = a
-                        break
-                except Exception:
-                    continue
-
-        meta = {}
-        if meta_art:
-            meta = json.loads(store.artifact_path(meta_art).read_text())
-        target_col = meta.get("target_column", "")
-        good = set(str(v) for v in meta.get("good_values", []))
-        bad = set(str(v) for v in meta.get("bad_values", []))
-
-        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        metrics_report: dict = {}
-        psi_bins: dict[str, list[float]] = {}
-
-        for data_art in data_arts:
-            role = data_art.role
-            df = pl.read_parquet(store.artifact_path(data_art))
-            n = df.height
-
-            if target_col not in df.columns:
-                metrics_report[role] = {"row_count": n, "error": f"Missing target column {target_col!r}"}
-                continue
-            if "predicted_bad_probability" not in df.columns:
-                metrics_report[role] = {"row_count": n, "error": "Missing predicted_bad_probability"}
-                continue
-            if "score" not in df.columns:
-                metrics_report[role] = {"row_count": n, "error": "Missing score column"}
-                continue
-
-            y_true = df[target_col].cast(pl.String).to_list()
-            y_bin = [1 if str(v) in bad else 0 for v in y_true]
-            y_prob = df["predicted_bad_probability"].to_list()
-            scores = df["score"].to_list()
-
-            n_bad = sum(y_bin)
-            n_good = n - n_bad
-            auc_val = None
-            gini_val = None
-            ks_val = None
-            calib = {}
-            score_dist = {}
-
-            if n_bad > 0 and n_good > 0:
-                auc_val = float(roc_auc_score(y_bin, y_prob))
-                gini_val = round(2 * auc_val - 1, 6)
-                auc_val = round(auc_val, 6)
-
-                sorted_by_score = sorted(zip(scores, y_bin), key=lambda x: x[0])
-                cum_good = 0
-                cum_bad = 0
-                ks = 0.0
-                ks_at = 0.0
-                total_good = n_good
-                total_bad = n_bad
-                for sc, is_bad in sorted_by_score:
-                    cum_good += (1 - is_bad)
-                    cum_bad += is_bad
-                    diff = abs(cum_good / total_good - cum_bad / total_bad) if total_good > 0 and total_bad > 0 else 0
-                    if diff > ks:
-                        ks = diff
-                        ks_at = sc
-                ks_val = round(ks, 6)
-
-                calib = self._calibration(y_bin, y_prob, 10)
-                score_dist = self._score_distribution(scores)
-            else:
-                calib = {"note": "Single class only; metrics skipped"}
-
-            metrics_report[role] = {
-                "row_count": n,
-                "auc": auc_val,
-                "gini": gini_val,
-                "ks": ks_val,
-                "ks_at_score": round(ks_at, 2) if ks_val else None,
-                "calibration": calib,
-                "score_distribution": score_dist,
-            }
-            psi_bins[role] = scores
-
-        if "train" in psi_bins and "test" in psi_bins:
-            metrics_report.setdefault("psi", {})["train_vs_test"] = self._psi(psi_bins["train"], psi_bins["test"])
-        if "train" in psi_bins and "oot" in psi_bins:
-            metrics_report.setdefault("psi", {})["train_vs_oot"] = self._psi(psi_bins["train"], psi_bins["oot"])
-
-        art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"validation-metrics-{context.step_spec.step_id}",
-            payload=metrics_report,
-            metadata={},
-        )
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[art],
-        )
-        return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)}, execution_fingerprint=fp)
-
-    def _calibration(self, y_true: list[int], y_prob: list[float], n_bins: int = 10) -> dict:
-        import numpy as np
-        pairs = list(zip(y_prob, y_true))
-        pairs.sort(key=lambda x: x[0])
-        n = len(pairs)
-        bins = []
-        for i in range(n_bins):
-            lo = i * n // n_bins
-            hi = (i + 1) * n // n_bins if i < n_bins - 1 else n
-            if lo >= hi:
-                continue
-            bin_probs = [p[0] for p in pairs[lo:hi]]
-            bin_actual = [p[1] for p in pairs[lo:hi]]
-            avg_pred = float(np.mean(bin_probs)) if bin_probs else 0.0
-            avg_actual = float(np.mean(bin_actual)) if bin_actual else 0.0
-            bins.append({
-                "bin": i,
-                "count": hi - lo,
-                "avg_predicted_probability": round(avg_pred, 6),
-                "actual_bad_rate": round(avg_actual, 6),
-            })
-        return {"bins": bins}
-
-    def _score_distribution(self, scores: list[float]) -> dict:
-        import numpy as np
-        arr = np.array(scores)
-        return {
-            "mean": round(float(np.mean(arr)), 2),
-            "median": round(float(np.median(arr)), 2),
-            "min": round(float(np.min(arr)), 2),
-            "max": round(float(np.max(arr)), 2),
-            "std": round(float(np.std(arr)), 2),
-            "p5": round(float(np.percentile(arr, 5)), 2),
-            "p25": round(float(np.percentile(arr, 25)), 2),
-            "p75": round(float(np.percentile(arr, 75)), 2),
-            "p95": round(float(np.percentile(arr, 95)), 2),
+        df = pl.read_parquet(store.artifact_path(input_artifact))
+        dummy_def = {
+            "model_type": "dummy",
+            "version": self.version,
+            "params": params,
+            "input_columns": list(df.columns),
+            "row_count": df.height,
         }
 
-    def _psi(self, expected: list[float], actual: list[float], n_bins: int = 10) -> float:
-        import numpy as np
-        if not expected or not actual:
-            return 0.0
-        all_vals = np.concatenate([expected, actual])
-        bins = np.percentile(expected, [i * 100 / n_bins for i in range(1, n_bins)])
-        bins = np.unique(bins)
-        expected_counts = np.histogram(expected, bins=bins if len(bins) > 1 else 2)[0]
-        actual_counts = np.histogram(actual, bins=bins if len(bins) > 1 else 2)[0]
-        psi = 0.0
-        for ec, ac in zip(expected_counts, actual_counts):
-            ep = ec / len(expected)
-            ap = ac / len(actual)
-            if ap == 0 or ep == 0:
-                continue
-            psi += (ap - ep) * np.log(ap / ep)
-        return round(float(psi), 6)
-
-
-# ---------------------------------------------------------------------------
-# Phase 2C: Cutoff Analysis
-# ---------------------------------------------------------------------------
-
-class CutoffAnalysisNode(NodeType):
-    node_type = "cardre.cutoff_analysis"
-    version = "1"
-    category = "apply"
-    input_roles: list[str] = ["train", "test", "oot"]
-    output_roles: list[str] = ["report"]
-
-    def validate_params(self, params: dict[str, Any]) -> list[str]:
-        errors: list[str] = []
-        band_count = params.get("band_count", 20)
-        try:
-            if int(band_count) < 2:
-                errors.append("band_count must be at least 2")
-        except (ValueError, TypeError):
-            errors.append("band_count must be an integer")
-        return errors
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-
-        store = context.store
-        params = context.validated_params
-        band_count = int(params.get("band_count", 20))
-        cutoffs = list(params.get("cutoffs", []))
-
-        if band_count < 2:
-            raise ValueError(f"band_count must be at least 2, got {band_count}")
-
-        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        report: dict = {}
-
-        for data_art in data_arts:
-            role = data_art.role
-            df = pl.read_parquet(store.artifact_path(data_art))
-            if "score" not in df.columns or "predicted_bad_probability" not in df.columns:
-                report[role] = {"error": "Missing score or predicted_bad_probability column"}
-                continue
-
-            scores = df["score"].to_list()
-            if len(set(scores)) < 2:
-                raise ValueError(f"Score column has zero variance in role {role!r}")
-
-            min_s, max_s = min(scores), max(scores)
-            if cutoffs:
-                bands = sorted(float(c) for c in cutoffs if isinstance(c, (int, float)))
-            else:
-                step = (max_s - min_s) / band_count
-                bands = [min_s + i * step for i in range(1, band_count)]
-
-            y_bin = [1 if str(v) in ("bad", "2") else 0 for v in df["predicted_bad_probability"].to_list()]
-
-            bands_with_sentinel = [float("-inf")] + bands + [float("inf")]
-            band_results = []
-            for i in range(len(bands_with_sentinel) - 1):
-                lo = bands_with_sentinel[i]
-                hi = bands_with_sentinel[i + 1]
-                idx = [j for j, s in enumerate(scores) if lo <= s < hi] if i < len(bands_with_sentinel) - 2 else [j for j, s in enumerate(scores) if lo <= s <= hi]
-                if not idx:
-                    continue
-                n_band = len(idx)
-                n_bad_band = sum(y_bin[j] for j in idx)
-                band_results.append({
-                    "band": i + 1,
-                    "lower": round(lo, 2) if lo != float("-inf") else None,
-                    "upper": round(hi, 2) if hi != float("inf") else None,
-                    "count": n_band,
-                    "bad_count": n_bad_band,
-                    "approval_rate": round(1 - n_band / len(scores), 4),
-                    "bad_rate": round(n_bad_band / n_band if n_band > 0 else 0, 4),
-                    "capture_rate": round(n_bad_band / sum(y_bin) if sum(y_bin) > 0 else 0, 4),
-                })
-
-            report[role] = {
-                "row_count": len(scores),
-                "bands": band_results,
-                "overall_bad_rate": round(sum(y_bin) / len(y_bin), 4),
-            }
-
-        art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"cutoff-analysis-{context.step_spec.step_id}",
-            payload=report,
-            metadata={},
+        artifact = write_json_artifact(
+            store,
+            artifact_type="definition",
+            role="definition",
+            stem=f"dummy-fit-{context.step_spec.step_id}",
+            payload=dummy_def,
+            metadata={"source_artifact_id": input_artifact.artifact_id},
         )
-        fp = make_fingerprint(
+
+        fingerprint = make_fingerprint(
             plan_version_id=context.plan_version_id,
             step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
+            node_type=self.node_type,
+            node_version=self.version,
             params_hash=context.step_spec.params_hash,
             parent_run_steps=context.parent_run_steps,
             input_artifacts=context.input_artifacts,
-            output_artifacts=[art],
+            output_artifacts=[artifact],
         )
-        return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)}, execution_fingerprint=fp)
+
+        return NodeOutput(
+            artifacts=[artifact],
+            metrics={"row_count": df.height},
+            execution_fingerprint=fingerprint,
+        )
+
+
+def validate_manual_binning_overrides(bin_def: dict, overrides: list[dict]) -> list[str]:
+    """Validate overrides against fine-classing bin definitions.
+
+    Checks that each override references a real variable, uses a supported
+    action, has a reason, mentions only existing bin IDs, and for numeric
+    merge_bins the source bins are adjacent in the original ordering.
+
+    Returns a list of error messages (empty = valid).
+    """
+    errors: list[str] = []
+    var_map = {v["variable"]: v for v in bin_def.get("variables", [])}
+
+    for i, override in enumerate(overrides):
+        prefix = f"overrides[{i}]"
+        variable = override.get("variable", "")
+        action = override.get("action", "")
+        reason = override.get("reason", "")
+        source_bin_ids = override.get("source_bin_ids", [])
+
+        if not reason:
+            errors.append(f"{prefix}: override for '{variable}' requires a non-empty reason")
+            continue
+        if variable not in var_map:
+            errors.append(f"{prefix}: references unknown variable '{variable}'")
+            continue
+        if action not in ("merge_bins", "group_categories", "isolate_missing", "isolate_special_value"):
+            errors.append(f"{prefix}: unsupported action '{action}'")
+            continue
+
+        var_bins = var_map[variable].get("bins", [])
+        bin_id_map = {b["bin_id"]: b for b in var_bins}
+
+        for bid in source_bin_ids:
+            if bid not in bin_id_map:
+                errors.append(f"{prefix}: bin_id '{bid}' not found in variable '{variable}'")
+
+        if errors:
+            continue
+
+        if action == "merge_bins":
+            if len(source_bin_ids) < 2:
+                errors.append(f"{prefix}: merge_bins requires at least 2 source bins")
+                continue
+            kind = var_map[variable].get("kind", "")
+            if kind == "numeric":
+                bin_positions = [var_bins.index(bin_id_map[bid]) for bid in source_bin_ids]
+                expected_positions = list(range(min(bin_positions), max(bin_positions) + 1))
+                if bin_positions != expected_positions:
+                    errors.append(
+                        f"{prefix}: numeric bin merge requires adjacent bins. "
+                        f"Source bins at positions {bin_positions} are not contiguous."
+                    )
+
+    return errors
+
+
+def apply_manual_binning_overrides(
+    bin_def: dict, overrides: list[dict], selected_vars: set[str] | None = None
+) -> dict:
+    """Apply manual binning overrides to a fine-classing bin definition.
+
+    Returns a new ``bin_def`` dict with merged / grouped bins computed
+    and (if *selected_vars* is given) filtered to the selected variables.
+    Raises ``ValueError`` on invalid overrides — call
+    :func:`validate_manual_binning_overrides` first for user-facing errors.
+    """
+    var_map = {v["variable"]: dict(v) for v in bin_def.get("variables", [])}
+    warnings: list[dict] = []
+
+    for override in overrides:
+        variable = override.get("variable", "")
+        action = override.get("action", "")
+        source_bin_ids = override.get("source_bin_ids", [])
+
+        if variable not in var_map:
+            raise ValueError(f"Override references unknown variable '{variable}'")
+
+        var_info = var_map[variable]
+        var_bins = list(var_info.get("bins", []))
+        bin_id_map = {b["bin_id"]: b for b in var_bins}
+
+        if action == "merge_bins":
+            merged = {
+                "bin_id": f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
+                "label": override.get("new_label", "Merged"),
+                "lower": bin_id_map[source_bin_ids[0]].get("lower"),
+                "upper": bin_id_map[source_bin_ids[-1]].get("upper"),
+                "lower_inclusive": bin_id_map[source_bin_ids[0]].get("lower_inclusive", False),
+                "upper_inclusive": bin_id_map[source_bin_ids[-1]].get("upper_inclusive", True),
+                "categories": None,
+                "is_missing_bin": False,
+                "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
+                "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
+                "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
+            }
+            new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
+            insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
+            new_bins.insert(insert_pos, merged)
+            var_info["bins"] = new_bins
+
+        elif action == "group_categories":
+            grouped = {
+                "bin_id": f"{variable}_manual_grouped",
+                "label": override.get("new_label", "Grouped"),
+                "lower": None, "upper": None,
+                "lower_inclusive": False, "upper_inclusive": False,
+                "categories": sum([bin_id_map[bid].get("categories", []) for bid in source_bin_ids], []),
+                "is_missing_bin": False,
+                "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
+                "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
+                "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
+            }
+            new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
+            insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
+            new_bins.insert(insert_pos, grouped)
+            var_info["bins"] = new_bins
+
+    if selected_vars is not None:
+        var_map = {k: v for k, v in var_map.items() if k in selected_vars}
+
+    if not overrides:
+        warnings.append({"message": "No manual overrides applied; passing through auto bins for selected variables"})
+
+    return {
+        "variables": list(var_map.values()),
+        "warnings": bin_def.get("warnings", []) + warnings,
+    }

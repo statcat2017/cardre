@@ -5,15 +5,15 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from cardre.services.export_service import export_branch_audit_pack
+from cardre.services.project_registry import get_store_for_project
 from sidecar.models import ExportAuditPackRequest, ExportAuditPackResponse, ExportDiagnostic
-from sidecar.routes.projects import _load_registry, _get_store_for_project
 
 router = APIRouter(tags=["exports"])
 
 
 @router.post("/exports/audit-pack", response_model=ExportAuditPackResponse)
 def export_audit_pack(req: ExportAuditPackRequest):
-    store = _get_store_for_project(req.project_id)
+    store = get_store_for_project(req.project_id)
     try:
         result = export_branch_audit_pack(
             store=store,
@@ -24,6 +24,8 @@ def export_audit_pack(req: ExportAuditPackRequest):
             comparison_id=req.comparison_id,
             comparison_snapshot_id=req.comparison_snapshot_id,
             include_row_level_data=req.include_row_level_data,
+            include_report=req.include_report,
+            report_mode=req.report_mode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={"code": "EXPORT_FAILED", "message": str(exc)})

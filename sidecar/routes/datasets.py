@@ -1,4 +1,7 @@
-"""Dataset import endpoint — routes through the executor for audit trail."""
+"""Dataset import endpoint — routes through the executor for audit trail.
+
+Thin endpoint: business logic lives in cardre/services/.
+"""
 
 from __future__ import annotations
 
@@ -6,50 +9,15 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from cardre.audit import StepSpec, json_logical_hash, replace_step_params
+from cardre.audit import StepSpec, json_logical_hash
 from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
+from cardre.services.project_registry import get_store_for_project
+from cardre.services.import_service import update_plan_import_params, get_or_create_import_plan
 from sidecar.models import ArtifactResponse, ImportDatasetRequest
-from sidecar.routes.projects import _load_registry, _get_store_for_project
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
-
-
-def _update_plan_import_params(store: ProjectStore, project_id: str, source_path: str) -> None:
-    """Update the scorecard pathway's import step with the given source_path.
-
-    Creates a new plan version so the import step knows which file to load.
-    Updates both Proof Pathway and Scorecard Pathway if they exist.
-    """
-    plans = store.get_plans_for_project(project_id)
-    for plan_name in ("Proof Pathway", "Scorecard Pathway"):
-        pathway_plan = next((p for p in plans if p["name"] == plan_name), None)
-        if pathway_plan is None:
-            continue
-        plan_id = pathway_plan["plan_id"]
-        _update_single_plan_import_params(store, plan_id, source_path)
-
-
-def _update_single_plan_import_params(store: ProjectStore, plan_id: str, source_path: str) -> None:
-    latest_pv_id = store.get_latest_plan_version_id(plan_id)
-    if latest_pv_id is None:
-        return
-
-    steps = store.get_plan_version_steps(latest_pv_id)
-    params = {"source_path": str(Path(source_path).resolve())}
-    new_steps = replace_step_params(steps, "import", params)
-
-    store.create_plan_version(plan_id, new_steps, description="Import configured")
-
-
-def _get_or_create_import_plan(store: ProjectStore, project_id: str) -> str:
-    """Find or create a dedicated import plan (separate from proof pathway)."""
-    plans = store.get_plans_for_project(project_id)
-    for p in plans:
-        if p["name"] == "__import__":
-            return p["plan_id"]
-    return store.create_plan(project_id, "__import__")
 
 
 @router.post("/import", response_model=ArtifactResponse, status_code=201)
@@ -58,13 +26,13 @@ def import_dataset(body: ImportDatasetRequest):
     if not source.exists():
         raise HTTPException(status_code=400, detail={"code": "FILE_NOT_FOUND", "message": f"Source file not found: {source}"})
 
-    store = _get_store_for_project(body.project_id)
+    store = get_store_for_project(body.project_id)
     proj = store.get_project(body.project_id)
     if proj is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found"})
 
-    # Use a dedicated hidden import plan, not the proof pathway plan
-    import_plan_id = _get_or_create_import_plan(store, body.project_id)
+    # Use a dedicated hidden import plan
+    import_plan_id = get_or_create_import_plan(store, body.project_id)
 
     params = {"source_path": str(source.resolve())}
     import_step = StepSpec(
@@ -106,9 +74,8 @@ def import_dataset(body: ImportDatasetRequest):
     if artifact is None:
         raise HTTPException(status_code=500, detail={"code": "ARTIFACT_NOT_FOUND", "message": "Import artifact not found in store"})
 
-    # Update proof pathway's import params (creates new version of proof
-    # pathway plan with the correct source_path, preserving all 6 steps)
-    _update_plan_import_params(store, body.project_id, str(source.resolve()))
+    # Update pathway import params
+    update_plan_import_params(store, body.project_id, str(source.resolve()))
 
     return ArtifactResponse(
         artifact_id=artifact.artifact_id,

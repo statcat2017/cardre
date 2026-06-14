@@ -1,114 +1,323 @@
-import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useState, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
+import type {
+  BranchListItem,
+  RunListItem,
+  ReportReadinessItem,
+  GenerateReportResponse,
+} from "../types";
 
 interface Props {
   projectId: string;
 }
 
+type ReportMode = "champion" | "branch";
+type UiState = "idle" | "checking" | "blocked" | "ready" | "ready_with_warnings" | "generating" | "generated" | "failed";
+
+interface GeneratedReport {
+  report_id: string;
+  created_at: string;
+  target_branch_id: string;
+  mode: ReportMode;
+  status: string;
+  html_path: string;
+  bundle_path: string;
+  export_path: string;
+}
+
+const MODE_LABELS: Record<ReportMode, string> = {
+  champion: "Champion report",
+  branch: "Branch report",
+};
+
 export function ExportPanel({ projectId }: Props) {
+  const queryClient = useQueryClient();
+  const [reportMode, setReportMode] = useState<ReportMode>("branch");
+  const [targetBranchId, setTargetBranchId] = useState<string>("");
+  const [uiState, setUiState] = useState<UiState>("idle");
+  const [blockers, setBlockers] = useState<ReportReadinessItem[]>([]);
+  const [warnings, setWarnings] = useState<ReportReadinessItem[]>([]);
+  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([]);
+  const [lastReport, setLastReport] = useState<GenerateReportResponse | null>(null);
+
+  // Fetch runs for this project
   const { data: projectRuns } = useQuery({
     queryKey: ["projectRuns", projectId],
     queryFn: () => api.getProjectRuns(projectId),
     enabled: !!projectId,
   });
+  const successfulRuns: RunListItem[] = projectRuns?.runs?.filter((r) => r.status === "succeeded") ?? [];
+  const latestRun = successfulRuns[0] ?? null;
 
-  const successfulRuns = projectRuns?.runs?.filter((r) => r.status === "succeeded") ?? [];
+  // Fetch branches for this project
+  const { data: branchData } = useQuery({
+    queryKey: ["projectBranches", projectId],
+    queryFn: () => api.listBranches(projectId, { status: "active" }),
+    enabled: !!projectId,
+  });
+  const branches: BranchListItem[] = branchData?.branches ?? [];
+
+  // Auto-select first branch
+  React.useEffect(() => {
+    if (!targetBranchId && branches.length > 0) {
+      setTargetBranchId(branches[0].branch_id);
+    }
+  }, [branches, targetBranchId]);
+
+  const handleCheckReadiness = useCallback(async () => {
+    if (!latestRun || !targetBranchId) return;
+    setUiState("checking");
+    setErrorMsg("");
+    try {
+      const result = await api.getReportReadiness(projectId, latestRun.run_id, {
+        target_branch_id: targetBranchId,
+        report_mode: reportMode,
+      });
+      setBlockers(result.blockers);
+      setWarnings(result.warnings);
+      if (!result.ready) {
+        setUiState("blocked");
+      } else if (result.warnings.length > 0) {
+        setUiState("ready_with_warnings");
+      } else {
+        setUiState("ready");
+      }
+    } catch (e: any) {
+      setUiState("failed");
+      setErrorMsg(e.detail?.message || e.message || "Readiness check failed");
+    }
+  }, [projectId, latestRun, targetBranchId, reportMode]);
+
+  const handleGenerate = useCallback(async () => {
+    if (!latestRun || !targetBranchId) return;
+    setUiState("generating");
+    setErrorMsg("");
+    try {
+      const result = await api.generateReport(projectId, latestRun.run_id, {
+        target_branch_id: targetBranchId,
+        report_mode: reportMode,
+        include_supporting_artifacts: true,
+        output_formats: ["json", "html"],
+      });
+      setLastReport(result);
+      setGeneratedReports((prev) => [
+        {
+          report_id: result.report_id,
+          created_at: new Date().toISOString(),
+          target_branch_id: targetBranchId,
+          mode: reportMode,
+          status: result.status,
+          html_path: result.html_path,
+          bundle_path: result.report_bundle_path,
+          export_path: result.export_path,
+        },
+        ...prev,
+      ]);
+      setUiState("generated");
+    } catch (e: any) {
+      setUiState("failed");
+      setErrorMsg(e.detail?.message || e.message || "Report generation failed");
+    }
+  }, [projectId, latestRun, targetBranchId, reportMode]);
+
+  const handleOpenReport = (htmlPath: string) => {
+    const baseUrl = (window as unknown as Record<string, string>).__API_URL__ || "http://127.0.0.1:8752";
+    const url = `${baseUrl}/reports/serve?path=${encodeURIComponent(htmlPath)}`;
+    window.open(url, "_blank");
+  };
+
+  const branchOptions = branches.filter((b) => b.status === "active");
+  const selectedBranch = branchOptions.find((b) => b.branch_id === targetBranchId);
 
   return (
-    <div style={{ padding: 16, overflowY: "auto", flex: 1 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Export Evidence</h3>
+    <div style={{ padding: 16, overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
+      <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Audit Pack Export</h3>
 
-      <div
-        style={{
-          padding: 16,
-          border: "1px solid #e2e8f0",
-          borderRadius: 8,
-          backgroundColor: "#fff",
-          marginBottom: 12,
-        }}
-      >
-        <h4 style={{ fontSize: 13, fontWeight: 600, margin: "0 0 8px 0" }}>
-          Technical Manifest Export
-        </h4>
-        <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 12px 0" }}>
-          The technical manifest bundles the full audit trail: plan steps, run evidence,
-          artefact hashes, and node execution fingerprints into a ZIP archive suitable
-          for model governance and audit submission.
-        </p>
-        <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>
-          <strong>{successfulRuns.length}</strong> successful run
-          {successfulRuns.length !== 1 ? "s" : ""} completed for this project.
+      {/* Configuration */}
+      <div style={{ padding: 16, border: "1px solid #e2e8f0", borderRadius: 8, backgroundColor: "#fff" }}>
+        <div style={{ display: "flex", gap: 24, marginBottom: 12, flexWrap: "wrap" }}>
+          {/* Report mode */}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
+              Report mode
+            </label>
+            <select
+              value={reportMode}
+              onChange={(e) => { setReportMode(e.target.value as ReportMode); setUiState("idle"); }}
+              style={{
+                padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1",
+                fontSize: 13, backgroundColor: "#fff",
+              }}
+            >
+              <option value="champion">Champion report</option>
+              <option value="branch">Branch report</option>
+            </select>
+          </div>
+
+          {/* Target branch */}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
+              Target branch
+            </label>
+            <select
+              value={targetBranchId}
+              onChange={(e) => { setTargetBranchId(e.target.value); setUiState("idle"); }}
+              style={{
+                padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1",
+                fontSize: 13, backgroundColor: "#fff",
+              }}
+            >
+              {branchOptions.length === 0 && <option value="">No branches available</option>}
+              {branchOptions.map((b) => (
+                <option key={b.branch_id} value={b.branch_id}>
+                  {b.name || b.branch_id} {b.is_champion ? "(champion)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Latest run */}
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Latest run</div>
+            <div style={{ fontSize: 13, color: "#64748b", paddingTop: 6 }}>
+              {latestRun ? (
+                <span>
+                  <code>{latestRun.run_id.slice(0, 8)}&hellip;</code>
+                  {" finished "}
+                  {latestRun.finished_at ? new Date(latestRun.finished_at).toLocaleDateString() : "N/A"}
+                </span>
+              ) : (
+                "No successful runs"
+              )}
+            </div>
+          </div>
         </div>
-        {successfulRuns.length === 0 && (
-          <div
+
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            onClick={handleCheckReadiness}
+            disabled={uiState === "checking" || !latestRun || !targetBranchId}
             style={{
-              padding: "8px 12px",
-              backgroundColor: "#fffbeb",
-              border: "1px solid #fde68a",
-              borderRadius: 4,
-              color: "#92400e",
-              fontSize: 12,
+              padding: "8px 16px", borderRadius: 6, border: "1px solid #cbd5e1",
+              fontSize: 13, backgroundColor: "#f8fafc", cursor: "pointer",
+              fontWeight: 500, color: "#334155",
+              opacity: uiState === "checking" || !latestRun || !targetBranchId ? 0.5 : 1,
             }}
           >
-            Run the Scorecard Pathway to completion before exporting. All build,
-            validation, and cutoff steps must succeed for a complete manifest.
-          </div>
-        )}
-        {successfulRuns.length > 0 && (
-          <div
+            {uiState === "checking" ? "Checking..." : "Check readiness"}
+          </button>
+
+          <button
+            onClick={handleGenerate}
+            disabled={uiState !== "ready" && uiState !== "ready_with_warnings"}
             style={{
-              padding: "8px 12px",
-              backgroundColor: "#f0fdf4",
-              border: "1px solid #bbf7d0",
-              borderRadius: 4,
-              color: "#166534",
-              fontSize: 12,
+              padding: "8px 16px", borderRadius: 6, border: "none",
+              fontSize: 13, backgroundColor: uiState === "ready" || uiState === "ready_with_warnings" ? "#0369a1" : "#94a3b8",
+              color: "#fff", cursor: uiState === "ready" || uiState === "ready_with_warnings" ? "pointer" : "not-allowed",
+              fontWeight: 600,
             }}
           >
-            Manifest export will be available from the Tauri menu or a future
-            CLI command. The artefact store already contains all required
-            evidence files.
-          </div>
-        )}
+            {uiState === "generating" ? "Generating..." : "Generate audit pack"}
+          </button>
+        </div>
       </div>
 
-      <div
-        style={{
-          padding: 16,
-          border: "1px solid #e2e8f0",
-          borderRadius: 8,
-          backgroundColor: "#fff",
-        }}
-      >
-        <h4 style={{ fontSize: 13, fontWeight: 600, margin: "0 0 8px 0" }}>Recent Runs</h4>
-        {successfulRuns.length === 0 ? (
-          <div style={{ fontSize: 12, color: "#94a3b8" }}>No successful runs yet.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {successfulRuns.slice(0, 5).map((run) => (
+      {/* Readiness display */}
+      {(uiState === "blocked" || uiState === "ready" || uiState === "ready_with_warnings") && (
+        <div
+          style={{
+            padding: 16, border: "1px solid #e2e8f0", borderRadius: 8,
+            backgroundColor: uiState === "blocked" ? "#fef2f2" : "#f8fafc",
+          }}
+        >
+          {blockers.map((b) => (
+            <div key={b.code} style={{ padding: "4px 0", fontSize: 13, color: "#dc2626" }}>
+              <strong style={{ marginRight: 8 }}>&#10060;</strong>
+              <strong>{b.code}:</strong> {b.message}
+            </div>
+          ))}
+          {warnings.map((w) => (
+            <div key={w.code} style={{ padding: "4px 0", fontSize: 13, color: "#92400e" }}>
+              <strong style={{ marginRight: 8 }}>&#9888;</strong>
+              <strong>{w.code}:</strong> {w.message}
+            </div>
+          ))}
+          {blockers.length === 0 && warnings.length === 0 && (
+            <div style={{ fontSize: 13, color: "#166534" }}>
+              <strong>&#10003;</strong> All evidence available. Ready to generate.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Error state */}
+      {uiState === "failed" && errorMsg && (
+        <div style={{ padding: 12, border: "1px solid #fca5a5", borderRadius: 8, backgroundColor: "#fef2f2", fontSize: 13, color: "#dc2626" }}>
+          <strong>Error:</strong> {errorMsg}
+        </div>
+      )}
+
+      {/* Generated report info */}
+      {lastReport && (
+        <div style={{ padding: 16, border: "1px solid #bbf7d0", borderRadius: 8, backgroundColor: "#f0fdf4" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#166534", marginBottom: 8 }}>
+            &#10003; Report generated
+          </div>
+          <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.8 }}>
+            <div><strong>Bundle:</strong> <code>{lastReport.report_bundle_path}</code></div>
+            <div><strong>HTML:</strong> <code>{lastReport.html_path}</code></div>
+            <div><strong>Export:</strong> <code>{lastReport.export_path}</code></div>
+          </div>
+        </div>
+      )}
+
+      {/* Generated report history */}
+      {generatedReports.length > 0 && (
+        <div style={{ padding: 16, border: "1px solid #e2e8f0", borderRadius: 8, backgroundColor: "#fff" }}>
+          <h4 style={{ fontSize: 13, fontWeight: 600, margin: "0 0 8px 0" }}>Generated reports</h4>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {generatedReports.slice(0, 10).map((r) => (
               <div
-                key={run.run_id}
+                key={r.report_id}
                 style={{
-                  padding: "6px 8px",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 4,
-                  backgroundColor: "#f8fafc",
-                  fontSize: 11,
-                  color: "#475569",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6,
+                  backgroundColor: "#f8fafc", fontSize: 12, gap: 12,
                 }}
               >
-                <span style={{ fontFamily: "monospace" }}>{run.run_id.slice(0, 8)}…</span>
-                {run.finished_at && (
-                  <span style={{ marginLeft: 12, color: "#94a3b8" }}>
-                    finished {new Date(run.finished_at).toLocaleString()}
+                <div style={{ flex: 1 }}>
+                  <code style={{ marginRight: 8 }}>{r.report_id.slice(0, 8)}</code>
+                  <span style={{ color: "#64748b" }}>
+                    {new Date(r.created_at).toLocaleString()} &middot; {r.target_branch_id} &middot; {MODE_LABELS[r.mode]}
                   </span>
-                )}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {r.html_path && (
+                    <button
+                      onClick={() => handleOpenReport(r.html_path)}
+                      style={{
+                        padding: "4px 10px", borderRadius: 4, border: "1px solid #cbd5e1",
+                        fontSize: 11, backgroundColor: "#fff", cursor: "pointer",
+                      }}
+                    >
+                      Open report
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Fallback when no runs */}
+      {successfulRuns.length === 0 && (
+        <div style={{ padding: 16, border: "1px solid #fde68a", borderRadius: 8, backgroundColor: "#fffbeb", fontSize: 12, color: "#92400e" }}>
+          Run the Scorecard Pathway to completion before exporting. All build, validation, and cutoff steps must succeed.
+        </div>
+      )}
     </div>
   );
 }
