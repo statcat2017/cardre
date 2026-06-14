@@ -10,7 +10,6 @@ use tauri::Manager;
 
 struct AppState {
     sidecar_pid: Mutex<Option<u32>>,
-    api_url: String,
 }
 
 fn find_free_port() -> u16 {
@@ -72,10 +71,9 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
             sidecar_pid: Mutex::new(None),
-            api_url: api_url.clone(),
         })
         .setup(move |app| {
-            let child: std::process::Child = match Command::new("cardre-api")
+            let mut child: std::process::Child = match Command::new("cardre-api")
                 .arg(port.to_string())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
