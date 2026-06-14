@@ -119,7 +119,7 @@ fn main() {
                         .stderr(Stdio::piped())
                         .spawn()
                     {
-                        Ok(fallback_child) => {
+                        Ok(mut fallback_child) => {
                             eprintln!("Started cardre-api via PATH fallback");
                             let child_pid = fallback_child.id();
                             if let Some(stdout) = fallback_child.stdout.take() {

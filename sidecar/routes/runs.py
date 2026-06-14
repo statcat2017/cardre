@@ -30,7 +30,11 @@ def _branch_run_background(project_path: str, plan_version_id: str, branch_id: s
     store = ProjectStore(project_path)
     executor = PlanExecutor(NodeRegistry.with_defaults())
     try:
-        executor.run_branch(store, plan_version_id, branch_id, run_id=run_id)
+        result_id = executor.run_branch(store, plan_version_id, branch_id, run_id=run_id)
+        # run_branch short-circuits when no steps need executing,
+        # returning an existing run ID instead of using ours.
+        if result_id != run_id:
+            store.finish_run(run_id, "cancelled")
     except BaseException:
         store.finish_run(run_id, "failed")
 
