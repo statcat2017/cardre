@@ -92,17 +92,21 @@ fn main() {
                         }
                         // Drain the event receiver in a background thread to
                         // prevent the channel from blocking. Log to stderr.
-                        thread::spawn(move || loop {
-                            match rx.recv() {
-                                Some(tauri_plugin_shell::process::CommandEvent::Stdout(line)) => {
-                                    eprintln!("[sidecar] {}", String::from_utf8_lossy(&line).trim());
+                        thread::spawn(move || {
+                            tauri::async_runtime::block_on(async move {
+                                loop {
+                                    match rx.recv().await {
+                                        Some(tauri_plugin_shell::process::CommandEvent::Stdout(line)) => {
+                                            eprintln!("[sidecar] {}", String::from_utf8_lossy(&line).trim());
+                                        }
+                                        Some(tauri_plugin_shell::process::CommandEvent::Stderr(line)) => {
+                                            eprintln!("[sidecar:err] {}", String::from_utf8_lossy(&line).trim());
+                                        }
+                                        None => break,
+                                        _ => {}
+                                    }
                                 }
-                                Some(tauri_plugin_shell::process::CommandEvent::Stderr(line)) => {
-                                    eprintln!("[sidecar:err] {}", String::from_utf8_lossy(&line).trim());
-                                }
-                                None => break,
-                                _ => {}
-                            }
+                            });
                         });
                     }
                     Err(e) => {
@@ -188,7 +192,7 @@ fn main() {
                     // sidecar, so missing fallback PID tracking is acceptable.
                     if let Some(child) = guard.take() {
                         let _ = child.kill();
-                        let _ = child.wait();
+                        let _ = tauri::async_runtime::block_on(child.wait());
                     }
                 }
             }
