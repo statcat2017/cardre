@@ -616,6 +616,7 @@ class ReportCollector:
         return resolve_run_step(
             self.store, plan_version_id, ref.step_id,
             ref.resolved_branch_id, ref.resolution,
+            run_id=self.run_id,
         )
 
 

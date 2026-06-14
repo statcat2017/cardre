@@ -9,3 +9,11 @@ _legacy/
 .opencode/github-token
 frontend/src-tauri/target/
 frontend/src-tauri/Cargo.lock
+
+node_modules/
+package.json
+package-lock.json
+
+node_modules/
+package.json
+package-lock.json

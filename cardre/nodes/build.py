@@ -543,17 +543,18 @@ class CalculateWoeIvNode(NodeType):
             }
 
             var_bins_out = []
-            for bin_def in bins:
+            for i, woe_row in enumerate(var_woe_rows):
+                bd = bins[i] if i < len(bins) else {}
                 var_bins_out.append({
-                    "bin_id": bin_def["bin_id"],
-                    "label": bin_def["label"],
-                    "lower": bin_def.get("lower"),
-                    "upper": bin_def.get("upper"),
-                    "good_count": bin_def.get("good_count", 0),
-                    "bad_count": bin_def.get("bad_count", 0),
-                    "bad_rate": round(bin_def.get("bad_count", 0) / max(bin_def.get("good_count", 0) + bin_def.get("bad_count", 0), 1), 4),
-                    "woe": None,
-                    "iv_contribution": None,
+                    "bin_id": woe_row["bin_id"],
+                    "label": woe_row["label"],
+                    "lower": bd.get("lower"),
+                    "upper": bd.get("upper"),
+                    "good_count": woe_row["good_count"],
+                    "bad_count": woe_row["bad_count"],
+                    "bad_rate": round(woe_row["bad_count"] / max(woe_row["good_count"] + woe_row["bad_count"], 1), 4),
+                    "woe": woe_row["woe"],
+                    "iv_contribution": woe_row["iv_component"],
                 })
 
             evidence_variables.append({

@@ -1,5 +1,4 @@
 """Phase 5 report endpoints — readiness, generation, and metadata."""
-
 from __future__ import annotations
 
 import json
@@ -8,6 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
+
 from cardre.services.project_registry import get_store_for_project, ProjectNotFoundError
 from cardre.services.report_generation_service import ReportGenerationError, ReportGenerationService
 
@@ -20,11 +20,25 @@ from sidecar.models import (
     ReportReadinessRequest,
     ReportReadinessResponse,
 )
+
 router = APIRouter(tags=["reports"])
 
-# In-memory report metadata registry (reports are persisted on disk as files)
-_report_registry: dict[str, dict] = {}
 
+def _metadata_path(project_root: Path, report_id: str) -> Path:
+    return Path(project_root) / "exports" / f"report_{report_id[:8]}" / "report" / "report_metadata.json"
+
+
+def _save_metadata(project_root: Path, report_id: str, meta: dict) -> None:
+    path = _metadata_path(project_root, report_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(meta, indent=2, sort_keys=True))
+
+
+def _load_metadata(project_root: Path, report_id: str) -> dict | None:
+    path = _metadata_path(project_root, report_id)
+    if path.exists():
+        return json.loads(path.read_text())
+    return None
 
 @router.post("/projects/{project_id}/runs/{run_id}/report-readiness", response_model=ReportReadinessResponse)
 def get_report_readiness(project_id: str, run_id: str, req: ReportReadinessRequest):
@@ -79,8 +93,8 @@ def generate_report(project_id: str, run_id: str, req: GenerateReportRequest):
     if "html" not in req.output_formats:
         html_path_str = ""
 
-    # Store metadata
-    _report_registry[report_id] = {
+    # Store metadata (persisted to disk alongside report files)
+    meta = {
         "report_id": report_id,
         "project_id": project_id,
         "run_id": run_id,
@@ -92,6 +106,7 @@ def generate_report(project_id: str, run_id: str, req: GenerateReportRequest):
         "export_path": result["export_path"],
         "status": readiness.status,
     }
+    _save_metadata(store.root, report_id, meta)
 
     return GenerateReportResponse(
         report_id=report_id,
@@ -105,7 +120,8 @@ def generate_report(project_id: str, run_id: str, req: GenerateReportRequest):
 
 @router.get("/projects/{project_id}/runs/{run_id}/reports/{report_id}", response_model=ReportMetadataResponse)
 def get_report_metadata(project_id: str, run_id: str, report_id: str):
-    meta = _report_registry.get(report_id)
+    store = get_store_for_project(project_id)
+    meta = _load_metadata(store.root, report_id)
     if meta is None:
         raise HTTPException(status_code=404, detail={"code": "REPORT_NOT_FOUND", "message": f"No report with ID {report_id}"})
 
@@ -121,26 +137,39 @@ def get_report_metadata(project_id: str, run_id: str, report_id: str):
     )
 
 
-@router.get("/reports/serve", response_class=HTMLResponse)
-def serve_report_file(path: str = Query(..., description="Relative path to report file within project root")):
-    """Serve a report file (HTML or JSON) from any project's exports directory.
+@router.get("/projects/{project_id}/reports/serve", response_class=HTMLResponse)
+def serve_report_file(
+    project_id: str,
+    path: str = Query(..., description="Relative path to report file within project exports"),
+):
+    """Serve a report file (HTML or JSON) from a project's exports directory.
 
     Used by the frontend to open generated reports in a browser tab.
-    The path is relative to the project root (e.g. 'exports/report_abc123/report/report.html').
+    The path is relative to the project's exports directory
+    (e.g. 'report_abc123/report/report.html').
     """
     from cardre.services.project_registry import load_registry
     registry = load_registry()
-    for _pid, entry in registry.items():
-        project_root = Path(entry["path"])
-        target = project_root / path
-        if target.exists() and target.is_file():
-            content = target.read_bytes()
-            if path.endswith(".html"):
-                return HTMLResponse(content=content)
-            elif path.endswith(".json"):
-                from fastapi.responses import JSONResponse
-                data = json.loads(content)
-                return JSONResponse(content=data)
-            from fastapi.responses import PlainTextResponse
-            return PlainTextResponse(content=content)
+    entry = registry.get(project_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found"})
+
+    project_root = Path(entry["path"])
+    exports_root = (project_root / "exports").resolve()
+    target = (exports_root / path).resolve()
+
+    if not target.is_relative_to(exports_root):
+        raise HTTPException(status_code=403, detail={"code": "PATH_TRAVERSAL", "message": "Path must be within project exports directory"})
+
+    if target.exists() and target.is_file():
+        content = target.read_bytes()
+        if path.endswith(".html"):
+            return HTMLResponse(content=content)
+        elif path.endswith(".json"):
+            from fastapi.responses import JSONResponse
+            data = json.loads(content)
+            return JSONResponse(content=data)
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(content=content)
+
     raise HTTPException(status_code=404, detail={"code": "FILE_NOT_FOUND", "message": f"Report file not found: {path}"})

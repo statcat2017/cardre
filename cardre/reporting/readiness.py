@@ -182,7 +182,7 @@ def check_report_readiness(
         if ref is None:
             continue
 
-        rs = resolve_run_step(store, plan_version_id, ref.step_id, ref.resolved_branch_id, ref.resolution)
+        rs = resolve_run_step(store, plan_version_id, ref.step_id, ref.resolved_branch_id, ref.resolution, run_id)
         if rs is None:
             blockers.append(ReadinessBlocker(
                 LimitationCode.MISSING_REQUIRED_CANONICAL_STEP,
@@ -199,10 +199,10 @@ def check_report_readiness(
                     has_v1 = True
                     break
             if not has_v1:
-                warnings.append(ReadinessWarning(
-                    LimitationCode.LEGACY_WOE_SUMMARY_USED,
+                blockers.append(ReadinessBlocker(
+                    LimitationCode.MISSING_WOE_IV_EVIDENCE_V1,
                     f"WOE/IV step {ref.step_id} has no cardre.woe_iv_evidence.v1 artifact. "
-                    "Legacy summary parsing will be attempted.",
+                    "Phase 5 requires the controlled evidence artifact.",
                 ))
 
     # Champion mode checks
