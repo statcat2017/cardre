@@ -13,7 +13,6 @@ import polars as pl
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
 from cardre.modeling.schema import validate_model_artifact
 from cardre.nodes.ensembles import (
-    StackingEnsembleNode,
     VotingEnsembleNode,
     WeightedEnsembleNode,
 )
@@ -344,123 +343,7 @@ class TestWeightedEnsembleNode(unittest.TestCase):
         self.assertTrue(any("sum to 1" in e for e in errors))
 
 
-class TestStackingEnsembleNode(unittest.TestCase):
-    def setUp(self):
-        self.store, self.tmp = make_store()
-        self.data_art, self.def_art, self.df = make_numeric_dataset(self.store)
-        self.dt_art, self.gb_art, _, _ = fit_two_models(
-            self.store, self.data_art, self.def_art,
-        )
 
-    def test_stacking_logistic_meta(self):
-        node = StackingEnsembleNode()
-        ctx = make_ensemble_context(
-            self.store, self.data_art, self.def_art,
-            node.node_type,
-            [self.dt_art.artifact_id, self.gb_art.artifact_id],
-            params={"meta_learner": "logistic_regression", "n_folds": 3},
-        )
-        out = node.run(ctx)
-        self.assertGreaterEqual(len(out.artifacts), 2)
-        model_art = [a for a in out.artifacts if a.role == "model"][0]
-        report_art = [a for a in out.artifacts if a.role == "report"][0]
-        model = json.loads(self.store.artifact_path(model_art).read_text())
-        report = json.loads(self.store.artifact_path(report_art).read_text())
-        self.assertEqual(model["model_family"], "stacking_ensemble")
-        self.assertEqual(model["model_payload"]["meta_learner"], "logistic_regression")
-        self.assertEqual(report["ensemble_type"], "stacking")
-        self.assertEqual(len(report["fold_assignments"]), 3)
-
-    def test_stacking_tree_meta(self):
-        node = StackingEnsembleNode()
-        ctx = make_ensemble_context(
-            self.store, self.data_art, self.def_art,
-            node.node_type,
-            [self.dt_art.artifact_id, self.gb_art.artifact_id],
-            params={"meta_learner": "decision_tree", "n_folds": 3},
-        )
-        out = node.run(ctx)
-        model_art = [a for a in out.artifacts if a.role == "model"][0]
-        model = json.loads(self.store.artifact_path(model_art).read_text())
-        self.assertEqual(model["model_payload"]["meta_learner"], "decision_tree")
-
-    def test_stacking_has_estimator_reference(self):
-        node = StackingEnsembleNode()
-        ctx = make_ensemble_context(
-            self.store, self.data_art, self.def_art,
-            node.node_type,
-            [self.dt_art.artifact_id, self.gb_art.artifact_id],
-            params={"n_folds": 3},
-        )
-        out = node.run(ctx)
-        model_art = [a for a in out.artifacts if a.role == "model"][0]
-        model = json.loads(self.store.artifact_path(model_art).read_text())
-        self.assertIn("estimator_reference", model)
-        self.assertTrue(model["estimator_reference"]["trusted_load_required"])
-
-    def test_stacking_has_lineage_report(self):
-        node = StackingEnsembleNode()
-        ctx = make_ensemble_context(
-            self.store, self.data_art, self.def_art,
-            node.node_type,
-            [self.dt_art.artifact_id, self.gb_art.artifact_id],
-            params={"n_folds": 3},
-        )
-        out = node.run(ctx)
-        report_art = [a for a in out.artifacts if a.role == "report"][0]
-        report = json.loads(self.store.artifact_path(report_art).read_text())
-        self.assertIn("fold_assignments", report)
-        self.assertIn("base_model_artifacts", report)
-        self.assertEqual(report["n_folds"], 3)
-
-    def test_stacking_logistic_meta_weights(self):
-        node = StackingEnsembleNode()
-        ctx = make_ensemble_context(
-            self.store, self.data_art, self.def_art,
-            node.node_type,
-            [self.dt_art.artifact_id, self.gb_art.artifact_id],
-            params={"meta_learner": "logistic_regression", "n_folds": 3},
-        )
-        out = node.run(ctx)
-        model_art = [a for a in out.artifacts if a.role == "model"][0]
-        model = json.loads(self.store.artifact_path(model_art).read_text())
-        meta_weights = model["model_payload"]["meta_weights"]
-        self.assertIn("decision_tree", meta_weights)
-        self.assertIn("gbdt", meta_weights)
-
-    def test_model_artifact_valid(self):
-        node = StackingEnsembleNode()
-        ctx = make_ensemble_context(
-            self.store, self.data_art, self.def_art,
-            node.node_type,
-            [self.dt_art.artifact_id, self.gb_art.artifact_id],
-            params={"n_folds": 3},
-        )
-        out = node.run(ctx)
-        model_art = [a for a in out.artifacts if a.role == "model"][0]
-        model = json.loads(self.store.artifact_path(model_art).read_text())
-        errs = validate_model_artifact(model)
-        self.assertEqual(errs, [])
-
-    def test_requires_minimum_two_models(self):
-        node = StackingEnsembleNode()
-        errors = node.validate_params({"model_artifact_ids": ["x"]})
-        self.assertTrue(any("at least 2" in e for e in errors))
-
-    def test_experimental_and_leakage_warnings(self):
-        node = StackingEnsembleNode()
-        ctx = make_ensemble_context(
-            self.store, self.data_art, self.def_art,
-            node.node_type,
-            [self.dt_art.artifact_id, self.gb_art.artifact_id],
-            params={"n_folds": 3},
-        )
-        out = node.run(ctx)
-        model_art = [a for a in out.artifacts if a.role == "model"][0]
-        model = json.loads(self.store.artifact_path(model_art).read_text())
-        codes = [w["code"] for w in model["warnings"]]
-        self.assertIn("EXPERIMENTAL_ENSEMBLE", codes)
-        self.assertIn("LEAKAGE_CONTROLLED", codes)
 
 
 if __name__ == "__main__":

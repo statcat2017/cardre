@@ -70,7 +70,6 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
         FairnessReportNode,
         FeatureSelectionEmbeddedNode,
         FeatureSelectionFilterNode,
-        StackingEnsembleNode,
         VotingEnsembleNode,
         WeightedEnsembleNode,
         FineClassingNode,
@@ -141,6 +140,5 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
         CutoffAnalysisNode,
         VotingEnsembleNode,
         WeightedEnsembleNode,
-        StackingEnsembleNode,
     ]:
         reg.register(n)

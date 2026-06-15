@@ -1555,6 +1555,13 @@ class LogisticRegressionNode(NodeType):
             "bad_class_label": str(bad_class),
             "target_event_value": str(bad_class),
             "probability_column_index": prob_col_idx,
+            "feature_contract": {
+                "features": features_list,
+                "transformation_strategy": "woe",
+                "order_hash": feature_order_hash,
+                "missing_policy": "error",
+                "unknown_category_policy": "error",
+            },
             "feature_order_hash": feature_order_hash,
             "training": {
                 "row_count": X.shape[0],

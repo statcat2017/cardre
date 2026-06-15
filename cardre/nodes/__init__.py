@@ -47,7 +47,6 @@ from cardre.nodes.explainability import (
     ModelLimitationsNode,
 )
 from cardre.nodes.ensembles import (
-    StackingEnsembleNode,
     VotingEnsembleNode,
     WeightedEnsembleNode,
 )
@@ -104,7 +103,6 @@ __all__ = [
     "ResampleTrainingDataNode",
     "ScoreScalingNode",
     "SmoteTrainingDataNode",
-    "StackingEnsembleNode",
     "SplitTrainTestOotNode",
     "TechnicalManifestExportNode",
     "ThresholdOptimizationNode",

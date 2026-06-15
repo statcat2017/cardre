@@ -3,6 +3,9 @@
 Phase 6 adds:
 - GET /branches/{branch_id}/method-summary — model family, metrics, limitations
 - GET /branch-comparison-snapshots/{snapshot_id}/model-ranking — rank by metric
+
+NOTE: This module is an MVP stub. Evidence-readiness wiring and full
+metric resolution are not yet implemented.
 """
 
 from __future__ import annotations
@@ -12,7 +15,6 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from cardre.audit import json_logical_hash
 from cardre.services.project_registry import get_store_for_project
 from sidecar.models import MethodSummaryResponse, ModelRankingItem, ModelRankingResponse
 
@@ -24,17 +26,19 @@ def get_branch_method_summary(
     branch_id: str,
     project_id: str = Query(..., description="Project ID"),
 ) -> MethodSummaryResponse:
-    """Get method summary for a branch: model family, metrics, limitations, evidence readiness."""
+    """Get method summary for a branch: model family, metrics, limitations.
+
+    MVP stub: returns model artifact metadata when available. Evidence
+    readiness resolution is not yet wired.
+    """
     from cardre.reporting.evidence_resolver import resolve_branch
 
     store = get_store_for_project(project_id)
+    endpoint_warnings: list[str] = []
 
     branch = resolve_branch(store, branch_id)
     if branch is None:
         raise HTTPException(status_code=404, detail=f"Branch not found: {branch_id!r}")
-
-    plan_version_id = branch.get("plan_version_id", "")
-    branch_label = branch.get("label", "")
 
     # Find model artifact from latest run
     model_family = None
@@ -43,14 +47,13 @@ def get_branch_method_summary(
     interpretability_level = None
     champion_eligibility = None
     limitations: list[str] = []
-    warnings: list[str] = []
-    metrics: dict[str, Any] = {}
+    model_found = False
 
     # Query run-steps for this branch
+    import sqlite3
+    conn = sqlite3.connect(str(store.db_path))
+    conn.row_factory = sqlite3.Row
     try:
-        import sqlite3
-        conn = sqlite3.connect(str(store.db_path))
-        conn.row_factory = sqlite3.Row
         cursor = conn.execute(
             "SELECT rs.artifact_ids, rs.node_type, rs.status "
             "FROM run_steps rs "
@@ -62,24 +65,32 @@ def get_branch_method_summary(
         for row in cursor.fetchall():
             artifact_ids = json.loads(row["artifact_ids"]) if row["artifact_ids"] else []
             for aid in artifact_ids:
-                try:
-                    art = store.get_artifact(aid)
-                    if art is None:
-                        continue
-                    art_path = store.artifact_path(art)
-                    if art.artifact_type == "model" and art.role == "model":
-                        model_data = json.loads(art_path.read_text())
-                        model_family = model_data.get("model_family")
-                        feature_strategy = model_data.get("feature_strategy")
-                        feature_count = len(model_data.get("features", []))
-                        interpretability_level = model_data.get("interpretability", {}).get("explanation_level")
-                        limitations = model_data.get("interpretability", {}).get("limitations", [])
-                        warnings = [w.get("message", "") for w in model_data.get("warnings", [])]
-                except Exception:
+                art = store.get_artifact(aid)
+                if art is None:
                     continue
+                if art.artifact_type == "model" and art.role == "model":
+                    art_path = store.artifact_path(art)
+                    try:
+                        model_data = json.loads(art_path.read_text())
+                    except (json.JSONDecodeError, OSError):
+                        endpoint_warnings.append(f"Failed to read model artifact {aid}")
+                        continue
+                    model_family = model_data.get("model_family")
+                    feature_strategy = model_data.get("feature_strategy")
+                    feature_count = len(model_data.get("features", []))
+                    interpretability_level = model_data.get("interpretability", {}).get("explanation_level")
+                    limitations = model_data.get("interpretability", {}).get("limitations", [])
+                    model_found = True
+                    break
+            if model_found:
+                break
+    except sqlite3.Error as e:
+        endpoint_warnings.append(f"Database error: {e}")
+    finally:
         conn.close()
-    except Exception:
-        pass
+
+    if not model_found:
+        endpoint_warnings.append("No model artifact found for this branch")
 
     # Determine champion eligibility
     if interpretability_level:
@@ -94,9 +105,11 @@ def get_branch_method_summary(
         interpretability_level=interpretability_level,
         champion_eligibility=champion_eligibility,
         limitations=limitations,
-        warnings=warnings,
-        metrics=metrics,
-        evidence_readiness={},
+        warnings=endpoint_warnings,
+        evidence_readiness={
+            "status": "not_implemented",
+            "note": "Evidence readiness resolution is not yet wired in this MVP stub.",
+        },
     )
 
 

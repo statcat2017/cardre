@@ -208,7 +208,12 @@ class FairnessReportNode(NodeType):
         return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)}, execution_fingerprint=fp)
 
     def _compute_parity_summary(self, roles: dict, sensitive_columns: list[str]) -> dict:
-        """Compute approval parity and error parity across groups."""
+        """Compute approval parity and error parity across groups.
+
+        Splits approval parity (always computed when groups exist) from
+        outcome-based parity (bad-rate, FPR) which requires target labels.
+        Column-level errors are excluded from parity calculations.
+        """
         summary: dict[str, Any] = {}
 
         for col in sensitive_columns:
@@ -218,25 +223,29 @@ class FairnessReportNode(NodeType):
                 valid_groups = {
                     k: v for k, v in group_metrics.items()
                     if isinstance(v, dict) and v.get("status") != "insufficient_evidence"
+                       and "error" not in v
                 }
                 if not valid_groups:
                     continue
 
                 approval_rates = [g["approval_rate"] for g in valid_groups.values()]
-                bad_rates = [g["bad_rate"] for g in valid_groups.values()]
-                fprs = [g["false_positive_rate"] for g in valid_groups.values()]
+                outcome_available = all("bad_rate" in g for g in valid_groups.values())
 
                 if len(approval_rates) >= 2:
-                    max_diff_approval = round(max(approval_rates) - min(approval_rates), 4)
-                    max_diff_bad_rate = round(max(bad_rates) - min(bad_rates), 4)
-                    max_diff_fpr = round(max(fprs) - min(fprs), 4) if fprs else 0.0
-
-                    col_summary[role_name] = {
+                    entry: dict[str, Any] = {
                         "group_count": len(valid_groups),
-                        "max_approval_rate_difference": max_diff_approval,
-                        "max_bad_rate_difference": max_diff_bad_rate,
-                        "max_false_positive_rate_difference": max_diff_fpr,
+                        "max_approval_rate_difference": round(
+                            max(approval_rates) - min(approval_rates), 4,
+                        ),
                     }
+
+                    if outcome_available:
+                        bad_rates = [g["bad_rate"] for g in valid_groups.values()]
+                        fprs = [g["false_positive_rate"] for g in valid_groups.values()]
+                        entry["max_bad_rate_difference"] = round(max(bad_rates) - min(bad_rates), 4)
+                        entry["max_false_positive_rate_difference"] = round(max(fprs) - min(fprs), 4)
+
+                    col_summary[role_name] = entry
 
             if col_summary:
                 summary[col] = col_summary
