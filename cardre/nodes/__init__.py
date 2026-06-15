@@ -32,40 +32,90 @@ from cardre.nodes.build import (
     apply_manual_binning_overrides,
     validate_manual_binning_overrides,
 )
+from cardre.nodes.ml_models import (
+    DecisionTreeNode,
+    GradientBoostingClassifierNode,
+    RandomForestClassifierNode,
+)
+from cardre.nodes.boosting import (
+    CatBoostClassifierNode,
+    LightGBMClassifierNode,
+    XGBoostClassifierNode,
+)
+from cardre.nodes.explainability import (
+    ModelExplainabilityNode,
+    ModelLimitationsNode,
+)
+from cardre.nodes.ensembles import (
+    StackingEnsembleNode,
+    VotingEnsembleNode,
+    WeightedEnsembleNode,
+)
+from cardre.nodes.fairness import (
+    AlternativeDataManifestNode,
+    FairnessReportNode,
+    ProxyRiskReportNode,
+)
+from cardre.nodes.feature_selection import (
+    FeatureSelectionEmbeddedNode,
+    FeatureSelectionFilterNode,
+    ResampleTrainingDataNode,
+    SmoteTrainingDataNode,
+)
 from cardre.nodes.validate import (
     ApplyModelNode,
     ApplyWoeMappingNode,
     CutoffAnalysisNode,
     DummyApplyNode,
+    ThresholdOptimizationNode,
     ValidationMetricsNode,
 )
 
 __all__ = [
-    "GERMAN_CREDIT_COLUMNS",
+    "AlternativeDataManifestNode",
     "ApplyExclusionsNode",
     "ApplyModelNode",
     "ApplyWoeMappingNode",
     "BuildSummaryReportNode",
     "CalculateWoeIvNode",
+    "CatBoostClassifierNode",
     "CutoffAnalysisNode",
+    "DecisionTreeNode",
     "DefineModellingMetadataNode",
     "DevelopmentSampleDefinitionNode",
     "DummyApplyNode",
     "DummyFitNode",
     "ExplicitMissingOutlierTreatmentNode",
+    "FairnessReportNode",
+    "FeatureSelectionEmbeddedNode",
+    "FeatureSelectionFilterNode",
     "FineClassingNode",
+    "GERMAN_CREDIT_COLUMNS",
+    "GradientBoostingClassifierNode",
     "ImportGermanCreditNode",
+    "LightGBMClassifierNode",
     "LogisticRegressionNode",
     "ManualBinningNode",
+    "ModelExplainabilityNode",
+    "ModelLimitationsNode",
     "ProfileDatasetNode",
+    "ProxyRiskReportNode",
+    "RandomForestClassifierNode",
+    "ResampleTrainingDataNode",
     "ScoreScalingNode",
+    "SmoteTrainingDataNode",
+    "StackingEnsembleNode",
     "SplitTrainTestOotNode",
     "TechnicalManifestExportNode",
+    "ThresholdOptimizationNode",
     "ValidateBinaryTargetNode",
     "ValidationMetricsNode",
     "VariableClusteringNode",
     "VariableSelectionNode",
+    "VotingEnsembleNode",
+    "WeightedEnsembleNode",
     "WoeTransformTrainNode",
+    "XGBoostClassifierNode",
     "apply_manual_binning_overrides",
     "validate_manual_binning_overrides",
 ]

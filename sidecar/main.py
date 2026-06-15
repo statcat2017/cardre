@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 
 from cardre.services import PlanValidationError
 from cardre.services.project_registry import ProjectNotFoundError, ProjectPathMissingError
-from sidecar.routes import artifacts, branches, champion, comparisons, datasets, exports, health, plans, projects, reports, runs
+from sidecar.routes import artifacts, branches, champion, comparisons, datasets, exports, health, method_summary, node_types, plans, projects, reports, runs
 
 app = FastAPI(title="cardre-api", version="0.1.0")
 
@@ -60,6 +60,8 @@ app.include_router(champion.router)
 app.include_router(exports.router)
 app.include_router(artifacts.router)
 app.include_router(reports.router)
+app.include_router(node_types.router)
+app.include_router(method_summary.router)
 
 
 def main() -> None:

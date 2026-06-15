@@ -18,7 +18,12 @@ dependencies = [
 
 [project.optional-dependencies]
 sidecar = ["fastapi", "uvicorn"]
-test = ["pytest", "httpx2", "starlette"]
+test = ["pytest", "httpx", "starlette"]
+boosting = ["xgboost", "lightgbm", "catboost"]
+imbalance = ["imbalanced-learn"]
+explain = ["shap", "lime"]
+deep = ["torch"]
+all-methods = ["xgboost", "lightgbm", "catboost", "imbalanced-learn", "shap", "lime", "torch"]
 
 [tool.setuptools.packages.find]
 include = ["cardre*", "sidecar*"]

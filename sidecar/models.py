@@ -540,3 +540,74 @@ class ReportMetadataResponse(BaseModel):
     export_path: str = ""
     zip_path: str = ""
     status: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Node Types (Phase 6)
+# ---------------------------------------------------------------------------
+
+class NodeTypeItem(BaseModel):
+    node_type: str
+    version: str
+    category: str
+    description: str = ""
+    model_family: str | None = None
+    feature_strategies: list[str] = Field(default_factory=list)
+    interpretability_level: str | None = None
+    champion_eligibility: str | None = None
+    optional_dependencies: list[str] = Field(default_factory=list)
+    input_roles: list[str] = Field(default_factory=list)
+    output_roles: list[str] = Field(default_factory=list)
+
+
+class NodeTypeListResponse(BaseModel):
+    node_types: list[NodeTypeItem]
+    count: int
+
+
+class NodeTypeSchemaResponse(BaseModel):
+    node_type: str
+    version: str
+    params_schema: dict[str, Any] = Field(default_factory=dict)
+    defaults: dict[str, Any] = Field(default_factory=dict)
+    description: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Method Summary (Phase 6)
+# ---------------------------------------------------------------------------
+
+class MethodSummaryResponse(BaseModel):
+    branch_id: str
+    model_family: str | None = None
+    feature_strategy: str | None = None
+    feature_count: int = 0
+    interpretability_level: str | None = None
+    champion_eligibility: str | None = None
+    limitations: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    evidence_readiness: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Model Ranking (Phase 6)
+# ---------------------------------------------------------------------------
+
+class ModelRankingItem(BaseModel):
+    branch_id: str
+    branch_label: str = ""
+    model_family: str | None = None
+    rank: int = 0
+    metric_name: str = ""
+    metric_value: float | None = None
+    interpretability_level: str | None = None
+    champion_eligible: bool = False
+    limitations_summary: list[str] = Field(default_factory=list)
+
+
+class ModelRankingResponse(BaseModel):
+    comparison_id: str
+    metric_name: str
+    rankings: list[ModelRankingItem]
+    total_branches: int = 0

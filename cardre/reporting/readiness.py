@@ -23,17 +23,21 @@ from cardre.store import ProjectStore
 
 REQUIRED_STEPS_CHAMPION = [
     "final-woe-iv",
-    "logistic-regression",
+    "model-fit",
     "score-scaling",
     "validation-metrics",
 ]
 
 REQUIRED_STEPS_BRANCH = [
     "final-woe-iv",
-    "logistic-regression",
+    "model-fit",
     "score-scaling",
     "validation-metrics",
 ]
+
+LEGACY_CANONICAL_ALIASES: dict[str, str] = {
+    "logistic-regression": "model-fit",
+}
 
 BLOCKER_CODES = LimitationCode.blocker_codes()
 
@@ -163,7 +167,15 @@ def check_report_readiness(
     # Check required canonical steps present in step map
     required = REQUIRED_STEPS_CHAMPION if report_mode == "champion" else REQUIRED_STEPS_BRANCH
     step_ids_in_map = {row["canonical_step_id"] for row in step_map}
-    missing_steps = [s for s in required if s not in step_ids_in_map]
+
+    resolved_step_ids_in_map: set[str] = set()
+    for sid in step_ids_in_map:
+        resolved_step_ids_in_map.add(sid)
+        for legacy, modern in LEGACY_CANONICAL_ALIASES.items():
+            if sid == legacy:
+                resolved_step_ids_in_map.add(modern)
+
+    missing_steps = [s for s in required if s not in resolved_step_ids_in_map]
     if missing_steps:
         blockers.append(ReadinessBlocker(
             LimitationCode.MISSING_REQUIRED_CANONICAL_STEP,
@@ -176,6 +188,17 @@ def check_report_readiness(
         canonical_step_ids=required,
         branch_step_map=step_map,
     )
+
+    # Lazy legacy resolution: if a required modern step was not found,
+    # check if a legacy alias exists in the step map and resolve that instead.
+    legacy_reverse = {v: k for k, v in LEGACY_CANONICAL_ALIASES.items()}
+    for canonical_step_id in required:
+        ref = resolved.get(canonical_step_id)
+        if ref is None and canonical_step_id in legacy_reverse:
+            legacy_id = legacy_reverse[canonical_step_id]
+            legacy_ref = resolved.get(legacy_id)
+            if legacy_ref is not None:
+                resolved[canonical_step_id] = legacy_ref
 
     for canonical_step_id in required:
         ref = resolved.get(canonical_step_id)

@@ -14,12 +14,16 @@ from cardre.store import ProjectStore
 
 REQUIRED_EVIDENCE_CANONICAL_STEPS = [
     "final-woe-iv",
-    "logistic-regression",
+    "model-fit",
     "score-scaling",
     "validation-metrics",
     "cutoff-analysis",
     "technical-manifest-stub",
 ]
+
+LEGACY_CANONICAL_ALIASES: dict[str, str] = {
+    "logistic-regression": "model-fit",
+}
 
 
 def _check_branch_readiness(
@@ -35,6 +39,8 @@ def _check_branch_readiness(
     to full-plan (branch_id=NULL) evidence since baseline runs pre-date
     the branch model.
 
+    Handles legacy canonical step aliases (e.g., logistic-regression -> model-fit).
+
     Returns a list of missing-or-stale entries; empty list = ready.
     """
     step_map = store.get_branch_step_map(branch_id, plan_version_id)
@@ -42,13 +48,20 @@ def _check_branch_readiness(
     for row in step_map:
         canon_to_actual[row["canonical_step_id"]] = row["step_id"]
 
+    # Build reverse alias map for legacy resolution
+    legacy_reverse = {v: k for k, v in LEGACY_CANONICAL_ALIASES.items()}
+
     staleness = PlanExecutor(NodeRegistry.with_defaults()).compute_staleness(
         store, plan_version_id, branch_id=branch_id if not is_baseline else None,
     )
 
     missing: list[dict[str, str]] = []
     for cs in required_steps:
-        actual_id = canon_to_actual.get(cs, cs)
+        actual_id = canon_to_actual.get(cs)
+        if actual_id is None and cs in legacy_reverse:
+            actual_id = canon_to_actual.get(legacy_reverse[cs])
+        if actual_id is None:
+            actual_id = cs
         evidence_branch = branch_id if not is_baseline else None
         rs = store.get_latest_successful_run_step_for_step(
             plan_version_id, actual_id, branch_id=evidence_branch,
@@ -173,37 +186,80 @@ def _build_comparison_content(
             })
         content["woe_iv"]["variables"] = woe_vars
 
-    lr_b = _find_artifact(step_map_b, "logistic-regression", plan_version_id_baseline, None) if spec.get("include_model") else None
-    lr_c = _find_artifact(step_map_c, "logistic-regression", plan_version_id_challenger, branch_id_challenger) if spec.get("include_model") else None
+    lr_b = _find_artifact(step_map_b, "model-fit", plan_version_id_baseline, None) if spec.get("include_model") else None
+    lr_c = _find_artifact(step_map_c, "model-fit", plan_version_id_challenger, branch_id_challenger) if spec.get("include_model") else None
+
+    # Fallback to legacy logistic-regression canonical step
+    if lr_b is None and spec.get("include_model"):
+        lr_b = _find_artifact(step_map_b, "logistic-regression", plan_version_id_baseline, None)
+    if lr_c is None and spec.get("include_model"):
+        lr_c = _find_artifact(step_map_c, "logistic-regression", plan_version_id_challenger, branch_id_challenger)
+
     if lr_b and lr_c:
-        b_coeffs_raw = lr_b.get("coefficients", [])
-        c_coeffs_raw = lr_c.get("coefficients", [])
-        b_coeffs = {}
-        c_coeffs = {}
-        for c in b_coeffs_raw:
-            if isinstance(c, dict) and "variable" in c:
-                b_coeffs[c["variable"]] = c
-        for c in c_coeffs_raw:
-            if isinstance(c, dict) and "variable" in c:
-                c_coeffs[c["variable"]] = c
-        model_vars = []
-        for var_name in sorted(set(b_coeffs) | set(c_coeffs)):
-            model_vars.append({
-                "variable": var_name,
-                "baseline": {"included": var_name in b_coeffs, "coefficient": b_coeffs.get(var_name, {}).get("coefficient", 0), "points_range": 0},
-                "challengers": {branch_id_challenger: {"included": var_name in c_coeffs, "coefficient": c_coeffs.get(var_name, {}).get("coefficient", 0), "points_range": 0}},
-            })
-        content["model"]["variables"] = model_vars
+        b_family = lr_b.get("model_family", "logistic_regression")
+        c_family = lr_c.get("model_family", "logistic_regression")
+
         content["model"]["branch_level"]["baseline"] = {
-            "feature_count": len(b_coeffs),
-            "converged": bool(lr_b.get("converged", True)) if isinstance(lr_b, dict) else False,
-            "warnings": lr_b.get("warnings", []) if isinstance(lr_b, dict) else [],
+            "model_family": b_family,
+            "feature_count": len(lr_b.get("features", lr_b.get("feature_contract", {}).get("features", []))),
+            "warnings": lr_b.get("warnings", []),
         }
         content["model"]["branch_level"][branch_id_challenger] = {
-            "feature_count": len(c_coeffs),
-            "converged": bool(lr_c.get("converged", True)) if isinstance(lr_c, dict) else False,
-            "warnings": lr_c.get("warnings", []) if isinstance(lr_c, dict) else [],
+            "model_family": c_family,
+            "feature_count": len(lr_c.get("features", lr_c.get("feature_contract", {}).get("features", []))),
+            "warnings": lr_c.get("warnings", []),
         }
+
+        # Coefficient comparison only for coefficient-bearing models
+        if b_family == "logistic_regression" and c_family == "logistic_regression":
+            b_coeffs_raw = lr_b.get("coefficients", [])
+            c_coeffs_raw = lr_c.get("coefficients", [])
+            b_coeffs = {}
+            c_coeffs = {}
+            if isinstance(b_coeffs_raw, dict):
+                b_coeffs = b_coeffs_raw
+            else:
+                for c in b_coeffs_raw:
+                    if isinstance(c, dict) and "variable" in c:
+                        b_coeffs[c["variable"]] = c
+            if isinstance(c_coeffs_raw, dict):
+                c_coeffs = c_coeffs_raw
+            else:
+                for c in c_coeffs_raw:
+                    if isinstance(c, dict) and "variable" in c:
+                        c_coeffs[c["variable"]] = c
+
+            model_vars = []
+            for var_name in sorted(set(b_coeffs) | set(c_coeffs)):
+                b_val = b_coeffs.get(var_name, 0) if isinstance(b_coeffs.get(var_name), (int, float)) else b_coeffs.get(var_name, {}).get("coefficient", 0)
+                c_val = c_coeffs.get(var_name, 0) if isinstance(c_coeffs.get(var_name), (int, float)) else c_coeffs.get(var_name, {}).get("coefficient", 0)
+                model_vars.append({
+                    "variable": var_name,
+                    "baseline": {"included": var_name in b_coeffs, "coefficient": b_val, "points_range": 0},
+                    "challengers": {branch_id_challenger: {"included": var_name in c_coeffs, "coefficient": c_val, "points_range": 0}},
+                })
+            content["model"]["variables"] = model_vars
+        else:
+            # Generic model comparison: feature importance, interpretability
+            b_features = lr_b.get("features", lr_b.get("feature_contract", {}).get("features", []))
+            c_features = lr_c.get("features", lr_c.get("feature_contract", {}).get("features", []))
+            b_interp = lr_b.get("interpretability", {})
+            c_interp = lr_c.get("interpretability", {})
+            content["model"]["generic_comparison"] = {
+                "baseline": {
+                    "model_family": b_family,
+                    "features": b_features,
+                    "interpretability": b_interp,
+                },
+                "challenger": {
+                    "model_family": c_family,
+                    "features": c_features,
+                    "interpretability": c_interp,
+                },
+                "feature_overlap": len(set(b_features) & set(c_features)),
+                "baseline_only_features": [f for f in b_features if f not in c_features],
+                "challenger_only_features": [f for f in c_features if f not in b_features],
+            }
 
     # Validation metrics by role
     if spec.get("include_validation"):
