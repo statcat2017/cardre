@@ -198,14 +198,11 @@ class ApplyModelNode(NodeType):
             return self._apply_sklearn_estimator(context, model, model_art, scorecard_art)
         elif model_family in ("voting_ensemble", "weighted_ensemble"):
             return self._apply_voting_weighted_ensemble(context, model, model_art)
-        elif model_family == "stacking_ensemble":
-            return self._apply_stacking_ensemble(context, model, model_art)
         else:
             raise ValueError(
                 f"apply_model: unsupported model_family {model_family!r}. "
                 f"Supported families: logistic_regression, decision_tree, random_forest, "
-                f"gbdt, xgboost, lightgbm, catboost, voting_ensemble, weighted_ensemble, "
-                f"stacking_ensemble"
+                f"gbdt, xgboost, lightgbm, catboost, voting_ensemble, weighted_ensemble"
             )
 
     def _apply_logistic(
@@ -485,134 +482,6 @@ class ApplyModelNode(NodeType):
             else:
                 predictions = (prob_matrix >= threshold).astype(int)
                 pred_bad = (np.sum(predictions, axis=1) > (len(base_artifacts) / 2)).astype(float)
-
-            columns_to_add = [
-                pl.Series("predicted_bad_probability", pred_bad, dtype=pl.Float64),
-                pl.lit(model_art.artifact_id).alias("model_artifact_id"),
-                pl.lit(model.get("model_family", "unknown")).alias("model_family"),
-            ]
-            df = df.with_columns(columns_to_add)
-            art = write_parquet_artifact(
-                store, artifact_type="dataset", role=role,
-                stem=f"scored-{role}-{context.step_spec.step_id}",
-                frame=df,
-                metadata={"model_artifact_id": model_art.artifact_id},
-            )
-            outputs.append(art)
-
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=outputs,
-        )
-        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)}, execution_fingerprint=fp)
-
-    def _apply_stacking_ensemble(
-        self, context: ExecutionContext, model: dict, model_art,
-    ) -> NodeOutput:
-        import json
-        import numpy as np
-
-        store = context.store
-        model_payload = model.get("model_payload", {})
-        base_model_refs = model_payload.get("base_models", [])
-        estimator_ref = model.get("estimator_reference", {})
-
-        # Load meta-learner
-        estimator_art_id = estimator_ref.get("artifact_id", "")
-        if not estimator_art_id:
-            raise ValueError("Stacking ensemble missing meta-learner estimator_reference")
-        est_art = store.get_artifact(estimator_art_id)
-        if est_art is None:
-            raise ValueError(f"Stacking meta-learner artifact {estimator_art_id!r} not found")
-        from cardre.modeling.serialization import read_estimator_artifact
-        import joblib
-        import io
-        est_bytes = read_estimator_artifact(
-            store, est_art,
-            expected_logical_hash=estimator_ref.get("logical_hash"),
-        )
-        meta_learner = joblib.load(io.BytesIO(est_bytes))
-
-        # Collect base model artifact IDs (stored as model_artifact_id)
-        base_model_ids = [
-            bm.get("model_artifact_id", "") for bm in base_model_refs
-        ]
-        base_model_ids = [aid for aid in base_model_ids if aid]
-
-        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        outputs = []
-
-        for data_art in data_arts:
-            df = pl.read_parquet(store.artifact_path(data_art))
-            role = data_art.role
-
-            meta_features = []
-            for bm_id in base_model_ids:
-                bm_art = store.get_artifact(bm_id)
-                if bm_art is None:
-                    continue
-                try:
-                    bm_data = json.loads(store.artifact_path(bm_art).read_text())
-                except Exception:
-                    continue
-
-                bm_features_list = bm_data.get("features", [])
-                bm_prob_col = bm_data.get("probability_column_index", 1)
-                bm_family = bm_data.get("model_family", "")
-
-                missing = [f for f in bm_features_list if f not in df.columns]
-                if missing:
-                    raise ValueError(
-                        f"apply_model: stacking base model role {role!r} "
-                        f"missing features {missing}"
-                    )
-
-                if bm_family == "logistic_regression":
-                    coefs = bm_data.get("coefficients", {})
-                    intercept = float(bm_data.get("intercept", 0))
-                    X = df.select(bm_features_list).to_numpy()
-                    log_odds = np.full(X.shape[0], intercept, dtype=np.float64)
-                    for i, feat in enumerate(bm_features_list):
-                        log_odds += float(coefs.get(feat, 0)) * X[:, i]
-                    probs = 1.0 / (1.0 + np.exp(-log_odds))
-                else:
-                    ref = bm_data.get("estimator_reference", {})
-                    eid = ref.get("artifact_id", "")
-                    if not eid:
-                        continue
-                    e_art = store.get_artifact(eid)
-                    if e_art is None:
-                        continue
-                    e_bytes = read_estimator_artifact(
-                        store, e_art,
-                        expected_logical_hash=ref.get("logical_hash"),
-                    )
-                    estimator = joblib.load(io.BytesIO(e_bytes))
-                    X = df.select(bm_features_list).to_numpy()
-                    if hasattr(estimator, "predict_proba"):
-                        proba = estimator.predict_proba(X)
-                        if proba.shape[1] > bm_prob_col:
-                            probs = proba[:, bm_prob_col]
-                        else:
-                            probs = proba[:, -1]
-                    else:
-                        probs = estimator.predict(X).astype(np.float64)
-                meta_features.append(probs)
-
-            if not meta_features:
-                raise ValueError("No base model predictions for stacking apply")
-
-            meta_X = np.column_stack(meta_features)
-            if hasattr(meta_learner, "predict_proba"):
-                proba = meta_learner.predict_proba(meta_X)
-                pred_bad = proba[:, 1] if proba.shape[1] > 1 else proba[:, 0]
-            else:
-                pred_bad = meta_learner.predict(meta_X).astype(np.float64)
 
             columns_to_add = [
                 pl.Series("predicted_bad_probability", pred_bad, dtype=pl.Float64),

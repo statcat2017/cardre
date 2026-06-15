@@ -96,13 +96,6 @@ _MODEL_FAMILIES: dict[str, dict] = {
         "champion_eligibility": "not_recommended",
         "description": "Weighted ensemble with user-defined or validation-optimized weights. Experimental/research.",
     },
-    "cardre.stacking_ensemble": {
-        "model_family": "stacking_ensemble",
-        "feature_strategies": ["ensemble"],
-        "interpretability_level": "post_hoc_only",
-        "champion_eligibility": "not_recommended",
-        "description": "Stacking ensemble with OOF lineage for leakage prevention. Experimental/research.",
-    },
     "cardre.validation_metrics": {
         "model_family": None,
         "feature_strategies": [],
@@ -235,14 +228,6 @@ def get_node_type_schema(node_type: str) -> NodeTypeSchemaResponse:
             "optimize_weights": {"type": "boolean", "default": False},
         }
         defaults = {"optimize_weights": False}
-    elif node_type == "cardre.stacking_ensemble":
-        params_schema = {
-            "model_artifact_ids": {"type": "array", "items": {"type": "string"}, "minItems": 2},
-            "n_folds": {"type": "integer", "minimum": 2, "default": 5},
-            "random_seed": {"type": "integer", "default": 42},
-            "meta_learner": {"type": "string", "enum": ["logistic_regression", "decision_tree", "random_forest"], "default": "logistic_regression"},
-        }
-        defaults = {"n_folds": 5, "random_seed": 42, "meta_learner": "logistic_regression"}
 
     return NodeTypeSchemaResponse(
         node_type=node_type,

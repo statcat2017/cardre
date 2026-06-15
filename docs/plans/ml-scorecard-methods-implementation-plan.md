@@ -654,7 +654,7 @@ its governed scorecard product identity.
 | Node | Methods | Status |
 |---|---|---|
 | `cardre.voting_ensemble` | Hard/soft voting across selected fitted model artifacts | Advanced |
-| `cardre.stacking_ensemble` | Base learners plus meta learner | Advanced, leakage-sensitive |
+| `cardre.stacking_ensemble` | Base learners plus meta learner | Deferred — needs fold-level base-model artifacts and leakage-safe semantics |
 | `cardre.weighted_ensemble` | User-defined or validation-optimized weights | Advanced |
 | `cardre.dynamic_ensemble` | Segment- or cluster-specific model choice | Research backlog |
 | `cardre.segmented_model_fit` | Fit separate model per cluster/segment | Research backlog |
