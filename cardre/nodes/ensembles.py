@@ -523,9 +523,10 @@ class StackingEnsembleNode(NodeType):
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+        from sklearn.ensemble import RandomForestClassifier
         from sklearn.linear_model import LogisticRegression
         from sklearn.model_selection import StratifiedKFold
+        from sklearn.tree import DecisionTreeClassifier
 
         store = context.store
         params = context.validated_params
@@ -561,7 +562,7 @@ class StackingEnsembleNode(NodeType):
         y_raw = df[target_col].cast(pl.String).to_list()
         y_binary = np.array([1 if str(v) in bad_values else 0 for v in y_raw])
 
-        # Load base models
+        # Load base model artifacts (JSON metadata)
         base_models: list[dict] = []
         for aid in model_artifact_ids:
             model = _load_model_artifact(store, aid)
@@ -576,6 +577,7 @@ class StackingEnsembleNode(NodeType):
         X_all = df.select(features).to_numpy()
 
         # Stratified K-Fold for OOF predictions
+        # Each base model's stored fitted estimator is used without refitting
         skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=random_seed)
         oof_predictions = np.zeros((len(y_binary), len(base_models)))
         fold_assignments = []
@@ -589,49 +591,18 @@ class StackingEnsembleNode(NodeType):
                 "val_size": len(val_idx),
             })
 
-            X_train_fold = X_all[train_idx]
-            y_train_fold = y_binary[train_idx]
-            X_val_fold = X_all[val_idx]
-
             for model_idx, base_model in enumerate(base_models):
-                model_family = base_model.get("model_family", "")
-
-                # Fit a fresh estimator on train fold
-                if model_family == "logistic_regression":
-                    estimator = LogisticRegression(max_iter=1000, random_state=random_seed)
-                elif model_family in ("random_forest",):
-                    estimator = RandomForestClassifier(
-                        n_estimators=50, max_depth=5, random_state=random_seed, n_jobs=-1,
-                    )
-                elif model_family in ("gbdt",):
-                    estimator = GradientBoostingClassifier(
-                        n_estimators=50, max_depth=3, random_state=random_seed,
-                    )
-                else:
-                    # For unknown families, refit a simple logistic
-                    estimator = LogisticRegression(max_iter=1000, random_state=random_seed)
-
                 model_features = base_model.get("features", [])
-                X_train_m = df.select(model_features).to_numpy()[train_idx]
-                X_val_m = df.select(model_features).to_numpy()[val_idx]
-
-                estimator.fit(X_train_m, y_train_fold)
-
-                if hasattr(estimator, "predict_proba"):
-                    proba = estimator.predict_proba(X_val_m)
-                    prob_col_idx = base_model.get("probability_column_index", 1)
-                    if proba.shape[1] > prob_col_idx:
-                        oof_predictions[val_idx, model_idx] = proba[:, prob_col_idx]
-                    else:
-                        oof_predictions[val_idx, model_idx] = proba[:, -1]
-                else:
-                    oof_predictions[val_idx, model_idx] = estimator.predict(X_val_m).astype(float)
+                val_df = df.select(model_features)[val_idx]
+                oof_predictions[val_idx, model_idx] = _get_predictions(
+                    store, base_model, val_df, model_features,
+                )
 
         # Fit meta-learner on OOF predictions
         if meta_learner_type == "logistic_regression":
             meta_learner = LogisticRegression(max_iter=1000, random_state=random_seed)
         elif meta_learner_type == "decision_tree":
-            meta_learner = RandomForestClassifier(n_estimators=1, max_depth=3, random_state=random_seed)
+            meta_learner = DecisionTreeClassifier(max_depth=3, random_state=random_seed)
         else:
             meta_learner = RandomForestClassifier(n_estimators=50, max_depth=5, random_state=random_seed)
 

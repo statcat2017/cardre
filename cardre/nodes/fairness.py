@@ -108,8 +108,9 @@ class FairnessReportNode(NodeType):
             y_prob = df["predicted_bad_probability"].to_list()
             y_pred = [1 if p >= cutoff else 0 for p in y_prob]
 
-            y_bin = [0] * df.height
-            if target_col and target_col in df.columns and bad:
+            target_available = bool(target_col and target_col in df.columns and bad)
+            y_bin = None
+            if target_available:
                 y_raw = df[target_col].cast(pl.String).to_list()
                 y_bin = [1 if str(v) in bad else 0 for v in y_raw]
 
@@ -137,27 +138,11 @@ class FairnessReportNode(NodeType):
                         }
                         continue
 
-                    group_y = [y_bin[i] for i in indices]
                     group_pred = [y_pred[i] for i in indices]
                     group_scores = [scores[i] for i in indices]
                     group_probs = [y_prob[i] for i in indices]
 
-                    n_bad_group = sum(group_y)
-                    n_good_group = n_group - n_bad_group
-
                     approval_rate = round(1 - sum(group_pred) / n_group, 4) if n_group > 0 else 0.0
-                    bad_rate = round(n_bad_group / n_group, 4) if n_group > 0 else 0.0
-
-                    # Error rates
-                    tp = sum(1 for a, p in zip(group_y, group_pred) if a == 1 and p == 1)
-                    fp = sum(1 for a, p in zip(group_y, group_pred) if a == 0 and p == 1)
-                    fn = sum(1 for a, p in zip(group_y, group_pred) if a == 1 and p == 0)
-                    tn = sum(1 for a, p in zip(group_y, group_pred) if a == 0 and p == 0)
-
-                    precision = round(tp / (tp + fp), 4) if (tp + fp) > 0 else 0.0
-                    recall = round(tp / (tp + fn), 4) if (tp + fn) > 0 else 0.0
-                    specificity = round(tn / (tn + fp), 4) if (tn + fp) > 0 else 0.0
-                    fpr = round(fp / (fp + tn), 4) if (fp + tn) > 0 else 0.0  # false positive rate
 
                     score_dist = {
                         "mean": round(float(np.mean(group_scores)), 2),
@@ -166,22 +151,40 @@ class FairnessReportNode(NodeType):
                         "p75": round(float(np.percentile(group_scores, 75)), 2),
                     }
 
-                    col_report[group_val] = {
+                    entry: dict[str, Any] = {
                         "n": n_group,
-                        "n_bad": n_bad_group,
-                        "n_good": n_good_group,
                         "approval_rate": approval_rate,
-                        "bad_rate": bad_rate,
-                        "precision": precision,
-                        "recall": recall,
-                        "specificity": specificity,
-                        "false_positive_rate": fpr,
                         "score_distribution": score_dist,
                     }
+
+                    if y_bin is not None:
+                        group_y = [y_bin[i] for i in indices]
+                        n_bad_group = sum(group_y)
+                        n_good_group = n_group - n_bad_group
+
+                        entry["n_bad"] = n_bad_group
+                        entry["n_good"] = n_good_group
+                        entry["bad_rate"] = round(n_bad_group / n_group, 4) if n_group > 0 else 0.0
+
+                        # Error rates
+                        tp = sum(1 for a, p in zip(group_y, group_pred) if a == 1 and p == 1)
+                        fp = sum(1 for a, p in zip(group_y, group_pred) if a == 0 and p == 1)
+                        fn = sum(1 for a, p in zip(group_y, group_pred) if a == 1 and p == 0)
+                        tn = sum(1 for a, p in zip(group_y, group_pred) if a == 0 and p == 0)
+
+                        entry["precision"] = round(tp / (tp + fp), 4) if (tp + fp) > 0 else 0.0
+                        entry["recall"] = round(tp / (tp + fn), 4) if (tp + fn) > 0 else 0.0
+                        entry["specificity"] = round(tn / (tn + fp), 4) if (tn + fp) > 0 else 0.0
+                        entry["false_positive_rate"] = round(fp / (fp + tn), 4) if (fp + tn) > 0 else 0.0
+
+                    col_report[group_val] = entry
 
                 group_metrics[col] = col_report
 
             role_report["group_metrics"] = group_metrics
+            role_report["target_available"] = target_available
+            if not target_available:
+                role_report["target_warning"] = "Target column or bad_values unavailable; outcome-based metrics omitted."
             report["roles"][role] = role_report
 
         # Cross-group parity summary

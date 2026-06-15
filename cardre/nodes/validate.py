@@ -649,10 +649,10 @@ class ValidationMetricsNode(NodeType):
 
     def _derive_y_bin(
         self, df: pl.DataFrame, target_col: str, good: set[str], bad: set[str],
-    ) -> tuple[list[int], list[dict]]:
+    ) -> tuple[list[int] | None, list[dict]]:
         """Derive binary target from definition metadata; never from predictions.
 
-        Returns (y_bin, warnings).
+        Returns (y_bin or None if target is unavailable, warnings).
         """
         warnings: list[dict] = []
         if not target_col or target_col not in df.columns:
@@ -661,14 +661,14 @@ class ValidationMetricsNode(NodeType):
                 "message": f"Target column {target_col!r} not found; "
                            "all metrics except row count are unavailable.",
             })
-            return [0] * df.height, warnings
+            return None, warnings
         if not good and not bad:
             warnings.append({
                 "code": "MISSING_TARGET_METADATA",
                 "message": "No good_values/bad_values in definition artifact; "
                            "all metrics except row count are unavailable.",
             })
-            return [0] * df.height, warnings
+            return None, warnings
 
         y_raw = df[target_col].cast(pl.String).to_list()
         y_bin = [1 if str(v) in bad else 0 for v in y_raw]
@@ -735,6 +735,13 @@ class ValidationMetricsNode(NodeType):
             y_bin, warnings = self._derive_y_bin(df, target_col, good, bad)
             y_prob = df["predicted_bad_probability"].to_list()
             scores = df["score"].to_list() if "score" in df.columns else y_prob
+
+            if y_bin is None:
+                metrics_report[role] = {
+                    "row_count": n,
+                    "warnings": warnings,
+                }
+                continue
 
             n_bad = sum(y_bin)
             n_good = n - n_bad

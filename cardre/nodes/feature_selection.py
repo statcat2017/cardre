@@ -614,9 +614,10 @@ class ResampleTrainingDataNode(NodeType):
 
         resampled_df = df[all_indices]
 
-        # Track synthetic rows in metadata only (not in output columns to avoid feature leakage)
+        # Track synthetic rows and dropped rows separately
         original_count = n_total
-        synthetic_count = len(all_indices) - n_total
+        n_oversampled_bad = max(0, len(resampled_bad_idx) - n_bad)
+        n_dropped_good = max(0, n_good - len(resampled_good_idx))
 
         # Compute class distribution report
         new_y = resampled_df[target_col].cast(pl.String).to_list()
@@ -626,7 +627,8 @@ class ResampleTrainingDataNode(NodeType):
         resample_report = {
             "original": {"total": original_count, "bad": n_bad, "good": n_good},
             "resampled": {"total": len(resampled_df), "bad": new_bad, "good": new_good},
-            "synthetic_rows_added": synthetic_count,
+            "synthetic_rows_added": n_oversampled_bad,
+            "rows_dropped": n_dropped_good,
             "strategy": strategy,
             "sampling_ratio": sampling_ratio,
         }
@@ -663,7 +665,7 @@ class ResampleTrainingDataNode(NodeType):
             metrics={
                 "original_count": original_count,
                 "resampled_count": len(resampled_df),
-                "synthetic_count": synthetic_count,
+                "synthetic_count": n_oversampled_bad,
             },
             execution_fingerprint=fp,
         )
@@ -759,6 +761,8 @@ class SmoteTrainingDataNode(NodeType):
         if not feature_cols:
             raise ValueError("No numeric features for SMOTE")
 
+        passthrough_cols = [c for c in df.columns if c != target_col and c not in feature_cols]
+
         X = df.select(feature_cols).to_numpy()
 
         n_bad = int(y_binary.sum())
@@ -797,10 +801,13 @@ class SmoteTrainingDataNode(NodeType):
             synth_target_str = [bad_label if v == 1 else good_label for v in synth_targets]
             synth_df = synth_df.with_columns(pl.Series(target_col, synth_target_str))
 
-            orig_df = df.select(feature_cols + [target_col])
+            # Preserve passthrough columns from original rows; synthetic rows get null
+            orig_df = df.select(feature_cols + [target_col] + passthrough_cols)
+            for pc in passthrough_cols:
+                synth_df = synth_df.with_columns(pl.lit(None).alias(pc))
             resampled_df = pl.concat([orig_df, synth_df])
         else:
-            resampled_df = df.select(feature_cols + [target_col])
+            resampled_df = df.select(feature_cols + [target_col] + passthrough_cols)
 
         # Class distribution
         new_y = resampled_df[target_col].cast(pl.String).to_list()

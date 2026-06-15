@@ -10,40 +10,24 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from cardre.audit import json_logical_hash
-from cardre.store import ProjectStore
+from cardre.services.project_registry import get_store_for_project
 from sidecar.models import MethodSummaryResponse, ModelRankingItem, ModelRankingResponse
 
 router = APIRouter(tags=["method-summary"])
 
-_PROJECT_STORE_CACHE: dict[str, ProjectStore] = {}
-
-
-def _get_store(project_id: str) -> ProjectStore:
-    if project_id not in _PROJECT_STORE_CACHE:
-        raise HTTPException(status_code=404, detail=f"Project not found: {project_id!r}")
-    return _PROJECT_STORE_CACHE[project_id]
-
-
-def register_project_store(project_id: str, store: ProjectStore) -> None:
-    """Register a project store for API access."""
-    _PROJECT_STORE_CACHE[project_id] = store
-
 
 @router.get("/branches/{branch_id}/method-summary", response_model=MethodSummaryResponse)
-def get_branch_method_summary(branch_id: str) -> MethodSummaryResponse:
+def get_branch_method_summary(
+    branch_id: str,
+    project_id: str = Query(..., description="Project ID"),
+) -> MethodSummaryResponse:
     """Get method summary for a branch: model family, metrics, limitations, evidence readiness."""
     from cardre.reporting.evidence_resolver import resolve_branch
 
-    # Find the store from any registered project
-    store = None
-    for s in _PROJECT_STORE_CACHE.values():
-        store = s
-        break
-    if store is None:
-        raise HTTPException(status_code=404, detail="No project loaded")
+    store = get_store_for_project(project_id)
 
     branch = resolve_branch(store, branch_id)
     if branch is None:
@@ -122,15 +106,11 @@ def get_branch_method_summary(branch_id: str) -> MethodSummaryResponse:
 )
 def get_model_ranking(
     snapshot_id: str,
+    project_id: str = Query(..., description="Project ID"),
     metric: str = "auc",
 ) -> ModelRankingResponse:
     """Rank branches by a selected metric from a comparison snapshot."""
-    store = None
-    for s in _PROJECT_STORE_CACHE.values():
-        store = s
-        break
-    if store is None:
-        raise HTTPException(status_code=404, detail="No project loaded")
+    store = get_store_for_project(project_id)
 
     # Read snapshot
     try:

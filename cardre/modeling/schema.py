@@ -19,7 +19,7 @@ MODEL_ARTIFACT_SCHEMA_VERSION = "cardre.model_artifact.v1"
 class FeatureContract:
     """Describes the feature columns expected by the model at apply time."""
 
-    features: list[str]
+    features: list[str] = field(default_factory=list)
     transformation_strategy: str = "raw_numeric"
     order_hash: str = ""
     dtype_contract: dict[str, str] = field(default_factory=dict)
