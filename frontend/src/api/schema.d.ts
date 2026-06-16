@@ -1174,6 +1174,21 @@ export interface components {
              * @default 0.1.0
              */
             cardre_version: string;
+            /**
+             * Registry Accessible
+             * @default false
+             */
+            registry_accessible: boolean;
+            /**
+             * Registered Node Count
+             * @default 0
+             */
+            registered_node_count: number;
+            /**
+             * Checked At
+             * @default
+             */
+            checked_at: string;
         };
         /** ImportDatasetRequest */
         ImportDatasetRequest: {

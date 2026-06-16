@@ -3182,6 +3182,21 @@
             "type": "string",
             "title": "Cardre Version",
             "default": "0.1.0"
+          },
+          "registry_accessible": {
+            "type": "boolean",
+            "title": "Registry Accessible",
+            "default": false
+          },
+          "registered_node_count": {
+            "type": "integer",
+            "title": "Registered Node Count",
+            "default": 0
+          },
+          "checked_at": {
+            "type": "string",
+            "title": "Checked At",
+            "default": ""
           }
         },
         "type": "object",

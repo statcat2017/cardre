@@ -22,7 +22,11 @@ def _run_background(project_path: str, plan_version_id: str, run_id: str) -> Non
     try:
         executor.run_plan_version(store, plan_version_id, run_id=run_id)
     except BaseException:
-        store.finish_run(run_id, "failed")
+        import traceback
+        print(f"[sidecar] run_plan_version({run_id}) failed: {traceback.format_exc()}", flush=True)
+        # Backstop: executor may have raised before its own try/finally
+        # (e.g. during _validate_topology or get_plan_version_steps).
+        _fail_run_if_running(store, run_id)
 
 
 def _branch_run_background(project_path: str, plan_version_id: str, branch_id: str, run_id: str) -> None:
@@ -36,7 +40,20 @@ def _branch_run_background(project_path: str, plan_version_id: str, branch_id: s
         if result_id != run_id:
             store.finish_run(run_id, "cancelled")
     except BaseException:
-        store.finish_run(run_id, "failed")
+        import traceback
+        print(f"[sidecar] run_branch({run_id}) failed: {traceback.format_exc()}", flush=True)
+        _fail_run_if_running(store, run_id)
+
+
+def _fail_run_if_running(store: ProjectStore, run_id: str) -> None:
+    """Finish *run_id* as failed, but only if it is still in ``running``
+    state (avoid overwriting a finish already written by the executor)."""
+    try:
+        run = store.get_run(run_id)
+        if run and run.get("status") == "running":
+            store.finish_run(run_id, "failed")
+    except Exception:
+        pass
 
 
 def _build_run_response(store: ProjectStore, run_id: str, executed_ids: list[str] | None = None) -> RunResponse:
@@ -73,10 +90,12 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail={"code": "BRANCH_RUN_FAILED", "message": str(exc)})
         run_id = store.create_run(body.plan_version_id, branch_id=body.branch_id)
-        entry = load_registry().get(body.project_id)
-        if entry:
-            t = threading.Thread(target=_branch_run_background, args=(entry["path"], body.plan_version_id, body.branch_id, run_id))
+        project_path = str(store.root)
+        try:
+            t = threading.Thread(target=_branch_run_background, args=(project_path, body.plan_version_id, body.branch_id, run_id), name="run-branch-bg")
             t.start()
+        except Exception:
+            store.finish_run(run_id, "failed")
         return _build_run_response(store, run_id)
 
     if sync:
@@ -90,10 +109,12 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
 
     # Async (default): create run immediately, execute in background
     run_id = store.create_run(body.plan_version_id)
-    entry = load_registry().get(body.project_id)
-    if entry:
-        t = threading.Thread(target=_run_background, args=(entry["path"], body.plan_version_id, run_id))
+    project_path = str(store.root)
+    try:
+        t = threading.Thread(target=_run_background, args=(project_path, body.plan_version_id, run_id), name="run-plan-bg")
         t.start()
+    except Exception:
+        store.finish_run(run_id, "failed")
     return _build_run_response(store, run_id)
 
 
