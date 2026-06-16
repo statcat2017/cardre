@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
@@ -9,6 +10,7 @@ from pathlib import Path
 
 import polars as pl
 
+from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import (
     ArtifactRef,
     ExecutionContext,
@@ -18,6 +20,7 @@ from cardre.audit import (
     json_logical_hash,
     params_hash,
     physical_hash,
+    relative_path,
     table_logical_hash,
     utc_now_iso,
 )
@@ -73,6 +76,36 @@ def make_sample_german_credit_zip(tmp: Path) -> Path:
     with zipfile.ZipFile(zpath, "w") as zf:
         zf.writestr("german.data", "\n".join(SAMPLE_GERMAN_CREDIT_LINES))
     return zpath
+
+
+def _make_train_artifact(store, df, role="train"):
+    buf = io.BytesIO()
+    df.write_parquet(buf)
+    p = store.root / "datasets" / f"test-{role}.parquet"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(buf.getvalue())
+    art = ArtifactRef(
+        artifact_id=f"train-{role}-1", artifact_type="dataset", role=role,
+        path=relative_path(p, store.root),
+        physical_hash=physical_hash(p), logical_hash=table_logical_hash(df),
+        media_type="application/octet-stream", metadata={},
+    )
+    store.register_artifact(art)
+    return art
+
+
+def _make_json_artifact(store, payload, stem="test"):
+    p = store.root / "artifacts" / f"{stem}.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(payload, sort_keys=True))
+    art = ArtifactRef(
+        artifact_id=f"{stem}_1", artifact_type="definition", role="definition",
+        path=relative_path(p, store.root),
+        physical_hash=physical_hash(p), logical_hash=json_logical_hash(payload),
+        media_type="application/json", metadata={},
+    )
+    store.register_artifact(art)
+    return art
 
 
 # ======================================================================
@@ -363,6 +396,152 @@ class GermanCreditImportTests(unittest.TestCase):
         df = pl.read_parquet(store.artifact_path(artifact))
         self.assertEqual(df.height, 2)
 
+    def test_import_malformed_rows_fails(self) -> None:
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test")
+        source = tmp / "malformed.data"
+        source.write_text("1 2 3\n4 5 6 7\n")
+        params = {"source_path": str(source)}
+        step_spec = StepSpec(
+            step_id="import-bad", node_type="cardre.import_dataset",
+            node_version="1", category="transform",
+            params=params,
+            params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv",
+            step_spec=step_spec,
+            parent_run_steps=[], input_artifacts=[],
+            validated_params=params, runtime_metadata={},
+        )
+        node = ImportGermanCreditNode()
+        with self.assertRaises(ValueError):
+            node.run(ctx)
+
+    def test_import_missing_source_path_fails_validation(self) -> None:
+        node = ImportGermanCreditNode()
+        errors = node.validate_params({})
+        self.assertTrue(any("source_path" in e for e in errors))
+
+    def test_import_unsupported_extension_fails(self) -> None:
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test")
+        source = tmp / "data.csv"
+        source.write_text("dummy")
+        params = {"source_path": str(source)}
+        step_spec = StepSpec(
+            step_id="import-csv", node_type="cardre.import_dataset",
+            node_version="1", category="transform",
+            params=params,
+            params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv",
+            step_spec=step_spec,
+            parent_run_steps=[], input_artifacts=[],
+            validated_params=params, runtime_metadata={},
+        )
+        node = ImportGermanCreditNode()
+        with self.assertRaises(ValueError):
+            node.run(ctx)
+
+    def test_import_zip_without_german_data_fails(self) -> None:
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test")
+        import zipfile
+        zpath = tmp / "empty.zip"
+        with zipfile.ZipFile(zpath, "w") as zf:
+            zf.writestr("other.txt", "not german data")
+        params = {"source_path": str(zpath)}
+        step_spec = StepSpec(
+            step_id="import-zip2", node_type="cardre.import_dataset",
+            node_version="1", category="transform",
+            params=params,
+            params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv",
+            step_spec=step_spec,
+            parent_run_steps=[], input_artifacts=[],
+            validated_params=params, runtime_metadata={},
+        )
+        node = ImportGermanCreditNode()
+        with self.assertRaises(ValueError):
+            node.run(ctx)
+
+# ======================================================================
+# Profile + Split Regression Tests
+# ======================================================================
+
+class ProfileDatasetTests(unittest.TestCase):
+
+    def test_all_null_numeric_column_does_not_crash(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "num_col": pl.Series([None, None, None], dtype=pl.Float64),
+            "cat_col": ["a", "b", "c"],
+        })
+        art = _make_train_artifact(store, df, role="train")
+        params = {}
+        spec = StepSpec(
+            step_id="profile", node_type="cardre.profile_dataset",
+            node_version="1", category="transform",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[art],
+            validated_params=params, runtime_metadata={},
+        )
+        node = ProfileDatasetNode()
+        output = node.run(ctx)
+        self.assertEqual(len(output.artifacts), 1)
+
+
+class SplitRegressionTests(unittest.TestCase):
+
+    def test_single_class_train_split_fails(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "x": [1.0, 2.0, 3.0],
+            "target": pl.Series(["g", "g", "g"], dtype=pl.String),
+        })
+        art = _make_train_artifact(store, df, role="input")
+        meta_art = _make_json_artifact(store, {
+            "target_column": "target",
+            "good_values": ["g"], "bad_values": ["b"],
+        }, stem="meta")
+        params = {
+            "strategy": "random_stratified",
+            "train_fraction": 0.6, "test_fraction": 0.2, "oot_fraction": 0.2,
+            "target_column": "target", "random_seed": 42,
+        }
+        spec = StepSpec(
+            step_id="split", node_type="cardre.split_train_test_oot",
+            node_version="2", category="transform",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[art],
+            validated_params=params, runtime_metadata={},
+        )
+        node = SplitTrainTestOotNode()
+        with self.assertRaises(ValueError):
+            node.run(ctx)
+
 
 # ======================================================================
 # Slice 4: Node Registry + Contracts
@@ -568,6 +747,31 @@ class ExecutorTests(unittest.TestCase):
         self.assertEqual(len(fail_step), 1, "Expected one run-step for fail-step")
         self.assertEqual(fail_step[0].status, "failed")
         self.assertGreater(len(fail_step[0].errors), 0, "Expected structured error evidence")
+
+    def test_missing_artifact_file_fails_validation(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({"x": [1.0]})
+        art = _make_train_artifact(store, df, role="train")
+        p = store.artifact_path(art)
+        p.unlink() if p.exists() else None
+
+        executor = PlanExecutor(NodeRegistry())
+        with self.assertRaises(FileNotFoundError):
+            executor._validate_input_artifact_files(store, [art])
+
+    def test_artifact_hash_mismatch_fails_validation(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({"x": [1.0]})
+        art = _make_train_artifact(store, df, role="train")
+        p = store.artifact_path(art)
+        if p.exists():
+            p.write_text("tampered data")
+
+        executor = PlanExecutor(NodeRegistry())
+        with self.assertRaises(ValueError):
+            executor._validate_input_artifact_files(store, [art])
 
 
 # ======================================================================

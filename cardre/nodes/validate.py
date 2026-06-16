@@ -24,9 +24,21 @@ class ApplyWoeMappingNode(NodeType):
     input_roles: list[str] = ["train", "test", "oot", "definition", "report"]
     output_roles: list[str] = ["train", "test", "oot"]
 
+    VALID_UNMATCHED_POLICIES = {"fill_zero", "warn", "fail"}
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        policy = params.get("woe_unmatched_policy", "warn")
+        if policy not in self.VALID_UNMATCHED_POLICIES:
+            errors.append(
+                f"woe_unmatched_policy must be one of {self.VALID_UNMATCHED_POLICIES}, got {policy!r}"
+            )
+        return errors
+
     def _find_artifacts(self, artifacts, store):
-        bin_art = woe_art = None
-        sel_art = None
+        bin_arts = []
+        woe_arts = []
+        sel_arts = []
         data_arts = []
         for a in artifacts:
             if a.role in ("train", "test", "oot"):
@@ -35,9 +47,9 @@ class ApplyWoeMappingNode(NodeType):
                 try:
                     p = json.loads(store.artifact_path(a).read_text())
                     if "variables" in p and "selected" not in p:
-                        bin_art = a
+                        bin_arts.append(a)
                     elif "selected" in p:
-                        sel_art = a
+                        sel_arts.append(a)
                 except Exception:
                     continue
             elif a.role == "report":
@@ -46,15 +58,27 @@ class ApplyWoeMappingNode(NodeType):
                     if c[:4] == b"PAR1":
                         d = pl.read_parquet(store.artifact_path(a))
                         if "woe" in d.columns and "bin_id" in d.columns and "variable" in d.columns:
-                            woe_art = a
+                            woe_arts.append(a)
                 except Exception:
                     continue
+        if len(bin_arts) != 1:
+            raise ValueError(f"apply_woe_mapping requires exactly one bin definition artifact; found {len(bin_arts)}")
+        if len(woe_arts) != 1:
+            raise ValueError(f"apply_woe_mapping requires exactly one WOE table artifact; found {len(woe_arts)}")
+        if len(sel_arts) > 1:
+            raise ValueError(f"apply_woe_mapping requires at most one selection artifact; found {len(sel_arts)}")
+        bin_art = bin_arts[0]
+        woe_art = woe_arts[0]
+        sel_art = sel_arts[0] if sel_arts else None
         return data_arts, bin_art, woe_art, sel_art
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         import math
 
         store = context.store
+        params = context.validated_params
+        woe_unmatched_policy = params.get("woe_unmatched_policy", "warn")
+
         data_arts, bin_art, woe_art, sel_art = self._find_artifacts(context.input_artifacts, store)
         if bin_art is None:
             raise ValueError("apply_woe_mapping requires a bin definition artifact")
@@ -85,7 +109,8 @@ class ApplyWoeMappingNode(NodeType):
             var_defs = [v for v in var_defs if v["variable"] in selected_names]
 
         fallback_report: dict[str, dict] = {}
-        outputs = []
+        outputs: list[ArtifactRef] = []
+        unmatched_total = 0
 
         for data_art in data_arts:
             df = pl.read_parquet(store.artifact_path(data_art))
@@ -123,6 +148,13 @@ class ApplyWoeMappingNode(NodeType):
                         cats = be.get("categories", [])
                         if is_miss:
                             mask = pl.col(var).is_null()
+                        elif be.get("is_other_bin", False):
+                            explicit_cats = []
+                            for bd in bins:
+                                if bd.get("is_missing_bin", False) or bd.get("is_other_bin", False):
+                                    continue
+                                explicit_cats.extend(bd.get("categories") or [])
+                            mask = pl.col(var).is_not_null() & ~pl.col(var).is_in(explicit_cats)
                         elif cats:
                             mask = pl.col(var).is_in(cats)
                         else:
@@ -140,6 +172,12 @@ class ApplyWoeMappingNode(NodeType):
                     n_unmatched = df.filter(pl.col(woe_col).is_null()).height
                     if n_unmatched > 0:
                         fallback_counts[var] = n_unmatched
+                        unmatched_total += n_unmatched
+                        if woe_unmatched_policy == "fail":
+                            raise ValueError(
+                                f"apply_woe_mapping: {n_unmatched} rows in role={role!r} "
+                                f"variable={var!r} did not match any bin"
+                            )
                         df = df.with_columns(pl.col(woe_col).fill_null(0.0))
 
             fallback_report[role] = fallback_counts
@@ -151,13 +189,14 @@ class ApplyWoeMappingNode(NodeType):
             )
             outputs.append(art)
 
-        write_json_artifact(
+        fallback_art = write_json_artifact(
             store, artifact_type="report", role="report",
             stem=f"woe-apply-fallback-{context.step_spec.step_id}",
             payload=fallback_report,
             metadata={},
         )
 
+        all_artifacts = outputs + [fallback_art]
         fp = make_fingerprint(
             plan_version_id=context.plan_version_id,
             step_id=context.step_spec.step_id,
@@ -165,9 +204,17 @@ class ApplyWoeMappingNode(NodeType):
             params_hash=context.step_spec.params_hash,
             parent_run_steps=context.parent_run_steps,
             input_artifacts=context.input_artifacts,
-            output_artifacts=outputs,
+            output_artifacts=all_artifacts,
         )
-        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)}, execution_fingerprint=fp)
+        return NodeOutput(
+            artifacts=all_artifacts,
+            metrics={
+                "output_count": len(outputs),
+                "unmatched_row_count": unmatched_total,
+                "woe_unmatched_policy": woe_unmatched_policy,
+            },
+            execution_fingerprint=fp,
+        )
 
 
 class ApplyModelNode(NodeType):

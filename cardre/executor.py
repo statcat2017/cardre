@@ -22,6 +22,7 @@ from cardre.audit import (
     RunStepRecord,
     StepSpec,
     json_logical_hash,
+    physical_hash,
     replace_step_params,
     utc_now_iso,
 )
@@ -293,11 +294,19 @@ class PlanExecutor:
         try:
             node = self.registry.instantiate(spec.node_type)
 
+            param_errors = node.validate_params(spec.params)
+            if param_errors:
+                raise ValueError(
+                    f"Invalid parameters for step {spec.step_id!r} ({spec.node_type}): "
+                    + "; ".join(param_errors)
+                )
+
             raw_inputs = self._resolve_inputs(spec, step_outputs)
             input_artifacts = self._filter_inputs_by_role(node, raw_inputs)
             self._validate_role_access(node, spec, input_artifacts, raw_inputs)
             self._validate_node_input_roles(node, input_artifacts)
             self._validate_leakage_rules(node, input_artifacts)
+            self._validate_input_artifact_files(store, input_artifacts)
 
             parent_run_steps = [
                 rs for pid in spec.parent_step_ids
@@ -316,6 +325,7 @@ class PlanExecutor:
             )
 
             output: NodeOutput = node.run(ctx)
+
             output = self._ensure_execution_fingerprint(
                 output, plan_version_id, spec, parent_run_steps,
                 input_artifacts,
@@ -535,6 +545,25 @@ class PlanExecutor:
             if a is not None:
                 artifacts.append(a)
         return artifacts
+
+    def _validate_input_artifact_files(
+        self,
+        store: ProjectStore,
+        artifacts: list[ArtifactRef],
+    ) -> None:
+        for artifact in artifacts:
+            path = store.artifact_path(artifact)
+            if not path.exists():
+                raise FileNotFoundError(
+                    f"Artifact {artifact.artifact_id!r} metadata points to missing file {artifact.path!r}"
+                )
+            current_hash = physical_hash(path)
+            if current_hash != artifact.physical_hash:
+                raise ValueError(
+                    f"Artifact {artifact.artifact_id!r} physical hash mismatch for {artifact.path!r}: "
+                    f"metadata has {artifact.physical_hash}, file has {current_hash}. "
+                    "The artifact file was modified after registration."
+                )
 
     # ------------------------------------------------------------------
     # Run-step record

@@ -81,22 +81,101 @@ class ApplyWoeMappingTests(unittest.TestCase):
                                parent_run_steps=[], input_artifacts=[self.train_art, self.test_art, self.bin_art, self.woe_art],
                                validated_params=params, runtime_metadata={})
         out = ApplyWoeMappingNode().run(ctx)
-        self.assertEqual(len(out.artifacts), 2)
-        for art in out.artifacts:
+        data_arts = [a for a in out.artifacts if a.role != "report"]
+        report_arts = [a for a in out.artifacts if a.role == "report"]
+        self.assertEqual(len(data_arts), 2)
+        self.assertEqual(len(report_arts), 1)
+        for art in data_arts:
             df = pl.read_parquet(self.store.artifact_path(art))
             self.assertIn("x_woe", df.columns)
 
-    def test_fallback_recorded_for_unmatched_rows(self):
-        df_oot = pl.DataFrame({"x": [99.0, 100.0], "target": ["g", "b"]})
+    def test_unmatched_rows_fail_policy_raises(self):
+        df_oot = pl.DataFrame({"x": [-1.0, -2.0], "target": ["g", "b"]})
         oot_art = _make_train_artifact(self.store, df_oot, role="oot")
-        params = {}
+        params = {"woe_unmatched_policy": "fail"}
         spec = StepSpec(step_id="aw", node_type="cardre.apply_woe_mapping", node_version="1", category="apply",
                         params=params, params_hash=json_logical_hash(params),
                         parent_step_ids=[], branch_label="", position=0)
         ctx = ExecutionContext(store=self.store, run_id="r1", plan_version_id="pv1", step_spec=spec,
                                parent_run_steps=[], input_artifacts=[self.train_art, oot_art, self.bin_art, self.woe_art],
                                validated_params=params, runtime_metadata={})
-        ApplyWoeMappingNode().run(ctx)
+        with self.assertRaises(ValueError) as cm:
+            ApplyWoeMappingNode().run(ctx)
+        self.assertIn("did not match any bin", str(cm.exception))
+
+    def test_unmatched_rows_invalid_policy_fails_validation(self):
+        params = {"woe_unmatched_policy": "invalid"}
+        self.assertIn("woe_unmatched_policy", ApplyWoeMappingNode().validate_params(params)[0])
+
+    def test_unmatched_rows_warn_policy_fills_zero(self):
+        df_oot = pl.DataFrame({"x": [-1.0], "target": ["g"]})
+        oot_art = _make_train_artifact(self.store, df_oot, role="oot")
+        params = {"woe_unmatched_policy": "warn"}
+        spec = StepSpec(step_id="aw", node_type="cardre.apply_woe_mapping", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=self.store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[], input_artifacts=[self.train_art, oot_art, self.bin_art, self.woe_art],
+                               validated_params=params, runtime_metadata={})
+        out = ApplyWoeMappingNode().run(ctx)
+        df = pl.read_parquet(self.store.artifact_path(out.artifacts[1]))
+        self.assertEqual(df["x_woe"][0], 0.0)
+
+    def test_unseen_category_in_oot_fails_with_fail_policy(self):
+        store, tmp = make_store()
+        store.initialize()
+        df_train = pl.DataFrame({"cat": ["a", "b", "c"], "target": ["g", "b", "g"]})
+        df_oot = pl.DataFrame({"cat": ["z"], "target": ["g"]})
+        train_art = _make_train_artifact(store, df_train, role="train")
+        oot_art = _make_train_artifact(store, df_oot, role="oot")
+        bin_def = {
+            "variables": [{
+                "variable": "cat", "kind": "categorical",
+                "bins": [
+                    {"bin_id": "cat_b1", "label": "a", "categories": ["a"],
+                     "is_missing_bin": False, "row_count": 1, "good_count": 1, "bad_count": 0},
+                    {"bin_id": "cat_b2", "label": "b", "categories": ["b"],
+                     "is_missing_bin": False, "row_count": 1, "good_count": 0, "bad_count": 1},
+                    {"bin_id": "cat_b3", "label": "c", "categories": ["c"],
+                     "is_missing_bin": False, "row_count": 1, "good_count": 1, "bad_count": 0},
+                ],
+            }],
+        }
+        bin_art = _make_json_artifact(store, bin_def, stem="cat_bins")
+        woe_df = pl.DataFrame({
+            "variable": ["cat", "cat", "cat"],
+            "bin_id": ["cat_b1", "cat_b2", "cat_b3"],
+            "label": ["a", "b", "c"],
+            "row_count": [1, 1, 1], "good_count": [1, 0, 1], "bad_count": [0, 1, 0],
+            "good_distribution": [0.5, 0.0, 0.5], "bad_distribution": [0.0, 1.0, 0.0],
+            "woe": [0.5, -0.5, 0.5], "iv_component": [0.25, 0.5, 0.25],
+        })
+        woe_art = _make_parquet_report(store, woe_df, stem="cat_woe")
+        params = {"woe_unmatched_policy": "fail"}
+        spec = StepSpec(step_id="aw", node_type="cardre.apply_woe_mapping", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[],
+                               input_artifacts=[train_art, oot_art, bin_art, woe_art],
+                               validated_params=params, runtime_metadata={})
+        with self.assertRaises(ValueError) as cm:
+            ApplyWoeMappingNode().run(ctx)
+        self.assertIn("did not match any bin", str(cm.exception))
+
+    def test_below_min_numeric_value_fills_zero_by_default(self):
+        df_oot = pl.DataFrame({"x": [-5.0], "target": ["g"]})
+        oot_art = _make_train_artifact(self.store, df_oot, role="oot")
+        params = {"woe_unmatched_policy": "warn"}
+        spec = StepSpec(step_id="aw", node_type="cardre.apply_woe_mapping", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=self.store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[], input_artifacts=[self.train_art, oot_art, self.bin_art, self.woe_art],
+                               validated_params=params, runtime_metadata={})
+        out = ApplyWoeMappingNode().run(ctx)
+        df = pl.read_parquet(self.store.artifact_path(out.artifacts[1]))
+        self.assertEqual(df["x_woe"][0], 0.0)
 
 
 # ======================================================================
