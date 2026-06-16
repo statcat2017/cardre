@@ -46,9 +46,22 @@ class ImportGermanCreditNode(NodeType):
     input_roles: list[str] = []
     output_roles: list[str] = ["input"]
 
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        if not params.get("source_path"):
+            errors.append("source_path is required")
+        return errors
+
     def run(self, context: ExecutionContext) -> NodeOutput:
         params = context.validated_params
         source_path = Path(params["source_path"])
+        if not source_path.exists() or not source_path.is_file():
+            raise FileNotFoundError(f"Import source_path does not exist or is not a file: {source_path}")
+        if source_path.suffix.lower() not in (".zip", ".data", ".txt"):
+            raise ValueError(
+                "cardre.import_dataset currently supports only UCI German Credit "
+                f"'.data', '.txt', or '.zip' sources, got {source_path.suffix!r}"
+            )
         artifact_metadata = {
             "source_dataset_id": "uci-statlog-german-credit",
             "target_column": "credit_risk_class",
@@ -92,11 +105,9 @@ class ImportGermanCreditNode(NodeType):
     def _read_from_zip(self, zip_path: Path) -> pl.DataFrame:
         with zipfile.ZipFile(zip_path) as zf:
             names = zf.namelist()
-            data_file = next((n for n in names if n.endswith("german.data")), None)
+            data_file = next((n for n in names if Path(n).name == "german.data"), None)
             if data_file is None:
-                data_file = next((n for n in names if "german" in n.lower()), None)
-            if data_file is None:
-                data_file = names[0]
+                raise ValueError("German Credit ZIP import requires a file named 'german.data'")
             content = zf.read(data_file).decode("latin-1")
         return self._parse_content(content)
 
@@ -106,13 +117,23 @@ class ImportGermanCreditNode(NodeType):
 
     def _parse_content(self, content: str) -> pl.DataFrame:
         rows = []
-        for line in content.strip().split("\n"):
+        malformed: list[tuple[int, int]] = []
+        for line_no, line in enumerate(content.strip().split("\n"), start=1):
             line = line.strip()
             if not line:
                 continue
             parts = line.split()
             if len(parts) == 21:
                 rows.append(parts)
+            else:
+                malformed.append((line_no, len(parts)))
+        if malformed:
+            details = ", ".join(f"line {line_no}: {field_count} fields" for line_no, field_count in malformed[:10])
+            raise ValueError(
+                f"German Credit import expected 21 whitespace-delimited fields per row; malformed rows: {details}"
+            )
+        if not rows:
+            raise ValueError("German Credit import produced zero rows")
         return pl.DataFrame(
             data=rows,
             schema=GERMAN_CREDIT_COLUMNS,
@@ -175,6 +196,9 @@ class ProfileDatasetNode(NodeType):
         for col in df.columns:
             if df.schema[col] in (pl.Float64, pl.Float32, pl.Int64, pl.Int32, pl.Int16, pl.Int8, pl.UInt32, pl.UInt16, pl.UInt8):
                 series = df[col]
+                if series.drop_nulls().is_empty():
+                    stats[col] = {"min": None, "max": None, "mean": None, "std": None}
+                    continue
                 stats[col] = {
                     "min": float(series.min()),
                     "max": float(series.max()),
@@ -307,11 +331,24 @@ class SplitTrainTestOotNode(NodeType):
             artifacts.append(artifact)
 
         target_rates = {}
+        split_warnings = []
         for role, subset in role_map.items():
+            if subset.height == 0:
+                split_warnings.append({
+                    "code": "EMPTY_SPLIT_ROLE",
+                    "message": f"Split role {role!r} has zero rows; increase sample size or adjust fractions",
+                    "role": role,
+                })
             if target_column in subset.columns:
                 col = subset[target_column]
                 vals = col.value_counts()
                 target_rates[role] = {str(r[0]): int(r[1]) for r in vals.iter_rows()}
+        if target_column in role_map["train"].columns:
+            train_classes = role_map["train"][target_column].drop_nulls().unique().to_list()
+            if len(train_classes) < 2:
+                raise ValueError(
+                    f"Train split has {len(train_classes)} non-null target class(es), expected at least 2"
+                )
 
         split_report = {
             "strategy": strategy,
@@ -319,6 +356,7 @@ class SplitTrainTestOotNode(NodeType):
             "fractions": {"train": train_frac, "test": test_frac, "oot": oot_frac},
             "row_counts": {role: subset.height for role, subset in role_map.items()},
             "target_rates": target_rates,
+            "warnings": split_warnings,
             "source_artifact_id": dataset_artifact.artifact_id,
         }
         write_json_artifact(
@@ -404,6 +442,7 @@ class DefineModellingMetadataNode(NodeType):
         target_column = params.get("target_column", "")
         good_values = params.get("good_values", [])
         bad_values = params.get("bad_values", [])
+        indeterminate_values = params.get("indeterminate_values", [])
 
         if not target_column:
             raise ValueError("Target column must be non-empty")
@@ -413,15 +452,32 @@ class DefineModellingMetadataNode(NodeType):
             raise ValueError("Good values must be non-empty")
         if not bad_values:
             raise ValueError("Bad values must be non-empty")
-        overlap = set(good_values) & set(bad_values)
+        good_value_strings = {str(v) for v in good_values}
+        bad_value_strings = {str(v) for v in bad_values}
+        indeterminate_value_strings = {str(v) for v in indeterminate_values}
+        overlap = good_value_strings & bad_value_strings
         if overlap:
             raise ValueError(f"Good and bad value sets overlap: {overlap}")
+        observed_values = {str(v) for v in df[target_column].drop_nulls().unique().to_list()}
+        declared_values = good_value_strings | bad_value_strings | indeterminate_value_strings
+        missing_declared = sorted((good_value_strings | bad_value_strings) - observed_values)
+        if missing_declared:
+            raise ValueError(
+                f"Good/bad metadata values do not match target column {target_column!r}: "
+                f"declared values absent from data: {missing_declared}"
+            )
+        undeclared_observed = sorted(observed_values - declared_values)
+        if undeclared_observed:
+            raise ValueError(
+                f"Target column {target_column!r} contains values not declared as good, bad, "
+                f"or indeterminate: {undeclared_observed}"
+            )
 
         metadata = {
             "target_column": target_column,
             "good_values": good_values,
             "bad_values": bad_values,
-            "indeterminate_values": params.get("indeterminate_values", []),
+            "indeterminate_values": indeterminate_values,
             "population": params.get("population", ""),
             "product": params.get("product", ""),
             "segment": params.get("segment", ""),
@@ -491,32 +547,38 @@ class ApplyExclusionsNode(NodeType):
 
             n_before_rule = df.height
             if operator == "==":
-                df = df.filter(col_expr == value)
+                exclusion_mask = col_expr == value
             elif operator == "!=":
-                df = df.filter(col_expr != value)
+                exclusion_mask = col_expr != value
             elif operator == "<":
-                df = df.filter(col_expr < value)
+                exclusion_mask = col_expr < value
             elif operator == "<=":
-                df = df.filter(col_expr <= value)
+                exclusion_mask = col_expr <= value
             elif operator == ">":
-                df = df.filter(col_expr > value)
+                exclusion_mask = col_expr > value
             elif operator == ">=":
-                df = df.filter(col_expr >= value)
+                exclusion_mask = col_expr >= value
             elif operator == "in":
-                df = df.filter(col_expr.is_in(value))
+                if not isinstance(value, (list, tuple, set)):
+                    raise ValueError(f"Exclusion operator 'in' for column '{column}' requires a list-like value")
+                exclusion_mask = col_expr.is_in(list(value))
             elif operator == "not_in":
-                df = df.filter(~col_expr.is_in(value))
+                if not isinstance(value, (list, tuple, set)):
+                    raise ValueError(f"Exclusion operator 'not_in' for column '{column}' requires a list-like value")
+                exclusion_mask = ~col_expr.is_in(list(value))
             elif operator == "is_null":
-                df = df.filter(col_expr.is_null())
+                exclusion_mask = col_expr.is_null()
             elif operator == "is_not_null":
-                df = df.filter(col_expr.is_not_null())
+                exclusion_mask = col_expr.is_not_null()
+            removed = int(df.select(exclusion_mask.sum()).item())
+            df = df.filter(~exclusion_mask)
             n_after_rule = df.height
             rule_counts.append({
                 "column": column,
                 "operator": operator,
                 "value": value,
                 "reason": reason,
-                "rows_removed": n_before_rule - n_after_rule,
+                "rows_removed": removed,
             })
 
         dataset_artifact = write_parquet_artifact(

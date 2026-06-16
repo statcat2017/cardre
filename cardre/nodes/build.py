@@ -39,6 +39,15 @@ class FineClassingNode(NodeType):
                 errors.append("min_bin_fraction must be between 0 and 1")
         except (ValueError, TypeError):
             errors.append("min_bin_fraction must be a number")
+        missing_policy = params.get("missing_policy", "separate_bin")
+        if missing_policy not in ("separate_bin", "ignore"):
+            errors.append("missing_policy must be one of: separate_bin, ignore")
+        max_categorical_levels = params.get("max_categorical_levels", 50)
+        try:
+            if int(max_categorical_levels) < 1:
+                errors.append("max_categorical_levels must be >= 1")
+        except (ValueError, TypeError):
+            errors.append("max_categorical_levels must be an integer")
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
@@ -55,27 +64,40 @@ class FineClassingNode(NodeType):
             raise ValueError("max_bins must be >= 2")
         if not (0 < min_bin_fraction < 1):
             raise ValueError("min_bin_fraction must be between 0 and 1")
+        if missing_policy not in ("separate_bin", "ignore"):
+            raise ValueError("missing_policy must be one of: separate_bin, ignore")
+        if max_categorical_levels < 1:
+            raise ValueError("max_categorical_levels must be >= 1")
 
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
-        meta_artifact = next((a for a in context.input_artifacts if a.role == "definition"), None)
+        meta_candidates = []
+        for a in context.input_artifacts:
+            if a.role != "definition":
+                continue
+            try:
+                payload = json.loads(store.artifact_path(a).read_text())
+            except Exception:
+                continue
+            if "target_column" in payload and "good_values" in payload and "bad_values" in payload:
+                meta_candidates.append((a, payload))
+        if len(meta_candidates) != 1:
+            raise ValueError(
+                f"Fine classing requires exactly one modelling metadata definition artifact; found {len(meta_candidates)}"
+            )
+        meta_artifact, meta = meta_candidates[0]
 
         df = pl.read_parquet(store.artifact_path(train_artifact))
+        target_column = meta.get("target_column", "")
+        good_values = set(str(v) for v in meta.get("good_values", []))
+        bad_values = set(str(v) for v in meta.get("bad_values", []))
 
-        if meta_artifact:
-            meta_path = store.artifact_path(meta_artifact)
-            meta = json.loads(meta_path.read_text())
-            target_column = meta.get("target_column", "")
-            good_values = set(str(v) for v in meta.get("good_values", []))
-            bad_values = set(str(v) for v in meta.get("bad_values", []))
-        else:
-            target_column = ""
-            good_values = set()
-            bad_values = set()
-
-        if target_column and target_column not in df.columns:
+        if not target_column:
+            raise ValueError("Fine classing requires non-empty target_column in modelling metadata")
+        if target_column not in df.columns:
             raise ValueError(f"Target column '{target_column}' not found")
-        if target_column:
-            exclude_columns = list(set(exclude_columns + [target_column]))
+        if not good_values or not bad_values:
+            raise ValueError("Fine classing requires non-empty good_values and bad_values in modelling metadata")
+        exclude_columns = list(set(exclude_columns + [target_column]))
 
         feature_cols = [c for c in df.columns if c not in exclude_columns]
 
@@ -324,6 +346,7 @@ class FineClassingNode(NodeType):
                     "lower_inclusive": False, "upper_inclusive": False,
                     "categories": other_categories,
                     "is_missing_bin": False,
+                    "is_other_bin": True,
                     "row_count": bin_counts["row_count"],
                     "good_count": bin_counts["good_count"],
                     "bad_count": bin_counts["bad_count"],
@@ -362,26 +385,43 @@ class CalculateWoeIvNode(NodeType):
         purpose = params.get("purpose", "initial")
 
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
-        bin_artifact = next(a for a in context.input_artifacts if a.role == "definition")
+        bin_candidates = []
+        meta_candidates = []
+        for a in context.input_artifacts:
+            if a.role != "definition":
+                continue
+            try:
+                payload = json.loads(store.artifact_path(a).read_text())
+            except Exception:
+                continue
+            if "variables" in payload and "selected" not in payload:
+                bin_candidates.append((a, payload))
+            elif "target_column" in payload and "good_values" in payload and "bad_values" in payload:
+                meta_candidates.append((a, payload))
+        if len(bin_candidates) != 1:
+            raise ValueError(f"WOE/IV requires exactly one bin definition artifact; found {len(bin_candidates)}")
+        if len(meta_candidates) != 1:
+            raise ValueError(f"WOE/IV requires exactly one modelling metadata artifact; found {len(meta_candidates)}")
+        bin_artifact, bin_def_raw = bin_candidates[0]
+        _, meta_def = meta_candidates[0]
 
         df = pl.read_parquet(store.artifact_path(train_artifact))
-        bin_def_raw = json.loads(store.artifact_path(bin_artifact).read_text())
 
-        meta_def = None
-        for a in context.input_artifacts:
-            if a.role == "definition" and a.artifact_id != bin_artifact.artifact_id:
-                meta_def = json.loads(store.artifact_path(a).read_text())
-                break
+        target_column = meta_def.get("target_column", "")
+        good_values = set(str(v) for v in meta_def.get("good_values", []))
+        bad_values = set(str(v) for v in meta_def.get("bad_values", []))
 
-        target_column = (meta_def or {}).get("target_column", "")
-        good_values = set(str(v) for v in (meta_def or {}).get("good_values", []))
-        bad_values = set(str(v) for v in (meta_def or {}).get("bad_values", []))
-
-        if target_column and target_column in df.columns:
-            target_series = df[target_column].cast(pl.String)
-        else:
-            target_series = None
-
+        if not target_column or target_column not in df.columns:
+            raise ValueError(f"WOE/IV target column {target_column!r} not found in training data")
+        if not good_values or not bad_values:
+            raise ValueError("WOE/IV requires non-empty good_values and bad_values")
+        target_series = df[target_column].cast(pl.String)
+        total_good_all = int(target_series.is_in(list(good_values)).sum())
+        total_bad_all = int(target_series.is_in(list(bad_values)).sum())
+        if total_good_all == 0 or total_bad_all == 0:
+            raise ValueError(
+                f"WOE/IV requires at least one good and one bad row; found goods={total_good_all}, bads={total_bad_all}"
+            )
         woe_rows: list[dict] = []
         iv_rows: dict[str, dict] = {}
         warnings_list: list[dict] = []
@@ -399,15 +439,8 @@ class CalculateWoeIvNode(NodeType):
 
             col_values = df[variable]
 
-            total_good = 0
-            total_bad = 0
-            if target_series is not None and good_values and bad_values:
-                if kind == "numeric":
-                    total_good = int(target_series.is_in(list(good_values)).sum())
-                    total_bad = int(target_series.is_in(list(bad_values)).sum())
-                else:
-                    total_good = int(target_series.is_in(list(good_values)).sum())
-                    total_bad = int(target_series.is_in(list(bad_values)).sum())
+            total_good = total_good_all
+            total_bad = total_bad_all
 
             var_woe_rows = []
             var_iv = 0.0
@@ -435,6 +468,10 @@ class CalculateWoeIvNode(NodeType):
                             conditions.append(col_values >= lower if lower_inc else col_values > lower)
                         if upper is not None:
                             conditions.append(col_values <= upper if upper_inc else col_values < upper)
+                        if not conditions:
+                            raise ValueError(
+                                f"WOE/IV numeric bin {variable!r}:{bin_id!r} has no lower or upper boundary"
+                            )
                         bin_mask = conditions[0] if len(conditions) == 1 else conditions[0]
                         for c in conditions[1:]:
                             bin_mask = bin_mask & c
@@ -442,6 +479,13 @@ class CalculateWoeIvNode(NodeType):
                     categories = bin_def.get("categories", [])
                     if is_missing:
                         bin_mask = col_values.is_null()
+                    elif bin_def.get("is_other_bin", False):
+                        explicit_categories = []
+                        for other_bin in bins:
+                            if other_bin.get("is_missing_bin", False) or other_bin.get("is_other_bin", False):
+                                continue
+                            explicit_categories.extend(other_bin.get("categories") or [])
+                        bin_mask = col_values.is_not_null() & ~col_values.is_in(explicit_categories)
                     elif categories:
                         bin_mask = col_values.is_in(categories)
                     else:
@@ -469,6 +513,8 @@ class CalculateWoeIvNode(NodeType):
                     if zero_cell_policy == "block" and purpose == "final":
                         if smoothing and smoothing.get("method") == "additive":
                             alpha = float(smoothing.get("alpha", 0.5))
+                            if alpha <= 0:
+                                raise ValueError("Smoothing alpha must be positive")
                             if not smoothing.get("rationale"):
                                 raise ValueError(
                                     f"Zero cell in variable {variable!r} bin {bin_id!r}: "
@@ -492,6 +538,8 @@ class CalculateWoeIvNode(NodeType):
                             )
                     elif smoothing and smoothing.get("method") == "additive":
                         alpha = float(smoothing.get("alpha", 0.5))
+                        if alpha <= 0:
+                            raise ValueError("Smoothing alpha must be positive")
                         good_dist = (bin_good + alpha) / (total_good + alpha * len(bins)) if total_good > 0 else alpha / (alpha * len(bins))
                         bad_dist = (bin_bad + alpha) / (total_bad + alpha * len(bins)) if total_bad > 0 else alpha / (alpha * len(bins))
                         was_smoothed = True
@@ -1002,10 +1050,26 @@ class ManualBinningNode(NodeType):
         params = context.validated_params
         overrides = params.get("overrides", [])
 
-        bin_artifact = next(a for a in context.input_artifacts if a.role == "definition")
-        selection_artifact = next((a for a in context.input_artifacts
-                                   if a.role == "definition" and a.artifact_id != bin_artifact.artifact_id),
-                                  None)
+        bin_artifacts = []
+        selection_artifacts = []
+        for a in context.input_artifacts:
+            if a.role != "definition":
+                continue
+            try:
+                payload = json.loads(store.artifact_path(a).read_text())
+                if "variables" in payload and "selected" not in payload:
+                    bin_artifacts.append(a)
+                elif "selected" in payload:
+                    selection_artifacts.append(a)
+            except Exception:
+                continue
+
+        if len(bin_artifacts) != 1:
+            raise ValueError(f"Manual binning requires exactly one bin definition artifact; found {len(bin_artifacts)}")
+        if len(selection_artifacts) > 1:
+            raise ValueError(f"Manual binning requires at most one selection artifact; found {len(selection_artifacts)}")
+        bin_artifact = bin_artifacts[0]
+        selection_artifact = selection_artifacts[0] if selection_artifacts else None
 
         bin_def = json.loads(store.artifact_path(bin_artifact).read_text())
         selected_vars: set[str] = set()
@@ -1197,29 +1261,34 @@ class WoeTransformTrainNode(NodeType):
         store = context.store
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
 
-        bin_artifact = None
-        meta_artifact = None
-        selection_artifact = None
+        bin_artifacts = []
+        meta_artifacts = []
+        selection_artifacts = []
         for a in context.input_artifacts:
             if a.role != "definition":
                 continue
             try:
                 payload = json.loads(store.artifact_path(a).read_text())
                 if "variables" in payload and "selected" not in payload:
-                    bin_artifact = a
-                    continue
-                if "selected" in payload:
-                    selection_artifact = a
-                    continue
-                if "target_column" in payload and "good_values" in payload:
-                    meta_artifact = a
+                    bin_artifacts.append(a)
+                elif "selected" in payload:
+                    selection_artifacts.append(a)
+                elif "target_column" in payload and "good_values" in payload:
+                    meta_artifacts.append(a)
             except Exception:
                 continue
 
-        if bin_artifact is None:
-            raise ValueError("WOE transform requires a bin definition artifact")
+        if len(bin_artifacts) != 1:
+            raise ValueError(f"WOE transform requires exactly one bin definition artifact; found {len(bin_artifacts)}")
+        if len(meta_artifacts) > 1:
+            raise ValueError(f"WOE transform requires at most one modelling metadata artifact; found {len(meta_artifacts)}")
+        if len(selection_artifacts) > 1:
+            raise ValueError(f"WOE transform requires at most one selection artifact; found {len(selection_artifacts)}")
+        bin_artifact = bin_artifacts[0]
+        meta_artifact = meta_artifacts[0] if meta_artifacts else None
+        selection_artifact = selection_artifacts[0] if selection_artifacts else None
 
-        woe_report_artifact = None
+        woe_report_artifacts = []
         for a in context.input_artifacts:
             if a.role != "report":
                 continue
@@ -1227,22 +1296,26 @@ class WoeTransformTrainNode(NodeType):
                 content = store.artifact_path(a).read_bytes()
                 if content[:4] != b"PAR1":
                     continue
-                df = pl.read_parquet(store.artifact_path(a))
-                if "bin_id" in df.columns and "woe" in df.columns and "variable" in df.columns:
-                    woe_report_artifact = a
-                    break
+                temp = pl.read_parquet(store.artifact_path(a))
+                if "bin_id" in temp.columns and "woe" in temp.columns and "variable" in temp.columns:
+                    woe_report_artifacts.append(a)
             except Exception:
                 continue
 
-        if woe_report_artifact is None:
+        if len(woe_report_artifacts) != 1:
             raise ValueError(
-                "WOE transform requires a WOE table report artifact "
-                "(Parquet with bin_id, woe, variable columns)"
+                f"WOE transform requires exactly one WOE table report artifact; found {len(woe_report_artifacts)}"
             )
+        woe_report_artifact = woe_report_artifacts[0]
 
         df = pl.read_parquet(store.artifact_path(train_artifact))
         bin_def = json.loads(store.artifact_path(bin_artifact).read_text())
-        target_column = (meta_artifact and json.loads(store.artifact_path(meta_artifact).read_text()) or {}).get("target_column", "")
+        if not bin_def.get("variables"):
+            raise ValueError("WOE transform received an empty bin definition")
+        target_column = ""
+        if meta_artifact:
+            meta = json.loads(store.artifact_path(meta_artifact).read_text())
+            target_column = meta.get("target_column", "")
 
         woe_map: dict[str, dict] = {}
         woe_df = pl.read_parquet(store.artifact_path(woe_report_artifact))
@@ -1326,6 +1399,13 @@ class WoeTransformTrainNode(NodeType):
                     categories = bin_def_entry.get("categories", [])
                     if is_missing:
                         mask_expr = pl.col(variable).is_null()
+                    elif bin_def_entry.get("is_other_bin", False):
+                        explicit_cats = []
+                        for bd in bins:
+                            if bd.get("is_missing_bin", False) or bd.get("is_other_bin", False):
+                                continue
+                            explicit_cats.extend(bd.get("categories") or [])
+                        mask_expr = pl.col(variable).is_not_null() & ~pl.col(variable).is_in(explicit_cats)
                     elif categories:
                         mask_expr = pl.col(variable).is_in(categories)
                     else:
@@ -1630,14 +1710,17 @@ class ScoreScalingNode(NodeType):
         params = context.validated_params
         model_artifact = next(a for a in context.input_artifacts if a.role == "model")
 
-        bin_artifact = None
-        woe_report_artifact = None
+        bin_artifacts = []
+        woe_report_artifacts = []
+        meta_artifacts = []
         for a in context.input_artifacts:
             if a.role == "definition":
                 try:
                     payload = json.loads(store.artifact_path(a).read_text())
                     if "variables" in payload and "selected" not in payload:
-                        bin_artifact = a
+                        bin_artifacts.append(a)
+                    elif "target_column" in payload and "good_values" in payload and "bad_values" in payload:
+                        meta_artifacts.append(a)
                 except Exception:
                     continue
             elif a.role == "report":
@@ -1647,17 +1730,24 @@ class ScoreScalingNode(NodeType):
                         continue
                     temp = pl.read_parquet(store.artifact_path(a))
                     if "woe" in temp.columns and "bin_id" in temp.columns and "variable" in temp.columns:
-                        woe_report_artifact = a
+                        woe_report_artifacts.append(a)
                 except Exception:
                     continue
 
-        if bin_artifact is None:
-            raise ValueError("Score scaling requires a bin definition artifact with 'variables'")
-        if woe_report_artifact is None:
-            raise ValueError("Score scaling requires a WOE table report (Parquet with woe, bin_id, variable columns)")
+        if len(bin_artifacts) != 1:
+            raise ValueError(f"Score scaling requires exactly one bin definition artifact; found {len(bin_artifacts)}")
+        if len(woe_report_artifacts) != 1:
+            raise ValueError(f"Score scaling requires exactly one WOE report artifact; found {len(woe_report_artifacts)}")
+        if len(meta_artifacts) > 1:
+            raise ValueError(f"Score scaling requires at most one modelling metadata artifact; found {len(meta_artifacts)}")
+        bin_artifact = bin_artifacts[0]
+        woe_report_artifact = woe_report_artifacts[0]
 
         model = json.loads(store.artifact_path(model_artifact).read_text())
         bin_def = json.loads(store.artifact_path(bin_artifact).read_text())
+
+        if not bin_def.get("variables"):
+            raise ValueError("Score scaling received an empty bin definition")
 
         base_score = float(params.get("base_score", 600))
         base_odds = float(params.get("base_odds", 50.0))

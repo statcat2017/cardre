@@ -25,8 +25,9 @@ class ApplyWoeMappingNode(NodeType):
     output_roles: list[str] = ["train", "test", "oot"]
 
     def _find_artifacts(self, artifacts, store):
-        bin_art = woe_art = None
-        sel_art = None
+        bin_arts = []
+        woe_arts = []
+        sel_arts = []
         data_arts = []
         for a in artifacts:
             if a.role in ("train", "test", "oot"):
@@ -35,9 +36,9 @@ class ApplyWoeMappingNode(NodeType):
                 try:
                     p = json.loads(store.artifact_path(a).read_text())
                     if "variables" in p and "selected" not in p:
-                        bin_art = a
+                        bin_arts.append(a)
                     elif "selected" in p:
-                        sel_art = a
+                        sel_arts.append(a)
                 except Exception:
                     continue
             elif a.role == "report":
@@ -46,9 +47,18 @@ class ApplyWoeMappingNode(NodeType):
                     if c[:4] == b"PAR1":
                         d = pl.read_parquet(store.artifact_path(a))
                         if "woe" in d.columns and "bin_id" in d.columns and "variable" in d.columns:
-                            woe_art = a
+                            woe_arts.append(a)
                 except Exception:
                     continue
+        if len(bin_arts) != 1:
+            raise ValueError(f"apply_woe_mapping requires exactly one bin definition artifact; found {len(bin_arts)}")
+        if len(woe_arts) != 1:
+            raise ValueError(f"apply_woe_mapping requires exactly one WOE table artifact; found {len(woe_arts)}")
+        if len(sel_arts) > 1:
+            raise ValueError(f"apply_woe_mapping requires at most one selection artifact; found {len(sel_arts)}")
+        bin_art = bin_arts[0]
+        woe_art = woe_arts[0]
+        sel_art = sel_arts[0] if sel_arts else None
         return data_arts, bin_art, woe_art, sel_art
 
     def run(self, context: ExecutionContext) -> NodeOutput:
