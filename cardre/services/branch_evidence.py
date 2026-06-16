@@ -120,7 +120,10 @@ class BranchEvidenceResolver:
                 stale_shared.append(sid)
             else:
                 spec = spec_by_step.get(sid)
-                if spec is not None and not self._is_evidence_fresh(spec, rs):
+                if spec is not None and not self._is_evidence_fresh(
+                    store, branch["plan_id"], plan_version_id, spec, rs,
+                    source_branch_id=sb,
+                ):
                     stale_shared.append(sid)
 
         if stale_shared:
@@ -231,8 +234,12 @@ class BranchEvidenceResolver:
 
     def _is_evidence_fresh(
         self,
+        store: ProjectStore,
+        plan_id: str,
+        plan_version_id: str,
         spec: StepSpec,
         run_step: RunStepRecord,
+        source_branch_id: str | None = None,
     ) -> bool:
         """Check that *run_step*'s fingerprint matches the current *spec*.
 
@@ -246,6 +253,26 @@ class BranchEvidenceResolver:
             return False
         if fp.get("node_version", "") != spec.node_version:
             return False
+
+        # Compare parent output logical hashes — if a parent was re-run
+        # and produced different outputs this step's evidence is stale.
+        parent_output_by_step: dict[str, list[str]] = fp.get(
+            "parent_output_logical_hashes_by_step", {}
+        )
+        for pid in spec.parent_step_ids:
+            parent_rs = self._find_shared_evidence(
+                store, plan_id, plan_version_id, pid,
+                source_branch_id=source_branch_id,
+            )
+            if parent_rs is None:
+                return False
+            stored_hashes = parent_output_by_step.get(pid, [])
+            current_hashes = parent_rs.execution_fingerprint.get(
+                "output_artifact_logical_hashes", []
+            )
+            if stored_hashes != current_hashes:
+                return False
+
         return True
 
     def _find_shared_evidence(
