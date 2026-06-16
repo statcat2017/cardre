@@ -7,7 +7,6 @@ Phase 3 adds random forest and GBDT using the same contract.
 from __future__ import annotations
 
 import io
-import json
 import time
 from typing import Any
 
@@ -17,11 +16,11 @@ import polars as pl
 from sklearn.tree import DecisionTreeClassifier, export_text
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
     NodeType,
-    json_logical_hash,
 )
 
 
@@ -30,26 +29,11 @@ def _extract_target_metadata(
     input_artifacts,
 ) -> tuple[str, set[str], set[str], dict | None]:
     """Extract target column, good/bad values, and raw metadata from definition artifacts."""
-    meta_art = None
-    for a in input_artifacts:
-        if a.role == "definition":
-            try:
-                candidate = json.loads(store.artifact_path(a).read_text())
-                if "target_column" in candidate and "good_values" in candidate:
-                    meta_art = a
-                    break
-            except Exception:
-                continue
-
-    meta = {}
-    if meta_art:
-        meta = json.loads(store.artifact_path(meta_art).read_text())
-
-    target_column = meta.get("target_column", "")
-    good_values = set(str(v) for v in meta.get("good_values", []))
-    bad_values = set(str(v) for v in meta.get("bad_values", []))
-
-    return target_column, good_values, bad_values, meta
+    reader = ArtifactEvidenceReader(store)
+    meta = reader.find_optional(input_artifacts, EvidenceKind.MODELLING_METADATA)
+    if meta is None:
+        return "", set(), set(), {}
+    return meta.target_column, set(str(v) for v in meta.good_values), set(str(v) for v in meta.bad_values), {}
 
 
 def _resolve_features(
@@ -230,47 +214,26 @@ def _build_model_artifact(
     row_count: int | None = None,
 ) -> dict:
     """Build a cardre.model_artifact.v1 JSON dict."""
-    feature_order_hash = json_logical_hash({"features": features})
-
-    class_mapping = {str(idx): str(label) for idx, label in enumerate([good_class, bad_class])}
-
-    model: dict[str, Any] = {
-        "schema_version": "cardre.model_artifact.v1",
-        "model_family": model_family,
-        "target_column": target_column,
-        "features": features,
-        "class_mapping": class_mapping,
-        "bad_class_label": str(bad_class),
-        "target_event_value": str(bad_class),
-        "probability_column_index": prob_col_idx,
-        "feature_order_hash": feature_order_hash,
-        "feature_strategy": feature_strategy,
-        "feature_contract": {
-            "features": features,
-            "transformation_strategy": feature_strategy,
-        },
-        "estimator_reference": {
-            "artifact_id": estimator_art.artifact_id,
-            "logical_hash": estimator_art.logical_hash,
-            "physical_hash": estimator_art.physical_hash,
-            "estimator_format": "joblib",
-            "trusted_load_required": True,
-            "creating_run_id": context.run_id,
-            "creating_run_step_id": context.step_spec.step_id,
-        },
-        "training": {
-            "row_count": row_count if row_count is not None else len(features),
-            "params": training_params,
-            "random_seed": random_seed,
-            "elapsed_seconds": round(elapsed, 3),
-        },
-        "model_payload": model_payload,
-        "interpretability": interpretability,
-        "warnings": warnings_list or [],
-    }
-    if extra_metrics:
-        model["training"].update(extra_metrics)
-    return model
+    from cardre.modeling.builders import build_model_artifact
+    return build_model_artifact(
+        model_family=model_family,
+        target_column=target_column,
+        features=features,
+        bad_class=bad_class,
+        good_class=good_class,
+        prob_col_idx=prob_col_idx,
+        feature_strategy=feature_strategy,
+        estimator_art=estimator_art,
+        training_params=training_params,
+        random_seed=random_seed,
+        elapsed=elapsed,
+        model_payload=model_payload,
+        interpretability=interpretability,
+        context=context,
+        extra_metrics=extra_metrics,
+        warnings_list=warnings_list,
+        row_count=row_count,
+    )
 
 
 class DecisionTreeNode(NodeType):

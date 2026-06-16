@@ -18,6 +18,7 @@ import numpy as np
 import polars as pl
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
@@ -118,26 +119,20 @@ class VotingEnsembleNode(NodeType):
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
+        reader = ArtifactEvidenceReader(store)
         params = context.validated_params
         model_artifact_ids = list(params.get("model_artifact_ids", []))
         voting = params.get("voting", "soft")
         threshold = float(params.get("threshold", 0.5))
 
         train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
-        def_art = next((a for a in context.input_artifacts if a.role == "definition"), None)
         if train_art is None:
             raise ValueError("voting_ensemble requires a train artifact")
 
-        meta = {}
-        if def_art:
-            try:
-                meta = json.loads(store.artifact_path(def_art).read_text())
-            except Exception:
-                pass
-
-        target_col = meta.get("target_column", "")
-        good_values = set(str(v) for v in meta.get("good_values", []))
-        bad_values = set(str(v) for v in meta.get("bad_values", []))
+        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        target_col = meta.target_column if meta else ""
+        good_values = set(str(v) for v in (meta.good_values if meta else []))
+        bad_values = set(str(v) for v in (meta.bad_values if meta else []))
 
         if not bad_values:
             raise ValueError("bad_values required for voting ensemble")
@@ -291,26 +286,20 @@ class WeightedEnsembleNode(NodeType):
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
+        reader = ArtifactEvidenceReader(store)
         params = context.validated_params
         model_artifact_ids = list(params.get("model_artifact_ids", []))
         user_weights = list(params.get("weights", []))
         optimize = params.get("optimize_weights", False)
 
         train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
-        def_art = next((a for a in context.input_artifacts if a.role == "definition"), None)
         if train_art is None:
             raise ValueError("weighted_ensemble requires a train artifact")
 
-        meta = {}
-        if def_art:
-            try:
-                meta = json.loads(store.artifact_path(def_art).read_text())
-            except Exception:
-                pass
-
-        target_col = meta.get("target_column", "")
-        good_values = set(str(v) for v in meta.get("good_values", []))
-        bad_values = set(str(v) for v in meta.get("bad_values", []))
+        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        target_col = meta.target_column if meta else ""
+        good_values = set(str(v) for v in (meta.good_values if meta else []))
+        bad_values = set(str(v) for v in (meta.bad_values if meta else []))
 
         if not bad_values:
             raise ValueError("bad_values required for weighted ensemble")

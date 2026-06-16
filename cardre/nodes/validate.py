@@ -175,12 +175,18 @@ class ApplyModelNode(NodeType):
         import numpy as np
 
         store = context.store
+        reader = ArtifactEvidenceReader(store)
+
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
         scorecard_art = next((a for a in context.input_artifacts if a.role == "scorecard"), None)
         if model_art is None:
             raise ValueError("apply_model requires a model artifact")
 
         model = json.loads(store.artifact_path(model_art).read_text())
+        if "model_family" not in model:
+            typed_model = reader.find_optional(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
+            if typed_model is not None:
+                model.update(typed_model.as_legacy_dict())
 
         model_family = model.get("model_family", "logistic_regression")
         if model_family == "logistic_regression":
@@ -535,23 +541,11 @@ class ValidationMetricsNode(NodeType):
         import numpy as np
 
         store = context.store
-        meta_art = None
-        for a in context.input_artifacts:
-            if a.role == "definition":
-                try:
-                    p = json.loads(store.artifact_path(a).read_text())
-                    if "target_column" in p and "good_values" in p:
-                        meta_art = a
-                        break
-                except Exception:
-                    continue
-
-        meta = {}
-        if meta_art:
-            meta = json.loads(store.artifact_path(meta_art).read_text())
-        target_col = meta.get("target_column", "")
-        good = set(str(v) for v in meta.get("good_values", []))
-        bad = set(str(v) for v in meta.get("bad_values", []))
+        reader = ArtifactEvidenceReader(store)
+        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        target_col = meta.target_column if meta is not None else ""
+        good = set(str(v) for v in (meta.good_values if meta is not None else []))
+        bad = set(str(v) for v in (meta.bad_values if meta is not None else []))
 
         cutoffs = list(context.validated_params.get("cutoffs", [0.5]))
 
@@ -771,28 +765,16 @@ class ThresholdOptimizationNode(NodeType):
 
         store = context.store
         params = context.validated_params
+        reader = ArtifactEvidenceReader(store)
         objective = params.get("objective", "youden")
         n_thresholds = int(params.get("n_thresholds", 200))
         cost_fp = float(params.get("cost_fp", 1.0))
         cost_fn = float(params.get("cost_fn", 10.0))
 
-        meta_art = None
-        for a in context.input_artifacts:
-            if a.role == "definition":
-                try:
-                    p = json.loads(store.artifact_path(a).read_text())
-                    if "target_column" in p and "good_values" in p:
-                        meta_art = a
-                        break
-                except Exception:
-                    continue
-
-        meta = {}
-        if meta_art:
-            meta = json.loads(store.artifact_path(meta_art).read_text())
-        target_col = meta.get("target_column", "")
-        good = set(str(v) for v in meta.get("good_values", []))
-        bad = set(str(v) for v in meta.get("bad_values", []))
+        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        target_col = meta.target_column if meta is not None else ""
+        good = set(str(v) for v in (meta.good_values if meta is not None else []))
+        bad = set(str(v) for v in (meta.bad_values if meta is not None else []))
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
         report: dict = {"objective": objective, "cost_fp": cost_fp, "cost_fn": cost_fn, "roles": {}}
@@ -914,29 +896,17 @@ class CutoffAnalysisNode(NodeType):
 
         store = context.store
         params = context.validated_params
+        reader = ArtifactEvidenceReader(store)
         band_count = int(params.get("band_count", 20))
         cutoffs = list(params.get("cutoffs", []))
 
         if band_count < 2:
             raise ValueError(f"band_count must be at least 2, got {band_count}")
 
-        meta_art = None
-        for a in context.input_artifacts:
-            if a.role == "definition":
-                try:
-                    p = json.loads(store.artifact_path(a).read_text())
-                    if "target_column" in p and "good_values" in p:
-                        meta_art = a
-                        break
-                except Exception:
-                    continue
-
-        meta = {}
-        if meta_art:
-            meta = json.loads(store.artifact_path(meta_art).read_text())
-        target_col = meta.get("target_column", "")
-        good = set(str(v) for v in meta.get("good_values", []))
-        bad = set(str(v) for v in meta.get("bad_values", []))
+        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        target_col = meta.target_column if meta is not None else ""
+        good = set(str(v) for v in (meta.good_values if meta is not None else []))
+        bad = set(str(v) for v in (meta.bad_values if meta is not None else []))
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
         cutoff_tables: dict[str, list[JsonDict]] = {}

@@ -16,8 +16,10 @@ from cardre.audit import (
     json_logical_hash,
 )
 from cardre.evidence import (
+    AmbiguousEvidenceError,
     ArtifactEvidenceReader,
     EvidenceKind,
+    EvidenceNotFoundError,
     SCHEMA_BIN_DEFINITION,
     SCHEMA_MODEL_ARTIFACT,
     SCHEMA_SCORE_SCALING,
@@ -830,24 +832,10 @@ class VariableSelectionNode(NodeType):
         manual_include_reasons = {v["variable"]: v["reason"] for v in manual_entries_raw}
         manual_exclude_reasons = {v["variable"]: v["reason"] for v in manual_excludes_raw}
 
-        iv_artifact = None
-        clustering_artifact = None
-        for a in context.input_artifacts:
-            if a.role != "report":
-                continue
-            try:
-                content = store.artifact_path(a).read_bytes()
-                if content[:4] == b"PAR1":
-                    temp_df = pl.read_parquet(store.artifact_path(a))
-                    if "iv" in temp_df.columns and "variable" in temp_df.columns:
-                        iv_artifact = a
-                else:
-                    clustering_artifact = a
-            except Exception:
-                continue
-
-        if iv_artifact:
-            iv_df = pl.read_parquet(store.artifact_path(iv_artifact))
+        reader = ArtifactEvidenceReader(store)
+        iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
+        if iv_lf is not None:
+            iv_df = iv_lf.dataframe.collect()
             iv_cols = iv_df.columns
             iv_map = {}
             for row in iv_df.iter_rows():
@@ -859,15 +847,16 @@ class VariableSelectionNode(NodeType):
         else:
             iv_map = {}
 
-        clusters = []
-        if clustering_artifact:
-            try:
-                raw = store.artifact_path(clustering_artifact).read_bytes()
-                if raw[:4] != b"PAR1":
-                    clustering_raw = json.loads(raw)
-                    clusters = clustering_raw.get("clusters", [])
-            except (json.JSONDecodeError, FileNotFoundError):
-                pass
+        clusters: list[dict[str, Any]] = []
+        for a in context.input_artifacts:
+            if a.role == "report" and a.media_type == "application/json":
+                try:
+                    data = json.loads(store.artifact_path(a).read_text())
+                    if "clusters" in data:
+                        clusters = data["clusters"]
+                        break
+                except (json.JSONDecodeError, FileNotFoundError):
+                    pass
 
         cluster_map: dict[str, str] = {}
         for cl in clusters:
@@ -1165,82 +1154,32 @@ class WoeTransformTrainNode(NodeType):
     def run(self, context: ExecutionContext) -> NodeOutput:
 
         store = context.store
+        reader = ArtifactEvidenceReader(store)
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
 
-        bin_artifacts = []
-        meta_artifacts = []
-        selection_artifacts = []
-        for a in context.input_artifacts:
-            if a.role != "definition":
-                continue
-            try:
-                payload = json.loads(store.artifact_path(a).read_text())
-                if "variables" in payload and "selected" not in payload:
-                    bin_artifacts.append(a)
-                elif "selected" in payload:
-                    selection_artifacts.append(a)
-                elif "target_column" in payload and "good_values" in payload:
-                    meta_artifacts.append(a)
-            except Exception:
-                continue
+        bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
+        woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
 
-        if len(bin_artifacts) != 1:
-            raise ValueError(f"WOE transform requires exactly one bin definition artifact; found {len(bin_artifacts)}")
-        if len(meta_artifacts) > 1:
-            raise ValueError(f"WOE transform requires at most one modelling metadata artifact; found {len(meta_artifacts)}")
-        if len(selection_artifacts) > 1:
-            raise ValueError(f"WOE transform requires at most one selection artifact; found {len(selection_artifacts)}")
-        bin_artifact = bin_artifacts[0]
-        meta_artifact = meta_artifacts[0] if meta_artifacts else None
-        selection_artifact = selection_artifacts[0] if selection_artifacts else None
+        try:
+            meta = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        except (EvidenceNotFoundError, AmbiguousEvidenceError):
+            meta = None
+        sel = reader.find_optional(context.input_artifacts, EvidenceKind.SELECTION_DEFINITION)
 
-        woe_report_artifacts = []
-        for a in context.input_artifacts:
-            if a.role != "report":
-                continue
-            try:
-                content = store.artifact_path(a).read_bytes()
-                if content[:4] != b"PAR1":
-                    continue
-                temp = pl.read_parquet(store.artifact_path(a))
-                if "bin_id" in temp.columns and "woe" in temp.columns and "variable" in temp.columns:
-                    woe_report_artifacts.append(a)
-            except Exception:
-                continue
-
-        if len(woe_report_artifacts) != 1:
-            raise ValueError(
-                f"WOE transform requires exactly one WOE table report artifact; found {len(woe_report_artifacts)}"
-            )
-        woe_report_artifact = woe_report_artifacts[0]
+        if not bin_def.variables:
+            raise ValueError("WOE transform received an empty bin definition")
+        target_column = meta.target_column if meta is not None else ""
 
         df = pl.read_parquet(store.artifact_path(train_artifact))
-        bin_def = json.loads(store.artifact_path(bin_artifact).read_text())
-        if not bin_def.get("variables"):
-            raise ValueError("WOE transform received an empty bin definition")
-        target_column = ""
-        if meta_artifact:
-            meta = json.loads(store.artifact_path(meta_artifact).read_text())
-            target_column = meta.get("target_column", "")
-
-        woe_map: dict[str, dict] = {}
-        woe_df = pl.read_parquet(store.artifact_path(woe_report_artifact))
-        woe_cols_list = woe_df.columns
-        for row in woe_df.iter_rows():
-            var = str(row[woe_cols_list.index("variable")])
-            bin_id = str(row[woe_cols_list.index("bin_id")])
-            woe_val = float(row[woe_cols_list.index("woe")])
-            if var not in woe_map:
-                woe_map[var] = {}
-            woe_map[var][bin_id] = woe_val
+        bin_def_dict = bin_def.to_dict()
+        woe_map = woe_table.mapping
 
         missing_woe_bins: list[str] = []
-        for var_def in bin_def.get("variables", []):
-            variable = var_def["variable"]
-            for bin_entry in var_def.get("bins", []):
+        for var_def in bin_def.variables:
+            for bin_entry in var_def.bins:
                 bin_id = bin_entry["bin_id"]
-                if woe_map.get(variable, {}).get(bin_id) is None:
-                    missing_woe_bins.append(f"{variable}:{bin_id}")
+                if woe_map.get(var_def.variable, {}).get(bin_id) is None:
+                    missing_woe_bins.append(f"{var_def.variable}:{bin_id}")
 
         if missing_woe_bins:
             raise ValueError(
@@ -1249,16 +1188,12 @@ class WoeTransformTrainNode(NodeType):
             )
 
         selected_names: set[str] | None = None
-        if selection_artifact:
-            try:
-                sel = json.loads(store.artifact_path(selection_artifact).read_text())
-                selected_names = {s["variable"] for s in sel.get("selected", [])}
-            except Exception:
-                pass
+        if sel is not None:
+            selected_names = sel.selected_names
 
-        all_var_defs = bin_def.get("variables", [])
+        all_var_defs = bin_def.variables
         if selected_names is not None:
-            selected_vars = [v for v in all_var_defs if v["variable"] in selected_names]
+            selected_vars = [v for v in all_var_defs if v.variable in selected_names]
             if not selected_vars:
                 raise ValueError(
                     f"WOE transform: variable-selection defined {len(selected_names)} selected "
@@ -1271,9 +1206,9 @@ class WoeTransformTrainNode(NodeType):
         result_df = df
 
         for var_def in selected_vars:
-            variable = var_def["variable"]
-            kind = var_def["kind"]
-            bins = var_def["bins"]
+            variable = var_def.variable if hasattr(var_def, 'variable') else var_def.get('variable', '')
+            kind = var_def.kind if hasattr(var_def, 'kind') else var_def.get('kind', '')
+            bins = var_def.bins if hasattr(var_def, 'bins') else var_def.get('bins', [])
             woe_col = f"{variable}_woe"
 
             if variable not in df.columns:
@@ -1404,28 +1339,14 @@ class LogisticRegressionNode(NodeType):
 
         store = context.store
         params = context.validated_params
+        reader = ArtifactEvidenceReader(store)
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
 
-        meta_artifact = None
-        for a in context.input_artifacts:
-            if a.role == "definition":
-                try:
-                    candidate = json.loads(store.artifact_path(a).read_text())
-                    if "target_column" in candidate and "good_values" in candidate:
-                        meta_artifact = a
-                        break
-                except Exception:
-                    continue
+        meta = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
 
-        df = pl.read_parquet(store.artifact_path(train_artifact))
-
-        meta = {}
-        if meta_artifact:
-            meta = json.loads(store.artifact_path(meta_artifact).read_text())
-
-        target_column = meta.get("target_column", "")
-        good_values = set(str(v) for v in meta.get("good_values", []))
-        bad_values = set(str(v) for v in meta.get("bad_values", []))
+        target_column = meta.target_column
+        good_values = set(str(v) for v in meta.good_values)
+        bad_values = set(str(v) for v in meta.bad_values)
 
         if not target_column:
             raise ValueError("Target column is required for logistic regression")
@@ -1434,6 +1355,7 @@ class LogisticRegressionNode(NodeType):
         if not bad_values:
             raise ValueError("Bad values must be defined for logistic regression")
 
+        df = pl.read_parquet(store.artifact_path(train_artifact))
         woe_cols = [c for c in df.columns if c.endswith("_woe")]
         if not woe_cols:
             raise ValueError("No WOE-transformed columns found in training data")
@@ -1589,46 +1511,27 @@ class ScoreScalingNode(NodeType):
 
         store = context.store
         params = context.validated_params
-        model_artifact = next(a for a in context.input_artifacts if a.role == "model")
+        reader = ArtifactEvidenceReader(store)
 
-        bin_artifacts = []
-        woe_report_artifacts = []
-        meta_artifacts = []
-        for a in context.input_artifacts:
-            if a.role == "definition":
-                try:
-                    payload = json.loads(store.artifact_path(a).read_text())
-                    if "variables" in payload and "selected" not in payload:
-                        bin_artifacts.append(a)
-                    elif "target_column" in payload and "good_values" in payload and "bad_values" in payload:
-                        meta_artifacts.append(a)
-                except Exception:
-                    continue
-            elif a.role == "report":
-                try:
-                    content = store.artifact_path(a).read_bytes()
-                    if content[:4] != b"PAR1":
-                        continue
-                    temp = pl.read_parquet(store.artifact_path(a))
-                    if "woe" in temp.columns and "bin_id" in temp.columns and "variable" in temp.columns:
-                        woe_report_artifacts.append(a)
-                except Exception:
-                    continue
+        try:
+            model = reader.find(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
+            model_dict = model.as_legacy_dict()
+        except (EvidenceNotFoundError, AmbiguousEvidenceError):
+            model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
+            if model_art is None:
+                raise ValueError("Score scaling requires a model artifact")
+            model_dict = json.loads(store.artifact_path(model_art).read_text())
 
-        if len(bin_artifacts) != 1:
-            raise ValueError(f"Score scaling requires exactly one bin definition artifact; found {len(bin_artifacts)}")
-        if len(woe_report_artifacts) != 1:
-            raise ValueError(f"Score scaling requires exactly one WOE report artifact; found {len(woe_report_artifacts)}")
-        if len(meta_artifacts) > 1:
-            raise ValueError(f"Score scaling requires at most one modelling metadata artifact; found {len(meta_artifacts)}")
-        bin_artifact = bin_artifacts[0]
-        woe_report_artifact = woe_report_artifacts[0]
+        bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
+        woe_table = reader.find_optional(context.input_artifacts, EvidenceKind.WOE_TABLE)
+        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
 
-        model = json.loads(store.artifact_path(model_artifact).read_text())
-        bin_def = json.loads(store.artifact_path(bin_artifact).read_text())
-
-        if not bin_def.get("variables"):
+        if not bin_def.variables:
             raise ValueError("Score scaling received an empty bin definition")
+        if woe_table is None:
+            raise ValueError(
+                "Score scaling requires exactly one WOE report artifact; found 0"
+            )
 
         base_score = float(params.get("base_score", 600))
         base_odds = float(params.get("base_odds", 50.0))
@@ -1642,8 +1545,8 @@ class ScoreScalingNode(NodeType):
 
         factor = pdo / math.log(2)
         offset = base_score - factor * math.log(base_odds)
-        intercept = float(model.get("intercept", 0))
-        coefficients = model.get("coefficients", {})
+        intercept = float(model_dict.get("intercept", 0))
+        coefficients = model_dict.get("coefficients", {})
 
         direction = -1.0 if higher_is_lower_risk else 1.0
         # Score = offset + direction * factor * (intercept + sum(coef_i * woe_i))
@@ -1654,26 +1557,16 @@ class ScoreScalingNode(NodeType):
         base_points = round(offset + direction * factor * intercept, 2)
 
         attributes: list[dict] = []
-        all_woe_map: dict[str, dict[str, float]] = {}
-        if woe_report_artifact:
-            woe_df = pl.read_parquet(store.artifact_path(woe_report_artifact))
-            for row in woe_df.iter_rows():
-                cols = woe_df.columns
-                var = str(row[cols.index("variable")])
-                bin_id = str(row[cols.index("bin_id")])
-                woe_val = float(row[cols.index("woe")])
-                if var not in all_woe_map:
-                    all_woe_map[var] = {}
-                all_woe_map[var][bin_id] = woe_val
+        all_woe_map = woe_table.mapping
 
-        for var_def in bin_def.get("variables", []):
-            variable = var_def["variable"]
+        for var_def_obj in bin_def.variables:
+            variable = var_def_obj.variable
             woe_key = f"{variable}_woe"
             if woe_key not in coefficients:
                 continue
             coef = float(coefficients[woe_key])
 
-            for bin_entry in var_def.get("bins", []):
+            for bin_entry in var_def_obj.bins:
                 bin_id = bin_entry["bin_id"]
                 label = bin_entry["label"]
                 woe_val = all_woe_map.get(variable, {}).get(bin_id)
@@ -1702,7 +1595,7 @@ class ScoreScalingNode(NodeType):
             "intercept": intercept,
             "base_points": base_points,
             "attributes": attributes,
-            "target_column": model.get("target_column", ""),
+            "target_column": model_dict.get("target_column", ""),
         }
 
         scorecard["schema_version"] = SCHEMA_SCORE_SCALING
@@ -1732,44 +1625,59 @@ class BuildSummaryReportNode(NodeType):
     def run(self, context: ExecutionContext) -> NodeOutput:
 
         store = context.store
+        reader = ArtifactEvidenceReader(store)
+
         scorecard_artifact = next(a for a in context.input_artifacts if a.role == "scorecard")
-        model_artifact = next(a for a in context.input_artifacts if a.role == "model")
-        woe_report_artifacts = [a for a in context.input_artifacts if a.role == "report"]
-
         scorecard = json.loads(store.artifact_path(scorecard_artifact).read_text())
-        model = json.loads(store.artifact_path(model_artifact).read_text())
 
-        woe_summaries = []
-        for a in woe_report_artifacts:
-            try:
-                content = store.artifact_path(a).read_bytes()
-                if content[:4] == b"PAR1":
-                    woe_df = pl.read_parquet(store.artifact_path(a))
-                    if "iv" in woe_df.columns:
-                        woe_summaries.append({
-                            "artifact_id": a.artifact_id,
-                            "type": "iv_ranking",
-                            "row_count": woe_df.height,
-                            "columns": woe_df.columns,
-                        })
-                    elif "woe" in woe_df.columns:
-                        woe_summaries.append({
-                            "artifact_id": a.artifact_id,
-                            "type": "woe_table",
-                            "row_count": woe_df.height,
-                            "columns": woe_df.columns,
-                        })
-            except Exception:
-                pass
+        try:
+            model = reader.find(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
+        except EvidenceNotFoundError:
+            model_artifact = next(a for a in context.input_artifacts if a.role == "model")
+            model = json.loads(store.artifact_path(model_artifact).read_text())
+            model_is_typed = False
+        else:
+            model_is_typed = True
+
+        woe_summaries: list[dict[str, Any]] = []
+        iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
+        if iv_lf is not None:
+            iv_df = iv_lf.dataframe.collect()
+            woe_summaries.append({
+                "artifact_id": iv_lf.source_artifact_id,
+                "type": "iv_ranking",
+                "row_count": iv_df.height,
+                "columns": list(iv_df.columns),
+            })
+        try:
+            woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
+            woe_df = woe_table.dataframe
+            if woe_df is not None:
+                woe_summaries.append({
+                    "artifact_id": woe_table.source_artifact_id,
+                    "type": "woe_table",
+                    "row_count": woe_df.collect().height,
+                    "columns": list(woe_table.columns),
+                })
+        except EvidenceNotFoundError:
+            pass
+
+        model_features = model.features if model_is_typed else model.get("features", [])
+        model_intercept = model.intercept if model_is_typed else model.get("intercept", 0)
+        model_coeff_count = len(model.coefficients_dict) if model_is_typed else len(model.get("coefficients", {}))
+        model_converged = model.training.get("converged", False) if model_is_typed else model.get("training", {}).get("converged", False)
+        model_row_count = model.training.get("row_count", 0) if model_is_typed else model.get("training", {}).get("row_count", 0)
+        model_warnings = list(model.warnings) if model_is_typed else model.get("warnings", [])
+        model_target = model.target_column if model_is_typed else model.get("target_column", "")
 
         report = {
             "model_summary": {
-                "target_column": model.get("target_column", ""),
-                "features": model.get("features", []),
-                "intercept": model.get("intercept", 0),
-                "coefficient_count": len(model.get("coefficients", {})),
-                "converged": model.get("training", {}).get("converged", False),
-                "row_count": model.get("training", {}).get("row_count", 0),
+                "target_column": model_target,
+                "features": model_features,
+                "intercept": model_intercept,
+                "coefficient_count": model_coeff_count,
+                "converged": model_converged,
+                "row_count": model_row_count,
             },
             "scorecard_summary": {
                 "base_score": scorecard.get("base_score", 0),
@@ -1779,7 +1687,7 @@ class BuildSummaryReportNode(NodeType):
                 "higher_score_is_lower_risk": scorecard.get("higher_score_is_lower_risk", True),
             },
             "woe_iv_references": woe_summaries,
-            "warnings": model.get("warnings", []),
+            "warnings": model_warnings,
         }
 
         artifact = write_json_artifact(
@@ -1791,7 +1699,7 @@ class BuildSummaryReportNode(NodeType):
 
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"feature_count": len(model.get("features", []))})
+            metrics={"feature_count": len(model_features)})
 
 
 class DummyFitNode(NodeType):

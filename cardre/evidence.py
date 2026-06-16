@@ -95,6 +95,7 @@ class EvidenceKind(Enum):
     CUTOFF_ANALYSIS = "cutoff_analysis"
     SCORED_DATASET = "scored_dataset"
     MANUAL_BINNING_OVERRIDES = "manual_binning_overrides"
+    IV_TABLE = "iv_table"
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +191,14 @@ class WoeTable:
     mapping: dict[str, dict[str, float]]
     columns: list[str]
     dataframe: pl.LazyFrame | None = None
+    source_artifact_id: str = ""
+
+
+@dataclass(frozen=True)
+class IvTable:
+    dataframe: pl.LazyFrame
+    columns: list[str]
+    source_artifact_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -303,6 +312,10 @@ class ModelArtifact:
     features: list[str] = field(default_factory=list)
     target_column: str = ""
     schema_version: str = ""
+    training: JsonDict = field(default_factory=dict)
+    warnings: list[JsonDict] = field(default_factory=list)
+    model_payload: JsonDict = field(default_factory=dict)
+    interpretability: JsonDict = field(default_factory=dict)
 
     @classmethod
     def from_json(cls, data: JsonDict) -> ModelArtifact:
@@ -342,6 +355,10 @@ class ModelArtifact:
             features=features,
             target_column=data.get("target_column", ""),
             schema_version=data.get("schema_version", ""),
+            training=data.get("training", {}),
+            warnings=list(data.get("warnings", [])),
+            model_payload=data.get("model_payload", {}),
+            interpretability=data.get("interpretability", {}),
         )
 
     def as_legacy_dict(self) -> JsonDict:
@@ -493,6 +510,13 @@ _EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         schema_version=SCHEMA_WOE_TABLE,
         expected_media_types={"application/vnd.apache.parquet"},
         required_columns={"variable", "bin_id", "woe"},
+    ),
+    EvidenceKind.IV_TABLE: _Profile(
+        expected_roles={"report"},
+        expected_artifact_types={"report", "dataset"},
+        schema_version="",
+        expected_media_types={"application/vnd.apache.parquet"},
+        required_columns={"iv", "variable"},
     ),
     EvidenceKind.WOE_IV_EVIDENCE: _Profile(
         expected_roles={"report"},
@@ -705,6 +729,13 @@ class ArtifactEvidenceReader:
                 and self._parquet_has_columns(a, {"variable", "bin_id", "woe"})
             ]
             return parquet_reports
+        if kind == EvidenceKind.IV_TABLE:
+            return [
+                a for a in artifacts
+                if a.role == "report"
+                and a.media_type == "application/vnd.apache.parquet"
+                and self._parquet_has_columns(a, {"iv", "variable"})
+            ]
         return []
 
     def _match_by_payload_key(
@@ -749,6 +780,10 @@ class ArtifactEvidenceReader:
         if kind == EvidenceKind.SCORED_DATASET:
             return pl.scan_parquet(path)
 
+        if kind == EvidenceKind.IV_TABLE:
+            lf = pl.scan_parquet(path)
+            return IvTable(dataframe=lf, columns=lf.collect_schema().names(), source_artifact_id=artifact.artifact_id)
+
         # JSON-based evidence
         try:
             data = json.loads(path.read_text())
@@ -789,7 +824,7 @@ class ArtifactEvidenceReader:
             if wv is not None:
                 mapping.setdefault(var, {})[bid] = float(wv)
 
-        return WoeTable(mapping=mapping, columns=cols, dataframe=lf)
+        return WoeTable(mapping=mapping, columns=cols, dataframe=lf, source_artifact_id=artifact.artifact_id)
 
 
 __all__ = [
