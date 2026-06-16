@@ -219,6 +219,7 @@ class PlanService:
                     plan_id, latest_pv_id, overrides,
                     fc_step_id=_find_mb_step_id(steps, "fine-classing", branch_id),
                     vs_step_id=_find_mb_step_id(steps, "variable-selection", branch_id),
+                    branch_id=branch_id,
                 )
 
         new_steps = replace_step_params(steps, step_id, new_params)
@@ -428,6 +429,7 @@ class PlanService:
             latest_pv_id, plan_id,
             fc_step_id=fc_actual_id,
             vs_step_id=vs_actual_id,
+            branch_id=branch_id,
         )
         if err is not None:
             return ManualBinningEditorStateResponse(
@@ -526,6 +528,7 @@ class PlanService:
             plan_version_id, plan_id,
             fc_step_id=fc_step_id,
             vs_step_id=vs_step_id,
+            branch_id=branch_id,
         )
         if err is not None:
             return ManualBinningPreviewResponse(
@@ -626,6 +629,7 @@ class PlanService:
         self, plan_id: str, plan_version_id: str, overrides: list[dict],
         fc_step_id: str = "fine-classing",
         vs_step_id: str = "variable-selection",
+        branch_id: str | None = None,
     ) -> None:
         """Validate manual-binning overrides against upstream artifacts.
 
@@ -641,6 +645,7 @@ class PlanService:
             plan_version_id, plan_id,
             fc_step_id=fc_step_id,
             vs_step_id=vs_step_id,
+            branch_id=branch_id,
         )
         if err is not None:
             raise PlanValidationError("PARAMS_VALIDATION_FAILED", err)
