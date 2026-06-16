@@ -11,6 +11,13 @@ env:
   NODE_VERSION: "20"
 
 jobs:
+  check-line-counts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check line counts
+        run: python3 scripts/check-line-counts.py
+
   test-python:
     runs-on: ubuntu-latest
     steps:
