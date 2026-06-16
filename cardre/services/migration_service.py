@@ -54,11 +54,8 @@ def migrate_project_to_branch_model(
 
         if baseline_branches:
             existing_branch_id = baseline_branches[0]["branch_id"]
-            maps = store._connect().execute(
-                "SELECT DISTINCT plan_version_id FROM branch_step_map WHERE branch_id = ?",
-                (existing_branch_id,),
-            ).fetchall()
-            mapped_versions = {r["plan_version_id"] for r in maps}
+            maps = store.get_plan_version_ids_for_branch(existing_branch_id)
+            mapped_versions = set(maps)
             all_version_ids = {r["plan_version_id"] for r in all_versions}
             missing = all_version_ids - mapped_versions
             if missing:

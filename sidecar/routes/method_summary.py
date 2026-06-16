@@ -51,19 +51,19 @@ def get_branch_method_summary(
 
     # Query run-steps for this branch
     import sqlite3
-    conn = sqlite3.connect(str(store.db_path))
+    conn = sqlite3.connect(str(store.get_sqlite_path()))
     conn.row_factory = sqlite3.Row
     try:
         cursor = conn.execute(
-            "SELECT rs.artifact_ids, rs.node_type, rs.status "
+            "SELECT rs.output_artifact_ids_json, rs.node_type, rs.status "
             "FROM run_steps rs "
             "JOIN runs r ON rs.run_id = r.run_id "
-            "WHERE r.branch_id = ? AND rs.status = 'success' "
+            "WHERE r.branch_id = ? AND rs.status = 'succeeded' "
             "ORDER BY rs.position DESC",
             (branch_id,),
         )
         for row in cursor.fetchall():
-            artifact_ids = json.loads(row["artifact_ids"]) if row["artifact_ids"] else []
+            artifact_ids = json.loads(row["output_artifact_ids_json"]) if row["output_artifact_ids_json"] else []
             for aid in artifact_ids:
                 art = store.get_artifact(aid)
                 if art is None:
@@ -127,15 +127,7 @@ def get_model_ranking(
 
     # Read snapshot
     try:
-        import sqlite3
-        conn = sqlite3.connect(str(store.db_path))
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT * FROM branch_comparison_snapshots WHERE snapshot_id = ?",
-            (snapshot_id,),
-        ).fetchone()
-        conn.close()
-
+        row = store.get_comparison_snapshot(snapshot_id)
         if row is None:
             raise HTTPException(status_code=404, detail=f"Snapshot not found: {snapshot_id!r}")
 

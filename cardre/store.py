@@ -808,6 +808,57 @@ class ProjectStore:
         return None if row is None else dict(row)
 
     # ------------------------------------------------------------------
+    # Branch comparisons
+    # ------------------------------------------------------------------
+
+    def get_branch_comparison(self, comparison_id: str) -> JsonDict | None:
+        row = self._connect().execute(
+            "SELECT * FROM branch_comparisons WHERE comparison_id = ?",
+            (comparison_id,),
+        ).fetchone()
+        return None if row is None else dict(row)
+
+    def get_comparison_snapshot(self, snapshot_id: str) -> JsonDict | None:
+        row = self._connect().execute(
+            "SELECT * FROM branch_comparison_snapshots WHERE comparison_snapshot_id = ?",
+            (snapshot_id,),
+        ).fetchone()
+        return None if row is None else dict(row)
+
+    def get_comparison_snapshots_for_comparison(self, comparison_id: str) -> list[JsonDict]:
+        rows = self._connect().execute(
+            "SELECT * FROM branch_comparison_snapshots WHERE comparison_id = ? ORDER BY created_at DESC",
+            (comparison_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_champion_assignment_by_branch(self, branch_id: str) -> dict | None:
+        row = self._connect().execute(
+            "SELECT * FROM champion_assignments "
+            "WHERE champion_branch_id = ? AND superseded_at IS NULL "
+            "ORDER BY assigned_at DESC LIMIT 1",
+            (branch_id,),
+        ).fetchone()
+        return None if row is None else dict(row)
+
+    def get_plan_version_ids_for_branch(self, branch_id: str) -> list[str]:
+        rows = self._connect().execute(
+            "SELECT DISTINCT plan_version_id FROM branch_step_map WHERE branch_id = ?",
+            (branch_id,),
+        ).fetchall()
+        return [r["plan_version_id"] for r in rows]
+
+    def get_any_successful_run_id_for_plan(self, plan_id: str) -> str | None:
+        row = self._connect().execute(
+            "SELECT r.run_id FROM runs r "
+            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
+            "WHERE pv.plan_id = ? AND r.status = 'succeeded' "
+            "ORDER BY r.started_at DESC LIMIT 1",
+            (plan_id,),
+        ).fetchone()
+        return None if row is None else row["run_id"]
+
+    # ------------------------------------------------------------------
     # Database / state queries
     # ------------------------------------------------------------------
 

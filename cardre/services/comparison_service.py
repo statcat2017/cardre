@@ -391,14 +391,10 @@ def refresh_comparison(
     Checks both baseline and all challenger branches.
     Does NOT execute modelling nodes. Does NOT create run records.
     """
-    row = store._connect().execute(
-        "SELECT * FROM branch_comparisons WHERE comparison_id = ?",
-        (comparison_id,),
-    ).fetchone()
-    if row is None:
+    comparison = store.get_branch_comparison(comparison_id)
+    if comparison is None:
         raise ValueError(f"COMPARISON_NOT_FOUND: {comparison_id}")
 
-    comparison = dict(row)
     baseline_branch_id = comparison["baseline_branch_id"]
     challenger_ids = json.loads(comparison["challenger_branch_ids_json"])
     spec = json.loads(comparison["comparison_spec_json"])

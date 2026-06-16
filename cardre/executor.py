@@ -618,15 +618,7 @@ class PlanExecutor:
             # (including branch runs on other plan versions).
             pv = store.get_plan_version(plan_version_id)
             if pv is not None:
-                row = store._connect().execute(
-                    "SELECT r.run_id FROM runs r "
-                    "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-                    "WHERE pv.plan_id = ? AND r.status = 'succeeded' "
-                    "ORDER BY r.started_at DESC LIMIT 1",
-                    (pv["plan_id"],),
-                ).fetchone()
-                if row is not None:
-                    run_id = row["run_id"]
+                run_id = store.get_any_successful_run_id_for_plan(pv["plan_id"])
 
         if run_id is None:
             pv = store.get_plan_version(plan_version_id)
