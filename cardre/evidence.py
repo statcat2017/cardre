@@ -464,6 +464,7 @@ class _Profile:
     expected_media_types: set[str] = field(default_factory=lambda: {"application/json"})
     required_keys: set[str] | None = None
     exclude_key: str | None = None
+    required_columns: set[str] | None = None
 
 
 _EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
@@ -471,11 +472,14 @@ _EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_roles={"definition"},
         expected_artifact_types={"definition"},
         schema_version=SCHEMA_MODELLING_METADATA,
+        required_keys={"target_column", "good_values", "bad_values"},
     ),
     EvidenceKind.BIN_DEFINITION: _Profile(
         expected_roles={"definition"},
         expected_artifact_types={"definition"},
         schema_version=SCHEMA_BIN_DEFINITION,
+        required_keys={"variables"},
+        exclude_key="selected",
     ),
     EvidenceKind.SELECTION_DEFINITION: _Profile(
         expected_roles={"definition"},
@@ -488,6 +492,7 @@ _EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"report", "dataset"},
         schema_version=SCHEMA_WOE_TABLE,
         expected_media_types={"application/vnd.apache.parquet"},
+        required_columns={"variable", "bin_id", "woe"},
     ),
     EvidenceKind.WOE_IV_EVIDENCE: _Profile(
         expected_roles={"report"},
@@ -505,21 +510,25 @@ _EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_roles={"model", "report", "definition"},
         expected_artifact_types={"model", "definition", "report"},
         schema_version=SCHEMA_MODEL_ARTIFACT,
+        required_keys={"model_family"},
     ),
     EvidenceKind.SCORE_SCALING: _Profile(
         expected_roles={"scorecard", "report"},
         expected_artifact_types={"scorecard", "report"},
         schema_version=SCHEMA_SCORE_SCALING,
+        required_keys={"factor", "offset"},
     ),
     EvidenceKind.VALIDATION_METRICS: _Profile(
         expected_roles={"report"},
         expected_artifact_types={"report"},
         schema_version=SCHEMA_VALIDATION_METRICS,
+        required_keys={"metrics"},
     ),
     EvidenceKind.CUTOFF_ANALYSIS: _Profile(
         expected_roles={"report"},
         expected_artifact_types={"report"},
         schema_version=SCHEMA_CUTOFF_ANALYSIS,
+        required_keys={"cutoff_tables"},
     ),
     EvidenceKind.MANUAL_BINNING_OVERRIDES: _Profile(
         expected_roles={"definition", "report"},
@@ -654,7 +663,17 @@ class ArtifactEvidenceReader:
     def _candidate_passes_payload_check(
         self, artifact: ArtifactRef, profile: _Profile,
     ) -> bool:
-        """Check whether *artifact* satisfies *profile*'s payload-key constraints."""
+        """Check whether *artifact* satisfies *profile*'s constraints."""
+        if profile.required_columns is not None:
+            if artifact.media_type != "application/json":
+                return self._parquet_has_columns(artifact, profile.required_columns)
+            try:
+                payload = json.loads(self._store.artifact_path(artifact).read_text())
+                if profile.required_keys is not None:
+                    return profile.required_keys.issubset(payload.keys())
+                return True
+            except Exception:
+                return False
         if profile.required_keys is None and profile.exclude_key is None:
             return True
         try:
@@ -674,11 +693,18 @@ class ArtifactEvidenceReader:
         if kind == EvidenceKind.MODELLING_METADATA:
             return self._match_by_payload_key(artifacts, {"target_column", "good_values", "bad_values"})
         if kind in (EvidenceKind.BIN_DEFINITION, EvidenceKind.SELECTION_DEFINITION):
-            # Narrow to definition-role JSON artifacts only
             defs = [a for a in artifacts if a.role == "definition" and a.media_type == "application/json"]
             if kind == EvidenceKind.BIN_DEFINITION:
                 return self._match_by_payload_key(defs, {"variables"}, exclude_key="selected")
             return self._match_by_payload_key(defs, {"selected"})
+        if kind == EvidenceKind.WOE_TABLE:
+            parquet_reports = [
+                a for a in artifacts
+                if a.role == "report"
+                and a.media_type == "application/vnd.apache.parquet"
+                and self._parquet_has_columns(a, {"variable", "bin_id", "woe"})
+            ]
+            return parquet_reports
         return []
 
     def _match_by_payload_key(
@@ -697,6 +723,16 @@ class ArtifactEvidenceReader:
                 if exclude_key is None or exclude_key not in payload:
                     result.append(a)
         return result
+
+    def _parquet_has_columns(
+        self, artifact: ArtifactRef, columns: set[str],
+    ) -> bool:
+        """Check whether the parquet artifact contains all required columns."""
+        try:
+            cols = pl.scan_parquet(self._store.artifact_path(artifact)).collect_schema().names()
+            return columns.issubset(cols)
+        except Exception:
+            return False
 
     # ------------------------------------------------------------------
     # Internal: parsing
