@@ -8,7 +8,6 @@ fails with a clear installation message if not available.
 from __future__ import annotations
 
 import io
-import json
 import time
 from typing import Any
 

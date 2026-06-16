@@ -13,6 +13,7 @@ from typing import Any
 import polars as pl
 
 from cardre.artifacts import write_json_artifact
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
@@ -66,13 +67,19 @@ class ModelExplainabilityNode(NodeType):
         params = context.validated_params
         include_permutation = params.get("include_permutation_importance", False)
 
+        reader = ArtifactEvidenceReader(store)
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
         if model_art is None:
             raise ValueError("model_explainability requires a model artifact")
 
         model = json.loads(store.artifact_path(model_art).read_text())
-        model_family = model.get("model_family", "unknown")
-        features = model.get("features", [])
+        model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        if model_typed is not None:
+            model_family = model_typed.model_family
+            features = model_typed.features
+        else:
+            model_family = model.get("model_family", "unknown")
+            features = model.get("features", [])
         interpretability = model.get("interpretability", {})
         explanation_level = interpretability.get("explanation_level", "none")
 
@@ -86,8 +93,8 @@ class ModelExplainabilityNode(NodeType):
 
         # Native explanations by model family
         if model_family == "logistic_regression":
-            report["coefficients"] = model.get("coefficients", {})
-            report["intercept"] = model.get("intercept", 0.0)
+            report["coefficients"] = model_typed.coefficients_dict
+            report["intercept"] = model_typed.intercept
             report["explanation_type"] = "coefficients"
             report["explanation_summary"] = (
                 f"Logistic regression with {len(features)} WOE features. "
@@ -287,13 +294,19 @@ class ModelLimitationsNode(NodeType):
         params = context.validated_params
         accepted_codes = set(params.get("accepted_limitations", []))
 
+        reader = ArtifactEvidenceReader(store)
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
         if model_art is None:
             raise ValueError("model_limitations requires a model artifact")
 
         model = json.loads(store.artifact_path(model_art).read_text())
-        model_family = model.get("model_family", "unknown")
-        features = model.get("features", [])
+        model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        if model_typed is not None:
+            model_family = model_typed.model_family
+            features = model_typed.features
+        else:
+            model_family = model.get("model_family", "unknown")
+            features = model.get("features", [])
         interpretability = model.get("interpretability", {})
         explanation_level = interpretability.get("explanation_level", "none")
         model_limitations = interpretability.get("limitations", [])

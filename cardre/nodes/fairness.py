@@ -12,6 +12,7 @@ import numpy as np
 import polars as pl
 
 from cardre.artifacts import write_json_artifact
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
@@ -69,23 +70,16 @@ class FairnessReportNode(NodeType):
         min_group_size = int(params.get("min_group_size", MIN_GROUP_SIZE))
         cutoff = float(params.get("cutoff", 0.5))
 
-        meta_art = None
-        for a in context.input_artifacts:
-            if a.role == "definition":
-                try:
-                    p = json.loads(store.artifact_path(a).read_text())
-                    if "target_column" in p and "good_values" in p:
-                        meta_art = a
-                        break
-                except Exception:
-                    continue
-
-        meta = {}
-        if meta_art:
-            meta = json.loads(store.artifact_path(meta_art).read_text())
-        target_col = meta.get("target_column", "")
-        good = set(str(v) for v in meta.get("good_values", []))
-        bad = set(str(v) for v in meta.get("bad_values", []))
+        reader = ArtifactEvidenceReader(store)
+        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        if meta:
+            target_col = meta.target_column
+            good = set(str(v) for v in meta.good_values)
+            bad = set(str(v) for v in meta.bad_values)
+        else:
+            target_col = ""
+            good = set()
+            bad = set()
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
         report: dict = {
@@ -288,8 +282,8 @@ class ProxyRiskReportNode(NodeType):
         correlation_threshold = float(params.get("correlation_threshold", 0.3))
         importance_threshold = float(params.get("importance_threshold", 0.05))
 
+        reader = ArtifactEvidenceReader(store)
         train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
-        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
 
         report: dict[str, Any] = {
             "sensitive_columns": sensitive_columns,
@@ -301,10 +295,13 @@ class ProxyRiskReportNode(NodeType):
         # Load model features and importance
         model_features: list[str] = []
         feature_importance: dict[str, float] = {}
+        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
         if model_art:
+            model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+            if model_typed is not None:
+                model_features = model_typed.features
             try:
                 model = json.loads(store.artifact_path(model_art).read_text())
-                model_features = model.get("features", [])
                 feature_importance = model.get("model_payload", {}).get("feature_importance", {})
             except Exception:
                 pass

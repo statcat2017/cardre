@@ -7,7 +7,6 @@ Phase 3 adds random forest and GBDT using the same contract.
 from __future__ import annotations
 
 import io
-import json
 import time
 from typing import Any
 
@@ -17,6 +16,7 @@ import polars as pl
 from sklearn.tree import DecisionTreeClassifier, export_text
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
@@ -30,26 +30,11 @@ def _extract_target_metadata(
     input_artifacts,
 ) -> tuple[str, set[str], set[str], dict | None]:
     """Extract target column, good/bad values, and raw metadata from definition artifacts."""
-    meta_art = None
-    for a in input_artifacts:
-        if a.role == "definition":
-            try:
-                candidate = json.loads(store.artifact_path(a).read_text())
-                if "target_column" in candidate and "good_values" in candidate:
-                    meta_art = a
-                    break
-            except Exception:
-                continue
-
-    meta = {}
-    if meta_art:
-        meta = json.loads(store.artifact_path(meta_art).read_text())
-
-    target_column = meta.get("target_column", "")
-    good_values = set(str(v) for v in meta.get("good_values", []))
-    bad_values = set(str(v) for v in meta.get("bad_values", []))
-
-    return target_column, good_values, bad_values, meta
+    reader = ArtifactEvidenceReader(store)
+    meta = reader.find_optional(input_artifacts, EvidenceKind.MODELLING_METADATA)
+    if meta is None:
+        return "", set(), set(), {}
+    return meta.target_column, set(str(v) for v in meta.good_values), set(str(v) for v in meta.bad_values), {}
 
 
 def _resolve_features(
