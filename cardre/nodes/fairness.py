@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from cardre.artifacts import make_fingerprint, write_json_artifact
+from cardre.artifacts import write_json_artifact
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
@@ -196,16 +196,7 @@ class FairnessReportNode(NodeType):
             payload=report,
             metadata={"sensitive_columns": sensitive_columns},
         )
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[art],
-        )
-        return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)}, execution_fingerprint=fp)
+        return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
 
     def _compute_parity_summary(self, roles: dict, sensitive_columns: list[str]) -> dict:
         """Compute approval parity and error parity across groups.
@@ -412,20 +403,9 @@ class ProxyRiskReportNode(NodeType):
             payload=report,
             metadata={"overall_risk": report["overall_risk"]},
         )
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[art],
-        )
         return NodeOutput(
             artifacts=[art],
-            metrics={"overall_risk": report["overall_risk"]},
-            execution_fingerprint=fp,
-        )
+            metrics={"overall_risk": report["overall_risk"]})
 
 
 class AlternativeDataManifestNode(NodeType):
@@ -530,17 +510,6 @@ class AlternativeDataManifestNode(NodeType):
                 "champion_eligible": manifest["champion_eligible"],
             },
         )
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[art],
-        )
         return NodeOutput(
             artifacts=[art],
-            metrics={"total_sources": len(source_evidence)},
-            execution_fingerprint=fp,
-        )
+            metrics={"total_sources": len(source_evidence)})

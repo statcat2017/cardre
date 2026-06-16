@@ -8,7 +8,7 @@ from typing import Any
 import polars as pl
 from sklearn.linear_model import LogisticRegression
 
-from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
+from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
@@ -141,22 +141,9 @@ class FineClassingNode(NodeType):
             },
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"variable_count": len(variables)},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"variable_count": len(variables)})
 
     def _bin_numeric(
         self, df: pl.DataFrame, col: str, target_column: str,
@@ -674,25 +661,12 @@ class CalculateWoeIvNode(NodeType):
 
         all_artifacts = [woe_art, iv_art, summary_art, evidence_art]
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=all_artifacts,
-        )
-
         return NodeOutput(
             artifacts=all_artifacts,
             metrics={
                 "variable_count": len(iv_rows),
                 "zero_cell_warning_count": len(warnings_list),
-            },
-            execution_fingerprint=fingerprint,
-        )
+            })
 
 
 class VariableClusteringNode(NodeType):
@@ -805,22 +779,9 @@ class VariableClusteringNode(NodeType):
             metadata={"candidate_count": len(numeric_cols)},
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"cluster_count": len(clusters)},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"cluster_count": len(clusters)})
 
 
 class VariableSelectionNode(NodeType):
@@ -979,22 +940,9 @@ class VariableSelectionNode(NodeType):
             metadata={"selected_count": len(selected), "rejected_count": len(rejected), "schema_version": SCHEMA_SELECTION_DEFINITION},
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"selected_count": len(selected), "rejected_count": len(rejected)},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"selected_count": len(selected), "rejected_count": len(rejected)})
 
 
 class ManualBinningNode(NodeType):
@@ -1074,22 +1022,9 @@ class ManualBinningNode(NodeType):
             metadata={"override_count": len(overrides), "schema_version": SCHEMA_BIN_DEFINITION},
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"override_count": len(overrides)},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"override_count": len(overrides)})
 
 
 class TechnicalManifestExportNode(NodeType):
@@ -1215,22 +1150,9 @@ class TechnicalManifestExportNode(NodeType):
             metadata={"run_id": run_id, "plan_version_id": plan_version_id},
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"step_count": len(steps_evidence), "artifact_count": len(artifacts_evidence)},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"step_count": len(steps_evidence), "artifact_count": len(artifacts_evidence)})
 
 
 class WoeTransformTrainNode(NodeType):
@@ -1439,22 +1361,9 @@ class WoeTransformTrainNode(NodeType):
         )
 
         all_outputs = [dataset_artifact, report_artifact_ref]
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=all_outputs,
-        )
-
         return NodeOutput(
             artifacts=all_outputs,
-            metrics={"variable_count": len(woe_columns)},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"variable_count": len(woe_columns)})
 
 
 class LogisticRegressionNode(NodeType):
@@ -1647,22 +1556,9 @@ class LogisticRegressionNode(NodeType):
             },
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"feature_count": len(features_list), "converged": lr.n_iter_[0] < max_iter},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"feature_count": len(features_list), "converged": lr.n_iter_[0] < max_iter})
 
 
 class ScoreScalingNode(NodeType):
@@ -1821,22 +1717,9 @@ class ScoreScalingNode(NodeType):
             },
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"attribute_count": len(attributes)},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"attribute_count": len(attributes)})
 
 
 class BuildSummaryReportNode(NodeType):
@@ -1906,22 +1789,9 @@ class BuildSummaryReportNode(NodeType):
             metadata={},
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"feature_count": len(model.get("features", []))},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"feature_count": len(model.get("features", []))})
 
 
 class DummyFitNode(NodeType):
@@ -1954,22 +1824,9 @@ class DummyFitNode(NodeType):
             metadata={"source_artifact_id": input_artifact.artifact_id},
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"row_count": df.height},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"row_count": df.height})
 
 
 def validate_manual_binning_overrides(

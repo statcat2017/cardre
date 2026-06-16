@@ -852,15 +852,16 @@ class SplitAndRoleTests(unittest.TestCase):
         split_rs = [rs for rs in run_steps if rs.step_id == "split"][0]
         import_rs = [rs for rs in run_steps if rs.step_id == "import"][0]
 
-        # split step should have 3 output artifacts
-        self.assertEqual(len(split_rs.output_artifact_ids), 3)
+        # split step should have 4 output artifacts (3 datasets + 1 report)
+        self.assertEqual(len(split_rs.output_artifact_ids), 4)
 
-        # Verify each artifact has a distinct role
+        # Verify each dataset artifact has a distinct role
         roles_found = set()
         for aid in split_rs.output_artifact_ids:
             art = store.get_artifact(aid)
             self.assertIsNotNone(art)
-            roles_found.add(art.role)
+            if art.artifact_type == "dataset":
+                roles_found.add(art.role)
         self.assertEqual(roles_found, {"train", "test", "oot"})
 
     def test_fit_node_consuming_train_succeeds(self) -> None:

@@ -68,6 +68,29 @@ jobs:
         working-directory: frontend/src-tauri
         run: cargo check
 
+  check-api-contracts:
+    runs-on: ubuntu-latest
+    needs: [test-python]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install sidecar deps
+        run: pip install -e ".[sidecar]"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+      - name: Generate OpenAPI types
+        run: python3 scripts/generate-openapi-types.py
+      - name: Check for stale generated types
+        run: git diff --exit-code frontend/src/api/schema.d.ts
+
   build-sidecar:
     runs-on: ubuntu-latest
     needs: [test-python]

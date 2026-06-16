@@ -14,7 +14,7 @@ interface Props {
   basePlanVersionId: string | null;
   currentParams: Record<string, unknown>;
   onPlanRefreshed: (detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string }) => void;
-  onEditManualBinning: () => void;
+  onEditManualBinning: (stepId: string) => void;
 }
 
 export function StepInspector({
@@ -47,15 +47,15 @@ export function StepInspector({
 
   const meta = getStepDisplayMetadata(step.step_id);
   const label = meta?.label ?? step.step_id;
-  const isManualBinning = step.step_id === "manual-binning";
+  const isManualBinning = step.node_type === "cardre.manual_binning";
   const canEdit = !!planId && !!projectId && !!basePlanVersionId;
 
   // Only fetch editor state for manual-binning
   const editorStateQuery = useQuery({
-    queryKey: ["manualBinningEditorState", planId, projectId],
+    queryKey: ["manualBinningEditorState", planId, projectId, step.step_id],
     queryFn: () =>
       isManualBinning && planId && projectId
-        ? api.getManualBinningEditorState(planId, projectId)
+        ? api.getManualBinningEditorState(planId, projectId, step.step_id)
         : Promise.reject("not manual-binning"),
     enabled: isManualBinning && !!planId && !!projectId,
     retry: false,
@@ -158,7 +158,7 @@ export function StepInspector({
                   {mbState.selected_variables?.length || 0} variables selected, ready to edit.
                 </div>
                 <button
-                  onClick={onEditManualBinning}
+                  onClick={() => onEditManualBinning(step.step_id)}
                   style={{
                     padding: "6px 12px",
                     borderRadius: 4,

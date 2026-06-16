@@ -326,9 +326,9 @@ class PlanExecutor:
 
             output: NodeOutput = node.run(ctx)
 
-            output = self._ensure_execution_fingerprint(
-                output, plan_version_id, spec, parent_run_steps,
-                input_artifacts,
+            output.execution_fingerprint = self._build_execution_fingerprint(
+                plan_version_id, spec, parent_run_steps,
+                input_artifacts, output.artifacts,
             )
 
             rs = self._record_run_step(
@@ -364,27 +364,14 @@ class PlanExecutor:
             # failure (may be partial if node instantiation itself
             # failed).
             recorded_input_ids = [a.artifact_id for a in input_artifacts]
-            recorded_input_logical_hashes = [a.logical_hash for a in input_artifacts]
-            recorded_parent_run_step_ids = [rs.run_step_id for rs in parent_run_steps]
-
-            parent_outputs = _build_parent_output_hashes(parent_run_steps)
 
             output = NodeOutput(
                 artifacts=[],
                 metrics={},
-                execution_fingerprint={
-                    "plan_version_id": plan_version_id,
-                    "step_id": spec.step_id,
-                    "node_type": spec.node_type,
-                    "node_version": spec.node_version,
-                    "params_hash": spec.params_hash,
-                    "parent_run_step_ids": recorded_parent_run_step_ids,
-                    "input_artifact_logical_hashes": recorded_input_logical_hashes,
-                    "output_artifact_logical_hashes": [],
-                    "parent_output_logical_hashes_by_step": parent_outputs,
-                    "python_version": sys.version.split()[0],
-                    "cardre_version": "0.1.0",
-                },
+                execution_fingerprint=self._build_execution_fingerprint(
+                    plan_version_id, spec, parent_run_steps,
+                    input_artifacts, [],
+                ),
             )
 
             rs = self._record_run_step(
@@ -511,28 +498,27 @@ class PlanExecutor:
     # Execution fingerprint
     # ------------------------------------------------------------------
 
-    def _ensure_execution_fingerprint(
+    def _build_execution_fingerprint(
         self,
-        output: NodeOutput,
         plan_version_id: str,
         spec: StepSpec,
         parent_run_steps: list[RunStepRecord],
         input_artifacts: list[ArtifactRef],
-    ) -> NodeOutput:
-        fp = output.execution_fingerprint
-        fp["plan_version_id"] = plan_version_id
-        fp["step_id"] = spec.step_id
-        fp["node_type"] = spec.node_type
-        fp["node_version"] = spec.node_version
-        fp["params_hash"] = spec.params_hash
-        fp["parent_run_step_ids"] = [rs.run_step_id for rs in parent_run_steps]
-
-        # Store the actual input artifact logical hashes (filtered)
-        fp["input_artifact_logical_hashes"] = [a.logical_hash for a in input_artifacts]
-        fp["output_artifact_logical_hashes"] = [a.logical_hash for a in output.artifacts]
-
-        fp["parent_output_logical_hashes_by_step"] = _build_parent_output_hashes(parent_run_steps)
-        return output
+        output_artifacts: list[ArtifactRef],
+    ) -> dict[str, Any]:
+        return {
+            "plan_version_id": plan_version_id,
+            "step_id": spec.step_id,
+            "node_type": spec.node_type,
+            "node_version": spec.node_version,
+            "params_hash": spec.params_hash,
+            "parent_run_step_ids": [rs.run_step_id for rs in parent_run_steps],
+            "input_artifact_logical_hashes": [a.logical_hash for a in input_artifacts],
+            "output_artifact_logical_hashes": [a.logical_hash for a in output_artifacts],
+            "parent_output_logical_hashes_by_step": _build_parent_output_hashes(parent_run_steps),
+            "python_version": sys.version.split()[0],
+            "cardre_version": "0.1.0",
+        }
 
     def _resolve_output_artifacts(
         self,

@@ -8,7 +8,7 @@ from typing import Any
 import polars as pl
 from sklearn.metrics import roc_auc_score
 
-from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
+from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import (
     ExecutionContext,
     JsonDict,
@@ -155,24 +155,13 @@ class ApplyWoeMappingNode(NodeType):
         )
 
         all_artifacts = outputs + [fallback_art]
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=all_artifacts,
-        )
         return NodeOutput(
             artifacts=all_artifacts,
             metrics={
                 "output_count": len(outputs),
                 "unmatched_row_count": unmatched_total,
                 "woe_unmatched_policy": woe_unmatched_policy,
-            },
-            execution_fingerprint=fp,
-        )
+            })
 
 
 class ApplyModelNode(NodeType):
@@ -275,16 +264,7 @@ class ApplyModelNode(NodeType):
             )
             outputs.append(art)
 
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=outputs,
-        )
-        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)}, execution_fingerprint=fp)
+        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)})
 
     def _apply_sklearn_estimator(
         self, context: ExecutionContext, model: dict, model_art, scorecard_art,
@@ -377,16 +357,7 @@ class ApplyModelNode(NodeType):
             )
             outputs.append(art)
 
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=outputs,
-        )
-        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)}, execution_fingerprint=fp)
+        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)})
 
     def _apply_voting_weighted_ensemble(
         self, context: ExecutionContext, model: dict, model_art,
@@ -502,16 +473,7 @@ class ApplyModelNode(NodeType):
             )
             outputs.append(art)
 
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=outputs,
-        )
-        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)}, execution_fingerprint=fp)
+        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)})
 
 
 class ValidationMetricsNode(NodeType):
@@ -699,16 +661,7 @@ class ValidationMetricsNode(NodeType):
             payload=metrics_report,
             metadata={"schema_version": SCHEMA_VALIDATION_METRICS},
         )
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[art],
-        )
-        return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)}, execution_fingerprint=fp)
+        return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
 
     def _calibration(self, y_true: list[int], y_prob: list[float], n_bins: int = 10) -> dict:
         import numpy as np
@@ -921,20 +874,9 @@ class ThresholdOptimizationNode(NodeType):
             payload=report,
             metadata={"objective": objective, "selected_threshold": selected_threshold},
         )
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[art],
-        )
         return NodeOutput(
             artifacts=[art],
-            metrics={"selected_threshold": selected_threshold},
-            execution_fingerprint=fp,
-        )
+            metrics={"selected_threshold": selected_threshold})
 
     def _confusion(self, y_bin: list[int], y_pred: list[int]) -> tuple[int, int, int, int]:
         """Compute (tn, fp, fn, tp)."""
@@ -1080,16 +1022,7 @@ class CutoffAnalysisNode(NodeType):
             payload=payload,
             metadata={"schema_version": SCHEMA_CUTOFF_ANALYSIS},
         )
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[art],
-        )
-        return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)}, execution_fingerprint=fp)
+        return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
 
 
 class DummyApplyNode(NodeType):
@@ -1139,19 +1072,6 @@ class DummyApplyNode(NodeType):
             )
             outputs.append(artifact)
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=outputs,
-        )
-
         return NodeOutput(
             artifacts=outputs,
-            metrics={"output_count": len(outputs)},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"output_count": len(outputs)})

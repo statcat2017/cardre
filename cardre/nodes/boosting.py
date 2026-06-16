@@ -16,7 +16,7 @@ import joblib
 import numpy as np
 import polars as pl
 
-from cardre.artifacts import make_fingerprint, write_json_artifact
+from cardre.artifacts import write_json_artifact
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
@@ -191,21 +191,9 @@ class XGBoostClassifierNode(NodeType):
             },
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact, estimator_art],
-        )
         return NodeOutput(
             artifacts=[artifact, estimator_art],
-            metrics={"feature_count": len(features), "estimator_count": n_estimators},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"feature_count": len(features), "estimator_count": n_estimators})
 
 
 class LightGBMClassifierNode(NodeType):
@@ -364,21 +352,9 @@ class LightGBMClassifierNode(NodeType):
             },
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact, estimator_art],
-        )
         return NodeOutput(
             artifacts=[artifact, estimator_art],
-            metrics={"feature_count": len(features), "estimator_count": n_estimators},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"feature_count": len(features), "estimator_count": n_estimators})
 
 
 class CatBoostClassifierNode(NodeType):
@@ -534,21 +510,9 @@ class CatBoostClassifierNode(NodeType):
             },
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact, estimator_art],
-        )
         return NodeOutput(
             artifacts=[artifact, estimator_art],
-            metrics={"feature_count": len(features), "estimator_count": iterations},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"feature_count": len(features), "estimator_count": iterations})
 
 
 # ======================================================================

@@ -300,7 +300,7 @@ class ApplyExclusionsTests(unittest.TestCase):
         node = ApplyExclusionsNode()
         output = node.run(ctx)
 
-        self.assertEqual(len(output.artifacts), 1)
+        self.assertEqual(len(output.artifacts), 2)
         artifact = output.artifacts[0]
         filtered_df = pl.read_parquet(store.artifact_path(artifact))
         self.assertLessEqual(filtered_df.height, original_count)
@@ -493,7 +493,7 @@ class ExplicitMissingOutlierTreatmentTests(unittest.TestCase):
         node = ExplicitMissingOutlierTreatmentNode()
         output = node.run(ctx)
 
-        self.assertEqual(len(output.artifacts), 1)
+        self.assertEqual(len(output.artifacts), 2)
         self.assertEqual(output.artifacts[0].role, "input")
 
 

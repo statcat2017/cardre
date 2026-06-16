@@ -7,6 +7,9 @@ interface Props {
   planId: string;
   projectId: string;
   basePlanVersionId: string;
+  // The actual step ID — may be "manual-binning" for baseline or
+  // "manual-binning__br_xxx" for branch-owned steps.
+  stepId?: string;
   onBack: () => void;
   onPlanRefreshed: (detail: { latest_version_id?: string }) => void;
 }
@@ -15,14 +18,15 @@ export function ManualBinningEditor({
   planId,
   projectId,
   basePlanVersionId,
+  stepId = "manual-binning",
   onBack,
   onPlanRefreshed,
 }: Props) {
   const queryClient = useQueryClient();
 
   const editorStateQuery = useQuery({
-    queryKey: ["manualBinningEditorState", planId, projectId],
-    queryFn: () => api.getManualBinningEditorState(planId, projectId),
+    queryKey: ["manualBinningEditorState", planId, projectId, stepId],
+    queryFn: () => api.getManualBinningEditorState(planId, projectId, stepId),
     enabled: !!planId && !!projectId,
   });
 
@@ -42,12 +46,12 @@ export function ManualBinningEditor({
         project_id: projectId,
         plan_version_id: basePlanVersionId,
         overrides,
-      }),
+      }, stepId),
   });
 
   const saveMutation = useMutation({
     mutationFn: (overrides: Record<string, unknown>[]) =>
-      api.updateStepParams(planId, "manual-binning", {
+      api.updateStepParams(planId, stepId, {
         project_id: projectId,
         base_plan_version_id: basePlanVersionId,
         params: { overrides },

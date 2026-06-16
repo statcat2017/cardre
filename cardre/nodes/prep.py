@@ -6,7 +6,7 @@ from typing import Any
 
 import polars as pl
 
-from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
+from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
@@ -86,22 +86,9 @@ class ImportGermanCreditNode(NodeType):
             metadata=artifact_metadata,
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"row_count": df.height, "column_count": df.width},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"row_count": df.height, "column_count": df.width})
 
     def _read_from_zip(self, zip_path: Path) -> pl.DataFrame:
         with zipfile.ZipFile(zip_path) as zf:
@@ -175,22 +162,9 @@ class ProfileDatasetNode(NodeType):
             metadata={"source_artifact_id": input_artifact.artifact_id},
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"row_count": df.height},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"row_count": df.height})
 
     def _numeric_stats(self, df: pl.DataFrame) -> dict[str, dict[str, float]]:
         stats = {}
@@ -252,22 +226,9 @@ class ValidateBinaryTargetNode(NodeType):
             metadata={"source_artifact_id": input_artifact.artifact_id},
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"is_binary": report["is_binary"]},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"is_binary": report["is_binary"]})
 
 
 class SplitTrainTestOotNode(NodeType):
@@ -360,7 +321,7 @@ class SplitTrainTestOotNode(NodeType):
             "warnings": split_warnings,
             "source_artifact_id": dataset_artifact.artifact_id,
         }
-        write_json_artifact(
+        split_report_artifact = write_json_artifact(
             store,
             artifact_type="report",
             role="report",
@@ -368,17 +329,7 @@ class SplitTrainTestOotNode(NodeType):
             payload=split_report,
             metadata={"source_artifact_id": dataset_artifact.artifact_id},
         )
-
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=artifacts,
-        )
+        artifacts.append(split_report_artifact)
 
         return NodeOutput(
             artifacts=artifacts,
@@ -386,9 +337,7 @@ class SplitTrainTestOotNode(NodeType):
                 "train_count": role_map["train"].height,
                 "test_count": role_map["test"].height,
                 "oot_count": role_map["oot"].height,
-            },
-            execution_fingerprint=fingerprint,
-        )
+            })
 
     def _stratified_split(
         self,
@@ -494,22 +443,9 @@ class DefineModellingMetadataNode(NodeType):
             metadata={"source_artifact_id": dataset_artifact.artifact_id, "schema_version": SCHEMA_MODELLING_METADATA},
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"target_column": target_column},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"target_column": target_column})
 
 
 class ApplyExclusionsNode(NodeType):
@@ -601,29 +537,16 @@ class ApplyExclusionsNode(NodeType):
             "rows_excluded": n_before - df.height,
             "rules": rule_counts,
         }
-        write_json_artifact(
+        exclusion_report_artifact = write_json_artifact(
             store, artifact_type="report", role="report",
             stem=f"exclusion-report-{context.step_spec.step_id}",
             payload=exclusion_report,
             metadata={"source_artifact_id": dataset_artifact.artifact_id},
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[dataset_artifact],
-        )
-
         return NodeOutput(
-            artifacts=[dataset_artifact],
-            metrics={"rows_before": n_before, "rows_after": df.height},
-            execution_fingerprint=fingerprint,
-        )
+            artifacts=[dataset_artifact, exclusion_report_artifact],
+            metrics={"rows_before": n_before, "rows_after": df.height})
 
 
 class DevelopmentSampleDefinitionNode(NodeType):
@@ -661,22 +584,9 @@ class DevelopmentSampleDefinitionNode(NodeType):
             metadata={},
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact],
-        )
-
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"sample_method": sample_def["sample_method"]},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"sample_method": sample_def["sample_method"]})
 
 
 class ExplicitMissingOutlierTreatmentNode(NodeType):
@@ -753,26 +663,14 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
             treatment_report["caps"].update(affected["caps"])
             treatment_report["floors"].update(affected["floors"])
 
-        write_json_artifact(
+        treatment_report_artifact = write_json_artifact(
             store, artifact_type="report", role="report",
             stem=f"treatment-report-{context.step_spec.step_id}",
             payload=treatment_report,
             metadata={},
         )
-
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=output_artifacts,
-        )
+        output_artifacts.append(treatment_report_artifact)
 
         return NodeOutput(
             artifacts=output_artifacts,
-            metrics={"output_count": len(output_artifacts)},
-            execution_fingerprint=fingerprint,
-        )
+            metrics={"output_count": len(output_artifacts)})

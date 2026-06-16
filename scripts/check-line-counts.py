@@ -29,6 +29,8 @@ ALLOWLIST: set[str] = {
     "tests/test_phase1.py",
     # TypeScript/TSX (>600 lines)
     "frontend/src/components/ManualBinningEditor.tsx",
+    # Auto-generated files
+    "frontend/src/api/schema.d.ts",
     # Rust (>300 lines)
     "frontend/src-tauri/src/main.rs",
 }

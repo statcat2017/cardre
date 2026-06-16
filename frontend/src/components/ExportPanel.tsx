@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { api, getBaseUrl } from "../api/client";
 import type {
   BranchListItem,
   RunListItem,
@@ -123,8 +123,8 @@ export function ExportPanel({ projectId }: Props) {
   }, [projectId, latestRun, targetBranchId, reportMode]);
 
   const handleOpenReport = (htmlPath: string) => {
-    const baseUrl = (window as unknown as Record<string, string>).__API_URL__ || "http://127.0.0.1:8752";
-    const url = `${baseUrl}/reports/serve?path=${encodeURIComponent(htmlPath)}`;
+    const baseUrl = getBaseUrl();
+    const url = `${baseUrl}/projects/${projectId}/reports/serve?path=${encodeURIComponent(htmlPath)}`;
     window.open(url, "_blank");
   };
 

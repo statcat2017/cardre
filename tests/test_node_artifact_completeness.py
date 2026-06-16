@@ -126,8 +126,6 @@ def _make_parquet_artifact(
 
 class ArtifactCompletenessTests(unittest.TestCase):
 
-    # TODO: Remove expectedFailure when prep.py nodes return all artifacts
-    @unittest.expectedFailure
     def test_split_output_includes_report(self) -> None:
         store, tmp = make_store()
         input_artifact = import_german_credit(store, tmp)
@@ -171,8 +169,6 @@ class ArtifactCompletenessTests(unittest.TestCase):
         self.assertEqual(len(split_output.artifacts), created,
                          "Split NodeOutput.artifacts must include every artifact")
 
-    # TODO: Remove expectedFailure when prep.py nodes return all artifacts
-    @unittest.expectedFailure
     def test_exclusions_output_includes_report(self) -> None:
         store, tmp = make_store()
         input_artifact = import_german_credit(store, tmp)
@@ -218,8 +214,6 @@ class ArtifactCompletenessTests(unittest.TestCase):
         self.assertEqual(len(excl_output.artifacts), created,
                          "Exclusions NodeOutput.artifacts must include every artifact")
 
-    # TODO: Remove expectedFailure when prep.py nodes return all artifacts
-    @unittest.expectedFailure
     def test_treatment_output_includes_report(self) -> None:
         store, tmp = make_store()
         store.initialize()
@@ -315,10 +309,10 @@ class ArtifactCompletenessTests(unittest.TestCase):
 
         self.assertEqual(len(report_arts), 1, "Split should write exactly one report artifact")
         report_art = report_arts[0]
-        self.assertNotIn(
+        self.assertIn(
             report_art.artifact_id,
             output_ids,
-            "Report artifact is NOT in NodeOutput.artifacts (this is the bug)",
+            "Report artifact must be in NodeOutput.artifacts",
         )
 
     def test_exclusions_output_includes_report__sanity(self) -> None:
@@ -365,10 +359,10 @@ class ArtifactCompletenessTests(unittest.TestCase):
 
         self.assertEqual(len(report_arts), 1, "Exclusions should write exactly one report artifact")
         report_art = report_arts[0]
-        self.assertNotIn(
+        self.assertIn(
             report_art.artifact_id,
             output_ids,
-            "Report artifact is NOT in NodeOutput.artifacts (this is the bug)",
+            "Report artifact must be in NodeOutput.artifacts",
         )
 
     def test_treatment_output_includes_report__sanity(self) -> None:
@@ -423,10 +417,10 @@ class ArtifactCompletenessTests(unittest.TestCase):
 
         self.assertEqual(len(report_arts), 1, "Treatment should write exactly one report artifact")
         report_art = report_arts[0]
-        self.assertNotIn(
+        self.assertIn(
             report_art.artifact_id,
             output_ids,
-            "Report artifact is NOT in NodeOutput.artifacts (this is the bug)",
+            "Report artifact must be in NodeOutput.artifacts",
         )
 
 

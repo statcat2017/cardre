@@ -1,3 +1,5 @@
+// Type generation: run python3 scripts/generate-openapi-types.py to regenerate from OpenAPI schema
+
 export interface HealthResponse {
   status: string;
   cardre_version: string;
@@ -88,8 +90,8 @@ export interface RunStepItem {
   finished_at: string | null;
   input_artifact_ids: string[];
   output_artifact_ids: string[];
-  warnings: string[];
-  errors: string[];
+  warnings: Record<string, unknown>[];
+  errors: Record<string, unknown>[];
   is_carried_forward: boolean;
 }
 
