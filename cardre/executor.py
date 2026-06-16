@@ -292,19 +292,24 @@ class PlanExecutor:
         return artifacts
 
     def _validate_topology(self, steps: list[StepSpec]) -> None:
+        # Validate first: no duplicate or missing step IDs
         seen: set[str] = set()
         for step in steps:
             if step.step_id in seen:
                 raise ValueError(f"Duplicate step_id {step.step_id!r}")
+            seen.add(step.step_id)
+
+        step_ids = {s.step_id for s in steps}
+        for step in steps:
             for pid in step.parent_step_ids:
-                if pid not in seen:
+                if pid not in step_ids:
                     raise ValueError(
                         f"Step {step.step_id!r} references missing parent {pid!r}"
                     )
-            seen.add(step.step_id)
 
-        # Perform topological sort (Kahn's algorithm) to ensure correct order
-        step_ids = {s.step_id for s in steps}
+        # Perform topological sort (Kahn's algorithm) — handles
+        # out-of-order but valid plans that the simple sequential
+        # check above would reject.
         parent_map: dict[str, set[str]] = {s.step_id: set(s.parent_step_ids) & step_ids for s in steps}
         child_map: dict[str, set[str]] = {s.step_id: set() for s in steps}
         for s in steps:

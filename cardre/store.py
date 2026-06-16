@@ -188,7 +188,7 @@ class ProjectStore:
             for r in rows
         ]
 
-    def list_artifacts_for_project(self, project_id: str, limit: int = 0, offset: int = 0) -> list[ArtifactRef]:
+    def list_artifacts_for_project(self, project_id: str) -> list[ArtifactRef]:
         sql = (
             "SELECT DISTINCT a.* FROM artifacts a "
             "JOIN run_steps rs ON a.artifact_id IN ("
@@ -200,11 +200,7 @@ class ProjectStore:
             "WHERE p.project_id = ? "
             "ORDER BY a.created_at"
         )
-        params: list[Any] = [project_id]
-        if limit > 0:
-            sql += " LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
-        rows = self._connect().execute(sql, params).fetchall()
+        rows = self._connect().execute(sql, [project_id]).fetchall()
         return [
             ArtifactRef(
                 artifact_id=r["artifact_id"],

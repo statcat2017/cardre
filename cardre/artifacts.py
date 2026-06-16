@@ -40,9 +40,9 @@ def write_json_artifact(
     filename = f"{logical[:16]}-{stem}.json"
     stored_path = store.root / directory / filename
     stored_path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = stored_path.with_name(f".{stored_path.name}.tmp")
+    temp_path = stored_path.with_name(f".{stored_path.name}.{uuid.uuid4().hex[:8]}.tmp")
     temp_path.write_bytes(serialized)
-    temp_path.rename(stored_path)
+    temp_path.replace(stored_path)
     phys = physical_hash(stored_path)
     artifact = ArtifactRef(
         artifact_id=str(uuid.uuid4()),
@@ -75,9 +75,9 @@ def write_parquet_artifact(
     filename = f"{logical[:16]}-{stem}.parquet"
     stored_path = store.root / directory / filename
     stored_path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = stored_path.with_name(f".{stored_path.name}.tmp")
+    temp_path = stored_path.with_name(f".{stored_path.name}.{uuid.uuid4().hex[:8]}.tmp")
     temp_path.write_bytes(parquet_bytes)
-    temp_path.rename(stored_path)
+    temp_path.replace(stored_path)
     phys = physical_hash(stored_path)
     artifact_meta = {
         "row_count": frame.height,

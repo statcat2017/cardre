@@ -264,7 +264,12 @@ class ScoreScalingNode(NodeType):
             )
 
         base_score = float(params.get("base_score", 600))
-        base_odds = float(params.get("base_odds", 50.0))
+        raw_odds = params.get("base_odds", 50.0)
+        if isinstance(raw_odds, str) and ":" in raw_odds:
+            num, den = raw_odds.split(":", 1)
+            base_odds = float(num) / float(den)
+        else:
+            base_odds = float(raw_odds)
         pdo = float(params.get("points_to_double_odds", 20))
         higher_is_lower_risk = bool(params.get("higher_score_is_lower_risk", True))
 

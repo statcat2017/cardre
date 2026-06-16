@@ -29,8 +29,6 @@ def import_dataset(body: ImportDatasetRequest):
     proj = store.get_project(body.project_id)
     if proj is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found"})
-    if not source.is_relative_to(Path(proj.get("root_path", "/")).resolve()):
-        raise HTTPException(status_code=403, detail={"code": "PATH_TRAVERSAL", "message": "Dataset source must be within the project directory"})
 
     store = get_store_for_project(body.project_id)
     proj = store.get_project(body.project_id)

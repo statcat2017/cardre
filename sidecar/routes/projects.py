@@ -162,7 +162,7 @@ def get_project_artifacts(
     offset: int = 0,
 ):
     store = get_store_for_project(project_id)
-    artifacts = store.list_artifacts_for_project(project_id, limit=limit, offset=offset)
+    artifacts = store.list_artifacts_for_project(project_id)
 
     if role:
         artifacts = [a for a in artifacts if a.role == role]
@@ -174,6 +174,8 @@ def get_project_artifacts(
     if run_id:
         artifact_ids = store.get_artifact_ids_for_run(run_id)
         artifacts = [a for a in artifacts if a.artifact_id in artifact_ids]
+
+    artifacts = artifacts[offset:offset + limit]
 
     items = [
         ArtifactListItem(
