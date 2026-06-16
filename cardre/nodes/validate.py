@@ -11,8 +11,16 @@ from sklearn.metrics import roc_auc_score
 from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
 from cardre.audit import (
     ExecutionContext,
+    JsonDict,
     NodeOutput,
     NodeType,
+)
+from cardre.evidence import (
+    ArtifactEvidenceReader,
+    EvidenceKind,
+    SCHEMA_CUTOFF_ANALYSIS,
+    SCHEMA_VALIDATION_METRICS,
+    SCHEMA_WOE_TABLE,
 )
 
 
@@ -35,78 +43,28 @@ class ApplyWoeMappingNode(NodeType):
             )
         return errors
 
-    def _find_artifacts(self, artifacts, store):
-        bin_arts = []
-        woe_arts = []
-        sel_arts = []
-        data_arts = []
-        for a in artifacts:
-            if a.role in ("train", "test", "oot"):
-                data_arts.append(a)
-            elif a.role == "definition":
-                try:
-                    p = json.loads(store.artifact_path(a).read_text())
-                    if "variables" in p and "selected" not in p:
-                        bin_arts.append(a)
-                    elif "selected" in p:
-                        sel_arts.append(a)
-                except Exception:
-                    continue
-            elif a.role == "report":
-                try:
-                    c = store.artifact_path(a).read_bytes()
-                    if c[:4] == b"PAR1":
-                        d = pl.read_parquet(store.artifact_path(a))
-                        if "woe" in d.columns and "bin_id" in d.columns and "variable" in d.columns:
-                            woe_arts.append(a)
-                except Exception:
-                    continue
-        if len(bin_arts) != 1:
-            raise ValueError(f"apply_woe_mapping requires exactly one bin definition artifact; found {len(bin_arts)}")
-        if len(woe_arts) != 1:
-            raise ValueError(f"apply_woe_mapping requires exactly one WOE table artifact; found {len(woe_arts)}")
-        if len(sel_arts) > 1:
-            raise ValueError(f"apply_woe_mapping requires at most one selection artifact; found {len(sel_arts)}")
-        bin_art = bin_arts[0]
-        woe_art = woe_arts[0]
-        sel_art = sel_arts[0] if sel_arts else None
-        return data_arts, bin_art, woe_art, sel_art
-
     def run(self, context: ExecutionContext) -> NodeOutput:
         import math
 
         store = context.store
+        reader = ArtifactEvidenceReader(store)
         params = context.validated_params
         woe_unmatched_policy = params.get("woe_unmatched_policy", "warn")
 
-        data_arts, bin_art, woe_art, sel_art = self._find_artifacts(context.input_artifacts, store)
-        if bin_art is None:
-            raise ValueError("apply_woe_mapping requires a bin definition artifact")
-        if woe_art is None:
-            raise ValueError("apply_woe_mapping requires a WOE table report")
-
-        bin_def = json.loads(store.artifact_path(bin_art).read_text())
+        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
+        bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
+        woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
+        sel_def = reader.find_optional(context.input_artifacts, EvidenceKind.SELECTION_DEFINITION)
 
         selected_names: set[str] | None = None
-        if sel_art:
-            try:
-                s = json.loads(store.artifact_path(sel_art).read_text())
-                selected_names = {x["variable"] for x in s.get("selected", [])}
-            except Exception:
-                pass
+        if sel_def is not None:
+            selected_names = sel_def.selected_names
 
-        woe_df = pl.read_parquet(store.artifact_path(woe_art))
-        c = woe_df.columns
-        woe_map: dict[str, dict[str, float]] = {}
-        for r in woe_df.iter_rows():
-            var = str(r[c.index("variable")])
-            bid = str(r[c.index("bin_id")])
-            wv = float(r[c.index("woe")])
-            woe_map.setdefault(var, {})[bid] = wv
+        woe_map = woe_table.mapping
 
-        var_defs = bin_def.get("variables", [])
+        var_defs = bin_def.variables
         if selected_names is not None:
-            var_defs = [v for v in var_defs if v["variable"] in selected_names]
+            var_defs = [v for v in var_defs if v.variable in selected_names]
 
         fallback_report: dict[str, dict] = {}
         outputs: list[ArtifactRef] = []
@@ -118,9 +76,9 @@ class ApplyWoeMappingNode(NodeType):
             fallback_counts: dict[str, int] = {}
 
             for vd in var_defs:
-                var = vd["variable"]
-                kind = vd["kind"]
-                bins = vd["bins"]
+                var = vd.variable
+                kind = vd.kind
+                bins = vd.bins
                 if var not in df.columns:
                     continue
                 woe_col = f"{var}_woe"
@@ -734,11 +692,12 @@ class ValidationMetricsNode(NodeType):
         if "train" in psi_bins and "oot" in psi_bins:
             metrics_report.setdefault("psi", {})["train_vs_oot"] = self._psi(psi_bins["train"], psi_bins["oot"])
 
+        metrics_report["schema_version"] = SCHEMA_VALIDATION_METRICS
         art = write_json_artifact(
             store, artifact_type="report", role="report",
             stem=f"validation-metrics-{context.step_spec.step_id}",
             payload=metrics_report,
-            metadata={},
+            metadata={"schema_version": SCHEMA_VALIDATION_METRICS},
         )
         fp = make_fingerprint(
             plan_version_id=context.plan_version_id,
@@ -1038,14 +997,13 @@ class CutoffAnalysisNode(NodeType):
         bad = set(str(v) for v in meta.get("bad_values", []))
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        report: dict = {}
-        warnings: list[dict] = []
+        cutoff_tables: dict[str, list[JsonDict]] = {}
+        warnings: list[JsonDict] = []
 
         for data_art in data_arts:
             role = data_art.role
             df = pl.read_parquet(store.artifact_path(data_art))
             if "score" not in df.columns or "predicted_bad_probability" not in df.columns:
-                report[role] = {"error": "Missing score or predicted_bad_probability column"}
                 continue
 
             scores = df["score"].to_list()
@@ -1100,20 +1058,27 @@ class CutoffAnalysisNode(NodeType):
                     "capture_rate": round(n_bad_band / sum(y_bin) if sum(y_bin) > 0 else 0, 4),
                 })
 
-            report[role] = {
-                "row_count": len(scores),
-                "bands": band_results,
-                "overall_bad_rate": round(sum(y_bin) / len(y_bin), 4) if y_bin else 0,
-            }
+            cutoff_tables[role] = [
+                {
+                    "score_cutoff": b["upper"] if b["upper"] is not None else b["lower"],
+                    "approval_rate": b["approval_rate"],
+                    "bad_rate": b["bad_rate"],
+                    "capture_rate": b["capture_rate"],
+                }
+                for b in band_results
+            ]
 
+        payload: JsonDict = {
+            "schema_version": SCHEMA_CUTOFF_ANALYSIS,
+            "cutoff_tables": cutoff_tables,
+        }
         if warnings:
-            report["warnings"] = warnings
-
+            payload["warnings"] = warnings
         art = write_json_artifact(
             store, artifact_type="report", role="report",
             stem=f"cutoff-analysis-{context.step_spec.step_id}",
-            payload=report,
-            metadata={},
+            payload=payload,
+            metadata={"schema_version": SCHEMA_CUTOFF_ANALYSIS},
         )
         fp = make_fingerprint(
             plan_version_id=context.plan_version_id,

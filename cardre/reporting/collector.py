@@ -14,6 +14,10 @@ from typing import Any
 from cardre.audit import RunStepRecord
 from cardre.store import ProjectStore
 
+from cardre.evidence import (
+    ArtifactEvidenceReader,
+    EvidenceKind,
+)
 from cardre.reporting.evidence_resolver import (
     get_champion_assignment,
     resolve_branch,
@@ -104,6 +108,7 @@ class ReportCollector:
         self.run_id = run_id
         self.target_branch_id = target_branch_id
         self.report_mode = report_mode
+        self.reader = ArtifactEvidenceReader(store)
         self.limitations: list[Limitation] = []
 
     def collect(self) -> ReportBundle:
@@ -318,74 +323,60 @@ class ReportCollector:
             ))
             return
 
-        evidence_art_id = None
-        for aid in rs.output_artifact_ids:
-            art = self.store.get_artifact(aid)
-            if art and art.metadata.get("schema_version") == "cardre.woe_iv_evidence.v1":
-                evidence_art_id = aid
-                break
-
-        if evidence_art_id is None:
+        evidence = self.reader.read_step_output_optional(rs, EvidenceKind.WOE_IV_EVIDENCE)
+        if evidence is None:
             self.limitations.append(Limitation(
                 severity="warning", code=LimitationCode.LEGACY_WOE_SUMMARY_USED,
                 message=f"WOE/IV step {ref.step_id} has no cardre.woe_iv_evidence.v1 artifact.",
             ))
             return
 
-        evidence = _get_artifact_json(self.store, evidence_art_id)
-        if evidence is None:
-            return
+        smoothing = evidence.smoothing
+        zero_cell_policy = smoothing.zero_cell_policy
 
-        smoothing_config = evidence.get("config", {}).get("smoothing", {})
-        smoothing_enabled = smoothing_config.get("enabled", False)
-        smoothing_method = smoothing_config.get("method", "additive")
-        smoothing_alpha = smoothing_config.get("alpha", 0.5)
-        zero_cell_policy = smoothing_config.get("zero_cell_policy", "block")
-
-        for var_data in evidence.get("variables", []):
+        for var in evidence.variables:
             woe_smoothing = WoeSmoothingInfo(
-                enabled=smoothing_enabled,
-                method=smoothing_method,
-                alpha=smoothing_alpha,
+                enabled=smoothing.enabled,
+                method=smoothing.method,
+                alpha=smoothing.alpha,
                 zero_cell_policy=zero_cell_policy,
-                smoothing_applied=var_data.get("smoothing_applied", False),
-                zero_cell_encountered=var_data.get("zero_cell_encountered", False),
-                affected_bin_count=len(var_data.get("affected_bins", [])),
+                smoothing_applied=var.smoothing_applied,
+                zero_cell_encountered=var.zero_cell_encountered,
+                affected_bin_count=len(var.affected_bins),
             )
 
             if woe_smoothing.smoothing_applied:
                 self.limitations.append(Limitation(
                     severity="warning", code=LimitationCode.SMOOTHING_APPLIED,
-                    message=f"WOE smoothing applied to variable {var_data.get('variable_name', '')}.",
+                    message=f"WOE smoothing applied to variable {var.variable_name}.",
                 ))
 
             affected_bins = [
-                AffectedBinDetail(**ab)
-                for ab in var_data.get("affected_bins", [])
+                AffectedBinDetail(**ab.detail)
+                for ab in var.affected_bins
             ]
 
-            bins_in = var_data.get("bins", [])
             var_bins = [
                 VariableBin(
-                    bin_id=b.get("bin_id", ""),
-                    label=b.get("label", ""),
-                    lower=b.get("lower"),
-                    upper=b.get("upper"),
-                    good_count=b.get("good_count", 0),
-                    bad_count=b.get("bad_count", 0),
-                    bad_rate=b.get("bad_rate", 0.0),
-                    woe=b.get("woe"),
-                    iv_contribution=b.get("iv_contribution"),
+                    bin_id=b.bin_id,
+                    label=b.label,
+                    lower=b.lower,
+                    upper=b.upper,
+                    good_count=b.good_count,
+                    bad_count=b.bad_count,
+                    bad_rate=b.bad_rate,
+                    woe=b.woe,
+                    iv_contribution=b.iv_contribution,
                 )
-                for b in bins_in
+                for b in var.bins
             ]
 
             bundle.variables.append(VariableInfo(
-                variable_name=var_data.get("variable_name", ""),
-                role=var_data.get("status", "included"),
+                variable_name=var.variable_name,
+                role=var.status,
                 branch_id=ref.resolved_branch_id,
                 final_bin_count=len(var_bins),
-                iv=var_data.get("iv", 0.0),
+                iv=var.iv,
                 woe_smoothing=woe_smoothing,
                 source_step_refs=[ResolvedStepRef(
                     requested_branch_id=ref.requested_branch_id,
@@ -415,29 +406,25 @@ class ReportCollector:
             ))
             return
 
-        for aid in rs.output_artifact_ids:
-            art = self.store.get_artifact(aid)
-            if art and art.role == "report" and "coefficient" in art.path.lower():
-                data = _get_artifact_json(self.store, aid)
-                if data:
-                    features = []
-                    for f in data.get("features", data.get("coefficients", [])):
-                        if isinstance(f, dict):
-                            features.append(ModelFeature(
-                                variable_name=f.get("variable_name", f.get("feature", "")),
-                                coefficient=f.get("coefficient", 0.0),
-                                standard_error=f.get("standard_error"),
-                                p_value=f.get("p_value"),
-                            ))
-                    bundle.model = ModelInfo(
-                        model_type="logistic_regression_scorecard",
-                        branch_id=ref.resolved_branch_id,
-                        target=data.get("target_column", bundle.summary.target_column),
-                        features=features,
-                        intercept=data.get("intercept", 0.0),
-                        fit_dataset_role="train",
-                    )
-                    break
+        model_art = self.reader.read_step_output_optional(rs, EvidenceKind.MODEL_ARTIFACT)
+        if model_art is not None:
+            features = [
+                ModelFeature(
+                    variable_name=c.variable_name,
+                    coefficient=c.coefficient,
+                    standard_error=c.standard_error,
+                    p_value=c.p_value,
+                )
+                for c in model_art.coefficients
+            ]
+            bundle.model = ModelInfo(
+                model_type="logistic_regression_scorecard",
+                branch_id=ref.resolved_branch_id,
+                target=model_art.target_column or bundle.summary.target_column or "",
+                features=features,
+                intercept=model_art.intercept,
+                fit_dataset_role="train",
+            )
 
     def _collect_score_scaling(
         self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
@@ -450,23 +437,19 @@ class ReportCollector:
             ))
             return
 
-        for aid in rs.output_artifact_ids:
-            art = self.store.get_artifact(aid)
-            if art and art.role == "report" and "scaling" in art.path.lower():
-                data = _get_artifact_json(self.store, aid)
-                if data:
-                    bundle.score_scaling = ScoreScalingInfo(
-                        base_score=data.get("base_score", 600),
-                        base_odds=data.get("base_odds", "50:1"),
-                        pdo=data.get("pdo", data.get("points_to_double_odds", 20)),
-                        factor=data.get("factor", 0.0),
-                        offset=data.get("offset", 0.0),
-                        score_direction=data.get("score_direction", "higher_is_better"),
-                        rounding=data.get("rounding", "nearest_integer"),
-                        min_score=data.get("min_score", 0),
-                        max_score=data.get("max_score", 0),
-                    )
-                    break
+        scaling = self.reader.read_step_output_optional(rs, EvidenceKind.SCORE_SCALING)
+        if scaling is not None:
+            bundle.score_scaling = ScoreScalingInfo(
+                base_score=scaling.base_score,
+                base_odds=scaling.base_odds,
+                pdo=scaling.pdo,
+                factor=scaling.factor,
+                offset=scaling.offset,
+                score_direction=scaling.score_direction,
+                rounding=scaling.rounding,
+                min_score=scaling.min_score,
+                max_score=scaling.max_score,
+            )
 
     def _collect_validation(
         self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
@@ -479,33 +462,26 @@ class ReportCollector:
             ))
             return
 
-        validation = ValidationInfo()
-        for aid in rs.output_artifact_ids:
-            art = self.store.get_artifact(aid)
-            if art is None:
-                continue
-            if art.role == "report":
-                data = _get_artifact_json(self.store, aid)
-                if data:
-                    if "metrics" in data:
-                        for role_name, metrics in data["metrics"].items():
-                            validation.metrics_by_role.append(MetricsByRole(
-                                role=role_name,
-                                row_count=metrics.get("row_count", 0),
-                                auc=metrics.get("auc") or metrics.get("AUC"),
-                                gini=metrics.get("gini") or metrics.get("GINI"),
-                                ks=metrics.get("ks") or metrics.get("KS"),
-                                bad_rate=metrics.get("bad_rate"),
-                            ))
-                    if "psi" in data:
-                        for comp, psi_val in data["psi"].items():
-                            validation.stability.psi_by_role.append(PsiEntry(
-                                comparison=comp,
-                                score_psi=psi_val,
-                            ))
+        val = self.reader.read_step_output_optional(rs, EvidenceKind.VALIDATION_METRICS)
+        if val is None:
+            return
 
-        if validation.metrics_by_role:
-            bundle.validation = validation
+        validation = ValidationInfo()
+        for role_name, rm in val.metrics_by_role.items():
+            validation.metrics_by_role.append(MetricsByRole(
+                role=role_name,
+                row_count=rm.row_count,
+                auc=rm.auc,
+                gini=rm.gini,
+                ks=rm.ks,
+                bad_rate=rm.bad_rate,
+            ))
+        for comp, psi_val in val.psi.items():
+            validation.stability.psi_by_role.append(PsiEntry(
+                comparison=comp,
+                score_psi=psi_val,
+            ))
+        bundle.validation = validation
 
     def _collect_cutoff(
         self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
@@ -518,26 +494,22 @@ class ReportCollector:
             ))
             return
 
-        for aid in rs.output_artifact_ids:
-            art = self.store.get_artifact(aid)
-            if art and art.role == "report":
-                data = _get_artifact_json(self.store, aid)
-                if data:
-                    tables = []
-                    for role_name, rows_data in data.get("cutoff_tables", data.get("tables", {})).items():
-                        if isinstance(rows_data, list):
-                            cutoff_rows = [
-                                CutoffRow(
-                                    score_cutoff=r.get("score_cutoff", r.get("score", 0)),
-                                    approval_rate=r.get("approval_rate", 0.0),
-                                    bad_rate=r.get("bad_rate", 0.0),
-                                    capture_rate=r.get("capture_rate", 0.0),
-                                )
-                                for r in rows_data
-                            ]
-                            tables.append(CutoffTable(role=role_name, rows=cutoff_rows))
-                    if tables:
-                        bundle.cutoffs = CutoffInfo(cutoff_tables=tables)
+        cutoff = self.reader.read_step_output_optional(rs, EvidenceKind.CUTOFF_ANALYSIS)
+        if cutoff is not None:
+            tables = []
+            for role_name, rows in cutoff.cutoff_tables.items():
+                cutoff_rows = [
+                    CutoffRow(
+                        score_cutoff=r.score_cutoff,
+                        approval_rate=r.approval_rate,
+                        bad_rate=r.bad_rate,
+                        capture_rate=r.capture_rate,
+                    )
+                    for r in rows
+                ]
+                tables.append(CutoffTable(role=role_name, rows=cutoff_rows))
+            if tables:
+                bundle.cutoffs = CutoffInfo(cutoff_tables=tables)
 
     def _collect_manual_interventions(
         self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,

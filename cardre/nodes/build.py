@@ -15,6 +15,15 @@ from cardre.audit import (
     NodeType,
     json_logical_hash,
 )
+from cardre.evidence import (
+    ArtifactEvidenceReader,
+    EvidenceKind,
+    SCHEMA_BIN_DEFINITION,
+    SCHEMA_MODEL_ARTIFACT,
+    SCHEMA_SCORE_SCALING,
+    SCHEMA_SELECTION_DEFINITION,
+    SCHEMA_WOE_TABLE,
+)
 
 
 
@@ -69,27 +78,14 @@ class FineClassingNode(NodeType):
         if max_categorical_levels < 1:
             raise ValueError("max_categorical_levels must be >= 1")
 
+        reader = ArtifactEvidenceReader(store)
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
-        meta_candidates = []
-        for a in context.input_artifacts:
-            if a.role != "definition":
-                continue
-            try:
-                payload = json.loads(store.artifact_path(a).read_text())
-            except Exception:
-                continue
-            if "target_column" in payload and "good_values" in payload and "bad_values" in payload:
-                meta_candidates.append((a, payload))
-        if len(meta_candidates) != 1:
-            raise ValueError(
-                f"Fine classing requires exactly one modelling metadata definition artifact; found {len(meta_candidates)}"
-            )
-        meta_artifact, meta = meta_candidates[0]
+        meta_def = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
 
         df = pl.read_parquet(store.artifact_path(train_artifact))
-        target_column = meta.get("target_column", "")
-        good_values = set(str(v) for v in meta.get("good_values", []))
-        bad_values = set(str(v) for v in meta.get("bad_values", []))
+        target_column = meta_def.target_column
+        good_values = set(str(v) for v in meta_def.good_values)
+        bad_values = set(str(v) for v in meta_def.bad_values)
 
         if not target_column:
             raise ValueError("Fine classing requires non-empty target_column in modelling metadata")
@@ -133,6 +129,7 @@ class FineClassingNode(NodeType):
             "warnings": warnings,
         }
 
+        bin_def["schema_version"] = SCHEMA_BIN_DEFINITION
         artifact = write_json_artifact(
             store, artifact_type="definition", role="definition",
             stem=f"fine-classing-{context.step_spec.step_id}",
@@ -140,6 +137,7 @@ class FineClassingNode(NodeType):
             metadata={
                 "source_artifact_id": train_artifact.artifact_id,
                 "target_column": target_column,
+                "schema_version": SCHEMA_BIN_DEFINITION,
             },
         )
 
@@ -379,37 +377,21 @@ class CalculateWoeIvNode(NodeType):
     def run(self, context: ExecutionContext) -> NodeOutput:
 
         store = context.store
+        reader = ArtifactEvidenceReader(store)
         params = context.validated_params
         zero_cell_policy = params.get("zero_cell_policy", "block")
         smoothing = params.get("smoothing")
         purpose = params.get("purpose", "initial")
 
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
-        bin_candidates = []
-        meta_candidates = []
-        for a in context.input_artifacts:
-            if a.role != "definition":
-                continue
-            try:
-                payload = json.loads(store.artifact_path(a).read_text())
-            except Exception:
-                continue
-            if "variables" in payload and "selected" not in payload:
-                bin_candidates.append((a, payload))
-            elif "target_column" in payload and "good_values" in payload and "bad_values" in payload:
-                meta_candidates.append((a, payload))
-        if len(bin_candidates) != 1:
-            raise ValueError(f"WOE/IV requires exactly one bin definition artifact; found {len(bin_candidates)}")
-        if len(meta_candidates) != 1:
-            raise ValueError(f"WOE/IV requires exactly one modelling metadata artifact; found {len(meta_candidates)}")
-        bin_artifact, bin_def_raw = bin_candidates[0]
-        _, meta_def = meta_candidates[0]
+        bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
+        meta_def = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
 
         df = pl.read_parquet(store.artifact_path(train_artifact))
 
-        target_column = meta_def.get("target_column", "")
-        good_values = set(str(v) for v in meta_def.get("good_values", []))
-        bad_values = set(str(v) for v in meta_def.get("bad_values", []))
+        target_column = meta_def.target_column
+        good_values = set(str(v) for v in meta_def.good_values)
+        bad_values = set(str(v) for v in meta_def.bad_values)
 
         if not target_column or target_column not in df.columns:
             raise ValueError(f"WOE/IV target column {target_column!r} not found in training data")
@@ -429,10 +411,10 @@ class CalculateWoeIvNode(NodeType):
         # Track per-variable smoothing for controlled evidence artifact
         evidence_variables: list[dict] = []
 
-        for var_def in bin_def_raw.get("variables", []):
-            variable = var_def["variable"]
-            kind = var_def["kind"]
-            bins = var_def["bins"]
+        for var_def in bin_def.variables:
+            variable = var_def.variable
+            kind = var_def.kind
+            bins = var_def.bins
 
             if variable not in df.columns:
                 continue
@@ -630,7 +612,7 @@ class CalculateWoeIvNode(NodeType):
             store, artifact_type="report", role="report",
             stem=f"woe-table-{purpose}-{context.step_spec.step_id}",
             frame=woe_table,
-            metadata={"purpose": purpose, "zero_cell_policy": zero_cell_policy},
+            metadata={"purpose": purpose, "zero_cell_policy": zero_cell_policy, "schema_version": SCHEMA_WOE_TABLE},
         )
         iv_art = write_parquet_artifact(
             store, artifact_type="report", role="report",
@@ -989,11 +971,12 @@ class VariableSelectionNode(NodeType):
             "rejected": rejected,
         }
 
+        selection["schema_version"] = SCHEMA_SELECTION_DEFINITION
         artifact = write_json_artifact(
             store, artifact_type="definition", role="definition",
             stem=f"variable-selection-{context.step_spec.step_id}",
             payload=selection,
-            metadata={"selected_count": len(selected), "rejected_count": len(rejected)},
+            metadata={"selected_count": len(selected), "rejected_count": len(rejected), "schema_version": SCHEMA_SELECTION_DEFINITION},
         )
 
         fingerprint = make_fingerprint(
@@ -1083,11 +1066,12 @@ class ManualBinningNode(NodeType):
 
         refined = apply_manual_binning_overrides(bin_def, overrides, selected_vars if selection_artifact else None)
 
+        refined["schema_version"] = SCHEMA_BIN_DEFINITION
         artifact = write_json_artifact(
             store, artifact_type="definition", role="definition",
             stem=f"manual-binning-{context.step_spec.step_id}",
             payload=refined,
-            metadata={"override_count": len(overrides)},
+            metadata={"override_count": len(overrides), "schema_version": SCHEMA_BIN_DEFINITION},
         )
 
         fingerprint = make_fingerprint(
@@ -1659,6 +1643,7 @@ class LogisticRegressionNode(NodeType):
             metadata={
                 "feature_count": len(features_list),
                 "target_column": target_column,
+                "schema_version": SCHEMA_MODEL_ARTIFACT,
             },
         )
 
@@ -1824,6 +1809,7 @@ class ScoreScalingNode(NodeType):
             "target_column": model.get("target_column", ""),
         }
 
+        scorecard["schema_version"] = SCHEMA_SCORE_SCALING
         artifact = write_json_artifact(
             store, artifact_type="scorecard", role="scorecard",
             stem=f"scorecard-{context.step_spec.step_id}",
@@ -1831,6 +1817,7 @@ class ScoreScalingNode(NodeType):
             metadata={
                 "base_score": base_score,
                 "attribute_count": len(attributes),
+                "schema_version": SCHEMA_SCORE_SCALING,
             },
         )
 

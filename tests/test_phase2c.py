@@ -19,6 +19,7 @@ from cardre.audit import (
     physical_hash,
     relative_path,
 )
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.executor import PlanExecutor
 from cardre.nodes import (
     ApplyWoeMappingNode,
@@ -348,14 +349,15 @@ class CutoffAnalysisTests(unittest.TestCase):
                                parent_run_steps=[], input_artifacts=[train_art],
                                validated_params=params, runtime_metadata={})
         out = CutoffAnalysisNode().run(ctx)
-        report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
-        train_report = report.get("train", {})
-        self.assertIn("bands", train_report)
-        self.assertGreater(len(train_report["bands"]), 0)
-        for b in train_report["bands"]:
-            self.assertIn("approval_rate", b)
-            self.assertIn("bad_rate", b)
-            self.assertIn("capture_rate", b)
+        reader = ArtifactEvidenceReader(store)
+        cutoff = reader.read(out.artifacts[0].artifact_id, EvidenceKind.CUTOFF_ANALYSIS)
+        self.assertIn("train", cutoff.cutoff_tables)
+        self.assertGreater(len(cutoff.cutoff_tables["train"]), 0)
+        for row in cutoff.cutoff_tables["train"]:
+            self.assertIsNotNone(row.score_cutoff)
+            self.assertIsNotNone(row.approval_rate)
+            self.assertIsNotNone(row.bad_rate)
+            self.assertIsNotNone(row.capture_rate)
 
     def test_band_count_validation(self):
         store, tmp = make_store()

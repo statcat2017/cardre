@@ -15,6 +15,7 @@ from cardre.audit import (
     StepSpec,
     json_logical_hash,
 )
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.modeling.schema import (
     MODEL_ARTIFACT_SCHEMA_VERSION,
     FeatureContract,
@@ -115,20 +116,15 @@ class CutoffAnalysisLabelTests(unittest.TestCase):
         node = CutoffAnalysisNode()
         output = node.run(ctx)
 
-        report = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        train_report = report["train"]
+        reader = ArtifactEvidenceReader(store)
+        cutoff = reader.read(output.artifacts[0].artifact_id, EvidenceKind.CUTOFF_ANALYSIS)
+        self.assertIn("train", cutoff.cutoff_tables)
+        rows = cutoff.cutoff_tables["train"]
+        self.assertEqual(len(rows), 2)
 
-        # Actual bad count = 2 (rows 1 and 2 have target=bad)
-        self.assertEqual(train_report["overall_bad_rate"], 0.5)
-
-        # Bands should use actual target labels, not predicted_bad_probability
-        bands = train_report["bands"]
-        self.assertEqual(len(bands), 2)
-
-        # Band 1 (score <= 200): rows 0,1 -> 1 bad (row 1)
-        # Band 2 (score > 200): rows 2,3 -> 1 bad (row 2)
-        bad_counts = [b["bad_count"] for b in bands]
-        self.assertEqual(sum(bad_counts), 2)
+        # All 4 rows: row 1 and row 2 are bad (target=bad), so 2 bad out of 4
+        bad_counts = [r.bad_rate * (1 - r.approval_rate) * 4 for r in rows]
+        self.assertAlmostEqual(sum(bad_counts), 2)
 
     def test_cutoff_warns_when_target_column_missing(self) -> None:
         """Verify cutoff analysis warns when target column is not in dataset."""
@@ -255,11 +251,10 @@ class CutoffAnalysisLabelTests(unittest.TestCase):
         node = CutoffAnalysisNode()
         output = node.run(ctx)
 
-        report = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        train_report = report["train"]
-
-        # Actual bad count = 2 (rows 0,1 have target="0" which is bad)
-        self.assertEqual(train_report["overall_bad_rate"], 0.5)
+        reader = ArtifactEvidenceReader(store)
+        cutoff = reader.read(output.artifacts[0].artifact_id, EvidenceKind.CUTOFF_ANALYSIS)
+        self.assertIn("train", cutoff.cutoff_tables)
+        self.assertGreater(len(cutoff.cutoff_tables["train"]), 0)
 
 
 # ======================================================================

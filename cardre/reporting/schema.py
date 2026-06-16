@@ -242,7 +242,7 @@ class ValidationInfo(BaseModel):
 # ---------------------------------------------------------------------------
 
 class CutoffRow(BaseModel):
-    score_cutoff: int = 0
+    score_cutoff: float = 0.0
     approval_rate: float = 0.0
     bad_rate: float = 0.0
     capture_rate: float = 0.0
