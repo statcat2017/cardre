@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, getBaseUrl } from "../api/client";
+import React, { useState, useReducer, useEffect, useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { api, getReportServeUrl } from "../api/client";
 import type {
   BranchListItem,
   RunListItem,
@@ -13,7 +13,29 @@ interface Props {
 }
 
 type ReportMode = "champion" | "branch";
-type UiState = "idle" | "checking" | "blocked" | "ready" | "ready_with_warnings" | "generating" | "generated" | "failed";
+
+type UiAction =
+  | { type: 'START_CHECK' }
+  | { type: 'CHECK_PASSED'; hasWarnings: boolean }
+  | { type: 'CHECK_BLOCKED' }
+  | { type: 'START_GENERATE' }
+  | { type: 'GENERATE_DONE' }
+  | { type: 'GENERATE_FAILED' }
+  | { type: 'RESET' };
+
+type UiState = { value: "idle" | "checking" | "blocked" | "ready" | "ready_with_warnings" | "generating" | "generated" | "failed" };
+
+function uiReducer(state: UiState, action: UiAction): UiState {
+  switch (action.type) {
+    case 'START_CHECK': return { value: "checking" };
+    case 'CHECK_PASSED': return { value: action.hasWarnings ? "ready_with_warnings" : "ready" };
+    case 'CHECK_BLOCKED': return { value: "blocked" };
+    case 'START_GENERATE': return { value: "generating" };
+    case 'GENERATE_DONE': return { value: "generated" };
+    case 'GENERATE_FAILED': return { value: "failed" };
+    case 'RESET': return { value: "idle" };
+  }
+}
 
 interface GeneratedReport {
   report_id: string;
@@ -35,14 +57,13 @@ export function ExportPanel({ projectId }: Props) {
   const queryClient = useQueryClient();
   const [reportMode, setReportMode] = useState<ReportMode>("branch");
   const [targetBranchId, setTargetBranchId] = useState<string>("");
-  const [uiState, setUiState] = useState<UiState>("idle");
+  const [uiState, dispatch] = useReducer(uiReducer, { value: "idle" });
   const [blockers, setBlockers] = useState<ReportReadinessItem[]>([]);
   const [warnings, setWarnings] = useState<ReportReadinessItem[]>([]);
   const [errorMsg, setErrorMsg] = useState<string>("");
-  const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([]);
+  const [newReports, setNewReports] = useState<GeneratedReport[]>([]);
   const [lastReport, setLastReport] = useState<GenerateReportResponse | null>(null);
 
-  // Fetch runs for this project
   const { data: projectRuns } = useQuery({
     queryKey: ["projectRuns", projectId],
     queryFn: () => api.getProjectRuns(projectId),
@@ -51,7 +72,6 @@ export function ExportPanel({ projectId }: Props) {
   const successfulRuns: RunListItem[] = projectRuns?.runs?.filter((r) => r.status === "succeeded") ?? [];
   const latestRun = successfulRuns[0] ?? null;
 
-  // Fetch branches for this project
   const { data: branchData } = useQuery({
     queryKey: ["projectBranches", projectId],
     queryFn: () => api.listBranches(projectId, { status: "active" }),
@@ -59,72 +79,106 @@ export function ExportPanel({ projectId }: Props) {
   });
   const branches: BranchListItem[] = branchData?.branches ?? [];
 
-  // Auto-select first branch
+  const { data: serverReports } = useQuery<GeneratedReport[]>({
+    queryKey: ['reports', projectId],
+    queryFn: () => Promise.resolve([]),
+    enabled: !!projectId,
+  });
+
+  const mergedReports = useMemo(() => {
+    const serverList = serverReports ?? [];
+    const seen = new Set<string>();
+    const merged: GeneratedReport[] = [];
+    for (const r of [...newReports, ...serverList]) {
+      if (!seen.has(r.report_id)) {
+        seen.add(r.report_id);
+        merged.push(r);
+      }
+    }
+    return merged;
+  }, [newReports, serverReports]);
+
   React.useEffect(() => {
     if (!targetBranchId && branches.length > 0) {
       setTargetBranchId(branches[0].branch_id);
     }
   }, [branches, targetBranchId]);
 
-  const handleCheckReadiness = useCallback(async () => {
-    if (!latestRun || !targetBranchId) return;
-    setUiState("checking");
+  useEffect(() => {
+    dispatch({ type: 'RESET' });
+    setBlockers([]);
+    setWarnings([]);
     setErrorMsg("");
-    try {
-      const result = await api.getReportReadiness(projectId, latestRun.run_id, {
+  }, [targetBranchId, reportMode]);
+
+  const checkReadinessMutation = useMutation({
+    mutationFn: () => {
+      if (!latestRun) throw new Error("No run available");
+      return api.getReportReadiness(projectId, latestRun.run_id, {
         target_branch_id: targetBranchId,
         report_mode: reportMode,
       });
-      setBlockers(result.blockers);
-      setWarnings(result.warnings);
-      if (!result.ready) {
-        setUiState("blocked");
-      } else if (result.warnings.length > 0) {
-        setUiState("ready_with_warnings");
+    },
+    onMutate: () => {
+      dispatch({ type: 'START_CHECK' });
+      setBlockers([]);
+      setWarnings([]);
+      setErrorMsg("");
+    },
+    onSuccess: (data) => {
+      setBlockers(data.blockers ?? []);
+      setWarnings(data.warnings ?? []);
+      if (!data.ready) {
+        dispatch({ type: 'CHECK_BLOCKED' });
       } else {
-        setUiState("ready");
+        dispatch({ type: 'CHECK_PASSED', hasWarnings: (data.warnings ?? []).length > 0 });
       }
-    } catch (e: any) {
-      setUiState("failed");
+    },
+    onError: (e: any) => {
+      dispatch({ type: 'GENERATE_FAILED' });
       setErrorMsg(e.detail?.message || e.message || "Readiness check failed");
-    }
-  }, [projectId, latestRun, targetBranchId, reportMode]);
+    },
+  });
 
-  const handleGenerate = useCallback(async () => {
-    if (!latestRun || !targetBranchId) return;
-    setUiState("generating");
-    setErrorMsg("");
-    try {
-      const result = await api.generateReport(projectId, latestRun.run_id, {
+  const generateMutation = useMutation({
+    mutationFn: () => {
+      if (!latestRun) throw new Error("No run available");
+      return api.generateReport(projectId, latestRun.run_id, {
         target_branch_id: targetBranchId,
         report_mode: reportMode,
         include_supporting_artifacts: true,
         output_formats: ["json", "html"],
       });
-      setLastReport(result);
-      setGeneratedReports((prev) => [
+    },
+    onMutate: () => {
+      dispatch({ type: 'START_GENERATE' });
+      setErrorMsg("");
+    },
+    onSuccess: (data) => {
+      dispatch({ type: 'GENERATE_DONE' });
+      setLastReport(data);
+      setNewReports((prev) => [
         {
-          report_id: result.report_id,
+          report_id: data.report_id,
           created_at: new Date().toISOString(),
           target_branch_id: targetBranchId,
           mode: reportMode,
-          status: result.status,
-          html_path: result.html_path,
-          bundle_path: result.report_bundle_path,
-          export_path: result.export_path,
+          status: data.status,
+          html_path: data.html_path,
+          bundle_path: data.report_bundle_path,
+          export_path: data.export_path,
         },
         ...prev,
       ]);
-      setUiState("generated");
-    } catch (e: any) {
-      setUiState("failed");
+    },
+    onError: (e: any) => {
+      dispatch({ type: 'GENERATE_FAILED' });
       setErrorMsg(e.detail?.message || e.message || "Report generation failed");
-    }
-  }, [projectId, latestRun, targetBranchId, reportMode]);
+    },
+  });
 
   const handleOpenReport = (htmlPath: string) => {
-    const baseUrl = getBaseUrl();
-    const url = `${baseUrl}/projects/${projectId}/reports/serve?path=${encodeURIComponent(htmlPath)}`;
+    const url = getReportServeUrl(projectId, htmlPath);
     window.open(url, "_blank");
   };
 
@@ -145,7 +199,7 @@ export function ExportPanel({ projectId }: Props) {
             </label>
             <select
               value={reportMode}
-              onChange={(e) => { setReportMode(e.target.value as ReportMode); setUiState("idle"); }}
+              onChange={(e) => setReportMode(e.target.value as ReportMode)}
               style={{
                 padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1",
                 fontSize: 13, backgroundColor: "#fff",
@@ -163,7 +217,7 @@ export function ExportPanel({ projectId }: Props) {
             </label>
             <select
               value={targetBranchId}
-              onChange={(e) => { setTargetBranchId(e.target.value); setUiState("idle"); }}
+              onChange={(e) => setTargetBranchId(e.target.value)}
               style={{
                 padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1",
                 fontSize: 13, backgroundColor: "#fff",
@@ -197,39 +251,39 @@ export function ExportPanel({ projectId }: Props) {
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button
-            onClick={handleCheckReadiness}
-            disabled={uiState === "checking" || !latestRun || !targetBranchId}
+            onClick={() => checkReadinessMutation.mutate()}
+            disabled={checkReadinessMutation.isPending || !latestRun || !targetBranchId}
             style={{
               padding: "8px 16px", borderRadius: 6, border: "1px solid #cbd5e1",
               fontSize: 13, backgroundColor: "#f8fafc", cursor: "pointer",
               fontWeight: 500, color: "#334155",
-              opacity: uiState === "checking" || !latestRun || !targetBranchId ? 0.5 : 1,
+              opacity: checkReadinessMutation.isPending || !latestRun || !targetBranchId ? 0.5 : 1,
             }}
           >
-            {uiState === "checking" ? "Checking..." : "Check readiness"}
+            {checkReadinessMutation.isPending ? "Checking..." : "Check readiness"}
           </button>
 
           <button
-            onClick={handleGenerate}
-            disabled={uiState !== "ready" && uiState !== "ready_with_warnings"}
+            onClick={() => generateMutation.mutate()}
+            disabled={uiState.value !== "ready" && uiState.value !== "ready_with_warnings"}
             style={{
               padding: "8px 16px", borderRadius: 6, border: "none",
-              fontSize: 13, backgroundColor: uiState === "ready" || uiState === "ready_with_warnings" ? "#0369a1" : "#94a3b8",
-              color: "#fff", cursor: uiState === "ready" || uiState === "ready_with_warnings" ? "pointer" : "not-allowed",
+              fontSize: 13, backgroundColor: uiState.value === "ready" || uiState.value === "ready_with_warnings" ? "#0369a1" : "#94a3b8",
+              color: "#fff", cursor: uiState.value === "ready" || uiState.value === "ready_with_warnings" ? "pointer" : "not-allowed",
               fontWeight: 600,
             }}
           >
-            {uiState === "generating" ? "Generating..." : "Generate audit pack"}
+            {generateMutation.isPending ? "Generating..." : "Generate audit pack"}
           </button>
         </div>
       </div>
 
       {/* Readiness display */}
-      {(uiState === "blocked" || uiState === "ready" || uiState === "ready_with_warnings") && (
+      {(uiState.value === "blocked" || uiState.value === "ready" || uiState.value === "ready_with_warnings") && (
         <div
           style={{
             padding: 16, border: "1px solid #e2e8f0", borderRadius: 8,
-            backgroundColor: uiState === "blocked" ? "#fef2f2" : "#f8fafc",
+            backgroundColor: uiState.value === "blocked" ? "#fef2f2" : "#f8fafc",
           }}
         >
           {blockers.map((b) => (
@@ -253,7 +307,7 @@ export function ExportPanel({ projectId }: Props) {
       )}
 
       {/* Error state */}
-      {uiState === "failed" && errorMsg && (
+      {uiState.value === "failed" && errorMsg && (
         <div style={{ padding: 12, border: "1px solid #fca5a5", borderRadius: 8, backgroundColor: "#fef2f2", fontSize: 13, color: "#dc2626" }}>
           <strong>Error:</strong> {errorMsg}
         </div>
@@ -274,11 +328,11 @@ export function ExportPanel({ projectId }: Props) {
       )}
 
       {/* Generated report history */}
-      {generatedReports.length > 0 && (
+      {mergedReports.length > 0 && (
         <div style={{ padding: 16, border: "1px solid #e2e8f0", borderRadius: 8, backgroundColor: "#fff" }}>
           <h4 style={{ fontSize: 13, fontWeight: 600, margin: "0 0 8px 0" }}>Generated reports</h4>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {generatedReports.slice(0, 10).map((r) => (
+            {mergedReports.slice(0, 10).map((r) => (
               <div
                 key={r.report_id}
                 style={{

@@ -19,7 +19,11 @@ import type {
   ManualBinningEditorStateResponse,
   ManualBinningPreviewBody,
   ManualBinningPreviewResponse,
+  MethodSummaryResponse,
   MigrateResponse,
+  ModelRankingResponse,
+  NodeTypeListResponse,
+  NodeTypeSchemaResponse,
   PlanResponse,
   ProjectArtifactsResponse,
   ProjectDetailResponse,
@@ -211,4 +215,22 @@ export const api = {
     fetchJson<{ report_id: string; created_at: string; target_branch_id: string; report_mode: string; html_path: string; bundle_path: string; export_path: string; status: string }>(
       `/projects/${projectId}/runs/${runId}/reports/${reportId}`,
     ),
+
+  listNodeTypes: () => fetchJson<NodeTypeListResponse>("/node-types"),
+
+  getNodeTypeSchema: (nodeType: string) =>
+    fetchJson<NodeTypeSchemaResponse>(`/node-types/${encodeURIComponent(nodeType)}/schema`),
+
+  getBranchMethodSummary: (branchId: string, projectId: string) =>
+    fetchJson<MethodSummaryResponse>(`/branches/${branchId}/method-summary?project_id=${projectId}`),
+
+  getModelRanking: (snapshotId: string, projectId: string, metric?: string) => {
+    const qs = new URLSearchParams({ project_id: projectId });
+    if (metric) qs.set("metric", metric);
+    return fetchJson<ModelRankingResponse>(`/branch-comparison-snapshots/${snapshotId}/model-ranking?${qs.toString()}`);
+  },
 };
+
+export function getReportServeUrl(projectId: string, htmlPath: string): string {
+  return `${getBaseUrl()}/projects/${projectId}/reports/serve?path=${encodeURIComponent(htmlPath)}`;
+}

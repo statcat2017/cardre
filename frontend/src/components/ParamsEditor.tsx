@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { UpdateStepParamsResponse } from "../types";
+import { useMessage } from "../hooks/useMessage";
+import { MessageBanner } from "./MessageBanner";
 
 interface Props {
   planId: string;
@@ -23,17 +25,14 @@ export function ParamsEditor({
   onSaved,
 }: Props) {
   const [text, setText] = useState(JSON.stringify(currentParams, null, 2));
-  const [message, setMessage] = useState<string | null>(null);
-  const [msgType, setMsgType] = useState<"error" | "info" | "success">("info");
   const prevVersionRef = useRef(basePlanVersionId);
+  const { msg, msgType, clearMsg, setError, setInfo, setSuccess } = useMessage();
 
-  // When basePlanVersionId changes (plan was re-fetched after 409), update
   useEffect(() => {
     if (basePlanVersionId !== prevVersionRef.current) {
       prevVersionRef.current = basePlanVersionId;
       setText(JSON.stringify(currentParams, null, 2));
-      setMessage("Plan refreshed — params have been reloaded. You can try saving again.");
-      setMsgType("info");
+      setInfo("Plan refreshed — params have been reloaded. You can try saving again.");
     }
   }, [basePlanVersionId, currentParams]);
 
@@ -41,24 +40,20 @@ export function ParamsEditor({
     mutationFn: (body: { project_id: string; base_plan_version_id: string; params: Record<string, unknown> }) =>
       api.updateStepParams(planId, stepId, body),
     onSuccess: (resp) => {
-      setMessage(`Saved — new plan version ${resp.new_plan_version_id.slice(0, 8)}… created.`);
-      setMsgType("success");
+      setSuccess(`Saved — new plan version ${resp.new_plan_version_id.slice(0, 8)}… created.`);
       onSaved(resp);
     },
     onError: (err: any) => {
       if (err?.status === 409 && err?.detail?.code === STALE_VERSION_CODE) {
         const latestId: string | undefined = err.detail?.latest_version_id;
-        setMessage(
+        setInfo(
           `Plan was modified externally. Refreshing…${latestId ? ` (latest: ${latestId.slice(0, 8)}…)` : ""}`
         );
-        setMsgType("info");
         onSaved(err.detail);
       } else if (err?.status === 422) {
-        setMessage(err?.detail?.message || "Validation failed");
-        setMsgType("error");
+        setError(err?.detail?.message || "Validation failed");
       } else {
-        setMessage(err?.message || "Save failed");
-        setMsgType("error");
+        setError(err?.message || "Save failed");
       }
     },
   });
@@ -68,11 +63,10 @@ export function ParamsEditor({
     try {
       parsed = JSON.parse(text);
     } catch {
-      setMessage("Invalid JSON — please fix syntax errors");
-      setMsgType("error");
+      setError("Invalid JSON — please fix syntax errors");
       return;
     }
-    setMessage(null);
+    clearMsg();
     saveMutation.mutate({
       project_id: projectId,
       base_plan_version_id: basePlanVersionId,
@@ -127,21 +121,7 @@ export function ParamsEditor({
         spellCheck={false}
       />
 
-      {message && (
-        <div
-          style={{
-            marginTop: 8,
-            padding: "6px 10px",
-            borderRadius: 4,
-            fontSize: 11,
-            backgroundColor: msgType === "error" ? "#fef2f2" : msgType === "success" ? "#f0fdf4" : "#eff6ff",
-            color: msgType === "error" ? "#dc2626" : msgType === "success" ? "#166534" : "#3b82f6",
-            border: `1px solid ${msgType === "error" ? "#fecaca" : msgType === "success" ? "#bbf7d0" : "#bfdbfe"}`,
-          }}
-        >
-          {message}
-        </div>
-      )}
+      <MessageBanner message={msg} type={msgType} />
 
       <button
         onClick={handleSave}
