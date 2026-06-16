@@ -22,7 +22,8 @@ from cardre.audit import (
     NodeType,
     json_logical_hash,
 )
-from cardre.nodes.ml_models import _build_model_artifact, _extract_target_metadata, _resolve_features, _write_estimator
+from cardre.modeling.builders import build_model_artifact
+from cardre.nodes.ml_models import _extract_target_metadata, _resolve_features, _write_estimator
 
 
 def _check_optional_dependency(package_name: str, install_name: str) -> None:
@@ -160,7 +161,7 @@ class XGBoostClassifierNode(NodeType):
             "global_importance_fields": ["feature_importance"],
         }
 
-        model = _build_model_artifact(
+        model = build_model_artifact(
             model_family="xgboost",
             target_column=target_column,
             features=features,
@@ -321,7 +322,7 @@ class LightGBMClassifierNode(NodeType):
             "global_importance_fields": ["feature_importance"],
         }
 
-        model = _build_model_artifact(
+        model = build_model_artifact(
             model_family="lightgbm",
             target_column=target_column,
             features=features,
@@ -479,7 +480,7 @@ class CatBoostClassifierNode(NodeType):
             "global_importance_fields": ["feature_importance"],
         }
 
-        model = _build_model_artifact(
+        model = build_model_artifact(
             model_family="catboost",
             target_column=target_column,
             features=features,

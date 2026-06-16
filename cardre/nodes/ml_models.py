@@ -21,7 +21,6 @@ from cardre.audit import (
     ExecutionContext,
     NodeOutput,
     NodeType,
-    json_logical_hash,
 )
 
 
@@ -215,47 +214,26 @@ def _build_model_artifact(
     row_count: int | None = None,
 ) -> dict:
     """Build a cardre.model_artifact.v1 JSON dict."""
-    feature_order_hash = json_logical_hash({"features": features})
-
-    class_mapping = {str(idx): str(label) for idx, label in enumerate([good_class, bad_class])}
-
-    model: dict[str, Any] = {
-        "schema_version": "cardre.model_artifact.v1",
-        "model_family": model_family,
-        "target_column": target_column,
-        "features": features,
-        "class_mapping": class_mapping,
-        "bad_class_label": str(bad_class),
-        "target_event_value": str(bad_class),
-        "probability_column_index": prob_col_idx,
-        "feature_order_hash": feature_order_hash,
-        "feature_strategy": feature_strategy,
-        "feature_contract": {
-            "features": features,
-            "transformation_strategy": feature_strategy,
-        },
-        "estimator_reference": {
-            "artifact_id": estimator_art.artifact_id,
-            "logical_hash": estimator_art.logical_hash,
-            "physical_hash": estimator_art.physical_hash,
-            "estimator_format": "joblib",
-            "trusted_load_required": True,
-            "creating_run_id": context.run_id,
-            "creating_run_step_id": context.step_spec.step_id,
-        },
-        "training": {
-            "row_count": row_count if row_count is not None else len(features),
-            "params": training_params,
-            "random_seed": random_seed,
-            "elapsed_seconds": round(elapsed, 3),
-        },
-        "model_payload": model_payload,
-        "interpretability": interpretability,
-        "warnings": warnings_list or [],
-    }
-    if extra_metrics:
-        model["training"].update(extra_metrics)
-    return model
+    from cardre.modeling.builders import build_model_artifact
+    return build_model_artifact(
+        model_family=model_family,
+        target_column=target_column,
+        features=features,
+        bad_class=bad_class,
+        good_class=good_class,
+        prob_col_idx=prob_col_idx,
+        feature_strategy=feature_strategy,
+        estimator_art=estimator_art,
+        training_params=training_params,
+        random_seed=random_seed,
+        elapsed=elapsed,
+        model_payload=model_payload,
+        interpretability=interpretability,
+        context=context,
+        extra_metrics=extra_metrics,
+        warnings_list=warnings_list,
+        row_count=row_count,
+    )
 
 
 class DecisionTreeNode(NodeType):
