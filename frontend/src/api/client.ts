@@ -38,6 +38,7 @@ import type {
   UpdateStepParamsBody,
   UpdateStepParamsResponse,
 } from "../types";
+import type { components } from "./schema";
 
 export function getBaseUrl(): string {
   return (window as unknown as Record<string, string>).__API_URL__ || "http://127.0.0.1:8752";
@@ -229,6 +230,11 @@ export const api = {
     if (metric) qs.set("metric", metric);
     return fetchJson<ModelRankingResponse>(`/branch-comparison-snapshots/${snapshotId}/model-ranking?${qs.toString()}`);
   },
+
+  listRunReports: (projectId: string, runId: string) =>
+    fetchJson<components["schemas"]["ReportMetadataResponse"][]>(
+      `/projects/${projectId}/runs/${runId}/reports`,
+    ),
 };
 
 export function getReportServeUrl(projectId: string, htmlPath: string): string {

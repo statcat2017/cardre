@@ -80,9 +80,21 @@ export function ExportPanel({ projectId }: Props) {
   const branches: BranchListItem[] = branchData?.branches ?? [];
 
   const { data: serverReports } = useQuery<GeneratedReport[]>({
-    queryKey: ['reports', projectId],
-    queryFn: () => Promise.resolve([]),
-    enabled: !!projectId,
+    queryKey: ['reports', projectId, latestRun?.run_id],
+    queryFn: () => !latestRun ? Promise.resolve([]) :
+      api.listRunReports(projectId, latestRun.run_id).then((reports) =>
+        reports.map((r) => ({
+          report_id: r.report_id,
+          created_at: r.created_at,
+          target_branch_id: r.target_branch_id,
+          mode: (r.report_mode || "branch") as ReportMode,
+          status: r.status,
+          html_path: r.html_path,
+          bundle_path: r.bundle_path,
+          export_path: r.export_path,
+        }))
+      ),
+    enabled: !!projectId && !!latestRun,
   });
 
   const mergedReports = useMemo(() => {
