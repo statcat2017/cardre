@@ -95,35 +95,29 @@ class BranchEvidenceResolver:
         steps = store.get_plan_version_steps(plan_version_id)
         self._exec._validate_topology(steps)
 
-        # 4. Staleness — compute per source branch for accurate shared
-        #    upstream staleness (child-of-child branches inherit from parent
-        #    branches, not just baseline).
+        # 4. Branch-owned staleness
         branch_staleness = self._exec.compute_staleness(
             store, plan_version_id, branch_id=branch_id,
         )
 
-        # Collect distinct source_branch_ids from shared upstream rows
+        # 5. Shared upstream staleness — check for evidence across all
+        #    plan versions under the source branch (not just the child's
+        #    plan version, which won't have the parent branch's runs).
         source_by_step: dict[str, str | None] = {}
         for r in step_map:
             if r["is_shared_upstream"]:
                 source_by_step[r["step_id"]] = r.get("source_branch_id") or None
-        source_branch_ids = {sb for sb in source_by_step.values() if sb is not None}
 
-        # Compute staleness for each distinct source branch
-        source_staleness: dict[str | None, dict[str, bool]] = {}
-        source_staleness[None] = self._exec.compute_staleness(
-            store, plan_version_id, branch_id=None,
-        )
-        for sb in source_branch_ids:
-            source_staleness[sb] = self._exec.compute_staleness(
-                store, plan_version_id, branch_id=sb,
+        stale_shared: list[str] = []
+        for sid in shared_upstream_step_ids:
+            sb = source_by_step.get(sid)
+            rs = self._find_shared_evidence(
+                store, branch["plan_id"], plan_version_id, sid,
+                source_branch_id=sb,
             )
+            if rs is None:
+                stale_shared.append(sid)
 
-        # 5. Shared upstream staleness check (against source branch evidence)
-        stale_shared = [
-            sid for sid in shared_upstream_step_ids
-            if source_staleness.get(source_by_step.get(sid), source_staleness[None]).get(sid, True)
-        ]
         if stale_shared:
             raise ValueError(
                 f"SHARED_UPSTREAM_STALE: Cannot run branch {branch_id} because "
@@ -238,21 +232,20 @@ class BranchEvidenceResolver:
         step_id: str,
         source_branch_id: str | None = None,
     ) -> RunStepRecord | None:
-        """Look up the most recent successful evidence for a step.
+        """Look up successful evidence for a shared upstream step.
 
-        Uses source_branch_id when provided (for child-of-child branches
-        inheriting from a parent branch), falling back to
-        non-branch/baseline evidence.
+        Searches across all plan versions so inherited parent-branch
+        evidence (produced under the parent's plan version) is found.
         """
-        lookup = source_branch_id or None
-        rs = store.get_latest_successful_run_step_for_step(
-            plan_version_id, step_id, branch_id=lookup,
+        lookup_branch = source_branch_id or None
+        rs = store.get_latest_successful_run_step_for_step_across_plan(
+            plan_id, step_id, branch_id=lookup_branch,
         )
         if rs is not None:
             return rs
-        if lookup is not None:
-            rs = store.get_latest_successful_run_step_for_step(
-                plan_version_id, step_id, branch_id=None,
+        if lookup_branch is not None:
+            rs = store.get_latest_successful_run_step_for_step_across_plan(
+                plan_id, step_id, branch_id=None,
             )
             if rs is not None:
                 return rs
