@@ -24,6 +24,17 @@ class ApplyWoeMappingNode(NodeType):
     input_roles: list[str] = ["train", "test", "oot", "definition", "report"]
     output_roles: list[str] = ["train", "test", "oot"]
 
+    VALID_UNMATCHED_POLICIES = {"fill_zero", "warn", "fail"}
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        policy = params.get("woe_unmatched_policy", "warn")
+        if policy not in self.VALID_UNMATCHED_POLICIES:
+            errors.append(
+                f"woe_unmatched_policy must be one of {self.VALID_UNMATCHED_POLICIES}, got {policy!r}"
+            )
+        return errors
+
     def _find_artifacts(self, artifacts, store):
         bin_arts = []
         woe_arts = []
@@ -65,6 +76,9 @@ class ApplyWoeMappingNode(NodeType):
         import math
 
         store = context.store
+        params = context.validated_params
+        woe_unmatched_policy = params.get("woe_unmatched_policy", "warn")
+
         data_arts, bin_art, woe_art, sel_art = self._find_artifacts(context.input_artifacts, store)
         if bin_art is None:
             raise ValueError("apply_woe_mapping requires a bin definition artifact")
@@ -95,7 +109,8 @@ class ApplyWoeMappingNode(NodeType):
             var_defs = [v for v in var_defs if v["variable"] in selected_names]
 
         fallback_report: dict[str, dict] = {}
-        outputs = []
+        outputs: list[ArtifactRef] = []
+        unmatched_total = 0
 
         for data_art in data_arts:
             df = pl.read_parquet(store.artifact_path(data_art))
@@ -133,6 +148,13 @@ class ApplyWoeMappingNode(NodeType):
                         cats = be.get("categories", [])
                         if is_miss:
                             mask = pl.col(var).is_null()
+                        elif be.get("is_other_bin", False):
+                            explicit_cats = []
+                            for bd in bins:
+                                if bd.get("is_missing_bin", False) or bd.get("is_other_bin", False):
+                                    continue
+                                explicit_cats.extend(bd.get("categories") or [])
+                            mask = pl.col(var).is_not_null() & ~pl.col(var).is_in(explicit_cats)
                         elif cats:
                             mask = pl.col(var).is_in(cats)
                         else:
@@ -150,6 +172,12 @@ class ApplyWoeMappingNode(NodeType):
                     n_unmatched = df.filter(pl.col(woe_col).is_null()).height
                     if n_unmatched > 0:
                         fallback_counts[var] = n_unmatched
+                        unmatched_total += n_unmatched
+                        if woe_unmatched_policy == "fail":
+                            raise ValueError(
+                                f"apply_woe_mapping: {n_unmatched} rows in role={role!r} "
+                                f"variable={var!r} did not match any bin"
+                            )
                         df = df.with_columns(pl.col(woe_col).fill_null(0.0))
 
             fallback_report[role] = fallback_counts
@@ -166,6 +194,21 @@ class ApplyWoeMappingNode(NodeType):
             stem=f"woe-apply-fallback-{context.step_spec.step_id}",
             payload=fallback_report,
             metadata={},
+        )
+
+        fp = make_fingerprint(
+            plan_version_id=context.plan_version_id,
+            step_id=context.step_spec.step_id,
+            node_type=self.node_type, node_version=self.version,
+            params_hash=context.step_spec.params_hash,
+            parent_run_steps=context.parent_run_steps,
+            input_artifacts=context.input_artifacts,
+            output_artifacts=outputs,
+        )
+        return NodeOutput(
+            artifacts=outputs,
+            metrics={"output_count": len(outputs), "unmatched_row_count": unmatched_total},
+            execution_fingerprint=fp,
         )
 
         fp = make_fingerprint(

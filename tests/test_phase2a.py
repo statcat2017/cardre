@@ -372,6 +372,51 @@ class ApplyExclusionsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             node.run(ctx)
 
+    def test_exclusion_removes_matching_rows(self) -> None:
+        from cardre.audit import physical_hash, relative_path
+        store, tmp = make_store()
+        store.initialize()
+
+        df = pl.DataFrame({"age": [15, 18, 25, 30], "score": [1, 2, 3, 4]})
+        import io
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        path = store.root / "datasets" / "test-data.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(buf.getvalue())
+        mock_artifact = ArtifactRef(
+            artifact_id="a1", artifact_type="dataset", role="input",
+            path=relative_path(path, store.root),
+            physical_hash=physical_hash(path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet",
+            metadata={},
+        )
+        store.register_artifact(mock_artifact)
+
+        params = {
+            "rules": [{"column": "age", "operator": ">=", "value": 18, "reason": "Adults only"}]
+        }
+        step_spec = StepSpec(
+            step_id="excl", node_type="cardre.apply_exclusions",
+            node_version="1", category="transform",
+            params=params,
+            params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=step_spec,
+            parent_run_steps=[], input_artifacts=[mock_artifact],
+            validated_params=params, runtime_metadata={},
+        )
+        node = ApplyExclusionsNode()
+        output = node.run(ctx)
+        result_df = pl.read_parquet(store.artifact_path(output.artifacts[0]))
+        # Rows with age >= 18 should be REMOVED (exclusion rule)
+        self.assertEqual(result_df.height, 1)
+        self.assertEqual(result_df["age"][0], 15)
+
 
 # ======================================================================
 # Workstream 4: Development Sample Definition
@@ -789,6 +834,97 @@ class CalculateWoeIvTests(unittest.TestCase):
             out2.artifacts[0].logical_hash,
             "WOE/IV should be deterministic",
         )
+
+    def test_woe_iv_rejects_ambiguous_definition_artifacts(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+
+        df = pl.DataFrame({
+            "var1": [1.0, 2.0, 3.0, 4.0, 5.0],
+            "target": ["good", "bad", "good", "bad", "good"],
+        })
+        import io
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        parquet_path = store.root / "datasets" / "test-train.parquet"
+        parquet_path.parent.mkdir(parents=True, exist_ok=True)
+        parquet_path.write_bytes(buf.getvalue())
+        from cardre.audit import physical_hash, relative_path, table_logical_hash
+        train_artifact = ArtifactRef(
+            artifact_id="train1", artifact_type="dataset", role="train",
+            path=relative_path(parquet_path, store.root),
+            physical_hash=physical_hash(parquet_path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet",
+            metadata={},
+        )
+        store.register_artifact(train_artifact)
+
+        bin_def = {
+            "variables": [
+                {
+                    "variable": "var1", "kind": "numeric",
+                    "bins": [{"bin_id": "v1_b1", "label": "All", "lower": 0, "upper": None,
+                              "lower_inclusive": True, "upper_inclusive": True,
+                              "categories": None, "is_missing_bin": False,
+                              "row_count": 5, "good_count": 3, "bad_count": 2}],
+                }
+            ],
+            "warnings": [],
+        }
+        bin_path = store.root / "artifacts" / "test-bins.json"
+        bin_path.write_text(json.dumps(bin_def, sort_keys=True))
+        bin_artifact = ArtifactRef(
+            artifact_id="bin1", artifact_type="definition", role="definition",
+            path=relative_path(bin_path, store.root),
+            physical_hash=physical_hash(bin_path),
+            logical_hash=json_logical_hash(bin_def),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(bin_artifact)
+
+        meta_params = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_path = store.root / "artifacts" / "test-meta.json"
+        meta_path.write_text(json.dumps(meta_params, sort_keys=True))
+        meta_artifact = ArtifactRef(
+            artifact_id="meta1", artifact_type="definition", role="definition",
+            path=relative_path(meta_path, store.root),
+            physical_hash=physical_hash(meta_path),
+            logical_hash=json_logical_hash(meta_params),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(meta_artifact)
+
+        # Add a second spurious bin artifact - should be rejected
+        bin_def2 = {"variables": [{"variable": "other", "kind": "numeric", "bins": []}], "warnings": []}
+        bin_path2 = store.root / "artifacts" / "test-bins2.json"
+        bin_path2.write_text(json.dumps(bin_def2, sort_keys=True))
+        bin_artifact2 = ArtifactRef(
+            artifact_id="bin2", artifact_type="definition", role="definition",
+            path=relative_path(bin_path2, store.root),
+            physical_hash=physical_hash(bin_path2),
+            logical_hash=json_logical_hash(bin_def2),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(bin_artifact2)
+
+        params = {"zero_cell_policy": "block", "smoothing": None, "purpose": "initial"}
+        step_spec = StepSpec(
+            step_id="woe", node_type="cardre.calculate_woe_iv",
+            node_version="1", category="selection",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=step_spec,
+            parent_run_steps=[],
+            input_artifacts=[train_artifact, bin_artifact, meta_artifact, bin_artifact2],
+            validated_params=params, runtime_metadata={},
+        )
+        node = CalculateWoeIvNode()
+        with self.assertRaises(ValueError):
+            node.run(ctx)
 
 
 # ======================================================================
