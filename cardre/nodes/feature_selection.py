@@ -112,7 +112,7 @@ class FeatureSelectionFilterNode(NodeType):
         iv_map: dict[str, float] = {}
         iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
         if iv_lf is not None:
-            iv_df = iv_lf.collect()
+            iv_df = iv_lf.dataframe.collect()
             for row in iv_df.iter_rows():
                 var_name = str(row[iv_df.columns.index("variable")])
                 iv_val = float(row[iv_df.columns.index("iv")])

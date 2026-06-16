@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import Any
 
 from cardre.audit import json_logical_hash
-from cardre.modeling.schema import ModelArtifactV1
 
 
 def build_model_artifact(

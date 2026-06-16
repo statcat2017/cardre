@@ -93,8 +93,12 @@ class ModelExplainabilityNode(NodeType):
 
         # Native explanations by model family
         if model_family == "logistic_regression":
-            report["coefficients"] = model_typed.coefficients_dict
-            report["intercept"] = model_typed.intercept
+            if model_typed is not None:
+                report["coefficients"] = model_typed.coefficients_dict
+                report["intercept"] = model_typed.intercept
+            else:
+                report["coefficients"] = model.get("coefficients", {})
+                report["intercept"] = model.get("intercept", 0.0)
             report["explanation_type"] = "coefficients"
             report["explanation_summary"] = (
                 f"Logistic regression with {len(features)} WOE features. "

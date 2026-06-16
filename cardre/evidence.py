@@ -191,6 +191,14 @@ class WoeTable:
     mapping: dict[str, dict[str, float]]
     columns: list[str]
     dataframe: pl.LazyFrame | None = None
+    source_artifact_id: str = ""
+
+
+@dataclass(frozen=True)
+class IvTable:
+    dataframe: pl.LazyFrame
+    columns: list[str]
+    source_artifact_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -304,6 +312,10 @@ class ModelArtifact:
     features: list[str] = field(default_factory=list)
     target_column: str = ""
     schema_version: str = ""
+    training: JsonDict = field(default_factory=dict)
+    warnings: list[JsonDict] = field(default_factory=list)
+    model_payload: JsonDict = field(default_factory=dict)
+    interpretability: JsonDict = field(default_factory=dict)
 
     @classmethod
     def from_json(cls, data: JsonDict) -> ModelArtifact:
@@ -343,6 +355,10 @@ class ModelArtifact:
             features=features,
             target_column=data.get("target_column", ""),
             schema_version=data.get("schema_version", ""),
+            training=data.get("training", {}),
+            warnings=list(data.get("warnings", [])),
+            model_payload=data.get("model_payload", {}),
+            interpretability=data.get("interpretability", {}),
         )
 
     def as_legacy_dict(self) -> JsonDict:
@@ -765,7 +781,8 @@ class ArtifactEvidenceReader:
             return pl.scan_parquet(path)
 
         if kind == EvidenceKind.IV_TABLE:
-            return pl.scan_parquet(path)
+            lf = pl.scan_parquet(path)
+            return IvTable(dataframe=lf, columns=lf.collect_schema().names(), source_artifact_id=artifact.artifact_id)
 
         # JSON-based evidence
         try:
@@ -807,7 +824,7 @@ class ArtifactEvidenceReader:
             if wv is not None:
                 mapping.setdefault(var, {})[bid] = float(wv)
 
-        return WoeTable(mapping=mapping, columns=cols, dataframe=lf)
+        return WoeTable(mapping=mapping, columns=cols, dataframe=lf, source_artifact_id=artifact.artifact_id)
 
 
 __all__ = [

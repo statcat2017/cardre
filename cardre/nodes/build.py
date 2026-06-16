@@ -835,7 +835,7 @@ class VariableSelectionNode(NodeType):
         reader = ArtifactEvidenceReader(store)
         iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
         if iv_lf is not None:
-            iv_df = iv_lf.collect()
+            iv_df = iv_lf.dataframe.collect()
             iv_cols = iv_df.columns
             iv_map = {}
             for row in iv_df.iter_rows():
@@ -1642,9 +1642,9 @@ class BuildSummaryReportNode(NodeType):
         woe_summaries: list[dict[str, Any]] = []
         iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
         if iv_lf is not None:
-            iv_df = iv_lf.collect()
+            iv_df = iv_lf.dataframe.collect()
             woe_summaries.append({
-                "artifact_id": "",
+                "artifact_id": iv_lf.source_artifact_id,
                 "type": "iv_ranking",
                 "row_count": iv_df.height,
                 "columns": list(iv_df.columns),
@@ -1654,7 +1654,7 @@ class BuildSummaryReportNode(NodeType):
             woe_df = woe_table.dataframe
             if woe_df is not None:
                 woe_summaries.append({
-                    "artifact_id": "",
+                    "artifact_id": woe_table.source_artifact_id,
                     "type": "woe_table",
                     "row_count": woe_df.collect().height,
                     "columns": list(woe_table.columns),
@@ -1665,9 +1665,9 @@ class BuildSummaryReportNode(NodeType):
         model_features = model.features if model_is_typed else model.get("features", [])
         model_intercept = model.intercept if model_is_typed else model.get("intercept", 0)
         model_coeff_count = len(model.coefficients_dict) if model_is_typed else len(model.get("coefficients", {}))
-        model_converged = False if model_is_typed else model.get("training", {}).get("converged", False)
-        model_row_count = 0 if model_is_typed else model.get("training", {}).get("row_count", 0)
-        model_warnings = [] if model_is_typed else model.get("warnings", [])
+        model_converged = model.training.get("converged", False) if model_is_typed else model.get("training", {}).get("converged", False)
+        model_row_count = model.training.get("row_count", 0) if model_is_typed else model.get("training", {}).get("row_count", 0)
+        model_warnings = list(model.warnings) if model_is_typed else model.get("warnings", [])
         model_target = model.target_column if model_is_typed else model.get("target_column", "")
 
         report = {
