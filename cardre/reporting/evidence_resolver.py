@@ -103,6 +103,20 @@ def resolve_run_step(
         rs = store.get_latest_successful_run_step_for_step(
             plan_version_id, step_id, branch_id=None,
         )
+
+    # Ancestor evidence may have been produced under the source branch's
+    # earlier plan version — search across versions when the version-scoped
+    # lookup above missed.
+    if rs is None and resolution == "ancestor":
+        plan_id = store.get_plan_id_for_version(plan_version_id)
+        if plan_id:
+            rs = store.get_latest_successful_run_step_for_step_across_plan(
+                plan_id, step_id, branch_id=branch_id_for_lookup,
+            )
+            if rs is None and branch_id_for_lookup is not None:
+                rs = store.get_latest_successful_run_step_for_step_across_plan(
+                    plan_id, step_id, branch_id=None,
+                )
     return rs
 
 
