@@ -49,8 +49,36 @@ class ImportGermanCreditNode(NodeType):
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
-        if not params.get("source_path"):
+        source_path = params.get("source_path")
+        if not source_path:
             errors.append("source_path is required")
+            return errors
+        src = Path(source_path)
+        if not src.exists():
+            errors.append(f"source_path does not exist: {source_path}")
+        elif src.suffix.lower() not in (".zip", ".data", ".txt"):
+            errors.append(f"source_path must be .zip, .data, or .txt, got {src.suffix!r}")
+        else:
+            try:
+                if src.suffix == ".zip":
+                    import zipfile
+                    with zipfile.ZipFile(src) as zf:
+                        names = zf.namelist()
+                        data_file = next((n for n in names if Path(n).name == "german.data"), None)
+                        if data_file is None:
+                            errors.append("ZIP file must contain 'german.data'")
+                else:
+                    content = src.read_text(encoding="latin-1")
+                    first_line = content.strip().split("\n")[0]
+                    if first_line:
+                        field_count = len(first_line.split())
+                        if field_count != 21:
+                            errors.append(
+                                f"Expected 21 fields per row, got {field_count}. "
+                                f"File may not be German Credit format."
+                            )
+            except Exception as exc:
+                errors.append(f"Cannot read source file: {exc}")
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:

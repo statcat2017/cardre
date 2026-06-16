@@ -40,7 +40,9 @@ def write_json_artifact(
     filename = f"{logical[:16]}-{stem}.json"
     stored_path = store.root / directory / filename
     stored_path.parent.mkdir(parents=True, exist_ok=True)
-    stored_path.write_bytes(serialized)
+    temp_path = stored_path.with_name(f".{stored_path.name}.tmp")
+    temp_path.write_bytes(serialized)
+    temp_path.rename(stored_path)
     phys = physical_hash(stored_path)
     artifact = ArtifactRef(
         artifact_id=str(uuid.uuid4()),
@@ -73,7 +75,9 @@ def write_parquet_artifact(
     filename = f"{logical[:16]}-{stem}.parquet"
     stored_path = store.root / directory / filename
     stored_path.parent.mkdir(parents=True, exist_ok=True)
-    stored_path.write_bytes(parquet_bytes)
+    temp_path = stored_path.with_name(f".{stored_path.name}.tmp")
+    temp_path.write_bytes(parquet_bytes)
+    temp_path.rename(stored_path)
     phys = physical_hash(stored_path)
     artifact_meta = {
         "row_count": frame.height,
@@ -96,31 +100,4 @@ def write_parquet_artifact(
     return artifact
 
 
-def make_fingerprint(  # DEPRECATED: fingerprints are now built by the executor. This remains for backward-compatible testing only.
-    plan_version_id: str,
-    step_id: str,
-    node_type: str,
-    node_version: str,
-    params_hash: str,
-    parent_run_steps: list,
-    input_artifacts: list[ArtifactRef],
-    output_artifacts: list[ArtifactRef],
-) -> dict[str, Any]:
-    parent_outputs: dict[str, list[str]] = {}
-    for rs in parent_run_steps:
-        parent_outputs[rs.step_id] = rs.execution_fingerprint.get(
-            "output_artifact_logical_hashes", []
-        )
-    return {
-        "plan_version_id": plan_version_id,
-        "step_id": step_id,
-        "node_type": node_type,
-        "node_version": node_version,
-        "params_hash": params_hash,
-        "parent_run_step_ids": [rs.run_step_id for rs in parent_run_steps],
-        "input_artifact_logical_hashes": [a.logical_hash for a in input_artifacts],
-        "output_artifact_logical_hashes": [a.logical_hash for a in output_artifacts],
-        "parent_output_logical_hashes_by_step": parent_outputs,
-        "python_version": sys.version.split()[0],
-        "cardre_version": "0.1.0",
-    }
+

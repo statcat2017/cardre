@@ -84,7 +84,7 @@ class ProjectStore:
         # check_same_thread=False allows the caller to manage thread
         # ownership; ProjectStore instances must NOT be shared across
         # worker threads without external synchronization.
-        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.row_factory = sqlite3.Row
@@ -188,8 +188,8 @@ class ProjectStore:
             for r in rows
         ]
 
-    def list_artifacts_for_project(self, project_id: str) -> list[ArtifactRef]:
-        rows = self._connect().execute(
+    def list_artifacts_for_project(self, project_id: str, limit: int = 0, offset: int = 0) -> list[ArtifactRef]:
+        sql = (
             "SELECT DISTINCT a.* FROM artifacts a "
             "JOIN run_steps rs ON a.artifact_id IN ("
             "  SELECT value FROM json_each(rs.output_artifact_ids_json)"
@@ -198,9 +198,13 @@ class ProjectStore:
             "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
             "JOIN plans p ON pv.plan_id = p.plan_id "
             "WHERE p.project_id = ? "
-            "ORDER BY a.created_at",
-            (project_id,),
-        ).fetchall()
+            "ORDER BY a.created_at"
+        )
+        params: list[Any] = [project_id]
+        if limit > 0:
+            sql += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+        rows = self._connect().execute(sql, params).fetchall()
         return [
             ArtifactRef(
                 artifact_id=r["artifact_id"],
@@ -822,9 +826,11 @@ class ProjectStore:
 
     def list_runs_for_project(self, project_id: str) -> list[JsonDict]:
         rows = self._connect().execute(
-            "SELECT r.* FROM runs r "
+            "SELECT r.*, COALESCE(rs.step_count, 0) AS step_count FROM runs r "
             "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
             "JOIN plans p ON pv.plan_id = p.plan_id "
+            "LEFT JOIN (SELECT run_id, COUNT(*) AS step_count FROM run_steps GROUP BY run_id) rs "
+            "  ON r.run_id = rs.run_id "
             "WHERE p.project_id = ? "
             "ORDER BY r.started_at DESC",
             (project_id,),

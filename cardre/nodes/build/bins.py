@@ -77,6 +77,19 @@ class FineClassingNode(NodeType):
             raise ValueError(f"Target column '{target_column}' not found")
         if not good_values or not bad_values:
             raise ValueError("Fine classing requires non-empty good_values and bad_values in modelling metadata")
+        target_series = df[target_column].cast(pl.String)
+        actual_good = int(target_series.is_in(list(good_values)).sum())
+        actual_bad = int(target_series.is_in(list(bad_values)).sum())
+        if actual_good == 0:
+            raise ValueError(
+                f"Fine classing: good_values {sorted(good_values)} not found in "
+                f"target column '{target_column}'"
+            )
+        if actual_bad == 0:
+            raise ValueError(
+                f"Fine classing: bad_values {sorted(bad_values)} not found in "
+                f"target column '{target_column}'"
+            )
         exclude_columns = list(set(exclude_columns + [target_column]))
 
         feature_cols = [c for c in df.columns if c not in exclude_columns]
@@ -161,8 +174,7 @@ class FineClassingNode(NodeType):
         if non_null.height == 0:
             return bins
 
-        values = non_null[col].to_list()
-        sorted_vals = sorted(values)
+        sorted_vals = non_null[col].sort().to_list()
         n = len(sorted_vals)
         n_bins = min(max_bins, n)
         bin_size = max(1, n // n_bins)

@@ -23,7 +23,7 @@ from cardre.audit import (
     json_logical_hash,
 )
 from cardre.modeling.builders import build_model_artifact
-from cardre.nodes.ml_models import _extract_target_metadata, _resolve_features, _write_estimator
+from cardre.nodes._training_utils import _extract_target_metadata, _prepare_training_data, _resolve_features, _write_estimator
 
 
 def _check_optional_dependency(package_name: str, install_name: str) -> None:
@@ -93,7 +93,7 @@ class XGBoostClassifierNode(NodeType):
 
         params = context.validated_params
         df, features, target_column, good_values, bad_values, y_binary, meta = (
-            _extract_target_metadata_data(context, params)
+            _prepare_training_data(context, params)
         )
 
         bad_class = sorted(bad_values)[0]
@@ -253,7 +253,7 @@ class LightGBMClassifierNode(NodeType):
 
         params = context.validated_params
         df, features, target_column, good_values, bad_values, y_binary, meta = (
-            _extract_target_metadata_data(context, params)
+            _prepare_training_data(context, params)
         )
 
         bad_class = sorted(bad_values)[0]
@@ -413,7 +413,7 @@ class CatBoostClassifierNode(NodeType):
 
         params = context.validated_params
         df, features, target_column, good_values, bad_values, y_binary, meta = (
-            _extract_target_metadata_data(context, params)
+            _prepare_training_data(context, params)
         )
 
         bad_class = sorted(bad_values)[0]
@@ -515,15 +515,3 @@ class CatBoostClassifierNode(NodeType):
             metrics={"feature_count": len(features), "estimator_count": iterations})
 
 
-# ======================================================================
-# Shared helper (same as ml_models._prepare_training_data but standalone
-# to avoid circular imports)
-# ======================================================================
-
-def _extract_target_metadata_data(
-    context: ExecutionContext,
-    params: dict[str, Any],
-):
-    """Shared training data preparation for boosting model nodes."""
-    from cardre.nodes.ml_models import _prepare_training_data
-    return _prepare_training_data(context, params)

@@ -14,6 +14,12 @@ router = APIRouter(tags=["exports"])
 @router.post("/exports/audit-pack", response_model=ExportAuditPackResponse)
 def export_audit_pack(req: ExportAuditPackRequest):
     store = get_store_for_project(req.project_id)
+    if req.export_path:
+        from pathlib import Path
+        export_path = Path(req.export_path)
+        store_root = Path(store.root).resolve() if isinstance(store.root, str) else store.root
+        if not export_path.resolve().is_relative_to(store_root):
+            raise HTTPException(status_code=403, detail={"code": "EXPORT_PATH_TRAVERSAL", "message": "Export path must be within project root"})
     try:
         result = export_branch_audit_pack(
             store=store,

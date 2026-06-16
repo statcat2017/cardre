@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre.audit import json_logical_hash
+from cardre.audit import ExecutionContext, json_logical_hash
 
 
 def build_model_artifact(
@@ -27,7 +27,7 @@ def build_model_artifact(
     elapsed: float,
     model_payload: dict[str, Any],
     interpretability: dict[str, Any],
-    context: Any,
+    context: ExecutionContext,
     extra_metrics: dict[str, Any] | None = None,
     warnings_list: list[dict[str, Any]] | None = None,
     row_count: int | None = None,

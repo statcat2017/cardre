@@ -1,7 +1,6 @@
 """Cardre: auditable open-source credit scorecard builder."""
 
 from cardre.artifacts import (
-    make_fingerprint,
     write_json_artifact,
     write_parquet_artifact,
 )
@@ -85,7 +84,6 @@ __all__ = [
     "VariableSelectionNode",
     "WoeTransformTrainNode",
     "json_logical_hash",
-    "make_fingerprint",
     "params_hash",
     "physical_hash",
     "relative_path",

@@ -87,9 +87,8 @@ class LogisticRegressionNode(NodeType):
             raise ValueError(f"Target column '{target_column}' not found in training data")
 
         raw_target = df[target_column].cast(pl.String)
-        y = raw_target.to_list()
         all_known = good_values | bad_values
-        unknown = [str(v) for v in y if str(v) not in all_known]
+        unknown = raw_target.filter(~raw_target.is_in(list(all_known))).to_list()
         if unknown:
             unique_unknown = sorted(set(unknown))
             raise ValueError(
@@ -98,7 +97,12 @@ class LogisticRegressionNode(NodeType):
                 f"Every row must be explicitly classified."
             )
 
-        y_binary = [1 if str(v) in bad_values else 0 for v in y]
+        y_binary = df.with_columns(
+            pl.when(pl.col(target_column).cast(pl.String).is_in(list(bad_values)))
+            .then(pl.lit(1))
+            .otherwise(pl.lit(0))
+            .alias("_y_binary")
+        )["_y_binary"].to_list()
         n_bad = sum(y_binary)
         n_good = len(y_binary) - n_bad
         if n_bad == 0:
@@ -215,10 +219,15 @@ class ScoreScalingNode(NodeType):
         errors: list[str] = []
         base_odds = params.get("base_odds", 50.0)
         try:
-            if float(base_odds) <= 0:
+            if isinstance(base_odds, str) and ":" in base_odds:
+                num, den = base_odds.split(":", 1)
+                base_odds_val = float(num) / float(den)
+            else:
+                base_odds_val = float(base_odds)
+            if base_odds_val <= 0:
                 errors.append("base_odds must be positive")
-        except (ValueError, TypeError):
-            errors.append("base_odds must be a number")
+        except (ValueError, TypeError, ZeroDivisionError):
+            errors.append("base_odds must be a number or 'N:M' odds ratio string")
         pdo = params.get("points_to_double_odds", 20)
         try:
             if float(pdo) <= 0:

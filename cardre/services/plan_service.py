@@ -227,7 +227,6 @@ class PlanService:
 
         if branch_id and branch is not None:
             # Branch-owned: create plan version inside branch's transaction
-            connection = self._store._connect()
             with self._store.transaction() as conn:
                 new_pv_id = self._store.create_plan_version_in_transaction(
                     conn=conn, plan_id=plan_id, steps=new_steps,

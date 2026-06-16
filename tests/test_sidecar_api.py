@@ -1471,7 +1471,7 @@ class TestPhase4BranchingFlow:
         assert champ2_resp.json()["previous_champion_branch_id"] is not None
 
         # 17. Export with include_row_level_data=False
-        export_dest = tmp_dir / "phase4_e2e_export"
+        export_dest = proj_path / "exports" / "e2e_export"
         export_resp = client.post("/exports/audit-pack", json={
             "project_id": pid,
             "plan_id": plan_id,
@@ -1506,7 +1506,7 @@ class TestPhase4BranchingFlow:
         assert has_shared, f"Export should include shared-upstream run steps, got: {exported_step_ids}"
 
         # 19. Export with include_row_level_data=True to verify it includes datasets
-        export_dest2 = tmp_dir / "phase4_e2e_export_full"
+        export_dest2 = proj_path / "exports" / "e2e_export_full"
         export2_resp = client.post("/exports/audit-pack", json={
             "project_id": pid,
             "plan_id": plan_id,

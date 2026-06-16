@@ -186,7 +186,7 @@ class ModelInfo(BaseModel):
     target: str = ""
     features: list[ModelFeature] = Field(default_factory=list)
     intercept: float = 0.0
-    regularisation: Any = None
+    regularisation: dict[str, Any] | None = None
     fit_dataset_role: str = "train"
     fitting_config_hash: str = ""
 

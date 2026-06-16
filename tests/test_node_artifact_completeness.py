@@ -1,10 +1,7 @@
 """Phase 0 safety-rail canary tests: every artifact written to the store
 must be included in NodeOutput.artifacts.
 
-Three nodes in prep.py call ``write_json_artifact`` for reports but discard
-the return value, so the report exists in the artifact table but is NOT in
-the execution fingerprint.  These tests will pass (become real failures)
-once the nodes return all artifacts.
+All prep.py nodes now include report artifacts in their return values.
 """
 
 from __future__ import annotations
