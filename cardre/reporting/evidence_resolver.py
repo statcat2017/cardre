@@ -95,7 +95,7 @@ def resolve_run_step(
     if resolution == "exact":
         return None
 
-    branch_id_for_lookup = resolved_branch_id if resolution == "exact" else None
+    branch_id_for_lookup = resolved_branch_id if resolution in ("exact", "ancestor") else None
     rs = store.get_latest_successful_run_step_for_step(
         plan_version_id, step_id, branch_id=branch_id_for_lookup,
     )

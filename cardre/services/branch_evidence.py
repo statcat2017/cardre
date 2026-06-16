@@ -36,6 +36,7 @@ class BranchRunContext:
     step_outputs: dict[str, list[ArtifactRef]] = field(default_factory=dict)
     run_step_records: dict[str, RunStepRecord] = field(default_factory=dict)
     short_circuit_run_id: str | None = None
+    source_by_step: dict[str, str | None] = field(default_factory=dict)
 
 
 class BranchEvidenceResolver:
@@ -94,18 +95,34 @@ class BranchEvidenceResolver:
         steps = store.get_plan_version_steps(plan_version_id)
         self._exec._validate_topology(steps)
 
-        # 4. Staleness
+        # 4. Staleness — compute per source branch for accurate shared
+        #    upstream staleness (child-of-child branches inherit from parent
+        #    branches, not just baseline).
         branch_staleness = self._exec.compute_staleness(
             store, plan_version_id, branch_id=branch_id,
         )
-        plan_staleness = self._exec.compute_staleness(
+
+        # Collect distinct source_branch_ids from shared upstream rows
+        source_by_step: dict[str, str | None] = {}
+        for r in step_map:
+            if r["is_shared_upstream"]:
+                source_by_step[r["step_id"]] = r.get("source_branch_id") or None
+        source_branch_ids = {sb for sb in source_by_step.values() if sb is not None}
+
+        # Compute staleness for each distinct source branch
+        source_staleness: dict[str | None, dict[str, bool]] = {}
+        source_staleness[None] = self._exec.compute_staleness(
             store, plan_version_id, branch_id=None,
         )
+        for sb in source_branch_ids:
+            source_staleness[sb] = self._exec.compute_staleness(
+                store, plan_version_id, branch_id=sb,
+            )
 
-        # 5. Shared upstream staleness check (against full-plan evidence)
+        # 5. Shared upstream staleness check (against source branch evidence)
         stale_shared = [
             sid for sid in shared_upstream_step_ids
-            if plan_staleness.get(sid, True)
+            if source_staleness.get(source_by_step.get(sid), source_staleness[None]).get(sid, True)
         ]
         if stale_shared:
             raise ValueError(
@@ -133,6 +150,7 @@ class BranchEvidenceResolver:
                     steps=steps,
                     branch_owned_step_ids=branch_owned_step_ids,
                     shared_upstream_step_ids=shared_upstream_step_ids,
+                    source_by_step=source_by_step,
                     short_circuit_run_id=existing_run_id,
                 )
             raise ValueError(
@@ -145,10 +163,12 @@ class BranchEvidenceResolver:
         step_outputs: dict[str, list[ArtifactRef]] = {}
         run_step_records: dict[str, RunStepRecord] = {}
 
-        # 8a. Shared upstream evidence
+        # 8a. Shared upstream evidence (use source branch for child-of-child)
         for sid in shared_upstream_step_ids:
+            sb = source_by_step.get(sid)
             rs = self._find_shared_evidence(
                 store, branch["plan_id"], plan_version_id, sid,
+                source_branch_id=sb,
             )
             if rs is not None:
                 run_step_records[sid] = rs
@@ -171,6 +191,7 @@ class BranchEvidenceResolver:
             steps=steps,
             branch_owned_step_ids=branch_owned_step_ids,
             shared_upstream_step_ids=shared_upstream_step_ids,
+            source_by_step=source_by_step,
             stale_branch_step_ids=stale_branch_step_ids,
             step_outputs=step_outputs,
             run_step_records=run_step_records,
@@ -188,8 +209,10 @@ class BranchEvidenceResolver:
         """
         for pid in spec.parent_step_ids:
             if pid in ctx.shared_upstream_step_ids and pid not in ctx.step_outputs:
+                sb = ctx.source_by_step.get(pid)
                 rs = self._find_shared_evidence(
                     store, ctx.branch["plan_id"], ctx.plan_version_id, pid,
+                    source_branch_id=sb,
                 )
                 if rs is not None:
                     ctx.run_step_records[pid] = rs
@@ -213,17 +236,26 @@ class BranchEvidenceResolver:
         plan_id: str,
         plan_version_id: str,
         step_id: str,
+        source_branch_id: str | None = None,
     ) -> RunStepRecord | None:
         """Look up the most recent successful evidence for a step.
 
-        Searches full-plan (non-branch) evidence first, then falls back
-        to any successful plan-wide run.
+        Uses source_branch_id when provided (for child-of-child branches
+        inheriting from a parent branch), falling back to
+        non-branch/baseline evidence.
         """
+        lookup = source_branch_id or None
         rs = store.get_latest_successful_run_step_for_step(
-            plan_version_id, step_id, branch_id=None,
+            plan_version_id, step_id, branch_id=lookup,
         )
         if rs is not None:
             return rs
+        if lookup is not None:
+            rs = store.get_latest_successful_run_step_for_step(
+                plan_version_id, step_id, branch_id=None,
+            )
+            if rs is not None:
+                return rs
         plan_run_id = store.get_latest_successful_run_id_for_plan(plan_id)
         if plan_run_id is not None:
             for prs in store.get_run_steps(plan_run_id):
