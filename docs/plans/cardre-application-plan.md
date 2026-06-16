@@ -556,7 +556,8 @@ trail.
 - coefficient sign checks (business-sense validation)
 - sample-weight handling
 - prior-probability/base-rate adjustment for oversampled development samples
-- reject inference (see Phase 7 and `docs/plans/reject-inference-module-plan.md`)
+- reject inference as a later optional module with significant architectural
+  implications for split logic, WOE fitting, and model fitting
 
 ### Scorecard Nodes
 
@@ -843,9 +844,15 @@ The MVP will not support:
 - formal plugin packages
 - arbitrary freeform DAG editing
 - full approval workflow
+- reject inference
 - PMML/ONNX export
 - external object storage
 - regulator-ready certification claims
+
+Reject inference is not a simple plugin-sized addition: it changes how the split
+step, WOE fitting, and model fitting understand accepted/rejected populations.
+These future features should not distract from the first credible local
+scorecard build.
 
 ## Revised Phased Plan
 
@@ -957,23 +964,6 @@ The MVP will not support:
 - formalise node compatibility contracts
 - entry-point plugin discovery later
 - custom output renderers later
-
-### Phase 7: Reject Inference
-
-See full plan: `docs/plans/reject-inference-module-plan.md`
-
-- **Phase 7a — Core infrastructure**: Evidence types (`RejectPopulationConfig`,
-  `RejectInferenceResult`), `DefineRejectPopulationNode`, `RejectInferenceNoneNode`
-  (explicit documented baseline)
-- **Phase 7b — Augmentation method**: `RejectInferenceAugmentationNode`
-  (propensity re-weighting/resampling, MAR assumption). Branch point registration
-  at `define-reject-population`. MVP ships with one inference method.
-- **Phase 7c — Alternative methods**: `RejectInferenceParcelingNode` (prudence
-  factors, MNAR), `RejectInferenceSelfLearningNode` (Kozodoi-style iterative
-  labeling)
-- **Phase 7d — Sensitivity and governance**: `RejectInferenceSensitivityNode`
-  (cross-branch comparison, parameter sensitivity, verdict). Report collector
-  integration, HTML report section, audit pack inclusion.
 
 ## Definition Of Success
 

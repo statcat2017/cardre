@@ -488,7 +488,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Run Reports
+         * @description List all generated reports for a given run.
+         */
+        get: operations["list_run_reports_projects__project_id__runs__run_id__reports_get"];
         put?: never;
         /** Generate Report */
         post: operations["generate_report_projects__project_id__runs__run_id__reports_post"];
@@ -2727,6 +2731,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReportReadinessResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_run_reports_projects__project_id__runs__run_id__reports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportMetadataResponse"][];
                 };
             };
             /** @description Validation Error */
