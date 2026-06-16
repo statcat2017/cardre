@@ -189,13 +189,14 @@ class ApplyWoeMappingNode(NodeType):
             )
             outputs.append(art)
 
-        write_json_artifact(
+        fallback_art = write_json_artifact(
             store, artifact_type="report", role="report",
             stem=f"woe-apply-fallback-{context.step_spec.step_id}",
             payload=fallback_report,
             metadata={},
         )
 
+        all_artifacts = outputs + [fallback_art]
         fp = make_fingerprint(
             plan_version_id=context.plan_version_id,
             step_id=context.step_spec.step_id,
@@ -203,24 +204,17 @@ class ApplyWoeMappingNode(NodeType):
             params_hash=context.step_spec.params_hash,
             parent_run_steps=context.parent_run_steps,
             input_artifacts=context.input_artifacts,
-            output_artifacts=outputs,
+            output_artifacts=all_artifacts,
         )
         return NodeOutput(
-            artifacts=outputs,
-            metrics={"output_count": len(outputs), "unmatched_row_count": unmatched_total},
+            artifacts=all_artifacts,
+            metrics={
+                "output_count": len(outputs),
+                "unmatched_row_count": unmatched_total,
+                "woe_unmatched_policy": woe_unmatched_policy,
+            },
             execution_fingerprint=fp,
         )
-
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=outputs,
-        )
-        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)}, execution_fingerprint=fp)
 
 
 class ApplyModelNode(NodeType):

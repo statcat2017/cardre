@@ -81,8 +81,11 @@ class ApplyWoeMappingTests(unittest.TestCase):
                                parent_run_steps=[], input_artifacts=[self.train_art, self.test_art, self.bin_art, self.woe_art],
                                validated_params=params, runtime_metadata={})
         out = ApplyWoeMappingNode().run(ctx)
-        self.assertEqual(len(out.artifacts), 2)
-        for art in out.artifacts:
+        data_arts = [a for a in out.artifacts if a.role != "report"]
+        report_arts = [a for a in out.artifacts if a.role == "report"]
+        self.assertEqual(len(data_arts), 2)
+        self.assertEqual(len(report_arts), 1)
+        for art in data_arts:
             df = pl.read_parquet(self.store.artifact_path(art))
             self.assertIn("x_woe", df.columns)
 
@@ -118,7 +121,7 @@ class ApplyWoeMappingTests(unittest.TestCase):
         df = pl.read_parquet(self.store.artifact_path(out.artifacts[1]))
         self.assertEqual(df["x_woe"][0], 0.0)
 
-    def test_unseen_category_in_oot_fails_by_default(self):
+    def test_unseen_category_in_oot_fails_with_fail_policy(self):
         store, tmp = make_store()
         store.initialize()
         df_train = pl.DataFrame({"cat": ["a", "b", "c"], "target": ["g", "b", "g"]})
