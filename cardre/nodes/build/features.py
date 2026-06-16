@@ -45,14 +45,16 @@ class CalculateWoeIvNode(NodeType):
         target_column = meta_def.target_column
         good_values = set(str(v) for v in meta_def.good_values)
         bad_values = set(str(v) for v in meta_def.bad_values)
+        good_values_list = list(good_values)
+        bad_values_list = list(bad_values)
 
         if not target_column or target_column not in df.columns:
             raise ValueError(f"WOE/IV target column {target_column!r} not found in training data")
         if not good_values or not bad_values:
             raise ValueError("WOE/IV requires non-empty good_values and bad_values")
         target_series = df[target_column].cast(pl.String)
-        total_good_all = int(target_series.is_in(list(good_values)).sum())
-        total_bad_all = int(target_series.is_in(list(bad_values)).sum())
+        total_good_all = int(target_series.is_in(good_values_list).sum())
+        total_bad_all = int(target_series.is_in(bad_values_list).sum())
         if total_good_all == 0 or total_bad_all == 0:
             raise ValueError(
                 f"WOE/IV requires at least one good and one bad row; found goods={total_good_all}, bads={total_bad_all}"
@@ -129,8 +131,8 @@ class CalculateWoeIvNode(NodeType):
                 row_count = int(bin_mask.sum())
 
                 if target_series is not None and good_values and bad_values:
-                    bin_good = int(target_series.filter(bin_mask).is_in(list(good_values)).sum())
-                    bin_bad = int(target_series.filter(bin_mask).is_in(list(bad_values)).sum())
+                    bin_good = int(target_series.filter(bin_mask).is_in(good_values_list).sum())
+                    bin_bad = int(target_series.filter(bin_mask).is_in(bad_values_list).sum())
                 else:
                     bin_good = bin_def.get("good_count", 0)
                     bin_bad = bin_def.get("bad_count", 0)
@@ -657,6 +659,8 @@ class WoeTransformTrainNode(NodeType):
             selected_vars = list(all_var_defs)
 
         woe_columns = []
+        woe_exprs = []
+        column_variable_map: list[tuple[str, str]] = []
         result_df = df
 
         for var_def in selected_vars:
@@ -714,16 +718,20 @@ class WoeTransformTrainNode(NodeType):
                 raise ValueError(f"WOE transform: variable '{variable}' has no bins defined")
 
             woe_expr = woe_expr.otherwise(pl.lit(None, dtype=pl.Float64))
-            result_df = result_df.with_columns(woe_expr.alias(woe_col))
+            woe_exprs.append(woe_expr.alias(woe_col))
+            column_variable_map.append((woe_col, variable))
+            woe_columns.append(woe_col)
 
+        if woe_exprs:
+            result_df = result_df.with_columns(woe_exprs)
+
+        for woe_col, variable in column_variable_map:
             unmatched = result_df.filter(pl.col(woe_col).is_null()).height
             if unmatched > 0:
                 raise ValueError(
                     f"WOE transform: {unmatched} row(s) in variable '{variable}' "
                     f"did not match any bin. All training rows must belong to a defined bin."
                 )
-
-            woe_columns.append(woe_col)
 
         transform_report = {
             "target_column": target_column,

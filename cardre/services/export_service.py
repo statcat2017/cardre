@@ -233,7 +233,7 @@ def export_branch_audit_pack(
                     # Supporting report artifacts
                     report_art_dir = export_dir / "report_artifacts"
                     report_art_dir.mkdir(parents=True, exist_ok=True)
-                    _copy_report_artifacts(store, bundle_data, report_art_dir, file_count)
+                    file_count += _copy_report_artifacts(store, bundle_data, report_art_dir)
 
                     diagnostics.append({
                         "code": "REPORT_GENERATED",
@@ -278,10 +278,10 @@ def _copy_report_artifacts(
     store: ProjectStore,
     bundle: dict,
     report_art_dir: Path,
-    file_count: int,
-) -> None:
+) -> int:
     """Copy supporting artifacts referenced in the report bundle."""
     artifacts = bundle.get("artifacts", [])
+    count = 0
     from cardre.audit import ArtifactRef
     for entry in artifacts:
         art_id = entry.get("artifact_id", "")
@@ -295,6 +295,8 @@ def _copy_report_artifacts(
         dst = report_art_dir / rel.parent.name / src.name
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
+        count += 1
+    return count
 
 
 def _run_step_to_dict(rs) -> dict:

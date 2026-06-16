@@ -150,7 +150,7 @@ def get_node_type_schema(node_type: str) -> NodeTypeSchemaResponse:
     registry = _get_registry()
 
     if not registry.has(node_type):
-        raise HTTPException(status_code=404, detail=f"Unknown node type: {node_type!r}")
+        raise HTTPException(status_code=404, detail={"code": "NODE_TYPE_NOT_FOUND", "message": f"Unknown node type: {node_type!r}"})
 
     cls = registry.resolve(node_type)
     instance = cls()

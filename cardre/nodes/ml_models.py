@@ -6,70 +6,28 @@ Phase 3 adds random forest and GBDT using the same contract.
 
 from __future__ import annotations
 
-import io
 import time
 from typing import Any
 
-import joblib
 import numpy as np
 import polars as pl
 from sklearn.tree import DecisionTreeClassifier, export_text
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
     NodeType,
 )
+from cardre.modeling.builders import build_model_artifact
+from cardre.nodes._training_utils import (
+    _extract_target_metadata,
+    _prepare_training_data,
+    _resolve_features,
+    _write_estimator,
+)
 
 
-def _extract_target_metadata(
-    store,
-    input_artifacts,
-) -> tuple[str, set[str], set[str], dict | None]:
-    """Extract target column, good/bad values, and raw metadata from definition artifacts."""
-    reader = ArtifactEvidenceReader(store)
-    meta = reader.find_optional(input_artifacts, EvidenceKind.MODELLING_METADATA)
-    if meta is None:
-        return "", set(), set(), {}
-    return meta.target_column, set(str(v) for v in meta.good_values), set(str(v) for v in meta.bad_values), {}
-
-
-def _resolve_features(
-    df: pl.DataFrame,
-    target_column: str,
-    params: dict[str, Any],
-) -> list[str]:
-    """Resolve feature columns from params and dataframe, excluding target."""
-    include_columns = list(params.get("include_columns", []))
-    exclude_columns = list(params.get("exclude_columns", []))
-
-    if target_column:
-        exclude_columns = list(set(exclude_columns + [target_column]))
-
-    if include_columns:
-        missing = [c for c in include_columns if c not in df.columns]
-        if missing:
-            raise ValueError(f"include_columns references missing columns: {missing}")
-        features = [c for c in include_columns if c not in exclude_columns]
-    else:
-        features = [c for c in df.columns if c not in exclude_columns]
-
-    if not features:
-        raise ValueError("No feature columns available after exclusions")
-
-    non_numeric = [
-        c for c in features
-        if not df.schema[c].is_numeric()
-    ]
-    if non_numeric:
-        raise ValueError(
-            f"Non-numeric columns not supported without encoding: {non_numeric}. "
-            f"Use include_columns to select only numeric features, or add an encoding node."
-        )
-
-    return features
 
 
 def _extract_rules_from_tree(
@@ -124,116 +82,7 @@ def _extract_rules_from_tree(
     return rules
 
 
-def _prepare_training_data(
-    context: ExecutionContext,
-    params: dict[str, Any],
-) -> tuple[pl.DataFrame, list[str], str, set[str], set[str], np.ndarray, dict]:
-    """Shared training data preparation for all sklearn model nodes.
 
-    Returns (df, features, target_column, good_values, bad_values, y_binary, meta).
-    """
-    store = context.store
-    train_artifact = next(a for a in context.input_artifacts if a.role == "train")
-
-    target_column, good_values, bad_values, meta = _extract_target_metadata(
-        store, context.input_artifacts,
-    )
-
-    if not target_column:
-        raise ValueError("Target column is required")
-    if not good_values:
-        raise ValueError("Good values must be defined")
-    if not bad_values:
-        raise ValueError("Bad values must be defined")
-
-    df = pl.read_parquet(store.artifact_path(train_artifact))
-
-    if target_column not in df.columns:
-        raise ValueError(f"Target column '{target_column}' not found in training data")
-
-    features = _resolve_features(df, target_column, params)
-
-    raw_target = df[target_column].cast(pl.String)
-    y_raw = raw_target.to_list()
-    all_known = good_values | bad_values
-    unknown = [str(v) for v in y_raw if str(v) not in all_known]
-    if unknown:
-        unique_unknown = sorted(set(unknown))
-        raise ValueError(
-            f"Target column '{target_column}' contains {len(unknown)} value(s) "
-            f"not declared as good or bad: {unique_unknown[:10]}. "
-            f"Every row must be explicitly classified."
-        )
-
-    y_binary = [1 if str(v) in bad_values else 0 for v in y_raw]
-    n_bad = sum(y_binary)
-    n_good = len(y_binary) - n_bad
-    if n_bad == 0:
-        raise ValueError(f"No bad-class rows found (bad_values={sorted(bad_values)})")
-    if n_good == 0:
-        raise ValueError(f"No good-class rows found (good_values={sorted(good_values)})")
-
-    return df, features, target_column, good_values, bad_values, np.array(y_binary), meta
-
-
-def _write_estimator(store, clf, step_id: str, run_id: str, model_family: str):
-    """Serialize a fitted sklearn estimator to a binary artifact."""
-    buf = io.BytesIO()
-    joblib.dump(clf, buf)
-    estimator_bytes = buf.getvalue()
-    from cardre.modeling.serialization import write_estimator_artifact
-    return write_estimator_artifact(
-        store,
-        estimator_bytes=estimator_bytes,
-        estimator_format="joblib",
-        stem=f"{model_family}-estimator-{step_id}",
-        creating_run_id=run_id,
-        creating_run_step_id=step_id,
-        metadata={"model_family": model_family},
-    )
-
-
-def _build_model_artifact(
-    *,
-    model_family: str,
-    target_column: str,
-    features: list[str],
-    bad_class,
-    good_class,
-    prob_col_idx: int,
-    feature_strategy: str,
-    estimator_art,
-    training_params: dict,
-    random_seed: int,
-    elapsed: float,
-    model_payload: dict,
-    interpretability: dict,
-    context: ExecutionContext,
-    extra_metrics: dict | None = None,
-    warnings_list: list[dict] | None = None,
-    row_count: int | None = None,
-) -> dict:
-    """Build a cardre.model_artifact.v1 JSON dict."""
-    from cardre.modeling.builders import build_model_artifact
-    return build_model_artifact(
-        model_family=model_family,
-        target_column=target_column,
-        features=features,
-        bad_class=bad_class,
-        good_class=good_class,
-        prob_col_idx=prob_col_idx,
-        feature_strategy=feature_strategy,
-        estimator_art=estimator_art,
-        training_params=training_params,
-        random_seed=random_seed,
-        elapsed=elapsed,
-        model_payload=model_payload,
-        interpretability=interpretability,
-        context=context,
-        extra_metrics=extra_metrics,
-        warnings_list=warnings_list,
-        row_count=row_count,
-    )
 
 
 class DecisionTreeNode(NodeType):
@@ -373,7 +222,7 @@ class DecisionTreeNode(NodeType):
             "global_importance_fields": ["feature_importance"],
         }
 
-        model = _build_model_artifact(
+        model = build_model_artifact(
             model_family="decision_tree",
             target_column=target_column,
             features=features,
@@ -559,7 +408,7 @@ class RandomForestClassifierNode(NodeType):
             "global_importance_fields": ["feature_importance"],
         }
 
-        model = _build_model_artifact(
+        model = build_model_artifact(
             model_family="random_forest",
             target_column=target_column,
             features=features,
@@ -738,7 +587,7 @@ class GradientBoostingClassifierNode(NodeType):
             "global_importance_fields": ["feature_importance"],
         }
 
-        model = _build_model_artifact(
+        model = build_model_artifact(
             model_family="gbdt",
             target_column=target_column,
             features=features,

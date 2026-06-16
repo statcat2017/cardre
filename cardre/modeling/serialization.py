@@ -13,11 +13,8 @@ import io
 from pathlib import Path
 from typing import Any
 
-from cardre.audit import ArtifactRef, physical_hash, relative_path
+from cardre.audit import ArtifactRef, CHUNK_SIZE, physical_hash, relative_path
 from cardre.store import ProjectStore
-
-
-CHUNK_SIZE = 1024 * 1024
 
 
 def _compute_bytes_hash(data: bytes) -> str:

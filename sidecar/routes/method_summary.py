@@ -38,7 +38,7 @@ def get_branch_method_summary(
 
     branch = resolve_branch(store, branch_id)
     if branch is None:
-        raise HTTPException(status_code=404, detail=f"Branch not found: {branch_id!r}")
+        raise HTTPException(status_code=404, detail={"code": "BRANCH_NOT_FOUND", "message": f"Branch not found: {branch_id!r}"})
 
     # Find model artifact from latest run
     model_family = None
@@ -112,18 +112,18 @@ def get_model_ranking(
     try:
         row = store.get_comparison_snapshot(snapshot_id)
         if row is None:
-            raise HTTPException(status_code=404, detail=f"Snapshot not found: {snapshot_id!r}")
+            raise HTTPException(status_code=404, detail={"code": "SNAPSHOT_NOT_FOUND", "message": f"Snapshot not found: {snapshot_id!r}"})
 
         artifact_id = row["comparison_artifact_id"]
         art = store.get_artifact(artifact_id)
         if art is None:
-            raise HTTPException(status_code=404, detail="Snapshot artifact not found")
+            raise HTTPException(status_code=404, detail={"code": "SNAPSHOT_ARTIFACT_NOT_FOUND", "message": "Snapshot artifact not found"})
 
         snapshot_data = json.loads(store.artifact_path(art).read_text())
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail={"code": "SNAPSHOT_READ_ERROR", "message": str(e)})
 
     comparison_id = snapshot_data.get("comparison_id", snapshot_id)
 

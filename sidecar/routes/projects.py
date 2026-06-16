@@ -138,7 +138,7 @@ def get_project_runs(project_id: str):
     items = []
     for r in runs:
         pv_id = r["plan_version_id"]
-        step_count = len(store.get_run_steps(r["run_id"]))
+        step_count = r.get("step_count", 0)
         items.append(RunListItem(
             run_id=r["run_id"],
             plan_version_id=pv_id,
@@ -175,6 +175,8 @@ def get_project_artifacts(
         artifact_ids = store.get_artifact_ids_for_run(run_id)
         artifacts = [a for a in artifacts if a.artifact_id in artifact_ids]
 
+    artifacts = artifacts[offset:offset + limit]
+
     items = [
         ArtifactListItem(
             artifact_id=a.artifact_id,
@@ -187,7 +189,7 @@ def get_project_artifacts(
             created_at=a.created_at,
             metadata=a.metadata,
         )
-        for a in artifacts[offset:offset + limit]
+        for a in artifacts
     ]
 
     return ProjectArtifactsResponse(project_id=project_id, artifacts=items)

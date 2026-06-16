@@ -31,13 +31,19 @@ def _metadata_path(project_root: Path, report_id: str) -> Path:
 def _save_metadata(project_root: Path, report_id: str, meta: dict) -> None:
     path = _metadata_path(project_root, report_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(meta, indent=2, sort_keys=True))
+    try:
+        path.write_text(json.dumps(meta, indent=2, sort_keys=True))
+    except OSError:
+        pass
 
 
 def _load_metadata(project_root: Path, report_id: str) -> dict | None:
     path = _metadata_path(project_root, report_id)
     if path.exists():
-        return json.loads(path.read_text())
+        try:
+            return json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return None
     return None
 
 @router.post("/projects/{project_id}/runs/{run_id}/report-readiness", response_model=ReportReadinessResponse)
@@ -194,12 +200,18 @@ def serve_report_file(
         raise HTTPException(status_code=403, detail={"code": "PATH_TRAVERSAL", "message": "Path must be within project exports directory"})
 
     if target.exists() and target.is_file():
-        content = target.read_bytes()
+        try:
+            content = target.read_bytes()
+        except OSError:
+            raise HTTPException(status_code=500, detail={"code": "FILE_READ_ERROR", "message": f"Could not read file: {path}"})
         if path.endswith(".html"):
             return HTMLResponse(content=content)
         elif path.endswith(".json"):
             from fastapi.responses import JSONResponse
-            data = json.loads(content)
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=500, detail={"code": "INVALID_JSON", "message": f"File is not valid JSON: {path}"})
             return JSONResponse(content=data)
         from fastapi.responses import PlainTextResponse
         return PlainTextResponse(content=content)

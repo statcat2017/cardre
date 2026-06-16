@@ -55,6 +55,15 @@ def get_branch_comparison(comparison_id: str):
         comp = store.get_branch_comparison(comparison_id)
         if comp is not None:
             import json
+            snap = store.get_comparison_snapshot(comp.get("latest_snapshot_id", ""))
+            readiness_data = {}
+            if snap:
+                try:
+                    readiness_data = json.loads(snap.get("readiness_json", "{}"))
+                except (json.JSONDecodeError, TypeError):
+                    readiness_data = {}
+            missing_or_stale = [MissingStaleEvidence(**m) for m in readiness_data.get("missing_or_stale", [])]
+            warnings = readiness_data.get("warnings", [])
             return ComparisonResponse(
                 comparison_id=comp["comparison_id"],
                 project_id=comp["project_id"],
@@ -63,6 +72,9 @@ def get_branch_comparison(comparison_id: str):
                 challenger_branch_ids=json.loads(comp["challenger_branch_ids_json"]),
                 latest_snapshot_id=comp.get("latest_snapshot_id"),
                 latest_ready=bool(comp["latest_ready"]) if comp.get("latest_ready") else None,
+                blocked_reason=readiness_data.get("blocked_reason"),
+                missing_or_stale=missing_or_stale,
+                warnings=warnings,
             )
     raise HTTPException(status_code=404, detail={"code": "COMPARISON_NOT_FOUND", "message": f"No comparison with ID {comparison_id}"})
 
