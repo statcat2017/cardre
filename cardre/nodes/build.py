@@ -16,8 +16,10 @@ from cardre.audit import (
     json_logical_hash,
 )
 from cardre.evidence import (
+    AmbiguousEvidenceError,
     ArtifactEvidenceReader,
     EvidenceKind,
+    EvidenceNotFoundError,
     SCHEMA_BIN_DEFINITION,
     SCHEMA_MODEL_ARTIFACT,
     SCHEMA_SCORE_SCALING,
@@ -1165,82 +1167,32 @@ class WoeTransformTrainNode(NodeType):
     def run(self, context: ExecutionContext) -> NodeOutput:
 
         store = context.store
+        reader = ArtifactEvidenceReader(store)
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
 
-        bin_artifacts = []
-        meta_artifacts = []
-        selection_artifacts = []
-        for a in context.input_artifacts:
-            if a.role != "definition":
-                continue
-            try:
-                payload = json.loads(store.artifact_path(a).read_text())
-                if "variables" in payload and "selected" not in payload:
-                    bin_artifacts.append(a)
-                elif "selected" in payload:
-                    selection_artifacts.append(a)
-                elif "target_column" in payload and "good_values" in payload:
-                    meta_artifacts.append(a)
-            except Exception:
-                continue
+        bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
+        woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
 
-        if len(bin_artifacts) != 1:
-            raise ValueError(f"WOE transform requires exactly one bin definition artifact; found {len(bin_artifacts)}")
-        if len(meta_artifacts) > 1:
-            raise ValueError(f"WOE transform requires at most one modelling metadata artifact; found {len(meta_artifacts)}")
-        if len(selection_artifacts) > 1:
-            raise ValueError(f"WOE transform requires at most one selection artifact; found {len(selection_artifacts)}")
-        bin_artifact = bin_artifacts[0]
-        meta_artifact = meta_artifacts[0] if meta_artifacts else None
-        selection_artifact = selection_artifacts[0] if selection_artifacts else None
+        try:
+            meta = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        except (EvidenceNotFoundError, AmbiguousEvidenceError):
+            meta = None
+        sel = reader.find_optional(context.input_artifacts, EvidenceKind.SELECTION_DEFINITION)
 
-        woe_report_artifacts = []
-        for a in context.input_artifacts:
-            if a.role != "report":
-                continue
-            try:
-                content = store.artifact_path(a).read_bytes()
-                if content[:4] != b"PAR1":
-                    continue
-                temp = pl.read_parquet(store.artifact_path(a))
-                if "bin_id" in temp.columns and "woe" in temp.columns and "variable" in temp.columns:
-                    woe_report_artifacts.append(a)
-            except Exception:
-                continue
-
-        if len(woe_report_artifacts) != 1:
-            raise ValueError(
-                f"WOE transform requires exactly one WOE table report artifact; found {len(woe_report_artifacts)}"
-            )
-        woe_report_artifact = woe_report_artifacts[0]
+        if not bin_def.variables:
+            raise ValueError("WOE transform received an empty bin definition")
+        target_column = meta.target_column if meta is not None else ""
 
         df = pl.read_parquet(store.artifact_path(train_artifact))
-        bin_def = json.loads(store.artifact_path(bin_artifact).read_text())
-        if not bin_def.get("variables"):
-            raise ValueError("WOE transform received an empty bin definition")
-        target_column = ""
-        if meta_artifact:
-            meta = json.loads(store.artifact_path(meta_artifact).read_text())
-            target_column = meta.get("target_column", "")
-
-        woe_map: dict[str, dict] = {}
-        woe_df = pl.read_parquet(store.artifact_path(woe_report_artifact))
-        woe_cols_list = woe_df.columns
-        for row in woe_df.iter_rows():
-            var = str(row[woe_cols_list.index("variable")])
-            bin_id = str(row[woe_cols_list.index("bin_id")])
-            woe_val = float(row[woe_cols_list.index("woe")])
-            if var not in woe_map:
-                woe_map[var] = {}
-            woe_map[var][bin_id] = woe_val
+        bin_def_dict = bin_def.to_dict()
+        woe_map = woe_table.mapping
 
         missing_woe_bins: list[str] = []
-        for var_def in bin_def.get("variables", []):
-            variable = var_def["variable"]
-            for bin_entry in var_def.get("bins", []):
+        for var_def in bin_def.variables:
+            for bin_entry in var_def.bins:
                 bin_id = bin_entry["bin_id"]
-                if woe_map.get(variable, {}).get(bin_id) is None:
-                    missing_woe_bins.append(f"{variable}:{bin_id}")
+                if woe_map.get(var_def.variable, {}).get(bin_id) is None:
+                    missing_woe_bins.append(f"{var_def.variable}:{bin_id}")
 
         if missing_woe_bins:
             raise ValueError(
@@ -1249,16 +1201,12 @@ class WoeTransformTrainNode(NodeType):
             )
 
         selected_names: set[str] | None = None
-        if selection_artifact:
-            try:
-                sel = json.loads(store.artifact_path(selection_artifact).read_text())
-                selected_names = {s["variable"] for s in sel.get("selected", [])}
-            except Exception:
-                pass
+        if sel is not None:
+            selected_names = sel.selected_names
 
-        all_var_defs = bin_def.get("variables", [])
+        all_var_defs = bin_def.variables
         if selected_names is not None:
-            selected_vars = [v for v in all_var_defs if v["variable"] in selected_names]
+            selected_vars = [v for v in all_var_defs if v.variable in selected_names]
             if not selected_vars:
                 raise ValueError(
                     f"WOE transform: variable-selection defined {len(selected_names)} selected "
@@ -1271,9 +1219,9 @@ class WoeTransformTrainNode(NodeType):
         result_df = df
 
         for var_def in selected_vars:
-            variable = var_def["variable"]
-            kind = var_def["kind"]
-            bins = var_def["bins"]
+            variable = var_def.variable if hasattr(var_def, 'variable') else var_def.get('variable', '')
+            kind = var_def.kind if hasattr(var_def, 'kind') else var_def.get('kind', '')
+            bins = var_def.bins if hasattr(var_def, 'bins') else var_def.get('bins', [])
             woe_col = f"{variable}_woe"
 
             if variable not in df.columns:
