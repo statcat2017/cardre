@@ -832,24 +832,10 @@ class VariableSelectionNode(NodeType):
         manual_include_reasons = {v["variable"]: v["reason"] for v in manual_entries_raw}
         manual_exclude_reasons = {v["variable"]: v["reason"] for v in manual_excludes_raw}
 
-        iv_artifact = None
-        clustering_artifact = None
-        for a in context.input_artifacts:
-            if a.role != "report":
-                continue
-            try:
-                content = store.artifact_path(a).read_bytes()
-                if content[:4] == b"PAR1":
-                    temp_df = pl.read_parquet(store.artifact_path(a))
-                    if "iv" in temp_df.columns and "variable" in temp_df.columns:
-                        iv_artifact = a
-                else:
-                    clustering_artifact = a
-            except Exception:
-                continue
-
-        if iv_artifact:
-            iv_df = pl.read_parquet(store.artifact_path(iv_artifact))
+        reader = ArtifactEvidenceReader(store)
+        iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
+        if iv_lf is not None:
+            iv_df = iv_lf.collect()
             iv_cols = iv_df.columns
             iv_map = {}
             for row in iv_df.iter_rows():
@@ -861,15 +847,16 @@ class VariableSelectionNode(NodeType):
         else:
             iv_map = {}
 
-        clusters = []
-        if clustering_artifact:
-            try:
-                raw = store.artifact_path(clustering_artifact).read_bytes()
-                if raw[:4] != b"PAR1":
-                    clustering_raw = json.loads(raw)
-                    clusters = clustering_raw.get("clusters", [])
-            except (json.JSONDecodeError, FileNotFoundError):
-                pass
+        clusters: list[dict[str, Any]] = []
+        for a in context.input_artifacts:
+            if a.role == "report" and a.media_type == "application/json":
+                try:
+                    data = json.loads(store.artifact_path(a).read_text())
+                    if "clusters" in data:
+                        clusters = data["clusters"]
+                        break
+                except (json.JSONDecodeError, FileNotFoundError):
+                    pass
 
         cluster_map: dict[str, str] = {}
         for cl in clusters:
@@ -1352,28 +1339,14 @@ class LogisticRegressionNode(NodeType):
 
         store = context.store
         params = context.validated_params
+        reader = ArtifactEvidenceReader(store)
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
 
-        meta_artifact = None
-        for a in context.input_artifacts:
-            if a.role == "definition":
-                try:
-                    candidate = json.loads(store.artifact_path(a).read_text())
-                    if "target_column" in candidate and "good_values" in candidate:
-                        meta_artifact = a
-                        break
-                except Exception:
-                    continue
+        meta = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
 
-        df = pl.read_parquet(store.artifact_path(train_artifact))
-
-        meta = {}
-        if meta_artifact:
-            meta = json.loads(store.artifact_path(meta_artifact).read_text())
-
-        target_column = meta.get("target_column", "")
-        good_values = set(str(v) for v in meta.get("good_values", []))
-        bad_values = set(str(v) for v in meta.get("bad_values", []))
+        target_column = meta.target_column
+        good_values = set(str(v) for v in meta.good_values)
+        bad_values = set(str(v) for v in meta.bad_values)
 
         if not target_column:
             raise ValueError("Target column is required for logistic regression")
@@ -1382,6 +1355,7 @@ class LogisticRegressionNode(NodeType):
         if not bad_values:
             raise ValueError("Bad values must be defined for logistic regression")
 
+        df = pl.read_parquet(store.artifact_path(train_artifact))
         woe_cols = [c for c in df.columns if c.endswith("_woe")]
         if not woe_cols:
             raise ValueError("No WOE-transformed columns found in training data")
