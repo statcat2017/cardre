@@ -14,6 +14,9 @@ from pydantic import BaseModel, Field
 class HealthResponse(BaseModel):
     status: str = "ok"
     cardre_version: str = "0.1.0"
+    registry_accessible: bool = False
+    registered_node_count: int = 0
+    checked_at: str = ""
 
 
 # ---------------------------------------------------------------------------

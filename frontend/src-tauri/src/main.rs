@@ -73,7 +73,22 @@ fn main() {
             sidecar_pid: Mutex::new(None),
         })
         .setup(move |app| {
-            let mut child: std::process::Child = match Command::new("cardre-api")
+            // Try to find the sidecar binary
+            let sidecar_cmd = if let Ok(path) = which::which("cardre-api") {
+                path.to_string_lossy().to_string()
+            } else {
+                // Fall back to bundled binary
+                let bundled = app.path().resource_dir()
+                    .unwrap_or_default()
+                    .join("binaries")
+                    .join("cardre-api");
+                if bundled.exists() {
+                    bundled.to_string_lossy().to_string()
+                } else {
+                    "cardre-api".to_string()  // let the OS PATH handle it
+                }
+            };
+            let mut child: std::process::Child = match Command::new(&sidecar_cmd)
                 .arg(port.to_string())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 
 from cardre.store import ProjectStore
@@ -16,6 +17,21 @@ _DEFAULT_REGISTRY_PATH = Path.home() / ".cardre" / "projects.json"
 
 def _registry_path() -> Path:
     return Path(os.environ.get("CARDRE_REGISTRY_PATH", _DEFAULT_REGISTRY_PATH))
+
+
+def registry_path() -> Path:
+    """Return the current registry file path (respects CARDRE_REGISTRY_PATH env var)."""
+    return _registry_path()
+
+
+_registry_lock = threading.Lock()
+
+
+def update_registry(updater):
+    with _registry_lock:
+        registry = load_registry()
+        updater(registry)
+        save_registry(registry)
 
 
 class ProjectNotFoundError(KeyError):
@@ -84,6 +100,6 @@ def validate_project_path(path: Path) -> None:
 
 
 def create_project_registry_entry(project_id: str, path: Path, name: str) -> None:
-    registry = load_registry()
-    registry[project_id] = {"path": str(path.resolve()), "name": name}
-    save_registry(registry)
+    def _add_entry(registry):
+        registry[project_id] = {"path": str(path.resolve()), "name": name}
+    update_registry(_add_entry)
