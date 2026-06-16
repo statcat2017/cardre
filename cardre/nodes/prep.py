@@ -321,7 +321,7 @@ class SplitTrainTestOotNode(NodeType):
             "warnings": split_warnings,
             "source_artifact_id": dataset_artifact.artifact_id,
         }
-        write_json_artifact(
+        split_report_artifact = write_json_artifact(
             store,
             artifact_type="report",
             role="report",
@@ -329,6 +329,7 @@ class SplitTrainTestOotNode(NodeType):
             payload=split_report,
             metadata={"source_artifact_id": dataset_artifact.artifact_id},
         )
+        artifacts.append(split_report_artifact)
 
         return NodeOutput(
             artifacts=artifacts,
@@ -536,7 +537,7 @@ class ApplyExclusionsNode(NodeType):
             "rows_excluded": n_before - df.height,
             "rules": rule_counts,
         }
-        write_json_artifact(
+        exclusion_report_artifact = write_json_artifact(
             store, artifact_type="report", role="report",
             stem=f"exclusion-report-{context.step_spec.step_id}",
             payload=exclusion_report,
@@ -544,7 +545,7 @@ class ApplyExclusionsNode(NodeType):
         )
 
         return NodeOutput(
-            artifacts=[dataset_artifact],
+            artifacts=[dataset_artifact, exclusion_report_artifact],
             metrics={"rows_before": n_before, "rows_after": df.height})
 
 
@@ -662,12 +663,13 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
             treatment_report["caps"].update(affected["caps"])
             treatment_report["floors"].update(affected["floors"])
 
-        write_json_artifact(
+        treatment_report_artifact = write_json_artifact(
             store, artifact_type="report", role="report",
             stem=f"treatment-report-{context.step_spec.step_id}",
             payload=treatment_report,
             metadata={},
         )
+        output_artifacts.append(treatment_report_artifact)
 
         return NodeOutput(
             artifacts=output_artifacts,
