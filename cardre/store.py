@@ -103,6 +103,37 @@ class ProjectStore:
             conn.rollback()
             raise
 
+    @staticmethod
+    def _row_to_run_step(row: dict) -> RunStepRecord:
+        return RunStepRecord(
+            run_step_id=row["run_step_id"],
+            run_id=row["run_id"],
+            step_id=row["step_id"],
+            plan_version_id=row["plan_version_id"],
+            status=row["status"],
+            started_at=row["started_at"],
+            finished_at=row["finished_at"],
+            input_artifact_ids=json.loads(row["input_artifact_ids_json"]),
+            output_artifact_ids=json.loads(row["output_artifact_ids_json"]),
+            execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
+            warnings=json.loads(row["warnings_json"]),
+            errors=json.loads(row["errors_json"]),
+        )
+
+    @staticmethod
+    def _row_to_artifact_ref(row: dict) -> ArtifactRef:
+        return ArtifactRef(
+            artifact_id=row["artifact_id"],
+            artifact_type=row["artifact_type"],
+            role=row["role"],
+            path=row["path"],
+            physical_hash=row["physical_hash"],
+            logical_hash=row["logical_hash"],
+            media_type=row["media_type"],
+            created_at=row["created_at"],
+            metadata=json.loads(row["metadata_json"]),
+        )
+
     # ------------------------------------------------------------------
     # Project
     # ------------------------------------------------------------------
@@ -157,36 +188,13 @@ class ProjectStore:
         ).fetchone()
         if row is None:
             return None
-        return ArtifactRef(
-            artifact_id=row["artifact_id"],
-            artifact_type=row["artifact_type"],
-            role=row["role"],
-            path=row["path"],
-            physical_hash=row["physical_hash"],
-            logical_hash=row["logical_hash"],
-            media_type=row["media_type"],
-            created_at=row["created_at"],
-            metadata=json.loads(row["metadata_json"]),
-        )
+        return self._row_to_artifact_ref(row)
 
     def list_artifacts(self) -> list[ArtifactRef]:
         rows = self._connect().execute(
             "SELECT * FROM artifacts ORDER BY created_at"
         ).fetchall()
-        return [
-            ArtifactRef(
-                artifact_id=r["artifact_id"],
-                artifact_type=r["artifact_type"],
-                role=r["role"],
-                path=r["path"],
-                physical_hash=r["physical_hash"],
-                logical_hash=r["logical_hash"],
-                media_type=r["media_type"],
-                created_at=r["created_at"],
-                metadata=json.loads(r["metadata_json"]),
-            )
-            for r in rows
-        ]
+        return [self._row_to_artifact_ref(r) for r in rows]
 
     def list_artifacts_for_project(self, project_id: str) -> list[ArtifactRef]:
         sql = (
@@ -201,20 +209,7 @@ class ProjectStore:
             "ORDER BY a.created_at"
         )
         rows = self._connect().execute(sql, [project_id]).fetchall()
-        return [
-            ArtifactRef(
-                artifact_id=r["artifact_id"],
-                artifact_type=r["artifact_type"],
-                role=r["role"],
-                path=r["path"],
-                physical_hash=r["physical_hash"],
-                logical_hash=r["logical_hash"],
-                media_type=r["media_type"],
-                created_at=r["created_at"],
-                metadata=json.loads(r["metadata_json"]),
-            )
-            for r in rows
-        ]
+        return [self._row_to_artifact_ref(r) for r in rows]
 
     def get_plans_for_project(self, project_id: str) -> list[dict]:
         rows = self._connect().execute(
@@ -629,23 +624,7 @@ class ProjectStore:
             "SELECT * FROM run_steps WHERE run_id = ? ORDER BY started_at",
             (run_id,),
         ).fetchall()
-        return [
-            RunStepRecord(
-                run_step_id=r["run_step_id"],
-                run_id=r["run_id"],
-                step_id=r["step_id"],
-                plan_version_id=r["plan_version_id"],
-                status=r["status"],
-                started_at=r["started_at"],
-                finished_at=r["finished_at"],
-                input_artifact_ids=json.loads(r["input_artifact_ids_json"]),
-                output_artifact_ids=json.loads(r["output_artifact_ids_json"]),
-                execution_fingerprint=json.loads(r["execution_fingerprint_json"]),
-                warnings=json.loads(r["warnings_json"]),
-                errors=json.loads(r["errors_json"]),
-            )
-            for r in rows
-        ]
+        return [self._row_to_run_step(r) for r in rows]
 
     def get_artifact_ids_for_run(self, run_id: str) -> set[str]:
         rows = self._connect().execute(
@@ -702,20 +681,7 @@ class ProjectStore:
         ).fetchone()
         if row is None:
             return None
-        return RunStepRecord(
-            run_step_id=row["run_step_id"],
-            run_id=row["run_id"],
-            step_id=row["step_id"],
-            plan_version_id=row["plan_version_id"],
-            status=row["status"],
-            started_at=row["started_at"],
-            finished_at=row["finished_at"],
-            input_artifact_ids=json.loads(row["input_artifact_ids_json"]),
-            output_artifact_ids=json.loads(row["output_artifact_ids_json"]),
-            execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
-            warnings=json.loads(row["warnings_json"]),
-            errors=json.loads(row["errors_json"]),
-        )
+        return self._row_to_run_step(row)
 
     def get_latest_successful_run_step_for_step(
         self,
@@ -743,20 +709,7 @@ class ProjectStore:
             ).fetchone()
         if row is None:
             return None
-        return RunStepRecord(
-            run_step_id=row["run_step_id"],
-            run_id=row["run_id"],
-            step_id=row["step_id"],
-            plan_version_id=row["plan_version_id"],
-            status=row["status"],
-            started_at=row["started_at"],
-            finished_at=row["finished_at"],
-            input_artifact_ids=json.loads(row["input_artifact_ids_json"]),
-            output_artifact_ids=json.loads(row["output_artifact_ids_json"]),
-            execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
-            warnings=json.loads(row["warnings_json"]),
-            errors=json.loads(row["errors_json"]),
-        )
+        return self._row_to_run_step(row)
 
     def get_latest_successful_run_step_for_step_across_plan(
         self,
@@ -786,20 +739,7 @@ class ProjectStore:
             ).fetchone()
         if row is None:
             return None
-        return RunStepRecord(
-            run_step_id=row["run_step_id"],
-            run_id=row["run_id"],
-            step_id=row["step_id"],
-            plan_version_id=row["plan_version_id"],
-            status=row["status"],
-            started_at=row["started_at"],
-            finished_at=row["finished_at"],
-            input_artifact_ids=json.loads(row["input_artifact_ids_json"]),
-            output_artifact_ids=json.loads(row["output_artifact_ids_json"]),
-            execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
-            warnings=json.loads(row["warnings_json"]),
-            errors=json.loads(row["errors_json"]),
-        )
+        return self._row_to_run_step(row)
 
     def get_plan_id_for_version(self, plan_version_id: str) -> str | None:
         row = self._connect().execute(

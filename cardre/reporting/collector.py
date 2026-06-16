@@ -18,17 +18,8 @@ from cardre.evidence import (
     ArtifactEvidenceReader,
     EvidenceKind,
 )
-from cardre.reporting.evidence_resolver import (
-    get_champion_assignment,
-    resolve_branch,
-    resolve_plan_context,
-    resolve_project,
-    resolve_run,
-    resolve_run_step,
-    resolve_step_map,
-    resolve_required_steps,
-)
 from cardre.reporting.limitation_codes import LimitationCode
+from cardre.step_id import resolve_run_step, resolve_required_steps
 from cardre.reporting.schema import (
     AffectedBinDetail,
     ArtifactEntry,
@@ -123,8 +114,8 @@ class ReportCollector:
         )
 
         # Load core metadata via resolver
-        project = resolve_project(self.store, self.project_id)
-        run = resolve_run(self.store, self.run_id)
+        project = self.store.get_project(self.project_id)
+        run = self.store.get_run(self.run_id)
 
         if project:
             bundle.summary.model_name = project.get("name", "")
@@ -135,13 +126,13 @@ class ReportCollector:
             return bundle
 
         plan_version_id = run["plan_version_id"]
-        plan_id, _ = resolve_plan_context(self.store, plan_version_id)
+        plan_id = self.store.get_plan_id_for_version(plan_version_id)
 
         # Source info
         bundle.source.run_manifest_path = str(self.store.root / "cardre.sqlite")
 
         # Branch
-        branch = resolve_branch(self.store, self.target_branch_id)
+        branch = self.store.get_branch(self.target_branch_id)
         if branch is None:
             self.limitations.append(Limitation(severity="blocker", code=LimitationCode.TARGET_BRANCH_NOT_FOUND, message=f"Branch {self.target_branch_id!r} not found."))
             bundle.limitations = self.limitations
@@ -151,7 +142,9 @@ class ReportCollector:
         bundle.summary.target_branch_id = self.target_branch_id
 
         # Branch step map via resolver
-        step_map = resolve_step_map(self.store, self.target_branch_id, plan_version_id, branch_head_pv)
+        step_map = self.store.get_branch_step_map(self.target_branch_id, plan_version_id)
+        if not step_map and branch_head_pv:
+            step_map = self.store.get_branch_step_map(self.target_branch_id, branch_head_pv)
 
         # Resolve required steps
         resolved = resolve_required_steps(
@@ -263,7 +256,7 @@ class ReportCollector:
         if plan_id is None:
             return ChampionInfo(champion_status="not_available")
 
-        row = get_champion_assignment(self.store, plan_id)
+        row = self.store.get_champion_assignment(plan_id)
         if row is None:
             self.limitations.append(Limitation(
                 severity="warning", code=LimitationCode.NO_CHAMPION_ASSIGNMENT,

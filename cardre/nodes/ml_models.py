@@ -6,26 +6,12 @@ Phase 3 adds random forest and GBDT using the same contract.
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 import numpy as np
-import polars as pl
 from sklearn.tree import DecisionTreeClassifier, export_text
 
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.audit import (
-    ExecutionContext,
-    NodeOutput,
-    NodeType,
-)
-from cardre.modeling.builders import build_model_artifact
-from cardre.nodes._training_utils import (
-    _extract_target_metadata,
-    _prepare_training_data,
-    _resolve_features,
-    _write_estimator,
-)
+from cardre.nodes._classifier_base import BaseClassifierNode, _ClassifierResult
 
 
 
@@ -85,7 +71,7 @@ def _extract_rules_from_tree(
 
 
 
-class DecisionTreeNode(NodeType):
+class DecisionTreeNode(BaseClassifierNode):
     """Decision tree classifier — first non-logistic challenger.
 
     Produces a cardre.model_artifact.v1 JSON artifact plus a binary
@@ -97,6 +83,7 @@ class DecisionTreeNode(NodeType):
     category = "fit"
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
+    model_family = "decision_tree"
 
     VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
 
@@ -138,15 +125,41 @@ class DecisionTreeNode(NodeType):
 
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        params = context.validated_params
+    def _get_estimator_class(self):
+        return DecisionTreeClassifier
 
-        df, features, target_column, good_values, bad_values, y_binary, meta = (
-            _prepare_training_data(context, params)
-        )
+    def _build_estimator_kwargs(self, params: dict[str, Any]) -> dict[str, Any]:
+        max_depth = params.get("max_depth")
+        if max_depth is not None:
+            max_depth = int(max_depth)
+        min_samples_leaf = int(params.get("min_samples_leaf", 1))
+        class_weight = params.get("class_weight")
+        random_seed = int(params.get("random_seed", 42))
 
-        bad_class = sorted(bad_values)[0]
-        good_class = sorted(good_values)[0]
+        kwargs: dict[str, Any] = {
+            "max_depth": max_depth,
+            "min_samples_leaf": min_samples_leaf,
+            "random_state": random_seed,
+        }
+        if class_weight is not None:
+            kwargs["class_weight"] = class_weight
+        return kwargs
+
+    def _post_fit(
+        self,
+        clf,
+        features: list[str],
+        df,
+        params: dict[str, Any],
+        *,
+        bad_class: str,
+        good_class: str,
+        feature_importance: dict[str, float],
+        prob_col_idx: int,
+    ) -> _ClassifierResult:
+        rules = _extract_rules_from_tree(clf, features)
+        tree_depth = int(clf.get_depth())
+        leaf_count = int(clf.get_n_leaves())
 
         max_depth = params.get("max_depth")
         if max_depth is not None:
@@ -155,38 +168,9 @@ class DecisionTreeNode(NodeType):
         class_weight = params.get("class_weight")
         random_seed = int(params.get("random_seed", 42))
 
-        dt_params: dict[str, Any] = {
-            "max_depth": max_depth,
-            "min_samples_leaf": min_samples_leaf,
-            "random_state": random_seed,
-        }
-        if class_weight is not None:
-            dt_params["class_weight"] = class_weight
-
-        start_time = time.monotonic()
-        clf = DecisionTreeClassifier(**dt_params)
-        X = df.select(features).to_numpy()
-        clf.fit(X, y_binary)
-        elapsed = time.monotonic() - start_time
-
-        prob_col_idx = 1
-        for idx, cls_label in enumerate(clf.classes_):
-            if cls_label == 1:
-                prob_col_idx = idx
-                break
-
-        rules = _extract_rules_from_tree(clf, features)
-        tree_depth = int(clf.get_depth())
-        leaf_count = int(clf.get_n_leaves())
-        feature_importance = {
-            fname: round(float(imp), 6)
-            for fname, imp in zip(features, clf.feature_importances_)
-            if imp > 0
-        }
-
-        warnings_list: list[dict] = []
+        warnings: list[dict] = []
         if max_depth is not None and tree_depth >= max_depth:
-            warnings_list.append({
+            warnings.append({
                 "code": "TREE_FULL_DEPTH",
                 "message": f"Tree reached max_depth={max_depth}. Consider limiting depth for interpretability.",
             })
@@ -198,73 +182,33 @@ class DecisionTreeNode(NodeType):
             limitations.append(f"Leaf count {leaf_count} reduces interpretability")
         limitations.append("Decision tree does not produce native scorecard points")
 
-        training_params = {
-            "max_depth": max_depth,
-            "min_samples_leaf": min_samples_leaf,
-            "class_weight": class_weight,
-            "random_state": random_seed,
-        }
-
-        estimator_art = _write_estimator(context.store, clf, context.step_spec.step_id, context.run_id, "decision_tree")
-
-        model_payload = {
-            "tree_rules": rules,
-            "tree_depth": tree_depth,
-            "leaf_count": leaf_count,
-            "feature_importance": feature_importance,
-            "feature_count": len(features),
-        }
-        interpretability = {
-            "explanation_type": "tree_rules",
-            "explanation_level": "native_interpretable",
-            "native_importance_available": True,
-            "limitations": limitations,
-            "global_importance_fields": ["feature_importance"],
-        }
-
-        model = build_model_artifact(
-            model_family="decision_tree",
-            target_column=target_column,
-            features=features,
-            bad_class=bad_class,
-            good_class=good_class,
-            prob_col_idx=prob_col_idx,
-            feature_strategy=params.get("feature_strategy", "raw_numeric"),
-            estimator_art=estimator_art,
-            training_params=training_params,
-            random_seed=random_seed,
-            elapsed=elapsed,
-            model_payload=model_payload,
-            interpretability=interpretability,
-            context=context,
-            extra_metrics={"tree_depth": tree_depth, "leaf_count": leaf_count},
-            warnings_list=warnings_list,
-            row_count=df.height,
-        )
-
-        artifact = write_json_artifact(
-            context.store, artifact_type="model", role="model",
-            stem=f"decision-tree-model-{context.step_spec.step_id}",
-            payload=model,
-            metadata={
-                "feature_count": len(features),
-                "target_column": target_column,
-                "model_family": "decision_tree",
+        return _ClassifierResult(
+            model_payload={
+                "tree_rules": rules,
                 "tree_depth": tree_depth,
                 "leaf_count": leaf_count,
+                "feature_importance": feature_importance,
+                "feature_count": len(features),
             },
+            interpretability={
+                "explanation_type": "tree_rules",
+                "explanation_level": "native_interpretable",
+                "native_importance_available": True,
+                "limitations": limitations,
+                "global_importance_fields": ["feature_importance"],
+            },
+            training_params={
+                "max_depth": max_depth,
+                "min_samples_leaf": min_samples_leaf,
+                "class_weight": class_weight,
+                "random_state": random_seed,
+            },
+            warnings=warnings,
+            extra_metrics={"tree_depth": tree_depth, "leaf_count": leaf_count},
         )
 
-        return NodeOutput(
-            artifacts=[artifact, estimator_art],
-            metrics={
-                "feature_count": len(features),
-                "tree_depth": tree_depth,
-                "leaf_count": leaf_count,
-            })
 
-
-class RandomForestClassifierNode(NodeType):
+class RandomForestClassifierNode(BaseClassifierNode):
     """Random forest classifier — semi-transparent ensemble challenger.
 
     Produces a cardre.model_artifact.v1 JSON artifact plus a binary
@@ -277,6 +221,7 @@ class RandomForestClassifierNode(NodeType):
     category = "fit"
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
+    model_family = "random_forest"
 
     VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
 
@@ -325,18 +270,11 @@ class RandomForestClassifierNode(NodeType):
 
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
+    def _get_estimator_class(self):
         from sklearn.ensemble import RandomForestClassifier
+        return RandomForestClassifier
 
-        params = context.validated_params
-
-        df, features, target_column, good_values, bad_values, y_binary, meta = (
-            _prepare_training_data(context, params)
-        )
-
-        bad_class = sorted(bad_values)[0]
-        good_class = sorted(good_values)[0]
-
+    def _build_estimator_kwargs(self, params: dict[str, Any]) -> dict[str, Any]:
         max_depth = params.get("max_depth")
         if max_depth is not None:
             max_depth = int(max_depth)
@@ -345,7 +283,7 @@ class RandomForestClassifierNode(NodeType):
         class_weight = params.get("class_weight")
         random_seed = int(params.get("random_seed", 42))
 
-        rf_params: dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "n_estimators": n_estimators,
             "max_depth": max_depth,
             "min_samples_leaf": min_samples_leaf,
@@ -353,104 +291,65 @@ class RandomForestClassifierNode(NodeType):
             "n_jobs": -1,
         }
         if class_weight is not None:
-            rf_params["class_weight"] = class_weight
+            kwargs["class_weight"] = class_weight
+        return kwargs
 
-        start_time = time.monotonic()
-        clf = RandomForestClassifier(**rf_params)
-        X = df.select(features).to_numpy()
-        clf.fit(X, y_binary)
-        elapsed = time.monotonic() - start_time
-
-        prob_col_idx = 1
-        for idx, cls_label in enumerate(clf.classes_):
-            if cls_label == 1:
-                prob_col_idx = idx
-                break
-
-        feature_importance = {
-            fname: round(float(imp), 6)
-            for fname, imp in zip(features, clf.feature_importances_)
-            if imp > 0
-        }
+    def _post_fit(
+        self,
+        clf,
+        features: list[str],
+        df,
+        params: dict[str, Any],
+        *,
+        bad_class: str,
+        good_class: str,
+        feature_importance: dict[str, float],
+        prob_col_idx: int,
+    ) -> _ClassifierResult:
+        n_estimators = int(params.get("n_estimators", 100))
+        max_depth = params.get("max_depth")
+        if max_depth is not None:
+            max_depth = int(max_depth)
+        min_samples_leaf = int(params.get("min_samples_leaf", 1))
+        class_weight = params.get("class_weight")
+        random_seed = int(params.get("random_seed", 42))
 
         avg_tree_depth = int(np.mean([t.get_depth() for t in clf.estimators_]))
         avg_leaves = int(np.mean([t.get_n_leaves() for t in clf.estimators_]))
 
-        warnings_list: list[dict] = []
         limitations: list[str] = [
             "Random forest is semi-transparent: feature importance is available "
             "but individual tree rules are not human-readable at ensemble scale",
             "Random forest does not produce native scorecard points",
         ]
 
-        training_params = {
-            "n_estimators": n_estimators,
-            "max_depth": max_depth,
-            "min_samples_leaf": min_samples_leaf,
-            "class_weight": class_weight,
-            "random_state": random_seed,
-        }
-
-        estimator_art = _write_estimator(context.store, clf, context.step_spec.step_id, context.run_id, "random_forest")
-
-        model_payload = {
-            "feature_importance": feature_importance,
-            "feature_count": len(features),
-            "estimator_count": n_estimators,
-            "avg_tree_depth": avg_tree_depth,
-            "avg_leaves": avg_leaves,
-        }
-        interpretability = {
-            "explanation_type": "feature_importance",
-            "explanation_level": "native_semi_transparent",
-            "native_importance_available": True,
-            "limitations": limitations,
-            "global_importance_fields": ["feature_importance"],
-        }
-
-        model = build_model_artifact(
-            model_family="random_forest",
-            target_column=target_column,
-            features=features,
-            bad_class=bad_class,
-            good_class=good_class,
-            prob_col_idx=prob_col_idx,
-            feature_strategy=params.get("feature_strategy", "raw_numeric"),
-            estimator_art=estimator_art,
-            training_params=training_params,
-            random_seed=random_seed,
-            elapsed=elapsed,
-            model_payload=model_payload,
-            interpretability=interpretability,
-            context=context,
-            extra_metrics={"estimator_count": n_estimators, "avg_tree_depth": avg_tree_depth},
-            warnings_list=warnings_list,
-            row_count=df.height,
-        )
-
-        artifact = write_json_artifact(
-            context.store, artifact_type="model", role="model",
-            stem=f"random-forest-model-{context.step_spec.step_id}",
-            payload=model,
-            metadata={
+        return _ClassifierResult(
+            model_payload={
+                "feature_importance": feature_importance,
                 "feature_count": len(features),
-                "target_column": target_column,
-                "model_family": "random_forest",
                 "estimator_count": n_estimators,
                 "avg_tree_depth": avg_tree_depth,
+                "avg_leaves": avg_leaves,
             },
+            interpretability={
+                "explanation_type": "feature_importance",
+                "explanation_level": "native_semi_transparent",
+                "native_importance_available": True,
+                "limitations": limitations,
+                "global_importance_fields": ["feature_importance"],
+            },
+            training_params={
+                "n_estimators": n_estimators,
+                "max_depth": max_depth,
+                "min_samples_leaf": min_samples_leaf,
+                "class_weight": class_weight,
+                "random_state": random_seed,
+            },
+            extra_metrics={"estimator_count": n_estimators, "avg_tree_depth": avg_tree_depth},
         )
 
-        return NodeOutput(
-            artifacts=[artifact, estimator_art],
-            metrics={
-                "feature_count": len(features),
-                "estimator_count": n_estimators,
-                "avg_tree_depth": avg_tree_depth,
-            })
 
-
-class GradientBoostingClassifierNode(NodeType):
+class GradientBoostingClassifierNode(BaseClassifierNode):
     """Sklearn gradient boosting classifier — semi-transparent ensemble challenger.
 
     Produces a cardre.model_artifact.v1 JSON artifact plus a binary
@@ -463,6 +362,7 @@ class GradientBoostingClassifierNode(NodeType):
     category = "fit"
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
+    model_family = "gbdt"
 
     VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
 
@@ -512,25 +412,18 @@ class GradientBoostingClassifierNode(NodeType):
 
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
+    def _get_estimator_class(self):
         from sklearn.ensemble import GradientBoostingClassifier
+        return GradientBoostingClassifier
 
-        params = context.validated_params
-
-        df, features, target_column, good_values, bad_values, y_binary, meta = (
-            _prepare_training_data(context, params)
-        )
-
-        bad_class = sorted(bad_values)[0]
-        good_class = sorted(good_values)[0]
-
+    def _build_estimator_kwargs(self, params: dict[str, Any]) -> dict[str, Any]:
         n_estimators = int(params.get("n_estimators", 100))
         max_depth = int(params.get("max_depth", 3))
         learning_rate = float(params.get("learning_rate", 0.1))
         min_samples_leaf = int(params.get("min_samples_leaf", 1))
         random_seed = int(params.get("random_seed", 42))
 
-        gbdt_params: dict[str, Any] = {
+        return {
             "n_estimators": n_estimators,
             "max_depth": max_depth,
             "learning_rate": learning_rate,
@@ -538,90 +431,50 @@ class GradientBoostingClassifierNode(NodeType):
             "random_state": random_seed,
         }
 
-        start_time = time.monotonic()
-        clf = GradientBoostingClassifier(**gbdt_params)
-        X = df.select(features).to_numpy()
-        clf.fit(X, y_binary)
-        elapsed = time.monotonic() - start_time
+    def _post_fit(
+        self,
+        clf,
+        features: list[str],
+        df,
+        params: dict[str, Any],
+        *,
+        bad_class: str,
+        good_class: str,
+        feature_importance: dict[str, float],
+        prob_col_idx: int,
+    ) -> _ClassifierResult:
+        n_estimators = int(params.get("n_estimators", 100))
+        max_depth = int(params.get("max_depth", 3))
+        learning_rate = float(params.get("learning_rate", 0.1))
+        min_samples_leaf = int(params.get("min_samples_leaf", 1))
+        random_seed = int(params.get("random_seed", 42))
 
-        prob_col_idx = 1
-        for idx, cls_label in enumerate(clf.classes_):
-            if cls_label == 1:
-                prob_col_idx = idx
-                break
-
-        feature_importance = {
-            fname: round(float(imp), 6)
-            for fname, imp in zip(features, clf.feature_importances_)
-            if imp > 0
-        }
-
-        warnings_list: list[dict] = []
         limitations: list[str] = [
             "Gradient boosting is semi-transparent: feature importance is available "
             "but individual boosting iterations are not human-readable",
             "Gradient boosting does not produce native scorecard points",
         ]
 
-        training_params = {
-            "n_estimators": n_estimators,
-            "max_depth": max_depth,
-            "learning_rate": learning_rate,
-            "min_samples_leaf": min_samples_leaf,
-            "random_state": random_seed,
-        }
-
-        estimator_art = _write_estimator(context.store, clf, context.step_spec.step_id, context.run_id, "gbdt")
-
-        model_payload = {
-            "feature_importance": feature_importance,
-            "feature_count": len(features),
-            "estimator_count": n_estimators,
-            "learning_rate": learning_rate,
-        }
-        interpretability = {
-            "explanation_type": "feature_importance",
-            "explanation_level": "native_semi_transparent",
-            "native_importance_available": True,
-            "limitations": limitations,
-            "global_importance_fields": ["feature_importance"],
-        }
-
-        model = build_model_artifact(
-            model_family="gbdt",
-            target_column=target_column,
-            features=features,
-            bad_class=bad_class,
-            good_class=good_class,
-            prob_col_idx=prob_col_idx,
-            feature_strategy=params.get("feature_strategy", "raw_numeric"),
-            estimator_art=estimator_art,
-            training_params=training_params,
-            random_seed=random_seed,
-            elapsed=elapsed,
-            model_payload=model_payload,
-            interpretability=interpretability,
-            context=context,
-            extra_metrics={"estimator_count": n_estimators},
-            warnings_list=warnings_list,
-            row_count=df.height,
-        )
-
-        artifact = write_json_artifact(
-            context.store, artifact_type="model", role="model",
-            stem=f"gbdt-model-{context.step_spec.step_id}",
-            payload=model,
-            metadata={
+        return _ClassifierResult(
+            model_payload={
+                "feature_importance": feature_importance,
                 "feature_count": len(features),
-                "target_column": target_column,
-                "model_family": "gbdt",
                 "estimator_count": n_estimators,
+                "learning_rate": learning_rate,
             },
+            interpretability={
+                "explanation_type": "feature_importance",
+                "explanation_level": "native_semi_transparent",
+                "native_importance_available": True,
+                "limitations": limitations,
+                "global_importance_fields": ["feature_importance"],
+            },
+            training_params={
+                "n_estimators": n_estimators,
+                "max_depth": max_depth,
+                "learning_rate": learning_rate,
+                "min_samples_leaf": min_samples_leaf,
+                "random_state": random_seed,
+            },
+            extra_metrics={"estimator_count": n_estimators},
         )
-
-        return NodeOutput(
-            artifacts=[artifact, estimator_art],
-            metrics={
-                "feature_count": len(features),
-                "estimator_count": n_estimators,
-            })
