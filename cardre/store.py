@@ -81,6 +81,9 @@ class ProjectStore:
         if self._db is not None:
             return self._db
         db_path = self.root / "cardre.sqlite"
+        # check_same_thread=False allows the caller to manage thread
+        # ownership; ProjectStore instances must NOT be shared across
+        # worker threads without external synchronization.
         conn = sqlite3.connect(str(db_path), check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
