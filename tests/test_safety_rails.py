@@ -11,28 +11,30 @@ failing (canary), at which point they should be updated.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
-from fastapi.testclient import TestClient
 
 from cardre.store import ProjectStore
-from sidecar.main import app
 
 pytest_plugins = []
 
 
 @pytest.fixture(autouse=True)
-def _reset_registry():
-    reg_path = Path.home() / ".cardre" / "projects.json"
-    if reg_path.exists():
-        reg_path.unlink()
-    yield
+def _isolated_registry(tmp_path, monkeypatch):
+    registry = tmp_path / "registry" / "projects.json"
+    monkeypatch.setenv("CARDRE_REGISTRY_PATH", str(registry))
 
 
 @pytest.fixture
 def client():
+    from fastapi.testclient import TestClient
+    from sidecar.main import app
     return TestClient(app)
+
+
+@pytest.fixture
+def bare_app():
+    from sidecar.main import app
+    return app
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +171,7 @@ class TestMethodSummarySchemaDrift:
         p.write_text("\n".join(lines))
         return p
 
-    def test_method_summary_endpoint_500s_on_missing_db_path(self, client, tmp_path, sample_german_credit):
+    def test_method_summary_endpoint_500s_on_missing_db_path(self, client, bare_app, tmp_path, sample_german_credit):
         proj_path = tmp_path / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Schema Drift Test"}).json()
         pid = proj["project_id"]
@@ -217,7 +219,8 @@ class TestMethodSummarySchemaDrift:
         # CURRENT BEHAVIOUR (Bug 1): store.db_path does not exist on
         # ProjectStore, causing an uncaught AttributeError.
         # TestClient raises it by default, so we must suppress that.
-        summary_resp = TestClient(app, raise_server_exceptions=False).get(
+        from fastapi.testclient import TestClient
+        summary_resp = TestClient(bare_app, raise_server_exceptions=False).get(
             f"/branches/{branch_id}/method-summary?project_id={pid}"
         )
         assert summary_resp.status_code == 500, (
