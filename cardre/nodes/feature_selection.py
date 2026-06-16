@@ -19,6 +19,7 @@ from cardre.audit import (
     NodeType,
     json_logical_hash,
 )
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 
 
 # ======================================================================
@@ -107,20 +108,15 @@ class FeatureSelectionFilterNode(NodeType):
         numeric_cols = [c for c in all_cols if df.schema[c].is_numeric()]
 
         # Read IV data from report artifacts if available
+        reader = ArtifactEvidenceReader(store)
         iv_map: dict[str, float] = {}
-        for a in context.input_artifacts:
-            if a.role == "report":
-                try:
-                    content = store.artifact_path(a).read_bytes()
-                    if content[:4] == b"PAR1":
-                        report_df = pl.read_parquet(store.artifact_path(a))
-                        if "iv" in report_df.columns and "variable" in report_df.columns:
-                            for row in report_df.iter_rows():
-                                var_name = str(row[report_df.columns.index("variable")])
-                                iv_val = float(row[report_df.columns.index("iv")])
-                                iv_map[var_name] = iv_val
-                except Exception:
-                    continue
+        iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
+        if iv_lf is not None:
+            iv_df = iv_lf.collect()
+            for row in iv_df.iter_rows():
+                var_name = str(row[iv_df.columns.index("variable")])
+                iv_val = float(row[iv_df.columns.index("iv")])
+                iv_map[var_name] = iv_val
 
         # Apply filters
         selected: list[dict] = []
@@ -335,17 +331,12 @@ class FeatureSelectionEmbeddedNode(NodeType):
         df = pl.read_parquet(store.artifact_path(train_art))
 
         # Read target metadata from definition
-        meta = {}
-        if def_art:
-            try:
-                meta = json.loads(store.artifact_path(def_art).read_text())
-            except Exception:
-                pass
-
+        reader = ArtifactEvidenceReader(store)
+        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         if not target_column:
-            target_column = meta.get("target_column", "")
-        good_values = set(str(v) for v in meta.get("good_values", []))
-        bad_values = set(str(v) for v in meta.get("bad_values", []))
+            target_column = meta.target_column if meta is not None else ""
+        good_values = set(str(v) for v in (meta.good_values if meta is not None else []))
+        bad_values = set(str(v) for v in (meta.bad_values if meta is not None else []))
 
         if not target_column or target_column not in df.columns:
             raise ValueError(f"Target column {target_column!r} not found in training data")
@@ -520,20 +511,14 @@ class ResampleTrainingDataNode(NodeType):
         random_seed = int(params.get("random_seed", 42))
 
         train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
-        def_art = next((a for a in context.input_artifacts if a.role == "definition"), None)
         if train_art is None:
             raise ValueError("resample_training_data requires a train artifact")
 
-        meta = {}
-        if def_art:
-            try:
-                meta = json.loads(store.artifact_path(def_art).read_text())
-            except Exception:
-                pass
-
-        target_col = meta.get("target_column", "")
-        good_values = set(str(v) for v in meta.get("good_values", []))
-        bad_values = set(str(v) for v in meta.get("bad_values", []))
+        reader = ArtifactEvidenceReader(store)
+        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        target_col = meta.target_column if meta is not None else ""
+        good_values = set(str(v) for v in (meta.good_values if meta is not None else []))
+        bad_values = set(str(v) for v in (meta.bad_values if meta is not None else []))
 
         if not target_col:
             raise ValueError("Target column required for resampling")
@@ -697,20 +682,14 @@ class SmoteTrainingDataNode(NodeType):
         random_seed = int(params.get("random_seed", 42))
 
         train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
-        def_art = next((a for a in context.input_artifacts if a.role == "definition"), None)
         if train_art is None:
             raise ValueError("smote_training_data requires a train artifact")
 
-        meta = {}
-        if def_art:
-            try:
-                meta = json.loads(store.artifact_path(def_art).read_text())
-            except Exception:
-                pass
-
-        target_col = meta.get("target_column", "")
-        good_values = set(str(v) for v in meta.get("good_values", []))
-        bad_values = set(str(v) for v in meta.get("bad_values", []))
+        reader = ArtifactEvidenceReader(store)
+        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        target_col = meta.target_column if meta is not None else ""
+        good_values = set(str(v) for v in (meta.good_values if meta is not None else []))
+        bad_values = set(str(v) for v in (meta.bad_values if meta is not None else []))
 
         if not target_col or not bad_values:
             raise ValueError("Target column and bad_values required for SMOTE")
