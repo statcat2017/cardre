@@ -95,6 +95,7 @@ class EvidenceKind(Enum):
     CUTOFF_ANALYSIS = "cutoff_analysis"
     SCORED_DATASET = "scored_dataset"
     MANUAL_BINNING_OVERRIDES = "manual_binning_overrides"
+    IV_TABLE = "iv_table"
 
 
 # ---------------------------------------------------------------------------
@@ -494,6 +495,13 @@ _EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_media_types={"application/vnd.apache.parquet"},
         required_columns={"variable", "bin_id", "woe"},
     ),
+    EvidenceKind.IV_TABLE: _Profile(
+        expected_roles={"report"},
+        expected_artifact_types={"report", "dataset"},
+        schema_version="",
+        expected_media_types={"application/vnd.apache.parquet"},
+        required_columns={"iv", "variable"},
+    ),
     EvidenceKind.WOE_IV_EVIDENCE: _Profile(
         expected_roles={"report"},
         expected_artifact_types={"report"},
@@ -705,6 +713,13 @@ class ArtifactEvidenceReader:
                 and self._parquet_has_columns(a, {"variable", "bin_id", "woe"})
             ]
             return parquet_reports
+        if kind == EvidenceKind.IV_TABLE:
+            return [
+                a for a in artifacts
+                if a.role == "report"
+                and a.media_type == "application/vnd.apache.parquet"
+                and self._parquet_has_columns(a, {"iv", "variable"})
+            ]
         return []
 
     def _match_by_payload_key(
@@ -747,6 +762,9 @@ class ArtifactEvidenceReader:
             return self._parse_woe_table(path, artifact)
 
         if kind == EvidenceKind.SCORED_DATASET:
+            return pl.scan_parquet(path)
+
+        if kind == EvidenceKind.IV_TABLE:
             return pl.scan_parquet(path)
 
         # JSON-based evidence
