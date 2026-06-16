@@ -118,6 +118,35 @@ def generate_report(project_id: str, run_id: str, req: GenerateReportRequest):
     )
 
 
+@router.get("/projects/{project_id}/runs/{run_id}/reports", response_model=list[ReportMetadataResponse])
+def list_run_reports(project_id: str, run_id: str):
+    """List all generated reports for a given run."""
+    store = get_store_for_project(project_id)
+    exports_dir = store.root / "exports"
+    if not exports_dir.is_dir():
+        return []
+
+    reports: list[ReportMetadataResponse] = []
+    for report_dir in sorted(exports_dir.iterdir()):
+        if not report_dir.is_dir() or not report_dir.name.startswith("report_"):
+            continue
+        rid = report_dir.name.removeprefix("report_")
+        meta = _load_metadata(store.root, rid)
+        if meta is None or meta.get("run_id") != run_id:
+            continue
+        reports.append(ReportMetadataResponse(
+            report_id=meta["report_id"],
+            created_at=meta.get("created_at", ""),
+            target_branch_id=meta.get("target_branch_id", ""),
+            report_mode=meta.get("report_mode", ""),
+            html_path=meta.get("html_path", ""),
+            bundle_path=meta.get("bundle_path", ""),
+            export_path=meta.get("export_path", ""),
+            status=meta.get("status", ""),
+        ))
+    return reports
+
+
 @router.get("/projects/{project_id}/runs/{run_id}/reports/{report_id}", response_model=ReportMetadataResponse)
 def get_report_metadata(project_id: str, run_id: str, report_id: str):
     store = get_store_for_project(project_id)
@@ -156,7 +185,10 @@ def serve_report_file(
 
     project_root = Path(entry["path"])
     exports_root = (project_root / "exports").resolve()
-    target = (exports_root / path).resolve()
+    if path.startswith("exports/"):
+        target = (project_root / path).resolve()
+    else:
+        target = (exports_root / path).resolve()
 
     if not target.is_relative_to(exports_root):
         raise HTTPException(status_code=403, detail={"code": "PATH_TRAVERSAL", "message": "Path must be within project exports directory"})

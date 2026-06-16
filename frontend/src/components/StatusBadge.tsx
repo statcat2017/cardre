@@ -20,12 +20,12 @@ const STATUS_LABELS: Record<StepStatusCode, string> = {
 };
 
 interface Props {
-  status: StepStatusCode;
+  status: string;
 }
 
 export function StatusBadge({ status }: Props) {
-  const color = STATUS_COLORS[status] || "#9ca3af";
-  const label = STATUS_LABELS[status] || status;
+  const color = STATUS_COLORS[status as StepStatusCode] || "#9ca3af";
+  const label = STATUS_LABELS[status as StepStatusCode] || status;
 
   return (
     <span
