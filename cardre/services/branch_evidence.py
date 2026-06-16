@@ -109,6 +109,7 @@ class BranchEvidenceResolver:
                 source_by_step[r["step_id"]] = r.get("source_branch_id") or None
 
         stale_shared: list[str] = []
+        spec_by_step = {s.step_id: s for s in steps}
         for sid in shared_upstream_step_ids:
             sb = source_by_step.get(sid)
             rs = self._find_shared_evidence(
@@ -117,6 +118,10 @@ class BranchEvidenceResolver:
             )
             if rs is None:
                 stale_shared.append(sid)
+            else:
+                spec = spec_by_step.get(sid)
+                if spec is not None and not self._is_evidence_fresh(spec, rs):
+                    stale_shared.append(sid)
 
         if stale_shared:
             raise ValueError(
@@ -223,6 +228,25 @@ class BranchEvidenceResolver:
     # ------------------------------------------------------------------
     # internal helpers
     # ------------------------------------------------------------------
+
+    def _is_evidence_fresh(
+        self,
+        spec: StepSpec,
+        run_step: RunStepRecord,
+    ) -> bool:
+        """Check that *run_step*'s fingerprint matches the current *spec*.
+
+        Returns False when params, node type/version, or parent output
+        hashes have changed since the run-step was recorded.
+        """
+        fp = run_step.execution_fingerprint
+        if fp.get("params_hash", "") != spec.params_hash:
+            return False
+        if fp.get("node_type", "") != spec.node_type:
+            return False
+        if fp.get("node_version", "") != spec.node_version:
+            return False
+        return True
 
     def _find_shared_evidence(
         self,
