@@ -16,6 +16,7 @@ from cardre.audit import (
     json_logical_hash,
     table_logical_hash,
 )
+from cardre.evidence import AmbiguousEvidenceError
 from cardre.executor import PlanExecutor, RoleAccessError
 from cardre.nodes import (
     ApplyExclusionsNode,
@@ -923,7 +924,7 @@ class CalculateWoeIvTests(unittest.TestCase):
             validated_params=params, runtime_metadata={},
         )
         node = CalculateWoeIvNode()
-        with self.assertRaises(ValueError):
+        with self.assertRaises(AmbiguousEvidenceError):
             node.run(ctx)
 
 

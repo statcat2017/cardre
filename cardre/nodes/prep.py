@@ -12,6 +12,7 @@ from cardre.audit import (
     NodeOutput,
     NodeType,
 )
+from cardre.evidence import SCHEMA_MODELLING_METADATA
 
 
 GERMAN_CREDIT_COLUMNS = [
@@ -485,11 +486,12 @@ class DefineModellingMetadataNode(NodeType):
             "performance_window": params.get("performance_window"),
         }
 
+        metadata["schema_version"] = SCHEMA_MODELLING_METADATA
         artifact = write_json_artifact(
             store, artifact_type="definition", role="definition",
             stem=f"modelling-metadata-{context.step_spec.step_id}",
             payload=metadata,
-            metadata={"source_artifact_id": dataset_artifact.artifact_id},
+            metadata={"source_artifact_id": dataset_artifact.artifact_id, "schema_version": SCHEMA_MODELLING_METADATA},
         )
 
         fingerprint = make_fingerprint(
