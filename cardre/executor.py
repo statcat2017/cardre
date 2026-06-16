@@ -124,107 +124,12 @@ class PlanExecutor:
 
         Returns the run_id.
         """
-        branch = store.get_branch(branch_id)
-        if branch is None:
-            raise ValueError(f"Branch {branch_id} not found")
-        if branch.get("status") != "active":
-            raise ValueError(f"Branch {branch_id} is not active")
+        from cardre.services.branch_evidence import BranchEvidenceResolver
+        resolver = BranchEvidenceResolver(self)
+        ctx = resolver.prepare_branch_run(store, branch_id, plan_version_id)
+        if ctx.short_circuit_run_id is not None:
+            return ctx.short_circuit_run_id
 
-        if branch["head_plan_version_id"] != plan_version_id:
-            raise ValueError(
-                f"BRANCH_VERSION_MISMATCH: Branch head is {branch['head_plan_version_id']}, "
-                f"requested {plan_version_id}"
-            )
-
-        step_map = store.get_branch_step_map(branch_id, plan_version_id)
-        branch_owned_step_ids = {
-            r["step_id"] for r in step_map if r["is_branch_owned"]
-        }
-        shared_upstream_step_ids = {
-            r["step_id"] for r in step_map if r["is_shared_upstream"]
-        }
-
-        steps = store.get_plan_version_steps(plan_version_id)
-        self._validate_topology(steps)
-
-        # Compute branch-scoped staleness for branch-owned steps, but use
-        # full-plan (branch_id=NULL) staleness for shared upstream checks.
-        branch_staleness = self.compute_staleness(store, plan_version_id, branch_id=branch_id)
-        plan_staleness = self.compute_staleness(store, plan_version_id, branch_id=None)
-
-        # Merge: shared upstream steps use full-plan staleness, branch-owned use branch-scoped
-        merged_staleness = dict(plan_staleness)
-        for sid, is_stale in branch_staleness.items():
-            if sid not in shared_upstream_step_ids:
-                merged_staleness[sid] = is_stale
-
-        # Check shared upstream staleness using full-plan evidence
-        stale_shared = [
-            sid for sid in shared_upstream_step_ids
-            if plan_staleness.get(sid, True)
-        ]
-        if stale_shared:
-            raise ValueError(
-                f"SHARED_UPSTREAM_STALE: Cannot run branch {branch_id} because "
-                f"shared upstream steps {stale_shared} are stale. "
-                "Run the shared pathway first."
-            )
-
-        # Seed step_outputs and run_step_records from latest successful
-        # run evidence for shared upstream steps. This ensures
-        # _resolve_inputs() can find parent outputs.
-        def _find_shared_evidence(step_id: str) -> RunStepRecord | None:
-            rs = store.get_latest_successful_run_step_for_step(
-                plan_version_id, step_id, branch_id=None,
-            )
-            if rs is not None:
-                return rs
-            plan_run_id = store.get_latest_successful_run_id_for_plan(branch["plan_id"])
-            if plan_run_id is not None:
-                for prs in store.get_run_steps(plan_run_id):
-                    if prs.step_id == step_id and prs.status == STATUS_SUCCEEDED:
-                        return prs
-            return None
-
-        # Identify stale branch-owned steps that need execution
-        stale_branch_step_ids = [
-            sid for sid in branch_owned_step_ids
-            if branch_staleness.get(sid, True)
-        ]
-
-        # Short-circuit if no branch-owned steps are stale — don't create
-        # an empty successful run that poisons future staleness.
-        if not stale_branch_step_ids:
-            existing_run_id = store.get_latest_successful_run_id(
-                plan_version_id, branch_id=branch_id,
-            )
-            if existing_run_id is not None:
-                return existing_run_id
-            raise ValueError(
-                f"BRANCH_NO_OP_FAILED: All branch-owned steps are current "
-                f"but no prior successful branch run exists for branch {branch_id}."
-            )
-
-        step_outputs: dict[str, list[ArtifactRef]] = {}
-        run_step_records: dict[str, RunStepRecord] = {}
-        for sid in shared_upstream_step_ids:
-            rs = _find_shared_evidence(sid)
-            if rs is not None:
-                run_step_records[sid] = rs
-                step_outputs[sid] = self._resolve_output_artifacts(store, rs)
-
-        # Seed current (non-stale) branch-owned step evidence too, so
-        # downstream branch-owned steps can consume their outputs.
-        for spec in steps:
-            if spec.step_id in branch_owned_step_ids and not branch_staleness.get(spec.step_id, True):
-                rs = store.get_latest_successful_run_step_for_step(
-                    plan_version_id, spec.step_id, branch_id=branch_id,
-                )
-                if rs is not None:
-                    run_step_records[spec.step_id] = rs
-                    step_outputs[spec.step_id] = self._resolve_output_artifacts(store, rs)
-
-        # Create run with branch association (or use existing)
         if run_id is None:
             run_id = store.create_run(plan_version_id, branch_id=branch_id)
 
@@ -232,39 +137,23 @@ class PlanExecutor:
         executed_ids: list[str] = []
 
         try:
-            for spec in steps:
+            for spec in ctx.steps:
                 if has_failure:
                     break
-                if spec.step_id not in branch_owned_step_ids:
+                if spec.step_id not in ctx.branch_owned_step_ids:
                     continue
-                # Skip if already current
-                if not branch_staleness.get(spec.step_id, True):
+                if spec.step_id not in ctx.stale_branch_step_ids:
                     continue
 
-                # Seed shared upstream parent outputs that were missed
-                for pid in spec.parent_step_ids:
-                    if pid in shared_upstream_step_ids and pid not in step_outputs:
-                        rs = _find_shared_evidence(pid)
-                        if rs is not None:
-                            run_step_records[pid] = rs
-                            step_outputs[pid] = self._resolve_output_artifacts(store, rs)
-
-                    # Also seed current branch-owned parent outputs
-                    if pid in branch_owned_step_ids and pid not in step_outputs:
-                        rs = store.get_latest_successful_run_step_for_step(
-                            plan_version_id, pid, branch_id=branch_id,
-                        )
-                        if rs is not None:
-                            run_step_records[pid] = rs
-                            step_outputs[pid] = self._resolve_output_artifacts(store, rs)
+                resolver.resolve_parent_evidence(store, ctx, spec)
 
                 executed_ids.append(spec.step_id)
                 rs = self._execute_step(
                     store, spec, plan_version_id, run_id,
-                    step_outputs, run_step_records,
+                    ctx.step_outputs, ctx.run_step_records,
                 )
-                run_step_records[spec.step_id] = rs
-                step_outputs[spec.step_id] = self._resolve_output_artifacts(store, rs)
+                ctx.run_step_records[spec.step_id] = rs
+                ctx.step_outputs[spec.step_id] = self._resolve_output_artifacts(store, rs)
 
                 if rs.status == STATUS_FAILED:
                     has_failure = True

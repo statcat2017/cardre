@@ -755,6 +755,49 @@ class ProjectStore:
             errors=json.loads(row["errors_json"]),
         )
 
+    def get_latest_successful_run_step_for_step_across_plan(
+        self,
+        plan_id: str,
+        step_id: str,
+        branch_id: str | None = None,
+    ) -> RunStepRecord | None:
+        if branch_id:
+            row = self._connect().execute(
+                "SELECT rs.* FROM run_steps rs "
+                "JOIN runs r ON rs.run_id = r.run_id "
+                "JOIN plan_versions pv ON rs.plan_version_id = pv.plan_version_id "
+                "WHERE pv.plan_id = ? AND rs.step_id = ? "
+                "AND r.branch_id = ? AND rs.status = 'succeeded' "
+                "ORDER BY rs.started_at DESC LIMIT 1",
+                (plan_id, step_id, branch_id),
+            ).fetchone()
+        else:
+            row = self._connect().execute(
+                "SELECT rs.* FROM run_steps rs "
+                "JOIN runs r ON rs.run_id = r.run_id "
+                "JOIN plan_versions pv ON rs.plan_version_id = pv.plan_version_id "
+                "WHERE pv.plan_id = ? AND rs.step_id = ? "
+                "AND r.branch_id IS NULL AND rs.status = 'succeeded' "
+                "ORDER BY rs.started_at DESC LIMIT 1",
+                (plan_id, step_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return RunStepRecord(
+            run_step_id=row["run_step_id"],
+            run_id=row["run_id"],
+            step_id=row["step_id"],
+            plan_version_id=row["plan_version_id"],
+            status=row["status"],
+            started_at=row["started_at"],
+            finished_at=row["finished_at"],
+            input_artifact_ids=json.loads(row["input_artifact_ids_json"]),
+            output_artifact_ids=json.loads(row["output_artifact_ids_json"]),
+            execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
+            warnings=json.loads(row["warnings_json"]),
+            errors=json.loads(row["errors_json"]),
+        )
+
     def get_plan_id_for_version(self, plan_version_id: str) -> str | None:
         row = self._connect().execute(
             "SELECT plan_id FROM plan_versions WHERE plan_version_id = ?",

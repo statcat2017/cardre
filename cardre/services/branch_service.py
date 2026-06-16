@@ -225,8 +225,8 @@ class BranchService:
                     (
                         str(uuid.uuid4()),
                         branch_id, new_pv_id, s.canonical_step_id, s.step_id,
-                        base_branch_id if was_duplicated else None,
-                        original_step_id if was_duplicated else None,
+                        base_branch_id if (was_duplicated or is_shared) else None,
+                        original_step_id if was_duplicated else s.step_id if is_shared else None,
                         1 if is_shared else 0,
                         0 if is_shared else 1,
                         now,
