@@ -52,13 +52,9 @@ def get_branch_comparison(comparison_id: str):
     registry = load_registry()
     for pid, entry in registry.items():
         store = get_store_for_project(pid)
-        row = store._connect().execute(
-            "SELECT * FROM branch_comparisons WHERE comparison_id = ?",
-            (comparison_id,),
-        ).fetchone()
-        if row is not None:
+        comp = store.get_branch_comparison(comparison_id)
+        if comp is not None:
             import json
-            comp = dict(row)
             return ComparisonResponse(
                 comparison_id=comp["comparison_id"],
                 project_id=comp["project_id"],
@@ -76,11 +72,8 @@ def refresh_branch_comparison(comparison_id: str):
     registry = load_registry()
     for pid, entry in registry.items():
         store = get_store_for_project(pid)
-        row = store._connect().execute(
-            "SELECT project_id FROM branch_comparisons WHERE comparison_id = ?",
-            (comparison_id,),
-        ).fetchone()
-        if row is not None:
+        comp = store.get_branch_comparison(comparison_id)
+        if comp is not None:
             try:
                 result = refresh_comparison(store, comparison_id)
             except ValueError as exc:
@@ -104,13 +97,9 @@ def get_comparison_snapshot(snapshot_id: str):
     registry = load_registry()
     for pid, entry in registry.items():
         store = get_store_for_project(pid)
-        row = store._connect().execute(
-            "SELECT * FROM branch_comparison_snapshots WHERE comparison_snapshot_id = ?",
-            (snapshot_id,),
-        ).fetchone()
-        if row is not None:
+        snap = store.get_comparison_snapshot(snapshot_id)
+        if snap is not None:
             import json
-            snap = dict(row)
             readiness = json.loads(snap.get("readiness_json", "{}"))
             return ComparisonSnapshotResponse(
                 comparison_snapshot_id=snap["comparison_snapshot_id"],

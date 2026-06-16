@@ -182,13 +182,9 @@ def export_branch_audit_pack(
 
     # 8. Comparison snapshot
     if comparison_snapshot_id:
-        snap = store._connect().execute(
-            "SELECT * FROM branch_comparison_snapshots WHERE comparison_snapshot_id = ?",
-            (comparison_snapshot_id,),
-        ).fetchone()
+        snap = store.get_comparison_snapshot(comparison_snapshot_id)
         if snap:
-            snap_data = dict(snap)
-            (export_dir / "comparison_snapshot.json").write_text(json.dumps(snap_data, indent=2))
+            (export_dir / "comparison_snapshot.json").write_text(json.dumps(snap, indent=2))
             file_count += 1
             art = store.get_artifact(snap["comparison_artifact_id"])
             if art:
@@ -200,13 +196,9 @@ def export_branch_audit_pack(
                     file_count += 1
 
     # 9. Champion assignment
-    champ = store._connect().execute(
-        "SELECT * FROM champion_assignments "
-        "WHERE champion_branch_id = ? AND superseded_at IS NULL ORDER BY assigned_at DESC LIMIT 1",
-        (branch_id,),
-    ).fetchone()
+    champ = store.get_champion_assignment_by_branch(branch_id)
     if champ:
-        (export_dir / "champion_assignment.json").write_text(json.dumps(dict(champ), indent=2))
+        (export_dir / "champion_assignment.json").write_text(json.dumps(champ, indent=2))
         file_count += 1
 
     # 10. Phase 5 governance report

@@ -42,19 +42,13 @@ def assign_champion(
         raise ValueError(f"CHAMPION_BRANCH_MISMATCH: Branch {branch_id} does not belong to plan {plan_id}.")
 
     # Verify comparison exists
-    comparison = store._connect().execute(
-        "SELECT * FROM branch_comparisons WHERE comparison_id = ?",
-        (comparison_id,),
-    ).fetchone()
+    comparison = store.get_branch_comparison(comparison_id)
     if comparison is None:
         raise ValueError(f"COMPARISON_NOT_FOUND: {comparison_id}")
 
     # Verify snapshot belongs to this comparison
-    snap = store._connect().execute(
-        "SELECT * FROM branch_comparison_snapshots WHERE comparison_snapshot_id = ? AND comparison_id = ?",
-        (comparison_snapshot_id, comparison_id),
-    ).fetchone()
-    if snap is None:
+    snap = store.get_comparison_snapshot(comparison_snapshot_id)
+    if snap is None or snap["comparison_id"] != comparison_id:
         raise ValueError(f"COMPARISON_SNAPSHOT_NOT_FOUND: {comparison_snapshot_id} does not belong to comparison {comparison_id}.")
 
     readiness = json.loads(snap["readiness_json"])

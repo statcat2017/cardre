@@ -143,22 +143,22 @@ class TestReportServeURLContract:
 # ---------------------------------------------------------------------------
 
 class TestMethodSummarySchemaDrift:
-    """The method_summary endpoint has two bugs:
+    """The method_summary endpoint had three bugs:
 
-    1. It references ``store.db_path`` but ``ProjectStore`` does not
+    1. It referenced ``store.db_path`` but ``ProjectStore`` does not
        expose a ``db_path`` attribute (the path is a local variable in
-       ``_connect()``).  This causes an **AttributeError** → 500 before
-       the SQL even runs.
+       ``_connect()``).  This caused an **AttributeError** → 500 before
+       the SQL even runs.  Fixed by using ``store.get_sqlite_path()``.
 
-    2. The raw SQL references ``rs.artifact_ids`` (does not exist —
-       schema uses ``input_artifact_ids_json`` /
-       ``output_artifact_ids_json``) and filters by ``rs.status =
-       'success'`` (actual status is ``'succeeded'``).
+    2. The raw SQL referenced ``rs.artifact_ids`` (does not exist —
+       schema uses ``output_artifact_ids_json``) and filtered by
+       ``rs.status = 'success'`` (actual status is ``'succeeded'``).
 
-    Bug 1 currently blocks the endpoint entirely.  Once fixed, bug 2
-    will surface (returning a 200 with warnings because sqlite3.Error
-    is caught in a try/except).  This test acts as a dual-layered
-    canary.
+    3. The model-ranking endpoint also referenced ``store.db_path`` and
+       used the wrong column name ``snapshot_id`` instead of
+       ``comparison_snapshot_id``.
+
+    All three bugs are now fixed.  The endpoint should return 200.
     """
 
     @pytest.fixture
@@ -171,7 +171,7 @@ class TestMethodSummarySchemaDrift:
         p.write_text("\n".join(lines))
         return p
 
-    def test_method_summary_endpoint_500s_on_missing_db_path(self, client, bare_app, tmp_path, sample_german_credit):
+    def test_method_summary_endpoint_200s_with_expected_fields(self, client, tmp_path, sample_german_credit):
         proj_path = tmp_path / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Schema Drift Test"}).json()
         pid = proj["project_id"]
@@ -216,18 +216,23 @@ class TestMethodSummarySchemaDrift:
         branch_id = branches[0]["branch_id"]
 
         # Call the method-summary endpoint.
-        # CURRENT BEHAVIOUR (Bug 1): store.db_path does not exist on
-        # ProjectStore, causing an uncaught AttributeError.
-        # TestClient raises it by default, so we must suppress that.
-        from fastapi.testclient import TestClient
-        summary_resp = TestClient(bare_app, raise_server_exceptions=False).get(
+        # After bug fixes (correct attribute, column name, status value),
+        # the endpoint should return 200 with expected fields.
+        summary_resp = client.get(
             f"/branches/{branch_id}/method-summary?project_id={pid}"
         )
-        assert summary_resp.status_code == 500, (
-            f"method-summary currently 500s because store.db_path is not an attribute. "
+        assert summary_resp.status_code == 200, (
+            f"method-summary should return 200 after bug fixes. "
             f"Got {summary_resp.status_code}: {summary_resp.text}"
         )
 
-        # CANARY: once Bug 1 is fixed, the endpoint will return 200 (Bug 2
-        # will surface with warnings).  At that point this assertion must be
-        # updated from ==500 to ==200.
+        data = summary_resp.json()
+        assert data["branch_id"] == branch_id
+        assert "model_family" in data
+        assert "feature_strategy" in data
+        assert "feature_count" in data
+        assert "interpretability_level" in data
+        assert "champion_eligibility" in data
+        assert "limitations" in data
+        assert "warnings" in data
+        assert "evidence_readiness" in data

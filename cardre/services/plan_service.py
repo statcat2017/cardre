@@ -16,7 +16,7 @@ from cardre.executor import PlanExecutor
 from cardre.nodes import validate_manual_binning_overrides, apply_manual_binning_overrides
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
-from sidecar.models import (
+from cardre.services.plan_dto import (
     ManualBinningEditorStateResponse,
     ManualBinningPreviewResponse,
     ManualBinningSourceInfo,

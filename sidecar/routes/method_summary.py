@@ -50,44 +50,27 @@ def get_branch_method_summary(
     model_found = False
 
     # Query run-steps for this branch
-    import sqlite3
-    conn = sqlite3.connect(str(store.db_path))
-    conn.row_factory = sqlite3.Row
-    try:
-        cursor = conn.execute(
-            "SELECT rs.artifact_ids, rs.node_type, rs.status "
-            "FROM run_steps rs "
-            "JOIN runs r ON rs.run_id = r.run_id "
-            "WHERE r.branch_id = ? AND rs.status = 'success' "
-            "ORDER BY rs.position DESC",
-            (branch_id,),
-        )
-        for row in cursor.fetchall():
-            artifact_ids = json.loads(row["artifact_ids"]) if row["artifact_ids"] else []
-            for aid in artifact_ids:
-                art = store.get_artifact(aid)
-                if art is None:
+    for artifact_ids in store.get_output_artifact_ids_for_branch(branch_id):
+        for aid in artifact_ids:
+            art = store.get_artifact(aid)
+            if art is None:
+                continue
+            if art.artifact_type == "model" and art.role == "model":
+                art_path = store.artifact_path(art)
+                try:
+                    model_data = json.loads(art_path.read_text())
+                except (json.JSONDecodeError, OSError):
+                    endpoint_warnings.append(f"Failed to read model artifact {aid}")
                     continue
-                if art.artifact_type == "model" and art.role == "model":
-                    art_path = store.artifact_path(art)
-                    try:
-                        model_data = json.loads(art_path.read_text())
-                    except (json.JSONDecodeError, OSError):
-                        endpoint_warnings.append(f"Failed to read model artifact {aid}")
-                        continue
-                    model_family = model_data.get("model_family")
-                    feature_strategy = model_data.get("feature_strategy")
-                    feature_count = len(model_data.get("features", []))
-                    interpretability_level = model_data.get("interpretability", {}).get("explanation_level")
-                    limitations = model_data.get("interpretability", {}).get("limitations", [])
-                    model_found = True
-                    break
-            if model_found:
+                model_family = model_data.get("model_family")
+                feature_strategy = model_data.get("feature_strategy")
+                feature_count = len(model_data.get("features", []))
+                interpretability_level = model_data.get("interpretability", {}).get("explanation_level")
+                limitations = model_data.get("interpretability", {}).get("limitations", [])
+                model_found = True
                 break
-    except sqlite3.Error as e:
-        endpoint_warnings.append(f"Database error: {e}")
-    finally:
-        conn.close()
+        if model_found:
+            break
 
     if not model_found:
         endpoint_warnings.append("No model artifact found for this branch")
@@ -127,19 +110,11 @@ def get_model_ranking(
 
     # Read snapshot
     try:
-        import sqlite3
-        conn = sqlite3.connect(str(store.db_path))
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT * FROM branch_comparison_snapshots WHERE snapshot_id = ?",
-            (snapshot_id,),
-        ).fetchone()
-        conn.close()
-
+        row = store.get_comparison_snapshot(snapshot_id)
         if row is None:
             raise HTTPException(status_code=404, detail=f"Snapshot not found: {snapshot_id!r}")
 
-        artifact_id = row["artifact_id"]
+        artifact_id = row["comparison_artifact_id"]
         art = store.get_artifact(artifact_id)
         if art is None:
             raise HTTPException(status_code=404, detail="Snapshot artifact not found")

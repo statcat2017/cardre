@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -39,7 +40,8 @@ def get_plan(plan_id: str, project_id: str | None = None):
         raise HTTPException(status_code=404, detail={"code": "PLAN_NOT_FOUND", "message": f"No plan with ID {plan_id}"})
 
     store = _get_store(registry[project_id]["path"])
-    return PlanService(store).get_plan_with_status(plan_id, project_id)
+    plan_dto = PlanService(store).get_plan_with_status(plan_id, project_id)
+    return PlanResponse(**dataclasses.asdict(plan_dto))
 
 
 @router.post("/{plan_id}/steps/{step_id}/params", response_model=UpdateStepParamsResponse)
@@ -50,7 +52,8 @@ def update_step_params(plan_id: str, step_id: str, req: UpdateStepParamsRequest)
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {req.project_id}"})
 
     store = _get_store(entry["path"])
-    return PlanService(store).update_params(plan_id, step_id, req.base_plan_version_id, dict(req.params))
+    result = PlanService(store).update_params(plan_id, step_id, req.base_plan_version_id, dict(req.params))
+    return UpdateStepParamsResponse(**dataclasses.asdict(result))
 
 
 @router.get("/{plan_id}/steps/{step_id}/editor-state", response_model=ManualBinningEditorStateResponse)
@@ -61,7 +64,8 @@ def get_manual_binning_editor_state(plan_id: str, step_id: str, project_id: str)
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
 
     store = _get_store(entry["path"])
-    return PlanService(store).get_manual_binning_editor_state(plan_id, step_id=step_id)
+    result = PlanService(store).get_manual_binning_editor_state(plan_id, step_id=step_id)
+    return ManualBinningEditorStateResponse(**dataclasses.asdict(result))
 
 
 @router.post("/{plan_id}/steps/{step_id}/manual-binning/preview", response_model=ManualBinningPreviewResponse)
@@ -72,5 +76,6 @@ def preview_manual_binning_overrides(plan_id: str, step_id: str, req: ManualBinn
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {req.project_id}"})
 
     store = _get_store(entry["path"])
-    return PlanService(store).preview_manual_binning(plan_id, req.plan_version_id, req.overrides, step_id=step_id)
+    result = PlanService(store).preview_manual_binning(plan_id, req.plan_version_id, req.overrides, step_id=step_id)
+    return ManualBinningPreviewResponse(**dataclasses.asdict(result))
 
