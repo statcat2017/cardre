@@ -172,7 +172,7 @@ class ApplyWoeMappingNode(NodeType):
 
 class ApplyModelNode(NodeType):
     node_type = "cardre.apply_model"
-    version = "1"
+    version = "2"
     category = "apply"
     input_roles: list[str] = ["train", "test", "oot", "model", "scorecard"]
     output_roles: list[str] = ["train", "test", "oot"]
@@ -185,20 +185,50 @@ class ApplyModelNode(NodeType):
         scorecard_art = next((a for a in context.input_artifacts if a.role == "scorecard"), None)
         if model_art is None:
             raise ValueError("apply_model requires a model artifact")
-        if scorecard_art is None:
-            raise ValueError("apply_model requires a scorecard artifact")
 
         model = json.loads(store.artifact_path(model_art).read_text())
-        scorecard = json.loads(store.artifact_path(scorecard_art).read_text())
+
+        model_family = model.get("model_family", "logistic_regression")
+        if model_family == "logistic_regression":
+            return self._apply_logistic(context, model, model_art, scorecard_art)
+        elif model_family in (
+            "decision_tree", "random_forest", "gbdt",
+            "xgboost", "lightgbm", "catboost",
+        ):
+            return self._apply_sklearn_estimator(context, model, model_art, scorecard_art)
+        elif model_family in ("voting_ensemble", "weighted_ensemble"):
+            return self._apply_voting_weighted_ensemble(context, model, model_art)
+        else:
+            raise ValueError(
+                f"apply_model: unsupported model_family {model_family!r}. "
+                f"Supported families: logistic_regression, decision_tree, random_forest, "
+                f"gbdt, xgboost, lightgbm, catboost, voting_ensemble, weighted_ensemble"
+            )
+
+    def _apply_logistic(
+        self, context: ExecutionContext, model: dict, model_art, scorecard_art,
+    ) -> NodeOutput:
+        import numpy as np
+
+        store = context.store
 
         features = model.get("features", [])
         intercept = float(model.get("intercept", 0))
         coefficients = model.get("coefficients", {})
 
-        target_column = model.get("target_column", "")
-        offset = float(scorecard.get("offset", 0))
-        factor = float(scorecard.get("factor", 1))
-        direction = -1.0 if scorecard.get("higher_score_is_lower_risk", True) else 1.0
+        prob_col_idx = model.get("probability_column_index", 1)
+
+        if scorecard_art is not None:
+            scorecard = json.loads(store.artifact_path(scorecard_art).read_text())
+            offset = float(scorecard.get("offset", 0))
+            factor = float(scorecard.get("factor", 1))
+            direction = -1.0 if scorecard.get("higher_score_is_lower_risk", True) else 1.0
+            has_scorecard = True
+        else:
+            offset = 0.0
+            factor = 1.0
+            direction = -1.0
+            has_scorecard = False
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
         outputs = []
@@ -218,12 +248,247 @@ class ApplyModelNode(NodeType):
                 log_odds += float(coefficients.get(feat, 0)) * feature_arr[:, i]
 
             pred_bad = 1.0 / (1.0 + np.exp(-log_odds))
-            score_vals = offset + direction * factor * log_odds
 
-            df = df.with_columns([
+            columns_to_add = [
                 pl.Series("predicted_bad_probability", pred_bad, dtype=pl.Float64),
-                pl.Series("score", score_vals, dtype=pl.Float64),
-            ])
+                pl.Series("raw_model_output", log_odds, dtype=pl.Float64),
+                pl.lit(model_art.artifact_id).alias("model_artifact_id"),
+                pl.lit("logistic_regression").alias("model_family"),
+            ]
+
+            if has_scorecard:
+                score_vals = offset + direction * factor * log_odds
+                columns_to_add.append(pl.Series("score", score_vals, dtype=pl.Float64))
+                columns_to_add.append(pl.Series("cardre_scaled_score", score_vals, dtype=pl.Float64))
+
+            df = df.with_columns(columns_to_add)
+            art = write_parquet_artifact(
+                store, artifact_type="dataset", role=role,
+                stem=f"scored-{role}-{context.step_spec.step_id}",
+                frame=df,
+                metadata={"model_artifact_id": model_art.artifact_id},
+            )
+            outputs.append(art)
+
+        fp = make_fingerprint(
+            plan_version_id=context.plan_version_id,
+            step_id=context.step_spec.step_id,
+            node_type=self.node_type, node_version=self.version,
+            params_hash=context.step_spec.params_hash,
+            parent_run_steps=context.parent_run_steps,
+            input_artifacts=context.input_artifacts,
+            output_artifacts=outputs,
+        )
+        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)}, execution_fingerprint=fp)
+
+    def _apply_sklearn_estimator(
+        self, context: ExecutionContext, model: dict, model_art, scorecard_art,
+    ) -> NodeOutput:
+        import numpy as np
+
+        store = context.store
+
+        estimator_ref = model.get("estimator_reference", {})
+        estimator_artifact_id = estimator_ref.get("artifact_id", "")
+
+        feature_contract = model.get("feature_contract", {})
+        features = feature_contract.get("features", [])
+        if not features:
+            features = model.get("features", [])
+
+        prob_col_idx = model.get("probability_column_index", 1)
+
+        scorecard = None
+        if scorecard_art is not None:
+            scorecard = json.loads(store.artifact_path(scorecard_art).read_text())
+
+        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
+        outputs = []
+
+        if not estimator_artifact_id:
+            raise ValueError(
+                "apply_model: non-logistic model requires estimator_reference.artifact_id"
+            )
+
+        estimator_art = store.get_artifact(estimator_artifact_id)
+        if estimator_art is None:
+            raise ValueError(
+                f"apply_model: estimator artifact {estimator_artifact_id!r} not found"
+            )
+
+        from cardre.modeling.serialization import read_estimator_artifact
+        estimator_bytes = read_estimator_artifact(
+            store, estimator_art,
+            expected_logical_hash=estimator_ref.get("logical_hash"),
+        )
+
+        import io
+        import joblib
+        estimator = joblib.load(io.BytesIO(estimator_bytes))
+
+        for data_art in data_arts:
+            df = pl.read_parquet(store.artifact_path(data_art))
+            role = data_art.role
+            missing = [f for f in features if f not in df.columns]
+            if missing:
+                raise ValueError(
+                    f"apply_model: role {role!r} missing features {missing}"
+                )
+
+            X = df.select(features).to_numpy()
+
+            if hasattr(estimator, "predict_proba"):
+                proba = estimator.predict_proba(X)
+                if proba.shape[1] > prob_col_idx:
+                    pred_bad = proba[:, prob_col_idx]
+                else:
+                    pred_bad = proba[:, -1]
+            else:
+                raw_output = estimator.predict(X)
+                pred_bad = raw_output.astype(np.float64)
+
+            columns_to_add = [
+                pl.Series("predicted_bad_probability", pred_bad, dtype=pl.Float64),
+                pl.lit(model_art.artifact_id).alias("model_artifact_id"),
+                pl.lit(model.get("model_family", "unknown")).alias("model_family"),
+            ]
+
+            if scorecard is not None:
+                offset = float(scorecard.get("offset", 0))
+                factor = float(scorecard.get("factor", 1))
+                higher_is_lower = scorecard.get("higher_score_is_lower_risk", True)
+                direction = -1.0 if higher_is_lower else 1.0
+                log_odds = np.log(np.clip(pred_bad / np.maximum(1 - pred_bad, 1e-15), 1e-15, None))
+                score_vals = offset + direction * factor * log_odds
+                columns_to_add.append(pl.Series("score", score_vals, dtype=pl.Float64))
+                columns_to_add.append(pl.Series("cardre_scaled_score", score_vals, dtype=pl.Float64))
+
+            df = df.with_columns(columns_to_add)
+            art = write_parquet_artifact(
+                store, artifact_type="dataset", role=role,
+                stem=f"scored-{role}-{context.step_spec.step_id}",
+                frame=df,
+                metadata={"model_artifact_id": model_art.artifact_id},
+            )
+            outputs.append(art)
+
+        fp = make_fingerprint(
+            plan_version_id=context.plan_version_id,
+            step_id=context.step_spec.step_id,
+            node_type=self.node_type, node_version=self.version,
+            params_hash=context.step_spec.params_hash,
+            parent_run_steps=context.parent_run_steps,
+            input_artifacts=context.input_artifacts,
+            output_artifacts=outputs,
+        )
+        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)}, execution_fingerprint=fp)
+
+    def _apply_voting_weighted_ensemble(
+        self, context: ExecutionContext, model: dict, model_art,
+    ) -> NodeOutput:
+        import json
+        import numpy as np
+
+        store = context.store
+        model_payload = model.get("model_payload", {})
+        base_models = model_payload.get("base_models", [])
+        ensemble_type = model_payload.get("ensemble_type", "voting")
+        weights_list = model_payload.get("weights", None)
+        voting = model_payload.get("voting", "soft")
+        threshold = model_payload.get("threshold", 0.5)
+
+        features = model.get("features", [])
+        prob_col_idx = model.get("probability_column_index", 1)
+
+        # Load base model artifacts and their features
+        base_artifacts = []
+        for bm in base_models:
+            aid = bm.get("artifact_id", "")
+            if not aid:
+                continue
+            art = store.get_artifact(aid)
+            if art is None:
+                continue
+            try:
+                base_artifacts.append(json.loads(store.artifact_path(art).read_text()))
+            except Exception:
+                continue
+
+        if not base_artifacts:
+            raise ValueError("No base model artifacts could be loaded for ensemble apply")
+
+        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
+        outputs = []
+
+        for data_art in data_arts:
+            df = pl.read_parquet(store.artifact_path(data_art))
+            role = data_art.role
+
+            all_probs = []
+            for bm_art in base_artifacts:
+                bm_art_features = bm_art.get("features", [])
+                bm_features = bm_art.get("feature_contract", {}).get("features", []) or bm_art_features
+                missing = [f for f in bm_features if f not in df.columns]
+                if missing:
+                    raise ValueError(
+                        f"apply_model: ensemble base model role {role!r} missing features {missing}"
+                    )
+
+                bm_family = bm_art.get("model_family", "")
+                bm_prob_col = bm_art.get("probability_column_index", 1)
+
+                if bm_family == "logistic_regression":
+                    coefs = bm_art.get("coefficients", {})
+                    intercept = float(bm_art.get("intercept", 0))
+                    X = df.select(bm_features).to_numpy()
+                    log_odds = np.full(X.shape[0], intercept, dtype=np.float64)
+                    for i, feat in enumerate(bm_features):
+                        log_odds += float(coefs.get(feat, 0)) * X[:, i]
+                    probs = 1.0 / (1.0 + np.exp(-log_odds))
+                else:
+                    estimator_ref = bm_art.get("estimator_reference", {})
+                    estimator_art_id = estimator_ref.get("artifact_id", "")
+                    if not estimator_art_id:
+                        raise ValueError("Ensemble base model missing estimator_reference")
+                    est_art = store.get_artifact(estimator_art_id)
+                    if est_art is None:
+                        raise ValueError(f"Base model estimator artifact {estimator_art_id!r} not found")
+                    from cardre.modeling.serialization import read_estimator_artifact
+                    import joblib
+                    import io
+                    est_bytes = read_estimator_artifact(
+                        store, est_art,
+                        expected_logical_hash=estimator_ref.get("logical_hash"),
+                    )
+                    estimator = joblib.load(io.BytesIO(est_bytes))
+                    X = df.select(bm_features).to_numpy()
+                    if hasattr(estimator, "predict_proba"):
+                        proba = estimator.predict_proba(X)
+                        if proba.shape[1] > bm_prob_col:
+                            probs = proba[:, bm_prob_col]
+                        else:
+                            probs = proba[:, -1]
+                    else:
+                        probs = estimator.predict(X).astype(np.float64)
+                all_probs.append(probs)
+
+            prob_matrix = np.column_stack(all_probs)
+
+            if ensemble_type == "weighted" and weights_list:
+                weights = np.array(weights_list, dtype=np.float64)
+                pred_bad = prob_matrix @ weights
+            elif voting == "soft":
+                pred_bad = np.mean(prob_matrix, axis=1)
+            else:
+                predictions = (prob_matrix >= threshold).astype(int)
+                pred_bad = (np.sum(predictions, axis=1) > (len(base_artifacts) / 2)).astype(float)
+
+            columns_to_add = [
+                pl.Series("predicted_bad_probability", pred_bad, dtype=pl.Float64),
+                pl.lit(model_art.artifact_id).alias("model_artifact_id"),
+                pl.lit(model.get("model_family", "unknown")).alias("model_family"),
+            ]
+            df = df.with_columns(columns_to_add)
             art = write_parquet_artifact(
                 store, artifact_type="dataset", role=role,
                 stem=f"scored-{role}-{context.step_spec.step_id}",
@@ -246,13 +511,61 @@ class ApplyModelNode(NodeType):
 
 class ValidationMetricsNode(NodeType):
     node_type = "cardre.validation_metrics"
-    version = "1"
+    version = "2"
     category = "apply"
     input_roles: list[str] = ["train", "test", "oot", "definition"]
     output_roles: list[str] = ["report"]
 
+    def _derive_y_bin(
+        self, df: pl.DataFrame, target_col: str, good: set[str], bad: set[str],
+    ) -> tuple[list[int] | None, list[dict]]:
+        """Derive binary target from definition metadata; never from predictions.
+
+        Returns (y_bin or None if target is unavailable, warnings).
+        """
+        warnings: list[dict] = []
+        if not target_col or target_col not in df.columns:
+            warnings.append({
+                "code": "MISSING_TARGET_COLUMN",
+                "message": f"Target column {target_col!r} not found; "
+                           "all metrics except row count are unavailable.",
+            })
+            return None, warnings
+        if not good and not bad:
+            warnings.append({
+                "code": "MISSING_TARGET_METADATA",
+                "message": "No good_values/bad_values in definition artifact; "
+                           "all metrics except row count are unavailable.",
+            })
+            return None, warnings
+
+        y_raw = df[target_col].cast(pl.String).to_list()
+        y_bin = [1 if str(v) in bad else 0 for v in y_raw]
+        n_bad = sum(y_bin)
+        n_good = len(y_bin) - n_bad
+        if n_bad == 0:
+            warnings.append({
+                "code": "SINGLE_CLASS_ONLY_GOOD",
+                "message": f"Target column {target_col!r} has no bad-class rows; "
+                           "AUC and discrimination metrics are undefined.",
+            })
+        elif n_good == 0:
+            warnings.append({
+                "code": "SINGLE_CLASS_ONLY_BAD",
+                "message": f"Target column {target_col!r} has no good-class rows; "
+                           "AUC and discrimination metrics are undefined.",
+            })
+        return y_bin, warnings
+
     def run(self, context: ExecutionContext) -> NodeOutput:
-        from sklearn.metrics import roc_auc_score
+        from sklearn.metrics import (
+            confusion_matrix,
+            f1_score,
+            precision_score,
+            recall_score,
+            roc_auc_score,
+        )
+        import numpy as np
 
         store = context.store
         meta_art = None
@@ -273,6 +586,8 @@ class ValidationMetricsNode(NodeType):
         good = set(str(v) for v in meta.get("good_values", []))
         bad = set(str(v) for v in meta.get("bad_values", []))
 
+        cutoffs = list(context.validated_params.get("cutoffs", [0.5]))
+
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
         metrics_report: dict = {}
         psi_bins: dict[str, list[float]] = {}
@@ -282,39 +597,40 @@ class ValidationMetricsNode(NodeType):
             df = pl.read_parquet(store.artifact_path(data_art))
             n = df.height
 
-            if target_col not in df.columns:
-                metrics_report[role] = {"row_count": n, "error": f"Missing target column {target_col!r}"}
-                continue
             if "predicted_bad_probability" not in df.columns:
                 metrics_report[role] = {"row_count": n, "error": "Missing predicted_bad_probability"}
                 continue
-            if "score" not in df.columns:
-                metrics_report[role] = {"row_count": n, "error": "Missing score column"}
-                continue
 
-            y_true = df[target_col].cast(pl.String).to_list()
-            y_bin = [1 if str(v) in bad else 0 for v in y_true]
+            y_bin, warnings = self._derive_y_bin(df, target_col, good, bad)
             y_prob = df["predicted_bad_probability"].to_list()
-            scores = df["score"].to_list()
+            scores = df["score"].to_list() if "score" in df.columns else y_prob
+
+            if y_bin is None:
+                metrics_report[role] = {
+                    "row_count": n,
+                    "warnings": warnings,
+                }
+                continue
 
             n_bad = sum(y_bin)
             n_good = n - n_bad
+
+            # Threshold-invariant metrics
             auc_val = None
             gini_val = None
             ks_val = None
+            ks_at = 0.0
             calib = {}
             score_dist = {}
 
             if n_bad > 0 and n_good > 0:
-                auc_val = float(roc_auc_score(y_bin, y_prob))
+                auc_val = round(float(roc_auc_score(y_bin, y_prob)), 6)
                 gini_val = round(2 * auc_val - 1, 6)
-                auc_val = round(auc_val, 6)
 
                 sorted_by_score = sorted(zip(scores, y_bin), key=lambda x: x[0])
                 cum_good = 0
                 cum_bad = 0
                 ks = 0.0
-                ks_at = 0.0
                 total_good = n_good
                 total_bad = n_bad
                 for sc, is_bad in sorted_by_score:
@@ -331,6 +647,28 @@ class ValidationMetricsNode(NodeType):
             else:
                 calib = {"note": "Single class only; metrics skipped"}
 
+            # Threshold-dependent metrics at each cutoff
+            at_cutoffs: dict[str, dict] = {}
+            for cutoff in cutoffs:
+                y_pred = [1 if p >= cutoff else 0 for p in y_prob]
+                tn, fp, fn, tp = confusion_matrix(y_bin, y_pred, labels=[0, 1]).ravel()
+                accuracy = round((tp + tn) / n, 6) if n > 0 else 0.0
+                precision = round(tp / (tp + fp), 6) if (tp + fp) > 0 else 0.0
+                recall = round(tp / (tp + fn), 6) if (tp + fn) > 0 else 0.0  # sensitivity
+                specificity = round(tn / (tn + fp), 6) if (tn + fp) > 0 else 0.0
+                f1 = round(f1_score(y_bin, y_pred, zero_division=0), 6)
+                g_mean = round((recall * specificity) ** 0.5, 6) if recall > 0 and specificity > 0 else 0.0
+                at_cutoffs[str(cutoff)] = {
+                    "cutoff": cutoff,
+                    "confusion_matrix": {"tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)},
+                    "accuracy": accuracy,
+                    "precision": precision,
+                    "recall": recall,
+                    "specificity": specificity,
+                    "f1": f1,
+                    "g_mean": g_mean,
+                }
+
             metrics_report[role] = {
                 "row_count": n,
                 "auc": auc_val,
@@ -339,6 +677,8 @@ class ValidationMetricsNode(NodeType):
                 "ks_at_score": round(ks_at, 2) if ks_val else None,
                 "calibration": calib,
                 "score_distribution": score_dist,
+                "at_cutoffs": at_cutoffs,
+                "warnings": warnings,
             }
             psi_bins[role] = scores
 
@@ -421,11 +761,195 @@ class ValidationMetricsNode(NodeType):
         return round(float(psi), 6)
 
 
+class ThresholdOptimizationNode(NodeType):
+    """Optimize classification threshold using multiple objectives.
+
+    Evaluates thresholds across the full probability range and selects
+    the best threshold for each objective: Youden index (J), max F1,
+    max G-Mean, and custom cost minimization.
+
+    Emits a policy artifact that can be consumed by downstream decision
+    nodes. Does not overwrite model probabilities.
+    """
+
+    node_type = "cardre.threshold_optimization"
+    version = "1"
+    category = "apply"
+    input_roles: list[str] = ["train", "test", "oot", "definition"]
+    output_roles: list[str] = ["report"]
+
+    OBJECTIVES = {"youden", "max_f1", "max_g_mean", "cost_minimize"}
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        objective = params.get("objective", "youden")
+        if objective not in self.OBJECTIVES:
+            errors.append(f"objective must be one of {sorted(self.OBJECTIVES)}, got {objective!r}")
+
+        n_thresholds = params.get("n_thresholds", 200)
+        try:
+            if int(n_thresholds) < 10:
+                errors.append("n_thresholds must be >= 10")
+        except (ValueError, TypeError):
+            errors.append("n_thresholds must be an integer")
+
+        cost_fp = params.get("cost_fp")
+        cost_fn = params.get("cost_fn")
+        if objective == "cost_minimize":
+            if cost_fp is None or cost_fn is None:
+                errors.append("cost_fp and cost_fn are required for cost_minimize objective")
+            else:
+                try:
+                    float(cost_fp)
+                    float(cost_fn)
+                except (ValueError, TypeError):
+                    errors.append("cost_fp and cost_fn must be numbers")
+
+        return errors
+
+    def run(self, context: ExecutionContext) -> NodeOutput:
+        import numpy as np
+
+        store = context.store
+        params = context.validated_params
+        objective = params.get("objective", "youden")
+        n_thresholds = int(params.get("n_thresholds", 200))
+        cost_fp = float(params.get("cost_fp", 1.0))
+        cost_fn = float(params.get("cost_fn", 10.0))
+
+        meta_art = None
+        for a in context.input_artifacts:
+            if a.role == "definition":
+                try:
+                    p = json.loads(store.artifact_path(a).read_text())
+                    if "target_column" in p and "good_values" in p:
+                        meta_art = a
+                        break
+                except Exception:
+                    continue
+
+        meta = {}
+        if meta_art:
+            meta = json.loads(store.artifact_path(meta_art).read_text())
+        target_col = meta.get("target_column", "")
+        good = set(str(v) for v in meta.get("good_values", []))
+        bad = set(str(v) for v in meta.get("bad_values", []))
+
+        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
+        report: dict = {"objective": objective, "cost_fp": cost_fp, "cost_fn": cost_fn, "roles": {}}
+
+        for data_art in data_arts:
+            role = data_art.role
+            df = pl.read_parquet(store.artifact_path(data_art))
+
+            if "predicted_bad_probability" not in df.columns:
+                report["roles"][role] = {"error": "Missing predicted_bad_probability"}
+                continue
+
+            y_prob = df["predicted_bad_probability"].to_list()
+            y_bin = [0] * df.height
+            if target_col and target_col in df.columns and bad:
+                y_raw = df[target_col].cast(pl.String).to_list()
+                y_bin = [1 if str(v) in bad else 0 for v in y_raw]
+
+            n_bad = sum(y_bin)
+            n_good = len(y_bin) - n_bad
+            if n_bad == 0 or n_good == 0:
+                report["roles"][role] = {"error": "Single class; threshold optimization skipped"}
+                continue
+
+            thresholds = np.linspace(0.0, 1.0, n_thresholds)
+            best = {"threshold": 0.5, "objective_value": -np.inf, "detail": {}}
+
+            for t in thresholds:
+                y_pred = [1 if p >= t else 0 for p in y_prob]
+                tn, fp, fn, tp = self._confusion(y_bin, y_pred)
+
+                recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+                precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+                f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+                g_mean = (recall * specificity) ** 0.5 if recall > 0 and specificity > 0 else 0.0
+                cost = cost_fp * fp + cost_fn * fn
+                j = recall + specificity - 1.0
+
+                detail = {
+                    "recall": round(recall, 6),
+                    "specificity": round(specificity, 6),
+                    "precision": round(precision, 6),
+                    "f1": round(f1, 6),
+                    "g_mean": round(g_mean, 6),
+                    "cost": round(cost, 6),
+                    "youden_j": round(j, 6),
+                }
+
+                if objective == "youden":
+                    score = j
+                elif objective == "max_f1":
+                    score = f1
+                elif objective == "max_g_mean":
+                    score = g_mean
+                elif objective == "cost_minimize":
+                    score = -cost  # minimize cost = maximize negative cost
+                else:
+                    score = 0.0
+
+                if score > best["objective_value"]:
+                    best = {"threshold": round(float(t), 6), "objective_value": round(score, 6), "detail": detail}
+
+            report["roles"][role] = best
+
+        # Select best threshold from test set, fallback to train, fallback to 0.5
+        selected_threshold = 0.5
+        for role_priority in ["test", "train", "oot"]:
+            role_data = report["roles"].get(role_priority, {})
+            if "threshold" in role_data:
+                selected_threshold = role_data["threshold"]
+                break
+
+        report["selected_threshold"] = selected_threshold
+
+        art = write_json_artifact(
+            store, artifact_type="report", role="report",
+            stem=f"threshold-optimization-{context.step_spec.step_id}",
+            payload=report,
+            metadata={"objective": objective, "selected_threshold": selected_threshold},
+        )
+        fp = make_fingerprint(
+            plan_version_id=context.plan_version_id,
+            step_id=context.step_spec.step_id,
+            node_type=self.node_type, node_version=self.version,
+            params_hash=context.step_spec.params_hash,
+            parent_run_steps=context.parent_run_steps,
+            input_artifacts=context.input_artifacts,
+            output_artifacts=[art],
+        )
+        return NodeOutput(
+            artifacts=[art],
+            metrics={"selected_threshold": selected_threshold},
+            execution_fingerprint=fp,
+        )
+
+    def _confusion(self, y_bin: list[int], y_pred: list[int]) -> tuple[int, int, int, int]:
+        """Compute (tn, fp, fn, tp)."""
+        tn = fp = fn = tp = 0
+        for actual, predicted in zip(y_bin, y_pred):
+            if actual == 0 and predicted == 0:
+                tn += 1
+            elif actual == 0 and predicted == 1:
+                fp += 1
+            elif actual == 1 and predicted == 0:
+                fn += 1
+            else:
+                tp += 1
+        return tn, fp, fn, tp
+
+
 class CutoffAnalysisNode(NodeType):
     node_type = "cardre.cutoff_analysis"
     version = "1"
     category = "apply"
-    input_roles: list[str] = ["train", "test", "oot"]
+    input_roles: list[str] = ["train", "test", "oot", "definition"]
     output_roles: list[str] = ["report"]
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
@@ -448,8 +972,27 @@ class CutoffAnalysisNode(NodeType):
         if band_count < 2:
             raise ValueError(f"band_count must be at least 2, got {band_count}")
 
+        meta_art = None
+        for a in context.input_artifacts:
+            if a.role == "definition":
+                try:
+                    p = json.loads(store.artifact_path(a).read_text())
+                    if "target_column" in p and "good_values" in p:
+                        meta_art = a
+                        break
+                except Exception:
+                    continue
+
+        meta = {}
+        if meta_art:
+            meta = json.loads(store.artifact_path(meta_art).read_text())
+        target_col = meta.get("target_column", "")
+        good = set(str(v) for v in meta.get("good_values", []))
+        bad = set(str(v) for v in meta.get("bad_values", []))
+
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
         report: dict = {}
+        warnings: list[dict] = []
 
         for data_art in data_arts:
             role = data_art.role
@@ -469,7 +1012,25 @@ class CutoffAnalysisNode(NodeType):
                 step = (max_s - min_s) / band_count
                 bands = [min_s + i * step for i in range(1, band_count)]
 
-            y_bin = [1 if str(v) in ("bad", "2") else 0 for v in df["predicted_bad_probability"].to_list()]
+            if not target_col or target_col not in df.columns:
+                warnings.append({
+                    "role": role,
+                    "code": "MISSING_TARGET_COLUMN",
+                    "message": f"Target column {target_col!r} not found in role {role!r}; "
+                               "bad rate and capture rate are not meaningful.",
+                })
+                y_bin = [0] * df.height
+            elif not good and not bad:
+                warnings.append({
+                    "role": role,
+                    "code": "MISSING_TARGET_METADATA",
+                    "message": "No good_values/bad_values in definition artifact; "
+                               "bad rate and capture rate are not meaningful.",
+                })
+                y_bin = [0] * df.height
+            else:
+                y_raw = df[target_col].cast(pl.String).to_list()
+                y_bin = [1 if str(v) in bad else 0 for v in y_raw]
 
             bands_with_sentinel = [float("-inf")] + bands + [float("inf")]
             band_results = []
@@ -495,8 +1056,11 @@ class CutoffAnalysisNode(NodeType):
             report[role] = {
                 "row_count": len(scores),
                 "bands": band_results,
-                "overall_bad_rate": round(sum(y_bin) / len(y_bin), 4),
+                "overall_bad_rate": round(sum(y_bin) / len(y_bin), 4) if y_bin else 0,
             }
+
+        if warnings:
+            report["warnings"] = warnings
 
         art = write_json_artifact(
             store, artifact_type="report", role="report",

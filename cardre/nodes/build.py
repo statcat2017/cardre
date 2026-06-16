@@ -13,6 +13,7 @@ from cardre.audit import (
     ExecutionContext,
     NodeOutput,
     NodeType,
+    json_logical_hash,
 )
 
 
@@ -1127,6 +1128,8 @@ class TechnicalManifestExportNode(NodeType):
                         selected_variables = sel.get("selected", [])
                     elif node_type == "cardre.logistic_regression" and art.artifact_type == "model":
                         model_artifact_data = json.loads(store.artifact_path(art).read_text())
+                    elif node_type == "cardre.decision_tree_classifier" and art.artifact_type == "model":
+                        model_artifact_data = json.loads(store.artifact_path(art).read_text())
                     elif node_type == "cardre.score_scaling" and art.artifact_type == "scorecard":
                         scorecard_artifact_data = json.loads(store.artifact_path(art).read_text())
                     elif node_type == "cardre.validation_metrics" and art.artifact_type == "report":
@@ -1531,13 +1534,35 @@ class LogisticRegressionNode(NodeType):
             else:
                 training_params[k] = v
 
+        prob_col_idx = 1
+        for idx, cls_label in enumerate(lr.classes_):
+            if str(cls_label) == str(bad_class):
+                prob_col_idx = idx
+                break
+
+        feature_order_hash = json_logical_hash(
+            {"features": features_list}
+        )
+
         model = {
+            "schema_version": "cardre.model_artifact.v1",
+            "model_family": "logistic_regression",
             "target_column": target_column,
             "features": features_list,
             "intercept": round(float(lr.intercept_[0]), 6),
             "coefficients": coefficients,
             "class_mapping": class_mapping,
             "bad_class_label": str(bad_class),
+            "target_event_value": str(bad_class),
+            "probability_column_index": prob_col_idx,
+            "feature_contract": {
+                "features": features_list,
+                "transformation_strategy": "woe",
+                "order_hash": feature_order_hash,
+                "missing_policy": "error",
+                "unknown_category_policy": "error",
+            },
+            "feature_order_hash": feature_order_hash,
             "training": {
                 "row_count": X.shape[0],
                 "converged": converged,
