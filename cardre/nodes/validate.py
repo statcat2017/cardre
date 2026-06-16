@@ -11,6 +11,7 @@ from sklearn.metrics import roc_auc_score
 from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
 from cardre.audit import (
     ExecutionContext,
+    JsonDict,
     NodeOutput,
     NodeType,
 )
@@ -996,14 +997,13 @@ class CutoffAnalysisNode(NodeType):
         bad = set(str(v) for v in meta.get("bad_values", []))
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        report: dict = {}
-        warnings: list[dict] = []
+        cutoff_tables: dict[str, list[JsonDict]] = {}
+        warnings: list[JsonDict] = []
 
         for data_art in data_arts:
             role = data_art.role
             df = pl.read_parquet(store.artifact_path(data_art))
             if "score" not in df.columns or "predicted_bad_probability" not in df.columns:
-                report[role] = {"error": "Missing score or predicted_bad_probability column"}
                 continue
 
             scores = df["score"].to_list()
@@ -1058,20 +1058,26 @@ class CutoffAnalysisNode(NodeType):
                     "capture_rate": round(n_bad_band / sum(y_bin) if sum(y_bin) > 0 else 0, 4),
                 })
 
-            report[role] = {
-                "row_count": len(scores),
-                "bands": band_results,
-                "overall_bad_rate": round(sum(y_bin) / len(y_bin), 4) if y_bin else 0,
-            }
+            cutoff_tables[role] = [
+                {
+                    "score_cutoff": b["upper"] if b["upper"] is not None else b["lower"],
+                    "approval_rate": b["approval_rate"],
+                    "bad_rate": b["bad_rate"],
+                    "capture_rate": b["capture_rate"],
+                }
+                for b in band_results
+            ]
 
+        payload: JsonDict = {
+            "schema_version": SCHEMA_CUTOFF_ANALYSIS,
+            "cutoff_tables": cutoff_tables,
+        }
         if warnings:
-            report["warnings"] = warnings
-
-        report["schema_version"] = SCHEMA_CUTOFF_ANALYSIS
+            payload["warnings"] = warnings
         art = write_json_artifact(
             store, artifact_type="report", role="report",
             stem=f"cutoff-analysis-{context.step_spec.step_id}",
-            payload=report,
+            payload=payload,
             metadata={"schema_version": SCHEMA_CUTOFF_ANALYSIS},
         )
         fp = make_fingerprint(
