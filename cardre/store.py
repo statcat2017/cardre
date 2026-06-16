@@ -858,6 +858,16 @@ class ProjectStore:
         ).fetchone()
         return None if row is None else row["run_id"]
 
+    def get_output_artifact_ids_for_branch(self, branch_id: str) -> list[list[str]]:
+        rows = self._connect().execute(
+            "SELECT rs.output_artifact_ids_json FROM run_steps rs "
+            "JOIN runs r ON rs.run_id = r.run_id "
+            "WHERE r.branch_id = ? AND rs.status = 'succeeded' "
+            "ORDER BY rs.started_at DESC",
+            (branch_id,),
+        ).fetchall()
+        return [json.loads(r["output_artifact_ids_json"]) for r in rows if r["output_artifact_ids_json"]]
+
     # ------------------------------------------------------------------
     # Database / state queries
     # ------------------------------------------------------------------
