@@ -96,7 +96,7 @@ def write_parquet_artifact(
     return artifact
 
 
-def make_fingerprint(
+def make_fingerprint(  # DEPRECATED: fingerprints are now built by the executor. This remains for backward-compatible testing only.
     plan_version_id: str,
     step_id: str,
     node_type: str,

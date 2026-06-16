@@ -1,0 +1,4531 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "cardre-api",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Get Health",
+        "operationId": "get_health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Create Project",
+        "operationId": "create_project_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Get Project",
+        "operationId": "get_project_projects__project_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/plans": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Get Project Plans",
+        "operationId": "get_project_plans_projects__project_id__plans_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectPlansResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/runs": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Get Project Runs",
+        "operationId": "get_project_runs_projects__project_id__runs_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectRunsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/artifacts": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Get Project Artifacts",
+        "operationId": "get_project_artifacts_projects__project_id__artifacts_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "name": "artifact_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Artifact Type"
+            }
+          },
+          {
+            "name": "producing_step_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Producing Step Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectArtifactsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/datasets/import": {
+      "post": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Import Dataset",
+        "operationId": "import_dataset_datasets_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportDatasetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plans/{plan_id}": {
+      "get": {
+        "tags": [
+          "plans"
+        ],
+        "summary": "Get Plan",
+        "operationId": "get_plan_plans__plan_id__get",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plans/{plan_id}/steps/{step_id}/params": {
+      "post": {
+        "tags": [
+          "plans"
+        ],
+        "summary": "Update Step Params",
+        "operationId": "update_step_params_plans__plan_id__steps__step_id__params_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Step Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStepParamsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStepParamsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plans/{plan_id}/steps/{step_id}/editor-state": {
+      "get": {
+        "tags": [
+          "plans"
+        ],
+        "summary": "Get Manual Binning Editor State",
+        "operationId": "get_manual_binning_editor_state_plans__plan_id__steps__step_id__editor_state_get",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Step Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualBinningEditorStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plans/{plan_id}/steps/{step_id}/manual-binning/preview": {
+      "post": {
+        "tags": [
+          "plans"
+        ],
+        "summary": "Preview Manual Binning Overrides",
+        "operationId": "preview_manual_binning_overrides_plans__plan_id__steps__step_id__manual_binning_preview_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Step Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualBinningPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualBinningPreviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Run Plan",
+        "operationId": "run_plan_runs_post",
+        "parameters": [
+          {
+            "name": "sync",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Execute synchronously (for tests)",
+              "default": false,
+              "title": "Sync"
+            },
+            "description": "Execute synchronously (for tests)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get Run",
+        "operationId": "get_run_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/steps": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get Run Steps",
+        "operationId": "get_run_steps_runs__run_id__steps_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunStepsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/branches": {
+      "get": {
+        "tags": [
+          "branches"
+        ],
+        "summary": "List Branches",
+        "operationId": "list_branches_projects__project_id__branches_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "plan_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "branch_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch Type"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/branches/{branch_id}": {
+      "get": {
+        "tags": [
+          "branches"
+        ],
+        "summary": "Get Branch",
+        "operationId": "get_branch_branches__branch_id__get",
+        "parameters": [
+          {
+            "name": "branch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Branch Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plans/{plan_id}/branches": {
+      "post": {
+        "tags": [
+          "branches"
+        ],
+        "summary": "Create Branch",
+        "operationId": "create_branch_plans__plan_id__branches_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBranchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateBranchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/migrations/baseline": {
+      "post": {
+        "tags": [
+          "branches"
+        ],
+        "summary": "Migrate Baseline",
+        "operationId": "migrate_baseline_migrations_baseline_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/branch-comparisons": {
+      "post": {
+        "tags": [
+          "comparisons"
+        ],
+        "summary": "Create Branch Comparison",
+        "operationId": "create_branch_comparison_branch_comparisons_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateComparisonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/branch-comparisons/{comparison_id}": {
+      "get": {
+        "tags": [
+          "comparisons"
+        ],
+        "summary": "Get Branch Comparison",
+        "operationId": "get_branch_comparison_branch_comparisons__comparison_id__get",
+        "parameters": [
+          {
+            "name": "comparison_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Comparison Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/branch-comparisons/{comparison_id}/refresh": {
+      "post": {
+        "tags": [
+          "comparisons"
+        ],
+        "summary": "Refresh Branch Comparison",
+        "operationId": "refresh_branch_comparison_branch_comparisons__comparison_id__refresh_post",
+        "parameters": [
+          {
+            "name": "comparison_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Comparison Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshComparisonResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/branch-comparison-snapshots/{snapshot_id}": {
+      "get": {
+        "tags": [
+          "comparisons"
+        ],
+        "summary": "Get Comparison Snapshot",
+        "operationId": "get_comparison_snapshot_branch_comparison_snapshots__snapshot_id__get",
+        "parameters": [
+          {
+            "name": "snapshot_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Snapshot Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonSnapshotResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plans/{plan_id}/champion": {
+      "post": {
+        "tags": [
+          "champion"
+        ],
+        "summary": "Assign Plan Champion",
+        "operationId": "assign_plan_champion_plans__plan_id__champion_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignChampionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChampionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "champion"
+        ],
+        "summary": "Get Plan Champion",
+        "operationId": "get_plan_champion_plans__plan_id__champion_get",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "scope_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "project",
+              "title": "Scope Type"
+            }
+          },
+          {
+            "name": "scope_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "default",
+              "title": "Scope Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChampionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exports/audit-pack": {
+      "post": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "Export Audit Pack",
+        "operationId": "export_audit_pack_exports_audit_pack_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportAuditPackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportAuditPackResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/artifacts/{artifact_id}": {
+      "get": {
+        "tags": [
+          "artifacts"
+        ],
+        "summary": "Get Artifact",
+        "operationId": "get_artifact_artifacts__artifact_id__get",
+        "parameters": [
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Artifact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/artifacts/{artifact_id}/summary": {
+      "get": {
+        "tags": [
+          "artifacts"
+        ],
+        "summary": "Get Artifact Summary",
+        "operationId": "get_artifact_summary_artifacts__artifact_id__summary_get",
+        "parameters": [
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Artifact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactSummaryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/artifacts/{artifact_id}/preview": {
+      "get": {
+        "tags": [
+          "artifacts"
+        ],
+        "summary": "Get Artifact Preview",
+        "operationId": "get_artifact_preview_artifacts__artifact_id__preview_get",
+        "parameters": [
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Artifact Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactPreviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/runs/{run_id}/report-readiness": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Get Report Readiness",
+        "operationId": "get_report_readiness_projects__project_id__runs__run_id__report_readiness_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportReadinessRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportReadinessResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/runs/{run_id}/reports": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Generate Report",
+        "operationId": "generate_report_projects__project_id__runs__run_id__reports_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateReportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/runs/{run_id}/reports/{report_id}": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Get Report Metadata",
+        "operationId": "get_report_metadata_projects__project_id__runs__run_id__reports__report_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportMetadataResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/reports/serve": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Serve Report File",
+        "description": "Serve a report file (HTML or JSON) from a project's exports directory.\n\nUsed by the frontend to open generated reports in a browser tab.\nThe path is relative to the project's exports directory\n(e.g. 'report_abc123/report/report.html').",
+        "operationId": "serve_report_file_projects__project_id__reports_serve_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Relative path to report file within project exports",
+              "title": "Path"
+            },
+            "description": "Relative path to report file within project exports"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/node-types": {
+      "get": {
+        "tags": [
+          "node-types"
+        ],
+        "summary": "List Node Types",
+        "description": "List all registered node types with method metadata.",
+        "operationId": "list_node_types_node_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeTypeListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/node-types/{node_type}/schema": {
+      "get": {
+        "tags": [
+          "node-types"
+        ],
+        "summary": "Get Node Type Schema",
+        "description": "Get parameter schema for a specific node type.",
+        "operationId": "get_node_type_schema_node_types__node_type__schema_get",
+        "parameters": [
+          {
+            "name": "node_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Node Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeTypeSchemaResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/branches/{branch_id}/method-summary": {
+      "get": {
+        "tags": [
+          "method-summary"
+        ],
+        "summary": "Get Branch Method Summary",
+        "description": "Get method summary for a branch: model family, metrics, limitations.\n\nMVP stub: returns model artifact metadata when available. Evidence\nreadiness resolution is not yet wired.",
+        "operationId": "get_branch_method_summary_branches__branch_id__method_summary_get",
+        "parameters": [
+          {
+            "name": "branch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Branch Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Project ID",
+              "title": "Project Id"
+            },
+            "description": "Project ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MethodSummaryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/branch-comparison-snapshots/{snapshot_id}/model-ranking": {
+      "get": {
+        "tags": [
+          "method-summary"
+        ],
+        "summary": "Get Model Ranking",
+        "description": "Rank branches by a selected metric from a comparison snapshot.",
+        "operationId": "get_model_ranking_branch_comparison_snapshots__snapshot_id__model_ranking_get",
+        "parameters": [
+          {
+            "name": "snapshot_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Snapshot Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Project ID",
+              "title": "Project Id"
+            },
+            "description": "Project ID"
+          },
+          {
+            "name": "metric",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "auc",
+              "title": "Metric"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelRankingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ArtifactListItem": {
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "title": "Artifact Id"
+          },
+          "artifact_type": {
+            "type": "string",
+            "title": "Artifact Type"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "physical_hash": {
+            "type": "string",
+            "title": "Physical Hash"
+          },
+          "logical_hash": {
+            "type": "string",
+            "title": "Logical Hash"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "artifact_id",
+          "artifact_type",
+          "role",
+          "path",
+          "physical_hash",
+          "logical_hash",
+          "media_type",
+          "created_at",
+          "metadata"
+        ],
+        "title": "ArtifactListItem"
+      },
+      "ArtifactPreviewResponse": {
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "title": "Artifact Id"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "row_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count"
+          },
+          "column_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column Count"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnInfo"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "json_content": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Json Content"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "default": 100
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "artifact_id",
+          "media_type"
+        ],
+        "title": "ArtifactPreviewResponse"
+      },
+      "ArtifactResponse": {
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "title": "Artifact Id"
+          },
+          "artifact_type": {
+            "type": "string",
+            "title": "Artifact Type"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "physical_hash": {
+            "type": "string",
+            "title": "Physical Hash"
+          },
+          "logical_hash": {
+            "type": "string",
+            "title": "Logical Hash"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "artifact_id",
+          "artifact_type",
+          "role",
+          "path",
+          "physical_hash",
+          "logical_hash",
+          "media_type",
+          "created_at",
+          "metadata"
+        ],
+        "title": "ArtifactResponse"
+      },
+      "ArtifactSummaryResponse": {
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "title": "Artifact Id"
+          },
+          "artifact_type": {
+            "type": "string",
+            "title": "Artifact Type"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "logical_hash": {
+            "type": "string",
+            "title": "Logical Hash"
+          },
+          "physical_hash": {
+            "type": "string",
+            "title": "Physical Hash"
+          },
+          "row_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count"
+          },
+          "column_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column Count"
+          },
+          "summary_preview": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Preview"
+          }
+        },
+        "type": "object",
+        "required": [
+          "artifact_id",
+          "artifact_type",
+          "role",
+          "media_type",
+          "logical_hash",
+          "physical_hash"
+        ],
+        "title": "ArtifactSummaryResponse"
+      },
+      "AssignChampionRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "branch_id": {
+            "type": "string",
+            "title": "Branch Id"
+          },
+          "comparison_id": {
+            "type": "string",
+            "title": "Comparison Id"
+          },
+          "comparison_snapshot_id": {
+            "type": "string",
+            "title": "Comparison Snapshot Id"
+          },
+          "scope_type": {
+            "type": "string",
+            "title": "Scope Type",
+            "default": "project"
+          },
+          "scope_key": {
+            "type": "string",
+            "title": "Scope Key",
+            "default": "default"
+          },
+          "assigned_reason": {
+            "type": "string",
+            "title": "Assigned Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "branch_id",
+          "comparison_id",
+          "comparison_snapshot_id",
+          "assigned_reason"
+        ],
+        "title": "AssignChampionRequest"
+      },
+      "BranchListItem": {
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "title": "Branch Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "branch_type": {
+            "type": "string",
+            "title": "Branch Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "active"
+          },
+          "base_branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Branch Id"
+          },
+          "base_plan_version_id": {
+            "type": "string",
+            "title": "Base Plan Version Id"
+          },
+          "head_plan_version_id": {
+            "type": "string",
+            "title": "Head Plan Version Id"
+          },
+          "branch_point_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Point Step Id"
+          },
+          "branch_point_canonical_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Point Canonical Step Id"
+          },
+          "is_champion": {
+            "type": "boolean",
+            "title": "Is Champion",
+            "default": false
+          },
+          "latest_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Run Id"
+          },
+          "readiness": {
+            "type": "string",
+            "title": "Readiness",
+            "default": "not_run"
+          },
+          "warning_count": {
+            "type": "integer",
+            "title": "Warning Count",
+            "default": 0
+          },
+          "error_count": {
+            "type": "integer",
+            "title": "Error Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "branch_id",
+          "plan_id",
+          "name",
+          "branch_type",
+          "base_plan_version_id",
+          "head_plan_version_id"
+        ],
+        "title": "BranchListItem"
+      },
+      "BranchListResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "branches": {
+            "items": {
+              "$ref": "#/components/schemas/BranchListItem"
+            },
+            "type": "array",
+            "title": "Branches"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "branches"
+        ],
+        "title": "BranchListResponse"
+      },
+      "BranchResponse": {
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "title": "Branch Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "branch_type": {
+            "type": "string",
+            "title": "Branch Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "active"
+          },
+          "base_branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Branch Id"
+          },
+          "base_plan_version_id": {
+            "type": "string",
+            "title": "Base Plan Version Id"
+          },
+          "head_plan_version_id": {
+            "type": "string",
+            "title": "Head Plan Version Id"
+          },
+          "branch_point_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Point Step Id"
+          },
+          "branch_point_canonical_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Point Canonical Step Id"
+          },
+          "created_reason": {
+            "type": "string",
+            "title": "Created Reason",
+            "default": ""
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/BranchStepItem"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "is_champion": {
+            "type": "boolean",
+            "title": "Is Champion",
+            "default": false
+          },
+          "latest_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Run Id"
+          },
+          "readiness": {
+            "type": "string",
+            "title": "Readiness",
+            "default": "not_run"
+          },
+          "warning_count": {
+            "type": "integer",
+            "title": "Warning Count",
+            "default": 0
+          },
+          "error_count": {
+            "type": "integer",
+            "title": "Error Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "branch_id",
+          "project_id",
+          "plan_id",
+          "name",
+          "branch_type",
+          "base_plan_version_id",
+          "head_plan_version_id"
+        ],
+        "title": "BranchResponse"
+      },
+      "BranchStepItem": {
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "canonical_step_id": {
+            "type": "string",
+            "title": "Canonical Step Id"
+          },
+          "branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Id"
+          },
+          "is_shared_upstream": {
+            "type": "boolean",
+            "title": "Is Shared Upstream",
+            "default": false
+          },
+          "is_branch_owned": {
+            "type": "boolean",
+            "title": "Is Branch Owned",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "step_id",
+          "canonical_step_id"
+        ],
+        "title": "BranchStepItem"
+      },
+      "ChampionResponse": {
+        "properties": {
+          "champion_assignment_id": {
+            "type": "string",
+            "title": "Champion Assignment Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "champion_branch_id": {
+            "type": "string",
+            "title": "Champion Branch Id"
+          },
+          "previous_champion_branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Champion Branch Id"
+          },
+          "scope_type": {
+            "type": "string",
+            "title": "Scope Type"
+          },
+          "scope_key": {
+            "type": "string",
+            "title": "Scope Key"
+          },
+          "assigned_at": {
+            "type": "string",
+            "title": "Assigned At",
+            "default": ""
+          },
+          "assigned_reason": {
+            "type": "string",
+            "title": "Assigned Reason",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "champion_assignment_id",
+          "plan_id",
+          "champion_branch_id",
+          "scope_type",
+          "scope_key"
+        ],
+        "title": "ChampionResponse"
+      },
+      "ColumnInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "dtype": {
+            "type": "string",
+            "title": "Dtype"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "dtype"
+        ],
+        "title": "ColumnInfo"
+      },
+      "ComparisonResponse": {
+        "properties": {
+          "comparison_id": {
+            "type": "string",
+            "title": "Comparison Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "baseline_branch_id": {
+            "type": "string",
+            "title": "Baseline Branch Id"
+          },
+          "challenger_branch_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Challenger Branch Ids"
+          },
+          "latest_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Snapshot Id"
+          },
+          "latest_ready": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Ready"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Reason"
+          },
+          "missing_or_stale": {
+            "items": {
+              "$ref": "#/components/schemas/MissingStaleEvidence"
+            },
+            "type": "array",
+            "title": "Missing Or Stale"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "comparison_id",
+          "project_id",
+          "plan_id",
+          "baseline_branch_id",
+          "challenger_branch_ids"
+        ],
+        "title": "ComparisonResponse"
+      },
+      "ComparisonSnapshotResponse": {
+        "properties": {
+          "comparison_snapshot_id": {
+            "type": "string",
+            "title": "Comparison Snapshot Id"
+          },
+          "comparison_id": {
+            "type": "string",
+            "title": "Comparison Id"
+          },
+          "comparison_artifact_id": {
+            "type": "string",
+            "title": "Comparison Artifact Id"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "comparison_snapshot_id",
+          "comparison_id",
+          "comparison_artifact_id"
+        ],
+        "title": "ComparisonSnapshotResponse"
+      },
+      "CreateBranchRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "base_plan_version_id": {
+            "type": "string",
+            "title": "Base Plan Version Id"
+          },
+          "base_branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Branch Id"
+          },
+          "branch_point_step_id": {
+            "type": "string",
+            "title": "Branch Point Step Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "branch_type": {
+            "type": "string",
+            "title": "Branch Type"
+          },
+          "created_reason": {
+            "type": "string",
+            "title": "Created Reason"
+          },
+          "segment_filter_spec": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment Filter Spec"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "base_plan_version_id",
+          "branch_point_step_id",
+          "name",
+          "branch_type",
+          "created_reason"
+        ],
+        "title": "CreateBranchRequest"
+      },
+      "CreateBranchResponse": {
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "title": "Branch Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "new_plan_version_id": {
+            "type": "string",
+            "title": "New Plan Version Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "branch_type": {
+            "type": "string",
+            "title": "Branch Type"
+          },
+          "branch_point_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Point Step Id"
+          },
+          "branch_point_canonical_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Point Canonical Step Id"
+          },
+          "created_step_ids": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Created Step Ids"
+          },
+          "shared_upstream_step_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Shared Upstream Step Ids"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "not_run"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "branch_id",
+          "plan_id",
+          "new_plan_version_id",
+          "name",
+          "branch_type"
+        ],
+        "title": "CreateBranchResponse"
+      },
+      "CreateComparisonRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "baseline_branch_id": {
+            "type": "string",
+            "title": "Baseline Branch Id"
+          },
+          "challenger_branch_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Challenger Branch Ids"
+          },
+          "comparison_spec": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Comparison Spec"
+          },
+          "created_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "plan_id",
+          "baseline_branch_id",
+          "challenger_branch_ids"
+        ],
+        "title": "CreateComparisonRequest"
+      },
+      "CreateProjectRequest": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": "Untitled Project"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "CreateProjectRequest"
+      },
+      "ExportAuditPackRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "branch_id": {
+            "type": "string",
+            "title": "Branch Id"
+          },
+          "comparison_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Id"
+          },
+          "comparison_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Snapshot Id"
+          },
+          "include_row_level_data": {
+            "type": "boolean",
+            "title": "Include Row Level Data",
+            "default": false
+          },
+          "include_report": {
+            "type": "boolean",
+            "title": "Include Report",
+            "default": false
+          },
+          "report_mode": {
+            "type": "string",
+            "title": "Report Mode",
+            "default": "branch"
+          },
+          "export_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Export Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "plan_id",
+          "branch_id"
+        ],
+        "title": "ExportAuditPackRequest"
+      },
+      "ExportAuditPackResponse": {
+        "properties": {
+          "export_path": {
+            "type": "string",
+            "title": "Export Path"
+          },
+          "export_id": {
+            "type": "string",
+            "title": "Export Id"
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count",
+            "default": 0
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/ExportDiagnostic"
+            },
+            "type": "array",
+            "title": "Diagnostics"
+          }
+        },
+        "type": "object",
+        "required": [
+          "export_path",
+          "export_id"
+        ],
+        "title": "ExportAuditPackResponse"
+      },
+      "ExportDiagnostic": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ExportDiagnostic"
+      },
+      "GenerateReportRequest": {
+        "properties": {
+          "target_branch_id": {
+            "type": "string",
+            "title": "Target Branch Id"
+          },
+          "report_mode": {
+            "type": "string",
+            "title": "Report Mode",
+            "default": "branch"
+          },
+          "include_challenger_comparison": {
+            "type": "boolean",
+            "title": "Include Challenger Comparison",
+            "default": false
+          },
+          "include_supporting_artifacts": {
+            "type": "boolean",
+            "title": "Include Supporting Artifacts",
+            "default": true
+          },
+          "output_formats": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Output Formats"
+          },
+          "export_zip": {
+            "type": "boolean",
+            "title": "Export Zip",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_branch_id"
+        ],
+        "title": "GenerateReportRequest"
+      },
+      "GenerateReportResponse": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": ""
+          },
+          "report_bundle_path": {
+            "type": "string",
+            "title": "Report Bundle Path",
+            "default": ""
+          },
+          "html_path": {
+            "type": "string",
+            "title": "Html Path",
+            "default": ""
+          },
+          "export_path": {
+            "type": "string",
+            "title": "Export Path",
+            "default": ""
+          },
+          "zip_path": {
+            "type": "string",
+            "title": "Zip Path",
+            "default": ""
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessItem"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id"
+        ],
+        "title": "GenerateReportResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "ok"
+          },
+          "cardre_version": {
+            "type": "string",
+            "title": "Cardre Version",
+            "default": "0.1.0"
+          }
+        },
+        "type": "object",
+        "title": "HealthResponse"
+      },
+      "ImportDatasetRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "source_path": {
+            "type": "string",
+            "title": "Source Path"
+          },
+          "dataset_id": {
+            "type": "string",
+            "title": "Dataset Id",
+            "default": "uci-statlog-german-credit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "source_path"
+        ],
+        "title": "ImportDatasetRequest"
+      },
+      "ManualBinningEditorStateResponse": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "title": "Plan Version Id"
+          },
+          "step_id": {
+            "type": "string",
+            "title": "Step Id",
+            "default": "manual-binning"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready",
+            "default": false
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Reason"
+          },
+          "required_steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Required Steps"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManualBinningSourceInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selected_variables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Selected Variables"
+          },
+          "source_bins_by_variable": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Source Bins By Variable"
+          },
+          "current_overrides": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Current Overrides"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "plan_version_id"
+        ],
+        "title": "ManualBinningEditorStateResponse"
+      },
+      "ManualBinningPreviewRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "title": "Plan Version Id"
+          },
+          "overrides": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Overrides"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "plan_version_id"
+        ],
+        "title": "ManualBinningPreviewRequest"
+      },
+      "ManualBinningPreviewResponse": {
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "title": "Valid",
+            "default": false
+          },
+          "refined_bins_by_variable": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Refined Bins By Variable"
+          },
+          "diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreviewDiagnostics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "ManualBinningPreviewResponse"
+      },
+      "ManualBinningSourceInfo": {
+        "properties": {
+          "fine_classing_step_id": {
+            "type": "string",
+            "title": "Fine Classing Step Id"
+          },
+          "fine_classing_artifact_id": {
+            "type": "string",
+            "title": "Fine Classing Artifact Id"
+          },
+          "variable_selection_step_id": {
+            "type": "string",
+            "title": "Variable Selection Step Id"
+          },
+          "variable_selection_artifact_id": {
+            "type": "string",
+            "title": "Variable Selection Artifact Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fine_classing_step_id",
+          "fine_classing_artifact_id",
+          "variable_selection_step_id",
+          "variable_selection_artifact_id"
+        ],
+        "title": "ManualBinningSourceInfo"
+      },
+      "MethodSummaryResponse": {
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "title": "Branch Id"
+          },
+          "model_family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Family"
+          },
+          "feature_strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feature Strategy"
+          },
+          "feature_count": {
+            "type": "integer",
+            "title": "Feature Count",
+            "default": 0
+          },
+          "interpretability_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interpretability Level"
+          },
+          "champion_eligibility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Champion Eligibility"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Limitations"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metrics"
+          },
+          "evidence_readiness": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Evidence Readiness"
+          }
+        },
+        "type": "object",
+        "required": [
+          "branch_id"
+        ],
+        "title": "MethodSummaryResponse"
+      },
+      "MigrateRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id"
+        ],
+        "title": "MigrateRequest"
+      },
+      "MigrateResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "branches_created": {
+            "type": "integer",
+            "title": "Branches Created"
+          },
+          "plan_versions_mapped": {
+            "type": "integer",
+            "title": "Plan Versions Mapped"
+          },
+          "steps_mapped": {
+            "type": "integer",
+            "title": "Steps Mapped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "branches_created",
+          "plan_versions_mapped",
+          "steps_mapped"
+        ],
+        "title": "MigrateResponse"
+      },
+      "MissingStaleEvidence": {
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "title": "Branch Id"
+          },
+          "canonical_step_id": {
+            "type": "string",
+            "title": "Canonical Step Id"
+          },
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "branch_id",
+          "canonical_step_id",
+          "step_id",
+          "status"
+        ],
+        "title": "MissingStaleEvidence"
+      },
+      "ModelRankingItem": {
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "title": "Branch Id"
+          },
+          "branch_label": {
+            "type": "string",
+            "title": "Branch Label",
+            "default": ""
+          },
+          "model_family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Family"
+          },
+          "rank": {
+            "type": "integer",
+            "title": "Rank",
+            "default": 0
+          },
+          "metric_name": {
+            "type": "string",
+            "title": "Metric Name",
+            "default": ""
+          },
+          "metric_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Value"
+          },
+          "interpretability_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interpretability Level"
+          },
+          "champion_eligible": {
+            "type": "boolean",
+            "title": "Champion Eligible",
+            "default": false
+          },
+          "limitations_summary": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Limitations Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "branch_id"
+        ],
+        "title": "ModelRankingItem"
+      },
+      "ModelRankingResponse": {
+        "properties": {
+          "comparison_id": {
+            "type": "string",
+            "title": "Comparison Id"
+          },
+          "metric_name": {
+            "type": "string",
+            "title": "Metric Name"
+          },
+          "rankings": {
+            "items": {
+              "$ref": "#/components/schemas/ModelRankingItem"
+            },
+            "type": "array",
+            "title": "Rankings"
+          },
+          "total_branches": {
+            "type": "integer",
+            "title": "Total Branches",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "comparison_id",
+          "metric_name",
+          "rankings"
+        ],
+        "title": "ModelRankingResponse"
+      },
+      "NodeTypeItem": {
+        "properties": {
+          "node_type": {
+            "type": "string",
+            "title": "Node Type"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "model_family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Family"
+          },
+          "feature_strategies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Feature Strategies"
+          },
+          "interpretability_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interpretability Level"
+          },
+          "champion_eligibility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Champion Eligibility"
+          },
+          "optional_dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Optional Dependencies"
+          },
+          "input_roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Input Roles"
+          },
+          "output_roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Output Roles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node_type",
+          "version",
+          "category"
+        ],
+        "title": "NodeTypeItem"
+      },
+      "NodeTypeListResponse": {
+        "properties": {
+          "node_types": {
+            "items": {
+              "$ref": "#/components/schemas/NodeTypeItem"
+            },
+            "type": "array",
+            "title": "Node Types"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node_types",
+          "count"
+        ],
+        "title": "NodeTypeListResponse"
+      },
+      "NodeTypeSchemaResponse": {
+        "properties": {
+          "node_type": {
+            "type": "string",
+            "title": "Node Type"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "params_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params Schema"
+          },
+          "defaults": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Defaults"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "node_type",
+          "version"
+        ],
+        "title": "NodeTypeSchemaResponse"
+      },
+      "PlanListItem": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "latest_version_id": {
+            "type": "string",
+            "title": "Latest Version Id"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "default": false
+          },
+          "is_hidden": {
+            "type": "boolean",
+            "title": "Is Hidden",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "name",
+          "latest_version_id"
+        ],
+        "title": "PlanListItem"
+      },
+      "PlanResponse": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "latest_version_id": {
+            "type": "string",
+            "title": "Latest Version Id"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/StepStatusItem"
+            },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "project_id",
+          "name",
+          "latest_version_id",
+          "steps"
+        ],
+        "title": "PlanResponse"
+      },
+      "PreviewDiagnostics": {
+        "properties": {
+          "override_count": {
+            "type": "integer",
+            "title": "Override Count",
+            "default": 0
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "title": "PreviewDiagnostics"
+      },
+      "ProjectArtifactsResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactListItem"
+            },
+            "type": "array",
+            "title": "Artifacts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "artifacts"
+        ],
+        "title": "ProjectArtifactsResponse"
+      },
+      "ProjectDetailResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "plan_count": {
+            "type": "integer",
+            "title": "Plan Count",
+            "default": 0
+          },
+          "run_count": {
+            "type": "integer",
+            "title": "Run Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "path",
+          "name",
+          "created_at"
+        ],
+        "title": "ProjectDetailResponse"
+      },
+      "ProjectPlansResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/PlanListItem"
+            },
+            "type": "array",
+            "title": "Plans"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "plans"
+        ],
+        "title": "ProjectPlansResponse"
+      },
+      "ProjectResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "path",
+          "name",
+          "created_at"
+        ],
+        "title": "ProjectResponse"
+      },
+      "ProjectRunsResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunListItem"
+            },
+            "type": "array",
+            "title": "Runs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "runs"
+        ],
+        "title": "ProjectRunsResponse"
+      },
+      "ReadinessItem": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ReadinessItem"
+      },
+      "RefreshComparisonResponse": {
+        "properties": {
+          "comparison_id": {
+            "type": "string",
+            "title": "Comparison Id"
+          },
+          "comparison_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Snapshot Id"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready",
+            "default": false
+          },
+          "comparison_artifact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Artifact Id"
+          },
+          "refreshed_at": {
+            "type": "string",
+            "title": "Refreshed At",
+            "default": ""
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Reason"
+          },
+          "missing_or_stale": {
+            "items": {
+              "$ref": "#/components/schemas/MissingStaleEvidence"
+            },
+            "type": "array",
+            "title": "Missing Or Stale"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "comparison_id"
+        ],
+        "title": "RefreshComparisonResponse"
+      },
+      "ReportMetadataResponse": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "default": ""
+          },
+          "target_branch_id": {
+            "type": "string",
+            "title": "Target Branch Id",
+            "default": ""
+          },
+          "report_mode": {
+            "type": "string",
+            "title": "Report Mode",
+            "default": ""
+          },
+          "html_path": {
+            "type": "string",
+            "title": "Html Path",
+            "default": ""
+          },
+          "bundle_path": {
+            "type": "string",
+            "title": "Bundle Path",
+            "default": ""
+          },
+          "export_path": {
+            "type": "string",
+            "title": "Export Path",
+            "default": ""
+          },
+          "zip_path": {
+            "type": "string",
+            "title": "Zip Path",
+            "default": ""
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id"
+        ],
+        "title": "ReportMetadataResponse"
+      },
+      "ReportReadinessRequest": {
+        "properties": {
+          "target_branch_id": {
+            "type": "string",
+            "title": "Target Branch Id"
+          },
+          "report_mode": {
+            "type": "string",
+            "title": "Report Mode",
+            "default": "branch"
+          },
+          "include_challenger_comparison": {
+            "type": "boolean",
+            "title": "Include Challenger Comparison",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_branch_id"
+        ],
+        "title": "ReportReadinessRequest"
+      },
+      "ReportReadinessResponse": {
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "title": "Ready",
+            "default": false
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": ""
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessItem"
+            },
+            "type": "array",
+            "title": "Blockers"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessItem"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "title": "ReportReadinessResponse"
+      },
+      "RunListItem": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "title": "Plan Version Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "step_count": {
+            "type": "integer",
+            "title": "Step Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "plan_version_id",
+          "status",
+          "started_at"
+        ],
+        "title": "RunListItem"
+      },
+      "RunRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "title": "Plan Version Id"
+          },
+          "run_scope": {
+            "type": "string",
+            "title": "Run Scope",
+            "default": "full_plan"
+          },
+          "branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "plan_version_id"
+        ],
+        "title": "RunRequest"
+      },
+      "RunResponse": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "title": "Plan Version Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "step_count": {
+            "type": "integer",
+            "title": "Step Count",
+            "default": 0
+          },
+          "branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Id"
+          },
+          "executed_step_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Executed Step Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "plan_version_id",
+          "status",
+          "started_at"
+        ],
+        "title": "RunResponse"
+      },
+      "RunStepItem": {
+        "properties": {
+          "run_step_id": {
+            "type": "string",
+            "title": "Run Step Id"
+          },
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "node_type": {
+            "type": "string",
+            "title": "Node Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "input_artifact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Input Artifact Ids"
+          },
+          "output_artifact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Output Artifact Ids"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Errors"
+          },
+          "is_carried_forward": {
+            "type": "boolean",
+            "title": "Is Carried Forward",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_step_id",
+          "step_id",
+          "node_type",
+          "status",
+          "started_at"
+        ],
+        "title": "RunStepItem"
+      },
+      "RunStepsResponse": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RunStepItem"
+            },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "steps"
+        ],
+        "title": "RunStepsResponse"
+      },
+      "StepStatusItem": {
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "node_type": {
+            "type": "string",
+            "title": "Node Type"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "not_run"
+          },
+          "is_stale": {
+            "type": "boolean",
+            "title": "Is Stale",
+            "default": false
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "default": 0
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          },
+          "canonical_step_id": {
+            "type": "string",
+            "title": "Canonical Step Id",
+            "default": ""
+          },
+          "branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "step_id",
+          "node_type",
+          "category"
+        ],
+        "title": "StepStatusItem"
+      },
+      "UpdateStepParamsRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "base_plan_version_id": {
+            "type": "string",
+            "title": "Base Plan Version Id"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "base_plan_version_id",
+          "params"
+        ],
+        "title": "UpdateStepParamsRequest"
+      },
+      "UpdateStepParamsResponse": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "new_plan_version_id": {
+            "type": "string",
+            "title": "New Plan Version Id"
+          },
+          "changed_step_id": {
+            "type": "string",
+            "title": "Changed Step Id"
+          },
+          "stale_step_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Stale Step Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "new_plan_version_id",
+          "changed_step_id",
+          "stale_step_ids"
+        ],
+        "title": "UpdateStepParamsResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

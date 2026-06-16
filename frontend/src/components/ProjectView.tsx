@@ -161,8 +161,8 @@ export function ProjectView({ projectId, onBack }: Props) {
     }
   };
 
-  const handleEditManualBinning = () => {
-    setEditingStepId("manual-binning");
+  const handleEditManualBinning = (stepId: string) => {
+    setEditingStepId(stepId);
     setActiveSection("pathway"); // Keep pathway visible in nav
   };
 
@@ -205,11 +205,12 @@ export function ProjectView({ projectId, onBack }: Props) {
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {/* Manual Binning Editor takes over center when editing */}
-          {editingStepId === "manual-binning" && planId && basePlanVersionId && (
+          {editingStepId && planId && basePlanVersionId && (
             <ManualBinningEditor
               planId={planId}
               projectId={projectId}
               basePlanVersionId={basePlanVersionId}
+              stepId={editingStepId}
               onBack={handleBackFromEdit}
               onPlanRefreshed={handlePlanRefreshed}
             />

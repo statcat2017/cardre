@@ -35,7 +35,7 @@ import type {
   UpdateStepParamsResponse,
 } from "../types";
 
-function getBaseUrl(): string {
+export function getBaseUrl(): string {
   return (window as unknown as Record<string, string>).__API_URL__ || "http://127.0.0.1:8752";
 }
 
@@ -122,11 +122,13 @@ export const api = {
   getArtifactPreview: (id: string, limit = 100, offset = 0) =>
     fetchJson<ArtifactPreviewResponse>(`/artifacts/${id}/preview?limit=${limit}&offset=${offset}`),
 
-  getManualBinningEditorState: (planId: string, projectId: string) =>
-    fetchJson<ManualBinningEditorStateResponse>(`/plans/${planId}/steps/manual-binning/editor-state?project_id=${projectId}`),
+  // stepId defaults to "manual-binning" for the baseline step; branch-owned steps
+  // use IDs like "manual-binning__br_xxx" — pass the actual step_id from plan data.
+  getManualBinningEditorState: (planId: string, projectId: string, stepId = "manual-binning") =>
+    fetchJson<ManualBinningEditorStateResponse>(`/plans/${planId}/steps/${stepId}/editor-state?project_id=${projectId}`),
 
-  previewManualBinning: (planId: string, body: ManualBinningPreviewBody) =>
-    fetchJson<ManualBinningPreviewResponse>(`/plans/${planId}/steps/manual-binning/preview`, {
+  previewManualBinning: (planId: string, body: ManualBinningPreviewBody, stepId = "manual-binning") =>
+    fetchJson<ManualBinningPreviewResponse>(`/plans/${planId}/steps/${stepId}/manual-binning/preview`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

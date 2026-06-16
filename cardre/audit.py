@@ -140,7 +140,7 @@ class ExecutionContext:
 class NodeOutput:
     artifacts: list[ArtifactRef]
     metrics: JsonDict
-    execution_fingerprint: JsonDict
+    execution_fingerprint: JsonDict | None = None
 
 
 @dataclass(frozen=True)

@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
+from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
@@ -262,20 +262,9 @@ class FeatureSelectionFilterNode(NodeType):
             payload=selection,
             metadata={"method": "filter", "selected_count": len(selected)},
         )
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[art],
-        )
         return NodeOutput(
             artifacts=[art],
-            metrics={"selected_count": len(selected), "rejected_count": len(rejected)},
-            execution_fingerprint=fp,
-        )
+            metrics={"selected_count": len(selected), "rejected_count": len(rejected)})
 
 
 # ======================================================================
@@ -475,20 +464,9 @@ class FeatureSelectionEmbeddedNode(NodeType):
             metadata={"estimator": estimator_type},
         )
 
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[def_art_out, report_art],
-        )
         return NodeOutput(
             artifacts=[def_art_out, report_art],
-            metrics={"selected_count": len(selected), "rejected_count": len(rejected)},
-            execution_fingerprint=fp,
-        )
+            metrics={"selected_count": len(selected), "rejected_count": len(rejected)})
 
 
 # ======================================================================
@@ -651,24 +629,13 @@ class ResampleTrainingDataNode(NodeType):
             metadata={"strategy": strategy},
         )
 
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[art, report_art],
-        )
         return NodeOutput(
             artifacts=[art, report_art],
             metrics={
                 "original_count": original_count,
                 "resampled_count": len(resampled_df),
                 "synthetic_count": n_oversampled_bad,
-            },
-            execution_fingerprint=fp,
-        )
+            })
 
 
 # ======================================================================
@@ -841,21 +808,10 @@ class SmoteTrainingDataNode(NodeType):
             metadata={"method": "smote"},
         )
 
-        fp = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type, node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[art, report_art],
-        )
         return NodeOutput(
             artifacts=[art, report_art],
             metrics={
                 "original_count": n_original,
                 "resampled_count": len(resampled_df),
                 "synthetic_count": n_synthetic,
-            },
-            execution_fingerprint=fp,
-        )
+            })

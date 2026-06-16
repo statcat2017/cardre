@@ -16,7 +16,7 @@ import numpy as np
 import polars as pl
 from sklearn.tree import DecisionTreeClassifier, export_text
 
-from cardre.artifacts import make_fingerprint, write_json_artifact, write_parquet_artifact
+from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
@@ -443,26 +443,13 @@ class DecisionTreeNode(NodeType):
             },
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact, estimator_art],
-        )
-
         return NodeOutput(
             artifacts=[artifact, estimator_art],
             metrics={
                 "feature_count": len(features),
                 "tree_depth": tree_depth,
                 "leaf_count": leaf_count,
-            },
-            execution_fingerprint=fingerprint,
-        )
+            })
 
 
 class RandomForestClassifierNode(NodeType):
@@ -642,26 +629,13 @@ class RandomForestClassifierNode(NodeType):
             },
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact, estimator_art],
-        )
-
         return NodeOutput(
             artifacts=[artifact, estimator_art],
             metrics={
                 "feature_count": len(features),
                 "estimator_count": n_estimators,
                 "avg_tree_depth": avg_tree_depth,
-            },
-            execution_fingerprint=fingerprint,
-        )
+            })
 
 
 class GradientBoostingClassifierNode(NodeType):
@@ -833,22 +807,9 @@ class GradientBoostingClassifierNode(NodeType):
             },
         )
 
-        fingerprint = make_fingerprint(
-            plan_version_id=context.plan_version_id,
-            step_id=context.step_spec.step_id,
-            node_type=self.node_type,
-            node_version=self.version,
-            params_hash=context.step_spec.params_hash,
-            parent_run_steps=context.parent_run_steps,
-            input_artifacts=context.input_artifacts,
-            output_artifacts=[artifact, estimator_art],
-        )
-
         return NodeOutput(
             artifacts=[artifact, estimator_art],
             metrics={
                 "feature_count": len(features),
                 "estimator_count": n_estimators,
-            },
-            execution_fingerprint=fingerprint,
-        )
+            })
