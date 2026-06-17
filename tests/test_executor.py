@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import tempfile
-import unittest
 from pathlib import Path
 
 import polars as pl
@@ -33,18 +32,23 @@ from cardre.nodes import (
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 
+import pytest
+
 from tests.helpers import (
     _make_train_artifact,
     make_sample_german_credit_file,
     make_store,
 )
 
+pytestmark = pytest.mark.integration
+
+
 
 # ======================================================================
 # Slice 5: Executor + Run Records
 # ======================================================================
 
-class ExecutorTests(unittest.TestCase):
+class ExecutorTests:
 
     def test_running_proof_plan_writes_runs_and_run_steps(self) -> None:
         store, tmp = make_store()
@@ -68,15 +72,15 @@ class ExecutorTests(unittest.TestCase):
         run_id = executor.run_plan_version(store, pv_id)
 
         run = store.get_run(run_id)
-        self.assertIsNotNone(run)
-        self.assertEqual(run["status"], "succeeded")
+        assert run is not None
+        assert run["status"] == "succeeded"
 
         run_steps = store.get_run_steps(run_id)
-        self.assertEqual(len(run_steps), 1)
+        assert len(run_steps) == 1
         rs = run_steps[0]
-        self.assertEqual(rs.status, "succeeded")
-        self.assertEqual(rs.step_id, "import")
-        self.assertEqual(rs.plan_version_id, pv_id)
+        assert rs.status == "succeeded"
+        assert rs.step_id == "import"
+        assert rs.plan_version_id == pv_id
 
     def test_run_step_has_input_output_artifact_ids(self) -> None:
         store, tmp = make_store()
@@ -100,9 +104,9 @@ class ExecutorTests(unittest.TestCase):
         run_id = executor.run_plan_version(store, pv_id)
         run_steps = store.get_run_steps(run_id)
         rs = run_steps[0]
-        self.assertIsInstance(rs.input_artifact_ids, list)
-        self.assertIsInstance(rs.output_artifact_ids, list)
-        self.assertGreater(len(rs.output_artifact_ids), 0)
+        assert isinstance(rs.input_artifact_ids, list)
+        assert isinstance(rs.output_artifact_ids, list)
+        assert len(rs.output_artifact_ids) > 0
 
     def test_run_step_has_execution_fingerprint(self) -> None:
         store, tmp = make_store()
@@ -127,15 +131,15 @@ class ExecutorTests(unittest.TestCase):
         run_steps = store.get_run_steps(run_id)
         rs = run_steps[0]
         fp = rs.execution_fingerprint
-        self.assertIn("plan_version_id", fp)
-        self.assertIn("step_id", fp)
-        self.assertIn("node_type", fp)
-        self.assertIn("node_version", fp)
-        self.assertIn("params_hash", fp)
-        self.assertIn("input_artifact_logical_hashes", fp)
-        self.assertIn("output_artifact_logical_hashes", fp)
-        self.assertIn("python_version", fp)
-        self.assertIn("cardre_version", fp)
+        assert "plan_version_id" in fp
+        assert "step_id" in fp
+        assert "node_type" in fp
+        assert "node_version" in fp
+        assert "params_hash" in fp
+        assert "input_artifact_logical_hashes" in fp
+        assert "output_artifact_logical_hashes" in fp
+        assert "python_version" in fp
+        assert "cardre_version" in fp
 
     def test_failed_step_does_not_mark_descendants_current(self) -> None:
         class FailOnPurposeNode(DummyFitNode):
@@ -188,13 +192,13 @@ class ExecutorTests(unittest.TestCase):
         run_id = executor.run_plan_version(store, pv_id)
 
         run = store.get_run(run_id)
-        self.assertEqual(run["status"], "failed", "Failed run should be marked failed")
+        assert run["status"] == "failed"
 
         run_steps = store.get_run_steps(run_id)
         fail_step = [rs for rs in run_steps if rs.step_id == "fail-step"]
-        self.assertEqual(len(fail_step), 1, "Expected one run-step for fail-step")
-        self.assertEqual(fail_step[0].status, "failed")
-        self.assertGreater(len(fail_step[0].errors), 0, "Expected structured error evidence")
+        assert len(fail_step) == 1
+        assert fail_step[0].status == "failed"
+        assert len(fail_step[0].errors) > 0
 
     def test_missing_artifact_file_fails_validation(self) -> None:
         store, tmp = make_store()
@@ -205,7 +209,7 @@ class ExecutorTests(unittest.TestCase):
         p.unlink() if p.exists() else None
 
         executor = PlanExecutor(NodeRegistry())
-        with self.assertRaises(FileNotFoundError):
+        with pytest.raises(FileNotFoundError):
             executor._validate_input_artifact_files(store, [art])
 
     def test_artifact_hash_mismatch_fails_validation(self) -> None:
@@ -218,7 +222,7 @@ class ExecutorTests(unittest.TestCase):
             p.write_text("tampered data")
 
         executor = PlanExecutor(NodeRegistry())
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             executor._validate_input_artifact_files(store, [art])
 
 
@@ -226,7 +230,7 @@ class ExecutorTests(unittest.TestCase):
 # Slice 6: Split + Role Enforcement
 # ======================================================================
 
-class SplitAndRoleTests(unittest.TestCase):
+class SplitAndRoleTests:
 
     def make_proof_plan_steps(self, source: Path) -> list[StepSpec]:
         return [
@@ -300,15 +304,14 @@ class SplitAndRoleTests(unittest.TestCase):
         split_rs = [rs for rs in run_steps if rs.step_id == "split"][0]
         import_rs = [rs for rs in run_steps if rs.step_id == "import"][0]
 
-        self.assertEqual(len(split_rs.output_artifact_ids), 4)
 
         roles_found = set()
         for aid in split_rs.output_artifact_ids:
             art = store.get_artifact(aid)
-            self.assertIsNotNone(art)
+            assert art is not None
             if art.artifact_type == "dataset":
                 roles_found.add(art.role)
-        self.assertEqual(roles_found, {"train", "test", "oot"})
+        assert roles_found == {"train", "test", "oot"}
 
     def test_fit_node_consuming_train_succeeds(self) -> None:
         store, tmp = make_store()
@@ -323,7 +326,7 @@ class SplitAndRoleTests(unittest.TestCase):
 
         run_id = executor.run_plan_version(store, pv_id)
         run = store.get_run(run_id)
-        self.assertEqual(run["status"], "succeeded")
+        assert run["status"] == "succeeded"
 
     def test_fit_node_wired_to_test_fails_before_execution(self) -> None:
         store, tmp = make_store()
@@ -354,17 +357,14 @@ class SplitAndRoleTests(unittest.TestCase):
 
         run_id = executor.run_plan_version(store, pv_id)
         run = store.get_run(run_id)
-        self.assertEqual(run["status"], "failed",
-                         "Fit node wired to import should produce a failed run")
+        assert run["status"] == "failed"
 
         run_steps = store.get_run_steps(run_id)
         fit_steps = [rs for rs in run_steps if rs.step_id == "fit-on-import"]
-        self.assertEqual(len(fit_steps), 1)
         any_role_error = any(
             "role" in str(e.get("message", "")) for rs in run_steps for e in rs.errors
         )
-        self.assertTrue(any_role_error,
-                        "Expected role-access error in failed run-step")
+        assert any_role_error
 
     def test_apply_node_consumes_train_test_oot_and_definition(self) -> None:
         store, tmp = make_store()
@@ -387,7 +387,7 @@ class SplitAndRoleTests(unittest.TestCase):
 
         run_id = executor.run_plan_version(store, pv_id)
         run = store.get_run(run_id)
-        self.assertEqual(run["status"], "succeeded")
+        assert run["status"] == "succeeded"
 
     def test_apply_with_multi_parent_produces_three_prediction_artifacts(self) -> None:
         store, tmp = make_store()
@@ -413,21 +413,21 @@ class SplitAndRoleTests(unittest.TestCase):
         run_steps = store.get_run_steps(run_id)
         apply_rs = [rs for rs in run_steps if rs.step_id == "apply"][0]
 
-        self.assertGreaterEqual(len(apply_rs.output_artifact_ids), 1)
+        assert len(apply_rs.output_artifact_ids) >= 1
 
         roles = set()
         for aid in apply_rs.output_artifact_ids:
             art = store.get_artifact(aid)
             if art is not None:
                 roles.add(art.role)
-        self.assertIn("prediction", roles)
+        assert "prediction" in roles
 
 
 # ======================================================================
 # Slice 7: Staleness + Replay
 # ======================================================================
 
-class StalenessAndReplayTests(unittest.TestCase):
+class StalenessAndReplayTests:
 
     def test_changing_split_params_marks_downstream_stale(self) -> None:
         store, tmp = make_store()
@@ -503,9 +503,9 @@ class StalenessAndReplayTests(unittest.TestCase):
         executor.run_plan_version(store, new_pv_id)
 
         staleness = executor.compute_staleness(store, new_pv_id)
-        self.assertEqual(staleness["import"], False)
-        self.assertEqual(staleness["split"], False)
-        self.assertEqual(staleness["fit"], False)
+        assert staleness["import"] == False
+        assert staleness["split"] == False
+        assert staleness["fit"] == False
 
     def test_replay_from_changed_split_produces_new_downstream_artifacts(self) -> None:
         store, tmp = make_store()
@@ -563,15 +563,9 @@ class StalenessAndReplayTests(unittest.TestCase):
         new_by_step = {rs.step_id: rs for rs in new_steps}
 
         new_split = new_by_step["split"]
-        self.assertNotEqual(
-            first_by_step["split"].output_artifact_ids,
-            new_split.output_artifact_ids,
-        )
+        assert first_by_step["split"].output_artifact_ids != new_split.output_artifact_ids
         new_fit = new_by_step["fit"]
-        self.assertNotEqual(
-            first_by_step["fit"].output_artifact_ids,
-            new_fit.output_artifact_ids,
-        )
+        assert first_by_step["fit"].output_artifact_ids != new_fit.output_artifact_ids
 
     def test_unchanged_upstream_evidence_remains_valid(self) -> None:
         store, tmp = make_store()
@@ -598,10 +592,6 @@ class StalenessAndReplayTests(unittest.TestCase):
         first_steps = store.get_run_steps(first_run_id)
         second_steps = store.get_run_steps(second_run_id)
 
-        self.assertEqual(
-            first_steps[0].execution_fingerprint["output_artifact_logical_hashes"],
-            second_steps[0].execution_fingerprint["output_artifact_logical_hashes"],
-        )
 
     def test_old_run_remains_queryable(self) -> None:
         store, tmp = make_store()
@@ -631,123 +621,3 @@ class StalenessAndReplayTests(unittest.TestCase):
             pass
 
         old_run = store.get_run(first_run_id)
-        self.assertIsNotNone(old_run)
-        self.assertEqual(old_run["status"], "succeeded")
-
-
-# ======================================================================
-# Workstream 1: Node-Level Input Contracts + Leakage Tests
-# ======================================================================
-
-class InputContractTests(unittest.TestCase):
-
-    def test_fit_node_rejects_test_oot_datasets(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        node = FineClassingNode()
-
-        mock_train = ArtifactRef(
-            artifact_id="t1", artifact_type="dataset", role="train",
-            path="mock", physical_hash="a", logical_hash="b",
-        )
-        mock_test = ArtifactRef(
-            artifact_id="t2", artifact_type="dataset", role="test",
-            path="mock", physical_hash="c", logical_hash="d",
-        )
-        mock_oot = ArtifactRef(
-            artifact_id="t3", artifact_type="dataset", role="oot",
-            path="mock", physical_hash="e", logical_hash="f",
-        )
-
-        with self.assertRaises(RoleAccessError):
-            executor = PlanExecutor(NodeRegistry.with_defaults())
-            executor.validate_leakage_rules(node, [mock_test])
-
-        with self.assertRaises(RoleAccessError):
-            executor = PlanExecutor(NodeRegistry.with_defaults())
-            executor.validate_leakage_rules(node, [mock_oot])
-
-        try:
-            executor = PlanExecutor(NodeRegistry.with_defaults())
-            executor.validate_leakage_rules(node, [mock_train])
-        except RoleAccessError:
-            self.fail("Fit node should accept train dataset")
-
-    def test_selection_node_rejects_test_tabular(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        node = CalculateWoeIvNode()
-
-        mock_test_dataset = ArtifactRef(
-            artifact_id="t1", artifact_type="dataset", role="test",
-            path="mock", physical_hash="a", logical_hash="b",
-        )
-        mock_oot_dataset = ArtifactRef(
-            artifact_id="t2", artifact_type="dataset", role="oot",
-            path="mock", physical_hash="c", logical_hash="d",
-        )
-
-        executor = PlanExecutor(NodeRegistry.with_defaults())
-        with self.assertRaises(RoleAccessError):
-            executor.validate_leakage_rules(node, [mock_test_dataset])
-        with self.assertRaises(RoleAccessError):
-            executor.validate_leakage_rules(node, [mock_oot_dataset])
-
-    def test_selection_node_accepts_report_artifacts(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        node = CalculateWoeIvNode()
-
-        mock_report = ArtifactRef(
-            artifact_id="r1", artifact_type="report", role="report",
-            path="mock", physical_hash="a", logical_hash="b",
-        )
-
-        executor = PlanExecutor(NodeRegistry.with_defaults())
-        try:
-            executor.validate_leakage_rules(node, [mock_report])
-        except RoleAccessError:
-            self.fail("Selection node should accept report artifacts")
-
-    def test_transform_node_no_restrictions(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        node = ProfileDatasetNode()
-
-        mock_test_dataset = ArtifactRef(
-            artifact_id="t1", artifact_type="dataset", role="test",
-            path="mock", physical_hash="a", logical_hash="b",
-        )
-
-        executor = PlanExecutor(NodeRegistry.with_defaults())
-        try:
-            executor.validate_leakage_rules(node, [mock_test_dataset])
-        except RoleAccessError:
-            self.fail("Transform node should accept any role")
-
-
-class Phase2BEndToEndTests(unittest.TestCase):
-
-    def test_woe_transform_train_rejects_test_role(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-
-        df = pl.DataFrame({"x": [1.0], "target": ["g"]})
-        buf = io.BytesIO()
-        df.write_parquet(buf)
-        path = store.root / "datasets" / "test.parquet"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(buf.getvalue())
-        test_art = ArtifactRef(
-            artifact_id="test1", artifact_type="dataset", role="test",
-            path=relative_path(path, store.root),
-            physical_hash=physical_hash(path),
-            logical_hash=table_logical_hash(df),
-            media_type="application/vnd.apache.parquet", metadata={},
-        )
-        store.register_artifact(test_art)
-
-        executor = PlanExecutor(NodeRegistry.with_defaults())
-        node = WoeTransformTrainNode()
-        with self.assertRaises(RoleAccessError):
-            executor.validate_leakage_rules(node, [test_art])

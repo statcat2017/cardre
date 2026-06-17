@@ -16,26 +16,7 @@ import pytest
 from cardre.store import ProjectStore
 
 pytest_plugins = []
-pytestmark = pytest.mark.regression
-
-
-@pytest.fixture(autouse=True)
-def _isolated_registry(tmp_path, monkeypatch):
-    registry = tmp_path / "registry" / "projects.json"
-    monkeypatch.setenv("CARDRE_REGISTRY_PATH", str(registry))
-
-
-@pytest.fixture
-def client():
-    from fastapi.testclient import TestClient
-    from sidecar.main import app
-    return TestClient(app)
-
-
-@pytest.fixture
-def bare_app():
-    from sidecar.main import app
-    return app
+pytestmark = [pytest.mark.regression, pytest.mark.usefixtures("_isolated_registry")]
 
 
 # ---------------------------------------------------------------------------

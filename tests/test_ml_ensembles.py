@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import tempfile
-import unittest
 from pathlib import Path
 
 import numpy as np
@@ -25,6 +24,10 @@ from cardre.nodes.validate import (
 from cardre.store import ProjectStore
 
 from tests.helpers import make_numeric_dataset, make_oot_dataset, make_store
+
+import pytest
+
+pytestmark = pytest.mark.integration
 
 
 # ======================================================================
@@ -151,7 +154,7 @@ def score_and_add_score_col(store, data_art, model_art, step_id="score-step"):
 # RandomForestClassifier Tests
 # ======================================================================
 
-class RandomForestParameterTests(unittest.TestCase):
+class RandomForestParameterTests:
 
     def test_valid_params(self) -> None:
         node = RandomForestClassifierNode()
@@ -162,17 +165,17 @@ class RandomForestParameterTests(unittest.TestCase):
             "min_samples_leaf": 3,
             "random_seed": 42,
         })
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_invalid_feature_strategy(self) -> None:
         node = RandomForestClassifierNode()
         errors = node.validate_params({"feature_strategy": "woe"})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
     def test_n_estimators_zero(self) -> None:
         node = RandomForestClassifierNode()
         errors = node.validate_params({"feature_strategy": "raw_numeric", "n_estimators": 0})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
     def test_valid_balanced_class_weight(self) -> None:
         node = RandomForestClassifierNode()
@@ -180,10 +183,10 @@ class RandomForestParameterTests(unittest.TestCase):
             "feature_strategy": "raw_numeric",
             "class_weight": "balanced",
         })
-        self.assertEqual(errors, [])
+        assert errors == []
 
 
-class RandomForestFitTests(unittest.TestCase):
+class RandomForestFitTests:
 
     def test_fit_produces_v1_model_artifact(self) -> None:
         store, tmp = make_store()
@@ -192,10 +195,10 @@ class RandomForestFitTests(unittest.TestCase):
 
         output = RandomForestClassifierNode().run(ctx)
 
-        self.assertEqual(len(output.artifacts), 2)
+        assert len(output.artifacts) == 2
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        self.assertEqual(model["schema_version"], "cardre.model_artifact.v1")
-        self.assertEqual(model["model_family"], "random_forest")
+        assert model["schema_version"] == "cardre.model_artifact.v1"
+        assert model["model_family"] == "random_forest"
 
     def test_model_artifact_passes_validation(self) -> None:
         store, tmp = make_store()
@@ -205,7 +208,7 @@ class RandomForestFitTests(unittest.TestCase):
         output = RandomForestClassifierNode().run(ctx)
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
         errors = validate_model_artifact(model)
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_fit_records_estimator_count(self) -> None:
         store, tmp = make_store()
@@ -215,8 +218,8 @@ class RandomForestFitTests(unittest.TestCase):
 
         output = RandomForestClassifierNode().run(ctx)
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        self.assertEqual(model["training"]["params"]["n_estimators"], 50)
-        self.assertIn("feature_importance", model["model_payload"])
+        assert model["training"]["params"]["n_estimators"] == 50
+        assert "feature_importance" in model["model_payload"]
 
     def test_fit_records_interpretability_level(self) -> None:
         store, tmp = make_store()
@@ -225,7 +228,7 @@ class RandomForestFitTests(unittest.TestCase):
 
         output = RandomForestClassifierNode().run(ctx)
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        self.assertEqual(model["interpretability"]["explanation_level"], "native_semi_transparent")
+        assert model["interpretability"]["explanation_level"] == "native_semi_transparent"
 
     def test_fit_produces_estimator_artifact(self) -> None:
         store, tmp = make_store()
@@ -234,15 +237,15 @@ class RandomForestFitTests(unittest.TestCase):
 
         output = RandomForestClassifierNode().run(ctx)
         estimator_art = output.artifacts[1]
-        self.assertEqual(estimator_art.artifact_type, "estimator")
-        self.assertTrue(store.artifact_path(estimator_art).exists())
+        assert estimator_art.artifact_type == "estimator"
+        assert store.artifact_path(estimator_art).exists()
 
 
 # ======================================================================
 # GradientBoostingClassifier Tests
 # ======================================================================
 
-class GradientBoostingParameterTests(unittest.TestCase):
+class GradientBoostingParameterTests:
 
     def test_valid_params(self) -> None:
         node = GradientBoostingClassifierNode()
@@ -254,20 +257,20 @@ class GradientBoostingParameterTests(unittest.TestCase):
             "min_samples_leaf": 5,
             "random_seed": 42,
         })
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_learning_rate_zero(self) -> None:
         node = GradientBoostingClassifierNode()
         errors = node.validate_params({"feature_strategy": "raw_numeric", "learning_rate": 0})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
     def test_learning_rate_negative(self) -> None:
         node = GradientBoostingClassifierNode()
         errors = node.validate_params({"feature_strategy": "raw_numeric", "learning_rate": -0.1})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
 
-class GradientBoostingFitTests(unittest.TestCase):
+class GradientBoostingFitTests:
 
     def test_fit_produces_v1_model_artifact(self) -> None:
         store, tmp = make_store()
@@ -276,10 +279,10 @@ class GradientBoostingFitTests(unittest.TestCase):
 
         output = GradientBoostingClassifierNode().run(ctx)
 
-        self.assertEqual(len(output.artifacts), 2)
+        assert len(output.artifacts) == 2
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        self.assertEqual(model["schema_version"], "cardre.model_artifact.v1")
-        self.assertEqual(model["model_family"], "gbdt")
+        assert model["schema_version"] == "cardre.model_artifact.v1"
+        assert model["model_family"] == "gbdt"
 
     def test_model_artifact_passes_validation(self) -> None:
         store, tmp = make_store()
@@ -289,7 +292,7 @@ class GradientBoostingFitTests(unittest.TestCase):
         output = GradientBoostingClassifierNode().run(ctx)
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
         errors = validate_model_artifact(model)
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_fit_records_learning_rate(self) -> None:
         store, tmp = make_store()
@@ -299,7 +302,7 @@ class GradientBoostingFitTests(unittest.TestCase):
 
         output = GradientBoostingClassifierNode().run(ctx)
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        self.assertEqual(model["training"]["params"]["learning_rate"], 0.05)
+        assert model["training"]["params"]["learning_rate"] == 0.05
 
     def test_fit_records_train_score_history(self) -> None:
         store, tmp = make_store()
@@ -309,8 +312,8 @@ class GradientBoostingFitTests(unittest.TestCase):
 
         output = GradientBoostingClassifierNode().run(ctx)
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        self.assertIn("learning_rate", model["model_payload"])
-        self.assertIn("estimator_count", model["model_payload"])
+        assert "learning_rate" in model["model_payload"]
+        assert "estimator_count" in model["model_payload"]
 
     def test_fit_records_interpretability_level(self) -> None:
         store, tmp = make_store()
@@ -319,14 +322,14 @@ class GradientBoostingFitTests(unittest.TestCase):
 
         output = GradientBoostingClassifierNode().run(ctx)
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        self.assertEqual(model["interpretability"]["explanation_level"], "native_semi_transparent")
+        assert model["interpretability"]["explanation_level"] == "native_semi_transparent"
 
 
 # ======================================================================
 # Integration: RF and GBDT with ApplyModelNode
 # ======================================================================
 
-class EnsembleApplyTests(unittest.TestCase):
+class EnsembleApplyTests:
 
     def test_apply_model_with_random_forest(self) -> None:
         store, tmp = make_store()
@@ -338,8 +341,8 @@ class EnsembleApplyTests(unittest.TestCase):
         apply_ctx = make_apply_context(store, data_art, model_art)
         apply_out = ApplyModelNode().run(apply_ctx)
         scored_df = pl.read_parquet(store.artifact_path(apply_out.artifacts[0]))
-        self.assertIn("predicted_bad_probability", scored_df.columns)
-        self.assertEqual(scored_df["model_family"][0], "random_forest")
+        assert "predicted_bad_probability" in scored_df.columns
+        assert scored_df["model_family"][0] == "random_forest"
 
     def test_apply_model_with_gbdt(self) -> None:
         store, tmp = make_store()
@@ -351,8 +354,8 @@ class EnsembleApplyTests(unittest.TestCase):
         apply_ctx = make_apply_context(store, data_art, model_art)
         apply_out = ApplyModelNode().run(apply_ctx)
         scored_df = pl.read_parquet(store.artifact_path(apply_out.artifacts[0]))
-        self.assertIn("predicted_bad_probability", scored_df.columns)
-        self.assertEqual(scored_df["model_family"][0], "gbdt")
+        assert "predicted_bad_probability" in scored_df.columns
+        assert scored_df["model_family"][0] == "gbdt"
 
     def test_apply_produces_valid_probabilities_rf(self) -> None:
         store, tmp = make_store()
@@ -366,15 +369,15 @@ class EnsembleApplyTests(unittest.TestCase):
         scored_df = pl.read_parquet(store.artifact_path(apply_out.artifacts[0]))
         probs = scored_df["predicted_bad_probability"].to_list()
         for p in probs:
-            self.assertGreaterEqual(p, 0.0)
-            self.assertLessEqual(p, 1.0)
+            assert p >= 0.0
+            assert p <= 1.0
 
 
 # ======================================================================
 # Expanded ValidationMetricsNode Tests
 # ======================================================================
 
-class ExpandedValidationMetricsTests(unittest.TestCase):
+class ExpandedValidationMetricsTests:
 
     def test_at_cutoffs_includes_confusion_matrix(self) -> None:
         store, tmp = make_store()
@@ -389,18 +392,18 @@ class ExpandedValidationMetricsTests(unittest.TestCase):
         report_out = ValidationMetricsNode().run(val_ctx)
         report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
 
-        self.assertIn("train", report)
+        assert "train" in report
         train_metrics = report["train"]
-        self.assertIn("at_cutoffs", train_metrics)
-        self.assertIn("0.3", train_metrics["at_cutoffs"])
-        self.assertIn("0.5", train_metrics["at_cutoffs"])
-        self.assertIn("0.7", train_metrics["at_cutoffs"])
+        assert "at_cutoffs" in train_metrics
+        assert "0.3" in train_metrics["at_cutoffs"]
+        assert "0.5" in train_metrics["at_cutoffs"]
+        assert "0.7" in train_metrics["at_cutoffs"]
 
         cm = train_metrics["at_cutoffs"]["0.5"]["confusion_matrix"]
-        self.assertIn("tn", cm)
-        self.assertIn("fp", cm)
-        self.assertIn("fn", cm)
-        self.assertIn("tp", cm)
+        assert "tn" in cm
+        assert "fp" in cm
+        assert "fn" in cm
+        assert "tp" in cm
 
     def test_at_cutoffs_includes_precision_recall_f1_gmean(self) -> None:
         store, tmp = make_store()
@@ -416,12 +419,12 @@ class ExpandedValidationMetricsTests(unittest.TestCase):
         report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
 
         at_05 = report["train"]["at_cutoffs"]["0.5"]
-        self.assertIn("precision", at_05)
-        self.assertIn("recall", at_05)
-        self.assertIn("f1", at_05)
-        self.assertIn("g_mean", at_05)
-        self.assertIn("specificity", at_05)
-        self.assertIn("accuracy", at_05)
+        assert "precision" in at_05
+        assert "recall" in at_05
+        assert "f1" in at_05
+        assert "g_mean" in at_05
+        assert "specificity" in at_05
+        assert "accuracy" in at_05
 
     def test_all_metrics_computed_from_actual_labels(self) -> None:
         """Ensure y_bin comes from target column, not from predictions."""
@@ -437,8 +440,8 @@ class ExpandedValidationMetricsTests(unittest.TestCase):
         report_out = ValidationMetricsNode().run(val_ctx)
         report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
 
-        self.assertIn("train", report)
-        self.assertIsNotNone(report["train"]["auc"])
+        assert "train" in report
+        assert report["train"]["auc"] is not None
 
     def test_single_class_role_produces_warnings(self) -> None:
         store, tmp = make_store()
@@ -464,9 +467,9 @@ class ExpandedValidationMetricsTests(unittest.TestCase):
         report_out = ValidationMetricsNode().run(val_ctx)
         report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
 
-        self.assertIn("train", report)
-        self.assertIn("warnings", report["train"])
-        self.assertGreater(len(report["train"]["warnings"]), 0)
+        assert "train" in report
+        assert "warnings" in report["train"]
+        assert len(report["train"]["warnings"]) > 0
 
     def test_gbdt_with_validation_metrics(self) -> None:
         store, tmp = make_store()
@@ -481,10 +484,10 @@ class ExpandedValidationMetricsTests(unittest.TestCase):
         report_out = ValidationMetricsNode().run(val_ctx)
         report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
 
-        self.assertIn("train", report)
-        self.assertIn("at_cutoffs", report["train"])
-        self.assertIn("0.5", report["train"]["at_cutoffs"])
-        self.assertIsNotNone(report["train"]["auc"])
+        assert "train" in report
+        assert "at_cutoffs" in report["train"]
+        assert "0.5" in report["train"]["at_cutoffs"]
+        assert report["train"]["auc"] is not None
 
     def test_calibration_display_with_default_deps(self) -> None:
         store, tmp = make_store()
@@ -502,29 +505,29 @@ class ExpandedValidationMetricsTests(unittest.TestCase):
         report_out = ValidationMetricsNode().run(val_ctx)
         report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
 
-        self.assertIn("train", report)
+        assert "train" in report
         calib = report["train"].get("calibration_display", {})
-        self.assertIn("prob_true", calib)
-        self.assertIn("prob_pred", calib)
-        self.assertEqual(calib["n_bins"], 10)
-        self.assertEqual(calib["strategy"], "quantile")
+        assert "prob_true" in calib
+        assert "prob_pred" in calib
+        assert calib["n_bins"] == 10
+        assert calib["strategy"] == "quantile"
 
 
 # ======================================================================
 # ThresholdOptimizationNode Tests
 # ======================================================================
 
-class ThresholdOptimizationParameterTests(unittest.TestCase):
+class ThresholdOptimizationParameterTests:
 
     def test_valid_youden(self) -> None:
         node = ThresholdOptimizationNode()
         errors = node.validate_params({"objective": "youden"})
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_valid_max_f1(self) -> None:
         node = ThresholdOptimizationNode()
         errors = node.validate_params({"objective": "max_f1"})
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_valid_cost_minimize(self) -> None:
         node = ThresholdOptimizationNode()
@@ -533,25 +536,25 @@ class ThresholdOptimizationParameterTests(unittest.TestCase):
             "cost_fp": 1.0,
             "cost_fn": 10.0,
         })
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_cost_minimize_requires_costs(self) -> None:
         node = ThresholdOptimizationNode()
         errors = node.validate_params({"objective": "cost_minimize"})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
     def test_invalid_objective(self) -> None:
         node = ThresholdOptimizationNode()
         errors = node.validate_params({"objective": "invalid"})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
     def test_n_thresholds_too_low(self) -> None:
         node = ThresholdOptimizationNode()
         errors = node.validate_params({"n_thresholds": 5})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
 
-class ThresholdOptimizationRunTests(unittest.TestCase):
+class ThresholdOptimizationRunTests:
 
     def _make_scored_dataset(self, store, data_art, model_art):
         scored_art = score_and_add_score_col(store, data_art, model_art, "score-threshold")
@@ -590,12 +593,12 @@ class ThresholdOptimizationRunTests(unittest.TestCase):
         out = ThresholdOptimizationNode().run(ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
-        self.assertEqual(report["objective"], "youden")
-        self.assertIn("selected_threshold", report)
-        self.assertGreaterEqual(report["selected_threshold"], 0.0)
-        self.assertLessEqual(report["selected_threshold"], 1.0)
-        self.assertIn("train", report["roles"])
-        self.assertIn("threshold", report["roles"]["train"])
+        assert report["objective"] == "youden"
+        assert "selected_threshold" in report
+        assert report["selected_threshold"] >= 0.0
+        assert report["selected_threshold"] <= 1.0
+        assert "train" in report["roles"]
+        assert "threshold" in report["roles"]["train"]
 
     def test_max_f1_objective(self) -> None:
         store, tmp = make_store()
@@ -629,8 +632,8 @@ class ThresholdOptimizationRunTests(unittest.TestCase):
 
         out = ThresholdOptimizationNode().run(ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
-        self.assertEqual(report["objective"], "max_f1")
-        self.assertIn("selected_threshold", report)
+        assert report["objective"] == "max_f1"
+        assert "selected_threshold" in report
 
     def test_cost_minimize_objective(self) -> None:
         store, tmp = make_store()
@@ -664,10 +667,10 @@ class ThresholdOptimizationRunTests(unittest.TestCase):
 
         out = ThresholdOptimizationNode().run(ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
-        self.assertEqual(report["objective"], "cost_minimize")
-        self.assertEqual(report["cost_fp"], 1.0)
-        self.assertEqual(report["cost_fn"], 10.0)
-        self.assertIn("selected_threshold", report)
+        assert report["objective"] == "cost_minimize"
+        assert report["cost_fp"] == 1.0
+        assert report["cost_fn"] == 10.0
+        assert "selected_threshold" in report
 
     def test_threshold_optimization_does_not_overwrite_probabilities(self) -> None:
         """Verify threshold policy does not mutate the scored dataset."""
@@ -706,14 +709,14 @@ class ThresholdOptimizationRunTests(unittest.TestCase):
 
         after_df = pl.read_parquet(store.artifact_path(scored_art))
         after_probs = after_df["predicted_bad_probability"].to_list()
-        self.assertEqual(original_probs, after_probs)
+        assert original_probs == after_probs
 
 
 # ======================================================================
 # Determinism Tests for RF/GBDT
 # ======================================================================
 
-class EnsembleDeterminismTests(unittest.TestCase):
+class EnsembleDeterminismTests:
 
     def test_rf_same_seed_produces_same_artifacts(self) -> None:
         store, tmp = make_store()
@@ -726,7 +729,7 @@ class EnsembleDeterminismTests(unittest.TestCase):
 
         m1 = json.loads(store.artifact_path(out1.artifacts[0]).read_text())
         m2 = json.loads(store.artifact_path(out2.artifacts[0]).read_text())
-        self.assertEqual(m1["model_payload"]["feature_importance"], m2["model_payload"]["feature_importance"])
+        assert m1["model_payload"]["feature_importance"] == m2["model_payload"]["feature_importance"]
 
     def test_gbdt_same_seed_produces_same_artifacts(self) -> None:
         store, tmp = make_store()
@@ -739,8 +742,4 @@ class EnsembleDeterminismTests(unittest.TestCase):
 
         m1 = json.loads(store.artifact_path(out1.artifacts[0]).read_text())
         m2 = json.loads(store.artifact_path(out2.artifacts[0]).read_text())
-        self.assertEqual(m1["model_payload"]["feature_importance"], m2["model_payload"]["feature_importance"])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert m1["model_payload"]["feature_importance"] == m2["model_payload"]["feature_importance"]

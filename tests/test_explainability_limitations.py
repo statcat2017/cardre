@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import tempfile
-import unittest
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +15,10 @@ from cardre.nodes.ml_models import DecisionTreeNode, GradientBoostingClassifierN
 from cardre.store import ProjectStore
 
 from tests.helpers import make_numeric_dataset, make_store
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 
 # ======================================================================
@@ -43,7 +46,7 @@ def make_fit_context(store, data_art, def_art, node_type, *, params=None, step_i
 # ModelExplainabilityNode Tests
 # ======================================================================
 
-class ExplainabilityDecisionTreeTests(unittest.TestCase):
+class ExplainabilityDecisionTreeTests:
 
     def test_dt_explainability_report(self) -> None:
         store, tmp = make_store()
@@ -67,13 +70,13 @@ class ExplainabilityDecisionTreeTests(unittest.TestCase):
         out = ModelExplainabilityNode().run(exp_ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
-        self.assertEqual(report["model_family"], "decision_tree")
-        self.assertEqual(report["explanation_level"], "native_interpretable")
-        self.assertEqual(report["explanation_type"], "tree_rules")
-        self.assertIn("tree_rules", report)
-        self.assertGreater(len(report["tree_rules"]), 0)
-        self.assertIn("feature_importance", report)
-        self.assertEqual(report["champion_gate"]["status"], "pass")
+        assert report["model_family"] == "decision_tree"
+        assert report["explanation_level"] == "native_interpretable"
+        assert report["explanation_type"] == "tree_rules"
+        assert "tree_rules" in report
+        assert len(report["tree_rules"]) > 0
+        assert "feature_importance" in report
+        assert report["champion_gate"]["status"] == "pass"
 
     def test_explainability_champion_gate_semi_transparent(self) -> None:
         store, tmp = make_store()
@@ -98,13 +101,13 @@ class ExplainabilityDecisionTreeTests(unittest.TestCase):
         out = ModelExplainabilityNode().run(exp_ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
-        self.assertEqual(report["model_family"], "random_forest")
-        self.assertEqual(report["explanation_level"], "native_semi_transparent")
-        self.assertEqual(report["champion_gate"]["status"], "warn")
-        self.assertIn("limitation", report["champion_gate"]["message"].lower())
+        assert report["model_family"] == "random_forest"
+        assert report["explanation_level"] == "native_semi_transparent"
+        assert report["champion_gate"]["status"] == "warn"
+        assert "limitation" in report["champion_gate"]["message"].lower()
 
 
-class ExplainabilityGBDTTests(unittest.TestCase):
+class ExplainabilityGBDTTests:
 
     def test_gbdt_explainability_report(self) -> None:
         store, tmp = make_store()
@@ -129,15 +132,15 @@ class ExplainabilityGBDTTests(unittest.TestCase):
         out = ModelExplainabilityNode().run(exp_ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
-        self.assertEqual(report["model_family"], "gbdt")
-        self.assertEqual(report["explanation_level"], "native_semi_transparent")
-        self.assertEqual(report["explanation_type"], "feature_importance")
-        self.assertIn("feature_importance", report)
-        self.assertIn("estimator_count", report)
-        self.assertEqual(report["champion_gate"]["status"], "warn")
+        assert report["model_family"] == "gbdt"
+        assert report["explanation_level"] == "native_semi_transparent"
+        assert report["explanation_type"] == "feature_importance"
+        assert "feature_importance" in report
+        assert "estimator_count" in report
+        assert report["champion_gate"]["status"] == "warn"
 
 
-class ExplainabilityPermutationDataRoleTests(unittest.TestCase):
+class ExplainabilityPermutationDataRoleTests:
 
     def _make_test_data_artifact(self, store):
         rng = np.random.RandomState(99)
@@ -180,9 +183,9 @@ class ExplainabilityPermutationDataRoleTests(unittest.TestCase):
         out = ModelExplainabilityNode().run(exp_ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
-        self.assertIn("permutation_importance", report)
-        self.assertEqual(report["permutation_importance"]["data_role"], "test")
-        self.assertIn("importance_mean", report["permutation_importance"])
+        assert "permutation_importance" in report
+        assert report["permutation_importance"]["data_role"] == "test"
+        assert "importance_mean" in report["permutation_importance"]
 
     def test_permutation_importance_with_oot_data_role(self) -> None:
         store, tmp = make_store()
@@ -213,11 +216,11 @@ class ExplainabilityPermutationDataRoleTests(unittest.TestCase):
         out = ModelExplainabilityNode().run(exp_ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
-        self.assertIn("permutation_importance", report)
-        self.assertEqual(report["permutation_importance"]["data_role"], "oot")
+        assert "permutation_importance" in report
+        assert report["permutation_importance"]["data_role"] == "oot"
 
 
-class ExplainabilityLogisticTests(unittest.TestCase):
+class ExplainabilityLogisticTests:
 
     def _make_logistic_model_artifact(self, store, data_art, def_art):
         """Create a mock logistic regression model artifact directly."""
@@ -272,19 +275,19 @@ class ExplainabilityLogisticTests(unittest.TestCase):
         out = ModelExplainabilityNode().run(exp_ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
-        self.assertEqual(report["model_family"], "logistic_regression")
-        self.assertEqual(report["explanation_level"], "native_scorecard")
-        self.assertEqual(report["explanation_type"], "coefficients")
-        self.assertIn("coefficients", report)
-        self.assertIn("intercept", report)
-        self.assertEqual(report["champion_gate"]["status"], "pass")
+        assert report["model_family"] == "logistic_regression"
+        assert report["explanation_level"] == "native_scorecard"
+        assert report["explanation_type"] == "coefficients"
+        assert "coefficients" in report
+        assert "intercept" in report
+        assert report["champion_gate"]["status"] == "pass"
 
 
 # ======================================================================
 # ModelLimitationsNode Tests
 # ======================================================================
 
-class LimitationsDecisionTreeTests(unittest.TestCase):
+class LimitationsDecisionTreeTests:
 
     def test_dt_limitations_report(self) -> None:
         store, tmp = make_store()
@@ -308,10 +311,10 @@ class LimitationsDecisionTreeTests(unittest.TestCase):
         out = ModelLimitationsNode().run(lim_ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
-        self.assertEqual(report["model_family"], "decision_tree")
-        self.assertIn("limitations", report)
-        self.assertIn("overall_status", report)
-        self.assertIn("champion_eligible", report)
+        assert report["model_family"] == "decision_tree"
+        assert "limitations" in report
+        assert "overall_status" in report
+        assert "champion_eligible" in report
 
     def test_rf_limitations_unaccepted_blocks_champion(self) -> None:
         store, tmp = make_store()
@@ -337,12 +340,12 @@ class LimitationsDecisionTreeTests(unittest.TestCase):
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
         # RF has semi-transparent interpretability → warn-level limitations
-        self.assertEqual(report["model_family"], "random_forest")
-        self.assertIn("limitations", report)
-        self.assertGreater(len(report["limitations"]), 0)
+        assert report["model_family"] == "random_forest"
+        assert "limitations" in report
+        assert len(report["limitations"]) > 0
         # Check that at least one limitation exists with warn severity
         warn_or_block = [lim for lim in report["limitations"] if lim["severity"] in ("warn", "block")]
-        self.assertGreater(len(warn_or_block), 0)
+        assert len(warn_or_block) > 0
 
     def test_limitations_with_accepted_codes(self) -> None:
         store, tmp = make_store()
@@ -390,82 +393,78 @@ class LimitationsDecisionTreeTests(unittest.TestCase):
             )
             out = ModelLimitationsNode().run(lim_ctx)
             report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
-            self.assertTrue(report["champion_eligible"])
-            self.assertEqual(report["unaccepted_blocks"], 0)
+            assert report["champion_eligible"]
+            assert report["unaccepted_blocks"] == 0
 
 
 # ======================================================================
 # Sidecar API Tests (Phase 6)
 # ======================================================================
 
-class NodeTypesAPITests(unittest.TestCase):
+class NodeTypesAPITests:
 
     def test_list_node_types(self) -> None:
         from sidecar.routes.node_types import list_node_types
         response = list_node_types()
-        self.assertGreater(response.count, 0)
+        assert response.count > 0
         types = {nt.node_type for nt in response.node_types}
-        self.assertIn("cardre.decision_tree_classifier", types)
-        self.assertIn("cardre.random_forest_classifier", types)
-        self.assertIn("cardre.gradient_boosting_classifier", types)
-        self.assertIn("cardre.model_explainability", types)
-        self.assertIn("cardre.model_limitations", types)
+        assert "cardre.decision_tree_classifier" in types
+        assert "cardre.random_forest_classifier" in types
+        assert "cardre.gradient_boosting_classifier" in types
+        assert "cardre.model_explainability" in types
+        assert "cardre.model_limitations" in types
 
     def test_node_type_metadata(self) -> None:
         from sidecar.routes.node_types import list_node_types
         response = list_node_types()
         for nt in response.node_types:
             if nt.node_type == "cardre.random_forest_classifier":
-                self.assertEqual(nt.model_family, "random_forest")
-                self.assertEqual(nt.interpretability_level, "native_semi_transparent")
-                self.assertIn("raw_numeric", nt.feature_strategies)
+                assert nt.model_family == "random_forest"
+                assert nt.interpretability_level == "native_semi_transparent"
+                assert "raw_numeric" in nt.feature_strategies
                 break
 
     def test_get_node_type_schema(self) -> None:
         from sidecar.routes.node_types import get_node_type_schema
         schema = get_node_type_schema("cardre.random_forest_classifier")
-        self.assertEqual(schema.node_type, "cardre.random_forest_classifier")
-        self.assertIn("n_estimators", schema.params_schema)
-        self.assertIn("feature_strategy", schema.params_schema)
-        self.assertEqual(schema.defaults["n_estimators"], 100)
+        assert schema.node_type == "cardre.random_forest_classifier"
+        assert "n_estimators" in schema.params_schema
+        assert "feature_strategy" in schema.params_schema
+        assert schema.defaults["n_estimators"] == 100
 
     def test_get_node_type_schema_404(self) -> None:
         from sidecar.routes.node_types import get_node_type_schema
         from fastapi import HTTPException
-        with self.assertRaises(HTTPException) as ctx:
+        with pytest.raises(HTTPException) as ctx:
             get_node_type_schema("cardre.nonexistent_node")
-        self.assertEqual(ctx.exception.status_code, 404)
+        assert ctx.value.status_code == 404
 
     def test_threshold_optimization_schema(self) -> None:
         from sidecar.routes.node_types import get_node_type_schema
         schema = get_node_type_schema("cardre.threshold_optimization")
-        self.assertIn("objective", schema.params_schema)
-        self.assertIn("youden", schema.params_schema["objective"]["enum"])
-        self.assertEqual(schema.defaults["objective"], "youden")
+        assert "objective" in schema.params_schema
+        assert "youden" in schema.params_schema["objective"]["enum"]
+        assert schema.defaults["objective"] == "youden"
 
     def test_hyperparameter_tuning_listed(self) -> None:
         from sidecar.routes.node_types import list_node_types
         response = list_node_types()
         types = {nt.node_type for nt in response.node_types}
-        self.assertIn("cardre.hyperparameter_tuning", types)
+        assert "cardre.hyperparameter_tuning" in types
 
     def test_hyperparameter_tuning_schema(self) -> None:
         from sidecar.routes.node_types import get_node_type_schema
         schema = get_node_type_schema("cardre.hyperparameter_tuning")
-        self.assertEqual(schema.node_type, "cardre.hyperparameter_tuning")
-        self.assertIn("estimator_type", schema.params_schema)
-        self.assertIn("search_method", schema.params_schema)
-        self.assertIn("param_grid", schema.params_schema)
-        self.assertIn("cv_folds", schema.params_schema)
-        self.assertEqual(schema.params_schema["cv_folds"]["minimum"], 2)
-        self.assertEqual(schema.params_schema["estimator_type"]["enum"], ["decision_tree", "random_forest", "gbdt", "logistic_regression"])
+        assert schema.node_type == "cardre.hyperparameter_tuning"
+        assert "estimator_type" in schema.params_schema
+        assert "search_method" in schema.params_schema
+        assert "param_grid" in schema.params_schema
+        assert "cv_folds" in schema.params_schema
+        assert schema.params_schema["cv_folds"]["minimum"] == 2
+        assert schema.params_schema["estimator_type"]["enum"] == ["decision_tree", "random_forest", "gbdt", "logistic_regression"]
 
     def test_hyperparameter_tuning_schema_has_enum(self) -> None:
         from sidecar.routes.node_types import get_node_type_schema
         schema = get_node_type_schema("cardre.hyperparameter_tuning")
-        self.assertIn("grid", schema.params_schema["search_method"]["enum"])
-        self.assertIn("randomized", schema.params_schema["search_method"]["enum"])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert "grid" in schema.params_schema["search_method"]["enum"]
+        assert "randomized" in schema.params_schema["search_method"]["enum"]

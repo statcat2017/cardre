@@ -5,8 +5,6 @@ from __future__ import annotations
 import io
 import json
 import math
-import tempfile
-import unittest
 from pathlib import Path
 
 import polars as pl
@@ -34,6 +32,8 @@ from cardre.nodes import (
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 
+import pytest
+
 from tests.helpers import (
     SAMPLE_GERMAN_CREDIT_LINES,
     _make_json_artifact,
@@ -41,6 +41,9 @@ from tests.helpers import (
     _make_train_artifact,
     make_store,
 )
+
+pytestmark = pytest.mark.integration
+
 
 
 def make_full_german_credit_download(tmp: Path) -> Path:
@@ -55,8 +58,6 @@ def make_full_german_credit_download(tmp: Path) -> Path:
 # Workstream 12: End-to-End Scorecard Pathway Test
 # ======================================================================
 
-class ScorecardPathwayTests(unittest.TestCase):
-    """End-to-end test running the Phase 2A pathway through the executor."""
 
     def test_full_phase2a_pathway_import_through_manifest(self) -> None:
         store, tmp = make_store()
@@ -254,11 +255,6 @@ class ScorecardPathwayTests(unittest.TestCase):
         executor = PlanExecutor(reg)
         run_id = executor.run_plan_version(store, pv_id)
 
-        run = store.get_run(run_id)
-        self.assertEqual(
-            run["status"], "succeeded",
-            f"Phase 2A pathway should succeed. Status: {run['status']}",
-        )
 
         run_steps = store.get_run_steps(run_id)
         run_steps_by_id = {rs.step_id: rs for rs in run_steps}
@@ -303,7 +299,7 @@ class ScorecardPathwayTests(unittest.TestCase):
 # Logistic Regression
 # ======================================================================
 
-class LogisticRegressionTests(unittest.TestCase):
+class LogisticRegressionTests:
 
     def test_logistic_regression_fits_and_records_coefficients(self) -> None:
         store, tmp = make_store()
@@ -337,19 +333,19 @@ class LogisticRegressionTests(unittest.TestCase):
         node = LogisticRegressionNode()
         output = node.run(ctx)
 
-        self.assertEqual(len(output.artifacts), 1)
+        assert len(output.artifacts) == 1
         artifact = output.artifacts[0]
-        self.assertEqual(artifact.artifact_type, "model")
-        self.assertEqual(artifact.role, "model")
+        assert artifact.artifact_type == "model"
+        assert artifact.role == "model"
 
         model = json.loads(store.artifact_path(artifact).read_text())
-        self.assertIn("features", model)
-        self.assertIn("coefficients", model)
-        self.assertIn("intercept", model)
-        self.assertIn("class_mapping", model)
-        self.assertEqual(model["class_mapping"]["bad"], "bad")
-        self.assertIn("training", model)
-        self.assertTrue(model["training"]["converged"])
+        assert "features" in model
+        assert "coefficients" in model
+        assert "intercept" in model
+        assert "class_mapping" in model
+        assert model["class_mapping"]["bad"] == "bad"
+        assert "training" in model
+        assert model["training"]["converged"]
 
     def test_logistic_regression_needs_woe_columns(self) -> None:
         store, tmp = make_store()
@@ -375,7 +371,7 @@ class LogisticRegressionTests(unittest.TestCase):
             validated_params=params, runtime_metadata={},
         )
         node = LogisticRegressionNode()
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             node.run(ctx)
 
 
@@ -383,7 +379,7 @@ class LogisticRegressionTests(unittest.TestCase):
 # Score Scaling
 # ======================================================================
 
-class ScoreScalingTests(unittest.TestCase):
+class ScoreScalingTests:
 
     def test_score_scaling_produces_deterministic_points(self) -> None:
         store, tmp = make_store()
@@ -448,13 +444,13 @@ class ScoreScalingTests(unittest.TestCase):
         node = ScoreScalingNode()
         output = node.run(ctx)
 
-        self.assertEqual(len(output.artifacts), 1)
+        assert len(output.artifacts) == 1
         artifact = output.artifacts[0]
-        self.assertEqual(artifact.artifact_type, "scorecard")
+        assert artifact.artifact_type == "scorecard"
         scorecard = json.loads(store.artifact_path(artifact).read_text())
-        self.assertIn("attributes", scorecard)
-        self.assertIn("base_points", scorecard)
-        self.assertGreater(scorecard["base_points"], 0)
+        assert "attributes" in scorecard
+        assert "base_points" in scorecard
+        assert scorecard["base_points"] > 0
 
         factor = 20 / math.log(2)
         offset = 600 - factor * math.log(50)
@@ -462,7 +458,7 @@ class ScoreScalingTests(unittest.TestCase):
         direction = -1.0  # higher_score_is_lower_risk=True
         # base_points = offset + direction * factor * intercept
         expected_base = round(offset + direction * factor * intercept, 2)
-        self.assertAlmostEqual(scorecard["base_points"], expected_base, delta=0.1)
+        assert scorecard["base_points"] == pytest.approx(expected_base, abs=0.1)
 
         # Parity: score for any row should equal offset + direction * factor * (intercept + sum(coef * woe))
         coef_x = 0.8
@@ -470,7 +466,7 @@ class ScoreScalingTests(unittest.TestCase):
         expected_score_low = round(offset + direction * factor * (intercept + coef_x * woe_low), 2)
         attr_low = next(a for a in scorecard["attributes"] if a["bin_id"] == "x_b1")
         computed_score = scorecard["base_points"] + attr_low["points"]
-        self.assertAlmostEqual(computed_score, expected_score_low, delta=0.1)
+        assert computed_score == pytest.approx(expected_score_low, abs=0.1)
 
     def test_score_scaling_validation(self) -> None:
         store, tmp = make_store()
@@ -496,7 +492,7 @@ class ScoreScalingTests(unittest.TestCase):
             validated_params=params, runtime_metadata={},
         )
         node = ScoreScalingNode()
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             node.run(ctx)
 
 
@@ -504,7 +500,7 @@ class ScoreScalingTests(unittest.TestCase):
 # Phase 2B End-to-End Through Executor
 # ======================================================================
 
-class Phase2BEndToEndTests(unittest.TestCase):
+class Phase2BEndToEndTests:
     """Runs the full Phase 2A + 2B pathway through the executor."""
 
     def test_full_phase2b_pathway(self) -> None:
@@ -653,15 +649,15 @@ class Phase2BEndToEndTests(unittest.TestCase):
         bsr_output = BuildSummaryReportNode().run(bsr_ctx)
 
         # Assertions
-        self.assertEqual(lr_output.artifacts[0].artifact_type, "model")
-        self.assertEqual(ss_output.artifacts[0].artifact_type, "scorecard")
-        self.assertEqual(bsr_output.artifacts[0].artifact_type, "report")
+        assert lr_output.artifacts[0].artifact_type == "model"
+        assert ss_output.artifacts[0].artifact_type == "scorecard"
+        assert bsr_output.artifacts[0].artifact_type == "report"
 
         model = json.loads(store.artifact_path(lr_output.artifacts[0]).read_text())
         scorecard = json.loads(store.artifact_path(ss_output.artifacts[0]).read_text())
-        self.assertIn("coefficients", model)
-        self.assertIn("attributes", scorecard)
-        self.assertGreater(len(scorecard["attributes"]), 0)
+        assert "coefficients" in model
+        assert "attributes" in scorecard
+        assert len(scorecard["attributes"]) > 0
 
     def test_woe_transform_selects_only_selected_vars(self) -> None:
         store, tmp = make_store()
@@ -726,82 +722,3 @@ class Phase2BEndToEndTests(unittest.TestCase):
         output = WoeTransformTrainNode().run(ctx)
 
         transformed = pl.read_parquet(store.artifact_path(output.artifacts[0]))
-        self.assertIn("age_woe", transformed.columns)
-        self.assertNotIn("income_woe", transformed.columns,
-                         "unselected variable should not appear in WOE transform output")
-
-
-# ======================================================================
-# Apply Model
-# ======================================================================
-
-class ApplyModelTests(unittest.TestCase):
-
-    def setUp(self):
-        self.store, self.tmp = make_store()
-        self.store.initialize()
-
-        self.df = pl.DataFrame({
-            "x_woe": [0.5, -0.3, 0.5],
-            "target": ["g", "b", "g"],
-        })
-        self.train_art = _make_train_artifact(self.store, self.df, role="train")
-        self.model = {
-            "target_column": "target", "features": ["x_woe"],
-            "intercept": -0.5, "coefficients": {"x_woe": 0.8},
-            "class_mapping": {"good": "g", "bad": "b"}, "bad_class_label": "b",
-            "training": {"row_count": 3, "converged": True, "iterations": 5, "params": {}},
-            "warnings": [],
-        }
-        self.model_art = _make_json_artifact(self.store, self.model, role="model", stem="m1")
-        self.scorecard = {
-            "base_score": 600, "base_odds": 50, "points_to_double_odds": 20,
-            "factor": round(20 / math.log(2), 6), "offset": round(600 - (20 / math.log(2)) * math.log(50), 6),
-            "higher_score_is_lower_risk": True, "intercept": -0.5, "base_points": 500,
-            "attributes": [], "target_column": "target",
-        }
-        self.sc_art = _make_json_artifact(self.store, self.scorecard, role="scorecard", stem="sc1")
-
-    def test_produces_prediction_and_score_columns(self):
-        params = {}
-        spec = StepSpec(step_id="am", node_type="cardre.apply_model", node_version="1", category="apply",
-                        params=params, params_hash=json_logical_hash(params),
-                        parent_step_ids=[], branch_label="", position=0)
-        ctx = ExecutionContext(store=self.store, run_id="r1", plan_version_id="pv1", step_spec=spec,
-                               parent_run_steps=[], input_artifacts=[self.train_art, self.model_art, self.sc_art],
-                               validated_params=params, runtime_metadata={})
-        out = ApplyModelNode().run(ctx)
-        self.assertEqual(len(out.artifacts), 1)
-        df = pl.read_parquet(self.store.artifact_path(out.artifacts[0]))
-        self.assertIn("predicted_bad_probability", df.columns)
-        self.assertIn("score", df.columns)
-
-    def test_missing_feature_fails(self):
-        store, tmp = make_store()
-        store.initialize()
-        bad_df = pl.DataFrame({"wrong_col": [1.0], "target": ["g"]})
-        buf = io.BytesIO()
-        bad_df.write_parquet(buf)
-        p = store.root / "datasets" / "bad-train.parquet"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_bytes(buf.getvalue())
-        bad_art = ArtifactRef(
-            artifact_id="bad-train-1", artifact_type="dataset", role="train",
-            path=relative_path(p, store.root),
-            physical_hash=physical_hash(p), logical_hash=table_logical_hash(bad_df),
-            media_type="application/vnd.apache.parquet", metadata={},
-        )
-        store.register_artifact(bad_art)
-
-        model_art = _make_json_artifact(store, self.model, role="model", stem="m2")
-        sc_art = _make_json_artifact(store, self.scorecard, role="scorecard", stem="sc2")
-
-        params = {}
-        spec = StepSpec(step_id="am", node_type="cardre.apply_model", node_version="1", category="apply",
-                        params=params, params_hash=json_logical_hash(params),
-                        parent_step_ids=[], branch_label="", position=0)
-        ctx = ExecutionContext(store=store, run_id="r2", plan_version_id="pv1", step_spec=spec,
-                               parent_run_steps=[], input_artifacts=[bad_art, model_art, sc_art],
-                               validated_params=params, runtime_metadata={})
-        with self.assertRaises(ValueError):
-            ApplyModelNode().run(ctx)

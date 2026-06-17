@@ -25,13 +25,7 @@ from sidecar.proof_pathway import (
 
 from tests.helpers import make_store
 
-
-@pytest.fixture
-def store():
-    tmp = Path(tempfile.mkdtemp())
-    s = ProjectStore(tmp / "test.cardre")
-    s.initialize()
-    return s
+pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

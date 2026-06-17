@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import tempfile
-import unittest
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +15,10 @@ from cardre.nodes.validate.apply import ApplyModelNode
 from cardre.store import ProjectStore
 
 from tests.helpers import make_numeric_dataset, make_store
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 
 def make_hp_context(
@@ -61,7 +64,7 @@ def make_hp_context(
     )
 
 
-class HyperparameterTuningValidationTests(unittest.TestCase):
+class HyperparameterTuningValidationTests:
 
     def test_valid_params(self) -> None:
         node = HyperparameterTuningNode()
@@ -73,7 +76,7 @@ class HyperparameterTuningValidationTests(unittest.TestCase):
             "random_seed": 42,
             "feature_strategy": "raw_numeric",
         })
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_invalid_estimator_type(self) -> None:
         node = HyperparameterTuningNode()
@@ -81,8 +84,8 @@ class HyperparameterTuningValidationTests(unittest.TestCase):
             "estimator_type": "invalid_model",
             "param_grid": {"max_depth": [2, 3]},
         })
-        self.assertGreater(len(errors), 0)
-        self.assertTrue(any("estimator_type" in e for e in errors))
+        assert len(errors) > 0
+        assert any("estimator_type" in e for e in errors)
 
     def test_invalid_search_method(self) -> None:
         node = HyperparameterTuningNode()
@@ -91,8 +94,8 @@ class HyperparameterTuningValidationTests(unittest.TestCase):
             "search_method": "bayesian",
             "param_grid": {"max_depth": [2, 3]},
         })
-        self.assertGreater(len(errors), 0)
-        self.assertTrue(any("search_method" in e for e in errors))
+        assert len(errors) > 0
+        assert any("search_method" in e for e in errors)
 
     def test_empty_param_grid(self) -> None:
         node = HyperparameterTuningNode()
@@ -100,7 +103,7 @@ class HyperparameterTuningValidationTests(unittest.TestCase):
             "estimator_type": "decision_tree",
             "param_grid": {},
         })
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
     def test_cv_folds_too_small(self) -> None:
         node = HyperparameterTuningNode()
@@ -109,10 +112,10 @@ class HyperparameterTuningValidationTests(unittest.TestCase):
             "param_grid": {"max_depth": [2, 3]},
             "cv_folds": 1,
         })
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
 
-class HyperparameterTuningFitTests(unittest.TestCase):
+class HyperparameterTuningFitTests:
 
     def test_grid_search_produces_v1_model_artifact(self) -> None:
         store, tmp = make_store()
@@ -122,13 +125,13 @@ class HyperparameterTuningFitTests(unittest.TestCase):
         node = HyperparameterTuningNode()
         output = node.run(ctx)
 
-        self.assertEqual(len(output.artifacts), 2)
+        assert len(output.artifacts) == 2
         model_art = output.artifacts[0]
-        self.assertEqual(model_art.artifact_type, "model")
-        self.assertEqual(model_art.role, "model")
+        assert model_art.artifact_type == "model"
+        assert model_art.role == "model"
 
         model = json.loads(store.artifact_path(model_art).read_text())
-        self.assertEqual(model["schema_version"], "cardre.model_artifact.v1")
+        assert model["schema_version"] == "cardre.model_artifact.v1"
 
     def test_grid_search_records_best_params_and_score(self) -> None:
         store, tmp = make_store()
@@ -140,9 +143,9 @@ class HyperparameterTuningFitTests(unittest.TestCase):
 
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
         tuning = model["training"]["hyperparameter_tuning"]
-        self.assertIn("best_params", tuning)
-        self.assertIn("best_score", tuning)
-        self.assertGreater(tuning["best_score"], 0)
+        assert "best_params" in tuning
+        assert "best_score" in tuning
+        assert tuning["best_score"] > 0
 
     def test_grid_search_records_cv_results_shape(self) -> None:
         store, tmp = make_store()
@@ -154,11 +157,11 @@ class HyperparameterTuningFitTests(unittest.TestCase):
 
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
         tuning = model["training"]["hyperparameter_tuning"]
-        self.assertEqual(tuning["search_method"], "grid")
+        assert tuning["search_method"] == "grid"
         shape = tuning["cv_results_df_shape"]
-        self.assertEqual(len(shape), 2)
-        self.assertGreater(shape[0], 0)
-        self.assertGreater(shape[1], 0)
+        assert len(shape) == 2
+        assert shape[0] > 0
+        assert shape[1] > 0
 
     def test_randomized_search_works(self) -> None:
         store, tmp = make_store()
@@ -179,8 +182,8 @@ class HyperparameterTuningFitTests(unittest.TestCase):
 
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
         tuning = model["training"]["hyperparameter_tuning"]
-        self.assertEqual(tuning["search_method"], "randomized")
-        self.assertGreater(tuning["best_score"], 0)
+        assert tuning["search_method"] == "randomized"
+        assert tuning["best_score"] > 0
 
     def test_best_estimator_produces_valid_artifact(self) -> None:
         store, tmp = make_store()
@@ -191,11 +194,8 @@ class HyperparameterTuningFitTests(unittest.TestCase):
         output = node.run(ctx)
 
         estimator_art = output.artifacts[1]
-        self.assertEqual(estimator_art.artifact_type, "estimator")
-        self.assertTrue(
-            store.artifact_path(estimator_art).exists(),
-            "Estimator artifact file must exist on disk",
-        )
+        assert estimator_art.artifact_type == "estimator"
+        assert store.artifact_path(estimator_art).exists()
 
     def test_best_estimator_can_score_data(self) -> None:
         import joblib
@@ -216,9 +216,9 @@ class HyperparameterTuningFitTests(unittest.TestCase):
 
         X = train_df.select(features).to_numpy()
         preds = estimator.predict(X)
-        self.assertEqual(len(preds), train_df.height)
+        assert len(preds) == train_df.height
         probs = estimator.predict_proba(X)
-        self.assertEqual(probs.shape[0], train_df.height)
+        assert probs.shape[0] == train_df.height
 
     def test_invalid_estimator_type_raises_error(self) -> None:
         store, tmp = make_store()
@@ -233,7 +233,7 @@ class HyperparameterTuningFitTests(unittest.TestCase):
         ctx = make_hp_context(store, data_art, def_art, params=params)
 
         node = HyperparameterTuningNode()
-        with self.assertRaises(KeyError):
+        with pytest.raises(KeyError):
             node.run(ctx)
 
     def test_logistic_regression_tuning(self) -> None:
@@ -252,12 +252,12 @@ class HyperparameterTuningFitTests(unittest.TestCase):
         output = node.run(ctx)
 
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        self.assertEqual(model["model_family"], "logistic_regression")
-        self.assertIn("intercept", model)
-        self.assertIn("coefficients", model)
-        self.assertGreater(len(model["coefficients"]), 0)
+        assert model["model_family"] == "logistic_regression"
+        assert "intercept" in model
+        assert "coefficients" in model
+        assert len(model["coefficients"]) > 0
         tuning = model["training"]["hyperparameter_tuning"]
-        self.assertIn("best_params", tuning)
+        assert "best_params" in tuning
 
     def test_logistic_tuned_model_predictions_not_constant(self) -> None:
         import io
@@ -280,7 +280,7 @@ class HyperparameterTuningFitTests(unittest.TestCase):
 
         model = json.loads(store.artifact_path(model_art).read_text())
         estimator_ref = model.get("estimator_reference", {})
-        self.assertIn("artifact_id", estimator_ref)
+        assert "artifact_id" in estimator_ref
 
         from cardre.modeling.serialization import read_estimator_artifact
         estimator_art_obj = store.get_artifact(estimator_ref["artifact_id"])
@@ -320,7 +320,7 @@ class HyperparameterTuningFitTests(unittest.TestCase):
 
         actual_probs = scored_df["predicted_bad_probability"].to_numpy()
 
-        self.assertGreater(actual_probs.std(), 1e-6, "LR predictions must not be constant")
+        assert actual_probs.std() > 1e-6
         np.testing.assert_allclose(actual_probs, expected_probs, atol=1e-5)
 
     def test_output_metrics(self) -> None:
@@ -331,9 +331,9 @@ class HyperparameterTuningFitTests(unittest.TestCase):
         node = HyperparameterTuningNode()
         output = node.run(ctx)
 
-        self.assertIn("feature_count", output.metrics)
-        self.assertIn("best_score", output.metrics)
-        self.assertGreater(output.metrics["best_score"], 0)
+        assert "feature_count" in output.metrics
+        assert "best_score" in output.metrics
+        assert output.metrics["best_score"] > 0
 
     def test_deterministic_with_same_seed(self) -> None:
         store, tmp = make_store()
@@ -348,17 +348,11 @@ class HyperparameterTuningFitTests(unittest.TestCase):
         model1 = json.loads(store.artifact_path(out1.artifacts[0]).read_text())
         model2 = json.loads(store.artifact_path(out2.artifacts[0]).read_text())
 
-        self.assertEqual(
-            model1["training"]["hyperparameter_tuning"]["best_params"],
-            model2["training"]["hyperparameter_tuning"]["best_params"],
-        )
-        self.assertEqual(
-            model1["training"]["hyperparameter_tuning"]["best_score"],
-            model2["training"]["hyperparameter_tuning"]["best_score"],
-        )
+        assert model1["training"]["hyperparameter_tuning"]["best_params"] == model2["training"]["hyperparameter_tuning"]["best_params"]
+        assert model1["training"]["hyperparameter_tuning"]["best_score"] == model2["training"]["hyperparameter_tuning"]["best_score"]
 
 
-class HyperparameterTuningGBDTTests(unittest.TestCase):
+class HyperparameterTuningGBDTTests:
 
     def test_gbdt_tuning_succeeds(self) -> None:
         store, tmp = make_store()
@@ -377,13 +371,13 @@ class HyperparameterTuningGBDTTests(unittest.TestCase):
         output = node.run(ctx)
 
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        self.assertEqual(model["model_family"], "gbdt")
-        self.assertIn("hyperparameter_tuning", model["training"])
-        self.assertIn("best_score", model["training"]["hyperparameter_tuning"])
-        self.assertGreater(model["training"]["hyperparameter_tuning"]["best_score"], 0)
+        assert model["model_family"] == "gbdt"
+        assert "hyperparameter_tuning" in model["training"]
+        assert "best_score" in model["training"]["hyperparameter_tuning"]
+        assert model["training"]["hyperparameter_tuning"]["best_score"] > 0
 
 
-class HyperparameterTuningApplyTests(unittest.TestCase):
+class HyperparameterTuningApplyTests:
 
     def _tune_then_apply(self, store, estimator_type: str, param_grid: dict) -> None:
         data_art, def_art, _ = make_numeric_dataset(store)
@@ -426,12 +420,12 @@ class HyperparameterTuningApplyTests(unittest.TestCase):
         apply_node = ApplyModelNode()
         apply_output = apply_node.run(apply_ctx)
 
-        self.assertEqual(len(apply_output.artifacts), 1)
+        assert len(apply_output.artifacts) == 1
         scored_df = pl.read_parquet(store.artifact_path(apply_output.artifacts[0]))
-        self.assertIn("predicted_bad_probability", scored_df.columns)
+        assert "predicted_bad_probability" in scored_df.columns
         for p in scored_df["predicted_bad_probability"]:
-            self.assertGreaterEqual(p, 0.0)
-            self.assertLessEqual(p, 1.0)
+            assert p >= 0.0
+            assert p <= 1.0
 
     def test_dt_tuning_then_apply(self) -> None:
         store, tmp = make_store()
@@ -448,7 +442,3 @@ class HyperparameterTuningApplyTests(unittest.TestCase):
     def test_lr_tuning_then_apply(self) -> None:
         store, tmp = make_store()
         self._tune_then_apply(store, "logistic_regression", {"C": [0.1, 1.0]})
-
-
-if __name__ == "__main__":
-    unittest.main()

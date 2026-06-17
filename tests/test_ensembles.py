@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import tempfile
-import unittest
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +23,10 @@ from cardre.nodes.ml_models import (
 from cardre.store import ProjectStore
 
 from tests.helpers import make_numeric_dataset, make_store
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 
 def fit_two_models(store, data_art, def_art):
@@ -150,7 +153,8 @@ def make_ensemble_context(
     )
 
 
-class TestVotingEnsembleNode(unittest.TestCase):
+class TestVotingEnsembleNode:
+    @pytest.fixture(autouse=True)
     def setUp(self):
         self.store, self.tmp = make_store()
         self.data_art, self.def_art, self.df = make_numeric_dataset(self.store)
@@ -167,11 +171,11 @@ class TestVotingEnsembleNode(unittest.TestCase):
             params={"voting": "soft"},
         )
         out = node.run(ctx)
-        self.assertEqual(len(out.artifacts), 1)
+        assert len(out.artifacts) == 1
         model = json.loads(self.store.artifact_path(out.artifacts[0]).read_text())
-        self.assertEqual(model["model_family"], "voting_ensemble")
-        self.assertEqual(model["model_payload"]["voting"], "soft")
-        self.assertEqual(len(model["model_payload"]["base_models"]), 2)
+        assert model["model_family"] == "voting_ensemble"
+        assert model["model_payload"]["voting"] == "soft"
+        assert len(model["model_payload"]["base_models"]) == 2
 
     def test_hard_voting(self):
         node = VotingEnsembleNode()
@@ -183,8 +187,8 @@ class TestVotingEnsembleNode(unittest.TestCase):
         )
         out = node.run(ctx)
         model = json.loads(self.store.artifact_path(out.artifacts[0]).read_text())
-        self.assertEqual(model["model_payload"]["voting"], "hard")
-        self.assertEqual(model["model_payload"]["threshold"], 0.6)
+        assert model["model_payload"]["voting"] == "hard"
+        assert model["model_payload"]["threshold"] == 0.6
 
     def test_model_artifact_valid(self):
         node = VotingEnsembleNode()
@@ -196,12 +200,12 @@ class TestVotingEnsembleNode(unittest.TestCase):
         out = node.run(ctx)
         model = json.loads(self.store.artifact_path(out.artifacts[0]).read_text())
         errs = validate_model_artifact(model)
-        self.assertEqual(errs, [])
+        assert errs == []
 
     def test_requires_at_least_two_models(self):
         node = VotingEnsembleNode()
         errors = node.validate_params({"model_artifact_ids": ["x"]})
-        self.assertTrue(any("at least 2" in e for e in errors))
+        assert any("at least 2" in e for e in errors)
 
     def test_experimental_warning(self):
         node = VotingEnsembleNode()
@@ -213,7 +217,7 @@ class TestVotingEnsembleNode(unittest.TestCase):
         out = node.run(ctx)
         model = json.loads(self.store.artifact_path(out.artifacts[0]).read_text())
         codes = [w["code"] for w in model["warnings"]]
-        self.assertIn("EXPERIMENTAL_ENSEMBLE", codes)
+        assert "EXPERIMENTAL_ENSEMBLE" in codes
 
     def test_interpretability_post_hoc_only(self):
         node = VotingEnsembleNode()
@@ -224,11 +228,12 @@ class TestVotingEnsembleNode(unittest.TestCase):
         )
         out = node.run(ctx)
         model = json.loads(self.store.artifact_path(out.artifacts[0]).read_text())
-        self.assertEqual(model["interpretability"]["explanation_level"], "post_hoc_only")
-        self.assertFalse(model["interpretability"]["native_importance_available"])
+        assert model["interpretability"]["explanation_level"] == "post_hoc_only"
+        assert not model["interpretability"]["native_importance_available"]
 
 
-class TestWeightedEnsembleNode(unittest.TestCase):
+class TestWeightedEnsembleNode:
+    @pytest.fixture(autouse=True)
     def setUp(self):
         self.store, self.tmp = make_store()
         self.data_art, self.def_art, self.df = make_numeric_dataset(self.store)
@@ -246,8 +251,8 @@ class TestWeightedEnsembleNode(unittest.TestCase):
         )
         out = node.run(ctx)
         model = json.loads(self.store.artifact_path(out.artifacts[0]).read_text())
-        self.assertAlmostEqual(model["model_payload"]["weights"][0], 0.7, places=4)
-        self.assertAlmostEqual(model["model_payload"]["weights"][1], 0.3, places=4)
+        assert model["model_payload"]["weights"][0] == pytest.approx(0.7, abs=5e-5)
+        assert model["model_payload"]["weights"][1] == pytest.approx(0.3, abs=5e-5)
 
     def test_optimize_weights(self):
         node = WeightedEnsembleNode()
@@ -260,8 +265,8 @@ class TestWeightedEnsembleNode(unittest.TestCase):
         out = node.run(ctx)
         model = json.loads(self.store.artifact_path(out.artifacts[0]).read_text())
         weights = model["model_payload"]["weights"]
-        self.assertEqual(len(weights), 2)
-        self.assertAlmostEqual(sum(weights), 1.0, places=4)
+        assert len(weights) == 2
+        assert sum(weights) == pytest.approx(1.0, abs=5e-5)
 
     def test_default_equal_weights(self):
         node = WeightedEnsembleNode()
@@ -273,8 +278,8 @@ class TestWeightedEnsembleNode(unittest.TestCase):
         out = node.run(ctx)
         model = json.loads(self.store.artifact_path(out.artifacts[0]).read_text())
         weights = model["model_payload"]["weights"]
-        self.assertAlmostEqual(weights[0], 0.5, places=4)
-        self.assertAlmostEqual(weights[1], 0.5, places=4)
+        assert weights[0] == pytest.approx(0.5, abs=5e-5)
+        assert weights[1] == pytest.approx(0.5, abs=5e-5)
 
     def test_model_artifact_valid(self):
         node = WeightedEnsembleNode()
@@ -286,7 +291,7 @@ class TestWeightedEnsembleNode(unittest.TestCase):
         out = node.run(ctx)
         model = json.loads(self.store.artifact_path(out.artifacts[0]).read_text())
         errs = validate_model_artifact(model)
-        self.assertEqual(errs, [])
+        assert errs == []
 
     def test_weights_must_sum_to_one(self):
         node = WeightedEnsembleNode()
@@ -294,11 +299,4 @@ class TestWeightedEnsembleNode(unittest.TestCase):
             "model_artifact_ids": ["a", "b"],
             "weights": [0.8, 0.3],
         })
-        self.assertTrue(any("sum to 1" in e for e in errors))
-
-
-
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert any("sum to 1" in e for e in errors)

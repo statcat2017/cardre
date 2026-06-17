@@ -30,6 +30,8 @@ from cardre.store import ProjectStore
 
 from tests.helpers import make_store
 
+pytestmark = pytest.mark.unit
+
 
 SAMPLE_GERMAN_CREDIT_LINES_MULTI = [
     "A11 6 A34 A43 1169 A65 A75 4 A93 A101 4 A121 67 A143 A152 2 A173 1 A192 A201 1",

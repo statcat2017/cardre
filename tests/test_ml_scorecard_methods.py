@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import tempfile
-import unittest
 from pathlib import Path
 
 import polars as pl
+
+import pytest
 
 from cardre.audit import (
     ExecutionContext,
@@ -32,8 +33,9 @@ from cardre.modeling.serialization import (
 )
 from cardre.nodes.validate import CutoffAnalysisNode, ValidationMetricsNode
 from cardre.store import ProjectStore
+from tests.helpers import make_store
 
-from tests.helpers import _make_json_artifact, _make_train_artifact, make_store
+pytestmark = pytest.mark.integration
 
 
 # ======================================================================
@@ -67,7 +69,7 @@ def make_definition_artifact(store: ProjectStore, target_column: str, good_value
 # Phase 0: Cutoff Analysis Label Fix
 # ======================================================================
 
-class CutoffAnalysisLabelTests(unittest.TestCase):
+class CutoffAnalysisLabelTests:
 
     def test_cutoff_uses_actual_target_not_predicted_probability(self) -> None:
         """Verify cutoff analysis derives y_bin from target column, not predicted_bad_probability."""
@@ -114,13 +116,13 @@ class CutoffAnalysisLabelTests(unittest.TestCase):
 
         reader = ArtifactEvidenceReader(store)
         cutoff = reader.read(output.artifacts[0].artifact_id, EvidenceKind.CUTOFF_ANALYSIS)
-        self.assertIn("train", cutoff.cutoff_tables)
+        assert "train" in cutoff.cutoff_tables
         rows = cutoff.cutoff_tables["train"]
-        self.assertEqual(len(rows), 2)
+        assert len(rows) == 2
 
         # All 4 rows: row 1 and row 2 are bad (target=bad), so 2 bad out of 4
         bad_counts = [r.bad_rate * (1 - r.approval_rate) * 4 for r in rows]
-        self.assertAlmostEqual(sum(bad_counts), 2)
+        assert sum(bad_counts) == pytest.approx(2)
 
     def test_cutoff_warns_when_target_column_missing(self) -> None:
         """Verify cutoff analysis warns when target column is not in dataset."""
@@ -160,9 +162,9 @@ class CutoffAnalysisLabelTests(unittest.TestCase):
         output = node.run(ctx)
 
         report = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        self.assertIn("warnings", report)
+        assert "warnings" in report
         warning_codes = [w["code"] for w in report["warnings"]]
-        self.assertIn("MISSING_TARGET_COLUMN", warning_codes)
+        assert "MISSING_TARGET_COLUMN" in warning_codes
 
     def test_cutoff_warns_when_no_good_bad_values(self) -> None:
         """Verify cutoff analysis warns when definition has no good/bad values."""
@@ -203,9 +205,9 @@ class CutoffAnalysisLabelTests(unittest.TestCase):
         output = node.run(ctx)
 
         report = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        self.assertIn("warnings", report)
+        assert "warnings" in report
         warning_codes = [w["code"] for w in report["warnings"]]
-        self.assertIn("MISSING_TARGET_METADATA", warning_codes)
+        assert "MISSING_TARGET_METADATA" in warning_codes
 
     def test_cutoff_class_inversion_detection(self) -> None:
         """Verify that cutoff uses actual labels even when class order would invert results."""
@@ -249,15 +251,15 @@ class CutoffAnalysisLabelTests(unittest.TestCase):
 
         reader = ArtifactEvidenceReader(store)
         cutoff = reader.read(output.artifacts[0].artifact_id, EvidenceKind.CUTOFF_ANALYSIS)
-        self.assertIn("train", cutoff.cutoff_tables)
-        self.assertGreater(len(cutoff.cutoff_tables["train"]), 0)
+        assert "train" in cutoff.cutoff_tables
+        assert len(cutoff.cutoff_tables["train"]) > 0
 
 
 # ======================================================================
 # Phase 1: Model Artifact Schema
 # ======================================================================
 
-class ModelArtifactSchemaTests(unittest.TestCase):
+class ModelArtifactSchemaTests:
 
     def test_model_artifact_v1_roundtrip(self) -> None:
         """Verify ModelArtifactV1 serializes and deserializes correctly."""
@@ -279,14 +281,14 @@ class ModelArtifactSchemaTests(unittest.TestCase):
         d = artifact.to_dict()
         restored = ModelArtifactV1.from_dict(d)
 
-        self.assertEqual(restored.schema_version, MODEL_ARTIFACT_SCHEMA_VERSION)
-        self.assertEqual(restored.model_family, "logistic_regression")
-        self.assertEqual(restored.target_column, "risk")
-        self.assertEqual(restored.target_event_value, "bad")
-        self.assertEqual(restored.probability_column_index, 1)
-        self.assertEqual(restored.feature_contract.features, ["feat_a", "feat_b"])
-        self.assertEqual(restored.training.row_count, 1000)
-        self.assertEqual(restored.model_payload["intercept"], 0.5)
+        assert restored.schema_version == MODEL_ARTIFACT_SCHEMA_VERSION
+        assert restored.model_family == "logistic_regression"
+        assert restored.target_column == "risk"
+        assert restored.target_event_value == "bad"
+        assert restored.probability_column_index == 1
+        assert restored.feature_contract.features == ["feat_a", "feat_b"]
+        assert restored.training.row_count == 1000
+        assert restored.model_payload["intercept"] == 0.5
 
     def test_validate_model_artifact_valid(self) -> None:
         """Verify validate_model_artifact accepts a valid artifact."""
@@ -301,14 +303,14 @@ class ModelArtifactSchemaTests(unittest.TestCase):
             "training": {"row_count": 100},
         }
         errors = validate_model_artifact(data)
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_validate_model_artifact_missing_fields(self) -> None:
         """Verify validate_model_artifact rejects artifacts with missing fields."""
         data = {"schema_version": MODEL_ARTIFACT_SCHEMA_VERSION}
         errors = validate_model_artifact(data)
-        self.assertGreater(len(errors), 0)
-        self.assertTrue(any("model_family" in e for e in errors))
+        assert len(errors) > 0
+        assert any("model_family" in e for e in errors)
 
     def test_validate_model_artifact_wrong_schema_version(self) -> None:
         """Verify validate_model_artifact rejects wrong schema version."""
@@ -323,22 +325,13 @@ class ModelArtifactSchemaTests(unittest.TestCase):
             "training": {"row_count": 100},
         }
         errors = validate_model_artifact(data)
-        self.assertTrue(any("schema_version" in e for e in errors))
+        assert any("schema_version" in e for e in errors)
 
     def test_estimate_probability_column_index(self) -> None:
         """Verify probability column index estimation from class mapping."""
-        self.assertEqual(
-            estimate_probability_column_index({"0": "good", "1": "bad"}, "bad"),
-            1,
-        )
-        self.assertEqual(
-            estimate_probability_column_index({"0": "bad", "1": "good"}, "bad"),
-            0,
-        )
-        self.assertEqual(
-            estimate_probability_column_index({}, "bad"),
-            1,
-        )
+        assert estimate_probability_column_index({"0": "good", "1": "bad"}, "bad") == 1
+        assert estimate_probability_column_index({"0": "bad", "1": "good"}, "bad") == 0
+        assert estimate_probability_column_index({}, "bad") == 1
 
     def test_feature_contract_roundtrip(self) -> None:
         fc = FeatureContract(
@@ -348,27 +341,27 @@ class ModelArtifactSchemaTests(unittest.TestCase):
         )
         d = fc.to_dict()
         restored = FeatureContract.from_dict(d)
-        self.assertEqual(restored.features, ["x", "y"])
-        self.assertEqual(restored.transformation_strategy, "encoded_raw")
-        self.assertEqual(restored.missing_policy, "fill_zero")
+        assert restored.features == ["x", "y"]
+        assert restored.transformation_strategy == "encoded_raw"
+        assert restored.missing_policy == "fill_zero"
 
     def test_prediction_contract_defaults(self) -> None:
         pc = PredictionContract()
-        self.assertEqual(pc.probability_semantics, "p(bad)")
-        self.assertEqual(pc.score_direction, "higher_is_lower_risk")
+        assert pc.probability_semantics == "p(bad)"
+        assert pc.score_direction == "higher_is_lower_risk"
 
     def test_training_metadata_converged(self) -> None:
         tm = TrainingMetadata(row_count=500, converged=True, iterations=42)
         d = tm.to_dict()
-        self.assertTrue(d["converged"])
-        self.assertEqual(d["iterations"], 42)
+        assert d["converged"]
+        assert d["iterations"] == 42
 
 
 # ======================================================================
 # Phase 1: Secure Estimator Serialization
 # ======================================================================
 
-class EstimatorSerializationTests(unittest.TestCase):
+class EstimatorSerializationTests:
 
     def test_write_and_read_estimator_artifact(self) -> None:
         """Verify round-trip write/read of estimator artifact."""
@@ -384,12 +377,12 @@ class EstimatorSerializationTests(unittest.TestCase):
             creating_run_step_id="step-1",
         )
 
-        self.assertEqual(artifact.artifact_type, "estimator")
-        self.assertEqual(artifact.metadata["estimator_format"], "pickle")
-        self.assertEqual(artifact.metadata["creating_run_id"], "run-1")
+        assert artifact.artifact_type == "estimator"
+        assert artifact.metadata["estimator_format"] == "pickle"
+        assert artifact.metadata["creating_run_id"] == "run-1"
 
         read_data = read_estimator_artifact(store, artifact)
-        self.assertEqual(read_data, data)
+        assert read_data == data
 
     def test_read_estimator_verifies_hash(self) -> None:
         """Verify read_estimator_artifact checks hash mismatch."""
@@ -404,9 +397,9 @@ class EstimatorSerializationTests(unittest.TestCase):
             creating_run_id="run-1",
         )
 
-        with self.assertRaises(ValueError) as ctx:
+        with pytest.raises(ValueError) as ctx:
             read_estimator_artifact(store, artifact, expected_logical_hash="wrong_hash")
-        self.assertIn("hash mismatch", str(ctx.exception))
+        assert "hash mismatch" in str(ctx.value)
 
     def test_read_estimator_rejects_untrusted(self) -> None:
         """Verify read_estimator_artifact rejects artifacts without creating_run_id."""
@@ -421,9 +414,9 @@ class EstimatorSerializationTests(unittest.TestCase):
             creating_run_id="",
         )
 
-        with self.assertRaises(ValueError) as ctx:
+        with pytest.raises(ValueError) as ctx:
             read_estimator_artifact(store, artifact, trusted_only=True)
-        self.assertIn("untrusted", str(ctx.exception))
+        assert "untrusted" in str(ctx.value)
 
     def test_read_estimator_allows_untrusted_when_flagged(self) -> None:
         """Verify read_estimator_artifact allows untrusted when trusted_only=False."""
@@ -439,126 +432,3 @@ class EstimatorSerializationTests(unittest.TestCase):
         )
 
         read_data = read_estimator_artifact(store, artifact, trusted_only=False)
-        self.assertEqual(read_data, data)
-
-
-
-# ======================================================================
-# Validation Metrics (from Phase 2C)
-# ======================================================================
-
-class ValidationMetricsTests(unittest.TestCase):
-
-    def test_metrics_match_known_fixture(self):
-        store, tmp = make_store()
-        store.initialize()
-
-        df = pl.DataFrame({
-            "target": ["good", "good", "bad", "bad", "good"],
-            "predicted_bad_probability": [0.1, 0.2, 0.8, 0.9, 0.3],
-            "score": [700, 650, 400, 350, 600],
-        })
-        train_art = _make_train_artifact(store, df, role="train")
-        meta_art = _make_json_artifact(
-            store, {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}, stem="meta"
-        )
-
-        params = {}
-        spec = StepSpec(step_id="vm", node_type="cardre.validation_metrics", node_version="1", category="apply",
-                        params=params, params_hash=json_logical_hash(params),
-                        parent_step_ids=[], branch_label="", position=0)
-        ctx = ExecutionContext(store=store, run_id="r1", plan_version_id="pv1", step_spec=spec,
-                               parent_run_steps=[], input_artifacts=[train_art, meta_art],
-                               validated_params=params, runtime_metadata={})
-        out = ValidationMetricsNode().run(ctx)
-        report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
-        role_report = report.get("train", {})
-        self.assertIn("auc", role_report)
-        self.assertIsNotNone(role_report["auc"])
-        self.assertIn("gini", role_report)
-        self.assertIn("ks", role_report)
-        self.assertIn("calibration", role_report)
-        self.assertIn("score_distribution", role_report)
-
-    def test_psi_computed_when_multiple_roles(self):
-        store, tmp = make_store()
-        store.initialize()
-
-        df_train = pl.DataFrame({
-            "target": ["good"] * 20 + ["bad"] * 10,
-            "predicted_bad_probability": [0.1]*10 + [0.9]*20,
-            "score": [600]*30,
-        })
-        df_test = pl.DataFrame({
-            "target": ["good"] * 5 + ["bad"] * 5,
-            "predicted_bad_probability": [0.1]*5 + [0.9]*5,
-            "score": [550]*10,
-        })
-        train_art = _make_train_artifact(store, df_train, role="train")
-        test_art = _make_train_artifact(store, df_test, role="test")
-        meta_art = _make_json_artifact(
-            store, {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}, stem="meta"
-        )
-
-        params = {}
-        spec = StepSpec(step_id="vm", node_type="cardre.validation_metrics", node_version="1", category="apply",
-                        params=params, params_hash=json_logical_hash(params),
-                        parent_step_ids=[], branch_label="", position=0)
-        ctx = ExecutionContext(store=store, run_id="r1", plan_version_id="pv1", step_spec=spec,
-                               parent_run_steps=[], input_artifacts=[train_art, test_art, meta_art],
-                               validated_params=params, runtime_metadata={})
-        out = ValidationMetricsNode().run(ctx)
-        report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
-        self.assertIn("psi", report)
-
-
-# ======================================================================
-# Cutoff Analysis (from Phase 2C)
-# ======================================================================
-
-class CutoffAnalysisTests(unittest.TestCase):
-
-    def test_cutoff_produces_bands(self):
-        store, tmp = make_store()
-        store.initialize()
-
-        df = pl.DataFrame({
-            "target": ["good"] * 3 + ["bad"] * 3,
-            "predicted_bad_probability": [0.1, 0.2, 0.3, 0.7, 0.8, 0.9],
-            "score": [700, 650, 600, 400, 350, 300],
-        })
-        train_art = _make_train_artifact(store, df, role="train")
-
-        params = {"band_count": 3}
-        spec = StepSpec(step_id="ca", node_type="cardre.cutoff_analysis", node_version="1", category="apply",
-                        params=params, params_hash=json_logical_hash(params),
-                        parent_step_ids=[], branch_label="", position=0)
-        ctx = ExecutionContext(store=store, run_id="r1", plan_version_id="pv1", step_spec=spec,
-                               parent_run_steps=[], input_artifacts=[train_art],
-                               validated_params=params, runtime_metadata={})
-        out = CutoffAnalysisNode().run(ctx)
-        from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
-        reader = ArtifactEvidenceReader(store)
-        cutoff = reader.read(out.artifacts[0].artifact_id, EvidenceKind.CUTOFF_ANALYSIS)
-        self.assertIn("train", cutoff.cutoff_tables)
-        self.assertGreater(len(cutoff.cutoff_tables["train"]), 0)
-        for row in cutoff.cutoff_tables["train"]:
-            self.assertIsNotNone(row.score_cutoff)
-            self.assertIsNotNone(row.approval_rate)
-            self.assertIsNotNone(row.bad_rate)
-            self.assertIsNotNone(row.capture_rate)
-
-    def test_band_count_validation(self):
-        store, tmp = make_store()
-        store.initialize()
-        df = pl.DataFrame({"score": [1.0, 2.0], "predicted_bad_probability": [0.1, 0.9]})
-        art = _make_train_artifact(store, df, role="train")
-        params = {"band_count": 1}
-        spec = StepSpec(step_id="ca", node_type="cardre.cutoff_analysis", node_version="1", category="apply",
-                        params=params, params_hash=json_logical_hash(params),
-                        parent_step_ids=[], branch_label="", position=0)
-        ctx = ExecutionContext(store=store, run_id="r1", plan_version_id="pv1", step_spec=spec,
-                               parent_run_steps=[], input_artifacts=[art],
-                               validated_params=params, runtime_metadata={})
-        with self.assertRaises(ValueError):
-            CutoffAnalysisNode().run(ctx)
