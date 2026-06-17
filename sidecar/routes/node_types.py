@@ -239,7 +239,7 @@ def get_node_type_schema(node_type: str) -> NodeTypeSchemaResponse:
         params_schema = {
             "estimator_type": {"type": "string", "enum": ["decision_tree", "random_forest", "gbdt", "logistic_regression"]},
             "search_method": {"type": "string", "enum": ["grid", "randomized"], "default": "grid"},
-            "param_grid": {"type": "object", "default": {}},
+            "param_grid": {"type": "object"},
             "cv_folds": {"type": "integer", "minimum": 2, "default": 5},
             "scoring": {"type": "string", "default": "roc_auc"},
             "n_jobs": {"type": "integer", "default": -1},

@@ -219,6 +219,13 @@ class HyperparameterTuningNode(NodeType):
             row_count=df.height,
         )
 
+        if estimator_type == "logistic_regression":
+            model["intercept"] = round(float(best_estimator.intercept_[0]), 6)
+            model["coefficients"] = {
+                f: round(float(best_estimator.coef_[0][i]), 6)
+                for i, f in enumerate(features)
+            }
+
         model["training"]["hyperparameter_tuning"] = {
             "search_method": search_method,
             "best_params": {

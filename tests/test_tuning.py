@@ -253,8 +253,75 @@ class HyperparameterTuningFitTests(unittest.TestCase):
 
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
         self.assertEqual(model["model_family"], "logistic_regression")
+        self.assertIn("intercept", model)
+        self.assertIn("coefficients", model)
+        self.assertGreater(len(model["coefficients"]), 0)
         tuning = model["training"]["hyperparameter_tuning"]
         self.assertIn("best_params", tuning)
+
+    def test_logistic_tuned_model_predictions_not_constant(self) -> None:
+        import io
+        import joblib
+
+        store, tmp = make_store()
+        data_art, def_art, train_df = make_numeric_dataset(store)
+        params = {
+            "estimator_type": "logistic_regression",
+            "param_grid": {"C": [0.1, 1.0]},
+            "cv_folds": 2,
+            "random_seed": 42,
+            "feature_strategy": "raw_numeric",
+        }
+        ctx = make_hp_context(store, data_art, def_art, params=params)
+        hp_node = HyperparameterTuningNode()
+        hp_output = hp_node.run(ctx)
+
+        model_art = next(a for a in hp_output.artifacts if a.role == "model")
+
+        model = json.loads(store.artifact_path(model_art).read_text())
+        estimator_ref = model.get("estimator_reference", {})
+        self.assertIn("artifact_id", estimator_ref)
+
+        from cardre.modeling.serialization import read_estimator_artifact
+        estimator_art_obj = store.get_artifact(estimator_ref["artifact_id"])
+        estimator_bytes = read_estimator_artifact(
+            store, estimator_art_obj,
+            expected_logical_hash=estimator_ref.get("logical_hash"),
+        )
+        best_estimator = joblib.load(io.BytesIO(estimator_bytes))
+
+        X = train_df.select(["feat_a", "feat_b", "feat_c"]).to_numpy()
+        expected_probs = best_estimator.predict_proba(X)[:, 1]
+
+        step_spec = StepSpec(
+            step_id="lr-apply",
+            node_type="cardre.apply_model",
+            node_version="2",
+            category="apply",
+            params={},
+            params_hash=json_logical_hash({}),
+            parent_step_ids=[],
+            branch_label="",
+            position=0,
+        )
+        apply_ctx = ExecutionContext(
+            store=store,
+            run_id="test-run",
+            plan_version_id="test-pv",
+            step_spec=step_spec,
+            parent_run_steps=[],
+            input_artifacts=[data_art, model_art],
+            validated_params={},
+            runtime_metadata={},
+        )
+        from cardre.nodes.validate.apply import ApplyModelNode
+        apply_output = ApplyModelNode().run(apply_ctx)
+        scored_df = pl.read_parquet(store.artifact_path(apply_output.artifacts[0]))
+
+        actual_probs = scored_df["predicted_bad_probability"].to_numpy()
+
+        self.assertGreater(actual_probs.std(), 1e-6, "LR predictions must not be constant")
+        np.testing.assert_allclose(actual_probs, expected_probs, atol=1e-5)
 
     def test_output_metrics(self) -> None:
         store, tmp = make_store()
