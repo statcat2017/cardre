@@ -31,12 +31,10 @@ def get_branch_method_summary(
     MVP stub: returns model artifact metadata when available. Evidence
     readiness resolution is not yet wired.
     """
-    from cardre.reporting.evidence_resolver import resolve_branch
-
     store = get_store_for_project(project_id)
     endpoint_warnings: list[str] = []
 
-    branch = resolve_branch(store, branch_id)
+    branch = store.get_branch(branch_id)
     if branch is None:
         raise HTTPException(status_code=404, detail={"code": "BRANCH_NOT_FOUND", "message": f"Branch not found: {branch_id!r}"})
 

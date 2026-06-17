@@ -37,7 +37,7 @@ from cardre.reporting.schema import (
     ManualIntervention,
     ArtifactEntry,
 )
-from cardre.services.step_resolver import resolve_step_for_branch, ResolvedStepRef as ResolverRef
+from cardre.step_id import resolve_step_for_branch, ResolvedStepRef as ResolverRef
 from cardre.store import ProjectStore
 
 
@@ -802,7 +802,7 @@ class TestCollectorRegression:
             store=store, project_id=project_id, run_id=run_id,
             target_branch_id=branch_id, report_mode="branch",
         )
-        from cardre.services.step_resolver import resolve_step_for_branch
+        from cardre.step_id import resolve_step_for_branch
         step_map = store.get_branch_step_map(branch_id, pv_id)
         ref = resolve_step_for_branch(
             branch_id=branch_id,

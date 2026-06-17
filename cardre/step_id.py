@@ -1,4 +1,8 @@
-"""Shared branch step resolver — resolves canonical_step_id to branch-scoped step_id.
+"""Canonical step ID resolution — maps canonical_step_id to branch-scoped step_id.
+
+Pure functions + one store-dependent resolver.  The pure resolvers operate on
+the branch_step_map dict; the store-dependent resolve_run_step() handles
+cross-version fallback logic for evidence retrieval.
 
 Phase 5 rule: the report collector must not infer step IDs.
 It must resolve evidence using target_branch_id + canonical_step_id
@@ -9,6 +13,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+
+from cardre.audit import RunStepRecord
+from cardre.store import ProjectStore
 
 
 @dataclass
@@ -28,16 +35,6 @@ def resolve_step_for_branch(
     branch_step_map: list[dict[str, Any]],
     allow_ancestor: bool = True,
 ) -> ResolvedStepRef | None:
-    """Resolve a canonical_step_id to a branch-scoped step_id.
-
-    Looks up the branch_step_map for the target branch.  If the step
-    exists as a branch-owned entry the resolution is "exact".  If the
-    step is shared upstream (inherited from a parent branch) the
-    resolution is "ancestor".
-
-    Returns None if the canonical_step_id is not found in the
-    branch_step_map for this branch.
-    """
     for row in branch_step_map:
         if row["canonical_step_id"] != canonical_step_id:
             continue
@@ -84,10 +81,6 @@ def resolve_required_steps(
     branch_step_map: list[dict[str, Any]],
     allow_ancestor: bool = True,
 ) -> dict[str, ResolvedStepRef | None]:
-    """Resolve multiple canonical_step_ids for a branch.
-
-    Returns a dict mapping canonical_step_id to ResolvedStepRef or None.
-    """
     result: dict[str, ResolvedStepRef | None] = {}
     for cid in canonical_step_ids:
         result[cid] = resolve_step_for_branch(
@@ -97,3 +90,41 @@ def resolve_required_steps(
             allow_ancestor=allow_ancestor,
         )
     return result
+
+
+def resolve_run_step(
+    store: ProjectStore,
+    plan_version_id: str,
+    step_id: str,
+    resolved_branch_id: str | None = None,
+    resolution: str = "exact",
+    run_id: str | None = None,
+) -> RunStepRecord | None:
+    if run_id is not None:
+        for rs in store.get_run_steps(run_id):
+            if rs.step_id == step_id and rs.status == "succeeded":
+                return rs
+
+    if resolution == "exact":
+        return None
+
+    branch_id_for_lookup = resolved_branch_id if resolution in ("exact", "ancestor") else None
+    rs = store.get_latest_successful_run_step_for_step(
+        plan_version_id, step_id, branch_id=branch_id_for_lookup,
+    )
+    if rs is None and branch_id_for_lookup is not None:
+        rs = store.get_latest_successful_run_step_for_step(
+            plan_version_id, step_id, branch_id=None,
+        )
+
+    if rs is None and resolution == "ancestor":
+        plan_id = store.get_plan_id_for_version(plan_version_id)
+        if plan_id:
+            rs = store.get_latest_successful_run_step_for_step_across_plan(
+                plan_id, step_id, branch_id=branch_id_for_lookup,
+            )
+            if rs is None and branch_id_for_lookup is not None:
+                rs = store.get_latest_successful_run_step_for_step_across_plan(
+                    plan_id, step_id, branch_id=None,
+                )
+    return rs

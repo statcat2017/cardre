@@ -8,18 +8,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre.reporting.evidence_resolver import (
-    check_oot_exists,
-    get_champion_assignment,
-    resolve_branch,
-    resolve_plan_context,
-    resolve_run,
-    resolve_run_step,
-    resolve_step_map,
-    resolve_required_steps,
-)
 from cardre.reporting.limitation_codes import LimitationCode
+from cardre.step_id import resolve_run_step, resolve_required_steps
 from cardre.store import ProjectStore
+
+
+def _check_oot_exists(store: ProjectStore, run_id: str) -> bool:
+    for rs in store.get_run_steps(run_id):
+        for aid in rs.output_artifact_ids:
+            art = store.get_artifact(aid)
+            if art and art.role == "oot":
+                return True
+    return False
 
 REQUIRED_STEPS_CHAMPION = [
     "final-woe-iv",
@@ -122,7 +122,7 @@ def check_report_readiness(
     warnings: list[ReadinessWarning] = []
 
     # Resolve target branch
-    branch = resolve_branch(store, target_branch_id)
+    branch = store.get_branch(target_branch_id)
     if branch is None:
         blockers.append(ReadinessBlocker(
             LimitationCode.TARGET_BRANCH_NOT_FOUND,
@@ -137,7 +137,7 @@ def check_report_readiness(
         ))
 
     # Resolve run
-    run = resolve_run(store, run_id)
+    run = store.get_run(run_id)
     if run is None:
         blockers.append(ReadinessBlocker(
             LimitationCode.MISSING_RUN_MANIFEST,
@@ -146,7 +146,7 @@ def check_report_readiness(
         return ReportReadinessResult(blockers=blockers)
 
     plan_version_id = run["plan_version_id"]
-    plan_id, _ = resolve_plan_context(store, plan_version_id)
+    plan_id = store.get_plan_id_for_version(plan_version_id)
 
     # Check plan
     if plan_id is None:
@@ -157,7 +157,9 @@ def check_report_readiness(
 
     # Check branch step map
     head_pv = branch.get("head_plan_version_id")
-    step_map = resolve_step_map(store, target_branch_id, plan_version_id, head_pv)
+    step_map = store.get_branch_step_map(target_branch_id, plan_version_id)
+    if not step_map and head_pv:
+        step_map = store.get_branch_step_map(target_branch_id, head_pv)
     if not step_map:
         blockers.append(ReadinessBlocker(
             LimitationCode.TARGET_BRANCH_INCOMPLETE,
@@ -231,14 +233,14 @@ def check_report_readiness(
     # Champion mode checks
     if plan_id:
         if report_mode == "champion":
-            champion = get_champion_assignment(store, plan_id, target_branch_id)
+            champion = store.get_champion_assignment(plan_id, target_branch_id)
             if champion is None:
                 blockers.append(ReadinessBlocker(
                     LimitationCode.CHAMPION_ASSIGNMENT_MISSING,
                     f"No active champion assignment for branch {target_branch_id!r} in champion report mode.",
                 ))
         else:
-            champ_check = get_champion_assignment(store, plan_id)
+            champ_check = store.get_champion_assignment(plan_id)
             if champ_check is None:
                 warnings.append(ReadinessWarning(
                     LimitationCode.NO_CHAMPION_ASSIGNMENT,
@@ -251,7 +253,7 @@ def check_report_readiness(
                 ))
 
     # Check OOT dataset role
-    if not check_oot_exists(store, run_id):
+    if not _check_oot_exists(store, run_id):
         warnings.append(ReadinessWarning(
             LimitationCode.NO_OOT_SAMPLE,
             "No OOT dataset role was present for this run.",
