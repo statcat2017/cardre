@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 import polars as pl
-from sklearn.calibration import CalibrationDisplay
+from sklearn.calibration import calibration_curve
 from sklearn.metrics import (
     confusion_matrix,
     f1_score,
@@ -141,12 +141,12 @@ class ValidationMetricsNode(NodeType):
                 calib = self._calibration(df, target_col, bad_list, 10)
                 score_dist = self._score_distribution(scores)
                 if include_calibration_display:
-                    display = CalibrationDisplay.from_predictions(
-                        y_true=y_bin, y_pred=y_prob, n_bins=10, strategy="quantile",
+                    prob_true, prob_pred = calibration_curve(
+                        y_bin, y_prob, n_bins=10, strategy="quantile",
                     )
                     calib_display = {
-                        "prob_true": [float(v) for v in display.prob_true],
-                        "prob_pred": [float(v) for v in display.prob_pred],
+                        "prob_true": [float(v) for v in prob_true],
+                        "prob_pred": [float(v) for v in prob_pred],
                         "n_bins": 10,
                         "strategy": "quantile",
                     }

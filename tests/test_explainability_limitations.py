@@ -137,6 +137,86 @@ class ExplainabilityGBDTTests(unittest.TestCase):
         self.assertEqual(report["champion_gate"]["status"], "warn")
 
 
+class ExplainabilityPermutationDataRoleTests(unittest.TestCase):
+
+    def _make_test_data_artifact(self, store):
+        rng = np.random.RandomState(99)
+        df = pl.DataFrame({
+            "feat_a": rng.randn(20) * 10 + 50,
+            "feat_b": rng.randn(20) * 5 + 20,
+            "feat_c": rng.randn(20) * 2 + 10,
+            "target": ["bad" if rng.rand() > 0.6 else "good" for _ in range(20)],
+        })
+        from cardre.artifacts import write_parquet_artifact
+        return write_parquet_artifact(
+            store, artifact_type="dataset", role="test",
+            stem="synthetic-test", frame=df, metadata={},
+        )
+
+    def test_permutation_importance_with_test_data_role(self) -> None:
+        store, tmp = make_store()
+        data_art, def_art, _ = make_numeric_dataset(store)
+        ctx = make_fit_context(store, data_art, def_art, "cardre.decision_tree_classifier")
+        model_out = DecisionTreeNode().run(ctx)
+        model_art = model_out.artifacts[0]
+
+        test_art = self._make_test_data_artifact(store)
+
+        step_spec = StepSpec(
+            step_id="explain-dt-perm-test",
+            node_type="cardre.model_explainability",
+            node_version="1", category="report",
+            params={"include_permutation_importance": True, "permutation_data_role": "test"},
+            params_hash=json_logical_hash({}), parent_step_ids=[],
+            branch_label="", position=0,
+        )
+        exp_ctx = ExecutionContext(
+            store=store, run_id="test-run", plan_version_id="test-pv",
+            step_spec=step_spec, parent_run_steps=[],
+            input_artifacts=[model_art, data_art, test_art],
+            validated_params={"include_permutation_importance": True, "permutation_data_role": "test"},
+            runtime_metadata={},
+        )
+        out = ModelExplainabilityNode().run(exp_ctx)
+        report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
+
+        self.assertIn("permutation_importance", report)
+        self.assertEqual(report["permutation_importance"]["data_role"], "test")
+        self.assertIn("importance_mean", report["permutation_importance"])
+
+    def test_permutation_importance_with_oot_data_role(self) -> None:
+        store, tmp = make_store()
+        data_art, def_art, _ = make_numeric_dataset(store)
+        ctx = make_fit_context(store, data_art, def_art, "cardre.decision_tree_classifier")
+        model_out = DecisionTreeNode().run(ctx)
+        model_art = model_out.artifacts[0]
+
+        from tests.helpers import make_oot_dataset
+        _, _, oot_df = make_numeric_dataset(store, n_rows=30, seed=99)
+        oot_art, _ = make_oot_dataset(store, oot_df)
+
+        step_spec = StepSpec(
+            step_id="explain-dt-perm-oot",
+            node_type="cardre.model_explainability",
+            node_version="1", category="report",
+            params={"include_permutation_importance": True, "permutation_data_role": "oot"},
+            params_hash=json_logical_hash({}), parent_step_ids=[],
+            branch_label="", position=0,
+        )
+        exp_ctx = ExecutionContext(
+            store=store, run_id="test-run", plan_version_id="test-pv",
+            step_spec=step_spec, parent_run_steps=[],
+            input_artifacts=[model_art, data_art, oot_art],
+            validated_params={"include_permutation_importance": True, "permutation_data_role": "oot"},
+            runtime_metadata={},
+        )
+        out = ModelExplainabilityNode().run(exp_ctx)
+        report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
+
+        self.assertIn("permutation_importance", report)
+        self.assertEqual(report["permutation_importance"]["data_role"], "oot")
+
+
 class ExplainabilityLogisticTests(unittest.TestCase):
 
     def _make_logistic_model_artifact(self, store, data_art, def_art):
@@ -362,6 +442,29 @@ class NodeTypesAPITests(unittest.TestCase):
         self.assertIn("objective", schema.params_schema)
         self.assertIn("youden", schema.params_schema["objective"]["enum"])
         self.assertEqual(schema.defaults["objective"], "youden")
+
+    def test_hyperparameter_tuning_listed(self) -> None:
+        from sidecar.routes.node_types import list_node_types
+        response = list_node_types()
+        types = {nt.node_type for nt in response.node_types}
+        self.assertIn("cardre.hyperparameter_tuning", types)
+
+    def test_hyperparameter_tuning_schema(self) -> None:
+        from sidecar.routes.node_types import get_node_type_schema
+        schema = get_node_type_schema("cardre.hyperparameter_tuning")
+        self.assertEqual(schema.node_type, "cardre.hyperparameter_tuning")
+        self.assertIn("estimator_type", schema.params_schema)
+        self.assertIn("search_method", schema.params_schema)
+        self.assertIn("param_grid", schema.params_schema)
+        self.assertIn("cv_folds", schema.params_schema)
+        self.assertEqual(schema.params_schema["cv_folds"]["minimum"], 2)
+        self.assertEqual(schema.params_schema["estimator_type"]["enum"], ["decision_tree", "random_forest", "gbdt", "logistic_regression"])
+
+    def test_hyperparameter_tuning_schema_has_enum(self) -> None:
+        from sidecar.routes.node_types import get_node_type_schema
+        schema = get_node_type_schema("cardre.hyperparameter_tuning")
+        self.assertIn("grid", schema.params_schema["search_method"]["enum"])
+        self.assertIn("randomized", schema.params_schema["search_method"]["enum"])
 
 
 if __name__ == "__main__":

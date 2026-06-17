@@ -12,6 +12,7 @@ import polars as pl
 
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
 from cardre.nodes.tuning import HyperparameterTuningNode
+from cardre.nodes.validate.apply import ApplyModelNode
 from cardre.store import ProjectStore
 
 from tests.helpers import make_numeric_dataset, make_store
@@ -251,7 +252,7 @@ class HyperparameterTuningFitTests(unittest.TestCase):
         output = node.run(ctx)
 
         model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        self.assertEqual(model["model_family"], "tuned_logistic_regression")
+        self.assertEqual(model["model_family"], "logistic_regression")
         tuning = model["training"]["hyperparameter_tuning"]
         self.assertIn("best_params", tuning)
 
@@ -288,6 +289,98 @@ class HyperparameterTuningFitTests(unittest.TestCase):
             model1["training"]["hyperparameter_tuning"]["best_score"],
             model2["training"]["hyperparameter_tuning"]["best_score"],
         )
+
+
+class HyperparameterTuningGBDTTests(unittest.TestCase):
+
+    def test_gbdt_tuning_succeeds(self) -> None:
+        store, tmp = make_store()
+        data_art, def_art, _ = make_numeric_dataset(store)
+        params = {
+            "estimator_type": "gbdt",
+            "param_grid": {"max_depth": [2, 3], "learning_rate": [0.05, 0.1]},
+            "cv_folds": 2,
+            "scoring": "roc_auc",
+            "n_jobs": 1,
+            "random_seed": 42,
+            "feature_strategy": "raw_numeric",
+        }
+        ctx = make_hp_context(store, data_art, def_art, params=params)
+        node = HyperparameterTuningNode()
+        output = node.run(ctx)
+
+        model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
+        self.assertEqual(model["model_family"], "gbdt")
+        self.assertIn("hyperparameter_tuning", model["training"])
+        self.assertIn("best_score", model["training"]["hyperparameter_tuning"])
+        self.assertGreater(model["training"]["hyperparameter_tuning"]["best_score"], 0)
+
+
+class HyperparameterTuningApplyTests(unittest.TestCase):
+
+    def _tune_then_apply(self, store, estimator_type: str, param_grid: dict) -> None:
+        data_art, def_art, _ = make_numeric_dataset(store)
+        hp_params = {
+            "estimator_type": estimator_type,
+            "param_grid": param_grid,
+            "cv_folds": 2,
+            "scoring": "roc_auc",
+            "n_jobs": 1,
+            "random_seed": 42,
+            "feature_strategy": "raw_numeric",
+        }
+        hp_ctx = make_hp_context(store, data_art, def_art, params=hp_params)
+        hp_node = HyperparameterTuningNode()
+        hp_output = hp_node.run(hp_ctx)
+
+        model_art = next(a for a in hp_output.artifacts if a.role == "model")
+
+        step_spec = StepSpec(
+            step_id="apply",
+            node_type="cardre.apply_model",
+            node_version="2",
+            category="apply",
+            params={},
+            params_hash=json_logical_hash({}),
+            parent_step_ids=[],
+            branch_label="",
+            position=0,
+        )
+        apply_ctx = ExecutionContext(
+            store=store,
+            run_id="test-run",
+            plan_version_id="test-pv",
+            step_spec=step_spec,
+            parent_run_steps=[],
+            input_artifacts=[data_art, model_art],
+            validated_params={},
+            runtime_metadata={},
+        )
+        apply_node = ApplyModelNode()
+        apply_output = apply_node.run(apply_ctx)
+
+        self.assertEqual(len(apply_output.artifacts), 1)
+        scored_df = pl.read_parquet(store.artifact_path(apply_output.artifacts[0]))
+        self.assertIn("predicted_bad_probability", scored_df.columns)
+        for p in scored_df["predicted_bad_probability"]:
+            self.assertGreaterEqual(p, 0.0)
+            self.assertLessEqual(p, 1.0)
+
+    def test_dt_tuning_then_apply(self) -> None:
+        store, tmp = make_store()
+        self._tune_then_apply(store, "decision_tree", {"max_depth": [2, 3]})
+
+    def test_rf_tuning_then_apply(self) -> None:
+        store, tmp = make_store()
+        self._tune_then_apply(store, "random_forest", {"max_depth": [2, 3], "n_estimators": [10, 20]})
+
+    def test_gbdt_tuning_then_apply(self) -> None:
+        store, tmp = make_store()
+        self._tune_then_apply(store, "gbdt", {"max_depth": [2], "learning_rate": [0.05]})
+
+    def test_lr_tuning_then_apply(self) -> None:
+        store, tmp = make_store()
+        self._tune_then_apply(store, "logistic_regression", {"C": [0.1, 1.0]})
 
 
 if __name__ == "__main__":

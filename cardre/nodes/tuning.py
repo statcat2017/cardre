@@ -27,8 +27,15 @@ ESTIMATOR_MAP = {
 ESTIMATOR_DEFAULT_KWARGS = {
     "decision_tree": {},
     "random_forest": {"n_jobs": -1},
-    "gbdt": {"n_jobs": -1},
+    "gbdt": {},
     "logistic_regression": {"solver": "lbfgs", "max_iter": 1000},
+}
+
+ESTIMATOR_TO_FAMILY = {
+    "decision_tree": "decision_tree",
+    "random_forest": "random_forest",
+    "gbdt": "gbdt",
+    "logistic_regression": "logistic_regression",
 }
 
 
@@ -169,7 +176,7 @@ class HyperparameterTuningNode(NodeType):
             if isinstance(v, (list, np.ndarray))
         })
 
-        model_family = f"tuned_{estimator_type}"
+        model_family = ESTIMATOR_TO_FAMILY[estimator_type]
         estimator_art = _write_estimator(
             context.store, best_estimator, step_id, context.run_id, model_family,
         )

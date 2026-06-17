@@ -52,7 +52,7 @@ class ModelExplainabilityNode(NodeType):
     node_type = "cardre.model_explainability"
     version = "1"
     category = "report"
-    input_roles: list[str] = ["model", "train"]
+    input_roles: list[str] = ["model", "train", "test", "oot"]
     output_roles: list[str] = ["report"]
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
