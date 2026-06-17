@@ -1,4 +1,8 @@
 __pycache__/
+.coverage
+*.egg-info/
+.opencode/
+opencode.json
 /input/credit/*
 .pytest_cache/
 .cardre/

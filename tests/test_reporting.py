@@ -40,6 +40,8 @@ from cardre.reporting.schema import (
 from cardre.step_id import resolve_step_for_branch, ResolvedStepRef as ResolverRef
 from cardre.store import ProjectStore
 
+pytestmark = pytest.mark.integration
+
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "report"
 
@@ -904,14 +906,6 @@ class TestCollectorRegression:
 # =========================================================================
 # Fixture helpers for the above regression tests
 # =========================================================================
-
-@pytest.fixture
-def store():
-    tmp = Path(tempfile.mkdtemp())
-    s = ProjectStore(tmp / "test.cardre")
-    s.initialize()
-    return s
-
 
 @pytest.fixture
 def project_and_plan(store):

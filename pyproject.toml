@@ -18,7 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 sidecar = ["fastapi", "uvicorn"]
-test = ["pytest", "httpx", "starlette"]
+test = ["pytest", "pytest-cov", "pytest-mock", "httpx", "starlette"]
 boosting = ["xgboost", "lightgbm", "catboost"]
 imbalance = ["imbalanced-learn"]
 explain = ["shap", "lime"]
@@ -30,3 +30,22 @@ include = ["cardre*", "sidecar*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+python_classes = ["Test*", "*Tests"]
+addopts = [
+    "--strict-markers",
+    "--cov=cardre",
+    "--cov=sidecar",
+    "--cov-report=term-missing",
+]
+markers = [
+    "optional_boosting: tests requiring xgboost/lightgbm/catboost",
+    "optional_imbalance: tests requiring imbalanced-learn",
+    "optional_explain: tests requiring shap/lime",
+    "optional_deep: tests requiring torch",
+    "slow: tests that take longer to run",
+    "api: sidecar API integration tests",
+    "e2e: end-to-end acceptance tests",
+    "regression: safety-rail / canary tests",
+    "unit: unit tests",
+    "integration: integration tests",
+]

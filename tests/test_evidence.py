@@ -38,6 +38,8 @@ from cardre.store import ProjectStore
 
 from tests.helpers import make_store
 
+pytestmark = pytest.mark.unit
+
 
 # ---------------------------------------------------------------------------
 # Helpers

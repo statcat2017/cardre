@@ -20,6 +20,10 @@ from cardre.nodes.feature_selection import (
 from cardre.store import ProjectStore
 
 from tests.helpers import make_store
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 
 # ======================================================================
@@ -78,7 +82,7 @@ def make_context(
 # FeatureSelectionFilterNode Tests
 # ======================================================================
 
-class FeatureSelectionFilterParameterTests(unittest.TestCase):
+class FeatureSelectionFilterParameterTests:
 
     def test_valid_params(self) -> None:
         node = FeatureSelectionFilterNode()
@@ -88,20 +92,20 @@ class FeatureSelectionFilterParameterTests(unittest.TestCase):
             "max_correlation": 0.85,
             "min_variance": 1e-6,
         })
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_negative_min_iv(self) -> None:
         node = FeatureSelectionFilterNode()
         errors = node.validate_params({"min_iv": -0.1})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
     def test_missingness_out_of_range(self) -> None:
         node = FeatureSelectionFilterNode()
         errors = node.validate_params({"max_missingness": 1.5})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
 
-class FeatureSelectionFilterRunTests(unittest.TestCase):
+class FeatureSelectionFilterRunTests:
 
     def test_selects_features_above_iv_threshold(self) -> None:
         store, tmp = make_store()
@@ -112,8 +116,8 @@ class FeatureSelectionFilterRunTests(unittest.TestCase):
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
         # After merge, selected is inside selection_filter
         selection_filter = report.get("selection_filter", report)
-        self.assertIn("selected", selection_filter)
-        self.assertGreater(selection_filter["selected_count"], 0)
+        assert "selected" in selection_filter
+        assert selection_filter["selected_count"] > 0
 
     def test_rejects_high_missingness(self) -> None:
         store, tmp = make_store()
@@ -141,7 +145,7 @@ class FeatureSelectionFilterRunTests(unittest.TestCase):
         # After merge, rejected is inside selection_filter
         selection_filter = report.get("selection_filter", report)
         rejected_reasons = [r["reason"] for r in selection_filter.get("rejected", [])]
-        self.assertTrue(any("Missingness" in r for r in rejected_reasons))
+        assert any("Missingness" in r for r in rejected_reasons)
 
     def test_max_features_limits_selection(self) -> None:
         store, tmp = make_store()
@@ -151,14 +155,14 @@ class FeatureSelectionFilterRunTests(unittest.TestCase):
         out = FeatureSelectionFilterNode().run(ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
         selection_filter = report.get("selection_filter", report)
-        self.assertLessEqual(selection_filter["selected_count"], 2)
+        assert selection_filter["selected_count"] <= 2
 
 
 # ======================================================================
 # FeatureSelectionEmbeddedNode Tests
 # ======================================================================
 
-class FeatureSelectionEmbeddedParameterTests(unittest.TestCase):
+class FeatureSelectionEmbeddedParameterTests:
 
     def test_valid_params(self) -> None:
         node = FeatureSelectionEmbeddedNode()
@@ -167,15 +171,15 @@ class FeatureSelectionEmbeddedParameterTests(unittest.TestCase):
             "estimator": "decision_tree",
             "random_seed": 42,
         })
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_invalid_estimator(self) -> None:
         node = FeatureSelectionEmbeddedNode()
         errors = node.validate_params({"estimator": "svm"})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
 
-class FeatureSelectionEmbeddedRunTests(unittest.TestCase):
+class FeatureSelectionEmbeddedRunTests:
 
     def test_dt_embedded_selection(self) -> None:
         store, tmp = make_store()
@@ -183,15 +187,15 @@ class FeatureSelectionEmbeddedRunTests(unittest.TestCase):
         ctx = make_context(store, [data_art, def_art], "cardre.feature_selection_embedded",
                            params={"importance_threshold": 0.0, "estimator": "decision_tree"})
         out = FeatureSelectionEmbeddedNode().run(ctx)
-        self.assertEqual(len(out.artifacts), 2)  # definition + report
+        assert len(out.artifacts) == 2  # definition + report
 
         sel = json.loads(store.artifact_path(out.artifacts[0]).read_text())
-        self.assertIn("selected", sel)
-        self.assertGreater(sel["selected_count"], 0)
+        assert "selected" in sel
+        assert sel["selected_count"] > 0
 
         report = json.loads(store.artifact_path(out.artifacts[1]).read_text())
-        self.assertIn("feature_importance", report)
-        self.assertEqual(report["estimator"], "decision_tree")
+        assert "feature_importance" in report
+        assert report["estimator"] == "decision_tree"
 
     def test_rf_embedded_selection(self) -> None:
         store, tmp = make_store()
@@ -200,7 +204,7 @@ class FeatureSelectionEmbeddedRunTests(unittest.TestCase):
                            params={"importance_threshold": 0.0, "estimator": "random_forest"})
         out = FeatureSelectionEmbeddedNode().run(ctx)
         report = json.loads(store.artifact_path(out.artifacts[1]).read_text())
-        self.assertEqual(report["estimator"], "random_forest")
+        assert report["estimator"] == "random_forest"
 
     def test_max_features_limits_embedded(self) -> None:
         store, tmp = make_store()
@@ -209,37 +213,37 @@ class FeatureSelectionEmbeddedRunTests(unittest.TestCase):
                            params={"importance_threshold": 0.0, "max_features": 1})
         out = FeatureSelectionEmbeddedNode().run(ctx)
         sel = json.loads(store.artifact_path(out.artifacts[0]).read_text())
-        self.assertLessEqual(sel["selected_count"], 1)
+        assert sel["selected_count"] <= 1
 
 
 # ======================================================================
 # ResampleTrainingDataNode Tests
 # ======================================================================
 
-class ResampleTrainingDataParameterTests(unittest.TestCase):
+class ResampleTrainingDataParameterTests:
 
     def test_valid_combined(self) -> None:
         node = ResampleTrainingDataNode()
         errors = node.validate_params({"strategy": "combined", "sampling_ratio": 1.0})
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_valid_undersample(self) -> None:
         node = ResampleTrainingDataNode()
         errors = node.validate_params({"strategy": "undersample_majority"})
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_valid_oversample(self) -> None:
         node = ResampleTrainingDataNode()
         errors = node.validate_params({"strategy": "oversample_minority"})
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_invalid_strategy(self) -> None:
         node = ResampleTrainingDataNode()
         errors = node.validate_params({"strategy": "invalid"})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
 
-class ResampleTrainingDataRunTests(unittest.TestCase):
+class ResampleTrainingDataRunTests:
 
     def test_undersample_reduces_majority(self) -> None:
         store, tmp = make_store()
@@ -249,7 +253,7 @@ class ResampleTrainingDataRunTests(unittest.TestCase):
                            category="transform")
         out = ResampleTrainingDataNode().run(ctx)
         report_art = json.loads(store.artifact_path(out.artifacts[1]).read_text())
-        self.assertLess(report_art["resampled"]["good"], report_art["original"]["good"])
+        assert report_art["resampled"]["good"] < report_art["original"]["good"]
 
     def test_oversample_increases_minority(self) -> None:
         store, tmp = make_store()
@@ -259,7 +263,7 @@ class ResampleTrainingDataRunTests(unittest.TestCase):
                            category="transform")
         out = ResampleTrainingDataNode().run(ctx)
         report_art = json.loads(store.artifact_path(out.artifacts[1]).read_text())
-        self.assertGreater(report_art["resampled"]["bad"], report_art["original"]["bad"])
+        assert report_art["resampled"]["bad"] > report_art["original"]["bad"]
 
     def test_synthetic_rows_flagged(self) -> None:
         store, tmp = make_store()
@@ -269,7 +273,7 @@ class ResampleTrainingDataRunTests(unittest.TestCase):
                            category="transform")
         out = ResampleTrainingDataNode().run(ctx)
         report = json.loads(store.artifact_path(out.artifacts[1]).read_text())
-        self.assertGreater(report["synthetic_rows_added"], 0)
+        assert report["synthetic_rows_added"] > 0
 
     def test_single_class_raises(self) -> None:
         store, tmp = make_store()
@@ -290,7 +294,7 @@ class ResampleTrainingDataRunTests(unittest.TestCase):
         )
         ctx = make_context(store, [data_art, def_art], "cardre.resample_training_data",
                            params={"strategy": "combined"}, category="transform")
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             ResampleTrainingDataNode().run(ctx)
 
     def test_resampled_data_trains_model(self) -> None:
@@ -312,14 +316,15 @@ class ResampleTrainingDataRunTests(unittest.TestCase):
                               step_id="dt-fit", category="fit")
         dt_out = DecisionTreeNode().run(dt_ctx)
         model = json.loads(store.artifact_path(dt_out.artifacts[0]).read_text())
-        self.assertEqual(model["model_family"], "decision_tree")
+        assert model["model_family"] == "decision_tree"
 
 
 # ======================================================================
 # SmoteTrainingDataNode Tests
 # ======================================================================
 
-class SmoteTrainingDataParameterTests(unittest.TestCase):
+@pytest.mark.optional_imbalance
+class SmoteTrainingDataParameterTests:
 
     def test_valid_params(self) -> None:
         node = SmoteTrainingDataNode()
@@ -328,21 +333,22 @@ class SmoteTrainingDataParameterTests(unittest.TestCase):
             "sampling_ratio": 1.0,
             "random_seed": 42,
         })
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_k_neighbors_zero(self) -> None:
         node = SmoteTrainingDataNode()
         errors = node.validate_params({"k_neighbors": 0})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
 
-class SmoteTrainingDataRunTests(unittest.TestCase):
+@pytest.mark.optional_imbalance
+class SmoteTrainingDataRunTests:
 
     def test_smote_increases_minority(self) -> None:
         try:
             from imblearn.over_sampling import SMOTE  # noqa: F401
         except ImportError:
-            self.skipTest("imbalanced-learn not installed")
+            pytest.skip("imbalanced-learn not installed")
 
         store, tmp = make_store()
         data_art, def_art, _ = make_imbalanced_dataset(store, n_good=50, n_bad=10)
@@ -351,14 +357,14 @@ class SmoteTrainingDataRunTests(unittest.TestCase):
                            category="transform")
         out = SmoteTrainingDataNode().run(ctx)
         report = json.loads(store.artifact_path(out.artifacts[1]).read_text())
-        self.assertGreater(report["resampled"]["bad"], report["original"]["bad"])
-        self.assertGreater(report["synthetic_rows_added"], 0)
+        assert report["resampled"]["bad"] > report["original"]["bad"]
+        assert report["synthetic_rows_added"] > 0
 
     def test_smote_synthetic_flagged(self) -> None:
         try:
             from imblearn.over_sampling import SMOTE  # noqa: F401
         except ImportError:
-            self.skipTest("imbalanced-learn not installed")
+            pytest.skip("imbalanced-learn not installed")
 
         store, tmp = make_store()
         data_art, def_art, _ = make_imbalanced_dataset(store, n_good=50, n_bad=10)
@@ -367,7 +373,7 @@ class SmoteTrainingDataRunTests(unittest.TestCase):
                            category="transform")
         out = SmoteTrainingDataNode().run(ctx)
         report = json.loads(store.artifact_path(out.artifacts[1]).read_text())
-        self.assertGreater(report["synthetic_rows_added"], 0)
+        assert report["synthetic_rows_added"] > 0
 
     def test_smote_import_error(self) -> None:
         """Test that missing imbalanced-learn gives clear error."""
@@ -388,16 +394,16 @@ class SmoteTrainingDataRunTests(unittest.TestCase):
                            params={"k_neighbors": 3}, category="transform")
 
         with unittest.mock.patch("builtins.__import__", side_effect=mock_import):
-            with self.assertRaises(ImportError) as cm:
+            with pytest.raises(ImportError) as cm:
                 SmoteTrainingDataNode().run(ctx)
-            self.assertIn("imbalanced-learn", str(cm.exception))
+            assert "imbalanced-learn" in str(cm.value)
 
 
 # ======================================================================
 # Integration: Filter → Model pipeline
 # ======================================================================
 
-class FeatureSelectionIntegrationTests(unittest.TestCase):
+class FeatureSelectionIntegrationTests:
 
     def test_filter_then_fit_decision_tree(self) -> None:
         """Verify filter selection output can be used as model input."""
@@ -418,9 +424,5 @@ class FeatureSelectionIntegrationTests(unittest.TestCase):
                               step_id="dt-fit", category="fit")
         dt_out = DecisionTreeNode().run(dt_ctx)
         model = json.loads(store.artifact_path(dt_out.artifacts[0]).read_text())
-        self.assertEqual(model["model_family"], "decision_tree")
-        self.assertGreater(len(model["features"]), 0)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert model["model_family"] == "decision_tree"
+        assert len(model["features"]) > 0

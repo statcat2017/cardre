@@ -7,29 +7,14 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 
 from cardre.audit import StepSpec, json_logical_hash
 from cardre.store import ProjectStore
 from sidecar.main import app
 
 
-# Reset registry for fresh state per test
 pytest_plugins = []
-pytestmark = pytest.mark.api
-
-
-@pytest.fixture(autouse=True)
-def _reset_registry():
-    reg_path = Path.home() / ".cardre" / "projects.json"
-    if reg_path.exists():
-        reg_path.unlink()
-    yield
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
+pytestmark = [pytest.mark.api, pytest.mark.usefixtures("_isolated_registry")]
 
 
 @pytest.fixture

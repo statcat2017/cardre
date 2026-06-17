@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import tempfile
-import unittest
 from pathlib import Path
 
 import numpy as np
@@ -21,6 +20,10 @@ from cardre.nodes.ml_models import DecisionTreeNode
 from cardre.store import ProjectStore
 
 from tests.helpers import make_store
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 
 # ======================================================================
@@ -128,41 +131,43 @@ def make_ctx(store, artifacts, node_type, *, params=None, step_id="step", catego
 # Phase 8: Optional Boosting Tests
 # ======================================================================
 
-class OptionalBoostingImportTests(unittest.TestCase):
+@pytest.mark.optional_boosting
+class OptionalBoostingImportTests:
 
     def test_xgboost_import_error(self) -> None:
         """Verify clear error message when xgboost is not installed."""
         from cardre.nodes.boosting import _check_optional_dependency
         try:
             __import__("xgboost")
-            self.skipTest("xgboost is installed")
+            pytest.skip("xgboost is installed")
         except ImportError:
-            with self.assertRaises(ImportError) as cm:
+            with pytest.raises(ImportError) as cm:
                 _check_optional_dependency("xgboost", "xgboost")
-            self.assertIn("xgboost", str(cm.exception))
+            assert "xgboost" in str(cm.value)
 
     def test_lightgbm_import_error(self) -> None:
         from cardre.nodes.boosting import _check_optional_dependency
         try:
             __import__("lightgbm")
-            self.skipTest("lightgbm is installed")
+            pytest.skip("lightgbm is installed")
         except ImportError:
-            with self.assertRaises(ImportError) as cm:
+            with pytest.raises(ImportError) as cm:
                 _check_optional_dependency("lightgbm", "lightgbm")
-            self.assertIn("lightgbm", str(cm.exception))
+            assert "lightgbm" in str(cm.value)
 
     def test_catboost_import_error(self) -> None:
         from cardre.nodes.boosting import _check_optional_dependency
         try:
             __import__("catboost")
-            self.skipTest("catboost is installed")
+            pytest.skip("catboost is installed")
         except ImportError:
-            with self.assertRaises(ImportError) as cm:
+            with pytest.raises(ImportError) as cm:
                 _check_optional_dependency("catboost", "catboost")
-            self.assertIn("catboost", str(cm.exception))
+            assert "catboost" in str(cm.value)
 
 
-class XGBoostParameterTests(unittest.TestCase):
+@pytest.mark.optional_boosting
+class XGBoostParameterTests:
     """Tests that work regardless of whether xgboost is installed."""
 
     def test_validate_params(self) -> None:
@@ -175,16 +180,17 @@ class XGBoostParameterTests(unittest.TestCase):
             "learning_rate": 0.1,
             "random_seed": 42,
         })
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_invalid_feature_strategy(self) -> None:
         from cardre.nodes.boosting import XGBoostClassifierNode
         node = XGBoostClassifierNode()
         errors = node.validate_params({"feature_strategy": "invalid"})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
 
-class LightGBMParameterTests(unittest.TestCase):
+@pytest.mark.optional_boosting
+class LightGBMParameterTests:
 
     def test_validate_params(self) -> None:
         from cardre.nodes.boosting import LightGBMClassifierNode
@@ -196,10 +202,11 @@ class LightGBMParameterTests(unittest.TestCase):
             "learning_rate": 0.1,
             "random_seed": 42,
         })
-        self.assertEqual(errors, [])
+        assert errors == []
 
 
-class CatBoostParameterTests(unittest.TestCase):
+@pytest.mark.optional_boosting
+class CatBoostParameterTests:
 
     def test_validate_params(self) -> None:
         from cardre.nodes.boosting import CatBoostClassifierNode
@@ -211,27 +218,27 @@ class CatBoostParameterTests(unittest.TestCase):
             "learning_rate": 0.1,
             "random_seed": 42,
         })
-        self.assertEqual(errors, [])
+        assert errors == []
 
 
 # ======================================================================
 # Phase 9: Fairness Report Tests
 # ======================================================================
 
-class FairnessReportParameterTests(unittest.TestCase):
+class FairnessReportParameterTests:
 
     def test_valid_params(self) -> None:
         node = FairnessReportNode()
         errors = node.validate_params({"sensitive_columns": ["gender"], "cutoff": 0.5})
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_empty_sensitive_columns(self) -> None:
         node = FairnessReportNode()
         errors = node.validate_params({"sensitive_columns": []})
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
 
-class FairnessReportRunTests(unittest.TestCase):
+class FairnessReportRunTests:
 
     def test_fairness_report_by_gender(self) -> None:
         store, tmp = make_store()
@@ -243,18 +250,18 @@ class FairnessReportRunTests(unittest.TestCase):
         out = FairnessReportNode().run(ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
-        self.assertIn("roles", report)
-        self.assertIn("train", report["roles"])
-        self.assertIn("group_metrics", report["roles"]["train"])
-        self.assertIn("gender", report["roles"]["train"]["group_metrics"])
+        assert "roles" in report
+        assert "train" in report["roles"]
+        assert "group_metrics" in report["roles"]["train"]
+        assert "gender" in report["roles"]["train"]["group_metrics"]
 
         gender_metrics = report["roles"]["train"]["group_metrics"]["gender"]
         for group_val, metrics in gender_metrics.items():
             if isinstance(metrics, dict) and metrics.get("status") != "insufficient_evidence":
-                self.assertIn("approval_rate", metrics)
-                self.assertIn("bad_rate", metrics)
-                self.assertIn("precision", metrics)
-                self.assertIn("recall", metrics)
+                assert "approval_rate" in metrics
+                assert "bad_rate" in metrics
+                assert "precision" in metrics
+                assert "recall" in metrics
 
     def test_fairness_report_parity_summary(self) -> None:
         store, tmp = make_store()
@@ -266,8 +273,8 @@ class FairnessReportRunTests(unittest.TestCase):
         out = FairnessReportNode().run(ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
-        self.assertIn("parity_summary", report)
-        self.assertIn("gender", report["parity_summary"])
+        assert "parity_summary" in report
+        assert "gender" in report["parity_summary"]
 
     def test_small_groups_suppressed(self) -> None:
         store, tmp = make_store()
@@ -298,14 +305,14 @@ class FairnessReportRunTests(unittest.TestCase):
 
         gender_metrics = report["roles"]["train"]["group_metrics"]["gender"]
         f_metrics = gender_metrics.get("F", {})
-        self.assertEqual(f_metrics.get("status"), "insufficient_evidence")
+        assert f_metrics.get("status") == "insufficient_evidence"
 
 
 # ======================================================================
 # Phase 9: Proxy Risk Report Tests
 # ======================================================================
 
-class ProxyRiskReportParameterTests(unittest.TestCase):
+class ProxyRiskReportParameterTests:
 
     def test_valid_params(self) -> None:
         node = ProxyRiskReportNode()
@@ -313,10 +320,10 @@ class ProxyRiskReportParameterTests(unittest.TestCase):
             "sensitive_columns": ["gender"],
             "correlation_threshold": 0.3,
         })
-        self.assertEqual(errors, [])
+        assert errors == []
 
 
-class ProxyRiskReportRunTests(unittest.TestCase):
+class ProxyRiskReportRunTests:
 
     def test_proxy_risk_low_when_no_correlation(self) -> None:
         store, tmp = make_store()
@@ -328,8 +335,8 @@ class ProxyRiskReportRunTests(unittest.TestCase):
         out = ProxyRiskReportNode().run(ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
-        self.assertIn("proxy_flags", report)
-        self.assertIn("overall_risk", report)
+        assert "proxy_flags" in report
+        assert "overall_risk" in report
 
     def test_proxy_risk_detects_direct_sensitive_in_model(self) -> None:
         """If a sensitive column is in model features, it should be flagged."""
@@ -367,15 +374,15 @@ class ProxyRiskReportRunTests(unittest.TestCase):
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
         # gender_num is directly in model features → high risk
-        self.assertEqual(report["overall_risk"], "high")
-        self.assertTrue(any(f["risk_level"] == "high" for f in report["proxy_flags"]))
+        assert report["overall_risk"] == "high"
+        assert any(f["risk_level"] == "high" for f in report["proxy_flags"])
 
 
 # ======================================================================
 # Phase 9: Alternative Data Manifest Tests
 # ======================================================================
 
-class AlternativeDataManifestParameterTests(unittest.TestCase):
+class AlternativeDataManifestParameterTests:
 
     def test_valid_params(self) -> None:
         node = AlternativeDataManifestNode()
@@ -386,7 +393,7 @@ class AlternativeDataManifestParameterTests(unittest.TestCase):
                 "permitted_use": "credit_scoring",
             }],
         })
-        self.assertEqual(errors, [])
+        assert errors == []
 
     def test_missing_consent_basis(self) -> None:
         node = AlternativeDataManifestNode()
@@ -396,7 +403,7 @@ class AlternativeDataManifestParameterTests(unittest.TestCase):
                 "permitted_use": "credit_scoring",
             }],
         })
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
     def test_missing_permitted_use(self) -> None:
         node = AlternativeDataManifestNode()
@@ -406,10 +413,10 @@ class AlternativeDataManifestParameterTests(unittest.TestCase):
                 "consent_basis": "explicit_opt_in",
             }],
         })
-        self.assertGreater(len(errors), 0)
+        assert len(errors) > 0
 
 
-class AlternativeDataManifestRunTests(unittest.TestCase):
+class AlternativeDataManifestRunTests:
 
     def test_manifest_with_valid_sources(self) -> None:
         store, tmp = make_store()
@@ -429,10 +436,10 @@ class AlternativeDataManifestRunTests(unittest.TestCase):
         out = AlternativeDataManifestNode().run(ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
-        self.assertTrue(report["consent_verified"])
-        self.assertTrue(report["all_use_permitted"])
-        self.assertTrue(report["champion_eligible"])
-        self.assertEqual(len(report["promotion_blocks"]), 0)
+        assert report["consent_verified"]
+        assert report["all_use_permitted"]
+        assert report["champion_eligible"]
+        assert len(report["promotion_blocks"]) == 0
 
     def test_manifest_blocks_without_consent(self) -> None:
         store, tmp = make_store()
@@ -450,9 +457,9 @@ class AlternativeDataManifestRunTests(unittest.TestCase):
         out = AlternativeDataManifestNode().run(ctx)
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
-        self.assertFalse(report["consent_verified"])
-        self.assertFalse(report["champion_eligible"])
-        self.assertGreater(len(report["promotion_blocks"]), 0)
+        assert not report["consent_verified"]
+        assert not report["champion_eligible"]
+        assert len(report["promotion_blocks"]) > 0
 
     def test_manifest_records_coverage(self) -> None:
         store, tmp = make_store()
@@ -471,10 +478,6 @@ class AlternativeDataManifestRunTests(unittest.TestCase):
         report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
 
         source = report["data_sources"][0]
-        self.assertIn("coverage", source)
-        self.assertIn("missingness", source)
-        self.assertGreater(source["coverage"].get("feat_a", 0), 0.9)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert "coverage" in source
+        assert "missingness" in source
+        assert source["coverage"].get("feat_a", 0) > 0.9

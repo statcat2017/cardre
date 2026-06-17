@@ -13,11 +13,7 @@ from cardre.services.project_registry import (
     validate_project_path,
 )
 
-
-@pytest.fixture(autouse=True)
-def _isolated_registry(tmp_path, monkeypatch):
-    registry = tmp_path / "registry" / "projects.json"
-    monkeypatch.setenv("CARDRE_REGISTRY_PATH", str(registry))
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("_isolated_registry")]
 
 
 def test_create_and_get_project(tmp_path: Path):
