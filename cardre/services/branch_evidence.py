@@ -10,7 +10,9 @@ from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
 from cardre.audit import ArtifactRef, RunStepRecord, StepSpec
+from cardre.staleness import compute_staleness
 from cardre.store import ProjectStore
+from cardre.topology import validate_topology
 
 if TYPE_CHECKING:
     from cardre.executor import PlanExecutor
@@ -93,10 +95,10 @@ class BranchEvidenceResolver:
 
         # 3. Steps and topology
         steps = store.get_plan_version_steps(plan_version_id)
-        self._exec._validate_topology(steps)
+        validate_topology(steps)
 
         # 4. Branch-owned staleness
-        branch_staleness = self._exec.compute_staleness(
+        branch_staleness = compute_staleness(
             store, plan_version_id, branch_id=branch_id,
         )
 

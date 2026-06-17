@@ -27,7 +27,9 @@ from cardre.audit import (
     utc_now_iso,
 )
 from cardre.registry import NodeRegistry
+from cardre.staleness import compute_staleness
 from cardre.store import ProjectStore
+from cardre.topology import validate_topology
 
 
 LEAKAGE_SENSITIVE_CATEGORIES = {"fit", "selection", "refinement"}
@@ -292,51 +294,7 @@ class PlanExecutor:
         return artifacts
 
     def _validate_topology(self, steps: list[StepSpec]) -> None:
-        # Validate first: no duplicate or missing step IDs
-        seen: set[str] = set()
-        for step in steps:
-            if step.step_id in seen:
-                raise ValueError(f"Duplicate step_id {step.step_id!r}")
-            seen.add(step.step_id)
-
-        step_ids = {s.step_id for s in steps}
-        for step in steps:
-            for pid in step.parent_step_ids:
-                if pid not in step_ids:
-                    raise ValueError(
-                        f"Step {step.step_id!r} references missing parent {pid!r}"
-                    )
-
-        # Perform topological sort (Kahn's algorithm) — handles
-        # out-of-order but valid plans that the simple sequential
-        # check above would reject.
-        parent_map: dict[str, set[str]] = {s.step_id: set(s.parent_step_ids) & step_ids for s in steps}
-        child_map: dict[str, set[str]] = {s.step_id: set() for s in steps}
-        for s in steps:
-            for pid in s.parent_step_ids:
-                if pid in child_map:
-                    child_map[pid].add(s.step_id)
-
-        in_degree = {sid: len(parents) for sid, parents in parent_map.items()}
-        queue = [sid for sid, deg in in_degree.items() if deg == 0]
-        sorted_ids: list[str] = []
-        while queue:
-            sid = queue.pop(0)
-            sorted_ids.append(sid)
-            for child in child_map.get(sid, set()):
-                in_degree[child] -= 1
-                if in_degree[child] == 0:
-                    queue.append(child)
-
-        if len(sorted_ids) != len(steps):
-            raise ValueError(
-                f"Cycle detected in plan steps: {len(steps)} steps, "
-                f"only {len(sorted_ids)} topologically sortable"
-            )
-
-        # Reorder steps to match topological sort
-        step_by_id = {s.step_id: s for s in steps}
-        steps[:] = [step_by_id[sid] for sid in sorted_ids]
+        validate_topology(steps)
 
     # ------------------------------------------------------------------
     # Role enforcement
@@ -518,125 +476,7 @@ class PlanExecutor:
         plan_version_id: str,
         branch_id: str | None = None,
     ) -> dict[str, bool]:
-        """Return {step_id: is_stale} for each step in the plan version.
-
-        When branch_id is provided, looks for run evidence specific to
-        that branch.  When branch_id is None, looks for full-plan
-        (non-branch) runs only.
-
-        Compares:
-        - current params_hash, node_type, node_version
-        - parent output logical hashes (has a parent been re-run?)
-        - all ancestors recursively
-
-        When the current plan version has no successful run, falls back
-        to the most recent successful run from any version of the same
-        plan.  This prevents every step from appearing stale immediately
-        after a param-update creates a brand-new plan version.
-        """
-        steps = store.get_plan_version_steps(plan_version_id)
-        run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=branch_id)
-
-        if run_id is None and branch_id:
-            # Branch-scoped fallback: try any successful run for this plan
-            # (including branch runs on other plan versions).
-            pv = store.get_plan_version(plan_version_id)
-            if pv is not None:
-                run_id = store.get_any_successful_run_id_for_plan(pv["plan_id"])
-
-        if run_id is None:
-            pv = store.get_plan_version(plan_version_id)
-            if pv is not None:
-                run_id = store.get_latest_successful_run_id_for_plan(pv["plan_id"])
-
-            if run_id is None:
-                return {s.step_id: True for s in steps}
-
-        run_steps = store.get_run_steps(run_id)
-        rs_by_step = {rs.step_id: rs for rs in run_steps}
-
-        # For branch-scoped staleness, seed shared upstream evidence into
-        # rs_by_step so parent recursion can find shared upstream records
-        # (which are stored in full-plan runs, not branch-scoped ones).
-        if branch_id:
-            pv = store.get_plan_version(plan_version_id)
-            if pv is not None:
-                full_run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=None)
-                if full_run_id is None:
-                    full_run_id = store.get_latest_successful_run_id_for_plan(pv["plan_id"])
-                if full_run_id is not None and full_run_id != run_id:
-                    for prs in store.get_run_steps(full_run_id):
-                        if prs.step_id not in rs_by_step:
-                            rs_by_step[prs.step_id] = prs
-
-        stale: dict[str, bool] = {}
-        for spec in steps:
-            is_stale = self._step_is_stale(store, spec, steps, rs_by_step, stale)
-            stale[spec.step_id] = is_stale
-        return stale
-
-    def _step_is_stale(
-        self,
-        store: ProjectStore,
-        spec: StepSpec,
-        all_steps: list[StepSpec],
-        rs_by_step: dict[str, RunStepRecord],
-        stale_cache: dict[str, bool],
-    ) -> bool:
-        if spec.step_id in stale_cache:
-            return stale_cache[spec.step_id]
-
-        rs = rs_by_step.get(spec.step_id)
-        if rs is None:
-            stale_cache[spec.step_id] = True
-            return True
-
-        fp = rs.execution_fingerprint
-
-        # Compare params_hash
-        if fp.get("params_hash", "") != spec.params_hash:
-            stale_cache[spec.step_id] = True
-            return True
-
-        # Compare node type/version
-        if fp.get("node_type", "") != spec.node_type or fp.get("node_version", "") != spec.node_version:
-            stale_cache[spec.step_id] = True
-            return True
-
-        # Check parents recursively AND compare parent output logical hashes
-        parent_output_by_step: dict[str, list[str]] = fp.get(
-            "parent_output_logical_hashes_by_step", {}
-        )
-
-        for pid in spec.parent_step_ids:
-            # Recursive check: is the parent itself stale?
-            if self._step_is_stale(store, self._find_spec(pid, all_steps), all_steps, rs_by_step, stale_cache):
-                stale_cache[spec.step_id] = True
-                return True
-
-            # Compare parent output logical hashes: has the parent been
-            # re-run since this child was last executed?
-            parent_rs = rs_by_step.get(pid)
-            if parent_rs is None:
-                stale_cache[spec.step_id] = True
-                return True
-
-            stored_parent_outputs = parent_output_by_step.get(pid, [])
-            current_parent_outputs = parent_rs.execution_fingerprint.get(
-                "output_artifact_logical_hashes", []
-            )
-            if stored_parent_outputs != current_parent_outputs:
-                stale_cache[spec.step_id] = True
-                return True
-
-        stale_cache[spec.step_id] = False
-        return False
-
-    def _find_spec(self, step_id: str, steps: list[StepSpec]) -> StepSpec:
-        for s in steps:
-            if s.step_id == step_id:
-                return s
-        raise KeyError(step_id)
+        return compute_staleness(store, plan_version_id, branch_id=branch_id)
 
     # ------------------------------------------------------------------
     # Incremental replay

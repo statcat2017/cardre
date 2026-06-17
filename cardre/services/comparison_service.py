@@ -8,8 +8,7 @@ from typing import Any
 
 from cardre.artifacts import write_json_artifact
 from cardre.audit import utc_now_iso
-from cardre.executor import PlanExecutor
-from cardre.registry import NodeRegistry
+from cardre.staleness import compute_staleness
 from cardre.store import ProjectStore
 
 REQUIRED_EVIDENCE_CANONICAL_STEPS = [
@@ -51,7 +50,7 @@ def _check_branch_readiness(
     # Build reverse alias map for legacy resolution
     legacy_reverse = {v: k for k, v in LEGACY_CANONICAL_ALIASES.items()}
 
-    staleness = PlanExecutor(NodeRegistry.with_defaults()).compute_staleness(
+    staleness = compute_staleness(
         store, plan_version_id, branch_id=branch_id if not is_baseline else None,
     )
 
