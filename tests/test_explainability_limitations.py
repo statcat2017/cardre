@@ -15,34 +15,12 @@ from cardre.nodes.explainability import CHAMPION_ELIGIBILITY, ModelExplainabilit
 from cardre.nodes.ml_models import DecisionTreeNode, GradientBoostingClassifierNode, RandomForestClassifierNode
 from cardre.store import ProjectStore
 
+from tests.helpers import make_numeric_dataset, make_store
+
 
 # ======================================================================
 # Helpers
 # ======================================================================
-
-def make_store() -> tuple[ProjectStore, Path]:
-    tmp = Path(tempfile.mkdtemp())
-    store = ProjectStore(tmp / "test.cardre")
-    store.initialize()
-    return store, tmp
-
-
-def make_numeric_dataset(store: ProjectStore, n_rows: int = 100, seed: int = 42) -> tuple:
-    rng = np.random.RandomState(seed)
-    feat_a = rng.randn(n_rows) * 10 + 50
-    feat_b = rng.randn(n_rows) * 5 + 20
-    feat_c = rng.randn(n_rows) * 2 + 10
-    target = ["bad" if feat_a[i] > 55 and feat_b[i] > 22 else "good" for i in range(n_rows)]
-    df = pl.DataFrame({"feat_a": feat_a, "feat_b": feat_b, "feat_c": feat_c, "target": target})
-
-    from cardre.artifacts import write_json_artifact, write_parquet_artifact
-    data_art = write_parquet_artifact(store, artifact_type="dataset", role="train", stem="train", frame=df, metadata={})
-    def_art = write_json_artifact(
-        store, artifact_type="definition", role="definition", stem="def",
-        payload={"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]},
-        metadata={},
-    )
-    return data_art, def_art, df
 
 
 def make_fit_context(store, data_art, def_art, node_type, *, params=None, step_id="fit"):

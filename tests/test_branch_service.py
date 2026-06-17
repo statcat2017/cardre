@@ -98,56 +98,25 @@ class TestDescendantClosure:
 # =========================================================================
 
 class TestValidateSegmentFilterRules:
-    def test_valid_rules(self):
-        _validate_segment_filter_rules({
-            "rules": [
-                {"column": "age", "operator": ">", "value": 18, "reason": "Adult population"},
-            ]
-        })
+    @pytest.mark.parametrize("rules,expected_error", [
+        ({"rules": []}, "SEGMENT_FILTER_RULES_REQUIRED"),
+        ({"rules": [{"operator": "==", "value": "x", "reason": "test"}]}, "SEGMENT_FILTER_INVALID"),
+        ({"rules": [{"column": "age", "value": "x", "reason": "test"}]}, "SEGMENT_FILTER_INVALID"),
+        ({"rules": [{"column": "age", "operator": "~=", "value": "x", "reason": "test"}]}, "SEGMENT_FILTER_UNSUPPORTED_OPERATOR"),
+        ({"rules": [{"column": "age", "operator": "==", "value": "x", "reason": ""}]}, "SEGMENT_FILTER_REASON_REQUIRED"),
+        ({"rules": [{"column": "age", "operator": ">", "reason": "test"}]}, "SEGMENT_FILTER_VALUE_REQUIRED"),
+    ])
+    def test_rejects_invalid_rules(self, rules, expected_error):
+        with pytest.raises(ValueError, match=expected_error):
+            _validate_segment_filter_rules(rules)
 
-    def test_missing_rules_raises(self):
-        with pytest.raises(ValueError, match="SEGMENT_FILTER_RULES_REQUIRED"):
-            _validate_segment_filter_rules({"rules": []})
-
-    def test_missing_column_raises(self):
-        with pytest.raises(ValueError, match="SEGMENT_FILTER_INVALID"):
-            _validate_segment_filter_rules({
-                "rules": [{"operator": "==", "value": "x", "reason": "test"}]
-            })
-
-    def test_missing_operator_raises(self):
-        with pytest.raises(ValueError, match="SEGMENT_FILTER_INVALID"):
-            _validate_segment_filter_rules({
-                "rules": [{"column": "age", "value": "x", "reason": "test"}]
-            })
-
-    def test_unsupported_operator_raises(self):
-        with pytest.raises(ValueError, match="SEGMENT_FILTER_UNSUPPORTED_OPERATOR"):
-            _validate_segment_filter_rules({
-                "rules": [{"column": "age", "operator": "~=", "value": "x", "reason": "test"}]
-            })
-
-    def test_missing_reason_raises(self):
-        with pytest.raises(ValueError, match="SEGMENT_FILTER_REASON_REQUIRED"):
-            _validate_segment_filter_rules({
-                "rules": [{"column": "age", "operator": "==", "value": "x", "reason": ""}]
-            })
-
-    def test_missing_value_for_non_null_operator_raises(self):
-        with pytest.raises(ValueError, match="SEGMENT_FILTER_VALUE_REQUIRED"):
-            _validate_segment_filter_rules({
-                "rules": [{"column": "age", "operator": ">", "reason": "test"}]
-            })
-
-    def test_is_null_allows_no_value(self):
-        _validate_segment_filter_rules({
-            "rules": [{"column": "age", "operator": "is_null", "reason": "Missing data"}]
-        })
-
-    def test_is_not_null_allows_no_value(self):
-        _validate_segment_filter_rules({
-            "rules": [{"column": "age", "operator": "is_not_null", "reason": "Present data"}]
-        })
+    @pytest.mark.parametrize("rules", [
+        {"rules": [{"column": "age", "operator": ">", "value": 18, "reason": "Adult population"}]},
+        {"rules": [{"column": "age", "operator": "is_null", "reason": "Missing data"}]},
+        {"rules": [{"column": "age", "operator": "is_not_null", "reason": "Present data"}]},
+    ])
+    def test_accepts_valid_rules(self, rules):
+        _validate_segment_filter_rules(rules)
 
 
 # =========================================================================

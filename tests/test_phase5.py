@@ -353,92 +353,51 @@ class TestHtmlRenderer:
             ],
         }
 
-    def test_html_has_executive_summary(self):
+    def test_html_renders_all_major_sections(self):
         html = render_report_bundle_to_html(self._make_minimal_bundle())
+        # Title / summary
         assert "Cardre Governance Report" in html
         assert "Test Scorecard" in html
-
-    def test_html_has_warning_section(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
-        assert "NO_OOT_SAMPLE" in html
-        assert "PDF_OUT_OF_SCOPE" in html
-
-    def test_html_has_target_branch(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
         assert "main" in html
-
-    def test_html_has_variable_tables(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
+        # Variables
         assert "age" in html
         assert "0.126" in html
-        assert "Smoothing" in html
-
-    def test_html_has_woe_smoothing_section(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
+        # WOE smoothing
         assert "additive" in html
         assert "0.5" in html
         assert "Smoothing" in html
-
-    def test_html_has_model_coefficients(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
+        # Model
         assert "Coefficient" in html
         assert "-0.4321" in html
-
-    def test_html_has_score_scaling(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
+        # Score scaling
         assert "Score Scaling" in html
         assert "600" in html
         assert "28.85" in html
-
-    def test_html_has_validation_metrics(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
+        # Validation
         assert "Validation Metrics" in html
         assert "0.742" in html
-
-    def test_html_has_reproducibility(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
+        # Reproducibility + manifest
         assert "Reproducibility" in html
         assert "3.12" in html
-
-    def test_html_has_artifact_index(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
+        assert "run_001" in html
+        # Artifacts
         assert "Artifact Index" in html
         assert "abc123" in html
-
-    def test_html_has_no_external_scripts(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
-        assert "<script" not in html
-        assert "src=" not in html
-
-    def test_html_has_no_external_stylesheets(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
-        assert "rel=\"stylesheet\"" not in html
+        # Champion
+        assert "Champion" in html or "champion" in html
+        # Warnings / limitations
+        assert "NO_OOT_SAMPLE" in html
+        assert "PDF_OUT_OF_SCOPE" in html
 
     def test_html_is_self_contained(self):
         html = render_report_bundle_to_html(self._make_minimal_bundle())
+        assert "<script" not in html
+        assert "src=" not in html
+        assert "rel=\"stylesheet\"" not in html
         assert "http://" not in html.replace("http://127.0.0.1", "")
         assert "https://" not in html
-
-    def test_html_has_champion_section(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
-        assert "Champion" in html or "champion" in html
-
-    def test_html_has_no_charts(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
         assert "Chart" not in html
         assert "canvas" not in html
-
-    def test_html_manifest_hash_appears(self):
-        html = render_report_bundle_to_html(self._make_minimal_bundle())
-        assert "run_001" in html
-
-    def test_html_renders_limitations(self):
-        bundle = self._make_minimal_bundle()
-        bundle["limitations"] = [
-            {"severity": "warning", "code": "NO_OOT_SAMPLE", "message": "No OOT dataset."},
-        ]
-        html = render_report_bundle_to_html(bundle)
-        assert "NO_OOT_SAMPLE" in html
 
 
 # =========================================================================

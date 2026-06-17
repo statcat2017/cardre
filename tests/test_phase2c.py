@@ -30,8 +30,12 @@ from cardre.nodes import (
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 
-from tests.test_phase1 import make_store
-from tests.test_phase2b import _make_train_artifact, _make_json_artifact, _make_parquet_report
+from tests.helpers import (
+    _make_json_artifact,
+    _make_parquet_report,
+    _make_train_artifact,
+    make_store,
+)
 
 
 # ======================================================================

@@ -33,16 +33,12 @@ from cardre.modeling.serialization import (
 from cardre.nodes.validate import CutoffAnalysisNode, ValidationMetricsNode
 from cardre.store import ProjectStore
 
+from tests.helpers import make_store
+
 
 # ======================================================================
 # Helpers
 # ======================================================================
-
-def make_store() -> tuple[ProjectStore, Path]:
-    tmp = Path(tempfile.mkdtemp())
-    store = ProjectStore(tmp / "test.cardre")
-    store.initialize()
-    return store, tmp
 
 
 def make_dataset_artifact(store: ProjectStore, df: pl.DataFrame, role: str = "train"):

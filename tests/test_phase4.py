@@ -25,7 +25,7 @@ from sidecar.proof_pathway import (
     _build_steps,
 )
 
-from tests.test_phase1 import make_store, SAMPLE_GERMAN_CREDIT_LINES
+from tests.helpers import SAMPLE_GERMAN_CREDIT_LINES, make_store
 
 
 # ======================================================================

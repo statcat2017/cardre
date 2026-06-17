@@ -36,46 +36,16 @@ from cardre.nodes import (
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 
+from tests.helpers import (
+    make_sample_german_credit_file,
+    make_sample_german_credit_zip,
+    make_store,
+)
+
 
 # ======================================================================
 # Helpers
 # ======================================================================
-
-SAMPLE_GERMAN_CREDIT_LINES = """A11 6 A34 A43 1169 A65 A75 4 A93 A101 4 A121 67 A143 A152 2 A173 1 A192 A201 1
-A12 24 A32 A43 5951 A61 A73 2 A92 A101 4 A121 22 A142 A152 2 A173 1 A191 A201 2
-""".strip().split("\n")
-
-
-def make_store() -> tuple[ProjectStore, Path]:
-    tmp = Path(tempfile.mkdtemp())
-    store = ProjectStore(tmp / "test.cardre")
-    store.initialize()
-    return store, tmp
-
-
-def make_plan_version(
-    store: ProjectStore,
-    project_id: str | None = None,
-) -> tuple[str, str]:
-    if project_id is None:
-        project_id = store.create_project("test-proj")
-    plan_id = store.create_plan(project_id, "test-plan")
-    pv_id = store.create_plan_version(plan_id, [])
-    return plan_id, pv_id
-
-
-def make_sample_german_credit_file(tmp: Path) -> Path:
-    p = tmp / "german.data"
-    p.write_text("\n".join(SAMPLE_GERMAN_CREDIT_LINES))
-    return p
-
-
-def make_sample_german_credit_zip(tmp: Path) -> Path:
-    import zipfile
-    zpath = tmp / "german.zip"
-    with zipfile.ZipFile(zpath, "w") as zf:
-        zf.writestr("german.data", "\n".join(SAMPLE_GERMAN_CREDIT_LINES))
-    return zpath
 
 
 def _make_train_artifact(store, df, role="train"):

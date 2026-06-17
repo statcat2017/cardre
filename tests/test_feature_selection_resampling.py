@@ -19,16 +19,12 @@ from cardre.nodes.feature_selection import (
 )
 from cardre.store import ProjectStore
 
+from tests.helpers import make_store
+
 
 # ======================================================================
 # Helpers
 # ======================================================================
-
-def make_store() -> tuple[ProjectStore, Path]:
-    tmp = Path(tempfile.mkdtemp())
-    store = ProjectStore(tmp / "test.cardre")
-    store.initialize()
-    return store, tmp
 
 
 def make_imbalanced_dataset(

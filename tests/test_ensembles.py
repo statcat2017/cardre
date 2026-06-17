@@ -23,53 +23,7 @@ from cardre.nodes.ml_models import (
 )
 from cardre.store import ProjectStore
 
-
-def make_store() -> tuple[ProjectStore, Path]:
-    tmp = Path(tempfile.mkdtemp())
-    store = ProjectStore(tmp / "test.cardre")
-    store.initialize()
-    return store, tmp
-
-
-def make_numeric_dataset(
-    store: ProjectStore,
-    n_rows: int = 100,
-    seed: int = 42,
-) -> tuple:
-    rng = np.random.RandomState(seed)
-    feat_a = rng.randn(n_rows) * 10 + 50
-    feat_b = rng.randn(n_rows) * 5 + 20
-    feat_c = rng.randn(n_rows) * 2 + 10
-    target = []
-    for i in range(n_rows):
-        if feat_a[i] > 55 and feat_b[i] > 22:
-            target.append("bad")
-        else:
-            target.append("good")
-
-    df = pl.DataFrame({
-        "feat_a": feat_a,
-        "feat_b": feat_b,
-        "feat_c": feat_c,
-        "target": target,
-    })
-
-    from cardre.artifacts import write_json_artifact, write_parquet_artifact
-    data_art = write_parquet_artifact(
-        store, artifact_type="dataset", role="train",
-        stem="synthetic-train", frame=df, metadata={},
-    )
-    def_art = write_json_artifact(
-        store, artifact_type="definition", role="definition",
-        stem="synthetic-definition",
-        payload={
-            "target_column": "target",
-            "good_values": ["good"],
-            "bad_values": ["bad"],
-        },
-        metadata={},
-    )
-    return data_art, def_art, df
+from tests.helpers import make_numeric_dataset, make_store
 
 
 def fit_two_models(store, data_art, def_art):

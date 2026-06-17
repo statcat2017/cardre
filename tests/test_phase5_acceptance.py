@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.e2e
+
 from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
 from cardre.reporting.collector import generate_report_bundle
@@ -30,15 +32,13 @@ from cardre.reporting.readiness import check_report_readiness
 from cardre.services.export_service import export_branch_audit_pack
 from cardre.store import ProjectStore
 
-_SAMPLE_LINES = """A11 6 A34 A43 1169 A65 A75 4 A93 A101 4 A121 67 A143 A152 2 A173 1 A192 A201 1
-A12 24 A32 A43 5951 A61 A73 2 A92 A101 4 A121 22 A142 A152 2 A173 1 A191 A201 2
-""".strip().split("\n")
+from tests.helpers import SAMPLE_GERMAN_CREDIT_LINES
 
 
 def _make_german_credit_file(tmp: Path) -> Path:
     """Create a German Credit fixture with 10 rows for meaningful pathway execution."""
     p = tmp / "german_full.data"
-    p.write_text("\n".join(_SAMPLE_LINES * 5))
+    p.write_text("\n".join(SAMPLE_GERMAN_CREDIT_LINES * 5))
     return p
 
 

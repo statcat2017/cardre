@@ -16,6 +16,7 @@ from sidecar.main import app
 
 # Reset registry for fresh state per test
 pytest_plugins = []
+pytestmark = pytest.mark.api
 
 
 @pytest.fixture(autouse=True)
@@ -247,11 +248,6 @@ class TestRuns:
         assert resp.status_code == 201
         data = resp.json()
         assert data["status"] == "failed"
-
-        # Verify only one run record exists for this plan version
-        all_runs = store.list_runs(data["plan_version_id"])
-        matching = [r for r in all_runs if r["run_id"] == data["run_id"]]
-        assert len(matching) == 1, "Expected exactly one run record for the failed run"
 
         # Verify only one run record exists for this plan version
         all_runs = store.list_runs(data["plan_version_id"])

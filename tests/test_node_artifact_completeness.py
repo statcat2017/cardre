@@ -1,19 +1,16 @@
-"""Phase 0 safety-rail canary tests: every artifact written to the store
-must be included in NodeOutput.artifacts.
-
-All prep.py nodes now include report artifacts in their return values.
+"""Safety-rail tests: every artifact written to the store must be included
+in NodeOutput.artifacts. All prep.py nodes include report artifacts in
+their return values.
 """
 
 from __future__ import annotations
 
 import io
-import tempfile
-import unittest
 from pathlib import Path
 
+import pytest
 import polars as pl
 
-from cardre.artifacts import write_parquet_artifact
 from cardre.audit import (
     ArtifactRef,
     ExecutionContext,
@@ -31,6 +28,8 @@ from cardre.nodes import (
 )
 from cardre.store import ProjectStore
 
+from tests.helpers import make_store
+
 
 SAMPLE_GERMAN_CREDIT_LINES_MULTI = [
     "A11 6 A34 A43 1169 A65 A75 4 A93 A101 4 A121 67 A143 A152 2 A173 1 A192 A201 1",
@@ -44,16 +43,9 @@ SAMPLE_GERMAN_CREDIT_LINES_MULTI = [
 ]
 
 
-# ======================================================================
+# ---------------------------------------------------------------------------
 # Helpers
-# ======================================================================
-
-
-def make_store() -> tuple[ProjectStore, Path]:
-    tmp = Path(tempfile.mkdtemp())
-    store = ProjectStore(tmp / "test.cardre")
-    store.initialize()
-    return store, tmp
+# ---------------------------------------------------------------------------
 
 
 def make_sample_german_credit_file(tmp: Path) -> Path:
@@ -62,40 +54,27 @@ def make_sample_german_credit_file(tmp: Path) -> Path:
     return p
 
 
-def import_german_credit(store: ProjectStore, tmp: Path) -> ArtifactRef:
+def _import_german_credit(store: ProjectStore, tmp: Path) -> ArtifactRef:
     source = make_sample_german_credit_file(tmp)
     params = {"source_path": str(source)}
     spec = StepSpec(
-        step_id="import",
-        node_type="cardre.import_dataset",
-        node_version="1",
-        category="transform",
-        params=params,
-        params_hash=json_logical_hash(params),
-        parent_step_ids=[],
-        branch_label="",
-        position=0,
+        step_id="import", node_type="cardre.import_dataset",
+        node_version="1", category="transform",
+        params=params, params_hash=json_logical_hash(params),
+        parent_step_ids=[], branch_label="", position=0,
     )
     ctx = ExecutionContext(
-        store=store,
-        run_id="r1",
-        plan_version_id="pv",
-        step_spec=spec,
-        parent_run_steps=[],
-        input_artifacts=[],
-        validated_params=params,
-        runtime_metadata={},
+        store=store, run_id="r1", plan_version_id="pv",
+        step_spec=spec, parent_run_steps=[], input_artifacts=[],
+        validated_params=params, runtime_metadata={},
     )
     output = ImportGermanCreditNode().run(ctx)
     assert len(output.artifacts) == 1
     return output.artifacts[0]
 
 
-def _make_parquet_artifact(
-    store: ProjectStore,
-    df: pl.DataFrame,
-    role: str,
-    artifact_id: str,
+def _parquet_artifact(
+    store: ProjectStore, df: pl.DataFrame, role: str, artifact_id: str,
 ) -> ArtifactRef:
     buf = io.BytesIO()
     df.write_parquet(buf)
@@ -103,323 +82,125 @@ def _make_parquet_artifact(
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(buf.getvalue())
     art = ArtifactRef(
-        artifact_id=artifact_id,
-        artifact_type="dataset",
-        role=role,
+        artifact_id=artifact_id, artifact_type="dataset", role=role,
         path=relative_path(p, store.root),
-        physical_hash=physical_hash(p),
-        logical_hash=table_logical_hash(df),
-        media_type="application/octet-stream",
-        metadata={},
+        physical_hash=physical_hash(p), logical_hash=table_logical_hash(df),
+        media_type="application/octet-stream", metadata={},
     )
     store.register_artifact(art)
     return art
 
 
-# ======================================================================
+def _assert_output_includes_all_artifacts(
+    store: ProjectStore,
+    artifacts_before: int,
+    output,
+    expected_created: int,
+    label: str,
+) -> None:
+    artifacts_after = len(store.list_artifacts())
+    created = artifacts_after - artifacts_before
+    assert created == expected_created, (
+        f"{label} should create {expected_created} artifacts, got {created}"
+    )
+    assert len(output.artifacts) == created, (
+        f"{label} NodeOutput.artifacts must include every artifact"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Tests
-# ======================================================================
+# ---------------------------------------------------------------------------
 
 
-class ArtifactCompletenessTests(unittest.TestCase):
+def test_split_output_includes_report():
+    store, tmp = make_store()
+    input_artifact = _import_german_credit(store, tmp)
+    before = len(store.list_artifacts())
 
-    def test_split_output_includes_report(self) -> None:
-        store, tmp = make_store()
-        input_artifact = import_german_credit(store, tmp)
-
-        before = len(store.list_artifacts())
-
-        split_params = {
-            "strategy": "random_stratified",
-            "train_fraction": 0.6,
-            "test_fraction": 0.2,
-            "oot_fraction": 0.2,
-            "random_seed": 42,
-            "target_column": "credit_risk_class",
-        }
-        split_spec = StepSpec(
-            step_id="split",
-            node_type="cardre.split_train_test_oot",
-            node_version="2",
-            category="transform",
-            params=split_params,
-            params_hash=json_logical_hash(split_params),
-            parent_step_ids=["import"],
-            branch_label="",
-            position=1,
-        )
-        split_ctx = ExecutionContext(
-            store=store,
-            run_id="r1",
-            plan_version_id="pv",
-            step_spec=split_spec,
-            parent_run_steps=[],
-            input_artifacts=[input_artifact],
-            validated_params=split_params,
-            runtime_metadata={},
-        )
-        split_output = SplitTrainTestOotNode().run(split_ctx)
-
-        after = len(store.list_artifacts())
-        created = after - before
-        self.assertEqual(created, 4, "Split should create 3 datasets + 1 report")
-        self.assertEqual(len(split_output.artifacts), created,
-                         "Split NodeOutput.artifacts must include every artifact")
-
-    def test_exclusions_output_includes_report(self) -> None:
-        store, tmp = make_store()
-        input_artifact = import_german_credit(store, tmp)
-
-        before = len(store.list_artifacts())
-
-        excl_params = {
-            "rules": [
-                {
-                    "column": "age_years",
-                    "operator": ">",
-                    "value": 200,
-                    "reason": "Exclude impossible ages",
-                }
-            ]
-        }
-        excl_spec = StepSpec(
-            step_id="exclude",
-            node_type="cardre.apply_exclusions",
-            node_version="1",
-            category="transform",
-            params=excl_params,
-            params_hash=json_logical_hash(excl_params),
-            parent_step_ids=["import"],
-            branch_label="",
-            position=1,
-        )
-        excl_ctx = ExecutionContext(
-            store=store,
-            run_id="r1",
-            plan_version_id="pv",
-            step_spec=excl_spec,
-            parent_run_steps=[],
-            input_artifacts=[input_artifact],
-            validated_params=excl_params,
-            runtime_metadata={},
-        )
-        excl_output = ApplyExclusionsNode().run(excl_ctx)
-
-        after = len(store.list_artifacts())
-        created = after - before
-        self.assertEqual(created, 2, "Exclusions should create 1 dataset + 1 report")
-        self.assertEqual(len(excl_output.artifacts), created,
-                         "Exclusions NodeOutput.artifacts must include every artifact")
-
-    def test_treatment_output_includes_report(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-
-        df = pl.DataFrame(
-            {
-                "credit_risk_class": ["1", "2", "1", "2", "1", "2"],
-                "duration_months": [6, 24, 12, 30, 18, 36],
-                "age_years": [67, 22, 49, 45, 53, 35],
-            }
-        )
-        train_art = _make_parquet_artifact(store, df, "train", "train-art")
-        test_art = _make_parquet_artifact(store, df, "test", "test-art")
-        oot_art = _make_parquet_artifact(store, df, "oot", "oot-art")
-
-        before = len(store.list_artifacts())
-
-        treat_params = {
-            "imputations": {
-                "duration_months": {"value": 0, "reason": "Fill missing durations with 0"},
-            },
-            "caps": {},
-            "floors": {},
-        }
-        treat_spec = StepSpec(
-            step_id="treat",
-            node_type="cardre.explicit_missing_outlier_treatment",
-            node_version="1",
-            category="apply",
-            params=treat_params,
-            params_hash=json_logical_hash(treat_params),
-            parent_step_ids=[],
-            branch_label="",
-            position=0,
-        )
-        treat_ctx = ExecutionContext(
-            store=store,
-            run_id="r1",
-            plan_version_id="pv",
-            step_spec=treat_spec,
-            parent_run_steps=[],
-            input_artifacts=[train_art, test_art, oot_art],
-            validated_params=treat_params,
-            runtime_metadata={},
-        )
-        treat_output = ExplicitMissingOutlierTreatmentNode().run(treat_ctx)
-
-        after = len(store.list_artifacts())
-        created = after - before
-        self.assertEqual(created, 4, "Treatment should create 3 datasets + 1 report")
-        self.assertEqual(len(treat_output.artifacts), created,
-                         "Treatment NodeOutput.artifacts must include every artifact")
-
-    def test_split_output_includes_report__sanity(self) -> None:
-        """Baseline: verify the split report IS written to the store."""
-        store, tmp = make_store()
-        input_artifact = import_german_credit(store, tmp)
-
-        split_params = {
-            "strategy": "random_stratified",
-            "train_fraction": 0.6,
-            "test_fraction": 0.2,
-            "oot_fraction": 0.2,
-            "random_seed": 42,
-            "target_column": "credit_risk_class",
-        }
-        split_spec = StepSpec(
-            step_id="split",
-            node_type="cardre.split_train_test_oot",
-            node_version="2",
-            category="transform",
-            params=split_params,
-            params_hash=json_logical_hash(split_params),
-            parent_step_ids=["import"],
-            branch_label="",
-            position=1,
-        )
-        split_ctx = ExecutionContext(
-            store=store,
-            run_id="r1",
-            plan_version_id="pv",
-            step_spec=split_spec,
-            parent_run_steps=[],
-            input_artifacts=[input_artifact],
-            validated_params=split_params,
-            runtime_metadata={},
-        )
-        split_output = SplitTrainTestOotNode().run(split_ctx)
-
-        all_arts = store.list_artifacts()
-        report_arts = [a for a in all_arts if a.artifact_type == "report"]
-        output_ids = {a.artifact_id for a in split_output.artifacts}
-
-        self.assertEqual(len(report_arts), 1, "Split should write exactly one report artifact")
-        report_art = report_arts[0]
-        self.assertIn(
-            report_art.artifact_id,
-            output_ids,
-            "Report artifact must be in NodeOutput.artifacts",
-        )
-
-    def test_exclusions_output_includes_report__sanity(self) -> None:
-        """Baseline: verify the exclusion report IS written to the store."""
-        store, tmp = make_store()
-        input_artifact = import_german_credit(store, tmp)
-
-        excl_params = {
-            "rules": [
-                {
-                    "column": "age_years",
-                    "operator": ">",
-                    "value": 200,
-                    "reason": "Exclude impossible ages",
-                }
-            ]
-        }
-        excl_spec = StepSpec(
-            step_id="exclude",
-            node_type="cardre.apply_exclusions",
-            node_version="1",
-            category="transform",
-            params=excl_params,
-            params_hash=json_logical_hash(excl_params),
-            parent_step_ids=["import"],
-            branch_label="",
-            position=1,
-        )
-        excl_ctx = ExecutionContext(
-            store=store,
-            run_id="r1",
-            plan_version_id="pv",
-            step_spec=excl_spec,
-            parent_run_steps=[],
-            input_artifacts=[input_artifact],
-            validated_params=excl_params,
-            runtime_metadata={},
-        )
-        excl_output = ApplyExclusionsNode().run(excl_ctx)
-
-        all_arts = store.list_artifacts()
-        report_arts = [a for a in all_arts if a.artifact_type == "report"]
-        output_ids = {a.artifact_id for a in excl_output.artifacts}
-
-        self.assertEqual(len(report_arts), 1, "Exclusions should write exactly one report artifact")
-        report_art = report_arts[0]
-        self.assertIn(
-            report_art.artifact_id,
-            output_ids,
-            "Report artifact must be in NodeOutput.artifacts",
-        )
-
-    def test_treatment_output_includes_report__sanity(self) -> None:
-        """Baseline: verify the treatment report IS written to the store."""
-        store, tmp = make_store()
-        store.initialize()
-
-        df = pl.DataFrame(
-            {
-                "credit_risk_class": ["1", "2", "1", "2", "1", "2"],
-                "duration_months": [6, 24, 12, 30, 18, 36],
-                "age_years": [67, 22, 49, 45, 53, 35],
-            }
-        )
-        train_art = _make_parquet_artifact(store, df, "train", "train-art")
-        test_art = _make_parquet_artifact(store, df, "test", "test-art")
-        oot_art = _make_parquet_artifact(store, df, "oot", "oot-art")
-
-        treat_params = {
-            "imputations": {
-                "duration_months": {"value": 0, "reason": "Fill missing durations with 0"},
-            },
-            "caps": {},
-            "floors": {},
-        }
-        treat_spec = StepSpec(
-            step_id="treat",
-            node_type="cardre.explicit_missing_outlier_treatment",
-            node_version="1",
-            category="apply",
-            params=treat_params,
-            params_hash=json_logical_hash(treat_params),
-            parent_step_ids=[],
-            branch_label="",
-            position=0,
-        )
-        treat_ctx = ExecutionContext(
-            store=store,
-            run_id="r1",
-            plan_version_id="pv",
-            step_spec=treat_spec,
-            parent_run_steps=[],
-            input_artifacts=[train_art, test_art, oot_art],
-            validated_params=treat_params,
-            runtime_metadata={},
-        )
-        treat_output = ExplicitMissingOutlierTreatmentNode().run(treat_ctx)
-
-        all_arts = store.list_artifacts()
-        report_arts = [a for a in all_arts if a.artifact_type == "report"]
-        output_ids = {a.artifact_id for a in treat_output.artifacts}
-
-        self.assertEqual(len(report_arts), 1, "Treatment should write exactly one report artifact")
-        report_art = report_arts[0]
-        self.assertIn(
-            report_art.artifact_id,
-            output_ids,
-            "Report artifact must be in NodeOutput.artifacts",
-        )
+    params = {
+        "strategy": "random_stratified", "train_fraction": 0.6,
+        "test_fraction": 0.2, "oot_fraction": 0.2,
+        "random_seed": 42, "target_column": "credit_risk_class",
+    }
+    spec = StepSpec(
+        step_id="split", node_type="cardre.split_train_test_oot",
+        node_version="2", category="transform",
+        params=params, params_hash=json_logical_hash(params),
+        parent_step_ids=["import"], branch_label="", position=1,
+    )
+    ctx = ExecutionContext(
+        store=store, run_id="r1", plan_version_id="pv",
+        step_spec=spec, parent_run_steps=[],
+        input_artifacts=[input_artifact], validated_params=params,
+        runtime_metadata={},
+    )
+    output = SplitTrainTestOotNode().run(ctx)
+    _assert_output_includes_all_artifacts(store, before, output, 4, "Split")
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_exclusions_output_includes_report():
+    store, tmp = make_store()
+    input_artifact = _import_german_credit(store, tmp)
+    before = len(store.list_artifacts())
+
+    params = {
+        "rules": [{
+            "column": "age_years", "operator": ">", "value": 200,
+            "reason": "Exclude impossible ages",
+        }]
+    }
+    spec = StepSpec(
+        step_id="exclude", node_type="cardre.apply_exclusions",
+        node_version="1", category="transform",
+        params=params, params_hash=json_logical_hash(params),
+        parent_step_ids=["import"], branch_label="", position=1,
+    )
+    ctx = ExecutionContext(
+        store=store, run_id="r1", plan_version_id="pv",
+        step_spec=spec, parent_run_steps=[],
+        input_artifacts=[input_artifact], validated_params=params,
+        runtime_metadata={},
+    )
+    output = ApplyExclusionsNode().run(ctx)
+    _assert_output_includes_all_artifacts(store, before, output, 2, "Exclusions")
+
+
+def test_treatment_output_includes_report():
+    store, tmp = make_store()
+    store.initialize()
+
+    df = pl.DataFrame({
+        "credit_risk_class": ["1", "2", "1", "2", "1", "2"],
+        "duration_months": [6, 24, 12, 30, 18, 36],
+        "age_years": [67, 22, 49, 45, 53, 35],
+    })
+    _parquet_artifact(store, df, "train", "train-art")
+    _parquet_artifact(store, df, "test", "test-art")
+    _parquet_artifact(store, df, "oot", "oot-art")
+
+    before = len(store.list_artifacts())
+
+    params = {
+        "imputations": {
+            "duration_months": {"value": 0, "reason": "Fill missing durations with 0"},
+        },
+        "caps": {}, "floors": {},
+    }
+    train_art = next(a for a in store.list_artifacts() if a.role == "train")
+    test_art = next(a for a in store.list_artifacts() if a.role == "test")
+    oot_art = next(a for a in store.list_artifacts() if a.role == "oot")
+    spec = StepSpec(
+        step_id="treat", node_type="cardre.explicit_missing_outlier_treatment",
+        node_version="1", category="apply",
+        params=params, params_hash=json_logical_hash(params),
+        parent_step_ids=[], branch_label="", position=0,
+    )
+    ctx = ExecutionContext(
+        store=store, run_id="r1", plan_version_id="pv",
+        step_spec=spec, parent_run_steps=[],
+        input_artifacts=[train_art, test_art, oot_art],
+        validated_params=params, runtime_metadata={},
+    )
+    output = ExplicitMissingOutlierTreatmentNode().run(ctx)
+    _assert_output_includes_all_artifacts(store, before, output, 4, "Treatment")
