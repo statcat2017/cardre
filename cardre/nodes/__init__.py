@@ -50,6 +50,9 @@ from cardre.nodes.ensembles import (
     VotingEnsembleNode,
     WeightedEnsembleNode,
 )
+from cardre.nodes.tuning import (
+    HyperparameterTuningNode,
+)
 from cardre.nodes.fairness import (
     AlternativeDataManifestNode,
     FairnessReportNode,
@@ -91,6 +94,7 @@ __all__ = [
     "FineClassingNode",
     "GERMAN_CREDIT_COLUMNS",
     "GradientBoostingClassifierNode",
+    "HyperparameterTuningNode",
     "ImportGermanCreditNode",
     "LightGBMClassifierNode",
     "LogisticRegressionNode",

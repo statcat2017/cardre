@@ -429,6 +429,7 @@ class GradientBoostingClassifierNode(BaseClassifierNode):
             "learning_rate": learning_rate,
             "min_samples_leaf": min_samples_leaf,
             "random_state": random_seed,
+            "n_jobs": -1,
         }
 
     def _post_fit(

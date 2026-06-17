@@ -60,12 +60,29 @@ class ModelExplainabilityNode(NodeType):
         include_permutation = params.get("include_permutation_importance", False)
         if not isinstance(include_permutation, bool):
             errors.append("include_permutation_importance must be a boolean")
+        data_role = params.get("permutation_data_role", "train")
+        if data_role not in ("train", "test", "oot"):
+            errors.append("permutation_data_role must be one of 'train', 'test', 'oot'")
+        random_seeds = params.get("random_seeds", None)
+        if random_seeds is not None:
+            if not isinstance(random_seeds, list) or not all(isinstance(s, int) for s in random_seeds):
+                errors.append("random_seeds must be a list of integers or null")
+        include_pdp = params.get("include_pdp", False)
+        if not isinstance(include_pdp, bool):
+            errors.append("include_pdp must be a boolean")
+        include_shap = params.get("include_shap", False)
+        if not isinstance(include_shap, bool):
+            errors.append("include_shap must be a boolean")
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         params = context.validated_params
         include_permutation = params.get("include_permutation_importance", False)
+        permutation_data_role = params.get("permutation_data_role", "train")
+        random_seeds = params.get("random_seeds", None)
+        include_pdp = params.get("include_pdp", False)
+        include_shap = params.get("include_shap", False)
 
         reader = ArtifactEvidenceReader(store)
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
@@ -135,15 +152,39 @@ class ModelExplainabilityNode(NodeType):
                 f"No native explanation available for model family {model_family!r}."
             )
 
-        # Permutation importance (optional, requires train data)
+        # Permutation importance (optional, configurable data role)
         if include_permutation:
-            train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
-            if train_art is not None and features:
+            data_art = next((a for a in context.input_artifacts if a.role == permutation_data_role), None)
+            if data_art is not None and features:
                 perm_result = self._compute_permutation_importance(
-                    store, model, train_art, features,
+                    store, model, data_art, features,
+                    data_role=permutation_data_role,
                 )
                 if perm_result is not None:
                     report["permutation_importance"] = perm_result
+                if random_seeds and perm_result is not None and perm_result.get("method") == "permutation_importance":
+                    stability = self._compute_stability_analysis(
+                        store, model, data_art, features, random_seeds,
+                        data_role=permutation_data_role,
+                    )
+                    if stability:
+                        report["stability_analysis"] = stability
+
+        # Partial dependence (optional)
+        if include_pdp:
+            pdp_data_art = next((a for a in context.input_artifacts if a.role == "train"), None)
+            if pdp_data_art is not None and features:
+                pdp_result = self._compute_pdp(store, model, pdp_data_art, features)
+                if pdp_result:
+                    report["partial_dependence"] = pdp_result
+
+        # SHAP explanations (optional)
+        if include_shap:
+            shap_data_art = next((a for a in context.input_artifacts if a.role == "train"), None)
+            if shap_data_art is not None and features:
+                shap_result = self._compute_shap(store, model, shap_data_art, features)
+                if shap_result:
+                    report["shap"] = shap_result
 
         # Limitations from model artifact
         report["limitations"] = interpretability.get("limitations", [])
@@ -162,9 +203,10 @@ class ModelExplainabilityNode(NodeType):
         return NodeOutput(artifacts=[art], metrics={"model_family": model_family})
 
     def _compute_permutation_importance(
-        self, store, model: dict, train_art, features: list[str],
+        self, store, model: dict, data_art, features: list[str],
+        data_role: str = "train", random_state: int = 42,
     ) -> dict | None:
-        """Compute permutation importance on training data."""
+        """Compute permutation importance on specified data."""
         try:
             from sklearn.inspection import permutation_importance as sklearn_permutation_importance
             import numpy as np
@@ -175,11 +217,11 @@ class ModelExplainabilityNode(NodeType):
         estimator_ref = model.get("estimator_reference", {})
 
         if model_family == "logistic_regression":
-            # Use coefficient magnitudes as proxy
             coefs = model.get("coefficients", {})
             return {
                 "method": "coefficient_magnitude",
                 "importance": {f: round(abs(coefs.get(f, 0.0)), 6) for f in features},
+                "data_role": data_role,
             }
 
         if not estimator_ref.get("artifact_id"):
@@ -198,13 +240,13 @@ class ModelExplainabilityNode(NodeType):
             import joblib
             estimator = joblib.load(io.BytesIO(estimator_bytes))
 
-            df = pl.read_parquet(store.artifact_path(train_art))
+            df = pl.read_parquet(store.artifact_path(data_art))
             target_col = model.get("target_column", "")
             if target_col not in df.columns:
                 return None
 
             meta_art = None
-            for a in [train_art]:
+            for a in [data_art]:
                 try:
                     meta = json.loads(store.artifact_path(a).read_text())
                     if "target_column" in meta:
@@ -217,11 +259,12 @@ class ModelExplainabilityNode(NodeType):
 
             X = df.select(features).to_numpy()
             result = sklearn_permutation_importance(
-                estimator, X, y_bin, n_repeats=5, random_state=42, n_jobs=-1,
+                estimator, X, y_bin, n_repeats=5, random_state=random_state, n_jobs=-1,
             )
             return {
                 "method": "permutation_importance",
                 "n_repeats": 5,
+                "data_role": data_role,
                 "importance_mean": {
                     f: round(float(result.importances_mean[i]), 6)
                     for i, f in enumerate(features)
@@ -230,6 +273,166 @@ class ModelExplainabilityNode(NodeType):
                     f: round(float(result.importances_std[i]), 6)
                     for i, f in enumerate(features)
                 },
+            }
+        except Exception:
+            return None
+
+    def _compute_stability_analysis(
+        self, store, model: dict, data_art, features: list[str],
+        random_seeds: list[int], data_role: str = "train",
+    ) -> dict | None:
+        try:
+            from scipy.stats import spearmanr
+            import numpy as np
+        except ImportError:
+            return None
+
+        seed_importances = {}
+        for seed in random_seeds:
+            result = self._compute_permutation_importance(
+                store, model, data_art, features,
+                data_role=data_role, random_state=seed,
+            )
+            if result is None or result.get("method") != "permutation_importance":
+                return None
+            imp = result.get("importance_mean", {})
+            sorted_feats = sorted(imp, key=lambda f: imp[f], reverse=True)
+            seed_importances[str(seed)] = sorted_feats
+
+        seeds_list = list(seed_importances.keys())
+        correlations = []
+        for i in range(len(seeds_list)):
+            for j in range(i + 1, len(seeds_list)):
+                rank_i = {f: idx for idx, f in enumerate(seed_importances[seeds_list[i]])}
+                rank_j = {f: idx for idx, f in enumerate(seed_importances[seeds_list[j]])}
+                common = [f for f in features if f in rank_i and f in rank_j]
+                if len(common) < 2:
+                    continue
+                r_i = [rank_i[f] for f in common]
+                r_j = [rank_j[f] for f in common]
+                corr, _ = spearmanr(r_i, r_j)
+                correlations.append(float(corr))
+
+        if not correlations:
+            return None
+
+        mean_corr = float(np.mean(correlations))
+        return {
+            "random_seeds": random_seeds,
+            "mean_spearman_rank_correlation": round(mean_corr, 4),
+            "top_features_changed": mean_corr < 0.85,
+            "per_seed_importance": seed_importances,
+        }
+
+    def _compute_pdp(
+        self, store, model: dict, data_art, features: list[str],
+    ) -> list | None:
+        try:
+            from sklearn.inspection import partial_dependence
+            import numpy as np
+        except ImportError:
+            return None
+
+        estimator_ref = model.get("estimator_reference", {})
+        if not estimator_ref.get("artifact_id"):
+            return None
+
+        try:
+            from cardre.modeling.serialization import read_estimator_artifact
+            estimator_art = store.get_artifact(estimator_ref["artifact_id"])
+            if estimator_art is None:
+                return None
+            estimator_bytes = read_estimator_artifact(
+                store, estimator_art,
+                expected_logical_hash=estimator_ref.get("logical_hash"),
+            )
+            import io
+            import joblib
+            estimator = joblib.load(io.BytesIO(estimator_bytes))
+
+            df = pl.read_parquet(store.artifact_path(data_art))
+            X = df.select(features).to_numpy()
+
+            feature_importance = model.get("model_payload", {}).get("feature_importance", {})
+            if feature_importance:
+                sorted_feats = sorted(feature_importance, key=feature_importance.get, reverse=True)
+                top_features = sorted_feats[:3]
+            else:
+                top_features = features[:3]
+
+            pdp_results = []
+            for feat in top_features:
+                if feat not in features:
+                    continue
+                feat_idx = features.index(feat)
+                result = partial_dependence(
+                    estimator, X, [feat_idx], kind="average",
+                )
+                pdp_results.append({
+                    "feature": feat,
+                    "feature_idx": feat_idx,
+                    "grid_values": result["grid_values"][0].tolist(),
+                    "average_predictions": result["average"][0].tolist(),
+                })
+            return pdp_results if pdp_results else None
+        except Exception:
+            return None
+
+    def _compute_shap(
+        self, store, model: dict, data_art, features: list[str],
+    ) -> dict | None:
+        try:
+            import shap
+        except ImportError:
+            return None
+
+        estimator_ref = model.get("estimator_reference", {})
+        if not estimator_ref.get("artifact_id"):
+            return None
+
+        try:
+            from cardre.modeling.serialization import read_estimator_artifact
+            estimator_art = store.get_artifact(estimator_ref["artifact_id"])
+            if estimator_art is None:
+                return None
+            estimator_bytes = read_estimator_artifact(
+                store, estimator_art,
+                expected_logical_hash=estimator_ref.get("logical_hash"),
+            )
+            import io
+            import joblib
+            import numpy as np
+            estimator = joblib.load(io.BytesIO(estimator_bytes))
+
+            model_family = model.get("model_family", "")
+
+            df = pl.read_parquet(store.artifact_path(data_art))
+            X = df.select(features).to_numpy()
+
+            if model_family in ("random_forest", "gbdt", "decision_tree"):
+                explainer = shap.TreeExplainer(estimator)
+                explainer_type = "TreeExplainer"
+            elif model_family == "logistic_regression":
+                explainer = shap.LinearExplainer(estimator, X)
+                explainer_type = "LinearExplainer"
+            else:
+                return None
+
+            shap_values = explainer.shap_values(X)
+            if isinstance(shap_values, list):
+                shap_values_np = np.array(shap_values)
+            else:
+                shap_values_np = shap_values
+            if shap_values_np.ndim == 3:
+                shap_values_np = shap_values_np[:, 1, :]
+            mean_abs_shap = np.abs(shap_values_np).mean(axis=0)
+
+            return {
+                "feature_importance": {
+                    f: round(float(mean_abs_shap[i]), 6)
+                    for i, f in enumerate(features)
+                },
+                "explainer_type": explainer_type,
             }
         except Exception:
             return None
