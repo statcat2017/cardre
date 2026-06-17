@@ -24,9 +24,7 @@ ALLOWLIST: set[str] = {
     # Python (>1000 lines)
     "cardre/nodes/build.py",
     "cardre/nodes/validate.py",
-    "tests/test_phase2a.py",
     "tests/test_sidecar_api.py",
-    "tests/test_phase1.py",
     # TypeScript/TSX (>600 lines)
     "frontend/src/components/ManualBinningEditor.tsx",
     # Auto-generated files
