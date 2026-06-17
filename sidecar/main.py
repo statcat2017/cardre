@@ -7,6 +7,7 @@ Usage:
 from __future__ import annotations
 
 import sys
+import time
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -32,6 +33,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed = time.perf_counter() - start
+    print(f"[sidecar] {request.method} {request.url.path} {response.status_code} ({elapsed:.3f}s)", flush=True)
+    return response
 
 
 @app.exception_handler(PlanValidationError)
