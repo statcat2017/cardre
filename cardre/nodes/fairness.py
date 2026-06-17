@@ -99,16 +99,9 @@ class FairnessReportNode(NodeType):
                 report["roles"][role] = role_report
                 continue
 
-            y_prob = df["predicted_bad_probability"].to_list()
-            y_pred = [1 if p >= cutoff else 0 for p in y_prob]
-
+            bad_list = list(bad)
             target_available = bool(target_col and target_col in df.columns and bad)
-            y_bin = None
-            if target_available:
-                y_raw = df[target_col].cast(pl.String).to_list()
-                y_bin = [1 if str(v) in bad else 0 for v in y_raw]
-
-            scores = df["score"].to_list() if "score" in df.columns else y_prob
+            has_score = "score" in df.columns
 
             group_metrics: dict[str, Any] = {}
             for col in sensitive_columns:
@@ -116,13 +109,38 @@ class FairnessReportNode(NodeType):
                     group_metrics[col] = {"error": f"Column {col!r} not found"}
                     continue
 
-                groups = df[col].cast(pl.String).unique().to_list()
-                col_report: dict[str, Any] = {}
+                base = df.with_columns(
+                    df[col].cast(pl.String).alias("_group_key"),
+                    (pl.col("predicted_bad_probability") >= cutoff).cast(pl.Int64).alias("_y_pred"),
+                )
 
-                for group_val in groups:
-                    mask = df[col].cast(pl.String) == group_val
-                    indices = [i for i, m in enumerate(mask) if m]
-                    n_group = len(indices)
+                aggs = [
+                    pl.len().alias("n"),
+                    pl.sum("_y_pred").alias("rejected"),
+                ]
+                if has_score:
+                    aggs += [
+                        pl.col("score").mean().alias("score_mean"),
+                        pl.col("score").median().alias("score_median"),
+                        pl.col("score").quantile(0.25).alias("score_p25"),
+                        pl.col("score").quantile(0.75).alias("score_p75"),
+                    ]
+                if target_available:
+                    y_bin_expr = pl.when(pl.col(target_col).cast(pl.String).is_in(bad_list)).then(1).otherwise(0)
+                    aggs += [
+                        y_bin_expr.sum().alias("n_bad"),
+                        ((y_bin_expr == 1) & (pl.col("_y_pred") == 1)).sum().alias("tp"),
+                        ((y_bin_expr == 0) & (pl.col("_y_pred") == 1)).sum().alias("fp"),
+                        ((y_bin_expr == 1) & (pl.col("_y_pred") == 0)).sum().alias("fn"),
+                        ((y_bin_expr == 0) & (pl.col("_y_pred") == 0)).sum().alias("tn"),
+                    ]
+
+                gb = base.group_by("_group_key").agg(aggs)
+
+                col_report: dict[str, Any] = {}
+                for rec in gb.to_dicts():
+                    group_val = str(rec["_group_key"])
+                    n_group = rec["n"]
 
                     if n_group < min_group_size:
                         col_report[group_val] = {
@@ -132,18 +150,17 @@ class FairnessReportNode(NodeType):
                         }
                         continue
 
-                    group_pred = [y_pred[i] for i in indices]
-                    group_scores = [scores[i] for i in indices]
-                    group_probs = [y_prob[i] for i in indices]
+                    rejected = rec["rejected"]
+                    approval_rate = round(1 - rejected / n_group, 4) if n_group > 0 else 0.0
 
-                    approval_rate = round(1 - sum(group_pred) / n_group, 4) if n_group > 0 else 0.0
-
-                    score_dist = {
-                        "mean": round(float(np.mean(group_scores)), 2),
-                        "median": round(float(np.median(group_scores)), 2),
-                        "p25": round(float(np.percentile(group_scores, 25)), 2),
-                        "p75": round(float(np.percentile(group_scores, 75)), 2),
-                    }
+                    score_dist = {}
+                    if has_score:
+                        score_dist = {
+                            "mean": round(float(rec.get("score_mean", 0) or 0), 2),
+                            "median": round(float(rec.get("score_median", 0) or 0), 2),
+                            "p25": round(float(rec.get("score_p25", 0) or 0), 2),
+                            "p75": round(float(rec.get("score_p75", 0) or 0), 2),
+                        }
 
                     entry: dict[str, Any] = {
                         "n": n_group,
@@ -151,21 +168,15 @@ class FairnessReportNode(NodeType):
                         "score_distribution": score_dist,
                     }
 
-                    if y_bin is not None:
-                        group_y = [y_bin[i] for i in indices]
-                        n_bad_group = sum(group_y)
-                        n_good_group = n_group - n_bad_group
-
+                    if target_available:
+                        n_bad_group = int(rec.get("n_bad", 0))
+                        tp = int(rec.get("tp", 0))
+                        fp = int(rec.get("fp", 0))
+                        fn = int(rec.get("fn", 0))
+                        tn = int(rec.get("tn", 0))
                         entry["n_bad"] = n_bad_group
-                        entry["n_good"] = n_good_group
+                        entry["n_good"] = n_group - n_bad_group
                         entry["bad_rate"] = round(n_bad_group / n_group, 4) if n_group > 0 else 0.0
-
-                        # Error rates
-                        tp = sum(1 for a, p in zip(group_y, group_pred) if a == 1 and p == 1)
-                        fp = sum(1 for a, p in zip(group_y, group_pred) if a == 0 and p == 1)
-                        fn = sum(1 for a, p in zip(group_y, group_pred) if a == 1 and p == 0)
-                        tn = sum(1 for a, p in zip(group_y, group_pred) if a == 0 and p == 0)
-
                         entry["precision"] = round(tp / (tp + fp), 4) if (tp + fp) > 0 else 0.0
                         entry["recall"] = round(tp / (tp + fn), 4) if (tp + fn) > 0 else 0.0
                         entry["specificity"] = round(tn / (tn + fp), 4) if (tn + fp) > 0 else 0.0
@@ -457,14 +468,21 @@ class AlternativeDataManifestNode(NodeType):
 
             if df is not None:
                 n_rows = df.height
-                for col in columns:
-                    if col in df.columns:
-                        null_count = df[col].null_count()
-                        coverage[col] = round(1 - null_count / n_rows, 4) if n_rows > 0 else 0.0
-                        missingness[col] = round(null_count / n_rows, 4) if n_rows > 0 else 0.0
-                    else:
-                        coverage[col] = 0.0
-                        missingness[col] = 1.0
+                present_cols = [c for c in columns if c in df.columns]
+                absent_cols = [c for c in columns if c not in df.columns]
+                for ac in absent_cols:
+                    coverage[ac] = 0.0
+                    missingness[ac] = 1.0
+                if present_cols and n_rows > 0:
+                    null_counts = {c: int(df[c].null_count()) for c in present_cols}
+                    for col in present_cols:
+                        nc = null_counts[col]
+                        coverage[col] = round(1 - nc / n_rows, 4)
+                        missingness[col] = round(nc / n_rows, 4)
+                elif n_rows > 0:
+                    for col in present_cols:
+                        coverage[col] = 1.0
+                        missingness[col] = 0.0
 
             evidence = {
                 "source_name": src.get("source_name", ""),

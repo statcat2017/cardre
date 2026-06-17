@@ -126,7 +126,7 @@ class CalculateWoeIvNode(NodeType):
                     elif categories:
                         bin_mask = col_values.is_in(categories)
                     else:
-                        bin_mask = pl.Series([False] * df.height)
+                        bin_mask = pl.lit(False)
 
                 row_count = int(bin_mask.sum())
 
@@ -502,13 +502,12 @@ class VariableSelectionNode(NodeType):
         iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
         if iv_lf is not None:
             iv_df = iv_lf.dataframe.collect()
-            iv_cols = iv_df.columns
             iv_map = {}
             for row in iv_df.iter_rows():
-                iv_map[str(row[iv_cols.index("variable")])] = {
-                    "iv": float(row[iv_cols.index("iv")]),
-                    "bin_count": int(row[iv_cols.index("bin_count")]),
-                    "zero_cell_count": int(row[iv_cols.index("zero_cell_count")]),
+                iv_map[str(row[0])] = {
+                    "iv": float(row[1]),
+                    "bin_count": int(row[2]),
+                    "zero_cell_count": int(row[3]),
                 }
         else:
             iv_map = {}

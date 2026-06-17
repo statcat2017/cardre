@@ -212,9 +212,8 @@ class ModelExplainabilityNode(NodeType):
                 except Exception:
                     pass
 
-            y_raw = df[target_col].cast(pl.String).to_list()
-            bad_values = set(model.get("bad_class_label", "").split()) or {"bad"}
-            y_bin = [1 if str(v) in bad_values else 0 for v in y_raw]
+            bad_values_set = set(model.get("bad_class_label", "").split()) or {"bad"}
+            y_bin = df[target_col].cast(pl.String).is_in(bad_values_set).cast(pl.Int64).to_numpy()
 
             X = df.select(features).to_numpy()
             result = sklearn_permutation_importance(
@@ -433,6 +432,7 @@ class ModelLimitationsNode(NodeType):
             return issues
 
         n_rows = df.height
+        null_counts = {c: int(df[c].null_count()) for c in features if c in df.columns}
         for feat in features:
             if feat not in df.columns:
                 issues.append({
@@ -442,7 +442,7 @@ class ModelLimitationsNode(NodeType):
                 })
                 continue
 
-            null_count = df[feat].null_count()
+            null_count = null_counts.get(feat, 0)
             null_pct = null_count / n_rows if n_rows > 0 else 0
             if null_pct > 0.5:
                 issues.append({
