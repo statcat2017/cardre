@@ -91,7 +91,7 @@ class CalculateWoeIvNode(NodeType):
                 bin_id = bin_def["bin_id"]
                 label = bin_def["label"]
 
-                bin_mask = build_bin_condition(bin_def, col_values, kind, bins)
+                bin_mask = build_bin_condition(bin_def, col_values, kind, bins, variable=variable, bin_id=bin_id)
 
                 row_count = int(bin_mask.sum())
 
@@ -640,7 +640,7 @@ class WoeTransformTrainNode(NodeType):
             for bin_def_entry in bins:
                 bin_id = bin_def_entry["bin_id"]
 
-                mask_expr = build_bin_condition(bin_def_entry, pl.col(variable), kind, bins)
+                mask_expr = build_bin_condition(bin_def_entry, pl.col(variable), kind, bins, variable=variable, bin_id=bin_id)
 
                 woe_val = woe_map.get(variable, {}).get(bin_id, 0.0)
                 when_clause = pl.when(mask_expr).then(pl.lit(woe_val))

@@ -6,8 +6,6 @@ instantiating a full executor + registry.
 
 from __future__ import annotations
 
-from typing import Any
-
 from cardre.audit import RunStepRecord, StepSpec
 from cardre.store import ProjectStore
 
@@ -55,13 +53,12 @@ def compute_staleness(
 
     stale: dict[str, bool] = {}
     for spec in steps:
-        is_stale = _step_is_stale(store, spec, steps, rs_by_step, stale)
+        is_stale = _step_is_stale(spec, steps, rs_by_step, stale)
         stale[spec.step_id] = is_stale
     return stale
 
 
 def _step_is_stale(
-    store: ProjectStore,
     spec: StepSpec,
     all_steps: list[StepSpec],
     rs_by_step: dict[str, RunStepRecord],
@@ -90,7 +87,7 @@ def _step_is_stale(
     )
 
     for pid in spec.parent_step_ids:
-        if _step_is_stale(store, _find_spec(pid, all_steps), all_steps, rs_by_step, stale_cache):
+        if _step_is_stale(_find_spec(pid, all_steps), all_steps, rs_by_step, stale_cache):
             stale_cache[spec.step_id] = True
             return True
 

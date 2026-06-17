@@ -73,7 +73,7 @@ class ApplyWoeMappingNode(NodeType):
                 for be in bins:
                     bid = be["bin_id"]
 
-                    mask = build_bin_condition(be, pl.col(var), kind, bins)
+                    mask = build_bin_condition(be, pl.col(var), kind, bins, variable=var, bin_id=bid)
 
                     wv = woe_map.get(var, {}).get(bid)
                     if wv is None:

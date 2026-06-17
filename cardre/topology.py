@@ -30,22 +30,23 @@ def validate_topology(steps: list[StepSpec]) -> None:
                 )
 
     parent_map: dict[str, set[str]] = {s.step_id: set(s.parent_step_ids) & step_ids for s in steps}
-    child_map: dict[str, set[str]] = {s.step_id: set() for s in steps}
+    child_map: dict[str, list[str]] = {s.step_id: [] for s in steps}
     for s in steps:
         for pid in s.parent_step_ids:
             if pid in child_map:
-                child_map[pid].add(s.step_id)
+                child_map[pid].append(s.step_id)
 
     in_degree = {sid: len(parents) for sid, parents in parent_map.items()}
-    queue = [sid for sid, deg in in_degree.items() if deg == 0]
+    queue = sorted(sid for sid, deg in in_degree.items() if deg == 0)
     sorted_ids: list[str] = []
     while queue:
         sid = queue.pop(0)
         sorted_ids.append(sid)
-        for child in child_map.get(sid, set()):
+        for child in child_map.get(sid, []):
             in_degree[child] -= 1
             if in_degree[child] == 0:
                 queue.append(child)
+        queue.sort()
 
     if len(sorted_ids) != len(steps):
         raise ValueError(

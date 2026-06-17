@@ -12,11 +12,13 @@ def build_bin_condition(
     col_ref: pl.Series | pl.Expr,
     kind: str,
     all_bins: list[dict] | None = None,
+    variable: str = "",
+    bin_id: str = "",
 ) -> pl.Series | pl.Expr:
     is_missing = bin_def.get("is_missing_bin", False)
 
     if kind == "numeric":
-        return _build_numeric_mask(bin_def, col_ref, is_missing)
+        return _build_numeric_mask(bin_def, col_ref, is_missing, variable, bin_id)
     return _build_categorical_mask(bin_def, col_ref, is_missing, all_bins or [])
 
 
@@ -24,6 +26,8 @@ def _build_numeric_mask(
     bin_def: dict,
     col_ref: pl.Series | pl.Expr,
     is_missing: bool,
+    variable: str = "",
+    bin_id: str = "",
 ) -> pl.Series | pl.Expr:
     lower = bin_def.get("lower")
     upper = bin_def.get("upper")
@@ -39,7 +43,8 @@ def _build_numeric_mask(
     if upper is not None:
         parts.append((col_ref <= upper) if upper_inc else (col_ref < upper))
     if not parts:
-        raise ValueError("Numeric bin has no lower or upper boundary")
+        ctx = f" for {variable!r}:{bin_id!r}" if variable and bin_id else ""
+        raise ValueError(f"Numeric bin has no lower or upper boundary{ctx}")
 
     result = parts[0]
     for p in parts[1:]:
@@ -67,4 +72,4 @@ def _build_categorical_mask(
     if categories:
         return col_ref.is_in(categories)
 
-    return col_ref.is_null() & col_ref.is_not_null()
+    return col_ref.is_null() & col_ref.is_not_null()  # always False for any value (null or non-null)
