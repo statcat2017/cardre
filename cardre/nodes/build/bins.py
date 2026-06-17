@@ -184,35 +184,38 @@ class FineClassingNode(NodeType):
 
         binned = non_null.with_columns([
             pl.col(col).qcut(actual_n_bins, allow_duplicates=True, include_breaks=True).alias("_qcut_bin"),
-            pl.col(target_column).cast(pl.String).alias("_tgt"),
+            pl.col(target_column).cast(pl.String).alias("_tgt_str"),
         ])
 
         bin_stats = binned.with_columns([
             binned["_qcut_bin"].struct.field("breakpoint").alias("_brk"),
-            pl.when(pl.col(target_column).cast(pl.String).is_in(bad_list)).then(1).otherwise(0).alias("_y"),
         ]).group_by("_brk", maintain_order=True).agg([
             pl.len().alias("row_count"),
-            pl.sum("_y").alias("bad_count"),
+            pl.col("_tgt_str").is_in(bad_list).sum().alias("bad_count"),
+            pl.col("_tgt_str").is_in(good_list).sum().alias("good_count"),
         ]).sort("_brk")
 
-        bin_edges = [float("-inf")]
-        for brk_val in bin_stats["_brk"].to_list():
-            if brk_val is not None and brk_val != float("inf"):
-                bin_edges.append(float(brk_val))
-        bin_edges.append(float("inf"))
+        _all_bk = bin_stats["_brk"].to_list()
+        col_min = float(non_null[col].min())
+        prev_upper = col_min
 
         for i, rec in enumerate(bin_stats.to_dicts()):
             bin_counter += 1
             brk = rec["_brk"]
-            lower = bin_edges[i] if bin_edges[i] != float("-inf") else rec["row_count"]  # fallback
-            upper = brk if brk != float("inf") else None
-            lo = bin_edges[i] if bin_edges[i] != float("-inf") else None
-            hi = brk if brk != float("inf") else None
             row_count = rec["row_count"]
             bad_count = rec["bad_count"]
+            good_count = rec["good_count"]
 
             is_last = i == len(bin_stats) - 1
-            label = f"[{lo:.4g}, {hi:.4g}]" if lo is not None and hi is not None else f"[{lo:.4g}, +inf)" if lo is not None else f"(-inf, {hi:.4g}]" if hi is not None else "All values"
+            hi = None if brk == float("inf") else float(brk)
+            lo = prev_upper
+            lower_inc = True
+            if i > 0:
+                lower_inc = False
+                lo = float(_all_bk[i - 1]) if _all_bk[i - 1] != float("inf") else prev_upper
+
+            label = f"[{lo:.4g}, {hi:.4g}]" if lo is not None and hi is not None else f"[{lo:.4g}, +inf)" if lo is not None else "All values"
+            prev_upper = hi if hi is not None else lo
 
             bins.append({
                 "bin_id": f"{col}_bin_{bin_counter:03d}",
@@ -224,7 +227,7 @@ class FineClassingNode(NodeType):
                 "categories": None,
                 "is_missing_bin": False,
                 "row_count": row_count,
-                "good_count": row_count - bad_count,
+                "good_count": good_count,
                 "bad_count": bad_count,
             })
 
@@ -289,15 +292,15 @@ class FineClassingNode(NodeType):
                 "dropped_categories": len(other_categories),
             })
 
-        y_bin_expr = pl.when(pl.col(target_column).cast(pl.String).is_in(bad_list)).then(1).otherwise(0)
         grouped = non_null.with_columns(
-            y_bin_expr.alias("_y"),
+            pl.col(target_column).cast(pl.String).alias("_tgt_str"),
         ).group_by(col).agg([
             pl.len().alias("row_count"),
-            pl.sum("_y").alias("bad_count"),
+            pl.col("_tgt_str").is_in(bad_list).sum().alias("bad_count"),
+            pl.col("_tgt_str").is_in(good_list).sum().alias("good_count"),
         ])
 
-        level_map = {str(r[0]): {"row_count": r[1], "bad_count": r[2]} for r in grouped.iter_rows()}
+        level_map = {str(r[0]): {"row_count": r[1], "bad_count": r[2], "good_count": r[3]} for r in grouped.iter_rows()}
 
         for level in all_levels:
             key = str(level)
@@ -306,6 +309,7 @@ class FineClassingNode(NodeType):
                 continue
             bin_counter += 1
             bad_count = stats["bad_count"]
+            good_count = stats["good_count"]
             row_count = stats["row_count"]
             bins.append({
                 "bin_id": f"{col}_bin_{bin_counter:03d}", "label": key,
@@ -313,7 +317,7 @@ class FineClassingNode(NodeType):
                 "lower_inclusive": False, "upper_inclusive": False,
                 "categories": [level], "is_missing_bin": False,
                 "row_count": row_count,
-                "good_count": row_count - bad_count,
+                "good_count": good_count,
                 "bad_count": bad_count,
             })
 
@@ -321,21 +325,23 @@ class FineClassingNode(NodeType):
             other_df = non_null.filter(pl.col(col).is_in(other_categories))
             if other_df.height > 0:
                 other_stats = other_df.with_columns(
-                    y_bin_expr.alias("_y"),
+                    pl.col(target_column).cast(pl.String).alias("_tgt_str"),
                 ).select([
                     pl.len().alias("row_count"),
-                    pl.sum("_y").alias("bad_count"),
+                    pl.col("_tgt_str").is_in(bad_list).sum().alias("bad_count"),
+                    pl.col("_tgt_str").is_in(good_list).sum().alias("good_count"),
                 ])
                 bin_counter += 1
                 rc = other_stats["row_count"][0]
                 bc = other_stats["bad_count"][0]
+                gc = other_stats["good_count"][0]
                 bins.append({
                     "bin_id": f"{col}_bin_{bin_counter:03d}", "label": "Other",
                     "lower": None, "upper": None,
                     "lower_inclusive": False, "upper_inclusive": False,
                     "categories": other_categories, "is_missing_bin": False, "is_other_bin": True,
                     "row_count": rc,
-                    "good_count": rc - bc,
+                    "good_count": gc,
                     "bad_count": bc,
                 })
 
