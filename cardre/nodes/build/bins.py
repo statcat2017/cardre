@@ -222,7 +222,7 @@ class FineClassingNode(NodeType):
                 "label": label,
                 "lower": lo,
                 "upper": hi,
-                "lower_inclusive": True,
+                "lower_inclusive": lower_inc,
                 "upper_inclusive": not is_last,
                 "categories": None,
                 "is_missing_bin": False,
