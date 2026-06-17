@@ -33,7 +33,7 @@ from cardre.modeling.serialization import (
 from cardre.nodes.validate import CutoffAnalysisNode, ValidationMetricsNode
 from cardre.store import ProjectStore
 
-from tests.helpers import make_store
+from tests.helpers import _make_json_artifact, _make_train_artifact, make_store
 
 
 # ======================================================================
@@ -442,5 +442,123 @@ class EstimatorSerializationTests(unittest.TestCase):
         self.assertEqual(read_data, data)
 
 
-if __name__ == "__main__":
-    unittest.main()
+
+# ======================================================================
+# Validation Metrics (from Phase 2C)
+# ======================================================================
+
+class ValidationMetricsTests(unittest.TestCase):
+
+    def test_metrics_match_known_fixture(self):
+        store, tmp = make_store()
+        store.initialize()
+
+        df = pl.DataFrame({
+            "target": ["good", "good", "bad", "bad", "good"],
+            "predicted_bad_probability": [0.1, 0.2, 0.8, 0.9, 0.3],
+            "score": [700, 650, 400, 350, 600],
+        })
+        train_art = _make_train_artifact(store, df, role="train")
+        meta_art = _make_json_artifact(
+            store, {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}, stem="meta"
+        )
+
+        params = {}
+        spec = StepSpec(step_id="vm", node_type="cardre.validation_metrics", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[], input_artifacts=[train_art, meta_art],
+                               validated_params=params, runtime_metadata={})
+        out = ValidationMetricsNode().run(ctx)
+        report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
+        role_report = report.get("train", {})
+        self.assertIn("auc", role_report)
+        self.assertIsNotNone(role_report["auc"])
+        self.assertIn("gini", role_report)
+        self.assertIn("ks", role_report)
+        self.assertIn("calibration", role_report)
+        self.assertIn("score_distribution", role_report)
+
+    def test_psi_computed_when_multiple_roles(self):
+        store, tmp = make_store()
+        store.initialize()
+
+        df_train = pl.DataFrame({
+            "target": ["good"] * 20 + ["bad"] * 10,
+            "predicted_bad_probability": [0.1]*10 + [0.9]*20,
+            "score": [600]*30,
+        })
+        df_test = pl.DataFrame({
+            "target": ["good"] * 5 + ["bad"] * 5,
+            "predicted_bad_probability": [0.1]*5 + [0.9]*5,
+            "score": [550]*10,
+        })
+        train_art = _make_train_artifact(store, df_train, role="train")
+        test_art = _make_train_artifact(store, df_test, role="test")
+        meta_art = _make_json_artifact(
+            store, {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}, stem="meta"
+        )
+
+        params = {}
+        spec = StepSpec(step_id="vm", node_type="cardre.validation_metrics", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[], input_artifacts=[train_art, test_art, meta_art],
+                               validated_params=params, runtime_metadata={})
+        out = ValidationMetricsNode().run(ctx)
+        report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
+        self.assertIn("psi", report)
+
+
+# ======================================================================
+# Cutoff Analysis (from Phase 2C)
+# ======================================================================
+
+class CutoffAnalysisTests(unittest.TestCase):
+
+    def test_cutoff_produces_bands(self):
+        store, tmp = make_store()
+        store.initialize()
+
+        df = pl.DataFrame({
+            "target": ["good"] * 3 + ["bad"] * 3,
+            "predicted_bad_probability": [0.1, 0.2, 0.3, 0.7, 0.8, 0.9],
+            "score": [700, 650, 600, 400, 350, 300],
+        })
+        train_art = _make_train_artifact(store, df, role="train")
+
+        params = {"band_count": 3}
+        spec = StepSpec(step_id="ca", node_type="cardre.cutoff_analysis", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[], input_artifacts=[train_art],
+                               validated_params=params, runtime_metadata={})
+        out = CutoffAnalysisNode().run(ctx)
+        from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
+        reader = ArtifactEvidenceReader(store)
+        cutoff = reader.read(out.artifacts[0].artifact_id, EvidenceKind.CUTOFF_ANALYSIS)
+        self.assertIn("train", cutoff.cutoff_tables)
+        self.assertGreater(len(cutoff.cutoff_tables["train"]), 0)
+        for row in cutoff.cutoff_tables["train"]:
+            self.assertIsNotNone(row.score_cutoff)
+            self.assertIsNotNone(row.approval_rate)
+            self.assertIsNotNone(row.bad_rate)
+            self.assertIsNotNone(row.capture_rate)
+
+    def test_band_count_validation(self):
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({"score": [1.0, 2.0], "predicted_bad_probability": [0.1, 0.9]})
+        art = _make_train_artifact(store, df, role="train")
+        params = {"band_count": 1}
+        spec = StepSpec(step_id="ca", node_type="cardre.cutoff_analysis", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[], input_artifacts=[art],
+                               validated_params=params, runtime_metadata={})
+        with self.assertRaises(ValueError):
+            CutoffAnalysisNode().run(ctx)

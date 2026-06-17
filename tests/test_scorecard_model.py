@@ -1,10 +1,11 @@
-"""Phase 2B acceptance tests covering WOE transform, logistic regression, score scaling, and build summary."""
+"""Tests for scorecard model fitting, scoring, and end-to-end pathways."""
 
 from __future__ import annotations
 
-import json
 import io
+import json
 import math
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -15,23 +16,26 @@ from cardre.audit import (
     ExecutionContext,
     StepSpec,
     json_logical_hash,
-    table_logical_hash,
     physical_hash,
     relative_path,
+    table_logical_hash,
 )
 from cardre.executor import PlanExecutor
 from cardre.nodes import (
-    WoeTransformTrainNode,
-    LogisticRegressionNode,
-    ScoreScalingNode,
+    ApplyModelNode,
     BuildSummaryReportNode,
+    CalculateWoeIvNode,
     FineClassingNode,
+    LogisticRegressionNode,
     ManualBinningNode,
+    ScoreScalingNode,
+    WoeTransformTrainNode,
 )
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 
 from tests.helpers import (
+    SAMPLE_GERMAN_CREDIT_LINES,
     _make_json_artifact,
     _make_parquet_report,
     _make_train_artifact,
@@ -39,138 +43,260 @@ from tests.helpers import (
 )
 
 
+def make_full_german_credit_download(tmp: Path) -> Path:
+    """Create a larger German Credit fixture with 10 rows for more meaningful testing."""
+    lines = SAMPLE_GERMAN_CREDIT_LINES * 5
+    p = tmp / "german_full.data"
+    p.write_text("\n".join(lines))
+    return p
+
+
 # ======================================================================
-# WOE Transform Train
+# Workstream 12: End-to-End Scorecard Pathway Test
 # ======================================================================
 
-class WoeTransformTrainTests(unittest.TestCase):
+class ScorecardPathwayTests(unittest.TestCase):
+    """End-to-end test running the Phase 2A pathway through the executor."""
 
-    def test_woe_transform_maps_bins_to_woe(self) -> None:
+    def test_full_phase2a_pathway_import_through_manifest(self) -> None:
         store, tmp = make_store()
-        store.initialize()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "scorecard-test")
+        source = make_full_german_credit_download(tmp)
 
-        df = pl.DataFrame({
-            "var1": [1.0, 2.0, 15.0, 25.0],
-            "target": ["good", "bad", "good", "bad"],
-        })
-        train_art = _make_train_artifact(store, df)
-
-        bin_def = {
-            "variables": [{
-                "variable": "var1", "kind": "numeric",
-                "bins": [
-                    {"bin_id": "v1_b1", "label": "Low", "lower": 0, "upper": 10,
-                     "lower_inclusive": False, "upper_inclusive": True,
-                     "categories": None, "is_missing_bin": False,
-                     "row_count": 2, "good_count": 1, "bad_count": 1},
-                    {"bin_id": "v1_b2", "label": "High", "lower": 10, "upper": None,
-                     "lower_inclusive": False, "upper_inclusive": True,
-                     "categories": None, "is_missing_bin": False,
-                     "row_count": 2, "good_count": 1, "bad_count": 1},
+        steps = [
+            StepSpec(
+                step_id="import", node_type="cardre.import_dataset",
+                node_version="1", category="transform",
+                params={"source_path": str(source)},
+                params_hash=json_logical_hash({"source_path": str(source)}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+            StepSpec(
+                step_id="define-metadata", node_type="cardre.define_modelling_metadata",
+                node_version="1", category="transform",
+                params={
+                    "target_column": "credit_risk_class",
+                    "good_values": ["1"], "bad_values": ["2"],
+                    "indeterminate_values": [], "population": "",
+                    "product": "", "segment": "",
+                    "observation_window": None, "performance_window": None,
+                },
+                params_hash=json_logical_hash({
+                    "target_column": "credit_risk_class",
+                    "good_values": ["1"], "bad_values": ["2"],
+                    "indeterminate_values": [], "population": "",
+                    "product": "", "segment": "",
+                    "observation_window": None, "performance_window": None,
+                }),
+                parent_step_ids=["import"], branch_label="", position=1,
+            ),
+            StepSpec(
+                step_id="apply-exclusions", node_type="cardre.apply_exclusions",
+                node_version="1", category="transform",
+                params={"rules": []},
+                params_hash=json_logical_hash({"rules": []}),
+                parent_step_ids=["import", "define-metadata"], branch_label="", position=2,
+            ),
+            StepSpec(
+                step_id="profile", node_type="cardre.profile_dataset",
+                node_version="1", category="transform",
+                params={},
+                params_hash=json_logical_hash({}),
+                parent_step_ids=["apply-exclusions"], branch_label="", position=3,
+            ),
+            StepSpec(
+                step_id="validate-target", node_type="cardre.validate_binary_target",
+                node_version="1", category="transform",
+                params={"target_column": "credit_risk_class"},
+                params_hash=json_logical_hash({"target_column": "credit_risk_class"}),
+                parent_step_ids=["apply-exclusions", "define-metadata"], branch_label="", position=4,
+            ),
+            StepSpec(
+                step_id="sample-definition", node_type="cardre.development_sample_definition",
+                node_version="1", category="transform",
+                params={
+                    "sample_method": "full_population",
+                    "weight_column": None, "population_bad_rate": None,
+                    "prior_probability_adjustment": None,
+                },
+                params_hash=json_logical_hash({
+                    "sample_method": "full_population",
+                    "weight_column": None, "population_bad_rate": None,
+                    "prior_probability_adjustment": None,
+                }),
+                parent_step_ids=["apply-exclusions", "define-metadata"], branch_label="", position=5,
+            ),
+            StepSpec(
+                step_id="split", node_type="cardre.split_train_test_oot",
+                node_version="2", category="transform",
+                params={
+                    "strategy": "random_stratified",
+                    "train_fraction": 0.6, "test_fraction": 0.2, "oot_fraction": 0.2,
+                    "target_column": "credit_risk_class", "role_column": None,
+                    "random_seed": 42,
+                },
+                params_hash=json_logical_hash({
+                    "strategy": "random_stratified",
+                    "train_fraction": 0.6, "test_fraction": 0.2, "oot_fraction": 0.2,
+                    "target_column": "credit_risk_class", "role_column": None,
+                    "random_seed": 42,
+                }),
+                parent_step_ids=["apply-exclusions", "sample-definition"], branch_label="", position=6,
+            ),
+            StepSpec(
+                step_id="explicit-missing-outlier-treatment",
+                node_type="cardre.explicit_missing_outlier_treatment",
+                node_version="1", category="apply",
+                params={"imputations": {}, "caps": {}, "floors": {}},
+                params_hash=json_logical_hash({"imputations": {}, "caps": {}, "floors": {}}),
+                parent_step_ids=["split"], branch_label="", position=7,
+            ),
+            StepSpec(
+                step_id="fine-classing", node_type="cardre.fine_classing",
+                node_version="1", category="fit",
+                params={
+                    "max_bins": 20, "min_bin_fraction": 0.05,
+                    "missing_policy": "separate_bin",
+                    "max_categorical_levels": 50, "exclude_columns": [],
+                },
+                params_hash=json_logical_hash({
+                    "max_bins": 20, "min_bin_fraction": 0.05,
+                    "missing_policy": "separate_bin",
+                    "max_categorical_levels": 50, "exclude_columns": [],
+                }),
+                parent_step_ids=["explicit-missing-outlier-treatment", "define-metadata"],
+                branch_label="", position=8,
+            ),
+            StepSpec(
+                step_id="initial-woe-iv", node_type="cardre.calculate_woe_iv",
+                node_version="1", category="selection",
+                params={
+                    "zero_cell_policy": "block", "smoothing": None, "purpose": "initial",
+                },
+                params_hash=json_logical_hash({
+                    "zero_cell_policy": "block", "smoothing": None, "purpose": "initial",
+                }),
+                parent_step_ids=["explicit-missing-outlier-treatment", "fine-classing", "define-metadata"],
+                branch_label="", position=9,
+            ),
+            StepSpec(
+                step_id="variable-clustering", node_type="cardre.variable_clustering",
+                node_version="1", category="selection",
+                params={"correlation_threshold": 0.7, "candidate_limit": 50},
+                params_hash=json_logical_hash({"correlation_threshold": 0.7, "candidate_limit": 50}),
+                parent_step_ids=["explicit-missing-outlier-treatment", "initial-woe-iv"],
+                branch_label="", position=10,
+            ),
+            StepSpec(
+                step_id="variable-selection", node_type="cardre.variable_selection",
+                node_version="1", category="selection",
+                params={
+                    "min_iv": 0.02, "max_variables": 15,
+                    "manual_includes": [], "manual_excludes": [],
+                },
+                params_hash=json_logical_hash({
+                    "min_iv": 0.02, "max_variables": 15,
+                    "manual_includes": [], "manual_excludes": [],
+                }),
+                parent_step_ids=["initial-woe-iv", "variable-clustering"],
+                branch_label="", position=11,
+            ),
+            StepSpec(
+                step_id="manual-binning", node_type="cardre.manual_binning",
+                node_version="1", category="refinement",
+                params={"overrides": []},
+                params_hash=json_logical_hash({"overrides": []}),
+                parent_step_ids=["fine-classing", "variable-selection"],
+                branch_label="", position=12,
+            ),
+            StepSpec(
+                step_id="final-woe-iv", node_type="cardre.calculate_woe_iv",
+                node_version="1", category="selection",
+                params={
+                    "zero_cell_policy": "block",
+                    "smoothing": {
+                        "method": "additive",
+                        "alpha": 0.5,
+                        "rationale": "Small sample test fixture with sparse bins",
+                    },
+                    "purpose": "final",
+                },
+                params_hash=json_logical_hash({
+                    "zero_cell_policy": "block",
+                    "smoothing": {
+                        "method": "additive",
+                        "alpha": 0.5,
+                        "rationale": "Small sample test fixture with sparse bins",
+                    },
+                    "purpose": "final",
+                }),
+                parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "define-metadata"],
+                branch_label="", position=13,
+            ),
+            StepSpec(
+                step_id="technical-manifest-stub",
+                node_type="cardre.technical_manifest_export",
+                node_version="1", category="transform",
+                params={},
+                params_hash=json_logical_hash({}),
+                parent_step_ids=[
+                    "define-metadata", "sample-definition", "split",
+                    "explicit-missing-outlier-treatment", "fine-classing",
+                    "variable-selection", "manual-binning", "final-woe-iv",
                 ],
-            }],
-            "warnings": [],
-        }
-        bin_art = _make_json_artifact(store, bin_def, stem="bins")
+                branch_label="", position=14,
+            ),
+        ]
 
-        woe_df = pl.DataFrame({
-            "variable": ["var1", "var1"],
-            "bin_id": ["v1_b1", "v1_b2"],
-            "label": ["Low", "High"],
-            "row_count": [2, 2],
-            "good_count": [1, 1],
-            "bad_count": [1, 1],
-            "good_distribution": [0.5, 0.5],
-            "bad_distribution": [0.5, 0.5],
-            "woe": [0.5, -0.5],
-            "iv_component": [0.0, 0.25],
-        })
-        woe_art = _make_parquet_report(store, woe_df, stem="woe")
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry.with_defaults()
+        executor = PlanExecutor(reg)
+        run_id = executor.run_plan_version(store, pv_id)
 
-        params = {}
-        spec = StepSpec(
-            step_id="woe-tf", node_type="cardre.woe_transform_train",
-            node_version="1", category="fit",
-            params=params, params_hash=json_logical_hash(params),
-            parent_step_ids=[], branch_label="", position=0,
-        )
-        ctx = ExecutionContext(
-            store=store, run_id="r1", plan_version_id="pv1",
-            step_spec=spec, parent_run_steps=[],
-            input_artifacts=[train_art, bin_art, woe_art],
-            validated_params=params, runtime_metadata={},
-        )
-        node = WoeTransformTrainNode()
-        output = node.run(ctx)
-
-        self.assertEqual(len(output.artifacts), 2)
-        transformed = pl.read_parquet(store.artifact_path(output.artifacts[0]))
-        self.assertIn("var1_woe", transformed.columns)
-        self.assertEqual(transformed.height, 4)
-
-    def test_woe_transform_deterministic(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-
-        df = pl.DataFrame({
-            "x": [1.0, 2.0, 3.0],
-            "target": ["g", "b", "g"],
-        })
-        train_art = _make_train_artifact(store, df)
-        bin_def = {
-            "variables": [{
-                "variable": "x", "kind": "numeric",
-                "bins": [
-                    {"bin_id": "x_b1", "label": "Low", "lower": 0, "upper": 2,
-                     "lower_inclusive": False, "upper_inclusive": True,
-                     "categories": None, "is_missing_bin": False,
-                     "row_count": 2, "good_count": 1, "bad_count": 1},
-                    {"bin_id": "x_b2", "label": "High", "lower": 2, "upper": None,
-                     "lower_inclusive": False, "upper_inclusive": True,
-                     "categories": None, "is_missing_bin": False,
-                     "row_count": 1, "good_count": 1, "bad_count": 0},
-                ],
-            }],
-            "warnings": [],
-        }
-        bin_art = _make_json_artifact(store, bin_def, stem="bins2")
-
-        woe_df = pl.DataFrame({
-            "variable": ["x", "x"],
-            "bin_id": ["x_b1", "x_b2"],
-            "label": ["Low", "High"],
-            "row_count": [2, 1], "good_count": [1, 1], "bad_count": [1, 0],
-            "good_distribution": [0.5, 0.5], "bad_distribution": [1.0, 0.0],
-            "woe": [0.2, -0.3], "iv_component": [0.1, 0.15],
-        })
-        woe_art = _make_parquet_report(store, woe_df, stem="woe2")
-
-        params = {}
-        spec = StepSpec(
-            step_id="wt", node_type="cardre.woe_transform_train",
-            node_version="1", category="fit",
-            params=params, params_hash=json_logical_hash(params),
-            parent_step_ids=[], branch_label="", position=0,
-        )
-        ctx1 = ExecutionContext(
-            store=store, run_id="r1", plan_version_id="pv1",
-            step_spec=spec, parent_run_steps=[],
-            input_artifacts=[train_art, bin_art, woe_art],
-            validated_params=params, runtime_metadata={},
-        )
-        ctx2 = ExecutionContext(
-            store=store, run_id="r2", plan_version_id="pv1",
-            step_spec=spec, parent_run_steps=[],
-            input_artifacts=[train_art, bin_art, woe_art],
-            validated_params=params, runtime_metadata={},
-        )
-        node = WoeTransformTrainNode()
-        out1 = node.run(ctx1)
-        out2 = node.run(ctx2)
+        run = store.get_run(run_id)
         self.assertEqual(
-            out1.artifacts[0].logical_hash,
-            out2.artifacts[0].logical_hash,
+            run["status"], "succeeded",
+            f"Phase 2A pathway should succeed. Status: {run['status']}",
         )
+
+        run_steps = store.get_run_steps(run_id)
+        run_steps_by_id = {rs.step_id: rs for rs in run_steps}
+
+        # Verify all steps succeeded
+        for step in steps:
+            rs = run_steps_by_id.get(step.step_id)
+            self.assertIsNotNone(rs, f"No run step for {step.step_id}")
+            self.assertEqual(
+                rs.status, "succeeded",
+                f"Step {step.step_id} failed: {rs.errors}",
+            )
+
+        # Verify key artifacts exist
+        artifact_types_by_step = {
+            "define-metadata": "definition",
+            "fine-classing": "definition",
+            "variable-selection": "definition",
+            "manual-binning": "definition",
+            "technical-manifest-stub": "manifest",
+        }
+        for step_id, expected_type in artifact_types_by_step.items():
+            rs = run_steps_by_id[step_id]
+            for aid in rs.output_artifact_ids:
+                art = store.get_artifact(aid)
+                if art and art.artifact_type == expected_type:
+                    break
+            else:
+                self.fail(f"No {expected_type} artifact found for step {step_id}")
+
+        # Verify initial and final WOE/IV produce report artifacts
+        for woe_step in ("initial-woe-iv", "final-woe-iv"):
+            rs = run_steps_by_id[woe_step]
+            report_found = any(
+                store.get_artifact(aid) and store.get_artifact(aid).artifact_type == "report"
+                for aid in rs.output_artifact_ids
+            )
+            self.assertTrue(report_found, f"No report artifact for {woe_step}")
 
 
 # ======================================================================
@@ -375,66 +501,6 @@ class ScoreScalingTests(unittest.TestCase):
 
 
 # ======================================================================
-# Build Summary Report
-# ======================================================================
-
-class BuildSummaryReportTests(unittest.TestCase):
-
-    def test_build_summary_created(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-
-        scorecard = {
-            "base_score": 600, "base_odds": 50,
-            "points_to_double_odds": 20, "higher_score_is_lower_risk": True,
-            "intercept": -0.5, "base_points": 500, "attributes": [],
-            "target_column": "target",
-        }
-        sc_art = _make_json_artifact(store, scorecard, role="scorecard", stem="sc")
-
-        model = {
-            "target_column": "target", "features": ["x_woe"],
-            "intercept": -0.5, "coefficients": {"x_woe": 0.8},
-            "class_mapping": {"good": "g", "bad": "b"},
-            "training": {"row_count": 100, "converged": True, "iterations": 10, "params": {}},
-            "warnings": [],
-        }
-        model_art = _make_json_artifact(store, model, role="model", stem="model3")
-
-        woe_df = pl.DataFrame({
-            "variable": ["x"], "bin_id": ["x_b1"], "label": ["Low"],
-            "row_count": [50], "good_count": [40], "bad_count": [10],
-            "good_distribution": [0.5], "bad_distribution": [0.5],
-            "woe": [0.3], "iv_component": [0.1],
-        })
-        woe_art = _make_parquet_report(store, woe_df, stem="woe3")
-
-        params = {}
-        spec = StepSpec(
-            step_id="bsr", node_type="cardre.build_summary_report",
-            node_version="1", category="fit",
-            params=params, params_hash=json_logical_hash(params),
-            parent_step_ids=[], branch_label="", position=0,
-        )
-        ctx = ExecutionContext(
-            store=store, run_id="r1", plan_version_id="pv1",
-            step_spec=spec, parent_run_steps=[],
-            input_artifacts=[sc_art, model_art, woe_art],
-            validated_params=params, runtime_metadata={},
-        )
-        node = BuildSummaryReportNode()
-        output = node.run(ctx)
-
-        self.assertEqual(len(output.artifacts), 1)
-        artifact = output.artifacts[0]
-        self.assertEqual(artifact.artifact_type, "report")
-        report = json.loads(store.artifact_path(artifact).read_text())
-        self.assertIn("model_summary", report)
-        self.assertIn("scorecard_summary", report)
-        self.assertIn("woe_iv_references", report)
-
-
-# ======================================================================
 # Phase 2B End-to-End Through Executor
 # ======================================================================
 
@@ -490,7 +556,6 @@ class Phase2BEndToEndTests(unittest.TestCase):
             params=woe_params, params_hash=json_logical_hash(woe_params),
             parent_step_ids=[], branch_label="", position=0,
         )
-        from cardre.nodes import CalculateWoeIvNode
         woe_ctx = ExecutionContext(
             store=store, run_id="r_woe", plan_version_id="pv1",
             step_spec=woe_spec, parent_run_steps=[],
@@ -598,32 +663,6 @@ class Phase2BEndToEndTests(unittest.TestCase):
         self.assertIn("attributes", scorecard)
         self.assertGreater(len(scorecard["attributes"]), 0)
 
-    def test_woe_transform_train_rejects_test_role(self) -> None:
-        from cardre.executor import PlanExecutor, RoleAccessError
-        store, tmp = make_store()
-        store.initialize()
-
-        df = pl.DataFrame({"x": [1.0], "target": ["g"]})
-        buf = io.BytesIO()
-        df.write_parquet(buf)
-        path = store.root / "datasets" / "test.parquet"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(buf.getvalue())
-        test_art = ArtifactRef(
-            artifact_id="test1", artifact_type="dataset", role="test",
-            path=relative_path(path, store.root),
-            physical_hash=physical_hash(path),
-            logical_hash=table_logical_hash(df),
-            media_type="application/vnd.apache.parquet", metadata={},
-        )
-        store.register_artifact(test_art)
-
-        executor = PlanExecutor(NodeRegistry.with_defaults())
-        node = WoeTransformTrainNode()
-        with self.assertRaises(RoleAccessError):
-            executor.validate_leakage_rules(node, [test_art])
-
-
     def test_woe_transform_selects_only_selected_vars(self) -> None:
         store, tmp = make_store()
         store.initialize()
@@ -692,5 +731,77 @@ class Phase2BEndToEndTests(unittest.TestCase):
                          "unselected variable should not appear in WOE transform output")
 
 
-if __name__ == "__main__":
-    unittest.main()
+# ======================================================================
+# Apply Model
+# ======================================================================
+
+class ApplyModelTests(unittest.TestCase):
+
+    def setUp(self):
+        self.store, self.tmp = make_store()
+        self.store.initialize()
+
+        self.df = pl.DataFrame({
+            "x_woe": [0.5, -0.3, 0.5],
+            "target": ["g", "b", "g"],
+        })
+        self.train_art = _make_train_artifact(self.store, self.df, role="train")
+        self.model = {
+            "target_column": "target", "features": ["x_woe"],
+            "intercept": -0.5, "coefficients": {"x_woe": 0.8},
+            "class_mapping": {"good": "g", "bad": "b"}, "bad_class_label": "b",
+            "training": {"row_count": 3, "converged": True, "iterations": 5, "params": {}},
+            "warnings": [],
+        }
+        self.model_art = _make_json_artifact(self.store, self.model, role="model", stem="m1")
+        self.scorecard = {
+            "base_score": 600, "base_odds": 50, "points_to_double_odds": 20,
+            "factor": round(20 / math.log(2), 6), "offset": round(600 - (20 / math.log(2)) * math.log(50), 6),
+            "higher_score_is_lower_risk": True, "intercept": -0.5, "base_points": 500,
+            "attributes": [], "target_column": "target",
+        }
+        self.sc_art = _make_json_artifact(self.store, self.scorecard, role="scorecard", stem="sc1")
+
+    def test_produces_prediction_and_score_columns(self):
+        params = {}
+        spec = StepSpec(step_id="am", node_type="cardre.apply_model", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=self.store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[], input_artifacts=[self.train_art, self.model_art, self.sc_art],
+                               validated_params=params, runtime_metadata={})
+        out = ApplyModelNode().run(ctx)
+        self.assertEqual(len(out.artifacts), 1)
+        df = pl.read_parquet(self.store.artifact_path(out.artifacts[0]))
+        self.assertIn("predicted_bad_probability", df.columns)
+        self.assertIn("score", df.columns)
+
+    def test_missing_feature_fails(self):
+        store, tmp = make_store()
+        store.initialize()
+        bad_df = pl.DataFrame({"wrong_col": [1.0], "target": ["g"]})
+        buf = io.BytesIO()
+        bad_df.write_parquet(buf)
+        p = store.root / "datasets" / "bad-train.parquet"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(buf.getvalue())
+        bad_art = ArtifactRef(
+            artifact_id="bad-train-1", artifact_type="dataset", role="train",
+            path=relative_path(p, store.root),
+            physical_hash=physical_hash(p), logical_hash=table_logical_hash(bad_df),
+            media_type="application/vnd.apache.parquet", metadata={},
+        )
+        store.register_artifact(bad_art)
+
+        model_art = _make_json_artifact(store, self.model, role="model", stem="m2")
+        sc_art = _make_json_artifact(store, self.scorecard, role="scorecard", stem="sc2")
+
+        params = {}
+        spec = StepSpec(step_id="am", node_type="cardre.apply_model", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=store, run_id="r2", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[], input_artifacts=[bad_art, model_art, sc_art],
+                               validated_params=params, runtime_metadata={})
+        with self.assertRaises(ValueError):
+            ApplyModelNode().run(ctx)

@@ -1,28 +1,23 @@
-"""Phase 1 acceptance tests covering all slices."""
+"""Tests for cardre.executor — plan execution, role enforcement, staleness, replay."""
 
 from __future__ import annotations
 
 import io
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
 import polars as pl
 
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import (
     ArtifactRef,
     ExecutionContext,
     NodeOutput,
-    RunStepRecord,
     StepSpec,
     json_logical_hash,
-    params_hash,
     physical_hash,
     relative_path,
     table_logical_hash,
-    utc_now_iso,
 )
 from cardre.executor import PlanExecutor, RoleAccessError
 from cardre.nodes import (
@@ -31,534 +26,18 @@ from cardre.nodes import (
     ImportGermanCreditNode,
     ProfileDatasetNode,
     SplitTrainTestOotNode,
-    ValidateBinaryTargetNode,
+    FineClassingNode,
+    CalculateWoeIvNode,
+    WoeTransformTrainNode,
 )
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 
 from tests.helpers import (
+    _make_train_artifact,
     make_sample_german_credit_file,
-    make_sample_german_credit_zip,
     make_store,
 )
-
-
-# ======================================================================
-# Helpers
-# ======================================================================
-
-
-def _make_train_artifact(store, df, role="train"):
-    buf = io.BytesIO()
-    df.write_parquet(buf)
-    p = store.root / "datasets" / f"test-{role}.parquet"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_bytes(buf.getvalue())
-    art = ArtifactRef(
-        artifact_id=f"train-{role}-1", artifact_type="dataset", role=role,
-        path=relative_path(p, store.root),
-        physical_hash=physical_hash(p), logical_hash=table_logical_hash(df),
-        media_type="application/octet-stream", metadata={},
-    )
-    store.register_artifact(art)
-    return art
-
-
-def _make_json_artifact(store, payload, stem="test"):
-    p = store.root / "artifacts" / f"{stem}.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(payload, sort_keys=True))
-    art = ArtifactRef(
-        artifact_id=f"{stem}_1", artifact_type="definition", role="definition",
-        path=relative_path(p, store.root),
-        physical_hash=physical_hash(p), logical_hash=json_logical_hash(payload),
-        media_type="application/json", metadata={},
-    )
-    store.register_artifact(art)
-    return art
-
-
-# ======================================================================
-# Slice 1: SQLite Schema + ProjectStore
-# ======================================================================
-
-class ProjectStoreTests(unittest.TestCase):
-
-    def test_creating_project_creates_directories_and_sqlite(self) -> None:
-        store, tmp = make_store()
-        self.assertTrue((tmp / "test.cardre").exists())
-        self.assertTrue((tmp / "test.cardre" / "cardre.sqlite").exists())
-        for sub in ("datasets", "artifacts", "exports", "logs"):
-            self.assertTrue((tmp / "test.cardre" / sub).is_dir())
-
-    def test_schema_exists_after_initialization(self) -> None:
-        store, tmp = make_store()
-        tables = [
-            "projects", "plans", "plan_versions", "plan_steps",
-            "runs", "run_steps", "artifacts", "warnings", "errors",
-        ]
-        conn = store._connect()
-        existing = {
-            r["name"]
-            for r in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
-        }
-        for t in tables:
-            self.assertIn(t, existing, f"Table {t} missing from schema")
-
-    def test_sqlite_contains_no_tabular_blobs(self) -> None:
-        store, tmp = make_store()
-        # Insert a small row in each table
-        from cardre.audit import utc_now_iso
-        now = utc_now_iso()
-        with store.transaction() as conn:
-            conn.execute(
-                "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-                ("p1", "test", now, "0.1.0"),
-            )
-            conn.execute(
-                "INSERT INTO artifacts (artifact_id, artifact_type, role, path, "
-                "physical_hash, logical_hash, media_type, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                ("a1", "dataset", "input", "datasets/test.parquet",
-                 "abc", "def", "application/vnd.apache.parquet", now),
-            )
-        # No row should exceed 100KB for these small tables
-        self.assertTrue(store.verify_no_tabular_blobs())
-
-    def test_register_artifact_writes_metadata_and_preserves_path(self) -> None:
-        store, tmp = make_store()
-        artifact = ArtifactRef(
-            artifact_id="art-001",
-            artifact_type="dataset",
-            role="input",
-            path="datasets/test.parquet",
-            physical_hash="abc123",
-            logical_hash="def456",
-            media_type="application/vnd.apache.parquet",
-            metadata={"source": "test"},
-        )
-        store.register_artifact(artifact)
-        retrieved = store.get_artifact("art-001")
-        self.assertIsNotNone(retrieved)
-        self.assertEqual(retrieved.path, "datasets/test.parquet")
-        self.assertEqual(retrieved.physical_hash, "abc123")
-
-    def test_project_create_and_get(self) -> None:
-        store, tmp = make_store()
-        pid = store.create_project("my-project")
-        proj = store.get_project(pid)
-        self.assertIsNotNone(proj)
-        self.assertEqual(proj["name"], "my-project")
-
-
-# ======================================================================
-# Slice 2: Artifact Model + Hashing
-# ======================================================================
-
-class HashingTests(unittest.TestCase):
-
-    def test_json_logical_hash_key_order_independent(self) -> None:
-        h1 = json_logical_hash({"z": 1, "a": 2})
-        h2 = json_logical_hash({"a": 2, "z": 1})
-        self.assertEqual(h1, h2)
-
-    def test_json_logical_hash_different_content(self) -> None:
-        h1 = json_logical_hash({"a": 1})
-        h2 = json_logical_hash({"a": 2})
-        self.assertNotEqual(h1, h2)
-
-    def test_params_hash_uses_json_logical(self) -> None:
-        h1 = params_hash({"b": 1, "a": 2})
-        h2 = params_hash({"a": 2, "b": 1})
-        self.assertEqual(h1, h2)
-
-    def test_table_logical_hash_same_table_equal(self) -> None:
-        df1 = pl.DataFrame({"b": [3, 4], "a": [1, 2]})
-        df2 = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
-        self.assertEqual(table_logical_hash(df1), table_logical_hash(df2))
-
-    def test_table_logical_hash_different_data(self) -> None:
-        df1 = pl.DataFrame({"a": [1, 2]})
-        df2 = pl.DataFrame({"a": [1, 3]})
-        self.assertNotEqual(table_logical_hash(df1), table_logical_hash(df2))
-
-    def test_physical_hash_file_bytes(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".bin") as f:
-            f.write(b"hello")
-            f.flush()
-            h = physical_hash(Path(f.name))
-        import hashlib
-        expected = hashlib.sha256(b"hello").hexdigest()
-        self.assertEqual(h, expected)
-
-    def test_artifact_ref_physical_and_logical(self) -> None:
-        ref = ArtifactRef(
-            artifact_id="a1",
-            artifact_type="dataset",
-            role="input",
-            path="datasets/test.parquet",
-            physical_hash="p123",
-            logical_hash="l456",
-        )
-        self.assertEqual(ref.physical_hash, "p123")
-        self.assertEqual(ref.logical_hash, "l456")
-
-    def test_artifact_ref_roundtrip_to_dict(self) -> None:
-        ref = ArtifactRef(
-            artifact_id="a1",
-            artifact_type="dataset",
-            role="input",
-            path="datasets/test.parquet",
-            physical_hash="p123",
-            logical_hash="l456",
-            media_type="application/vnd.apache.parquet",
-            metadata={"k": "v"},
-        )
-        d = ref.to_dict()
-        ref2 = ArtifactRef.from_dict(d)
-        self.assertEqual(ref, ref2)
-
-
-# ======================================================================
-# Slice 3: German Credit Importer
-# ======================================================================
-
-class GermanCreditImportTests(unittest.TestCase):
-
-    def test_import_from_file_creates_parquet_artifact(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
-        source = make_sample_german_credit_file(tmp)
-
-        step_spec = StepSpec(
-            step_id="import-1",
-            node_type="cardre.import_dataset",
-            node_version="1",
-            category="transform",
-            params={"source_path": str(source)},
-            params_hash=json_logical_hash({"source_path": str(source)}),
-            parent_step_ids=[],
-            branch_label="",
-            position=0,
-        )
-        ctx = ExecutionContext(
-            store=store,
-            run_id="test-run",
-            plan_version_id="test-pv",
-            step_spec=step_spec,
-            parent_run_steps=[],
-            input_artifacts=[],
-            validated_params=step_spec.params,
-            runtime_metadata={},
-        )
-        node = ImportGermanCreditNode()
-        output = node.run(ctx)
-
-        self.assertEqual(len(output.artifacts), 1)
-        artifact = output.artifacts[0]
-        self.assertEqual(artifact.artifact_type, "dataset")
-        self.assertEqual(artifact.role, "input")
-        self.assertTrue(
-            store.artifact_path(artifact).exists(),
-            "Parquet artifact file must exist on disk",
-        )
-
-    def test_imported_artifact_metadata_is_correct(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
-        source = make_sample_german_credit_file(tmp)
-
-        step_spec = StepSpec(
-            step_id="import-1",
-            node_type="cardre.import_dataset",
-            node_version="1",
-            category="transform",
-            params={"source_path": str(source)},
-            params_hash=json_logical_hash({"source_path": str(source)}),
-            parent_step_ids=[],
-            branch_label="",
-            position=0,
-        )
-        ctx = ExecutionContext(
-            store=store,
-            run_id="test-run",
-            plan_version_id="test-pv",
-            step_spec=step_spec,
-            parent_run_steps=[],
-            input_artifacts=[],
-            validated_params=step_spec.params,
-            runtime_metadata={},
-        )
-        node = ImportGermanCreditNode()
-        output = node.run(ctx)
-        artifact = output.artifacts[0]
-
-        md = artifact.metadata
-        self.assertEqual(md["source_dataset_id"], "uci-statlog-german-credit")
-        self.assertEqual(md["target_column"], "credit_risk_class")
-        self.assertEqual(md["target_mapping"], {"1": "good", "2": "bad"})
-
-    def test_reimport_same_file_produces_same_logical_hash(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
-        source = make_sample_german_credit_file(tmp)
-
-        params = {"source_path": str(source)}
-        step_spec_1 = StepSpec(
-            step_id="import-1", node_type="cardre.import_dataset",
-            node_version="1", category="transform",
-            params=params,
-            params_hash=json_logical_hash(params),
-            parent_step_ids=[], branch_label="", position=0,
-        )
-        ctx = ExecutionContext(
-            store=store, run_id="r1", plan_version_id="pv",
-            step_spec=step_spec_1,
-            parent_run_steps=[], input_artifacts=[],
-            validated_params=params, runtime_metadata={},
-        )
-        node = ImportGermanCreditNode()
-        out1 = node.run(ctx)
-
-        ctx2 = ExecutionContext(
-            store=store, run_id="r2", plan_version_id="pv",
-            step_spec=step_spec_1,
-            parent_run_steps=[], input_artifacts=[],
-            validated_params=params, runtime_metadata={},
-        )
-        out2 = node.run(ctx2)
-
-        self.assertEqual(
-            out1.artifacts[0].logical_hash,
-            out2.artifacts[0].logical_hash,
-        )
-
-    def test_import_from_zip(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
-        zpath = make_sample_german_credit_zip(tmp)
-
-        params = {"source_path": str(zpath)}
-        step_spec = StepSpec(
-            step_id="import-zip", node_type="cardre.import_dataset",
-            node_version="1", category="transform",
-            params=params,
-            params_hash=json_logical_hash(params),
-            parent_step_ids=[], branch_label="", position=0,
-        )
-        ctx = ExecutionContext(
-            store=store, run_id="r1", plan_version_id="pv",
-            step_spec=step_spec,
-            parent_run_steps=[], input_artifacts=[],
-            validated_params=params, runtime_metadata={},
-        )
-        node = ImportGermanCreditNode()
-        output = node.run(ctx)
-
-        self.assertEqual(len(output.artifacts), 1)
-        artifact = output.artifacts[0]
-        df = pl.read_parquet(store.artifact_path(artifact))
-        self.assertEqual(df.height, 2)
-
-    def test_import_malformed_rows_fails(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
-        source = tmp / "malformed.data"
-        source.write_text("1 2 3\n4 5 6 7\n")
-        params = {"source_path": str(source)}
-        step_spec = StepSpec(
-            step_id="import-bad", node_type="cardre.import_dataset",
-            node_version="1", category="transform",
-            params=params,
-            params_hash=json_logical_hash(params),
-            parent_step_ids=[], branch_label="", position=0,
-        )
-        ctx = ExecutionContext(
-            store=store, run_id="r1", plan_version_id="pv",
-            step_spec=step_spec,
-            parent_run_steps=[], input_artifacts=[],
-            validated_params=params, runtime_metadata={},
-        )
-        node = ImportGermanCreditNode()
-        with self.assertRaises(ValueError):
-            node.run(ctx)
-
-    def test_import_missing_source_path_fails_validation(self) -> None:
-        node = ImportGermanCreditNode()
-        errors = node.validate_params({})
-        self.assertTrue(any("source_path" in e for e in errors))
-
-    def test_import_unsupported_extension_fails(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
-        source = tmp / "data.csv"
-        source.write_text("dummy")
-        params = {"source_path": str(source)}
-        step_spec = StepSpec(
-            step_id="import-csv", node_type="cardre.import_dataset",
-            node_version="1", category="transform",
-            params=params,
-            params_hash=json_logical_hash(params),
-            parent_step_ids=[], branch_label="", position=0,
-        )
-        ctx = ExecutionContext(
-            store=store, run_id="r1", plan_version_id="pv",
-            step_spec=step_spec,
-            parent_run_steps=[], input_artifacts=[],
-            validated_params=params, runtime_metadata={},
-        )
-        node = ImportGermanCreditNode()
-        with self.assertRaises(ValueError):
-            node.run(ctx)
-
-    def test_import_zip_without_german_data_fails(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
-        import zipfile
-        zpath = tmp / "empty.zip"
-        with zipfile.ZipFile(zpath, "w") as zf:
-            zf.writestr("other.txt", "not german data")
-        params = {"source_path": str(zpath)}
-        step_spec = StepSpec(
-            step_id="import-zip2", node_type="cardre.import_dataset",
-            node_version="1", category="transform",
-            params=params,
-            params_hash=json_logical_hash(params),
-            parent_step_ids=[], branch_label="", position=0,
-        )
-        ctx = ExecutionContext(
-            store=store, run_id="r1", plan_version_id="pv",
-            step_spec=step_spec,
-            parent_run_steps=[], input_artifacts=[],
-            validated_params=params, runtime_metadata={},
-        )
-        node = ImportGermanCreditNode()
-        with self.assertRaises(ValueError):
-            node.run(ctx)
-
-# ======================================================================
-# Profile + Split Regression Tests
-# ======================================================================
-
-class ProfileDatasetTests(unittest.TestCase):
-
-    def test_all_null_numeric_column_does_not_crash(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        df = pl.DataFrame({
-            "num_col": pl.Series([None, None, None], dtype=pl.Float64),
-            "cat_col": ["a", "b", "c"],
-        })
-        art = _make_train_artifact(store, df, role="train")
-        params = {}
-        spec = StepSpec(
-            step_id="profile", node_type="cardre.profile_dataset",
-            node_version="1", category="transform",
-            params=params, params_hash=json_logical_hash(params),
-            parent_step_ids=[], branch_label="", position=0,
-        )
-        ctx = ExecutionContext(
-            store=store, run_id="r1", plan_version_id="pv",
-            step_spec=spec, parent_run_steps=[],
-            input_artifacts=[art],
-            validated_params=params, runtime_metadata={},
-        )
-        node = ProfileDatasetNode()
-        output = node.run(ctx)
-        self.assertEqual(len(output.artifacts), 1)
-
-
-class SplitRegressionTests(unittest.TestCase):
-
-    def test_single_class_train_split_fails(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        df = pl.DataFrame({
-            "x": [1.0, 2.0, 3.0],
-            "target": pl.Series(["g", "g", "g"], dtype=pl.String),
-        })
-        art = _make_train_artifact(store, df, role="input")
-        meta_art = _make_json_artifact(store, {
-            "target_column": "target",
-            "good_values": ["g"], "bad_values": ["b"],
-        }, stem="meta")
-        params = {
-            "strategy": "random_stratified",
-            "train_fraction": 0.6, "test_fraction": 0.2, "oot_fraction": 0.2,
-            "target_column": "target", "random_seed": 42,
-        }
-        spec = StepSpec(
-            step_id="split", node_type="cardre.split_train_test_oot",
-            node_version="2", category="transform",
-            params=params, params_hash=json_logical_hash(params),
-            parent_step_ids=[], branch_label="", position=0,
-        )
-        ctx = ExecutionContext(
-            store=store, run_id="r1", plan_version_id="pv",
-            step_spec=spec, parent_run_steps=[],
-            input_artifacts=[art],
-            validated_params=params, runtime_metadata={},
-        )
-        node = SplitTrainTestOotNode()
-        with self.assertRaises(ValueError):
-            node.run(ctx)
-
-
-# ======================================================================
-# Slice 4: Node Registry + Contracts
-# ======================================================================
-
-class NodeRegistryTests(unittest.TestCase):
-
-    def test_register_and_resolve(self) -> None:
-        reg = NodeRegistry()
-        reg.register(ImportGermanCreditNode)
-        cls = reg.resolve("cardre.import_dataset")
-        self.assertIs(cls, ImportGermanCreditNode)
-
-    def test_missing_node_type_fails_cleanly(self) -> None:
-        reg = NodeRegistry()
-        with self.assertRaises(KeyError):
-            reg.resolve("cardre.nonexistent")
-
-    def test_has_method(self) -> None:
-        reg = NodeRegistry()
-        reg.register(DummyFitNode)
-        self.assertTrue(reg.has("cardre.dummy_fit"))
-        self.assertFalse(reg.has("cardre.nonexistent"))
-
-    def test_instantiate_proof_node(self) -> None:
-        reg = NodeRegistry()
-        reg.register(DummyFitNode)
-        node = reg.instantiate("cardre.dummy_fit")
-        self.assertIsInstance(node, DummyFitNode)
-
-    def test_node_defines_contract(self) -> None:
-        node = ImportGermanCreditNode()
-        self.assertEqual(node.node_type, "cardre.import_dataset")
-        self.assertEqual(node.version, "1")
-        self.assertEqual(node.category, "transform")
-
-    def test_default_registry_has_all_proof_nodes(self) -> None:
-        reg = NodeRegistry.with_defaults()
-        for nt in [
-            "cardre.import_dataset",
-            "cardre.profile_dataset",
-            "cardre.validate_binary_target",
-            "cardre.split_train_test_oot",
-            "cardre.dummy_fit",
-            "cardre.dummy_apply",
-        ]:
-            self.assertTrue(reg.has(nt), f"Missing {nt}")
 
 
 # ======================================================================
@@ -711,7 +190,6 @@ class ExecutorTests(unittest.TestCase):
         run = store.get_run(run_id)
         self.assertEqual(run["status"], "failed", "Failed run should be marked failed")
 
-        # Check the failed run-step has structured errors
         run_steps = store.get_run_steps(run_id)
         fail_step = [rs for rs in run_steps if rs.step_id == "fail-step"]
         self.assertEqual(len(fail_step), 1, "Expected one run-step for fail-step")
@@ -822,10 +300,8 @@ class SplitAndRoleTests(unittest.TestCase):
         split_rs = [rs for rs in run_steps if rs.step_id == "split"][0]
         import_rs = [rs for rs in run_steps if rs.step_id == "import"][0]
 
-        # split step should have 4 output artifacts (3 datasets + 1 report)
         self.assertEqual(len(split_rs.output_artifact_ids), 4)
 
-        # Verify each dataset artifact has a distinct role
         roles_found = set()
         for aid in split_rs.output_artifact_ids:
             art = store.get_artifact(aid)
@@ -881,11 +357,9 @@ class SplitAndRoleTests(unittest.TestCase):
         self.assertEqual(run["status"], "failed",
                          "Fit node wired to import should produce a failed run")
 
-        # The fit step should have a run-step with role access errors
         run_steps = store.get_run_steps(run_id)
         fit_steps = [rs for rs in run_steps if rs.step_id == "fit-on-import"]
         self.assertEqual(len(fit_steps), 1)
-        # The import step succeeded, fit step should show error evidence
         any_role_error = any(
             "role" in str(e.get("message", "")) for rs in run_steps for e in rs.errors
         )
@@ -994,10 +468,8 @@ class StalenessAndReplayTests(unittest.TestCase):
         reg = NodeRegistry.with_defaults()
         executor = PlanExecutor(reg)
 
-        # Run first time
         executor.run_plan_version(store, pv_id)
 
-        # Create new plan version with changed split params
         new_steps = [
             StepSpec(
                 step_id="import", node_type="cardre.import_dataset",
@@ -1030,7 +502,6 @@ class StalenessAndReplayTests(unittest.TestCase):
         new_pv_id = store.create_plan_version(plan_id, new_steps)
         executor.run_plan_version(store, new_pv_id)
 
-        # Compute staleness on new plan version
         staleness = executor.compute_staleness(store, new_pv_id)
         self.assertEqual(staleness["import"], False)
         self.assertEqual(staleness["split"], False)
@@ -1077,7 +548,6 @@ class StalenessAndReplayTests(unittest.TestCase):
 
         first_run_id = executor.run_plan_version(store, pv_id)
 
-        # Replay from split with changed params
         new_params = {
             "train_fraction": 0.7, "test_fraction": 0.15,
             "oot_fraction": 0.15, "method": "random", "random_seed": 99,
@@ -1092,10 +562,6 @@ class StalenessAndReplayTests(unittest.TestCase):
         first_by_step = {rs.step_id: rs for rs in first_steps}
         new_by_step = {rs.step_id: rs for rs in new_steps}
 
-        # Import step outputs should be the same
-        import_new_new = new_by_step["import"]
-
-        # Split and fit should have different outputs
         new_split = new_by_step["split"]
         self.assertNotEqual(
             first_by_step["split"].output_artifact_ids,
@@ -1132,7 +598,6 @@ class StalenessAndReplayTests(unittest.TestCase):
         first_steps = store.get_run_steps(first_run_id)
         second_steps = store.get_run_steps(second_run_id)
 
-        # Same plan version, same params -> same logical hashes
         self.assertEqual(
             first_steps[0].execution_fingerprint["output_artifact_logical_hashes"],
             second_steps[0].execution_fingerprint["output_artifact_logical_hashes"],
@@ -1159,7 +624,6 @@ class StalenessAndReplayTests(unittest.TestCase):
 
         first_run_id = executor.run_plan_version(store, pv_id)
 
-        # Create a new version with changed params
         new_params = {"source_path": str(tmp / "nonexistent")}
         try:
             executor.replay_from_step(store, plan_id, pv_id, "import", new_params)
@@ -1171,5 +635,119 @@ class StalenessAndReplayTests(unittest.TestCase):
         self.assertEqual(old_run["status"], "succeeded")
 
 
-if __name__ == "__main__":
-    unittest.main()
+# ======================================================================
+# Workstream 1: Node-Level Input Contracts + Leakage Tests
+# ======================================================================
+
+class InputContractTests(unittest.TestCase):
+
+    def test_fit_node_rejects_test_oot_datasets(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        node = FineClassingNode()
+
+        mock_train = ArtifactRef(
+            artifact_id="t1", artifact_type="dataset", role="train",
+            path="mock", physical_hash="a", logical_hash="b",
+        )
+        mock_test = ArtifactRef(
+            artifact_id="t2", artifact_type="dataset", role="test",
+            path="mock", physical_hash="c", logical_hash="d",
+        )
+        mock_oot = ArtifactRef(
+            artifact_id="t3", artifact_type="dataset", role="oot",
+            path="mock", physical_hash="e", logical_hash="f",
+        )
+
+        with self.assertRaises(RoleAccessError):
+            executor = PlanExecutor(NodeRegistry.with_defaults())
+            executor.validate_leakage_rules(node, [mock_test])
+
+        with self.assertRaises(RoleAccessError):
+            executor = PlanExecutor(NodeRegistry.with_defaults())
+            executor.validate_leakage_rules(node, [mock_oot])
+
+        try:
+            executor = PlanExecutor(NodeRegistry.with_defaults())
+            executor.validate_leakage_rules(node, [mock_train])
+        except RoleAccessError:
+            self.fail("Fit node should accept train dataset")
+
+    def test_selection_node_rejects_test_tabular(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        node = CalculateWoeIvNode()
+
+        mock_test_dataset = ArtifactRef(
+            artifact_id="t1", artifact_type="dataset", role="test",
+            path="mock", physical_hash="a", logical_hash="b",
+        )
+        mock_oot_dataset = ArtifactRef(
+            artifact_id="t2", artifact_type="dataset", role="oot",
+            path="mock", physical_hash="c", logical_hash="d",
+        )
+
+        executor = PlanExecutor(NodeRegistry.with_defaults())
+        with self.assertRaises(RoleAccessError):
+            executor.validate_leakage_rules(node, [mock_test_dataset])
+        with self.assertRaises(RoleAccessError):
+            executor.validate_leakage_rules(node, [mock_oot_dataset])
+
+    def test_selection_node_accepts_report_artifacts(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        node = CalculateWoeIvNode()
+
+        mock_report = ArtifactRef(
+            artifact_id="r1", artifact_type="report", role="report",
+            path="mock", physical_hash="a", logical_hash="b",
+        )
+
+        executor = PlanExecutor(NodeRegistry.with_defaults())
+        try:
+            executor.validate_leakage_rules(node, [mock_report])
+        except RoleAccessError:
+            self.fail("Selection node should accept report artifacts")
+
+    def test_transform_node_no_restrictions(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        node = ProfileDatasetNode()
+
+        mock_test_dataset = ArtifactRef(
+            artifact_id="t1", artifact_type="dataset", role="test",
+            path="mock", physical_hash="a", logical_hash="b",
+        )
+
+        executor = PlanExecutor(NodeRegistry.with_defaults())
+        try:
+            executor.validate_leakage_rules(node, [mock_test_dataset])
+        except RoleAccessError:
+            self.fail("Transform node should accept any role")
+
+
+class Phase2BEndToEndTests(unittest.TestCase):
+
+    def test_woe_transform_train_rejects_test_role(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+
+        df = pl.DataFrame({"x": [1.0], "target": ["g"]})
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        path = store.root / "datasets" / "test.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(buf.getvalue())
+        test_art = ArtifactRef(
+            artifact_id="test1", artifact_type="dataset", role="test",
+            path=relative_path(path, store.root),
+            physical_hash=physical_hash(path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet", metadata={},
+        )
+        store.register_artifact(test_art)
+
+        executor = PlanExecutor(NodeRegistry.with_defaults())
+        node = WoeTransformTrainNode()
+        with self.assertRaises(RoleAccessError):
+            executor.validate_leakage_rules(node, [test_art])

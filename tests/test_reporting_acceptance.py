@@ -1,38 +1,32 @@
-"""Phase 5 end-to-end acceptance tests (Section 25 of the technical spec).
-
-Two critical tests:
-
-1. Given a completed run directory with a target branch, inherited ancestor
-   evidence, WOE smoothing, a comparison artifact, and a champion assignment,
-   Cardre can generate an audit pack containing a deterministic
-   report_bundle.json and self-contained report.html without reading GUI
-   state, hardcoding step IDs, or re-running modelling logic.
-
-2. Given a completed challenger branch with no champion assignment, Cardre
-   can generate a branch-mode report with a NO_CHAMPION_ASSIGNMENT warning,
-   but champion-mode report generation is blocked.
-"""
+"""Acceptance tests for cardre.reporting — full audit pack generation and summary reports."""
 
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import tempfile
+import unittest
 import uuid
 from pathlib import Path
 
+import polars as pl
 import pytest
 
-pytestmark = pytest.mark.e2e
-
+from cardre.audit import (
+    ExecutionContext,
+    StepSpec,
+    json_logical_hash,
+)
 from cardre.executor import PlanExecutor
+from cardre.nodes import BuildSummaryReportNode
 from cardre.registry import NodeRegistry
 from cardre.reporting.collector import generate_report_bundle
 from cardre.reporting.readiness import check_report_readiness
 from cardre.services.export_service import export_branch_audit_pack
 from cardre.store import ProjectStore
 
-from tests.helpers import SAMPLE_GERMAN_CREDIT_LINES
+from tests.helpers import SAMPLE_GERMAN_CREDIT_LINES, _make_json_artifact, _make_parquet_report, _make_train_artifact, make_store
 
 
 def _make_german_credit_file(tmp: Path) -> Path:
@@ -120,6 +114,7 @@ def _assign_champion(store: ProjectStore, project_id: str, plan_id: str, branch_
 # Acceptance test 1: Champion report with full pathway
 # =========================================================================
 
+@pytest.mark.e2e
 class TestAcceptanceChampionReport:
     @pytest.fixture(autouse=True)
     def _setup(self):
@@ -261,6 +256,7 @@ class TestAcceptanceChampionReport:
 # Acceptance test 2: No champion branch
 # =========================================================================
 
+@pytest.mark.e2e
 class TestAcceptanceNoChampionBranch:
     @pytest.fixture(autouse=True)
     def _setup(self):
@@ -357,3 +353,63 @@ class TestAcceptanceNoChampionBranch:
         blocker_codes = {b.code for b in readiness.blockers}
         assert "CHAMPION_ASSIGNMENT_MISSING" in blocker_codes, \
             f"Expected CHAMPION_ASSIGNMENT_MISSING, got: {blocker_codes}"
+
+
+# ======================================================================
+# Build Summary Report
+# ======================================================================
+
+class BuildSummaryReportTests(unittest.TestCase):
+
+    def test_build_summary_created(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+
+        scorecard = {
+            "base_score": 600, "base_odds": 50,
+            "points_to_double_odds": 20, "higher_score_is_lower_risk": True,
+            "intercept": -0.5, "base_points": 500, "attributes": [],
+            "target_column": "target",
+        }
+        sc_art = _make_json_artifact(store, scorecard, role="scorecard", stem="sc")
+
+        model = {
+            "target_column": "target", "features": ["x_woe"],
+            "intercept": -0.5, "coefficients": {"x_woe": 0.8},
+            "class_mapping": {"good": "g", "bad": "b"},
+            "training": {"row_count": 100, "converged": True, "iterations": 10, "params": {}},
+            "warnings": [],
+        }
+        model_art = _make_json_artifact(store, model, role="model", stem="model3")
+
+        woe_df = pl.DataFrame({
+            "variable": ["x"], "bin_id": ["x_b1"], "label": ["Low"],
+            "row_count": [50], "good_count": [40], "bad_count": [10],
+            "good_distribution": [0.5], "bad_distribution": [0.5],
+            "woe": [0.3], "iv_component": [0.1],
+        })
+        woe_art = _make_parquet_report(store, woe_df, stem="woe3")
+
+        params = {}
+        spec = StepSpec(
+            step_id="bsr", node_type="cardre.build_summary_report",
+            node_version="1", category="fit",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[sc_art, model_art, woe_art],
+            validated_params=params, runtime_metadata={},
+        )
+        node = BuildSummaryReportNode()
+        output = node.run(ctx)
+
+        self.assertEqual(len(output.artifacts), 1)
+        artifact = output.artifacts[0]
+        self.assertEqual(artifact.artifact_type, "report")
+        report = json.loads(store.artifact_path(artifact).read_text())
+        self.assertIn("model_summary", report)
+        self.assertIn("scorecard_summary", report)
+        self.assertIn("woe_iv_references", report)

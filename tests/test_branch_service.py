@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from cardre.audit import StepSpec
+from cardre.audit import StepSpec, json_logical_hash
+from cardre.services import migrate_project_to_branch_model
 from cardre.services.branch_service import (
     BranchService,
     _descendant_closure,
@@ -15,6 +17,13 @@ from cardre.services.branch_service import (
     ALLOWED_BRANCH_POINTS,
 )
 from cardre.store import ProjectStore
+from sidecar.proof_pathway import (
+    PROOF_PATHWAY_STEPS_CONFIG,
+    PHASE2A_PATHWAY_STEPS_CONFIG,
+    _build_steps,
+)
+
+from tests.helpers import make_store
 
 
 @pytest.fixture
@@ -344,3 +353,166 @@ class TestBranchServiceCreateBranch:
                 base_plan_version_id=pv_id,
                 created_reason="Should fail.",
             )
+
+
+# ======================================================================
+# Baseline migration service (from Phase 4)
+# ======================================================================
+
+
+class BaselineMigrationTests:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.store, self.tmp = make_store()
+
+    def test_migrate_creates_baseline_branch(self):
+        project_id = self.store.create_project("test")
+        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
+        steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG)
+        pv_id = self.store.create_plan_version(plan_id, steps, description="v1")
+
+        result = migrate_project_to_branch_model(self.store, project_id)
+
+        assert result["branches_created"] == 1
+        assert result["plan_versions_mapped"] == 1
+        assert result["steps_mapped"] == len(steps)
+
+        branches = self.store.list_branches(project_id)
+        assert len(branches) == 1
+        assert branches[0]["branch_type"] == "baseline"
+        assert branches[0]["name"] == "Baseline"
+
+    def test_migrate_creates_step_map_for_all_versions(self):
+        project_id = self.store.create_project("test")
+        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
+
+        v1_steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2])
+        pv1_id = self.store.create_plan_version(plan_id, v1_steps, description="v1")
+
+        v2_steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:4])
+        pv2_id = self.store.create_plan_version(plan_id, v2_steps, description="v2")
+
+        result = migrate_project_to_branch_model(self.store, project_id)
+
+        assert result["plan_versions_mapped"] == 2
+        assert result["steps_mapped"] == len(v1_steps) + len(v2_steps)
+
+        branches = self.store.list_branches(project_id)
+        branch_id = branches[0]["branch_id"]
+
+        v1_map = self.store.get_branch_step_map(branch_id, pv1_id)
+        assert len(v1_map) == len(v1_steps)
+
+        v2_map = self.store.get_branch_step_map(branch_id, pv2_id)
+        assert len(v2_map) == len(v2_steps)
+
+    def test_migrate_idempotent(self):
+        project_id = self.store.create_project("test")
+        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
+        steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2])
+        self.store.create_plan_version(plan_id, steps, description="v1")
+
+        result1 = migrate_project_to_branch_model(self.store, project_id)
+        assert result1["branches_created"] == 1
+
+        result2 = migrate_project_to_branch_model(self.store, project_id)
+        assert result2["branches_created"] == 0
+
+        branches = self.store.list_branches(project_id)
+        assert len(branches) == 1
+
+    def test_migrate_excludes_hidden_import_plan(self):
+        project_id = self.store.create_project("test")
+        self.store.create_plan_version(
+            self.store.create_plan(project_id, "__import__"),
+            _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:1]),
+            description="import",
+        )
+        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
+        self.store.create_plan_version(plan_id, _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2]), description="v1")
+
+        result = migrate_project_to_branch_model(self.store, project_id)
+        assert result["branches_created"] == 1
+        assert result["plan_versions_mapped"] == 1
+
+    def test_migrate_does_not_rewrite_run_history(self):
+        from cardre.executor import PlanExecutor
+        from cardre.registry import NodeRegistry
+
+        project_id = self.store.create_project("test")
+        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
+        steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2])
+        pv_id = self.store.create_plan_version(plan_id, steps, description="v1")
+
+        reg = NodeRegistry.with_defaults()
+        executor = PlanExecutor(reg)
+        run_id = executor.run_plan_version(self.store, pv_id)
+        original_run = self.store.get_run(run_id)
+        original_run_steps = self.store.get_run_steps(run_id)
+
+        migrate_project_to_branch_model(self.store, project_id)
+
+        after_run = self.store.get_run(run_id)
+        assert after_run is not None
+        assert after_run["status"] == original_run["status"]
+        assert after_run["started_at"] == original_run["started_at"]
+        assert after_run["finished_at"] == original_run["finished_at"]
+
+        after_run_steps = self.store.get_run_steps(run_id)
+        assert len(after_run_steps) == len(original_run_steps)
+        for original, after in zip(original_run_steps, after_run_steps):
+            assert original.run_step_id == after.run_step_id
+            assert original.status == after.status
+            assert original.execution_fingerprint == after.execution_fingerprint
+
+    def test_migrate_does_not_rewrite_artifacts(self):
+        from cardre.executor import PlanExecutor
+        from cardre.registry import NodeRegistry
+
+        project_id = self.store.create_project("test")
+        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
+        steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2])
+        pv_id = self.store.create_plan_version(plan_id, steps, description="v1")
+
+        reg = NodeRegistry.with_defaults()
+        executor = PlanExecutor(reg)
+        executor.run_plan_version(self.store, pv_id)
+
+        original_artifacts = self.store.list_artifacts()
+
+        migrate_project_to_branch_model(self.store, project_id)
+
+        after_artifacts = self.store.list_artifacts()
+        assert len(after_artifacts) == len(original_artifacts)
+        for oa, aa in zip(original_artifacts, after_artifacts):
+            assert oa.artifact_id == aa.artifact_id
+            assert oa.physical_hash == aa.physical_hash
+            assert oa.logical_hash == aa.logical_hash
+
+    def test_migrate_branch_list_endpoint_works(self):
+        project_id = self.store.create_project("test")
+        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
+        steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2])
+        self.store.create_plan_version(plan_id, steps, description="v1")
+
+        migrate_project_to_branch_model(self.store, project_id)
+
+        branches = self.store.list_branches(project_id)
+        assert len(branches) == 1
+        branch = branches[0]
+        assert branch["name"] == "Baseline"
+        assert branch["branch_type"] == "baseline"
+
+    def test_migrate_creates_branch_with_correct_head_version(self):
+        project_id = self.store.create_project("test")
+        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
+        steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2])
+        pv1 = self.store.create_plan_version(plan_id, steps[:1], description="v1")
+        pv2 = self.store.create_plan_version(plan_id, steps, description="v2")
+
+        migrate_project_to_branch_model(self.store, project_id)
+
+        branches = self.store.list_branches(project_id)
+        branch = branches[0]
+        assert branch["base_plan_version_id"] == pv1
+        assert branch["head_plan_version_id"] == pv2
