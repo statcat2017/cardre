@@ -87,22 +87,17 @@ class LogisticRegressionNode(NodeType):
             raise ValueError(f"Target column '{target_column}' not found in training data")
 
         raw_target = df[target_column].cast(pl.String)
-        all_known = good_values | bad_values
-        unknown = raw_target.filter(~raw_target.is_in(list(all_known))).to_list()
+        target_is_bad = raw_target.is_in(bad_values)
+        target_is_known = target_is_bad | raw_target.is_in(good_values)
+        unknown = raw_target.filter(~target_is_known).unique().to_list()
         if unknown:
-            unique_unknown = sorted(set(unknown))
             raise ValueError(
                 f"Target column '{target_column}' contains {len(unknown)} value(s) "
-                f"not declared as good or bad: {unique_unknown[:10]}. "
+                f"not declared as good or bad: {sorted(unknown)[:10]}. "
                 f"Every row must be explicitly classified."
             )
 
-        y_binary = df.with_columns(
-            pl.when(pl.col(target_column).cast(pl.String).is_in(list(bad_values)))
-            .then(pl.lit(1))
-            .otherwise(pl.lit(0))
-            .alias("_y_binary")
-        )["_y_binary"].to_list()
+        y_binary = target_is_bad.cast(pl.Int64).to_list()
         n_bad = sum(y_binary)
         n_good = len(y_binary) - n_bad
         if n_bad == 0:

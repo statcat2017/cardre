@@ -114,8 +114,8 @@ class FeatureSelectionFilterNode(NodeType):
         if iv_lf is not None:
             iv_df = iv_lf.dataframe.collect()
             for row in iv_df.iter_rows():
-                var_name = str(row[iv_df.columns.index("variable")])
-                iv_val = float(row[iv_df.columns.index("iv")])
+                var_name = str(row[0])
+                iv_val = float(row[1])
                 iv_map[var_name] = iv_val
 
         # Apply filters
@@ -124,9 +124,9 @@ class FeatureSelectionFilterNode(NodeType):
 
         # 1. Missingness filter
         n_rows = df.height
+        null_counts = {c: int(df[c].null_count()) for c in numeric_cols}
         for col in list(numeric_cols):
-            null_count = df[col].null_count()
-            missingness = null_count / n_rows if n_rows > 0 else 0
+            missingness = null_counts[col] / n_rows if n_rows > 0 else 0
             if missingness > max_missingness:
                 rejected.append({
                     "variable": col,
@@ -137,9 +137,10 @@ class FeatureSelectionFilterNode(NodeType):
                 numeric_cols.remove(col)
 
         # 2. Variance filter
+        variances = {c: float(df[c].var()) for c in numeric_cols}
         for col in list(numeric_cols):
             try:
-                variance = float(df[col].var())
+                variance = variances[col]
                 if variance < min_variance:
                     rejected.append({
                         "variable": col,
@@ -351,8 +352,7 @@ class FeatureSelectionEmbeddedNode(NodeType):
             raise ValueError("No numeric features available for selection")
 
         # Prepare target
-        y_raw = df[target_column].cast(pl.String).to_list()
-        y_binary = np.array([1 if str(v) in bad_values else 0 for v in y_raw])
+        y_binary = df[target_column].cast(pl.String).is_in(bad_values).cast(pl.Int64).to_numpy()
 
         X = df.select(features).to_numpy()
 
@@ -530,8 +530,7 @@ class ResampleTrainingDataNode(NodeType):
         if target_col not in df.columns:
             raise ValueError(f"Target column {target_col!r} not found")
 
-        y_raw = df[target_col].cast(pl.String).to_list()
-        y_bin = np.array([1 if str(v) in bad_values else 0 for v in y_raw])
+        y_bin = df[target_col].cast(pl.String).is_in(bad_values).cast(pl.Int64).to_numpy()
 
         n_bad = int(y_bin.sum())
         n_good = len(y_bin) - n_bad
@@ -583,9 +582,9 @@ class ResampleTrainingDataNode(NodeType):
         n_dropped_good = max(0, n_good - len(resampled_good_idx))
 
         # Compute class distribution report
-        new_y = resampled_df[target_col].cast(pl.String).to_list()
-        new_bad = sum(1 for v in new_y if str(v) in bad_values)
-        new_good = len(new_y) - new_bad
+        target_series = resampled_df[target_col].cast(pl.String)
+        new_bad = int(target_series.is_in(bad_values).sum())
+        new_good = len(target_series) - new_bad
 
         resample_report = {
             "original": {"total": original_count, "bad": n_bad, "good": n_good},
@@ -700,8 +699,7 @@ class SmoteTrainingDataNode(NodeType):
             raise ValueError(f"Target column {target_col!r} not found")
 
         # Separate features and target
-        y_raw = df[target_col].cast(pl.String).to_list()
-        y_binary = np.array([1 if str(v) in bad_values else 0 for v in y_raw])
+        y_binary = df[target_col].cast(pl.String).is_in(bad_values).cast(pl.Int64).to_numpy()
 
         feature_cols = [c for c in df.columns if c != target_col and df.schema[c].is_numeric()]
         if not feature_cols:
@@ -756,9 +754,9 @@ class SmoteTrainingDataNode(NodeType):
             resampled_df = df.select(feature_cols + [target_col] + passthrough_cols)
 
         # Class distribution
-        new_y = resampled_df[target_col].cast(pl.String).to_list()
-        new_bad = sum(1 for v in new_y if str(v) in bad_values)
-        new_good = len(new_y) - new_bad
+        target_series = resampled_df[target_col].cast(pl.String)
+        new_bad = int(target_series.is_in(bad_values).sum())
+        new_good = len(target_series) - new_bad
 
         smote_report = {
             "original": {"total": n_original, "bad": n_bad, "good": n_good},

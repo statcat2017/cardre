@@ -223,24 +223,22 @@ class ApplyModelNode(NodeType):
                     f"apply_model: role {role!r} missing features {missing}"
                 )
 
-            feature_arr = df.select(features).to_numpy()
-            log_odds = np.full(feature_arr.shape[0], intercept, dtype=np.float64)
-            for i, feat in enumerate(features):
-                log_odds += float(coefficients.get(feat, 0)) * feature_arr[:, i]
-
-            pred_bad = 1.0 / (1.0 + np.exp(-log_odds))
+            log_odds_expr = pl.lit(intercept)
+            for feat in features:
+                coef = float(coefficients.get(feat, 0))
+                log_odds_expr = log_odds_expr + pl.col(feat) * pl.lit(coef)
 
             columns_to_add = [
-                pl.Series("predicted_bad_probability", pred_bad, dtype=pl.Float64),
-                pl.Series("raw_model_output", log_odds, dtype=pl.Float64),
+                (1.0 / (1.0 + (-log_odds_expr).exp())).alias("predicted_bad_probability"),
+                log_odds_expr.alias("raw_model_output"),
                 pl.lit(model_art.artifact_id).alias("model_artifact_id"),
                 pl.lit("logistic_regression").alias("model_family"),
             ]
 
             if has_scorecard:
-                score_vals = offset + direction * factor * log_odds
-                columns_to_add.append(pl.Series("score", score_vals, dtype=pl.Float64))
-                columns_to_add.append(pl.Series("cardre_scaled_score", score_vals, dtype=pl.Float64))
+                score_expr = pl.lit(offset) + pl.lit(direction * factor) * log_odds_expr
+                columns_to_add.append(score_expr.alias("score"))
+                columns_to_add.append(score_expr.alias("cardre_scaled_score"))
 
             df = df.with_columns(columns_to_add)
             art = write_parquet_artifact(
@@ -397,11 +395,10 @@ class ApplyModelNode(NodeType):
                 if bm_family == "logistic_regression":
                     coefs = bm_art.get("coefficients", {})
                     intercept = float(bm_art.get("intercept", 0))
-                    X = df.select(bm_features).to_numpy()
-                    log_odds = np.full(X.shape[0], intercept, dtype=np.float64)
-                    for i, feat in enumerate(bm_features):
-                        log_odds += float(coefs.get(feat, 0)) * X[:, i]
-                    probs = 1.0 / (1.0 + np.exp(-log_odds))
+                    log_odds_expr = pl.lit(intercept)
+                    for feat in bm_features:
+                        log_odds_expr = log_odds_expr + pl.col(feat) * pl.lit(float(coefs.get(feat, 0)))
+                    probs = df.select((1.0 / (1.0 + (-log_odds_expr).exp())).alias("_probs"))["_probs"].to_numpy()
                 else:
                     estimator_ref = bm_art.get("estimator_reference", {})
                     estimator_art_id = estimator_ref.get("artifact_id", "")

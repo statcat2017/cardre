@@ -91,26 +91,26 @@ def _prepare_training_data(
     features = _resolve_features(df, target_column, params)
 
     raw_target = df[target_column].cast(pl.String)
-    y_raw = raw_target.to_list()
-    all_known = good_values | bad_values
-    unknown = [str(v) for v in y_raw if str(v) not in all_known]
-    if unknown:
-        unique_unknown = sorted(set(unknown))
+    target_is_bad = raw_target.is_in(bad_values)
+    target_is_known = target_is_bad | raw_target.is_in(good_values)
+    n_unknown = int((~target_is_known).sum())
+    if n_unknown > 0:
+        unknown_vals = sorted(raw_target.filter(~target_is_known).unique().to_list())
         raise ValueError(
-            f"Target column '{target_column}' contains {len(unknown)} value(s) "
-            f"not declared as good or bad: {unique_unknown[:10]}. "
+            f"Target column '{target_column}' contains {n_unknown} value(s) "
+            f"not declared as good or bad: {unknown_vals[:10]}. "
             f"Every row must be explicitly classified."
         )
 
-    y_binary = [1 if str(v) in bad_values else 0 for v in y_raw]
-    n_bad = sum(y_binary)
+    y_binary = target_is_bad.cast(pl.Int64).to_numpy()
+    n_bad = int(y_binary.sum())
     n_good = len(y_binary) - n_bad
     if n_bad == 0:
         raise ValueError(f"No bad-class rows found (bad_values={sorted(bad_values)})")
     if n_good == 0:
         raise ValueError(f"No good-class rows found (good_values={sorted(good_values)})")
 
-    return df, features, target_column, good_values, bad_values, np.array(y_binary), meta
+    return df, features, target_column, good_values, bad_values, y_binary, meta
 
 
 def _write_estimator(store, clf, step_id: str, run_id: str, model_family: str):

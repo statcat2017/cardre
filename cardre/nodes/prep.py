@@ -195,18 +195,37 @@ class ProfileDatasetNode(NodeType):
             metrics={"row_count": df.height})
 
     def _numeric_stats(self, df: pl.DataFrame) -> dict[str, dict[str, float]]:
-        stats = {}
-        for col in df.columns:
-            if df.schema[col] in (pl.Float64, pl.Float32, pl.Int64, pl.Int32, pl.Int16, pl.Int8, pl.UInt32, pl.UInt16, pl.UInt8):
-                series = df[col]
-                if series.drop_nulls().is_empty():
-                    stats[col] = {"min": None, "max": None, "mean": None, "std": None}
-                    continue
+        numeric_cols = [c for c in df.columns if df.schema[c].is_numeric()]
+        if not numeric_cols:
+            return {}
+
+        empty_cols = {c for c in numeric_cols if df[c].drop_nulls().is_empty()}
+        available = [c for c in numeric_cols if c not in empty_cols]
+
+        stats = {c: {"min": None, "max": None, "mean": None, "std": None} for c in numeric_cols}
+
+        if available:
+            aggs = df.select([
+                pl.col(c).min().alias(f"{c}__min")
+                for c in available
+            ] + [
+                pl.col(c).max().alias(f"{c}__max")
+                for c in available
+            ] + [
+                pl.col(c).mean().alias(f"{c}__mean")
+                for c in available
+            ] + [
+                pl.col(c).std().alias(f"{c}__std")
+                for c in available
+            ])
+            row = aggs.row(0)
+            half = len(available)
+            for i, col in enumerate(available):
                 stats[col] = {
-                    "min": float(series.min()),
-                    "max": float(series.max()),
-                    "mean": float(series.mean()),
-                    "std": float(series.std()),
+                    "min": float(row[i]),
+                    "max": float(row[i + half]),
+                    "mean": float(row[i + half * 2]),
+                    "std": float(row[i + half * 3]) if row[i + half * 3] is not None else None,
                 }
         return stats
 

@@ -31,7 +31,7 @@ class ValidationMetricsNode(NodeType):
 
     def _derive_y_bin(
         self, df: pl.DataFrame, target_col: str, good: set[str], bad: set[str],
-    ) -> tuple[list[int] | None, list[dict]]:
+    ) -> tuple[np.ndarray | None, list[dict]]:
         warnings: list[dict] = []
         if not target_col or target_col not in df.columns:
             warnings.append({
@@ -48,8 +48,11 @@ class ValidationMetricsNode(NodeType):
             })
             return None, warnings
 
-        y_raw = df[target_col].cast(pl.String).to_list()
-        y_bin = [1 if str(v) in bad else 0 for v in y_raw]
+        bad_list = list(bad)
+        y_bin = (df.with_columns(
+            pl.when(pl.col(target_col).cast(pl.String).is_in(bad_list))
+            .then(pl.lit(1)).otherwise(pl.lit(0)).alias("_y_binary")
+        )["_y_binary"].to_numpy())
         n_bad = sum(y_bin)
         n_good = len(y_bin) - n_bad
         if n_bad == 0:
@@ -73,12 +76,13 @@ class ValidationMetricsNode(NodeType):
         target_col = meta.target_column if meta is not None else ""
         good = set(str(v) for v in (meta.good_values if meta is not None else []))
         bad = set(str(v) for v in (meta.bad_values if meta is not None else []))
+        bad_list = list(bad)
 
         cutoffs = list(context.validated_params.get("cutoffs", [0.5]))
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
         metrics_report: dict = {}
-        psi_bins: dict[str, list[float]] = {}
+        psi_data: dict[str, pl.Series] = {}
 
         for data_art in data_arts:
             role = data_art.role
@@ -90,8 +94,10 @@ class ValidationMetricsNode(NodeType):
                 continue
 
             y_bin, warnings = self._derive_y_bin(df, target_col, good, bad)
-            y_prob = df["predicted_bad_probability"].to_list()
-            scores = df["score"].to_list() if "score" in df.columns else y_prob
+            y_prob = df["predicted_bad_probability"].to_numpy()
+            has_score = "score" in df.columns
+            scores_series = df["score"] if has_score else df["predicted_bad_probability"]
+            scores = scores_series.to_numpy()
 
             if y_bin is None:
                 metrics_report[role] = {
@@ -114,29 +120,29 @@ class ValidationMetricsNode(NodeType):
                 auc_val = round(float(roc_auc_score(y_bin, y_prob)), 6)
                 gini_val = round(2 * auc_val - 1, 6)
 
-                sorted_by_score = sorted(zip(scores, y_bin), key=lambda x: x[0])
-                cum_good = 0
-                cum_bad = 0
-                ks = 0.0
-                total_good = n_good
-                total_bad = n_bad
-                for sc, is_bad in sorted_by_score:
-                    cum_good += (1 - is_bad)
-                    cum_bad += is_bad
-                    diff = abs(cum_good / total_good - cum_bad / total_bad) if total_good > 0 and total_bad > 0 else 0
-                    if diff > ks:
-                        ks = diff
-                        ks_at = sc
-                ks_val = round(ks, 6)
+                ks_df = df.with_columns(
+                    pl.when(pl.col(target_col).cast(pl.String).is_in(bad_list))
+                    .then(pl.lit(1)).otherwise(pl.lit(0)).alias("_y_binary")
+                ).sort("score").with_columns(
+                    (pl.lit(1) - pl.col("_y_binary")).cum_sum().alias("_cum_good"),
+                    pl.col("_y_binary").cum_sum().alias("_cum_bad"),
+                ).select(
+                    (pl.col("_cum_good") / n_good - pl.col("_cum_bad") / n_bad).abs().alias("ks_val"),
+                    pl.col("score").alias("ks_at"),
+                )
+                ks_max = ks_df.select(pl.max("ks_val")).item()
+                if ks_max is not None:
+                    ks_val = round(float(ks_max), 6)
+                    ks_at = float(ks_df.filter(pl.col("ks_val") == ks_max).select("ks_at").item())
 
-                calib = self._calibration(y_bin, y_prob, 10)
+                calib = self._calibration(df, target_col, bad_list, 10)
                 score_dist = self._score_distribution(scores)
             else:
                 calib = {"note": "Single class only; metrics skipped"}
 
             at_cutoffs: dict[str, dict] = {}
             for cutoff in cutoffs:
-                y_pred = [1 if p >= cutoff else 0 for p in y_prob]
+                y_pred = (y_prob >= cutoff).astype(int)
                 tn, fp, fn, tp = confusion_matrix(y_bin, y_pred, labels=[0, 1]).ravel()
                 accuracy = round((tp + tn) / n, 6) if n > 0 else 0.0
                 precision = round(tp / (tp + fp), 6) if (tp + fp) > 0 else 0.0
@@ -166,12 +172,12 @@ class ValidationMetricsNode(NodeType):
                 "at_cutoffs": at_cutoffs,
                 "warnings": warnings,
             }
-            psi_bins[role] = scores
+            psi_data[role] = scores_series
 
-        if "train" in psi_bins and "test" in psi_bins:
-            metrics_report.setdefault("psi", {})["train_vs_test"] = self._psi(psi_bins["train"], psi_bins["test"])
-        if "train" in psi_bins and "oot" in psi_bins:
-            metrics_report.setdefault("psi", {})["train_vs_oot"] = self._psi(psi_bins["train"], psi_bins["oot"])
+        if "train" in psi_data and "test" in psi_data:
+            metrics_report.setdefault("psi", {})["train_vs_test"] = self._psi(psi_data["train"], psi_data["test"])
+        if "train" in psi_data and "oot" in psi_data:
+            metrics_report.setdefault("psi", {})["train_vs_oot"] = self._psi(psi_data["train"], psi_data["oot"])
 
         metrics_report["schema_version"] = SCHEMA_VALIDATION_METRICS
         art = write_json_artifact(
@@ -182,54 +188,66 @@ class ValidationMetricsNode(NodeType):
         )
         return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
 
-    def _calibration(self, y_true: list[int], y_prob: list[float], n_bins: int = 10) -> dict:
-        pairs = list(zip(y_prob, y_true))
-        pairs.sort(key=lambda x: x[0])
-        n = len(pairs)
+    def _calibration(
+        self, df: pl.DataFrame, target_col: str, bad_list: list[str], n_bins: int = 10,
+    ) -> dict:
+        calib_df = df.with_columns(
+            pl.col("predicted_bad_probability").qcut(n_bins, allow_duplicates=True).alias("_calib_bin"),
+            pl.when(pl.col(target_col).cast(pl.String).is_in(bad_list))
+            .then(pl.lit(1)).otherwise(pl.lit(0)).alias("_y_binary"),
+        ).group_by("_calib_bin", maintain_order=True).agg([
+            pl.len().alias("count"),
+            pl.col("predicted_bad_probability").mean().alias("avg_predicted_probability"),
+            pl.col("_y_binary").mean().alias("actual_bad_rate"),
+        ]).with_columns(
+            pl.col("avg_predicted_probability").round(6),
+            pl.col("actual_bad_rate").round(6),
+        )
+
         bins = []
-        for i in range(n_bins):
-            lo = i * n // n_bins
-            hi = (i + 1) * n // n_bins if i < n_bins - 1 else n
-            if lo >= hi:
-                continue
-            bin_probs = [p[0] for p in pairs[lo:hi]]
-            bin_actual = [p[1] for p in pairs[lo:hi]]
-            avg_pred = float(np.mean(bin_probs)) if bin_probs else 0.0
-            avg_actual = float(np.mean(bin_actual)) if bin_actual else 0.0
+        for row in calib_df.iter_rows():
             bins.append({
-                "bin": i,
-                "count": hi - lo,
-                "avg_predicted_probability": round(avg_pred, 6),
-                "actual_bad_rate": round(avg_actual, 6),
+                "bin": len(bins),
+                "count": row[1],
+                "avg_predicted_probability": row[2],
+                "actual_bad_rate": row[3],
             })
         return {"bins": bins}
 
-    def _score_distribution(self, scores: list[float]) -> dict:
-        arr = np.array(scores)
+    def _score_distribution(self, scores: np.ndarray) -> dict:
         return {
-            "mean": round(float(np.mean(arr)), 2),
-            "median": round(float(np.median(arr)), 2),
-            "min": round(float(np.min(arr)), 2),
-            "max": round(float(np.max(arr)), 2),
-            "std": round(float(np.std(arr)), 2),
-            "p5": round(float(np.percentile(arr, 5)), 2),
-            "p25": round(float(np.percentile(arr, 25)), 2),
-            "p75": round(float(np.percentile(arr, 75)), 2),
-            "p95": round(float(np.percentile(arr, 95)), 2),
+            "mean": round(float(np.mean(scores)), 2),
+            "median": round(float(np.median(scores)), 2),
+            "min": round(float(np.min(scores)), 2),
+            "max": round(float(np.max(scores)), 2),
+            "std": round(float(np.std(scores)), 2),
+            "p5": round(float(np.percentile(scores, 5)), 2),
+            "p25": round(float(np.percentile(scores, 25)), 2),
+            "p75": round(float(np.percentile(scores, 75)), 2),
+            "p95": round(float(np.percentile(scores, 95)), 2),
         }
 
-    def _psi(self, expected: list[float], actual: list[float], n_bins: int = 10) -> float:
-        if not expected or not actual:
+    def _psi(self, expected: pl.Series, actual: pl.Series, n_bins: int = 10) -> float:
+        if expected.is_empty() or actual.is_empty():
             return 0.0
-        all_vals = np.concatenate([expected, actual])
-        bins = np.percentile(expected, [i * 100 / n_bins for i in range(1, n_bins)])
-        bins = np.unique(bins)
-        expected_counts = np.histogram(expected, bins=bins if len(bins) > 1 else 2)[0]
-        actual_counts = np.histogram(actual, bins=bins if len(bins) > 1 else 2)[0]
+
+        expected_arr = expected.to_numpy()
+        actual_arr = actual.to_numpy()
+        bin_edges = np.percentile(expected_arr, [i * 100 / n_bins for i in range(1, n_bins)])
+        bin_edges = np.unique(bin_edges)
+        if len(bin_edges) <= 1:
+            expected_counts = np.array([len(expected_arr)])
+            actual_counts = np.array([len(actual_arr)])
+        else:
+            expected_counts = np.histogram(expected_arr, bins=bin_edges)[0]
+            actual_counts = np.histogram(actual_arr, bins=bin_edges)[0]
+
         psi = 0.0
+        n_exp = len(expected_arr)
+        n_act = len(actual_arr)
         for ec, ac in zip(expected_counts, actual_counts):
-            ep = ec / len(expected)
-            ap = ac / len(actual)
+            ep = ec / n_exp
+            ap = ac / n_act
             if ap == 0 or ep == 0:
                 continue
             psi += (ap - ep) * np.log(ap / ep)
@@ -293,8 +311,8 @@ class ThresholdOptimizationNode(NodeType):
 
         meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         target_col = meta.target_column if meta is not None else ""
-        good = set(str(v) for v in (meta.good_values if meta is not None else []))
         bad = set(str(v) for v in (meta.bad_values if meta is not None else []))
+        bad_list = list(bad)
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
         report: dict = {"objective": objective, "cost_fp": cost_fp, "cost_fn": cost_fn, "roles": {}}
@@ -307,56 +325,61 @@ class ThresholdOptimizationNode(NodeType):
                 report["roles"][role] = {"error": "Missing predicted_bad_probability"}
                 continue
 
-            y_prob = df["predicted_bad_probability"].to_list()
-            y_bin = [0] * df.height
+            y_prob = df["predicted_bad_probability"].to_numpy()
             if target_col and target_col in df.columns and bad:
-                y_raw = df[target_col].cast(pl.String).to_list()
-                y_bin = [1 if str(v) in bad else 0 for v in y_raw]
+                y_bin = df[target_col].cast(pl.String).is_in(bad_list).cast(pl.Int64).to_numpy()
+            else:
+                y_bin = np.zeros(df.height, dtype=np.int64)
 
-            n_bad = sum(y_bin)
+            n_bad = int(y_bin.sum())
             n_good = len(y_bin) - n_bad
             if n_bad == 0 or n_good == 0:
                 report["roles"][role] = {"error": "Single class; threshold optimization skipped"}
                 continue
 
             thresholds = np.linspace(0.0, 1.0, n_thresholds)
-            best = {"threshold": 0.5, "objective_value": -np.inf, "detail": {}}
+            y_pred_matrix = (y_prob[:, None] >= thresholds[None, :]).astype(int)
+            tp = np.sum((y_bin[:, None] == 1) & (y_pred_matrix == 1), axis=0)
+            tn = np.sum((y_bin[:, None] == 0) & (y_pred_matrix == 0), axis=0)
+            fp = np.sum((y_bin[:, None] == 0) & (y_pred_matrix == 1), axis=0)
+            fn = np.sum((y_bin[:, None] == 1) & (y_pred_matrix == 0), axis=0)
 
-            for t in thresholds:
-                y_pred = [1 if p >= t else 0 for p in y_prob]
-                tn, fp, fn, tp = self._confusion(y_bin, y_pred)
+            denom_tp_fn = tp + fn
+            denom_tn_fp = tn + fp
+            recall = np.divide(tp, denom_tp_fn, where=denom_tp_fn > 0, out=np.zeros_like(tp, dtype=float))
+            specificity = np.divide(tn, denom_tn_fp, where=denom_tn_fp > 0, out=np.zeros_like(tn, dtype=float))
+            precision = np.divide(tp, tp + fp, where=(tp + fp) > 0, out=np.zeros_like(tp, dtype=float))
+            denom_f1 = precision + recall
+            f1 = np.divide(2 * precision * recall, denom_f1, where=denom_f1 > 0, out=np.zeros_like(precision, dtype=float))
+            g_mean = np.sqrt(recall * specificity)
+            cost = cost_fp * fp + cost_fn * fn
+            j = recall + specificity - 1.0
 
-                recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-                specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
-                precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-                f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
-                g_mean = (recall * specificity) ** 0.5 if recall > 0 and specificity > 0 else 0.0
-                cost = cost_fp * fp + cost_fn * fn
-                j = recall + specificity - 1.0
+            if objective == "youden":
+                scores = j
+            elif objective == "max_f1":
+                scores = f1
+            elif objective == "max_g_mean":
+                scores = g_mean
+            elif objective == "cost_minimize":
+                scores = -cost.astype(float)
+            else:
+                scores = np.zeros(n_thresholds)
 
-                detail = {
-                    "recall": round(recall, 6),
-                    "specificity": round(specificity, 6),
-                    "precision": round(precision, 6),
-                    "f1": round(f1, 6),
-                    "g_mean": round(g_mean, 6),
-                    "cost": round(cost, 6),
-                    "youden_j": round(j, 6),
-                }
-
-                if objective == "youden":
-                    score = j
-                elif objective == "max_f1":
-                    score = f1
-                elif objective == "max_g_mean":
-                    score = g_mean
-                elif objective == "cost_minimize":
-                    score = -cost
-                else:
-                    score = 0.0
-
-                if score > best["objective_value"]:
-                    best = {"threshold": round(float(t), 6), "objective_value": round(score, 6), "detail": detail}
+            best_idx = int(np.argmax(scores))
+            best = {
+                "threshold": round(float(thresholds[best_idx]), 6),
+                "objective_value": round(float(scores[best_idx]), 6),
+                "detail": {
+                    "recall": round(float(recall[best_idx]), 6),
+                    "specificity": round(float(specificity[best_idx]), 6),
+                    "precision": round(float(precision[best_idx]), 6),
+                    "f1": round(float(f1[best_idx]), 6),
+                    "g_mean": round(float(g_mean[best_idx]), 6),
+                    "cost": round(float(cost[best_idx]), 6),
+                    "youden_j": round(float(j[best_idx]), 6),
+                },
+            }
 
             report["roles"][role] = best
 
@@ -378,20 +401,6 @@ class ThresholdOptimizationNode(NodeType):
         return NodeOutput(
             artifacts=[art],
             metrics={"selected_threshold": selected_threshold})
-
-    def _confusion(self, y_bin: list[int], y_pred: list[int]) -> tuple[int, int, int, int]:
-        tn = fp = fn = tp = 0
-        for actual, predicted in zip(y_bin, y_pred):
-            if actual == 0 and predicted == 0:
-                tn += 1
-            elif actual == 0 and predicted == 1:
-                fp += 1
-            elif actual == 1 and predicted == 0:
-                fn += 1
-            else:
-                tp += 1
-        return tn, fp, fn, tp
-
 
 class CutoffAnalysisNode(NodeType):
     node_type = "cardre.cutoff_analysis"
@@ -424,6 +433,7 @@ class CutoffAnalysisNode(NodeType):
         target_col = meta.target_column if meta is not None else ""
         good = set(str(v) for v in (meta.good_values if meta is not None else []))
         bad = set(str(v) for v in (meta.bad_values if meta is not None else []))
+        bad_list = list(bad)
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
         cutoff_tables: dict[str, list[JsonDict]] = {}
@@ -435,56 +445,65 @@ class CutoffAnalysisNode(NodeType):
             if "score" not in df.columns or "predicted_bad_probability" not in df.columns:
                 continue
 
-            scores = df["score"].to_list()
-            if len(set(scores)) < 2:
+            score_series = df["score"]
+            if score_series.n_unique() < 2:
                 raise ValueError(f"Score column has zero variance in role {role!r}")
 
-            min_s, max_s = min(scores), max(scores)
+            min_s = score_series.min()
+            max_s = score_series.max()
+
             if cutoffs:
-                bands = sorted(float(c) for c in cutoffs if isinstance(c, (int, float)))
+                band_breaks = sorted(float(c) for c in cutoffs if isinstance(c, (int, float)))
             else:
                 step = (max_s - min_s) / band_count
-                bands = [min_s + i * step for i in range(1, band_count)]
+                band_breaks = [min_s + i * step for i in range(1, band_count)]
 
-            if not target_col or target_col not in df.columns:
-                warnings.append({
-                    "role": role,
-                    "code": "MISSING_TARGET_COLUMN",
-                    "message": f"Target column {target_col!r} not found in role {role!r}; "
-                               "bad rate and capture rate are not meaningful.",
-                })
-                y_bin = [0] * df.height
-            elif not good and not bad:
-                warnings.append({
-                    "role": role,
-                    "code": "MISSING_TARGET_METADATA",
-                    "message": "No good_values/bad_values in definition artifact; "
-                               "bad rate and capture rate are not meaningful.",
-                })
-                y_bin = [0] * df.height
+            has_target = target_col and target_col in df.columns
+            if has_target and good and bad:
+                y_bin_expr = pl.when(pl.col(target_col).cast(pl.String).is_in(bad_list)).then(1).otherwise(0)
             else:
-                y_raw = df[target_col].cast(pl.String).to_list()
-                y_bin = [1 if str(v) in bad else 0 for v in y_raw]
+                if not has_target:
+                    warnings.append({
+                        "role": role, "code": "MISSING_TARGET_COLUMN",
+                        "message": f"Target column {target_col!r} not found in role {role!r}; "
+                                   "bad rate and capture rate are not meaningful.",
+                    })
+                elif not good and not bad:
+                    warnings.append({
+                        "role": role, "code": "MISSING_TARGET_METADATA",
+                        "message": "No good_values/bad_values in definition artifact; "
+                                   "bad rate and capture rate are not meaningful.",
+                    })
+                y_bin_expr = pl.lit(0)
+                has_target = False
 
-            bands_with_sentinel = [float("-inf")] + bands + [float("inf")]
-            band_results = []
-            for i in range(len(bands_with_sentinel) - 1):
-                lo = bands_with_sentinel[i]
-                hi = bands_with_sentinel[i + 1]
-                idx = [j for j, s in enumerate(scores) if lo <= s < hi] if i < len(bands_with_sentinel) - 2 else [j for j, s in enumerate(scores) if lo <= s <= hi]
-                if not idx:
-                    continue
-                n_band = len(idx)
-                n_bad_band = sum(y_bin[j] for j in idx)
+            band_cuts = [float("-inf")] + band_breaks + [float("inf")]
+            binned = df.with_columns(
+                y_bin_expr.alias("_y_binary"),
+                pl.col("score").cut(band_breaks, include_breaks=True).alias("_band"),
+            )
+            total_bad = binned.select(pl.sum("_y_binary")).item()
+            total_n = binned.height
+
+            grouped = binned.with_columns([
+                binned["_band"].struct.field("breakpoint").alias("_brk"),
+            ]).group_by("_brk", maintain_order=True).agg([
+                pl.len().alias("count"),
+                pl.sum("_y_binary").alias("bad_count"),
+            ]).sort("_brk")
+
+            band_results: list[JsonDict] = []
+            for i, row in enumerate(grouped.iter_rows()):
+                brk, cnt, bc = row[0], row[1], row[2]
                 band_results.append({
                     "band": i + 1,
-                    "lower": round(lo, 2) if lo != float("-inf") else None,
-                    "upper": round(hi, 2) if hi != float("inf") else None,
-                    "count": n_band,
-                    "bad_count": n_bad_band,
-                    "approval_rate": round(1 - n_band / len(scores), 4),
-                    "bad_rate": round(n_bad_band / n_band if n_band > 0 else 0, 4),
-                    "capture_rate": round(n_bad_band / sum(y_bin) if sum(y_bin) > 0 else 0, 4),
+                    "lower": round(float(band_cuts[i]), 2) if band_cuts[i] != float("-inf") else None,
+                    "upper": round(float(brk), 2) if brk != float("inf") else None,
+                    "count": cnt,
+                    "bad_count": bc,
+                    "approval_rate": round(1 - cnt / total_n, 4),
+                    "bad_rate": round(bc / cnt, 4) if cnt > 0 else 0,
+                    "capture_rate": round(bc / total_bad, 4) if total_bad > 0 else 0,
                 })
 
             cutoff_tables[role] = [

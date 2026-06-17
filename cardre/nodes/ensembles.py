@@ -420,8 +420,7 @@ class WeightedEnsembleNode(NodeType):
         """Optimize weights to maximize AUC on training data."""
         from sklearn.metrics import roc_auc_score
 
-        y_raw = df[target_col].cast(pl.String).to_list()
-        y_bin = np.array([1 if str(v) in bad_values else 0 for v in y_raw])
+        y_bin = df[target_col].cast(pl.String).is_in(bad_values).cast(pl.Int64).to_numpy()
 
         n_models = prob_matrix.shape[1]
         best_weights = np.ones(n_models) / n_models
