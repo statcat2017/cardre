@@ -110,6 +110,13 @@ _MODEL_FAMILIES: dict[str, dict] = {
         "champion_eligibility": None,
         "description": "Optimize classification threshold using Youden, max F1, max G-Mean, or cost minimization.",
     },
+    "cardre.hyperparameter_tuning": {
+        "model_family": None,
+        "feature_strategies": [],
+        "interpretability_level": None,
+        "champion_eligibility": None,
+        "description": "Hyperparameter tuning using GridSearchCV / RandomizedSearchCV for decision tree, random forest, GBDT, or logistic regression.",
+    },
 }
 
 
@@ -228,6 +235,20 @@ def get_node_type_schema(node_type: str) -> NodeTypeSchemaResponse:
             "optimize_weights": {"type": "boolean", "default": False},
         }
         defaults = {"optimize_weights": False}
+    elif node_type == "cardre.hyperparameter_tuning":
+        params_schema = {
+            "estimator_type": {"type": "string", "enum": ["decision_tree", "random_forest", "gbdt", "logistic_regression"]},
+            "search_method": {"type": "string", "enum": ["grid", "randomized"], "default": "grid"},
+            "param_grid": {"type": "object"},
+            "cv_folds": {"type": "integer", "minimum": 2, "default": 5},
+            "scoring": {"type": "string", "default": "roc_auc"},
+            "n_jobs": {"type": "integer", "default": -1},
+            "n_iter": {"type": "integer", "minimum": 1, "default": 10},
+            "refit": {"type": "boolean", "default": True},
+            "random_seed": {"type": "integer", "default": 42},
+            "feature_strategy": {"type": "string", "enum": ["raw_numeric", "encoded_raw", "woe_challenger"], "default": "raw_numeric"},
+        }
+        defaults = {"search_method": "grid", "cv_folds": 5, "scoring": "roc_auc", "n_jobs": -1, "n_iter": 10, "refit": True, "random_seed": 42, "feature_strategy": "raw_numeric"}
 
     return NodeTypeSchemaResponse(
         node_type=node_type,

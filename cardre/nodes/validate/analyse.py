@@ -4,6 +4,7 @@ from typing import Any
 
 import numpy as np
 import polars as pl
+from sklearn.calibration import calibration_curve
 from sklearn.metrics import (
     confusion_matrix,
     f1_score,
@@ -79,6 +80,7 @@ class ValidationMetricsNode(NodeType):
         bad_list = list(bad)
 
         cutoffs = list(context.validated_params.get("cutoffs", [0.5]))
+        include_calibration_display = context.validated_params.get("include_calibration_display", False)
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
         metrics_report: dict = {}
@@ -114,6 +116,7 @@ class ValidationMetricsNode(NodeType):
             ks_val = None
             ks_at = 0.0
             calib = {}
+            calib_display = {}
             score_dist = {}
 
             if n_bad > 0 and n_good > 0:
@@ -137,6 +140,16 @@ class ValidationMetricsNode(NodeType):
 
                 calib = self._calibration(df, target_col, bad_list, 10)
                 score_dist = self._score_distribution(scores)
+                if include_calibration_display:
+                    prob_true, prob_pred = calibration_curve(
+                        y_bin, y_prob, n_bins=10, strategy="quantile",
+                    )
+                    calib_display = {
+                        "prob_true": [float(v) for v in prob_true],
+                        "prob_pred": [float(v) for v in prob_pred],
+                        "n_bins": 10,
+                        "strategy": "quantile",
+                    }
             else:
                 calib = {"note": "Single class only; metrics skipped"}
 
@@ -168,6 +181,7 @@ class ValidationMetricsNode(NodeType):
                 "ks": ks_val,
                 "ks_at_score": round(ks_at, 2) if ks_val else None,
                 "calibration": calib,
+                "calibration_display": calib_display,
                 "score_distribution": score_dist,
                 "at_cutoffs": at_cutoffs,
                 "warnings": warnings,

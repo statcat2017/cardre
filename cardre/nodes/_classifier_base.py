@@ -19,9 +19,12 @@ Callers and tests see the same public interface (run(context) -> NodeOutput).
 
 from __future__ import annotations
 
+import inspect
 import time
 from dataclasses import dataclass, field
 from typing import Any
+
+from sklearn.model_selection import StratifiedKFold, cross_validate
 
 import numpy as np
 import polars as pl
@@ -102,12 +105,28 @@ class BaseClassifierNode(NodeType):
         # 2. Build estimator kwargs
         kwargs = self._build_estimator_kwargs(params)
 
+        # 2b. Filter to only valid constructor params
+        sig = inspect.signature(estimator_class.__init__)
+        valid_init_params = {p for p in sig.parameters.keys() if p != "self"}
+        kwargs = {k: v for k, v in kwargs.items() if k in valid_init_params}
+
         # 3. Fit
         start_time = time.monotonic()
         clf = estimator_class(**kwargs)
         X = df.select(features).to_numpy()
         clf.fit(X, y_binary)
         elapsed = time.monotonic() - start_time
+
+        # 3b. Optional cross-validation
+        cv_folds = int(params.get("cv_folds", 0))
+        cv_results = None
+        if cv_folds > 0:
+            cv_results = cross_validate(
+                estimator_class(**kwargs), X, y_binary,  # kwargs already filtered above
+                cv=StratifiedKFold(n_splits=cv_folds),
+                scoring=["roc_auc", "f1_macro"],
+                return_train_score=True, n_jobs=-1,
+            )
 
         # 4. Find prob_col_idx
         prob_col_idx = 1
@@ -130,6 +149,18 @@ class BaseClassifierNode(NodeType):
             feature_importance=feature_importance,
             prob_col_idx=prob_col_idx,
         )
+
+        # 6b. CV overfitting warning
+        if cv_folds > 0 and cv_results is not None:
+            train_roc = cv_results["train_roc_auc"].mean()
+            test_roc = cv_results["test_roc_auc"].mean()
+            if test_roc < train_roc - 0.1:
+                result.warnings.append({
+                    "message": (
+                        f"Overfitting detected: test ROC-AUC ({test_roc:.4f}) "
+                        f"is more than 0.1 below train ROC-AUC ({train_roc:.4f})"
+                    ),
+                })
 
         # 7. Persist binary estimator
         estimator_art = _write_estimator(
@@ -156,6 +187,20 @@ class BaseClassifierNode(NodeType):
             warnings_list=result.warnings,
             row_count=df.height,
         )
+
+        # 8b. Cross-validation results
+        if cv_folds > 0 and cv_results is not None:
+            model["training"]["cross_validation"] = {
+                "folds": cv_folds,
+                "train_roc_auc": round(float(cv_results["train_roc_auc"].mean()), 4),
+                "test_roc_auc": round(float(cv_results["test_roc_auc"].mean()), 4),
+                "train_f1_macro": round(float(cv_results["train_f1_macro"].mean()), 4),
+                "test_f1_macro": round(float(cv_results["test_f1_macro"].mean()), 4),
+            }
+
+        # 8c. Native importance data source annotation
+        if hasattr(clf, "feature_importances_") and clf.feature_importances_ is not None:
+            model["interpretability"]["native_importance_source"] = "training_data"
 
         # 9. Write JSON artifact
         artifact_metadata = {

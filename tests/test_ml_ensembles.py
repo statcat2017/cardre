@@ -486,6 +486,29 @@ class ExpandedValidationMetricsTests(unittest.TestCase):
         self.assertIn("0.5", report["train"]["at_cutoffs"])
         self.assertIsNotNone(report["train"]["auc"])
 
+    def test_calibration_display_with_default_deps(self) -> None:
+        store, tmp = make_store()
+        data_art, def_art, train_df = make_numeric_dataset(store)
+        ctx = make_fit_context(store, data_art, def_art, "cardre.decision_tree_classifier")
+        out = DecisionTreeNode().run(ctx)
+        model_art = out.artifacts[0]
+
+        scored_art = score_and_add_score_col(store, data_art, model_art, "score-calib")
+
+        val_ctx = make_val_context(
+            store, [scored_art], def_art,
+            params={"cutoffs": [0.5], "include_calibration_display": True},
+        )
+        report_out = ValidationMetricsNode().run(val_ctx)
+        report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
+
+        self.assertIn("train", report)
+        calib = report["train"].get("calibration_display", {})
+        self.assertIn("prob_true", calib)
+        self.assertIn("prob_pred", calib)
+        self.assertEqual(calib["n_bins"], 10)
+        self.assertEqual(calib["strategy"], "quantile")
+
 
 # ======================================================================
 # ThresholdOptimizationNode Tests
