@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
 from cardre.services import migrate_project_to_branch_model
 from cardre.services.branch_service import BranchService
+from cardre.services.project_registry import load_registry
+from cardre.store import ProjectStore
+from sidecar.dependencies import resolve_registry_entry, project_store_from_registry
 from sidecar.models import (
     BranchListResponse,
     BranchListItem,
@@ -19,14 +21,8 @@ from sidecar.models import (
     MigrateRequest,
     MigrateResponse,
 )
-from cardre.services.project_registry import load_registry
 
 router = APIRouter(tags=["branches"])
-
-
-def _get_store(project_path: str):
-    from cardre.store import ProjectStore
-    return ProjectStore(Path(project_path))
 
 
 @router.get("/projects/{project_id}/branches", response_model=BranchListResponse)
@@ -36,12 +32,8 @@ def list_branches(
     branch_type: str | None = None,
     status: str | None = None,
 ):
-    registry = load_registry()
-    entry = registry.get(project_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
-
-    store = _get_store(entry["path"])
+    entry = resolve_registry_entry(project_id)
+    store = ProjectStore(Path(entry["path"]))
     proj = store.get_project(project_id)
     if proj is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found in SQLite"})
@@ -68,11 +60,7 @@ def list_branches(
 @router.get("/branches/{branch_id}", response_model=BranchResponse)
 def get_branch(branch_id: str, project_id: str | None = None):
     if project_id is not None:
-        registry = load_registry()
-        entry = registry.get(project_id)
-        if entry is None:
-            raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
-        store = _get_store(entry["path"])
+        store = project_store_from_registry(project_id)
         branch = store.get_branch(branch_id)
         if branch is None:
             raise HTTPException(status_code=404, detail={"code": "BRANCH_NOT_FOUND", "message": f"No branch with ID {branch_id}"})
@@ -81,7 +69,7 @@ def get_branch(branch_id: str, project_id: str | None = None):
         branch = None
         store = None
         for pid, entry in registry.items():
-            s = _get_store(entry["path"])
+            s = ProjectStore(Path(entry["path"]))
             b = s.get_branch(branch_id)
             if b is not None:
                 branch = b
@@ -121,12 +109,8 @@ def get_branch(branch_id: str, project_id: str | None = None):
 
 @router.post("/plans/{plan_id}/branches", response_model=CreateBranchResponse, status_code=201)
 def create_branch(plan_id: str, req: CreateBranchRequest):
-    registry = load_registry()
-    entry = registry.get(req.project_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {req.project_id}"})
-
-    store = _get_store(entry["path"])
+    entry = resolve_registry_entry(req.project_id)
+    store = ProjectStore(Path(entry["path"]))
     service = BranchService(store)
     result = service.create_branch(
         project_id=req.project_id,
@@ -157,12 +141,8 @@ def create_branch(plan_id: str, req: CreateBranchRequest):
 
 @router.post("/migrations/baseline", response_model=MigrateResponse)
 def migrate_baseline(req: MigrateRequest):
-    registry = load_registry()
-    entry = registry.get(req.project_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {req.project_id}"})
-
-    store = _get_store(entry["path"])
+    entry = resolve_registry_entry(req.project_id)
+    store = ProjectStore(Path(entry["path"]))
     result = migrate_project_to_branch_model(store, req.project_id)
 
     return MigrateResponse(

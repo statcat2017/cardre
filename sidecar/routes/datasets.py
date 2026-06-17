@@ -28,12 +28,7 @@ def import_dataset(body: ImportDatasetRequest):
     store = get_store_for_project(body.project_id)
     proj = store.get_project(body.project_id)
     if proj is None:
-        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found"})
-
-    store = get_store_for_project(body.project_id)
-    proj = store.get_project(body.project_id)
-    if proj is None:
-        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found"})
+        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project not found in SQLite"})
 
     # Use a dedicated hidden import plan
     import_plan_id = get_or_create_import_plan(store, body.project_id)
