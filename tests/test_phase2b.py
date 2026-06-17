@@ -31,60 +31,12 @@ from cardre.nodes import (
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 
-from tests.test_phase1 import make_store
-
-
-# ======================================================================
-# Helpers
-# ======================================================================
-
-def _make_train_artifact(store, df, role="train"):
-    buf = io.BytesIO()
-    df.write_parquet(buf)
-    path = store.root / "datasets" / f"test-{role}.parquet"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(buf.getvalue())
-    art = ArtifactRef(
-        artifact_id=f"{role}_1", artifact_type="dataset", role=role,
-        path=relative_path(path, store.root),
-        physical_hash=physical_hash(path),
-        logical_hash=table_logical_hash(df),
-        media_type="application/vnd.apache.parquet", metadata={},
-    )
-    store.register_artifact(art)
-    return art
-
-
-def _make_json_artifact(store, payload, role="definition", stem="test"):
-    p = store.root / "artifacts" / f"{stem}.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(payload, sort_keys=True))
-    art = ArtifactRef(
-        artifact_id=f"{stem}_1", artifact_type=role, role=role,
-        path=relative_path(p, store.root),
-        physical_hash=physical_hash(p),
-        logical_hash=json_logical_hash(payload),
-        media_type="application/json", metadata={},
-    )
-    store.register_artifact(art)
-    return art
-
-
-def _make_parquet_report(store, df, role="report", stem="report"):
-    buf = io.BytesIO()
-    df.write_parquet(buf)
-    p = store.root / "datasets" / f"{stem}.parquet"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_bytes(buf.getvalue())
-    art = ArtifactRef(
-        artifact_id=f"{stem}_1", artifact_type="report", role=role,
-        path=relative_path(p, store.root),
-        physical_hash=physical_hash(p),
-        logical_hash=table_logical_hash(df),
-        media_type="application/vnd.apache.parquet", metadata={},
-    )
-    store.register_artifact(art)
-    return art
+from tests.helpers import (
+    _make_json_artifact,
+    _make_parquet_report,
+    _make_train_artifact,
+    make_store,
+)
 
 
 # ======================================================================
@@ -669,7 +621,7 @@ class Phase2BEndToEndTests(unittest.TestCase):
         executor = PlanExecutor(NodeRegistry.with_defaults())
         node = WoeTransformTrainNode()
         with self.assertRaises(RoleAccessError):
-            executor._validate_leakage_rules(node, [test_art])
+            executor.validate_leakage_rules(node, [test_art])
 
 
     def test_woe_transform_selects_only_selected_vars(self) -> None:

@@ -191,7 +191,7 @@ class PlanExecutor:
             input_artifacts = self._filter_inputs_by_role(node, raw_inputs)
             self._validate_role_access(node, spec, input_artifacts, raw_inputs)
             self._validate_node_input_roles(node, input_artifacts)
-            self._validate_leakage_rules(node, input_artifacts)
+            self.validate_leakage_rules(node, input_artifacts)
             self._validate_input_artifact_files(store, input_artifacts)
 
             parent_run_steps = [
@@ -402,7 +402,7 @@ class PlanExecutor:
                 f"{sorted(actual_roles)}. No permitted role matched."
             )
 
-    def _validate_leakage_rules(
+    def validate_leakage_rules(
         self,
         node: NodeType,
         artifacts: list[ArtifactRef],

@@ -16,6 +16,7 @@ import pytest
 from cardre.store import ProjectStore
 
 pytest_plugins = []
+pytestmark = pytest.mark.regression
 
 
 @pytest.fixture(autouse=True)

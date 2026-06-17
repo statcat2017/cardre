@@ -35,7 +35,7 @@ from cardre.nodes import (
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 
-from tests.test_phase1 import make_store, make_sample_german_credit_file, SAMPLE_GERMAN_CREDIT_LINES
+from tests.helpers import SAMPLE_GERMAN_CREDIT_LINES, make_sample_german_credit_file, make_store
 
 
 # ======================================================================
@@ -99,15 +99,15 @@ class InputContractTests(unittest.TestCase):
         with self.assertRaises(RoleAccessError):
             from cardre.executor import PlanExecutor
             executor = PlanExecutor(NodeRegistry.with_defaults())
-            executor._validate_leakage_rules(node, [mock_test])
+            executor.validate_leakage_rules(node, [mock_test])
 
         with self.assertRaises(RoleAccessError):
             executor = PlanExecutor(NodeRegistry.with_defaults())
-            executor._validate_leakage_rules(node, [mock_oot])
+            executor.validate_leakage_rules(node, [mock_oot])
 
         try:
             executor = PlanExecutor(NodeRegistry.with_defaults())
-            executor._validate_leakage_rules(node, [mock_train])
+            executor.validate_leakage_rules(node, [mock_train])
         except RoleAccessError:
             self.fail("Fit node should accept train dataset")
 
@@ -128,9 +128,9 @@ class InputContractTests(unittest.TestCase):
 
         executor = PlanExecutor(NodeRegistry.with_defaults())
         with self.assertRaises(RoleAccessError):
-            executor._validate_leakage_rules(node, [mock_test_dataset])
+            executor.validate_leakage_rules(node, [mock_test_dataset])
         with self.assertRaises(RoleAccessError):
-            executor._validate_leakage_rules(node, [mock_oot_dataset])
+            executor.validate_leakage_rules(node, [mock_oot_dataset])
 
     def test_selection_node_accepts_report_artifacts(self) -> None:
         from cardre.audit import ArtifactRef
@@ -145,7 +145,7 @@ class InputContractTests(unittest.TestCase):
 
         executor = PlanExecutor(NodeRegistry.with_defaults())
         try:
-            executor._validate_leakage_rules(node, [mock_report])
+            executor.validate_leakage_rules(node, [mock_report])
         except RoleAccessError:
             self.fail("Selection node should accept report artifacts")
 
@@ -162,7 +162,7 @@ class InputContractTests(unittest.TestCase):
 
         executor = PlanExecutor(NodeRegistry.with_defaults())
         try:
-            executor._validate_leakage_rules(node, [mock_test_dataset])
+            executor.validate_leakage_rules(node, [mock_test_dataset])
         except RoleAccessError:
             self.fail("Transform node should accept any role")
 

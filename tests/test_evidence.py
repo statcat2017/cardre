@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 from cardre.audit import (
     ArtifactRef,
@@ -35,17 +36,12 @@ from cardre.evidence import (
 )
 from cardre.store import ProjectStore
 
+from tests.helpers import make_store
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_store() -> tuple[ProjectStore, Path]:
-    tmp = Path(tempfile.mkdtemp())
-    store = ProjectStore(tmp / "test.cardre")
-    store.initialize()
-    return store, tmp
 
 
 def _json_artifact(
@@ -119,10 +115,26 @@ def _run_step(artifact_ids: list[str]) -> object:
 class TestSchemaVersionMatching:
     """Every EvidenceKind with a schema_version should match via Phase 1."""
 
-    def _check_schema_match(
-        self, kind: EvidenceKind, schema_version: str, payload: dict,
-    ) -> None:
-        store, _ = _make_store()
+    @pytest.mark.parametrize("kind,schema_version,payload", [
+        (EvidenceKind.MODELLING_METADATA, SCHEMA_MODELLING_METADATA,
+         {"target_column": "y", "good_values": ["g"], "bad_values": ["b"]}),
+        (EvidenceKind.BIN_DEFINITION, SCHEMA_BIN_DEFINITION,
+         {"variables": [{"variable": "x", "kind": "numeric", "bins": []}], "warnings": []}),
+        (EvidenceKind.SELECTION_DEFINITION, SCHEMA_SELECTION_DEFINITION,
+         {"selected": [{"variable": "x", "reason": ""}], "method": "iv"}),
+        (EvidenceKind.MODEL_ARTIFACT, SCHEMA_MODEL_ARTIFACT,
+         {"model_family": "logistic_regression", "coefficients": {}, "intercept": 0.0}),
+        (EvidenceKind.SCORE_SCALING, SCHEMA_SCORE_SCALING,
+         {"factor": 1.0, "offset": 0.0, "base_score": 600, "base_odds": "50:1", "pdo": 20}),
+        (EvidenceKind.VALIDATION_METRICS, SCHEMA_VALIDATION_METRICS,
+         {"metrics": {"train": {"row_count": 100}}}),
+        (EvidenceKind.CUTOFF_ANALYSIS, SCHEMA_CUTOFF_ANALYSIS,
+         {"cutoff_tables": {"train": [{"score_cutoff": 0.5}]}}),
+        (EvidenceKind.WOE_IV_EVIDENCE, SCHEMA_WOE_IV_EVIDENCE,
+         {"variables": [], "config": {"smoothing": {}}}),
+    ])
+    def test_schema_version_matches(self, kind, schema_version, payload):
+        store, _ = make_store()
         art = _json_artifact(
             store, payload, stem=kind.value,
             role=list(kind_profile(kind).expected_roles)[0],
@@ -131,54 +143,6 @@ class TestSchemaVersionMatching:
         reader = ArtifactEvidenceReader(store)
         result = reader.find([art], kind)
         assert result is not None
-
-    def test_modelling_metadata(self):
-        self._check_schema_match(
-            EvidenceKind.MODELLING_METADATA, SCHEMA_MODELLING_METADATA,
-            {"target_column": "y", "good_values": ["g"], "bad_values": ["b"]},
-        )
-
-    def test_bin_definition(self):
-        self._check_schema_match(
-            EvidenceKind.BIN_DEFINITION, SCHEMA_BIN_DEFINITION,
-            {"variables": [{"variable": "x", "kind": "numeric", "bins": []}], "warnings": []},
-        )
-
-    def test_selection_definition(self):
-        self._check_schema_match(
-            EvidenceKind.SELECTION_DEFINITION, SCHEMA_SELECTION_DEFINITION,
-            {"selected": [{"variable": "x", "reason": ""}], "method": "iv"},
-        )
-
-    def test_model_artifact(self):
-        self._check_schema_match(
-            EvidenceKind.MODEL_ARTIFACT, SCHEMA_MODEL_ARTIFACT,
-            {"model_family": "logistic_regression", "coefficients": {}, "intercept": 0.0},
-        )
-
-    def test_score_scaling(self):
-        self._check_schema_match(
-            EvidenceKind.SCORE_SCALING, SCHEMA_SCORE_SCALING,
-            {"factor": 1.0, "offset": 0.0, "base_score": 600, "base_odds": "50:1", "pdo": 20},
-        )
-
-    def test_validation_metrics(self):
-        self._check_schema_match(
-            EvidenceKind.VALIDATION_METRICS, SCHEMA_VALIDATION_METRICS,
-            {"metrics": {"train": {"row_count": 100}}},
-        )
-
-    def test_cutoff_analysis(self):
-        self._check_schema_match(
-            EvidenceKind.CUTOFF_ANALYSIS, SCHEMA_CUTOFF_ANALYSIS,
-            {"cutoff_tables": {"train": [{"score_cutoff": 0.5}]}},
-        )
-
-    def test_woe_iv_evidence(self):
-        self._check_schema_match(
-            EvidenceKind.WOE_IV_EVIDENCE, SCHEMA_WOE_IV_EVIDENCE,
-            {"variables": [], "config": {"smoothing": {}}},
-        )
 
 
 def kind_profile(kind: EvidenceKind):
@@ -196,7 +160,7 @@ class TestLegacyBinVsSelectionDisambiguation:
     """Legacy artifacts without schema_version must still disambiguate."""
 
     def test_bin_definition_matches_variables(self):
-        store, _ = _make_store()
+        store, _ = make_store()
         bin_art = _json_artifact(
             store,
             {"variables": [{"variable": "x", "kind": "numeric", "bins": []}], "warnings": []},
@@ -213,7 +177,7 @@ class TestLegacyBinVsSelectionDisambiguation:
         assert len(result.variables) == 1
 
     def test_selection_definition_matches_selected(self):
-        store, _ = _make_store()
+        store, _ = make_store()
         bin_art = _json_artifact(
             store,
             {"variables": [{"variable": "x", "kind": "numeric", "bins": []}], "warnings": []},
@@ -231,7 +195,7 @@ class TestLegacyBinVsSelectionDisambiguation:
 
     def test_wrong_legacy_definition_does_not_parse_as_bin(self):
         """A selection definition artifact must not match BIN_DEFINITION."""
-        store, _ = _make_store()
+        store, _ = make_store()
         sel_art = _json_artifact(
             store,
             {"selected": [{"variable": "x", "reason": "high_iv"}], "method": "iv"},
@@ -243,7 +207,7 @@ class TestLegacyBinVsSelectionDisambiguation:
 
     def test_wrong_legacy_definition_does_not_parse_as_selection(self):
         """A bin definition artifact must not match SELECTION_DEFINITION."""
-        store, _ = _make_store()
+        store, _ = make_store()
         bin_art = _json_artifact(
             store,
             {"variables": [{"variable": "x", "kind": "numeric", "bins": []}], "warnings": []},
@@ -255,7 +219,7 @@ class TestLegacyBinVsSelectionDisambiguation:
 
     def test_legacy_woe_table_disambiguates_from_iv_ranking(self):
         """Two report parquets: only the one with variable/bin_id/woe columns matches."""
-        store, _ = _make_store()
+        store, _ = make_store()
         woe_df = pl.DataFrame({
             "variable": ["x", "x"], "bin_id": ["a", "b"], "woe": [0.5, -0.3],
         })
@@ -272,7 +236,7 @@ class TestLegacyBinVsSelectionDisambiguation:
 
     def test_woe_table_absent_raises_not_found(self):
         """When only an IV ranking parquet exists, WOE_TABLE raises."""
-        store, _ = _make_store()
+        store, _ = make_store()
         iv_df = pl.DataFrame({
             "variable": ["x"], "iv": [0.42], "bin_count": [2],
         })
@@ -292,7 +256,7 @@ class TestReadStepOutputOptional:
     """Must skip artifacts whose role/type/media don't match the kind."""
 
     def test_skips_json_when_parquet_expected(self):
-        store, _ = _make_store()
+        store, _ = make_store()
         json_art = _json_artifact(
             store, {"variables": []}, stem="report-json",
             role="report", artifact_type="report",
@@ -302,7 +266,7 @@ class TestReadStepOutputOptional:
         assert reader.read_step_output_optional(rs, EvidenceKind.WOE_TABLE) is None
 
     def test_skips_parquet_when_json_expected(self):
-        store, _ = _make_store()
+        store, _ = make_store()
         df = pl.DataFrame({"x": [1]})
         parq_art = _parquet_artifact(store, df, stem="report-parquet")
         reader = ArtifactEvidenceReader(store)
@@ -319,7 +283,7 @@ class TestParseErrors:
     """Parse failures must raise EvidenceParseError with the file path."""
 
     def test_corrupt_json(self):
-        store, _ = _make_store()
+        store, _ = make_store()
         p = store.root / "artifacts" / "corrupt.json"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(b"{bad json\xff")
@@ -340,7 +304,7 @@ class TestParseErrors:
             raise AssertionError("Expected EvidenceNotFoundError")
 
     def test_missing_file(self):
-        store, _ = _make_store()
+        store, _ = make_store()
         art = ArtifactRef(
             artifact_id="missing_1", artifact_type="definition", role="definition",
             path="artifacts/nonexistent.json",
@@ -355,7 +319,7 @@ class TestParseErrors:
 
     def test_parse_called_on_known_artifact_raises_parse_error(self):
         """reading a known artifact ID that fails to parse raises EvidenceParseError."""
-        store, _ = _make_store()
+        store, _ = make_store()
         p = store.root / "artifacts" / "bad.json"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(b"\x00\x01\x02")
@@ -379,7 +343,7 @@ class TestParseErrors:
 
 class TestAmbiguous:
     def test_two_schema_less_parquet_reports_ambiguous(self):
-        store, _ = _make_store()
+        store, _ = make_store()
         df1 = pl.DataFrame({
             "variable": ["x", "x"], "bin_id": ["a", "b"], "woe": [0.5, -0.3],
         })
@@ -393,4 +357,4 @@ class TestAmbiguous:
             reader.find([art1, art2], EvidenceKind.WOE_TABLE)
 
 
-import pytest  # noqa: E402 (inline to avoid isort interference)
+
