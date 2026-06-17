@@ -15,6 +15,7 @@ from cardre.audit import RunStepRecord, StepSpec, json_logical_hash, replace_ste
 from cardre.executor import PlanExecutor
 from cardre.nodes import validate_manual_binning_overrides, apply_manual_binning_overrides
 from cardre.registry import NodeRegistry
+from cardre.staleness import compute_staleness
 from cardre.store import ProjectStore
 from cardre.services.plan_dto import (
     ManualBinningEditorStateResponse,
@@ -78,7 +79,7 @@ class PlanService:
             )
 
         steps = self._store.get_plan_version_steps(latest_pv_id)
-        staleness = self._executor.compute_staleness(self._store, latest_pv_id)
+        staleness = compute_staleness(self._store, latest_pv_id)
 
         # Run steps from the current version's most recent run
         run_steps_map: dict[str, Any] = {}
@@ -258,7 +259,7 @@ class PlanService:
                 description=f"Updated params for {step_id}",
             )
 
-        staleness = self._executor.compute_staleness(
+        staleness = compute_staleness(
             self._store, new_pv_id,
             branch_id=branch_id,
         )
@@ -405,7 +406,7 @@ class PlanService:
                 required_steps=["fine-classing"],
             )
 
-        staleness = self._executor.compute_staleness(self._store, latest_pv_id)
+        staleness = compute_staleness(self._store, latest_pv_id)
         fc_stale = staleness.get(fc_actual_id, True)
         vs_stale = staleness.get(vs_actual_id, True) if vs_spec else True
 

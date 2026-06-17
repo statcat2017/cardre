@@ -9,6 +9,7 @@ import polars as pl
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import ExecutionContext, NodeOutput, NodeType
+from cardre.nodes._bin_mask import build_bin_condition
 from cardre.evidence import (
     AmbiguousEvidenceError,
     ArtifactEvidenceReader,
@@ -89,44 +90,8 @@ class CalculateWoeIvNode(NodeType):
             for bin_def in bins:
                 bin_id = bin_def["bin_id"]
                 label = bin_def["label"]
-                is_missing = bin_def.get("is_missing_bin", False)
 
-                if kind == "numeric":
-                    lower = bin_def.get("lower")
-                    upper = bin_def.get("upper")
-                    lower_inc = bin_def.get("lower_inclusive", False)
-                    upper_inc = bin_def.get("upper_inclusive", True)
-
-                    if is_missing:
-                        bin_mask = col_values.is_null()
-                    else:
-                        conditions = []
-                        if lower is not None:
-                            conditions.append(col_values >= lower if lower_inc else col_values > lower)
-                        if upper is not None:
-                            conditions.append(col_values <= upper if upper_inc else col_values < upper)
-                        if not conditions:
-                            raise ValueError(
-                                f"WOE/IV numeric bin {variable!r}:{bin_id!r} has no lower or upper boundary"
-                            )
-                        bin_mask = conditions[0] if len(conditions) == 1 else conditions[0]
-                        for c in conditions[1:]:
-                            bin_mask = bin_mask & c
-                else:
-                    categories = bin_def.get("categories", [])
-                    if is_missing:
-                        bin_mask = col_values.is_null()
-                    elif bin_def.get("is_other_bin", False):
-                        explicit_categories = []
-                        for other_bin in bins:
-                            if other_bin.get("is_missing_bin", False) or other_bin.get("is_other_bin", False):
-                                continue
-                            explicit_categories.extend(other_bin.get("categories") or [])
-                        bin_mask = col_values.is_not_null() & ~col_values.is_in(explicit_categories)
-                    elif categories:
-                        bin_mask = col_values.is_in(categories)
-                    else:
-                        bin_mask = pl.lit(False)
+                bin_mask = build_bin_condition(bin_def, col_values, kind, bins)
 
                 row_count = int(bin_mask.sum())
 
@@ -674,40 +639,8 @@ class WoeTransformTrainNode(NodeType):
             woe_expr = None
             for bin_def_entry in bins:
                 bin_id = bin_def_entry["bin_id"]
-                is_missing = bin_def_entry.get("is_missing_bin", False)
 
-                if kind == "numeric":
-                    lower = bin_def_entry.get("lower")
-                    upper = bin_def_entry.get("upper")
-                    lower_inc = bin_def_entry.get("lower_inclusive", False)
-                    upper_inc = bin_def_entry.get("upper_inclusive", True)
-                    if is_missing:
-                        mask_expr = pl.col(variable).is_null()
-                    else:
-                        c = pl.col(variable)
-                        parts = []
-                        if lower is not None:
-                            parts.append((c >= lower) if lower_inc else (c > lower))
-                        if upper is not None:
-                            parts.append((c <= upper) if upper_inc else (c < upper))
-                        mask_expr = parts[0]
-                        for p in parts[1:]:
-                            mask_expr = mask_expr & p
-                else:
-                    categories = bin_def_entry.get("categories", [])
-                    if is_missing:
-                        mask_expr = pl.col(variable).is_null()
-                    elif bin_def_entry.get("is_other_bin", False):
-                        explicit_cats = []
-                        for bd in bins:
-                            if bd.get("is_missing_bin", False) or bd.get("is_other_bin", False):
-                                continue
-                            explicit_cats.extend(bd.get("categories") or [])
-                        mask_expr = pl.col(variable).is_not_null() & ~pl.col(variable).is_in(explicit_cats)
-                    elif categories:
-                        mask_expr = pl.col(variable).is_in(categories)
-                    else:
-                        mask_expr = pl.lit(False)
+                mask_expr = build_bin_condition(bin_def_entry, pl.col(variable), kind, bins)
 
                 woe_val = woe_map.get(variable, {}).get(bin_id, 0.0)
                 when_clause = pl.when(mask_expr).then(pl.lit(woe_val))

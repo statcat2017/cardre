@@ -9,6 +9,7 @@ import polars as pl
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import ExecutionContext, JsonDict, NodeOutput, NodeType
+from cardre.nodes._bin_mask import build_bin_condition
 from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 
 
@@ -71,37 +72,8 @@ class ApplyWoeMappingNode(NodeType):
 
                 for be in bins:
                     bid = be["bin_id"]
-                    is_miss = be.get("is_missing_bin", False)
-                    if kind == "numeric":
-                        lo = be.get("lower"); hi = be.get("upper")
-                        li = be.get("lower_inclusive", False); ui = be.get("upper_inclusive", True)
-                        if is_miss:
-                            mask = pl.col(var).is_null()
-                        else:
-                            parts = []
-                            c2 = pl.col(var)
-                            if lo is not None:
-                                parts.append((c2 >= lo) if li else (c2 > lo))
-                            if hi is not None:
-                                parts.append((c2 <= hi) if ui else (c2 < hi))
-                            mask = parts[0]
-                            for p in parts[1:]:
-                                mask = mask & p
-                    else:
-                        cats = be.get("categories", [])
-                        if is_miss:
-                            mask = pl.col(var).is_null()
-                        elif be.get("is_other_bin", False):
-                            explicit_cats = []
-                            for bd in bins:
-                                if bd.get("is_missing_bin", False) or bd.get("is_other_bin", False):
-                                    continue
-                                explicit_cats.extend(bd.get("categories") or [])
-                            mask = pl.col(var).is_not_null() & ~pl.col(var).is_in(explicit_cats)
-                        elif cats:
-                            mask = pl.col(var).is_in(cats)
-                        else:
-                            mask = pl.lit(False)
+
+                    mask = build_bin_condition(be, pl.col(var), kind, bins)
 
                     wv = woe_map.get(var, {}).get(bid)
                     if wv is None:
