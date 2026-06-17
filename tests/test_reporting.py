@@ -1,4 +1,4 @@
-"""Phase 5 tests: report schema, collector, readiness, HTML renderer, golden JSON."""
+"""Unit tests for cardre.reporting — schema, collector, readiness, HTML renderer, golden JSON."""
 
 from __future__ import annotations
 
