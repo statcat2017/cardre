@@ -21,6 +21,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/binning/engines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Binning Engines
+         * @description List available binning engines and their capabilities.
+         */
+        get: operations["list_binning_engines_binning_engines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects": {
         parameters: {
             query?: never;
@@ -752,6 +772,24 @@ export interface components {
             scope_key: string;
             /** Assigned Reason */
             assigned_reason: string;
+        };
+        /** BinningEngineInfo */
+        BinningEngineInfo: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Available */
+            available: boolean;
+            /** Version */
+            version?: string | null;
+            /** Target Types */
+            target_types?: string[];
+        };
+        /** BinningEnginesResponse */
+        BinningEnginesResponse: {
+            /** Engines */
+            engines: components["schemas"]["BinningEngineInfo"][];
         };
         /** BranchListItem */
         BranchListItem: {
@@ -1843,6 +1881,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    list_binning_engines_binning_engines_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BinningEnginesResponse"];
                 };
             };
         };

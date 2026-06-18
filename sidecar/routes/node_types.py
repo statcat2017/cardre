@@ -117,6 +117,14 @@ _MODEL_FAMILIES: dict[str, dict] = {
         "champion_eligibility": None,
         "description": "Hyperparameter tuning using GridSearchCV / RandomizedSearchCV for decision tree, random forest, GBDT, or logistic regression.",
     },
+    "cardre.auto_binning_fit": {
+        "model_family": None,
+        "feature_strategies": [],
+        "interpretability_level": None,
+        "champion_eligibility": None,
+        "description": "Supervised optimal binning using optbinning engine.",
+        "optional_dependencies": ["optimal-binning"],
+    },
 }
 
 
@@ -235,6 +243,31 @@ def get_node_type_schema(node_type: str) -> NodeTypeSchemaResponse:
             "optimize_weights": {"type": "boolean", "default": False},
         }
         defaults = {"optimize_weights": False}
+    elif node_type == "cardre.auto_binning_fit":
+        params_schema = {
+            "engine": {"type": "string", "enum": ["optbinning"], "default": "optbinning"},
+            "prebinning_method": {"type": "string", "enum": ["cart", "quantile"], "default": "cart"},
+            "solver": {"type": "string", "enum": ["cp", "mip"], "default": "cp"},
+            "divergence": {"type": "string", "enum": ["iv", "js", "hellinger"], "default": "iv"},
+            "max_n_prebins": {"type": "integer", "minimum": 2, "default": 20},
+            "min_prebin_size": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.05},
+            "max_n_bins": {"type": "integer", "minimum": 2, "default": 6},
+            "min_bin_size": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.03},
+            "min_bin_n_event": {"type": "integer", "minimum": 1, "default": 20},
+            "min_bin_n_nonevent": {"type": "integer", "minimum": 1, "default": 20},
+            "monotonic_trend": {"type": "string", "enum": ["auto", "none", "ascending", "descending"], "default": "auto"},
+            "cat_cutoff": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.01},
+            "time_limit": {"type": "integer", "minimum": 1, "default": 100},
+            "special_codes": {"type": "object", "default": {}},
+            "exclude_columns": {"type": "array", "items": {"type": "string"}, "default": []},
+        }
+        defaults = {
+            "engine": "optbinning", "prebinning_method": "cart", "solver": "cp",
+            "divergence": "iv", "max_n_prebins": 20, "min_prebin_size": 0.05,
+            "max_n_bins": 6, "min_bin_size": 0.03, "min_bin_n_event": 20,
+            "min_bin_n_nonevent": 20, "monotonic_trend": "auto", "cat_cutoff": 0.01,
+            "time_limit": 100, "special_codes": {}, "exclude_columns": [],
+        }
     elif node_type == "cardre.hyperparameter_tuning":
         params_schema = {
             "estimator_type": {"type": "string", "enum": ["decision_tree", "random_forest", "gbdt", "logistic_regression"]},

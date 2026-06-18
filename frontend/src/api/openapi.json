@@ -26,6 +26,28 @@
         }
       }
     },
+    "/binning/engines": {
+      "get": {
+        "tags": [
+          "binning"
+        ],
+        "summary": "List Binning Engines",
+        "description": "List available binning engines and their capabilities.",
+        "operationId": "list_binning_engines_binning_engines_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinningEnginesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/projects": {
       "post": {
         "tags": [
@@ -2233,6 +2255,63 @@
           "assigned_reason"
         ],
         "title": "AssignChampionRequest"
+      },
+      "BinningEngineInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "target_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Target Types"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "available"
+        ],
+        "title": "BinningEngineInfo"
+      },
+      "BinningEnginesResponse": {
+        "properties": {
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/BinningEngineInfo"
+            },
+            "type": "array",
+            "title": "Engines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "engines"
+        ],
+        "title": "BinningEnginesResponse"
       },
       "BranchListItem": {
         "properties": {
