@@ -184,7 +184,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
             }}
           >
             <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
-              Import German Credit Data
+              Import Dataset
             </h2>
             <div
               style={{
@@ -213,7 +213,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
                 type="text"
                 value={importPath}
                 onChange={(e) => setImportPath(e.target.value)}
-                placeholder="/path/to/german.data"
+                placeholder="/path/to/applications.csv"
                 style={{
                   width: "100%",
                   padding: "8px 12px",
