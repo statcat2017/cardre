@@ -613,11 +613,16 @@ def apply_manual_binning_overrides(
     active_vars = [v for v in var_map.values() if v.get("active", True)]
     rejected_vars = [v for v in var_map.values() if not v.get("active", True)]
 
+    # Preserve pre-existing rejected variables from upstream nodes
+    # (e.g. AutoBinningFitNode failed variables).
+    existing_rejected = list(bin_def.get("rejected") or [])
+    combined_rejected = existing_rejected + rejected_vars
+
     if not overrides:
         warnings.append({"message": "No manual overrides applied; passing through auto bins for selected variables"})
 
     return {
         "variables": active_vars,
-        "rejected": rejected_vars if rejected_vars else None,
+        "rejected": combined_rejected if combined_rejected else None,
         "warnings": bin_def.get("warnings", []) + warnings,
     }

@@ -137,15 +137,31 @@ class TestExtractBins:
     """Test bin extraction from mock optbinning output."""
 
     def _make_mock_optb(self, binning_table_data, splits=None, special_codes=None, status="OPTIMAL"):
-        """Create a mock optbinning result object."""
-        import pandas as pd
+        """Create a mock optbinning result object.
+
+        Uses a fake table with iterrows() that returns dicts — avoids
+        pandas dependency (not guaranteed in CI).
+        """
         mock = MagicMock()
         mock.status = status
         mock.splits = splits if splits is not None else []
         mock.special_codes = special_codes
 
-        # binning_table.build() returns a pandas DataFrame
-        mock.binning_table.build.return_value = pd.DataFrame(binning_table_data)
+        class _FakeTable:
+            """Minimal iterable table — no pandas dependency."""
+            def __init__(self, data: dict):
+                keys = list(data.keys())
+                n = len(data[keys[0]]) if keys else 0
+                self._rows = [
+                    {k: data[k][i] for k in keys}
+                    for i in range(n)
+                ]
+
+            def iterrows(self):
+                for i, row in enumerate(self._rows):
+                    yield i, row
+
+        mock.binning_table.build.return_value = _FakeTable(binning_table_data)
         return mock
 
     def test_categorical_bins(self):
