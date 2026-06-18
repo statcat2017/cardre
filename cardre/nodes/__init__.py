@@ -19,6 +19,7 @@ from cardre.nodes.prep import (
     ValidateBinaryTargetNode,
 )
 from cardre.nodes.build import (
+    AutoBinningFitNode,
     BuildSummaryReportNode,
     CalculateWoeIvNode,
     DummyFitNode,

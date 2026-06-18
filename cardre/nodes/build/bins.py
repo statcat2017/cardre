@@ -369,7 +369,10 @@ class ManualBinningNode(NodeType):
     input_roles: list[str] = ["definition"]
     output_roles: list[str] = ["definition"]
 
-    VALID_ACTIONS = {"merge_bins", "group_categories", "isolate_missing", "isolate_special_value"}
+    VALID_ACTIONS = {
+        "merge_bins", "group_categories",
+        "reject_variable", "reorder_missing_bin", "reorder_special_bin",
+    }
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -469,7 +472,9 @@ def validate_manual_binning_overrides(
                 f"and cannot accept manual binning overrides"
             )
             continue
-        if action not in ("merge_bins", "group_categories", "isolate_missing", "isolate_special_value"):
+        VALID = ("merge_bins", "group_categories",
+                  "reject_variable", "reorder_missing_bin", "reorder_special_bin")
+        if action not in VALID:
             errors.append(f"{prefix}: unsupported action '{action}'")
             continue
 
@@ -510,6 +515,7 @@ def apply_manual_binning_overrides(
         variable = override.get("variable", "")
         action = override.get("action", "")
         source_bin_ids = override.get("source_bin_ids", [])
+        reason = override.get("reason", "")
 
         if variable not in var_map:
             raise ValueError(f"Override references unknown variable '{variable}'")
@@ -518,7 +524,19 @@ def apply_manual_binning_overrides(
         var_bins = list(var_info.get("bins", []))
         bin_id_map = {b["bin_id"]: b for b in var_bins}
 
+        # Create immutable override event (no execution-time timestamp —
+        # timestamps from the user action live in the override params,
+        # not in the replayed bin definition.)
+        override_event = {
+            "user_action": action,
+            "variable": variable,
+            "reason": reason,
+            "source_bin_ids": source_bin_ids,
+        }
+        override_history = var_info.get("override_history", []) if isinstance(var_info.get("override_history"), list) else []
+
         if action == "merge_bins":
+            before_labels = [bin_id_map[bid].get("label", bid) for bid in source_bin_ids]
             merged = {
                 "bin_id": f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
                 "label": override.get("new_label", "Merged"),
@@ -532,27 +550,57 @@ def apply_manual_binning_overrides(
                 "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
                 "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
             }
+            override_event["before"] = before_labels
+            override_event["after"] = merged["label"]
             new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
             insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
             new_bins.insert(insert_pos, merged)
             var_info["bins"] = new_bins
 
         elif action == "group_categories":
+            before_cats = []
+            for bid in source_bin_ids:
+                before_cats.extend(bin_id_map[bid].get("categories", []))
             grouped = {
                 "bin_id": f"{variable}_manual_grouped",
                 "label": override.get("new_label", "Grouped"),
                 "lower": None, "upper": None,
                 "lower_inclusive": False, "upper_inclusive": False,
-                "categories": sum([bin_id_map[bid].get("categories", []) for bid in source_bin_ids], []),
+                "categories": before_cats,
                 "is_missing_bin": False,
                 "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
                 "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
                 "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
             }
+            override_event["before"] = before_cats
+            override_event["after"] = override.get("new_label", "Grouped")
             new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
             insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
             new_bins.insert(insert_pos, grouped)
             var_info["bins"] = new_bins
+
+        elif action == "reject_variable":
+            override_event["before"] = "included"
+            override_event["after"] = "excluded"
+            var_info["status"] = "excluded"
+            var_info["active"] = False
+
+        elif action == "reorder_missing_bin":
+            missing_bins = [b for b in var_bins if b.get("is_missing_bin")]
+            non_missing = [b for b in var_bins if not b.get("is_missing_bin")]
+            var_info["bins"] = non_missing + missing_bins
+            override_event["before"] = "missing_at_original_position"
+            override_event["after"] = "missing_moved_to_end"
+
+        elif action == "reorder_special_bin":
+            special_bins = [b for b in var_bins if b.get("is_special_bin")]
+            non_special = [b for b in var_bins if not b.get("is_special_bin")]
+            var_info["bins"] = non_special + special_bins
+            override_event["before"] = "special_at_original_position"
+            override_event["after"] = "special_moved_to_end"
+
+        override_history.append(override_event)
+        var_info["override_history"] = override_history
 
     if selected_vars is not None:
         var_map = {k: v for k, v in var_map.items() if k in selected_vars}

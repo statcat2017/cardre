@@ -354,6 +354,119 @@ def test_non_adjacent_numeric_merge_fails() -> None:
         node.run(ctx)
 
 
+# ======================================================================
+# New override actions
+# ======================================================================
+
+
+def test_reject_variable_marks_excluded() -> None:
+    """reject_variable action marks variable as excluded."""
+    bin_def = {
+        "variables": [{
+            "variable": "x", "kind": "numeric",
+            "bins": [
+                {"bin_id": "b1", "label": "Low", "lower": 0, "upper": 10,
+                 "lower_inclusive": False, "upper_inclusive": True,
+                 "categories": None, "is_missing_bin": False,
+                 "row_count": 100, "good_count": 80, "bad_count": 20},
+            ],
+        }],
+        "warnings": [],
+    }
+    from cardre.nodes import apply_manual_binning_overrides
+
+    result = apply_manual_binning_overrides(bin_def, [
+        {"variable": "x", "action": "reject_variable",
+         "source_bin_ids": [], "reason": "High missing rate"},
+    ])
+    assert result["variables"][0]["status"] == "excluded"
+    assert len(result["variables"][0].get("override_history", [])) == 1
+
+
+def test_override_history_logged() -> None:
+    """Every override produces an immutable event with timestamp/reason."""
+    bin_def = {
+        "variables": [{
+            "variable": "x", "kind": "numeric",
+            "bins": [
+                {"bin_id": "b1", "label": "Low", "lower": 0, "upper": 10,
+                 "lower_inclusive": False, "upper_inclusive": True,
+                 "categories": None, "is_missing_bin": False,
+                 "row_count": 100, "good_count": 80, "bad_count": 20},
+                {"bin_id": "b2", "label": "High", "lower": 10, "upper": 20,
+                 "lower_inclusive": False, "upper_inclusive": True,
+                 "categories": None, "is_missing_bin": False,
+                 "row_count": 100, "good_count": 80, "bad_count": 20},
+            ],
+        }],
+        "warnings": [],
+    }
+    from cardre.nodes import apply_manual_binning_overrides
+
+    result = apply_manual_binning_overrides(bin_def, [
+        {"variable": "x", "action": "merge_bins",
+         "source_bin_ids": ["b1", "b2"],
+         "reason": "Combine sparse bins", "new_label": "Combined"},
+    ])
+    var_x = result["variables"][0]
+    assert "override_history" in var_x
+    events = var_x["override_history"]
+    assert len(events) == 1
+    assert events[0]["user_action"] == "merge_bins"
+    assert events[0]["reason"] == "Combine sparse bins"
+    assert "timestamp" not in events[0]
+    assert events[0]["before"] == ["Low", "High"]
+
+
+def test_reorder_missing_bin() -> None:
+    """reorder_missing_bin moves missing bin to end of list."""
+    bin_def = {
+        "variables": [{
+            "variable": "x", "kind": "numeric",
+            "bins": [
+                {"bin_id": "b1", "label": "(-inf, 10)", "lower": None, "upper": 10,
+                 "is_missing_bin": False, "row_count": 100, "good_count": 80, "bad_count": 20},
+                {"bin_id": "b_miss", "label": "Missing", "lower": None, "upper": None,
+                 "is_missing_bin": True, "row_count": 10, "good_count": 8, "bad_count": 2},
+                {"bin_id": "b3", "label": "[10, +inf)", "lower": 10, "upper": None,
+                 "is_missing_bin": False, "row_count": 100, "good_count": 80, "bad_count": 20},
+            ],
+        }],
+        "warnings": [],
+    }
+    from cardre.nodes import apply_manual_binning_overrides
+
+    result = apply_manual_binning_overrides(bin_def, [
+        {"variable": "x", "action": "reorder_missing_bin",
+         "source_bin_ids": ["b_miss"],
+         "reason": "Reorder missing bin"},
+    ])
+    bins = result["variables"][0]["bins"]
+    assert bins[-1]["is_missing_bin"]  # missing moved to end
+
+
+def test_reject_variable_requires_reason() -> None:
+    """reject_variable validation requires a non-empty reason."""
+    from cardre.nodes import validate_manual_binning_overrides
+
+    bin_def = {
+        "variables": [{
+            "variable": "x", "kind": "numeric",
+            "bins": [
+                {"bin_id": "b1", "label": "Low", "lower": 0, "upper": 10,
+                 "categories": None, "is_missing_bin": False,
+                 "row_count": 100, "good_count": 80, "bad_count": 20},
+            ],
+        }],
+    }
+    errs = validate_manual_binning_overrides(bin_def, [
+        {"variable": "x", "action": "reject_variable",
+         "source_bin_ids": [], "reason": ""},
+    ])
+    assert len(errs) > 0
+    assert "reason" in errs[0].lower()
+
+
 def test_high_cardinality_creates_other_bin() -> None:
     store, tmp = make_store()
     store.initialize()

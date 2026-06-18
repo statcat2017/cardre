@@ -53,6 +53,7 @@ class NodeRegistry:
 
 def _register_proof_nodes(reg: NodeRegistry) -> None:
     from cardre.nodes import (
+        AutoBinningFitNode,
         AlternativeDataManifestNode,
         ApplyExclusionsNode,
         ApplyModelNode,
@@ -111,6 +112,7 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
         ApplyExclusionsNode,
         DevelopmentSampleDefinitionNode,
         ExplicitMissingOutlierTreatmentNode,
+        AutoBinningFitNode,
         FineClassingNode,
         CalculateWoeIvNode,
         VariableClusteringNode,

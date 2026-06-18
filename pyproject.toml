@@ -23,7 +23,8 @@ boosting = ["xgboost", "lightgbm", "catboost"]
 imbalance = ["imbalanced-learn"]
 explain = ["shap", "lime"]
 deep = ["torch"]
-all-methods = ["xgboost", "lightgbm", "catboost", "imbalanced-learn", "shap", "lime", "torch"]
+optimal-binning = ["optbinning==0.21.0"]
+all-methods = ["xgboost", "lightgbm", "catboost", "imbalanced-learn", "shap", "lime", "torch", "optbinning==0.21.0"]
 
 [tool.setuptools.packages.find]
 include = ["cardre*", "sidecar*"]
@@ -41,6 +42,7 @@ markers = [
     "optional_boosting: tests requiring xgboost/lightgbm/catboost",
     "optional_imbalance: tests requiring imbalanced-learn",
     "optional_explain: tests requiring shap/lime",
+    "optional_binning: tests requiring optbinning",
     "optional_deep: tests requiring torch",
     "slow: tests that take longer to run",
     "api: sidecar API integration tests",

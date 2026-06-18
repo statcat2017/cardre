@@ -1,0 +1,233 @@
+"""AutoBinningFitNode — supervised optimal binning via optbinning adapter.
+
+Produces Cardre SCHEMA_BIN_DEFINITION output compatible with existing
+CalculateWoeIvNode, WoeTransformTrainNode, and ApplyWoeMappingNode.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+import polars as pl
+
+from cardre.artifacts import write_json_artifact
+from cardre.audit import ExecutionContext, NodeOutput, NodeType
+from cardre.evidence import (
+    ArtifactEvidenceReader,
+    EvidenceKind,
+    SCHEMA_BIN_DEFINITION,
+)
+from cardre.engine.binning.optbinning_adapter import fit_variables
+from cardre.engine.binning.diagnostics import run_all as run_diagnostics
+
+
+class AutoBinningFitNode(NodeType):
+    node_type = "cardre.auto_binning_fit"
+    version = "1"
+    category = "fit"
+    input_roles: list[str] = ["train", "definition"]
+    output_roles: list[str] = ["definition", "report"]
+
+    VALID_ENGINES = {"optbinning"}
+    VALID_PREBINNING = {"cart", "quantile"}
+    VALID_SOLVERS = {"cp", "mip"}
+    VALID_DIVERGENCES = {"iv", "js", "hellinger"}
+    VALID_MONOTONIC = {"auto", "none", "ascending", "descending"}
+    _NUMERIC_TYPES = {
+        pl.Float64, pl.Float32, pl.Int64, pl.Int32,
+        pl.Int16, pl.Int8, pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8,
+    }
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        engine = params.get("engine", "optbinning")
+        if engine not in self.VALID_ENGINES:
+            return [f"engine must be one of {sorted(self.VALID_ENGINES)}, got {engine!r}"]
+        if engine == "optbinning":
+            try:
+                import optbinning  # noqa: F401
+            except ImportError:
+                errors.append(
+                    "optbinning package not installed. "
+                    "Install with: pip install cardre[optimal-binning]"
+                )
+        else:
+            return errors
+
+        pbm = params.get("prebinning_method", "cart")
+        if pbm not in self.VALID_PREBINNING:
+            errors.append(f"prebinning_method must be one of {self.VALID_PREBINNING}")
+
+        solver = params.get("solver", "cp")
+        if solver not in self.VALID_SOLVERS:
+            errors.append(f"solver must be one of {self.VALID_SOLVERS}")
+
+        divergence = params.get("divergence", "iv")
+        if divergence not in self.VALID_DIVERGENCES:
+            errors.append(f"divergence must be one of {self.VALID_DIVERGENCES}")
+
+        trend = params.get("monotonic_trend", "auto")
+        if trend not in self.VALID_MONOTONIC:
+            errors.append(f"monotonic_trend must be one of {self.VALID_MONOTONIC}")
+
+        for key in ("max_n_prebins", "max_n_bins", "min_bin_n_event",
+                     "min_bin_n_nonevent", "time_limit"):
+            v = params.get(key)
+            if v is not None:
+                try:
+                    if int(v) < 1:
+                        errors.append(f"{key} must be >= 1")
+                except (ValueError, TypeError):
+                    errors.append(f"{key} must be an integer")
+
+        for key in ("min_prebin_size", "min_bin_size", "cat_cutoff"):
+            v = params.get(key)
+            if v is not None:
+                try:
+                    fv = float(v)
+                    if not (0 < fv < 1):
+                        errors.append(f"{key} must be between 0 and 1")
+                except (ValueError, TypeError):
+                    errors.append(f"{key} must be a number")
+
+        return errors
+
+    def run(self, context: ExecutionContext) -> NodeOutput:
+        store = context.store
+        params = context.validated_params
+        reader = ArtifactEvidenceReader(store)
+
+        # Resolve input artifacts
+        train_artifact = next(a for a in context.input_artifacts if a.role == "train")
+        meta_def = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+
+        df = pl.read_parquet(store.artifact_path(train_artifact))
+        target_column = meta_def.target_column
+        good_values = set(str(v) for v in meta_def.good_values)
+        bad_values = set(str(v) for v in meta_def.bad_values)
+
+        if not target_column or target_column not in df.columns:
+            raise ValueError(f"target_column '{target_column}' not found in training data")
+        if not good_values or not bad_values:
+            raise ValueError("good_values and bad_values must be non-empty")
+
+        # Determine feature columns
+        exclude_columns = set(params.get("exclude_columns", []))
+        exclude_columns.add(target_column)
+
+        feature_cols = [c for c in df.columns if c not in exclude_columns]
+        if not feature_cols:
+            raise ValueError("No feature columns available after exclusions")
+
+        # Determine variable types
+        variable_types: dict[str, str] = {}
+        for col in feature_cols:
+            dtype = df.schema[col]
+            if dtype in self._NUMERIC_TYPES:
+                variable_types[col] = "numerical"
+            else:
+                variable_types[col] = "categorical"
+
+        special_codes: dict[str, list[Any]] = params.get("special_codes", {})
+
+        # Run adapter
+        result = fit_variables(
+            df=df,
+            target=target_column,
+            good_values=good_values,
+            bad_values=bad_values,
+            variable_names=feature_cols,
+            variable_types=variable_types,
+            special_codes=special_codes,
+            params=params,
+        )
+
+        # Run diagnostics (fit-time checks before WOE)
+        diagnostics = run_diagnostics(
+            result.variables,
+            min_bins=2,
+            min_bin_count=30,
+        )
+
+        # Build bin definition (Cardre SCHEMA_BIN_DEFINITION)
+        variables_out: list[dict[str, Any]] = []
+        all_warnings: list[dict[str, Any]] = []
+        for d in diagnostics:
+            all_warnings.append({
+                "variable": d.variable,
+                "message": d.message,
+                "diagnostic_type": d.diagnostic_type,
+            })
+        rejected_vars: list[dict[str, Any]] = []
+        for var_result in result.variables:
+            is_failed = var_result.status == "FAILED"
+            var_entry = {
+                "variable": var_result.variable,
+                "dtype": var_result.dtype,
+                "kind": "numeric" if var_result.dtype == "numerical" else "categorical",
+                "bins": var_result.bins,
+                "status": var_result.status,
+            }
+            # Failed variables go to rejected list, not active definition
+            if is_failed:
+                var_entry["active"] = False
+                rejected_vars.append(var_entry)
+                all_warnings.append({
+                    "variable": var_result.variable,
+                    "message": f"Variable failed optbinning fit; excluded from active definition",
+                    "diagnostic_type": "variable_failed",
+                })
+            else:
+                var_entry["active"] = True
+                variables_out.append(var_entry)
+            for w in var_result.warnings:
+                all_warnings.append({
+                    "variable": var_result.variable,
+                    "message": w,
+                })
+
+        bin_def = {
+            "schema_version": SCHEMA_BIN_DEFINITION,
+            "variables": variables_out,
+            "rejected": rejected_vars if rejected_vars else None,
+            "warnings": all_warnings + result.warnings,
+            "source": {
+                "engine": "optbinning",
+                "engine_version": result.engine_version,
+                "node_id": context.step_spec.step_id,
+                "params": context.validated_params,
+            },
+        }
+
+        bin_artifact = write_json_artifact(
+            store, artifact_type="definition", role="definition",
+            stem=f"auto-binning-{context.step_spec.step_id}",
+            payload=bin_def,
+            metadata={
+                "source_artifact_id": train_artifact.artifact_id,
+                "target_column": target_column,
+                "schema_version": SCHEMA_BIN_DEFINITION,
+            },
+        )
+
+        # Engine manifest (secondary evidence)
+        manifest_artifact = write_json_artifact(
+            store, artifact_type="report", role="report",
+            stem=f"auto-binning-manifest-{context.step_spec.step_id}",
+            payload=result.manifest,
+            metadata={
+                "engine": "optbinning",
+                "engine_version": result.engine_version,
+            },
+        )
+
+        metrics = {
+            "variable_count": len(feature_cols),
+            "succeeded": len(result.manifest.get("succeeded", [])),
+            "failed": len(result.manifest.get("failed", [])),
+            "warnings_count": len(all_warnings),
+        }
+
+        return NodeOutput(
+            artifacts=[bin_artifact, manifest_artifact],
+            metrics=metrics,
+        )

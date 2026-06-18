@@ -581,6 +581,22 @@ class NodeTypeSchemaResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Binning engines
+# ---------------------------------------------------------------------------
+
+class BinningEngineInfo(BaseModel):
+    id: str
+    label: str
+    available: bool
+    version: str | None = None
+    target_types: list[str] = Field(default_factory=list)
+
+
+class BinningEnginesResponse(BaseModel):
+    engines: list[BinningEngineInfo]
+
+
+# ---------------------------------------------------------------------------
 # Method Summary (Phase 6)
 # ---------------------------------------------------------------------------
 
