@@ -28,6 +28,19 @@ from cardre.store import ProjectStore
 
 from tests.helpers import SAMPLE_GERMAN_CREDIT_LINES, _make_json_artifact, _make_parquet_report, _make_train_artifact, make_store
 
+# German Credit columns must be loaded as strings for scorecard pipeline compat.
+# With proper CSV inference polars converts numeric codes (e.g. duration=6,
+# credit_amount=1169) to Int64, breaking fine-classing/WOE.
+_GERMAN_COLS_STR = {c: "str" for c in [
+    "checking_account_status", "duration_months", "credit_history", "purpose",
+    "credit_amount", "savings_account_bonds", "present_employment_since",
+    "installment_rate_percent_disposable_income", "personal_status_sex",
+    "other_debtors_guarantors", "present_residence_since", "property",
+    "age_years", "other_installment_plans", "housing",
+    "existing_credits_at_bank", "job", "people_liable_maintenance",
+    "telephone", "foreign_worker", "credit_risk_class",
+]}
+
 
 def _make_german_credit_file(tmp: Path) -> Path:
     """Create a German Credit fixture with 10 rows for meaningful pathway execution."""
@@ -156,7 +169,7 @@ class TestAcceptanceChampionReport:
             plan_id=self.plan_id,
             step_id="import",
             base_plan_version_id=self.pv_id,
-            params={"source_path": self.source_path},
+            params={"source_path": self.source_path, "schema_overrides": _GERMAN_COLS_STR},
         )
         self.pv_id = self.store.get_latest_plan_version_id(self.plan_id)
 
@@ -326,7 +339,7 @@ class TestAcceptanceNoChampionBranch:
             plan_id=self.plan_id,
             step_id="import",
             base_plan_version_id=self.pv_id,
-            params={"source_path": self.source_path},
+            params={"source_path": self.source_path, "schema_overrides": _GERMAN_COLS_STR},
         )
         self.pv_id = self.store.get_latest_plan_version_id(self.plan_id)
 

@@ -12,6 +12,22 @@ from cardre.audit import StepSpec, json_logical_hash
 from cardre.store import ProjectStore
 from sidecar.main import app
 
+# All 21 German Credit columns must be read as strings for scorecard compatibility.
+# With proper CSV type inference polars converts numeric-looking fields (e.g.
+# duration_months=6, credit_amount=1169) to Int64, breaking fine-classing/WOE
+# which expects string-typed categorical bins.
+_GERMAN_COLS_STR = {
+    c: "str" for c in [
+        "checking_account_status", "duration_months", "credit_history", "purpose",
+        "credit_amount", "savings_account_bonds", "present_employment_since",
+        "installment_rate_percent_disposable_income", "personal_status_sex",
+        "other_debtors_guarantors", "present_residence_since", "property",
+        "age_years", "other_installment_plans", "housing",
+        "existing_credits_at_bank", "job", "people_liable_maintenance",
+        "telephone", "foreign_worker", "credit_risk_class",
+    ]
+}
+
 
 pytest_plugins = []
 pytestmark = [pytest.mark.api, pytest.mark.usefixtures("_isolated_registry")]
@@ -1148,6 +1164,7 @@ class TestScorecardPathwayE2E:
         import_resp = client.post("/datasets/import", json={
             "project_id": pid, "source_path": str(larger_german_credit),
             "dataset_id": "uci-statlog-german-credit",
+            "schema_overrides": _GERMAN_COLS_STR,
         })
         assert import_resp.status_code == 201
 
@@ -1321,6 +1338,7 @@ class TestScorecardPathwayE2E:
         client.post("/datasets/import", json={
             "project_id": pid, "source_path": str(larger_german_credit),
             "dataset_id": "uci-statlog-german-credit",
+            "schema_overrides": _GERMAN_COLS_STR,
         })
 
         # Configure modelling metadata and target_column
@@ -1445,6 +1463,7 @@ class TestPhase4BranchingFlow:
             "project_id": pid,
             "source_path": str(larger_german_credit),
             "dataset_id": "uci-statlog-german-credit",
+            "schema_overrides": _GERMAN_COLS_STR,
         })
         assert imp_resp.status_code in (200, 201)
 

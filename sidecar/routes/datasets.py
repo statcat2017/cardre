@@ -40,8 +40,8 @@ def import_dataset(body: ImportDatasetRequest):
         params["delimiter"] = body.delimiter
     if not body.has_header:
         params["has_header"] = False
-    if body.dataset_id:
-        params["dataset_id"] = body.dataset_id
+    if body.schema_overrides:
+        params["schema_overrides"] = dict(body.schema_overrides)
     import_step = StepSpec(
         step_id="import",
         node_type="cardre.import_dataset",
@@ -82,7 +82,10 @@ def import_dataset(body: ImportDatasetRequest):
         raise HTTPException(status_code=500, detail={"code": "ARTIFACT_NOT_FOUND", "message": "Import artifact not found in store"})
 
     # Update pathway import params
-    update_plan_import_params(store, body.project_id, str(source.resolve()))
+    extra_params = {}
+    if body.schema_overrides:
+        extra_params["schema_overrides"] = dict(body.schema_overrides)
+    update_plan_import_params(store, body.project_id, str(source.resolve()), extra_params=extra_params or None)
 
     return ArtifactResponse(
         artifact_id=artifact.artifact_id,

@@ -1198,9 +1198,28 @@ export interface components {
             source_path: string;
             /**
              * Dataset Id
-             * @default uci-statlog-german-credit
+             * @default
              */
             dataset_id: string;
+            /**
+             * Format
+             * @default auto
+             */
+            format: string;
+            /** Delimiter */
+            delimiter?: string | null;
+            /**
+             * Has Header
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Schema Overrides
+             * @default {}
+             */
+            schema_overrides: {
+                [key: string]: string;
+            };
         };
         /** ManualBinningEditorStateResponse */
         ManualBinningEditorStateResponse: {

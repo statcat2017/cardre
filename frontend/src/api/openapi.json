@@ -3215,7 +3215,36 @@
           "dataset_id": {
             "type": "string",
             "title": "Dataset Id",
-            "default": "uci-statlog-german-credit"
+            "default": ""
+          },
+          "format": {
+            "type": "string",
+            "title": "Format",
+            "default": "auto"
+          },
+          "delimiter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delimiter"
+          },
+          "has_header": {
+            "type": "boolean",
+            "title": "Has Header",
+            "default": true
+          },
+          "schema_overrides": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Schema Overrides",
+            "default": {}
           }
         },
         "type": "object",

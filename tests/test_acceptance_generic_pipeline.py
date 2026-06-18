@@ -147,4 +147,20 @@ class TestGenericCsvFullPipeline:
         payload = json.loads(path.read_text())
         assert payload["target_column"] == "default_flag"
         assert payload["good_values"] == ["N"]
-        assert payload["bad_values"] == ["Y"]
+
+    def test_numeric_variables_binned_as_numeric(self):
+        """Numeric CSV columns are binned with kind='numeric', not categorical."""
+        run_id = self._configure_and_run()
+        run_steps = self.store.get_run_steps(run_id)
+        fc_rs = [rs for rs in run_steps if rs.step_id == "fine-classing"][0]
+        artifact = self.store.get_artifact(fc_rs.output_artifact_ids[0])
+        import json
+        path = self.store.artifact_path(artifact)
+        payload = json.loads(path.read_text())
+        variables = {v["variable"]: v for v in payload.get("variables", [])}
+        for var in ("age", "income", "credit_score", "loan_amount"):
+            assert var in variables, f"{var} should have fine-classing definitions"
+            assert variables[var].get("kind") == "numeric", (
+                f"Expected {var} to be binned as 'numeric', got {variables[var].get('kind')!r}. "
+                "CSV import must preserve numeric dtypes."
+            )

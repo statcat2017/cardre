@@ -51,6 +51,7 @@ class ImportDatasetRequest(BaseModel):
     format: str = "auto"
     delimiter: str | None = None
     has_header: bool = True
+    schema_overrides: dict[str, str] = {}
 
 
 class ArtifactResponse(BaseModel):

@@ -1,6 +1,7 @@
 """Tests for cardre.import_dataset — the generic tabular import node.
 
 German Credit is NOT referenced anywhere in this file.
+Each test asserts that numeric columns remain numeric after import.
 """
 
 from __future__ import annotations
@@ -70,6 +71,10 @@ class GenericImportTests(unittest.TestCase):
         self.assertIn("customer_id", df.columns)
         self.assertIn("age", df.columns)
         self.assertIn("income", df.columns)
+        self.assertTrue(df.schema["age"].is_numeric(), "age should be numeric")
+        self.assertTrue(df.schema["income"].is_numeric(), "income should be numeric")
+        self.assertTrue(df.schema["credit_score"].is_numeric(), "credit_score should be numeric")
+        self.assertTrue(df.schema["loan_amount"].is_numeric(), "loan_amount should be numeric")
 
     def test_csv_metadata_has_no_target_semantics(self) -> None:
         store, tmp = make_store()
@@ -167,6 +172,33 @@ class GenericImportTests(unittest.TestCase):
         reg = NodeRegistry.with_defaults()
         cls = reg.resolve("cardre.import_dataset")
         self.assertIs(cls, ImportTabularDatasetNode)
+
+    def test_schema_overrides_control_types(self) -> None:
+        store, tmp = make_store()
+        source = make_synthetic_csv(tmp)
+        store, output = _run_import(source, schema_overrides={
+            "customer_id": "str",
+            "age": "int",
+            "income": "float",
+            "default_flag": "str",
+        })
+        df = pl.read_parquet(store.artifact_path(output.artifacts[0]))
+        self.assertEqual(df.schema["customer_id"], pl.Utf8)
+        self.assertEqual(df.schema["age"], pl.Int64)
+        self.assertEqual(df.schema["income"], pl.Float64)
+        self.assertEqual(df.schema["default_flag"], pl.Utf8)
+
+    def test_schema_overrides_invalid_dtype_rejected(self) -> None:
+        import tempfile
+        tmp = Path(tempfile.mkdtemp())
+        source = tmp / "dummy.csv"
+        source.write_text("a,b\n1,2")
+        node = ImportTabularDatasetNode()
+        errors = node.validate_params({
+            "source_path": str(source),
+            "schema_overrides": {"a": "list"},
+        })
+        self.assertTrue(any("list" in e for e in errors))
 
     def test_logical_hash_stable_for_same_data(self) -> None:
         store1, tmp1 = make_store()

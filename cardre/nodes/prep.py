@@ -157,6 +157,14 @@ class ImportGermanCreditNode(NodeType):
         )
 
 
+_DTYPE_MAP: dict[str, type[pl.DataType]] = {
+    "str": pl.Utf8, "string": pl.Utf8, "utf8": pl.Utf8, "Utf8": pl.Utf8,
+    "int": pl.Int64, "Int64": pl.Int64, "integer": pl.Int64,
+    "float": pl.Float64, "Float64": pl.Float64, "double": pl.Float64, "f64": pl.Float64,
+    "bool": pl.Boolean, "boolean": pl.Boolean, "Bool": pl.Boolean,
+}
+
+
 class ImportTabularDatasetNode(NodeType):
     node_type = "cardre.import_dataset"
     version = "1"
@@ -181,6 +189,18 @@ class ImportTabularDatasetNode(NodeType):
             errors.append(
                 f"Unsupported format {fmt!r}; supported: {', '.join(sorted(self.SUPPORTED_FORMATS))}"
             )
+        schema_overrides_raw = params.get("schema_overrides", {})
+        if schema_overrides_raw:
+            if not isinstance(schema_overrides_raw, dict):
+                errors.append("schema_overrides must be a dict mapping column names to dtype strings")
+            else:
+                for col, dtype_str in schema_overrides_raw.items():
+                    if not isinstance(dtype_str, str) or dtype_str not in _DTYPE_MAP:
+                        valid = sorted(_DTYPE_MAP)
+                        errors.append(
+                            f"Unrecognised dtype {dtype_str!r} for column {col!r}; "
+                            f"supported: {valid}"
+                        )
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
@@ -199,13 +219,21 @@ class ImportTabularDatasetNode(NodeType):
             has_header = params.get("has_header", True)
             encoding = params.get("encoding", "utf-8")
             null_values = params.get("null_values", [])
+            schema_overrides_raw = params.get("schema_overrides", {})
+            schema_overrides = {}
+            if schema_overrides_raw:
+                schema_overrides = {
+                    col: _DTYPE_MAP[dtype_str]
+                    for col, dtype_str in schema_overrides_raw.items()
+                }
             df = pl.read_csv(
                 source_path,
                 separator=delimiter,
                 has_header=has_header,
                 encoding=encoding,
                 null_values=null_values if null_values else None,
-                infer_schema_length=0,
+                schema_overrides=schema_overrides or None,
+                infer_schema_length=10000,
             )
 
         if df.is_empty():
