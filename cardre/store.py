@@ -304,60 +304,14 @@ class ProjectStore:
         ).fetchone()
         return None if row is None else dict(row)
 
-    def create_plan_version(
-        self,
-        plan_id: str,
-        steps: list[StepSpec],
-        description: str = "",
-    ) -> str:
-        plan_version_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        with self.transaction() as conn:
-            max_ver = conn.execute(
-                "SELECT COALESCE(MAX(version_number), 0) + 1 FROM plan_versions WHERE plan_id = ?",
-                (plan_id,),
-            ).fetchone()[0]
-            conn.execute(
-                "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, created_at, description) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (plan_version_id, plan_id, max_ver, now, description),
-            )
-            for step in steps:
-                conn.execute(
-                    "INSERT INTO plan_steps "
-                    "(step_id, plan_version_id, node_type, node_version, category, "
-                    " params_json, params_hash, parent_step_ids_json, branch_label, position, "
-                    " canonical_step_id, branch_id) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        step.step_id,
-                        plan_version_id,
-                        step.node_type,
-                        step.node_version,
-                        step.category,
-                        json.dumps(step.params),
-                        step.params_hash,
-                        json.dumps(step.parent_step_ids),
-                        step.branch_label,
-                        step.position,
-                        step.canonical_step_id,
-                        step.branch_id,
-                    ),
-                )
-        return plan_version_id
-
-    def create_plan_version_in_transaction(
+    def _insert_plan_version_and_steps(
         self,
         conn: sqlite3.Connection,
         plan_id: str,
         steps: list[StepSpec],
         description: str = "",
     ) -> str:
-        """Create a new plan version inside an existing transaction.
-
-        Useful for atomic branch creation where plan version, branch
-        metadata, and branch step maps must be committed together.
-        """
+        """Insert a plan version and its steps inside an open transaction."""
         plan_version_id = str(uuid.uuid4())
         now = utc_now_iso()
         max_ver = conn.execute(
@@ -392,6 +346,29 @@ class ProjectStore:
                 ),
             )
         return plan_version_id
+
+    def create_plan_version(
+        self,
+        plan_id: str,
+        steps: list[StepSpec],
+        description: str = "",
+    ) -> str:
+        with self.transaction() as conn:
+            return self._insert_plan_version_and_steps(conn, plan_id, steps, description)
+
+    def create_plan_version_in_transaction(
+        self,
+        conn: sqlite3.Connection,
+        plan_id: str,
+        steps: list[StepSpec],
+        description: str = "",
+    ) -> str:
+        """Create a new plan version inside an existing transaction.
+
+        Useful for atomic branch creation where plan version, branch
+        metadata, and branch step maps must be committed together.
+        """
+        return self._insert_plan_version_and_steps(conn, plan_id, steps, description)
 
     def get_plan_version(self, plan_version_id: str) -> JsonDict | None:
         row = self._connect().execute(

@@ -1,415 +1,176 @@
-"""Hardcoded proof pathway and Phase 2A scorecard pathway plan auto-registered on project creation."""
+"""Pathway definitions auto-registered on project creation.
+
+Uses the canonical PathwaySpec builder from cardre.pathway.
+"""
 
 from __future__ import annotations
 
-from cardre.audit import StepSpec, json_logical_hash
+from cardre.pathway import PathwaySpec, PathwayStepSpec, build_pathway_steps
 from cardre.store import ProjectStore
 
 
-PROOF_PATHWAY_STEPS_CONFIG = [
-    {
-        "step_id": "import",
-        "node_type": "cardre.import_dataset",
-        "node_version": "1",
-        "category": "transform",
-        "params": {},
-        "parent_step_ids": [],
-        "branch_label": "",
-    },
-    {
-        "step_id": "profile",
-        "node_type": "cardre.profile_dataset",
-        "node_version": "1",
-        "category": "transform",
-        "params": {},
-        "parent_step_ids": ["import"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "validate-target",
-        "node_type": "cardre.validate_binary_target",
-        "node_version": "1",
-        "category": "transform",
-        "params": {"target_column": "credit_risk_class"},
-        "parent_step_ids": ["import"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "split",
-        "node_type": "cardre.split_train_test_oot",
-        "node_version": "2",
-        "category": "transform",
-        "params": {
-            "train_fraction": 0.6,
-            "test_fraction": 0.2,
-            "oot_fraction": 0.2,
-            "strategy": "random_stratified",
-            "target_column": "credit_risk_class",
-            "role_column": None,
-            "random_seed": 42,
-        },
-        "parent_step_ids": ["import"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "dummy-fit",
-        "node_type": "cardre.dummy_fit",
-        "node_version": "1",
-        "category": "fit",
-        "params": {},
-        "parent_step_ids": ["split"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "dummy-apply",
-        "node_type": "cardre.dummy_apply",
-        "node_version": "1",
-        "category": "apply",
-        "params": {},
-        "parent_step_ids": ["split", "dummy-fit"],
-        "branch_label": "",
-    },
-]
+PROOF_PATHWAY = PathwaySpec(
+    name="Proof Pathway",
+    description="Minimal proof-of-concept pathway",
+    phases=[[
+        PathwayStepSpec("import", "cardre.import_dataset"),
+        PathwayStepSpec("profile", "cardre.profile_dataset", parent_step_ids=["import"]),
+        PathwayStepSpec("validate-target", "cardre.validate_binary_target",
+                        params={"target_column": "credit_risk_class"},
+                        parent_step_ids=["import"]),
+        PathwayStepSpec("split", "cardre.split_train_test_oot", node_version="2",
+                        params={
+                            "train_fraction": 0.6, "test_fraction": 0.2,
+                            "oot_fraction": 0.2, "strategy": "random_stratified",
+                            "target_column": "credit_risk_class", "role_column": None,
+                            "random_seed": 42,
+                        },
+                        parent_step_ids=["import"]),
+        PathwayStepSpec("dummy-fit", "cardre.dummy_fit", category="fit",
+                        parent_step_ids=["split"]),
+        PathwayStepSpec("dummy-apply", "cardre.dummy_apply", category="apply",
+                        parent_step_ids=["split", "dummy-fit"]),
+    ]],
+)
 
-PHASE2C_PATHWAY_STEPS_CONFIG = [
-    {
-        "step_id": "apply-woe",
-        "node_type": "cardre.apply_woe_mapping",
-        "node_version": "1",
-        "category": "apply",
-        "params": {},
-        "parent_step_ids": ["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "apply-model",
-        "node_type": "cardre.apply_model",
-        "node_version": "1",
-        "category": "apply",
-        "params": {},
-        "parent_step_ids": ["apply-woe", "logistic-regression", "score-scaling"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "validation-metrics",
-        "node_type": "cardre.validation_metrics",
-        "node_version": "1",
-        "category": "apply",
-        "params": {},
-        "parent_step_ids": ["apply-model", "define-metadata"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "cutoff-analysis",
-        "node_type": "cardre.cutoff_analysis",
-        "node_version": "1",
-        "category": "apply",
-        "params": {"band_count": 20},
-        "parent_step_ids": ["apply-model", "validation-metrics"],
-        "branch_label": "",
-    },
-]
 
-PHASE2B_PATHWAY_STEPS_CONFIG = [
-    {
-        "step_id": "woe-transform-train",
-        "node_type": "cardre.woe_transform_train",
-        "node_version": "1",
-        "category": "fit",
-        "params": {},
-        "parent_step_ids": ["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv", "variable-selection"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "logistic-regression",
-        "node_type": "cardre.logistic_regression",
-        "node_version": "1",
-        "category": "fit",
-        "params": {
-            "C": 1.0,
-            "max_iter": 1000,
-            "solver": "lbfgs",
-            "random_seed": 42,
-        },
-        "parent_step_ids": ["woe-transform-train", "define-metadata"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "score-scaling",
-        "node_type": "cardre.score_scaling",
-        "node_version": "1",
-        "category": "fit",
-        "params": {
-            "base_score": 600,
-            "base_odds": 50.0,
-            "points_to_double_odds": 20,
-            "higher_score_is_lower_risk": True,
-        },
-        "parent_step_ids": ["logistic-regression", "manual-binning", "final-woe-iv"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "build-summary-report",
-        "node_type": "cardre.build_summary_report",
-        "node_version": "1",
-        "category": "fit",
-        "params": {},
-        "parent_step_ids": ["score-scaling", "logistic-regression", "final-woe-iv"],
-        "branch_label": "",
-    },
-]
+SCORECARD_PATHWAY = PathwaySpec(
+    name="Scorecard Pathway",
+    description="Full credit scorecard development pathway (Phase 2A + 2B + 2C + Manifest)",
+    phases=[
 
-PHASE2A_PATHWAY_STEPS_CONFIG = [
-    {
-        "step_id": "import",
-        "node_type": "cardre.import_dataset",
-        "node_version": "1",
-        "category": "transform",
-        "params": {},
-        "parent_step_ids": [],
-        "branch_label": "",
-    },
-    {
-        "step_id": "define-metadata",
-        "node_type": "cardre.define_modelling_metadata",
-        "node_version": "1",
-        "category": "transform",
-        "params": {
-            "target_column": "credit_risk_class",
-            "good_values": ["1"],
-            "bad_values": ["2"],
-            "indeterminate_values": [],
-            "population": "",
-            "product": "",
-            "segment": "",
-            "observation_window": None,
-            "performance_window": None,
-        },
-        "parent_step_ids": ["import"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "apply-exclusions",
-        "node_type": "cardre.apply_exclusions",
-        "node_version": "1",
-        "category": "transform",
-        "params": {"rules": []},
-        "parent_step_ids": ["import", "define-metadata"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "profile",
-        "node_type": "cardre.profile_dataset",
-        "node_version": "1",
-        "category": "transform",
-        "params": {},
-        "parent_step_ids": ["apply-exclusions"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "validate-target",
-        "node_type": "cardre.validate_binary_target",
-        "node_version": "1",
-        "category": "transform",
-        "params": {"target_column": "credit_risk_class"},
-        "parent_step_ids": ["apply-exclusions", "define-metadata"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "sample-definition",
-        "node_type": "cardre.development_sample_definition",
-        "node_version": "1",
-        "category": "transform",
-        "params": {
-            "sample_method": "full_population",
-            "weight_column": None,
-            "population_bad_rate": None,
-            "prior_probability_adjustment": None,
-        },
-        "parent_step_ids": ["apply-exclusions", "define-metadata"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "split",
-        "node_type": "cardre.split_train_test_oot",
-        "node_version": "2",
-        "category": "transform",
-        "params": {
-            "strategy": "random_stratified",
-            "train_fraction": 0.6,
-            "test_fraction": 0.2,
-            "oot_fraction": 0.2,
-            "target_column": "credit_risk_class",
-            "role_column": None,
-            "random_seed": 42,
-        },
-        "parent_step_ids": ["apply-exclusions", "sample-definition"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "explicit-missing-outlier-treatment",
-        "node_type": "cardre.explicit_missing_outlier_treatment",
-        "node_version": "1",
-        "category": "apply",
-        "params": {
-            "imputations": {},
-            "caps": {},
-            "floors": {},
-        },
-        "parent_step_ids": ["split"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "fine-classing",
-        "node_type": "cardre.fine_classing",
-        "node_version": "1",
-        "category": "fit",
-        "params": {
-            "max_bins": 20,
-            "min_bin_fraction": 0.05,
-            "missing_policy": "separate_bin",
-            "max_categorical_levels": 50,
-            "exclude_columns": [],
-        },
-        "parent_step_ids": ["explicit-missing-outlier-treatment", "define-metadata"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "initial-woe-iv",
-        "node_type": "cardre.calculate_woe_iv",
-        "node_version": "1",
-        "category": "selection",
-        "params": {
-            "zero_cell_policy": "block",
-            "smoothing": None,
-            "purpose": "initial",
-        },
-        "parent_step_ids": ["explicit-missing-outlier-treatment", "fine-classing", "define-metadata"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "variable-clustering",
-        "node_type": "cardre.variable_clustering",
-        "node_version": "1",
-        "category": "selection",
-        "params": {
-            "correlation_threshold": 0.7,
-            "candidate_limit": 50,
-        },
-        "parent_step_ids": ["explicit-missing-outlier-treatment", "initial-woe-iv"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "variable-selection",
-        "node_type": "cardre.variable_selection",
-        "node_version": "1",
-        "category": "selection",
-        "params": {
-            "min_iv": 0.02,
-            "max_variables": 15,
-            "manual_includes": [],
-            "manual_excludes": [],
-        },
-        "parent_step_ids": ["initial-woe-iv", "variable-clustering"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "manual-binning",
-        "node_type": "cardre.manual_binning",
-        "node_version": "1",
-        "category": "refinement",
-        "params": {"overrides": []},
-        "parent_step_ids": ["fine-classing", "variable-selection"],
-        "branch_label": "",
-    },
-    {
-        "step_id": "final-woe-iv",
-        "node_type": "cardre.calculate_woe_iv",
-        "node_version": "1",
-        "category": "selection",
-        "params": {
-            "zero_cell_policy": "block",
-            "smoothing": {
-                "method": "additive",
-                "alpha": 0.5,
-                "rationale": "Default smoothing to ensure the auto-registered pathway is runnable on realistic data without manual binning edits.",
-            },
-            "purpose": "final",
-        },
-        "parent_step_ids": ["explicit-missing-outlier-treatment", "manual-binning", "define-metadata"],
-        "branch_label": "",
-    },
-]
+        # Phase 2A: Import through Variable Clustering/Selection
+        [
+            PathwayStepSpec("import", "cardre.import_dataset"),
+            PathwayStepSpec("define-metadata", "cardre.define_modelling_metadata",
+                            params={
+                                "target_column": "credit_risk_class",
+                                "good_values": ["1"], "bad_values": ["2"],
+                                "indeterminate_values": [],
+                                "population": "", "product": "", "segment": "",
+                                "observation_window": None, "performance_window": None,
+                            },
+                            parent_step_ids=["import"]),
+            PathwayStepSpec("apply-exclusions", "cardre.apply_exclusions",
+                            params={"rules": []},
+                            parent_step_ids=["import", "define-metadata"]),
+            PathwayStepSpec("profile", "cardre.profile_dataset",
+                            parent_step_ids=["apply-exclusions"]),
+            PathwayStepSpec("validate-target", "cardre.validate_binary_target",
+                            params={"target_column": "credit_risk_class"},
+                            parent_step_ids=["apply-exclusions", "define-metadata"]),
+            PathwayStepSpec("sample-definition", "cardre.development_sample_definition",
+                            params={
+                                "sample_method": "full_population",
+                                "weight_column": None,
+                                "population_bad_rate": None,
+                                "prior_probability_adjustment": None,
+                            },
+                            parent_step_ids=["apply-exclusions", "define-metadata"]),
+            PathwayStepSpec("split", "cardre.split_train_test_oot", node_version="2",
+                            params={
+                                "strategy": "random_stratified",
+                                "train_fraction": 0.6, "test_fraction": 0.2,
+                                "oot_fraction": 0.2,
+                                "target_column": "credit_risk_class",
+                                "role_column": None, "random_seed": 42,
+                            },
+                            parent_step_ids=["apply-exclusions", "sample-definition"]),
+            PathwayStepSpec("explicit-missing-outlier-treatment",
+                            "cardre.explicit_missing_outlier_treatment", category="apply",
+                            params={"imputations": {}, "caps": {}, "floors": {}},
+                            parent_step_ids=["split"]),
+            PathwayStepSpec("fine-classing", "cardre.fine_classing", category="fit",
+                            params={
+                                "max_bins": 20, "min_bin_fraction": 0.05,
+                                "missing_policy": "separate_bin",
+                                "max_categorical_levels": 50, "exclude_columns": [],
+                            },
+                            parent_step_ids=["explicit-missing-outlier-treatment", "define-metadata"]),
+            PathwayStepSpec("initial-woe-iv", "cardre.calculate_woe_iv", category="selection",
+                            params={"zero_cell_policy": "block", "smoothing": None, "purpose": "initial"},
+                            parent_step_ids=["explicit-missing-outlier-treatment", "fine-classing", "define-metadata"]),
+            PathwayStepSpec("variable-clustering", "cardre.variable_clustering", category="selection",
+                            params={"correlation_threshold": 0.7, "candidate_limit": 50},
+                            parent_step_ids=["explicit-missing-outlier-treatment", "initial-woe-iv"]),
+            PathwayStepSpec("variable-selection", "cardre.variable_selection", category="selection",
+                            params={
+                                "min_iv": 0.02, "max_variables": 15,
+                                "manual_includes": [], "manual_excludes": [],
+                            },
+                            parent_step_ids=["initial-woe-iv", "variable-clustering"]),
+            PathwayStepSpec("manual-binning", "cardre.manual_binning", category="refinement",
+                            params={"overrides": []},
+                            parent_step_ids=["fine-classing", "variable-selection"]),
+            PathwayStepSpec("final-woe-iv", "cardre.calculate_woe_iv", category="selection",
+                            params={
+                                "zero_cell_policy": "block",
+                                "smoothing": {
+                                    "method": "additive", "alpha": 0.5,
+                                    "rationale": "Default smoothing to ensure the auto-registered pathway is runnable on realistic data without manual binning edits.",
+                                },
+                                "purpose": "final",
+                            },
+                            parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "define-metadata"]),
+        ],
 
-TECHNICAL_MANIFEST_STEP_CONFIG = {
-    "step_id": "technical-manifest-stub",
-    "node_type": "cardre.technical_manifest_export",
-    "node_version": "1",
-    "category": "transform",
-    "params": {},
-    "parent_step_ids": [
-        "define-metadata",
-        "sample-definition",
-        "split",
-        "explicit-missing-outlier-treatment",
-        "fine-classing",
-        "variable-selection",
-        "manual-binning",
-        "final-woe-iv",
-        "woe-transform-train",
-        "logistic-regression",
-        "score-scaling",
-        "build-summary-report",
-        "apply-woe",
-        "apply-model",
-        "validation-metrics",
-        "cutoff-analysis",
+        # Phase 2B: WOE transform, logistic regression, score scaling, summary report
+        [
+            PathwayStepSpec("woe-transform-train", "cardre.woe_transform_train", category="fit",
+                            parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv", "variable-selection"]),
+            PathwayStepSpec("logistic-regression", "cardre.logistic_regression", category="fit",
+                            params={"C": 1.0, "max_iter": 1000, "solver": "lbfgs", "random_seed": 42},
+                            parent_step_ids=["woe-transform-train", "define-metadata"]),
+            PathwayStepSpec("score-scaling", "cardre.score_scaling", category="fit",
+                            params={
+                                "base_score": 600, "base_odds": 50.0,
+                                "points_to_double_odds": 20, "higher_score_is_lower_risk": True,
+                            },
+                            parent_step_ids=["logistic-regression", "manual-binning", "final-woe-iv"]),
+            PathwayStepSpec("build-summary-report", "cardre.build_summary_report", category="fit",
+                            parent_step_ids=["score-scaling", "logistic-regression", "final-woe-iv"]),
+        ],
+
+        # Phase 2C: Apply WOE, apply model, validation, cutoff analysis
+        [
+            PathwayStepSpec("apply-woe", "cardre.apply_woe_mapping", category="apply",
+                            parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv"]),
+            PathwayStepSpec("apply-model", "cardre.apply_model", category="apply",
+                            parent_step_ids=["apply-woe", "logistic-regression", "score-scaling"]),
+            PathwayStepSpec("validation-metrics", "cardre.validation_metrics", category="apply",
+                            parent_step_ids=["apply-model", "define-metadata"]),
+            PathwayStepSpec("cutoff-analysis", "cardre.cutoff_analysis", category="apply",
+                            params={"band_count": 20},
+                            parent_step_ids=["apply-model", "validation-metrics"]),
+        ],
+
+        # Technical Manifest (placed last, depends on all prior steps)
+        [
+            PathwayStepSpec("technical-manifest-stub", "cardre.technical_manifest_export",
+                            parent_step_ids=[
+                                "define-metadata", "sample-definition", "split",
+                                "explicit-missing-outlier-treatment", "fine-classing",
+                                "variable-selection", "manual-binning", "final-woe-iv",
+                                "woe-transform-train", "logistic-regression", "score-scaling",
+                                "build-summary-report", "apply-woe", "apply-model",
+                                "validation-metrics", "cutoff-analysis",
+                            ]),
+        ],
     ],
-    "branch_label": "",
-}
-
-
-def _build_steps(config: list[dict]) -> list[StepSpec]:
-    steps = []
-    for i, c in enumerate(config):
-        params = dict(c["params"])
-        steps.append(
-            StepSpec(
-                step_id=c["step_id"],
-                node_type=c["node_type"],
-                node_version=c["node_version"],
-                category=c["category"],
-                params=params,
-                params_hash=json_logical_hash(params),
-                parent_step_ids=list(c["parent_step_ids"]),
-                branch_label=c.get("branch_label", ""),
-                position=i,
-            )
-        )
-    return steps
+)
 
 
 def register_proof_pathway(store: ProjectStore, project_id: str) -> str:
     """Register the proof pathway plan in the given project."""
-    plan_id = store.create_plan(project_id, "Proof Pathway")
-    steps = _build_steps(PROOF_PATHWAY_STEPS_CONFIG)
-    store.create_plan_version(plan_id, steps, description="Auto-registered proof pathway")
+    plan_id = store.create_plan(project_id, PROOF_PATHWAY.name)
+    steps = build_pathway_steps(PROOF_PATHWAY)
+    store.create_plan_version(plan_id, steps, description=f"Auto-registered {PROOF_PATHWAY.name}")
     return plan_id
 
 
 def register_scorecard_pathway(store: ProjectStore, project_id: str) -> str:
-    """Register the full Phase 2A + 2B + 2C scorecard pathway in the given project.
-
-    The technical-manifest-stub step is placed at the end, after cutoff-analysis,
-    so that the manifest executes after all evidence-producing steps have completed.
-    """
-    plan_id = store.create_plan(project_id, "Scorecard Pathway")
-    full_config = (
-        list(PHASE2A_PATHWAY_STEPS_CONFIG)
-        + list(PHASE2B_PATHWAY_STEPS_CONFIG)
-        + list(PHASE2C_PATHWAY_STEPS_CONFIG)
-        + [TECHNICAL_MANIFEST_STEP_CONFIG]
-    )
-    steps = _build_steps(full_config)
-    store.create_plan_version(plan_id, steps, description="Auto-registered scorecard pathway (Phase 2A + 2B + 2C)")
+    """Register the full scorecard pathway in the given project."""
+    plan_id = store.create_plan(project_id, SCORECARD_PATHWAY.name)
+    steps = build_pathway_steps(SCORECARD_PATHWAY)
+    store.create_plan_version(plan_id, steps, description=f"Auto-registered {SCORECARD_PATHWAY.name}")
     return plan_id

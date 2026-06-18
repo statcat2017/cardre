@@ -16,12 +16,15 @@ from cardre.services.branch_service import (
     _validate_segment_filter_rules,
     ALLOWED_BRANCH_POINTS,
 )
+from cardre.pathway import build_pathway_steps
 from cardre.store import ProjectStore
-from sidecar.proof_pathway import (
-    PROOF_PATHWAY_STEPS_CONFIG,
-    PHASE2A_PATHWAY_STEPS_CONFIG,
-    _build_steps,
-)
+from sidecar.proof_pathway import PROOF_PATHWAY, SCORECARD_PATHWAY
+
+
+def _scorecard_steps(count: int | None = None):
+    """Return first *count* steps from the scorecard pathway, or all."""
+    all_steps = build_pathway_steps(SCORECARD_PATHWAY)
+    return all_steps if count is None else all_steps[:count]
 
 from tests.helpers import make_store
 
@@ -362,7 +365,7 @@ class BaselineMigrationTests:
     def test_migrate_creates_baseline_branch(self):
         project_id = self.store.create_project("test")
         plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG)
+        steps = _scorecard_steps()
         pv_id = self.store.create_plan_version(plan_id, steps, description="v1")
 
         result = migrate_project_to_branch_model(self.store, project_id)
@@ -380,10 +383,10 @@ class BaselineMigrationTests:
         project_id = self.store.create_project("test")
         plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
 
-        v1_steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2])
+        v1_steps = _scorecard_steps(2)
         pv1_id = self.store.create_plan_version(plan_id, v1_steps, description="v1")
 
-        v2_steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:4])
+        v2_steps = _scorecard_steps(4)
         pv2_id = self.store.create_plan_version(plan_id, v2_steps, description="v2")
 
         result = migrate_project_to_branch_model(self.store, project_id)
@@ -403,7 +406,7 @@ class BaselineMigrationTests:
     def test_migrate_idempotent(self):
         project_id = self.store.create_project("test")
         plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2])
+        steps = _scorecard_steps(2)
         self.store.create_plan_version(plan_id, steps, description="v1")
 
         result1 = migrate_project_to_branch_model(self.store, project_id)
@@ -419,11 +422,11 @@ class BaselineMigrationTests:
         project_id = self.store.create_project("test")
         self.store.create_plan_version(
             self.store.create_plan(project_id, "__import__"),
-            _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:1]),
+            _scorecard_steps(1),
             description="import",
         )
         plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        self.store.create_plan_version(plan_id, _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2]), description="v1")
+        self.store.create_plan_version(plan_id, _scorecard_steps(2), description="v1")
 
         result = migrate_project_to_branch_model(self.store, project_id)
         assert result["branches_created"] == 1
@@ -435,7 +438,7 @@ class BaselineMigrationTests:
 
         project_id = self.store.create_project("test")
         plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2])
+        steps = _scorecard_steps(2)
         pv_id = self.store.create_plan_version(plan_id, steps, description="v1")
 
         reg = NodeRegistry.with_defaults()
@@ -465,7 +468,7 @@ class BaselineMigrationTests:
 
         project_id = self.store.create_project("test")
         plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2])
+        steps = _scorecard_steps(2)
         pv_id = self.store.create_plan_version(plan_id, steps, description="v1")
 
         reg = NodeRegistry.with_defaults()
@@ -486,7 +489,7 @@ class BaselineMigrationTests:
     def test_migrate_branch_list_endpoint_works(self):
         project_id = self.store.create_project("test")
         plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2])
+        steps = _scorecard_steps(2)
         self.store.create_plan_version(plan_id, steps, description="v1")
 
         migrate_project_to_branch_model(self.store, project_id)
@@ -500,7 +503,7 @@ class BaselineMigrationTests:
     def test_migrate_creates_branch_with_correct_head_version(self):
         project_id = self.store.create_project("test")
         plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        steps = _build_steps(PHASE2A_PATHWAY_STEPS_CONFIG[:2])
+        steps = _scorecard_steps(2)
         pv1 = self.store.create_plan_version(plan_id, steps[:1], description="v1")
         pv2 = self.store.create_plan_version(plan_id, steps, description="v2")
 

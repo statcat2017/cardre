@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
 from cardre.audit import ArtifactRef, RunStepRecord, StepSpec
-from cardre.staleness import compute_staleness
+from cardre.staleness import compute_staleness, step_is_stale
 from cardre.store import ProjectStore
 from cardre.topology import validate_topology
 
@@ -110,23 +110,25 @@ class BranchEvidenceResolver:
             if r["is_shared_upstream"]:
                 source_by_step[r["step_id"]] = r.get("source_branch_id") or None
 
-        stale_shared: list[str] = []
-        spec_by_step = {s.step_id: s for s in steps}
+        # Pre-collect shared evidence into a map for staleness checking
+        # (avoids re-querying per-step and per-parent).
+        shared_evidence_map: dict[str, RunStepRecord] = {}
         for sid in shared_upstream_step_ids:
             sb = source_by_step.get(sid)
             rs = self._find_shared_evidence(
                 store, branch["plan_id"], plan_version_id, sid,
                 source_branch_id=sb,
             )
-            if rs is None:
+            if rs is not None:
+                shared_evidence_map[sid] = rs
+
+        stale_shared: list[str] = []
+        stale_cache: dict[str, bool] = {}
+        spec_by_step = {s.step_id: s for s in steps}
+        for sid in shared_upstream_step_ids:
+            spec = spec_by_step.get(sid)
+            if spec is None or step_is_stale(spec, steps, shared_evidence_map, stale_cache):
                 stale_shared.append(sid)
-            else:
-                spec = spec_by_step.get(sid)
-                if spec is not None and not self._is_evidence_fresh(
-                    store, branch["plan_id"], plan_version_id, spec, rs,
-                    source_branch_id=sb,
-                ):
-                    stale_shared.append(sid)
 
         if stale_shared:
             raise ValueError(
@@ -167,16 +169,10 @@ class BranchEvidenceResolver:
         step_outputs: dict[str, list[ArtifactRef]] = {}
         run_step_records: dict[str, RunStepRecord] = {}
 
-        # 8a. Shared upstream evidence (use source branch for child-of-child)
-        for sid in shared_upstream_step_ids:
-            sb = source_by_step.get(sid)
-            rs = self._find_shared_evidence(
-                store, branch["plan_id"], plan_version_id, sid,
-                source_branch_id=sb,
-            )
-            if rs is not None:
-                run_step_records[sid] = rs
-                step_outputs[sid] = self._exec._resolve_output_artifacts(store, rs)
+        # 8a. Shared upstream evidence (use pre-collected evidence)
+        for sid, rs in shared_evidence_map.items():
+            run_step_records[sid] = rs
+            step_outputs[sid] = self._exec._resolve_output_artifacts(store, rs)
 
         # 8b. Current (non-stale) branch-owned step evidence
         for spec in steps:
@@ -233,49 +229,6 @@ class BranchEvidenceResolver:
     # ------------------------------------------------------------------
     # internal helpers
     # ------------------------------------------------------------------
-
-    def _is_evidence_fresh(
-        self,
-        store: ProjectStore,
-        plan_id: str,
-        plan_version_id: str,
-        spec: StepSpec,
-        run_step: RunStepRecord,
-        source_branch_id: str | None = None,
-    ) -> bool:
-        """Check that *run_step*'s fingerprint matches the current *spec*.
-
-        Returns False when params, node type/version, or parent output
-        hashes have changed since the run-step was recorded.
-        """
-        fp = run_step.execution_fingerprint
-        if fp.get("params_hash", "") != spec.params_hash:
-            return False
-        if fp.get("node_type", "") != spec.node_type:
-            return False
-        if fp.get("node_version", "") != spec.node_version:
-            return False
-
-        # Compare parent output logical hashes — if a parent was re-run
-        # and produced different outputs this step's evidence is stale.
-        parent_output_by_step: dict[str, list[str]] = fp.get(
-            "parent_output_logical_hashes_by_step", {}
-        )
-        for pid in spec.parent_step_ids:
-            parent_rs = self._find_shared_evidence(
-                store, plan_id, plan_version_id, pid,
-                source_branch_id=source_branch_id,
-            )
-            if parent_rs is None:
-                return False
-            stored_hashes = parent_output_by_step.get(pid, [])
-            current_hashes = parent_rs.execution_fingerprint.get(
-                "output_artifact_logical_hashes", []
-            )
-            if stored_hashes != current_hashes:
-                return False
-
-        return True
 
     def _find_shared_evidence(
         self,

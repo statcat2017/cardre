@@ -19,6 +19,7 @@ from cardre.audit import (
     table_logical_hash,
 )
 from cardre.executor import PlanExecutor, RoleAccessError
+from cardre.staleness import compute_staleness
 from cardre.nodes import (
     DummyApplyNode,
     DummyFitNode,
@@ -502,7 +503,7 @@ class StalenessAndReplayTests:
         new_pv_id = store.create_plan_version(plan_id, new_steps)
         executor.run_plan_version(store, new_pv_id)
 
-        staleness = executor.compute_staleness(store, new_pv_id)
+        staleness = compute_staleness(store, new_pv_id)
         assert staleness["import"] == False
         assert staleness["split"] == False
         assert staleness["fit"] == False
