@@ -172,7 +172,7 @@ def selected_data(binned_data):
     store = binned_data["store"]
     iv_art = binned_data.get("iv_art")
     if iv_art is None:
-        pytest.skip("No IV ranking artifact available")
+        pytest.fail("No IV ranking artifact — missing evidence is a FAILURE")
 
     cluster_params = {"correlation_threshold": 0.7, "candidate_limit": 50}
     cluster_spec = StepSpec(

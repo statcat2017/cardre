@@ -192,6 +192,41 @@ class TestWOEIVOracle:
                 mismatches.append(f"{cardre_var}[{idx}]: {cardre_iv:.8f} vs R {r_iv:.8f}")
         assert not mismatches, "IV mismatches:\n" + "\n".join(mismatches)
 
+    def test_bin_counts_match_r(self, store, golden_csv, golden_json):
+        """Per-bin row_count, good_count, bad_count match R within 1."""
+
+        woe_table = _run_woe_iv_oracle(store, golden_csv, golden_json)
+        assert woe_table is not None, "No WOE table artifact produced"
+
+        r_bins = golden_csv["bins_adj"]
+        mismatches = []
+        for row in woe_table.iter_rows(named=True):
+            cardre_var = row["variable"]
+            cardre_bin_id = row["bin_id"]
+            cardre_row_count = int(row["row_count"])
+            cardre_good = int(row["good_count"])
+            cardre_bad = int(row["bad_count"])
+            idx = int(cardre_bin_id.split("_rbin_")[-1])
+            r_var = _cardre_to_r_var(cardre_var)
+            if r_var is None:
+                continue
+            r_rows = r_bins.filter(pl.col("variable") == r_var)
+            if idx >= len(r_rows):
+                continue
+            r_row = r_rows.row(idx)
+            ci = r_rows.columns
+            r_row_count = int(r_row[ci.index("count")])
+            r_good = int(r_row[ci.index("neg")])
+            r_bad = int(r_row[ci.index("pos")])
+
+            if (cardre_row_count, cardre_good, cardre_bad) != (r_row_count, r_good, r_bad):
+                mismatches.append(
+                    f"{cardre_var}[{idx}]: "
+                    f"Cardre=({cardre_row_count},{cardre_good},{cardre_bad}) "
+                    f"R=({r_row_count},{r_good},{r_bad})"
+                )
+        assert not mismatches, "Count mismatches:\n" + "\n".join(mismatches)
+
 
 # ---------------------------------------------------------------------------
 # Logistic Regression oracle

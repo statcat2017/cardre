@@ -41,6 +41,14 @@
       "pdo": 50
     }
   },
+  "woe_convention": {
+    "cardre_formula": "ln(good_distribution / bad_distribution)",
+    "r_formula": "ln(bad_distribution / good_distribution)",
+    "relationship": "Cardre WOE = -R WOE (opposite sign)",
+    "iv_direction": "IV is sign-invariant and identical between Cardre and R",
+    "cardre_source": "cardre/nodes/build/features.py line 154",
+    "r_source": "scorecard::woebin"
+  },
   "files": {
     "filtered_data": "filtered_data.csv",
     "train_raw": "train_raw.csv",
