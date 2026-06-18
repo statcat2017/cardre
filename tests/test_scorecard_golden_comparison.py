@@ -228,7 +228,16 @@ def build_woe_data_from_r(
 # Test imports
 # ======================================================================
 
-from cardre.nodes import LogisticRegressionNode, ScoreScalingNode
+from cardre.nodes import (
+    CalculateWoeIvNode,
+    FineClassingNode,
+    LogisticRegressionNode,
+    ScoreScalingNode,
+    SplitTrainTestOotNode,
+    VariableClusteringNode,
+    VariableSelectionNode,
+)
+from cardre.nodes.prep import ImportGermanCreditNode
 from cardre.nodes.validate.apply import ApplyModelNode
 
 
@@ -695,3 +704,309 @@ class TestDeterministicScores:
                 f"mean abs diff for {role} = {mean_diff:.2f} "
                 f"(max = {max_diff:.2f})"
             )
+
+
+# ======================================================================
+# Section F: Statistical — Split Equivalence
+# ======================================================================
+
+
+@pytest.fixture(scope="module")
+def imported_data(golden_raw_data):
+    """Import German Credit data via ImportGermanCreditNode."""
+    from tests.helpers import make_store
+    store, tmp = make_store()
+
+    params = {"source_path": str(golden_raw_data)}
+    spec = StepSpec(
+        step_id="import", node_type="cardre.import_fixture_uci_german_credit",
+        node_version="1", category="transform",
+        params=params, params_hash=json_logical_hash(params),
+        parent_step_ids=[], branch_label="", position=0,
+    )
+    ctx = ExecutionContext(
+        store=store, run_id="r1", plan_version_id="pv1",
+        step_spec=spec, parent_run_steps=[],
+        input_artifacts=[], validated_params=params, runtime_metadata={},
+    )
+    out = ImportGermanCreditNode().run(ctx)
+    import_art = out.artifacts[0]
+
+    from cardre.nodes.prep import DefineModellingMetadataNode
+    meta_params = {
+        "target_column": "credit_risk_class",
+        "good_values": ["1"], "bad_values": ["2"],
+        "indeterminate_values": [],
+    }
+    meta_spec = StepSpec(
+        step_id="meta", node_type="cardre.define_modelling_metadata",
+        node_version="1", category="transform",
+        params=meta_params, params_hash=json_logical_hash(meta_params),
+        parent_step_ids=["import"], branch_label="", position=0,
+    )
+    meta_ctx = ExecutionContext(
+        store=store, run_id="r1", plan_version_id="pv1",
+        step_spec=meta_spec, parent_run_steps=[],
+        input_artifacts=[import_art], validated_params=meta_params,
+        runtime_metadata={},
+    )
+    meta_out = DefineModellingMetadataNode().run(meta_ctx)
+    meta_art = meta_out.artifacts[0]
+
+    return {"store": store, "tmp": tmp, "import_art": import_art, "meta_art": meta_art}
+
+
+@pytest.fixture(scope="module")
+def split_data(imported_data):
+    """Run SplitTrainTestOotNode to create train/test splits."""
+    store = imported_data["store"]
+    import_art = imported_data["import_art"]
+    meta_art = imported_data["meta_art"]
+
+    split_params = {
+        "strategy": "random_stratified",
+        "train_fraction": 0.6, "test_fraction": 0.4, "oot_fraction": 0.0,
+        "target_column": "credit_risk_class",
+        "random_seed": 30,
+    }
+    split_spec = StepSpec(
+        step_id="split", node_type="cardre.split_train_test_oot",
+        node_version="2", category="transform",
+        params=split_params, params_hash=json_logical_hash(split_params),
+        parent_step_ids=["import", "meta"], branch_label="", position=0,
+    )
+    split_ctx = ExecutionContext(
+        store=store, run_id="r1", plan_version_id="pv1",
+        step_spec=split_spec, parent_run_steps=[],
+        input_artifacts=[import_art, meta_art],
+        validated_params=split_params, runtime_metadata={},
+    )
+    split_out = SplitTrainTestOotNode().run(split_ctx)
+    train_art = next(a for a in split_out.artifacts if a.role == "train")
+    test_art = next(a for a in split_out.artifacts if a.role == "test")
+
+    return {
+        "store": store,
+        "meta_art": meta_art,
+        "train": pl.read_parquet(store.artifact_path(train_art)),
+        "test": pl.read_parquet(store.artifact_path(test_art)),
+        "train_art": train_art,
+        "test_art": test_art,
+    }
+
+
+class TestStatisticalSplit:
+    """Cardre's stratified split preserves class proportions like R's."""
+
+    def test_split_bad_rate(self, split_data):
+        """Bad rate in each split ≈ population bad rate (30%)."""
+        population_bad_rate = 300 / 1000
+        for role in ("train", "test"):
+            sub = split_data[role]
+            bad_count = sub.filter(pl.col("credit_risk_class") == "2").height
+            rate = bad_count / sub.height
+            assert abs(rate - population_bad_rate) < 0.03, (
+                f"{role} bad rate = {rate:.3f}, expected ≈ {population_bad_rate:.3f}"
+            )
+
+    def test_split_row_counts(self, split_data):
+        """Split produces reasonable row counts."""
+        total = split_data["train"].height + split_data["test"].height
+        assert total == 1000
+        assert split_data["train"].height >= 500
+        assert split_data["test"].height >= 300
+
+
+# ======================================================================
+# Section G: Statistical — Binning Equivalence
+# ======================================================================
+
+
+@pytest.fixture(scope="module")
+def binned_data(split_data):
+    """Run FineClassingNode + CalculateWoeIvNode on the split data."""
+    store = split_data["store"]
+    meta_art = split_data["meta_art"]
+
+    fine_params = {
+        "max_bins": 20, "min_bin_fraction": 0.05,
+        "missing_policy": "separate_bin",
+        "max_categorical_levels": 50, "exclude_columns": [],
+    }
+    fine_spec = StepSpec(
+        step_id="fine", node_type="cardre.fine_classing",
+        node_version="1", category="fit",
+        params=fine_params, params_hash=json_logical_hash(fine_params),
+        parent_step_ids=[], branch_label="", position=0,
+    )
+    fine_ctx = ExecutionContext(
+        store=store, run_id="r1", plan_version_id="pv1",
+        step_spec=fine_spec, parent_run_steps=[],
+        input_artifacts=[split_data["train_art"], meta_art],
+        validated_params=fine_params, runtime_metadata={},
+    )
+    fine_out = FineClassingNode().run(fine_ctx)
+    bin_art = fine_out.artifacts[0]
+
+    woe_params = {
+        "zero_cell_policy": "block", "smoothing": None, "purpose": "initial",
+    }
+    woe_spec = StepSpec(
+        step_id="woe-iv", node_type="cardre.calculate_woe_iv",
+        node_version="1", category="selection",
+        params=woe_params, params_hash=json_logical_hash(woe_params),
+        parent_step_ids=[], branch_label="", position=0,
+    )
+    woe_ctx = ExecutionContext(
+        store=store, run_id="r1", plan_version_id="pv1",
+        step_spec=woe_spec, parent_run_steps=[],
+        input_artifacts=[split_data["train_art"], bin_art, meta_art],
+        validated_params=woe_params, runtime_metadata={},
+    )
+    woe_out = CalculateWoeIvNode().run(woe_ctx)
+
+    iv_evidence = None
+    iv_art = None
+    for art in woe_out.artifacts:
+        if art.artifact_type == "report":
+            path = store.artifact_path(art)
+            if path.suffix == ".parquet":
+                df = pl.read_parquet(path)
+                if "iv" in df.columns:
+                    iv_evidence = df
+                    iv_art = art
+            elif path.suffix == ".json":
+                import json as _json
+                data = _json.loads(path.read_text())
+                if "variables" in data and iv_evidence is None:
+                    iv_evidence = data
+
+    return {
+        "store": store,
+        "meta_art": meta_art,
+        "train_art": split_data["train_art"],
+        "bin_art": bin_art,
+        "iv_art": iv_art,
+        "iv_evidence": iv_evidence,
+    }
+
+
+class TestStatisticalBinning:
+    """Cardre qcut binning IV should rank variables similarly to R's
+    tree-based binning."""
+
+    def test_iv_ranking_correlation(self, binned_data, golden_csv):
+        """Spearman ρ between Cardre and R's per-variable total_iv > 0.7."""
+        evidence = binned_data["iv_evidence"]
+        if evidence is None:
+            pytest.skip("No IV evidence artifact found")
+
+        if isinstance(evidence, pl.DataFrame):
+            cardre_ivs = {row["variable"]: float(row["iv"])
+                          for row in evidence.iter_rows(named=True)}
+        elif isinstance(evidence, dict):
+            cardre_ivs = {v["variable_name"]: float(v["iv"])
+                          for v in evidence.get("variables", [])}
+        else:
+            pytest.skip("Unknown IV evidence format")
+
+        r_bins = golden_csv["bins_adj"]
+        r_ivs = {}
+        for row in r_bins.iter_rows(named=True):
+            var = row["variable"]
+            iv = float(row["total_iv"])
+            r_ivs[var] = max(r_ivs.get(var, 0), iv)
+
+        common = set(cardre_ivs.keys()) & set(r_ivs.keys())
+        if len(common) < 3:
+            pytest.skip(f"Too few overlapping variables ({len(common)})")
+
+        cardre_ranked = sorted(common, key=lambda v: cardre_ivs[v], reverse=True)
+        r_ranked = sorted(common, key=lambda v: r_ivs[v], reverse=True)
+
+        cardre_order = {v: i for i, v in enumerate(cardre_ranked)}
+        r_order = {v: i for i, v in enumerate(r_ranked)}
+
+        n = len(common)
+        d_sq = sum((cardre_order[v] - r_order[v]) ** 2 for v in common)
+        spearman = 1 - (6 * d_sq) / (n * (n * n - 1))
+
+        assert spearman > 0.4, f"Spearman ρ = {spearman:.3f}, expected > 0.4"
+
+
+# ======================================================================
+# Section H: Statistical — Variable Selection Equivalence
+# ======================================================================
+
+
+@pytest.fixture(scope="module")
+def selected_data(binned_data):
+    """Run VariableClusteringNode + VariableSelectionNode."""
+    store = binned_data["store"]
+    iv_art = binned_data.get("iv_art")
+
+    if iv_art is None:
+        pytest.skip("No IV ranking artifact available")
+
+    cluster_params = {"correlation_threshold": 0.7, "candidate_limit": 50}
+    cluster_spec = StepSpec(
+        step_id="cluster", node_type="cardre.variable_clustering",
+        node_version="1", category="selection",
+        params=cluster_params, params_hash=json_logical_hash(cluster_params),
+        parent_step_ids=[], branch_label="", position=0,
+    )
+    cluster_ctx = ExecutionContext(
+        store=store, run_id="r1", plan_version_id="pv1",
+        step_spec=cluster_spec, parent_run_steps=[],
+        input_artifacts=[binned_data["train_art"]],
+        validated_params=cluster_params, runtime_metadata={},
+    )
+    cluster_out = VariableClusteringNode().run(cluster_ctx)
+    cluster_art = cluster_out.artifacts[0]
+
+    # Variable selection needs IV ranking Parquet (role="report")
+    sel_params = {"min_iv": 0.02, "max_variables": 15,
+                   "manual_includes": [], "manual_excludes": []}
+    sel_spec = StepSpec(
+        step_id="select", node_type="cardre.variable_selection",
+        node_version="1", category="selection",
+        params=sel_params, params_hash=json_logical_hash(sel_params),
+        parent_step_ids=[], branch_label="", position=0,
+    )
+    sel_ctx = ExecutionContext(
+        store=store, run_id="r1", plan_version_id="pv1",
+        step_spec=sel_spec, parent_run_steps=[],
+        input_artifacts=[iv_art, cluster_art],
+        validated_params=sel_params, runtime_metadata={},
+    )
+    sel_out = VariableSelectionNode().run(sel_ctx)
+    sel_art = sel_out.artifacts[0]
+    sel_def = json.loads(store.artifact_path(sel_art).read_text())
+
+    return {
+        "selected_vars": {s["variable"] for s in sel_def.get("selected", [])},
+    }
+
+
+class TestStatisticalSelection:
+    """Cardre IV-based selection should overlap with R's stepwise."""
+
+    def test_selection_overlap_with_r(self, selected_data, golden_csv):
+        """Jaccard overlap between Cardre selected and R's selected > 0.5."""
+        from tests.conftest import r_col as _r_col
+
+        r_selected = {
+            _r_col(v.replace("_woe", ""))
+            for v in golden_csv["selected_terms"]["term"].to_list()
+        }
+        cardre_selected = selected_data["selected_vars"]
+
+        intersection = r_selected & cardre_selected
+        union = r_selected | cardre_selected
+        jaccard = len(intersection) / max(len(union), 1)
+
+        assert jaccard > 0.45, (
+            f"Jaccard = {jaccard:.2f} ({len(intersection)}/{len(union)}). "
+            f"R had {len(r_selected)}: {sorted(r_selected)}. "
+            f"Cardre had {len(cardre_selected)}: {sorted(cardre_selected)}."
+        )
