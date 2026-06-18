@@ -25,8 +25,14 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
   });
 
   const importMutation = useMutation({
-    mutationFn: (body: { project_id: string; source_path: string; dataset_id: string }) =>
-      api.importDataset(body),
+    mutationFn: (body: { project_id: string; source_path: string }) =>
+      api.importDataset({
+        ...body,
+        dataset_id: "",
+        format: "auto",
+        has_header: true,
+        schema_overrides: {},
+      }),
     onSuccess: () => {
       setStep("ready");
       setError(null);
@@ -48,14 +54,13 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
 
   const handleImport = () => {
     if (!importPath.trim()) {
-      setError("Please enter the path to a German Credit data file");
+      setError("Please enter the path to a data file (CSV, TSV, or Parquet)");
       return;
     }
     if (!projectId) return;
     importMutation.mutate({
       project_id: projectId,
       source_path: importPath.trim(),
-      dataset_id: "uci-statlog-german-credit",
     });
   };
 

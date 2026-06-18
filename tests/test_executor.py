@@ -59,7 +59,7 @@ class ExecutorTests:
 
         steps = [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),
@@ -91,7 +91,7 @@ class ExecutorTests:
 
         steps = [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),
@@ -117,7 +117,7 @@ class ExecutorTests:
 
         steps = [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),
@@ -156,7 +156,7 @@ class ExecutorTests:
 
         steps = [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),
@@ -236,7 +236,7 @@ class SplitAndRoleTests:
     def make_proof_plan_steps(self, source: Path) -> list[StepSpec]:
         return [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),
@@ -275,7 +275,7 @@ class SplitAndRoleTests:
 
         steps = [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),
@@ -337,7 +337,7 @@ class SplitAndRoleTests:
 
         steps = [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),
@@ -438,7 +438,7 @@ class StalenessAndReplayTests:
 
         steps = [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),
@@ -473,7 +473,7 @@ class StalenessAndReplayTests:
 
         new_steps = [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),
@@ -516,7 +516,7 @@ class StalenessAndReplayTests:
 
         steps = [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),
@@ -576,7 +576,7 @@ class StalenessAndReplayTests:
 
         steps = [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),
@@ -602,7 +602,7 @@ class StalenessAndReplayTests:
 
         steps = [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),

@@ -12,6 +12,22 @@ from cardre.audit import StepSpec, json_logical_hash
 from cardre.store import ProjectStore
 from sidecar.main import app
 
+# All 21 German Credit columns must be read as strings for scorecard compatibility.
+# With proper CSV type inference polars converts numeric-looking fields (e.g.
+# duration_months=6, credit_amount=1169) to Int64, breaking fine-classing/WOE
+# which expects string-typed categorical bins.
+_GERMAN_COLS_STR = {
+    c: "str" for c in [
+        "checking_account_status", "duration_months", "credit_history", "purpose",
+        "credit_amount", "savings_account_bonds", "present_employment_since",
+        "installment_rate_percent_disposable_income", "personal_status_sex",
+        "other_debtors_guarantors", "present_residence_since", "property",
+        "age_years", "other_installment_plans", "housing",
+        "existing_credits_at_bank", "job", "people_liable_maintenance",
+        "telephone", "foreign_worker", "credit_risk_class",
+    ]
+}
+
 
 pytest_plugins = []
 pytestmark = [pytest.mark.api, pytest.mark.usefixtures("_isolated_registry")]
@@ -25,12 +41,22 @@ def tmp_dir():
 
 @pytest.fixture
 def sample_german_credit(tmp_dir):
-    p = tmp_dir / "german.data"
-    lines = [
-        "A11 6 A34 A43 1169 A65 A75 4 A93 A101 4 A121 67 A143 A152 2 A173 1 A192 A201 1",
-        "A12 24 A32 A43 5951 A61 A73 2 A92 A101 4 A121 22 A142 A152 2 A173 1 A191 A201 2",
+    p = tmp_dir / "german_credit.csv"
+    columns = [
+        "checking_account_status", "duration_months", "credit_history", "purpose",
+        "credit_amount", "savings_account_bonds", "present_employment_since",
+        "installment_rate_percent_disposable_income", "personal_status_sex",
+        "other_debtors_guarantors", "present_residence_since", "property",
+        "age_years", "other_installment_plans", "housing",
+        "existing_credits_at_bank", "job", "people_liable_maintenance",
+        "telephone", "foreign_worker", "credit_risk_class",
     ]
-    p.write_text("\n".join(lines))
+    header = ",".join(columns)
+    rows = [
+        "A11,6,A34,A43,1169,A65,A75,4,A93,A101,4,A121,67,A143,A152,2,A173,1,A192,A201,1",
+        "A12,24,A32,A43,5951,A61,A73,2,A92,A101,4,A121,22,A142,A152,2,A173,1,A191,A201,2",
+    ]
+    p.write_text("\n".join([header] + rows))
     return p
 
 
@@ -187,6 +213,26 @@ class TestRuns:
         plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
 
+        from cardre.services.plan_service import PlanService
+        ps = PlanService(store)
+        _resp = ps.update_params(
+            plan_id=plan_id, step_id="validate-target",
+            base_plan_version_id=latest_pv_id,
+            params={"target_column": "credit_risk_class"},
+        )
+        latest_pv_id = _resp.new_plan_version_id
+        _resp = ps.update_params(
+            plan_id=plan_id, step_id="split",
+            base_plan_version_id=latest_pv_id,
+            params={
+                "train_fraction": 0.6, "test_fraction": 0.2,
+                "oot_fraction": 0.2, "strategy": "random_stratified",
+                "target_column": "credit_risk_class", "role_column": None,
+                "random_seed": 42,
+            },
+        )
+        latest_pv_id = _resp.new_plan_version_id
+
         resp = client.post("/runs?sync=true", json={
             "project_id": proj["project_id"],
             "plan_version_id": latest_pv_id,
@@ -207,6 +253,27 @@ class TestRuns:
         store = ProjectStore(proj_path)
         plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
+
+        from cardre.services.plan_service import PlanService
+        ps = PlanService(store)
+        _resp = ps.update_params(
+            plan_id=plan_id, step_id="validate-target",
+            base_plan_version_id=latest_pv_id,
+            params={"target_column": "credit_risk_class"},
+        )
+        latest_pv_id = _resp.new_plan_version_id
+        _resp = ps.update_params(
+            plan_id=plan_id, step_id="split",
+            base_plan_version_id=latest_pv_id,
+            params={
+                "train_fraction": 0.6, "test_fraction": 0.2,
+                "oot_fraction": 0.2, "strategy": "random_stratified",
+                "target_column": "credit_risk_class", "role_column": None,
+                "random_seed": 42,
+            },
+        )
+        latest_pv_id = _resp.new_plan_version_id
+
         run_resp = client.post("/runs?sync=true", json={
             "project_id": proj["project_id"], "plan_version_id": latest_pv_id,
         })
@@ -250,6 +317,27 @@ class TestRuns:
         store = ProjectStore(proj_path)
         plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
         latest_pv_id = store.get_latest_plan_version_id(plan_id)
+
+        from cardre.services.plan_service import PlanService
+        ps = PlanService(store)
+        _resp = ps.update_params(
+            plan_id=plan_id, step_id="validate-target",
+            base_plan_version_id=latest_pv_id,
+            params={"target_column": "credit_risk_class"},
+        )
+        latest_pv_id = _resp.new_plan_version_id
+        _resp = ps.update_params(
+            plan_id=plan_id, step_id="split",
+            base_plan_version_id=latest_pv_id,
+            params={
+                "train_fraction": 0.6, "test_fraction": 0.2,
+                "oot_fraction": 0.2, "strategy": "random_stratified",
+                "target_column": "credit_risk_class", "role_column": None,
+                "random_seed": 42,
+            },
+        )
+        latest_pv_id = _resp.new_plan_version_id
+
         run_resp = client.post("/runs?sync=true", json={
             "project_id": proj["project_id"], "plan_version_id": latest_pv_id,
         })
@@ -311,6 +399,27 @@ class TestFullRoundTrip:
         # After import, the proof pathway should still have 6 steps
         pathway_steps = store.get_plan_version_steps(latest_pv_id)
         assert len(pathway_steps) == 6, f"Expected 6 pathway steps, got {len(pathway_steps)}"
+
+        # Configure metadata for Proof Pathway
+        from cardre.services.plan_service import PlanService
+        ps = PlanService(store)
+        _resp = ps.update_params(
+            plan_id=plan_id, step_id="validate-target",
+            base_plan_version_id=latest_pv_id,
+            params={"target_column": "credit_risk_class"},
+        )
+        latest_pv_id = _resp.new_plan_version_id
+        _resp = ps.update_params(
+            plan_id=plan_id, step_id="split",
+            base_plan_version_id=latest_pv_id,
+            params={
+                "train_fraction": 0.6, "test_fraction": 0.2,
+                "oot_fraction": 0.2, "strategy": "random_stratified",
+                "target_column": "credit_risk_class", "role_column": None,
+                "random_seed": 42,
+            },
+        )
+        latest_pv_id = _resp.new_plan_version_id
 
         run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": latest_pv_id,
@@ -697,7 +806,29 @@ class TestProjectArtifacts:
 
         store = ProjectStore(proj_path)
         proof_plans = [p for p in store.get_plans_for_project(pid) if p["name"] == "Proof Pathway"]
-        proof_pv_id = store.get_latest_plan_version_id(proof_plans[0]["plan_id"])
+        proof_plan_id = proof_plans[0]["plan_id"]
+        proof_pv_id = store.get_latest_plan_version_id(proof_plan_id)
+
+        from cardre.services.plan_service import PlanService
+        ps = PlanService(store)
+        _resp = ps.update_params(
+            plan_id=proof_plan_id, step_id="validate-target",
+            base_plan_version_id=proof_pv_id,
+            params={"target_column": "credit_risk_class"},
+        )
+        proof_pv_id = _resp.new_plan_version_id
+        _resp = ps.update_params(
+            plan_id=proof_plan_id, step_id="split",
+            base_plan_version_id=proof_pv_id,
+            params={
+                "train_fraction": 0.6, "test_fraction": 0.2,
+                "oot_fraction": 0.2, "strategy": "random_stratified",
+                "target_column": "credit_risk_class", "role_column": None,
+                "random_seed": 42,
+            },
+        )
+        proof_pv_id = _resp.new_plan_version_id
+
         client.post("/runs?sync=true", json={"project_id": pid, "plan_version_id": proof_pv_id})
 
         # Filter by producing step ID (e.g. "split" produces train/test/oot artifacts in proof pathway)
@@ -888,10 +1019,31 @@ class TestE2EWithNewEndpoints:
         })
         assert import_resp.status_code == 201
 
-        # Run proof pathway to generate artifacts
+        # Configure metadata for Proof Pathway before running
         store = ProjectStore(proj_path)
         proof_plans = [p for p in store.get_plans_for_project(pid) if p["name"] == "Proof Pathway"]
-        proof_pv_id = store.get_latest_plan_version_id(proof_plans[0]["plan_id"])
+        proof_plan_id = proof_plans[0]["plan_id"]
+        proof_pv_id = store.get_latest_plan_version_id(proof_plan_id)
+
+        from cardre.services.plan_service import PlanService
+        ps = PlanService(store)
+        _resp = ps.update_params(
+            plan_id=proof_plan_id, step_id="validate-target",
+            base_plan_version_id=proof_pv_id,
+            params={"target_column": "credit_risk_class"},
+        )
+        proof_pv_id = _resp.new_plan_version_id
+        _resp = ps.update_params(
+            plan_id=proof_plan_id, step_id="split",
+            base_plan_version_id=proof_pv_id,
+            params={
+                "train_fraction": 0.6, "test_fraction": 0.2,
+                "oot_fraction": 0.2, "strategy": "random_stratified",
+                "target_column": "credit_risk_class", "role_column": None,
+                "random_seed": 42,
+            },
+        )
+        proof_pv_id = _resp.new_plan_version_id
 
         run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": proof_pv_id,
@@ -937,29 +1089,38 @@ class TestE2EWithNewEndpoints:
 @pytest.fixture
 def larger_german_credit(tmp_dir):
     """~100 rows so the Scorecard Pathway can actually split + fine-class."""
-    p = tmp_dir / "german.data"
+    p = tmp_dir / "german_credit.csv"
+    columns = [
+        "checking_account_status", "duration_months", "credit_history", "purpose",
+        "credit_amount", "savings_account_bonds", "present_employment_since",
+        "installment_rate_percent_disposable_income", "personal_status_sex",
+        "other_debtors_guarantors", "present_residence_since", "property",
+        "age_years", "other_installment_plans", "housing",
+        "existing_credits_at_bank", "job", "people_liable_maintenance",
+        "telephone", "foreign_worker", "credit_risk_class",
+    ]
     # Base row with good credit risk
-    good = "A11 6 A34 A43 1169 A65 A75 4 A93 A101 4 A121 67 A143 A152 2 A173 1 A192 A201 1"
+    good = "A11,6,A34,A43,1169,A65,A75,4,A93,A101,4,A121,67,A143,A152,2,A173,1,A192,A201,1"
     # Base row with bad credit risk
-    bad = "A12 24 A32 A43 5951 A61 A73 2 A92 A101 4 A121 22 A142 A152 2 A173 1 A191 A201 2"
-    lines = []
+    bad = "A12,24,A32,A43,5951,A61,A73,2,A92,A101,4,A121,22,A142,A152,2,A173,1,A191,A201,2"
+    lines = [",".join(columns)]
     # Generate ~50 good / ~50 bad with slight variations
     for i in range(50):
-        parts_g = good.split()
-        parts_g[0] = f"A{i % 11 + 11}"  # vary checking_account_status
-        parts_g[1] = str(6 + (i % 48))  # vary duration
-        parts_g[4] = str(1000 + i * 100)  # vary credit_amount
-        parts_g[10] = str(i % 4 + 1)  # vary present_residence_since
-        parts_g[12] = str(20 + (i % 60))  # vary age
-        lines.append(" ".join(parts_g))
+        parts_g = good.split(",")
+        parts_g[0] = f"A{i % 11 + 11}"
+        parts_g[1] = str(6 + (i % 48))
+        parts_g[4] = str(1000 + i * 100)
+        parts_g[10] = str(i % 4 + 1)
+        parts_g[12] = str(20 + (i % 60))
+        lines.append(",".join(parts_g))
 
-        parts_b = bad.split()
+        parts_b = bad.split(",")
         parts_b[0] = f"A{i % 11 + 11}"
         parts_b[1] = str(12 + (i % 36))
         parts_b[4] = str(2000 + i * 200)
         parts_b[10] = str(i % 4 + 1)
         parts_b[12] = str(25 + (i % 55))
-        lines.append(" ".join(parts_b))
+        lines.append(",".join(parts_b))
 
     p.write_text("\n".join(lines))
     return p
@@ -1003,12 +1164,46 @@ class TestScorecardPathwayE2E:
         import_resp = client.post("/datasets/import", json={
             "project_id": pid, "source_path": str(larger_german_credit),
             "dataset_id": "uci-statlog-german-credit",
+            "schema_overrides": _GERMAN_COLS_STR,
         })
         assert import_resp.status_code == 201
 
-        # 4. Run the Scorecard Pathway
+        # 4. Configure modelling metadata and target_column (pathway now has empty defaults)
         store = ProjectStore(proj_path)
         pv_id = store.get_latest_plan_version_id(plan_id)
+        meta_resp = client.post(f"/plans/{plan_id}/steps/define-metadata/params", json={
+            "project_id": pid,
+            "base_plan_version_id": pv_id,
+            "params": {
+                "target_column": "credit_risk_class",
+                "good_values": ["1"], "bad_values": ["2"],
+                "indeterminate_values": [],
+            },
+        })
+        assert meta_resp.status_code == 200
+        pv_id = meta_resp.json()["new_plan_version_id"]
+
+        # Also update validate-target and split's target_column
+        vt_resp = client.post(f"/plans/{plan_id}/steps/validate-target/params", json={
+            "project_id": pid,
+            "base_plan_version_id": pv_id,
+            "params": {"target_column": "credit_risk_class"},
+        })
+        assert vt_resp.status_code == 200
+        pv_id = vt_resp.json()["new_plan_version_id"]
+        split_resp = client.post(f"/plans/{plan_id}/steps/split/params", json={
+            "project_id": pid,
+            "base_plan_version_id": pv_id,
+            "params": {
+                "strategy": "random_stratified",
+                "train_fraction": 0.6, "test_fraction": 0.2, "oot_fraction": 0.2,
+                "target_column": "credit_risk_class", "role_column": None, "random_seed": 42,
+            },
+        })
+        assert split_resp.status_code == 200
+        pv_id = split_resp.json()["new_plan_version_id"]
+
+        # 5. Run the Scorecard Pathway
         run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": pv_id,
         })
@@ -1017,7 +1212,7 @@ class TestScorecardPathwayE2E:
             f"Scorecard pathway run failed: {run_resp.json()}"
         )
 
-        # 5. Update step params and verify staleness is scoped
+        # 6. Update step params and verify staleness is scoped
         new_pv_id = store.get_latest_plan_version_id(plan_id)
         params_resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
             "project_id": pid,
@@ -1143,11 +1338,44 @@ class TestScorecardPathwayE2E:
         client.post("/datasets/import", json={
             "project_id": pid, "source_path": str(larger_german_credit),
             "dataset_id": "uci-statlog-german-credit",
+            "schema_overrides": _GERMAN_COLS_STR,
         })
 
-        # Run the Scorecard Pathway
+        # Configure modelling metadata and target_column
         store = ProjectStore(proj_path)
         pv_id = store.get_latest_plan_version_id(plan_id)
+        meta_resp = client.post(f"/plans/{plan_id}/steps/define-metadata/params", json={
+            "project_id": pid,
+            "base_plan_version_id": pv_id,
+            "params": {
+                "target_column": "credit_risk_class",
+                "good_values": ["1"], "bad_values": ["2"],
+                "indeterminate_values": [],
+            },
+        })
+        assert meta_resp.status_code == 200
+        pv_id = meta_resp.json()["new_plan_version_id"]
+
+        vt_resp = client.post(f"/plans/{plan_id}/steps/validate-target/params", json={
+            "project_id": pid,
+            "base_plan_version_id": pv_id,
+            "params": {"target_column": "credit_risk_class"},
+        })
+        assert vt_resp.status_code == 200
+        pv_id = vt_resp.json()["new_plan_version_id"]
+        split_resp = client.post(f"/plans/{plan_id}/steps/split/params", json={
+            "project_id": pid,
+            "base_plan_version_id": pv_id,
+            "params": {
+                "strategy": "random_stratified",
+                "train_fraction": 0.6, "test_fraction": 0.2, "oot_fraction": 0.2,
+                "target_column": "credit_risk_class", "role_column": None, "random_seed": 42,
+            },
+        })
+        assert split_resp.status_code == 200
+        pv_id = split_resp.json()["new_plan_version_id"]
+
+        # Run the Scorecard Pathway
         run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": pv_id,
         })
@@ -1235,14 +1463,46 @@ class TestPhase4BranchingFlow:
             "project_id": pid,
             "source_path": str(larger_german_credit),
             "dataset_id": "uci-statlog-german-credit",
+            "schema_overrides": _GERMAN_COLS_STR,
         })
         assert imp_resp.status_code in (200, 201)
 
-        # 3. Run full scorecard pathway
+        # 3. Configure modelling metadata and target_column
         plan_resp = client.get(f"/plans/{plan_id}?project_id={pid}")
         assert plan_resp.status_code == 200
         pv_id = plan_resp.json()["latest_version_id"]
+        meta_resp = client.post(f"/plans/{plan_id}/steps/define-metadata/params", json={
+            "project_id": pid,
+            "base_plan_version_id": pv_id,
+            "params": {
+                "target_column": "credit_risk_class",
+                "good_values": ["1"], "bad_values": ["2"],
+                "indeterminate_values": [],
+            },
+        })
+        assert meta_resp.status_code == 200
+        pv_id = meta_resp.json()["new_plan_version_id"]
 
+        vt_resp = client.post(f"/plans/{plan_id}/steps/validate-target/params", json={
+            "project_id": pid,
+            "base_plan_version_id": pv_id,
+            "params": {"target_column": "credit_risk_class"},
+        })
+        assert vt_resp.status_code == 200
+        pv_id = vt_resp.json()["new_plan_version_id"]
+        split_resp = client.post(f"/plans/{plan_id}/steps/split/params", json={
+            "project_id": pid,
+            "base_plan_version_id": pv_id,
+            "params": {
+                "strategy": "random_stratified",
+                "train_fraction": 0.6, "test_fraction": 0.2, "oot_fraction": 0.2,
+                "target_column": "credit_risk_class", "role_column": None, "random_seed": 42,
+            },
+        })
+        assert split_resp.status_code == 200
+        pv_id = split_resp.json()["new_plan_version_id"]
+
+        # 4. Run full scorecard pathway
         run_resp = client.post("/runs?sync=true", json={
             "project_id": pid,
             "plan_version_id": pv_id,
@@ -1251,13 +1511,13 @@ class TestPhase4BranchingFlow:
         run_data = run_resp.json()
         assert run_data["status"] == "succeeded", f"Run did not succeed: {run_data}"
 
-        # 4. Migrate baseline branch
+        # 5. Migrate baseline branch
         mig_resp = client.post("/migrations/baseline", json={"project_id": pid})
         assert mig_resp.status_code == 200
         mig_data = mig_resp.json()
         assert mig_data["branches_created"] >= 1
 
-        # 5. Get baseline branch ID for the Scorecard Pathway
+        # 6. Get baseline branch ID for the Scorecard Pathway
         branches_resp = client.get(f"/projects/{pid}/branches?plan_id={plan_id}")
         assert branches_resp.status_code == 200
         branches = branches_resp.json()["branches"]
@@ -1265,7 +1525,7 @@ class TestPhase4BranchingFlow:
         assert len(baseline_branches) >= 1, f"No baseline branch for plan {plan_id}. Branches: {branches}"
         baseline_branch_id = baseline_branches[0]["branch_id"]
 
-        # 6. Create manual-binning challenger branch
+        # 7. Create manual-binning challenger branch
         baseline_detail = client.get(f"/branches/{baseline_branch_id}?project_id={pid}")
         assert baseline_detail.status_code == 200
         base_pv_id = baseline_detail.json()["head_plan_version_id"]
@@ -1296,7 +1556,7 @@ class TestPhase4BranchingFlow:
         assert "__" in manual_binning_step_id
         new_pv_id = branch_data["new_plan_version_id"]
 
-        # 7. Verify branch head plan version is the new version
+        # 8. Verify branch head plan version is the new version
         branch_detail = client.get(f"/branches/{branch_id}?project_id={pid}")
         assert branch_detail.status_code == 200
         assert branch_detail.json()["head_plan_version_id"] == new_pv_id

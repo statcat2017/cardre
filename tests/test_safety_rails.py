@@ -145,12 +145,22 @@ class TestMethodSummarySchemaDrift:
 
     @pytest.fixture
     def sample_german_credit(self, tmp_path):
-        p = tmp_path / "german.data"
-        lines = [
-            "A11 6 A34 A43 1169 A65 A75 4 A93 A101 4 A121 67 A143 A152 2 A173 1 A192 A201 1",
-            "A12 24 A32 A43 5951 A61 A73 2 A92 A101 4 A121 22 A142 A152 2 A173 1 A191 A201 2",
+        p = tmp_path / "german_credit.csv"
+        columns = [
+            "checking_account_status", "duration_months", "credit_history", "purpose",
+            "credit_amount", "savings_account_bonds", "present_employment_since",
+            "installment_rate_percent_disposable_income", "personal_status_sex",
+            "other_debtors_guarantors", "present_residence_since", "property",
+            "age_years", "other_installment_plans", "housing",
+            "existing_credits_at_bank", "job", "people_liable_maintenance",
+            "telephone", "foreign_worker", "credit_risk_class",
         ]
-        p.write_text("\n".join(lines))
+        header = ",".join(columns)
+        rows = [
+            "A11,6,A34,A43,1169,A65,A75,4,A93,A101,4,A121,67,A143,A152,2,A173,1,A192,A201,1",
+            "A12,24,A32,A43,5951,A61,A73,2,A92,A101,4,A121,22,A142,A152,2,A173,1,A191,A201,2",
+        ]
+        p.write_text("\n".join([header] + rows))
         return p
 
     def test_method_summary_endpoint_200s_with_expected_fields(self, client, tmp_path, sample_german_credit):
@@ -173,6 +183,31 @@ class TestMethodSummarySchemaDrift:
         assert len(proof_plans) == 1, "Proof Pathway must be discoverable"
         proof_plan_id = proof_plans[0]["plan_id"]
         proof_pv_id = store.get_latest_plan_version_id(proof_plan_id)
+
+        # Configure metadata for the Proof Pathway
+        from sidecar.routes.plans import update_step_params as update_params_route
+        from fastapi import APIRouter
+
+        # Update validate-target and split with target_column
+        from cardre.services.plan_service import PlanService
+        ps = PlanService(store)
+        _resp = ps.update_params(
+            plan_id=proof_plan_id, step_id="validate-target",
+            base_plan_version_id=proof_pv_id,
+            params={"target_column": "credit_risk_class"},
+        )
+        proof_pv_id = _resp.new_plan_version_id
+        _resp = ps.update_params(
+            plan_id=proof_plan_id, step_id="split",
+            base_plan_version_id=proof_pv_id,
+            params={
+                "train_fraction": 0.6, "test_fraction": 0.2,
+                "oot_fraction": 0.2, "strategy": "random_stratified",
+                "target_column": "credit_risk_class", "role_column": None,
+                "random_seed": 42,
+            },
+        )
+        proof_pv_id = _resp.new_plan_version_id
 
         # Run the Proof Pathway
         run_resp = client.post("/runs?sync=true", json={

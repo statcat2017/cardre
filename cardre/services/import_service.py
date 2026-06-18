@@ -17,21 +17,28 @@ def get_or_create_import_plan(store: ProjectStore, project_id: str) -> str:
     return store.create_plan(project_id, "__import__")
 
 
-def update_single_plan_import_params(store: ProjectStore, plan_id: str, source_path: str) -> None:
+def update_single_plan_import_params(
+    store: ProjectStore, plan_id: str, source_path: str, extra_params: dict | None = None,
+) -> None:
     latest_pv_id = store.get_latest_plan_version_id(plan_id)
     if latest_pv_id is None:
         return
     steps = store.get_plan_version_steps(latest_pv_id)
     params = {"source_path": str(Path(source_path).resolve())}
+    if extra_params:
+        params.update(extra_params)
     new_steps = replace_step_params(steps, "import", params)
     store.create_plan_version(plan_id, new_steps, description="Import configured")
 
 
-def update_plan_import_params(store: ProjectStore, project_id: str, source_path: str) -> None:
+def update_plan_import_params(
+    store: ProjectStore, project_id: str, source_path: str, extra_params: dict | None = None,
+) -> None:
     """Update the scorecard pathway's import step with the given source_path.
 
     Creates a new plan version so the import step knows which file to load.
     Updates both Proof Pathway and Scorecard Pathway if they exist.
+    Any *extra_params* (e.g. schema_overrides) are merged into the import step params.
     """
     plans = store.get_plans_for_project(project_id)
     for plan_name in ("Proof Pathway", "Scorecard Pathway"):
@@ -39,4 +46,4 @@ def update_plan_import_params(store: ProjectStore, project_id: str, source_path:
         if pathway_plan is None:
             continue
         plan_id = pathway_plan["plan_id"]
-        update_single_plan_import_params(store, plan_id, source_path)
+        update_single_plan_import_params(store, plan_id, source_path, extra_params=extra_params)

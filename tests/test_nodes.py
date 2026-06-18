@@ -29,6 +29,7 @@ from cardre.nodes import (
     DummyFitNode,
     ExplicitMissingOutlierTreatmentNode,
     ImportGermanCreditNode,
+    ImportTabularDatasetNode,
     ProfileDatasetNode,
     SplitTrainTestOotNode,
     TechnicalManifestExportNode,
@@ -59,7 +60,7 @@ def make_project_with_import(store: ProjectStore, tmp: Path) -> tuple[str, str]:
 
     steps = [
         StepSpec(
-            step_id="import", node_type="cardre.import_dataset",
+            step_id="import", node_type="cardre.import_fixture_uci_german_credit",
             node_version="1", category="transform",
             params={"source_path": str(source)},
             params_hash=json_logical_hash({"source_path": str(source)}),
@@ -91,7 +92,7 @@ class GermanCreditImportTests(unittest.TestCase):
 
         step_spec = StepSpec(
             step_id="import-1",
-            node_type="cardre.import_dataset",
+            node_type="cardre.import_fixture_uci_german_credit",
             node_version="1",
             category="transform",
             params={"source_path": str(source)},
@@ -130,7 +131,7 @@ class GermanCreditImportTests(unittest.TestCase):
 
         step_spec = StepSpec(
             step_id="import-1",
-            node_type="cardre.import_dataset",
+            node_type="cardre.import_fixture_uci_german_credit",
             node_version="1",
             category="transform",
             params={"source_path": str(source)},
@@ -166,7 +167,7 @@ class GermanCreditImportTests(unittest.TestCase):
 
         params = {"source_path": str(source)}
         step_spec_1 = StepSpec(
-            step_id="import-1", node_type="cardre.import_dataset",
+            step_id="import-1", node_type="cardre.import_fixture_uci_german_credit",
             node_version="1", category="transform",
             params=params,
             params_hash=json_logical_hash(params),
@@ -202,7 +203,7 @@ class GermanCreditImportTests(unittest.TestCase):
 
         params = {"source_path": str(zpath)}
         step_spec = StepSpec(
-            step_id="import-zip", node_type="cardre.import_dataset",
+            step_id="import-zip", node_type="cardre.import_fixture_uci_german_credit",
             node_version="1", category="transform",
             params=params,
             params_hash=json_logical_hash(params),
@@ -230,7 +231,7 @@ class GermanCreditImportTests(unittest.TestCase):
         source.write_text("1 2 3\n4 5 6 7\n")
         params = {"source_path": str(source)}
         step_spec = StepSpec(
-            step_id="import-bad", node_type="cardre.import_dataset",
+            step_id="import-bad", node_type="cardre.import_fixture_uci_german_credit",
             node_version="1", category="transform",
             params=params,
             params_hash=json_logical_hash(params),
@@ -259,7 +260,7 @@ class GermanCreditImportTests(unittest.TestCase):
         source.write_text("dummy")
         params = {"source_path": str(source)}
         step_spec = StepSpec(
-            step_id="import-csv", node_type="cardre.import_dataset",
+            step_id="import-csv", node_type="cardre.import_fixture_uci_german_credit",
             node_version="1", category="transform",
             params=params,
             params_hash=json_logical_hash(params),
@@ -285,7 +286,7 @@ class GermanCreditImportTests(unittest.TestCase):
             zf.writestr("other.txt", "not german data")
         params = {"source_path": str(zpath)}
         step_spec = StepSpec(
-            step_id="import-zip2", node_type="cardre.import_dataset",
+            step_id="import-zip2", node_type="cardre.import_fixture_uci_german_credit",
             node_version="1", category="transform",
             params=params,
             params_hash=json_logical_hash(params),
@@ -381,7 +382,7 @@ class NodeRegistryTests(unittest.TestCase):
     def test_register_and_resolve(self) -> None:
         reg = NodeRegistry()
         reg.register(ImportGermanCreditNode)
-        cls = reg.resolve("cardre.import_dataset")
+        cls = reg.resolve("cardre.import_fixture_uci_german_credit")
         self.assertIs(cls, ImportGermanCreditNode)
 
     def test_missing_node_type_fails_cleanly(self) -> None:
@@ -403,6 +404,12 @@ class NodeRegistryTests(unittest.TestCase):
 
     def test_node_defines_contract(self) -> None:
         node = ImportGermanCreditNode()
+        self.assertEqual(node.node_type, "cardre.import_fixture_uci_german_credit")
+        self.assertEqual(node.version, "1")
+        self.assertEqual(node.category, "transform")
+
+    def test_generic_import_node_defines_contract(self) -> None:
+        node = ImportTabularDatasetNode()
         self.assertEqual(node.node_type, "cardre.import_dataset")
         self.assertEqual(node.version, "1")
         self.assertEqual(node.category, "transform")
@@ -411,6 +418,7 @@ class NodeRegistryTests(unittest.TestCase):
         reg = NodeRegistry.with_defaults()
         for nt in [
             "cardre.import_dataset",
+            "cardre.import_fixture_uci_german_credit",
             "cardre.profile_dataset",
             "cardre.validate_binary_target",
             "cardre.split_train_test_oot",
@@ -753,7 +761,7 @@ class TechnicalManifestTests(unittest.TestCase):
         source = make_sample_german_credit_file(tmp)
         steps = [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),

@@ -47,9 +47,62 @@ def make_store() -> tuple[ProjectStore, Path]:
 
 
 def make_sample_german_credit_file(tmp: Path) -> Path:
-    """Write a small German Credit fixture file (2 rows)."""
+    """Write a small German Credit fixture file (2 rows, .data format)."""
     p = tmp / "german.data"
     p.write_text("\n".join(SAMPLE_GERMAN_CREDIT_LINES))
+    return p
+
+
+def make_sample_german_credit_csv(tmp: Path) -> Path:
+    """Write a small German Credit fixture as CSV with header (2 rows)."""
+    columns = [
+        "checking_account_status", "duration_months", "credit_history", "purpose",
+        "credit_amount", "savings_account_bonds", "present_employment_since",
+        "installment_rate_percent_disposable_income", "personal_status_sex",
+        "other_debtors_guarantors", "present_residence_since", "property",
+        "age_years", "other_installment_plans", "housing",
+        "existing_credits_at_bank", "job", "people_liable_maintenance",
+        "telephone", "foreign_worker", "credit_risk_class",
+    ]
+    header = ",".join(columns)
+    rows = [",".join(line.split()) for line in SAMPLE_GERMAN_CREDIT_LINES]
+    p = tmp / "german_credit.csv"
+    p.write_text("\n".join([header] + rows))
+    return p
+
+
+def make_large_german_credit_csv(tmp: Path) -> Path:
+    """~100-row German Credit CSV suitable for scorecard pathway E2E tests."""
+    good = "A11 6 A34 A43 1169 A65 A75 4 A93 A101 4 A121 67 A143 A152 2 A173 1 A192 A201 1"
+    bad = "A12 24 A32 A43 5951 A61 A73 2 A92 A101 4 A121 22 A142 A152 2 A173 1 A191 A201 2"
+    columns = [
+        "checking_account_status", "duration_months", "credit_history", "purpose",
+        "credit_amount", "savings_account_bonds", "present_employment_since",
+        "installment_rate_percent_disposable_income", "personal_status_sex",
+        "other_debtors_guarantors", "present_residence_since", "property",
+        "age_years", "other_installment_plans", "housing",
+        "existing_credits_at_bank", "job", "people_liable_maintenance",
+        "telephone", "foreign_worker", "credit_risk_class",
+    ]
+    lines = [",".join(columns)]
+    for i in range(50):
+        parts_g = good.split()
+        parts_g[0] = f"A{i % 11 + 11}"
+        parts_g[1] = str(6 + (i % 48))
+        parts_g[4] = str(1000 + i * 100)
+        parts_g[10] = str(i % 4 + 1)
+        parts_g[12] = str(20 + (i % 60))
+        lines.append(",".join(parts_g))
+    for i in range(50):
+        parts_b = bad.split()
+        parts_b[0] = f"A{i % 11 + 11}"
+        parts_b[1] = str(12 + (i % 36))
+        parts_b[4] = str(2000 + i * 200)
+        parts_b[10] = str(i % 4 + 1)
+        parts_b[12] = str(25 + (i % 55))
+        lines.append(",".join(parts_b))
+    p = tmp / "german_credit.csv"
+    p.write_text("\n".join(lines))
     return p
 
 
@@ -60,6 +113,80 @@ def make_sample_german_credit_zip(tmp: Path) -> Path:
     with zipfile.ZipFile(zpath, "w") as zf:
         zf.writestr("german.data", "\n".join(SAMPLE_GERMAN_CREDIT_LINES))
     return zpath
+
+
+# ---------------------------------------------------------------------------
+# Synthetic CSV fixture generators for generic import tests
+# ---------------------------------------------------------------------------
+
+
+def make_synthetic_csv(tmp: Path, filename: str = "synthetic.csv", rows: int = 50) -> Path:
+    """Create a synthetic CSV with header, numeric features, and binary target.
+    
+    Target column is ``default_flag`` with values ``Y``/``N`` (not 1/2).
+    """
+    rng = np.random.RandomState(42)
+    data = {
+        "customer_id": [f"C{i:04d}" for i in range(rows)],
+        "age": list(rng.randint(18, 75, size=rows)),
+        "income": [round(x, 2) for x in rng.uniform(20000, 150000, size=rows)],
+        "credit_score": list(rng.randint(300, 850, size=rows)),
+        "loan_amount": [round(x, 2) for x in rng.uniform(1000, 50000, size=rows)],
+        "default_flag": ["Y" if rng.random() < 0.3 else "N" for _ in range(rows)],
+    }
+    header = ",".join(data.keys())
+    lines = [header]
+    for i in range(rows):
+        lines.append(",".join(str(data[k][i]) for k in data))
+    p = tmp / filename
+    p.write_text("\n".join(lines))
+    return p
+
+
+def make_synthetic_tsv(tmp: Path, filename: str = "synthetic.tsv", rows: int = 50) -> Path:
+    """Create a synthetic TSV with header, numeric features, and binary target."""
+    rng = np.random.RandomState(42)
+    data = {
+        "customer_id": [f"C{i:04d}" for i in range(rows)],
+        "age": list(rng.randint(18, 75, size=rows)),
+        "income": [round(x, 2) for x in rng.uniform(20000, 150000, size=rows)],
+        "default_flag": ["Y" if rng.random() < 0.3 else "N" for _ in range(rows)],
+    }
+    header = "\t".join(data.keys())
+    lines = [header]
+    for i in range(rows):
+        lines.append("\t".join(str(data[k][i]) for k in data))
+    p = tmp / filename
+    p.write_text("\n".join(lines))
+    return p
+
+
+def make_synthetic_no_header_csv(tmp: Path, filename: str = "no_header.csv") -> Path:
+    """Create a CSV without header row using positional columns."""
+    rows = [
+        "C0001,25,45000,Y",
+        "C0002,62,120000,N",
+        "C0003,34,62000,Y",
+        "C0004,45,85000,N",
+    ]
+    p = tmp / filename
+    p.write_text("\n".join(rows))
+    return p
+
+
+def make_synthetic_with_nulls_csv(tmp: Path, filename: str = "with_nulls.csv") -> Path:
+    """Create a CSV with missing values for null_values testing."""
+    rows = [
+        "id,score,label",
+        "1,85,Y",
+        "2,,N",
+        "3,72,",
+        "4,,Y",
+        "5,91,N",
+    ]
+    p = tmp / filename
+    p.write_text("\n".join(rows))
+    return p
 
 
 # ---------------------------------------------------------------------------

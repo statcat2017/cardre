@@ -47,7 +47,11 @@ class ProjectDetailResponse(ProjectResponse):
 class ImportDatasetRequest(BaseModel):
     project_id: str
     source_path: str
-    dataset_id: str = "uci-statlog-german-credit"
+    dataset_id: str = ""
+    format: str = "auto"
+    delimiter: str | None = None
+    has_header: bool = True
+    schema_overrides: dict[str, str] = {}
 
 
 class ArtifactResponse(BaseModel):
