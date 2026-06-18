@@ -8,10 +8,12 @@ from pathlib import Path
 
 import polars as pl
 
+from cardre.artifacts import write_json_artifact
 from cardre.audit import (
     ArtifactRef,
     ExecutionContext,
     NodeOutput,
+    NodeType,
     StepSpec,
     json_logical_hash,
     physical_hash,
@@ -19,6 +21,7 @@ from cardre.audit import (
     table_logical_hash,
 )
 from cardre.executor import PlanExecutor, RoleAccessError
+from cardre.errors import ArtifactReadError, GraphValidationError, CancellationError
 from cardre.staleness import compute_staleness
 from cardre.nodes import (
     DummyApplyNode,
@@ -201,6 +204,63 @@ class ExecutorTests:
         assert fail_step[0].status == "failed"
         assert len(fail_step[0].errors) > 0
 
+    def test_structured_error_categories(self) -> None:
+        class FailOnPurposeNode(DummyFitNode):
+            node_type = "cardre.fail_on_purpose"
+
+            def run(self, context: ExecutionContext) -> NodeOutput:
+                raise RuntimeError("Intentional failure")
+
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+        source = make_sample_german_credit_file(tmp)
+
+        steps = [
+            StepSpec(
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
+                node_version="1", category="transform",
+                params={"source_path": str(source)},
+                params_hash=json_logical_hash({"source_path": str(source)}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+            StepSpec(
+                step_id="fail-step", node_type="cardre.fail_on_purpose",
+                node_version="1", category="fit",
+                params={},
+                params_hash=json_logical_hash({}),
+                parent_step_ids=["import"], branch_label="", position=1,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry()
+        reg.register(ImportGermanCreditNode)
+        reg.register(FailOnPurposeNode)
+        executor = PlanExecutor(reg)
+
+        run_id = executor.run_plan_version(store, pv_id)
+
+        run = store.get_run(run_id)
+        assert run["status"] == "failed"
+
+        run_steps = store.get_run_steps(run_id)
+        fail_step = [rs for rs in run_steps if rs.step_id == "fail-step"]
+        assert len(fail_step) == 1
+        assert fail_step[0].status == "failed"
+        assert len(fail_step[0].errors) > 0
+
+        error = fail_step[0].errors[0]
+        assert "category" in error
+        known_categories = {
+            "CancellationError", "GraphValidationError",
+            "MissingInputArtifactError", "ParameterValidationError",
+            "ArtifactReadError", "ArtifactWriteError",
+            "NodeExecutionError", "ContractViolationError",
+            "CardreError", "InternalExecutionError",
+        }
+        assert error["category"] in known_categories
+        assert error["category"] == "InternalExecutionError"
+
     def test_missing_artifact_file_fails_validation(self) -> None:
         store, tmp = make_store()
         store.initialize()
@@ -210,7 +270,7 @@ class ExecutorTests:
         p.unlink() if p.exists() else None
 
         executor = PlanExecutor(NodeRegistry())
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(ArtifactReadError):
             executor._validate_input_artifact_files(store, [art])
 
     def test_artifact_hash_mismatch_fails_validation(self) -> None:
@@ -223,7 +283,7 @@ class ExecutorTests:
             p.write_text("tampered data")
 
         executor = PlanExecutor(NodeRegistry())
-        with pytest.raises(ValueError):
+        with pytest.raises(ArtifactReadError):
             executor._validate_input_artifact_files(store, [art])
 
 
@@ -622,3 +682,270 @@ class StalenessAndReplayTests:
             pass
 
         old_run = store.get_run(first_run_id)
+
+
+# ======================================================================
+# Wave 2: run_to_node, force, cancellation, manifest
+# ======================================================================
+
+class SimpleSourceNode(NodeType):
+    node_type = "cardre.test.simple_source"
+    version = "1"
+    category = "transform"
+    input_roles: list[str] = []
+    output_roles: list[str] = ["artifact"]
+
+    def run(self, context: ExecutionContext) -> NodeOutput:
+        art = write_json_artifact(
+            context.store, artifact_type="report", role="artifact",
+            stem=f"source-{context.step_spec.step_id}",
+            payload={"step_id": context.step_spec.step_id},
+            metadata={},
+        )
+        return NodeOutput(artifacts=[art], metrics={})
+
+
+class SimpleTransformNode(NodeType):
+    node_type = "cardre.test.simple_transform"
+    version = "1"
+    category = "transform"
+    input_roles: list[str] = ["artifact"]
+    output_roles: list[str] = ["artifact"]
+
+    def run(self, context: ExecutionContext) -> NodeOutput:
+        art = write_json_artifact(
+            context.store, artifact_type="report", role="artifact",
+            stem=f"transform-{context.step_spec.step_id}",
+            payload={"step_id": context.step_spec.step_id,
+                     "parent_count": len(context.input_artifacts)},
+            metadata={},
+        )
+        return NodeOutput(artifacts=[art], metrics={})
+
+
+class Wave2Tests:
+
+    def test_run_to_node_executes_ancestors_only(self) -> None:
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+
+        steps = [
+            StepSpec(
+                step_id="import", node_type="cardre.test.simple_source",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+            StepSpec(
+                step_id="step_a", node_type="cardre.test.simple_transform",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=["import"], branch_label="", position=1,
+            ),
+            StepSpec(
+                step_id="step_b", node_type="cardre.test.simple_transform",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=["import"], branch_label="", position=2,
+            ),
+            StepSpec(
+                step_id="target", node_type="cardre.test.simple_transform",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=["step_a"], branch_label="", position=3,
+            ),
+            StepSpec(
+                step_id="other_target", node_type="cardre.test.simple_transform",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=["step_b"], branch_label="", position=4,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry()
+        reg.register(SimpleSourceNode)
+        reg.register(SimpleTransformNode)
+        executor = PlanExecutor(reg)
+
+        run_id = executor.run_to_node(store, pv_id, "target")
+
+        run = store.get_run(run_id)
+        assert run["status"] == "succeeded"
+
+        run_steps = store.get_run_steps(run_id)
+        executed_step_ids = {rs.step_id for rs in run_steps}
+        assert "import" in executed_step_ids
+        assert "step_a" in executed_step_ids
+        assert "target" in executed_step_ids
+        assert "step_b" not in executed_step_ids, "step_b is not in ancestor closure"
+        assert "other_target" not in executed_step_ids, "other_target is not in ancestor closure"
+
+    def test_force_rerun_regenerates_artifacts(self) -> None:
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+
+        steps = [
+            StepSpec(
+                step_id="source", node_type="cardre.test.simple_source",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry()
+        reg.register(SimpleSourceNode)
+        executor = PlanExecutor(reg)
+
+        first_run_id = executor.run_plan_version(store, pv_id, force=True)
+        first_steps = store.get_run_steps(first_run_id)
+        first_fp = first_steps[0].execution_fingerprint
+
+        second_run_id = executor.run_plan_version(store, pv_id, force=True)
+        second_steps = store.get_run_steps(second_run_id)
+        second_fp = second_steps[0].execution_fingerprint
+
+        assert first_steps[0].output_artifact_ids != second_steps[0].output_artifact_ids, \
+            "forced runs should produce new artifact IDs"
+        assert first_fp == second_fp, \
+            "fingerprints should be identical between forced runs"
+
+    def test_cancellation_stops_mid_flight(self) -> None:
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+
+        class CancellingNode(NodeType):
+            node_type = "cardre.test.cancelling"
+            version = "1"
+            category = "transform"
+            input_roles: list[str] = []
+            output_roles: list[str] = ["artifact"]
+
+            def run(self, context: ExecutionContext) -> NodeOutput:
+                from cardre.cancellation import cancel_run
+                cancel_run(context.run_id)
+                return NodeOutput(artifacts=[], metrics={})
+
+        steps = [
+            StepSpec(
+                step_id="step_a", node_type="cardre.test.cancelling",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+            StepSpec(
+                step_id="step_b", node_type="cardre.test.simple_source",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=["step_a"], branch_label="", position=1,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry()
+        reg.register(CancellingNode)
+        reg.register(SimpleSourceNode)
+        executor = PlanExecutor(reg)
+
+        run_id = executor.run_plan_version(store, pv_id)
+        run = store.get_run(run_id)
+        assert run["status"] == "cancelled", f"Expected cancelled, got {run['status']}"
+
+        run_steps = store.get_run_steps(run_id)
+        executed_step_ids = {rs.step_id for rs in run_steps}
+        assert "step_a" in executed_step_ids
+        assert "step_b" not in executed_step_ids, "step_b should not execute after cancellation"
+
+    def test_manifest_status_matches_run_status(self) -> None:
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+
+        steps = [
+            StepSpec(
+                step_id="step_a", node_type="cardre.test.simple_source",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+            StepSpec(
+                step_id="step_b", node_type="cardre.test.simple_source",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=["step_a"], branch_label="", position=1,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry()
+        reg.register(SimpleSourceNode)
+        executor = PlanExecutor(reg)
+
+        run_id = executor.run_plan_version(store, pv_id)
+        run = store.get_run(run_id)
+        assert run["status"] == "succeeded", f"Expected succeeded, got {run['status']}"
+
+        manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
+        assert len(manifest_arts) >= 1, "No manifest artifact found"
+        manifest_art = manifest_arts[-1]
+        import json
+        manifest = json.loads(store.artifact_path(manifest_art).read_text())
+        assert manifest["status"] == run["status"], f"Manifest status {manifest['status']} != run status {run['status']}"
+        assert manifest["finished_at"], "Manifest missing finished_at"
+
+    def test_run_to_node_invalid_target_raises(self) -> None:
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+
+        steps = [
+            StepSpec(
+                step_id="step_a", node_type="cardre.test.simple_source",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry()
+        reg.register(SimpleSourceNode)
+        executor = PlanExecutor(reg)
+
+        with pytest.raises(GraphValidationError):
+            executor.run_to_node(store, pv_id, "nonexistent_step")
+
+    def test_cancellation_raised_from_inside_node(self) -> None:
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+
+        class TokenCheckingNode(NodeType):
+            node_type = "cardre.test.token_checking"
+            version = "1"
+            category = "transform"
+            input_roles: list[str] = []
+            output_roles: list[str] = ["artifact"]
+
+            def run(self, context: ExecutionContext) -> NodeOutput:
+                from cardre.cancellation import cancel_run
+                cancel_run(context.run_id)
+                context.cancellation_token.raise_if_cancelled()
+                return NodeOutput(artifacts=[], metrics={})
+
+        steps = [
+            StepSpec(
+                step_id="raise_step", node_type="cardre.test.token_checking",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry()
+        reg.register(TokenCheckingNode)
+        executor = PlanExecutor(reg)
+
+        run_id = executor.run_plan_version(store, pv_id)
+        run = store.get_run(run_id)
+        assert run["status"] == "cancelled", f"Expected cancelled, got {run['status']}"

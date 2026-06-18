@@ -97,6 +97,7 @@ export function ProjectView({ projectId, onBack }: Props) {
         project_id: projectId,
         plan_version_id: planData.latest_version_id,
         run_scope: "full_plan",
+        force: false,
       });
       const runId = runResp.run_id;
       setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Run started (${runId.slice(0, 8)}…)`]);

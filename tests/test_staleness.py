@@ -6,8 +6,8 @@ import uuid
 
 import pytest
 
-from cardre.audit import RunStepRecord, StepSpec, json_logical_hash, utc_now_iso
-from cardre.staleness import compute_staleness, step_is_stale, _find_spec
+from cardre.audit import RunStepRecord, StepSpec, json_logical_hash, replace_step_params, utc_now_iso
+from cardre.staleness import compute_staleness, staleness_detail, step_is_stale, _find_spec
 from tests.helpers import make_store
 
 
@@ -263,3 +263,61 @@ class ComputeStalenessTests:
         staleness = compute_staleness(store, pv_id, branch_id=branch_id)
         # Falls back to full-plan run — step should appear fresh
         assert staleness == {"a": False}
+
+
+class StalenessDetailTests:
+    def test_staleness_detail_returns_reasons(self) -> None:
+        store, _ = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+        a = _make_step("a", params={"x": 1})
+        b = _make_step("b", parent_ids=["a"], params={"y": 2})
+        steps = [a, b]
+        pv_id = store.create_plan_version(plan_id, steps)
+        run_id = store.create_run(pv_id)
+        ra = _make_rs("a", pv_id, run_id, a.params_hash)
+        rb = _make_rs("b", pv_id, run_id, b.params_hash, parent_output_hashes={"a": ra.execution_fingerprint["output_artifact_logical_hashes"]})
+        store.save_run_step(ra)
+        store.save_run_step(rb)
+        store.finish_run(run_id, "succeeded")
+
+        # Change params of 'a' only — creates new version
+        a2 = _make_step("a", params={"x": 99})
+        b2 = _make_step("b", parent_ids=["a"], params={"y": 2})
+        pv2_id = store.create_plan_version(plan_id, [a2, b2])
+
+        details = staleness_detail(store, pv2_id)
+        by_step = {d.step_id: d for d in details}
+
+        assert by_step["a"].is_stale
+        assert by_step["a"].reason == "params_changed"
+
+        assert by_step["b"].is_stale
+        assert by_step["b"].reason == "upstream_stale"
+
+    def test_staleness_detail_never_run(self) -> None:
+        store, _ = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+        a = _make_step("a")
+        pv_id = store.create_plan_version(plan_id, [a])
+
+        details = staleness_detail(store, pv_id)
+        assert details[0].is_stale
+        assert details[0].reason == "never_run"
+
+    def test_staleness_detail_fresh_has_no_reason(self) -> None:
+        store, _ = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+        a = _make_step("a")
+        steps = [a]
+        pv_id = store.create_plan_version(plan_id, steps)
+        run_id = store.create_run(pv_id)
+        ra = _make_rs("a", pv_id, run_id, a.params_hash)
+        store.save_run_step(ra)
+        store.finish_run(run_id, "succeeded")
+
+        details = staleness_detail(store, pv_id)
+        assert not details[0].is_stale
+        assert details[0].reason is None
