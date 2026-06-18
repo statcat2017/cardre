@@ -27,7 +27,6 @@ from cardre.audit import (
     utc_now_iso,
 )
 from cardre.registry import NodeRegistry
-from cardre.staleness import compute_staleness
 from cardre.store import ProjectStore
 from cardre.topology import validate_topology
 
@@ -465,18 +464,6 @@ class PlanExecutor:
         )
         store.save_run_step(rs)
         return rs
-
-    # ------------------------------------------------------------------
-    # Staleness
-    # ------------------------------------------------------------------
-
-    def compute_staleness(
-        self,
-        store: ProjectStore,
-        plan_version_id: str,
-        branch_id: str | None = None,
-    ) -> dict[str, bool]:
-        return compute_staleness(store, plan_version_id, branch_id=branch_id)
 
     # ------------------------------------------------------------------
     # Incremental replay
