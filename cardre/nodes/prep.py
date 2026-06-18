@@ -41,7 +41,7 @@ GERMAN_CREDIT_COLUMNS = [
 
 
 class ImportGermanCreditNode(NodeType):
-    node_type = "cardre.import_dataset"
+    node_type = "cardre.import_fixture_uci_german_credit"
     version = "1"
     category = "transform"
     input_roles: list[str] = []
@@ -88,7 +88,7 @@ class ImportGermanCreditNode(NodeType):
             raise FileNotFoundError(f"Import source_path does not exist or is not a file: {source_path}")
         if source_path.suffix.lower() not in (".zip", ".data", ".txt"):
             raise ValueError(
-                "cardre.import_dataset currently supports only UCI German Credit "
+                "ImportGermanCreditNode (cardre.import_fixture_uci_german_credit) supports only "
                 f"'.data', '.txt', or '.zip' sources, got {source_path.suffix!r}"
             )
         artifact_metadata = {
@@ -155,6 +155,96 @@ class ImportGermanCreditNode(NodeType):
             schema=GERMAN_CREDIT_COLUMNS,
             orient="row",
         )
+
+
+class ImportTabularDatasetNode(NodeType):
+    node_type = "cardre.import_dataset"
+    version = "1"
+    category = "transform"
+    input_roles: list[str] = []
+    output_roles: list[str] = ["input"]
+
+    SUPPORTED_FORMATS = frozenset({"csv", "tsv", "parquet"})
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        source_path = params.get("source_path")
+        if not source_path:
+            errors.append("source_path is required")
+            return errors
+        src = Path(source_path)
+        if not src.exists():
+            errors.append(f"source_path does not exist: {source_path}")
+            return errors
+        fmt = self._resolve_format(params, src)
+        if fmt not in self.SUPPORTED_FORMATS:
+            errors.append(
+                f"Unsupported format {fmt!r}; supported: {', '.join(sorted(self.SUPPORTED_FORMATS))}"
+            )
+        return errors
+
+    def run(self, context: ExecutionContext) -> NodeOutput:
+        params = context.validated_params
+        source_path = Path(params["source_path"])
+        if not source_path.exists() or not source_path.is_file():
+            raise FileNotFoundError(f"Import source_path does not exist or is not a file: {source_path}")
+
+        fmt = self._resolve_format(params, source_path)
+        if fmt == "parquet":
+            df = pl.read_parquet(source_path)
+        else:
+            delimiter = params.get("delimiter")
+            if not delimiter:
+                delimiter = "\t" if fmt == "tsv" else ","
+            has_header = params.get("has_header", True)
+            encoding = params.get("encoding", "utf-8")
+            null_values = params.get("null_values", [])
+            df = pl.read_csv(
+                source_path,
+                separator=delimiter,
+                has_header=has_header,
+                encoding=encoding,
+                null_values=null_values if null_values else None,
+                infer_schema_length=0,
+            )
+
+        if df.is_empty():
+            raise ValueError(f"Import produced zero rows from {source_path.name}")
+
+        store = context.store
+
+        artifact = write_parquet_artifact(
+            store,
+            artifact_type="dataset",
+            role="input",
+            stem="imported-dataset",
+            frame=df,
+            metadata={
+                "source_file": source_path.name,
+                "format": fmt,
+                "columns": list(df.columns),
+                "row_count": df.height,
+            },
+        )
+
+        return NodeOutput(
+            artifacts=[artifact],
+            metrics={"row_count": df.height, "column_count": df.width},
+        )
+
+    @staticmethod
+    def _resolve_format(params: dict[str, Any], src: Path) -> str:
+        fmt = params.get("format", "auto")
+        if fmt != "auto":
+            return fmt
+        suffix = src.suffix.lower()
+        if suffix in (".csv",):
+            return "csv"
+        if suffix in (".tsv",):
+            return "tsv"
+        if suffix in (".parquet",):
+            return "parquet"
+        return suffix.lstrip(".") if suffix else "unknown"
 
 
 class ProfileDatasetNode(NodeType):

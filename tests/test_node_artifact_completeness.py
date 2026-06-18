@@ -60,7 +60,7 @@ def _import_german_credit(store: ProjectStore, tmp: Path) -> ArtifactRef:
     source = make_sample_german_credit_file(tmp)
     params = {"source_path": str(source)}
     spec = StepSpec(
-        step_id="import", node_type="cardre.import_dataset",
+        step_id="import", node_type="cardre.import_fixture_uci_german_credit",
         node_version="1", category="transform",
         params=params, params_hash=json_logical_hash(params),
         parent_step_ids=[], branch_label="", position=0,

@@ -67,7 +67,7 @@ def make_full_german_credit_download(tmp: Path) -> Path:
 
         steps = [
             StepSpec(
-                step_id="import", node_type="cardre.import_dataset",
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1", category="transform",
                 params={"source_path": str(source)},
                 params_hash=json_logical_hash({"source_path": str(source)}),

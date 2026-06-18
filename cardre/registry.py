@@ -76,6 +76,7 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
         FineClassingNode,
         GradientBoostingClassifierNode,
         ImportGermanCreditNode,
+        ImportTabularDatasetNode,
         LightGBMClassifierNode,
         LogisticRegressionNode,
         ManualBinningNode,
@@ -100,6 +101,7 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
 
     for n in [
         ImportGermanCreditNode,
+        ImportTabularDatasetNode,
         ProfileDatasetNode,
         ValidateBinaryTargetNode,
         SplitTrainTestOotNode,

@@ -31,8 +31,19 @@ from tests.helpers import SAMPLE_GERMAN_CREDIT_LINES, _make_json_artifact, _make
 
 def _make_german_credit_file(tmp: Path) -> Path:
     """Create a German Credit fixture with 10 rows for meaningful pathway execution."""
-    p = tmp / "german_full.data"
-    p.write_text("\n".join(SAMPLE_GERMAN_CREDIT_LINES * 5))
+    columns = [
+        "checking_account_status", "duration_months", "credit_history", "purpose",
+        "credit_amount", "savings_account_bonds", "present_employment_since",
+        "installment_rate_percent_disposable_income", "personal_status_sex",
+        "other_debtors_guarantors", "present_residence_since", "property",
+        "age_years", "other_installment_plans", "housing",
+        "existing_credits_at_bank", "job", "people_liable_maintenance",
+        "telephone", "foreign_worker", "credit_risk_class",
+    ]
+    header = ",".join(columns)
+    rows = [",".join(line.split()) for line in SAMPLE_GERMAN_CREDIT_LINES * 5]
+    p = tmp / "german_credit.csv"
+    p.write_text("\n".join([header] + rows))
     return p
 
 
@@ -146,6 +157,39 @@ class TestAcceptanceChampionReport:
             step_id="import",
             base_plan_version_id=self.pv_id,
             params={"source_path": self.source_path},
+        )
+        self.pv_id = self.store.get_latest_plan_version_id(self.plan_id)
+
+        # Configure metadata
+        plan_service.update_params(
+            plan_id=self.plan_id,
+            step_id="define-metadata",
+            base_plan_version_id=self.pv_id,
+            params={
+                "target_column": "credit_risk_class",
+                "good_values": ["1"], "bad_values": ["2"],
+                "indeterminate_values": [],
+            },
+        )
+        self.pv_id = self.store.get_latest_plan_version_id(self.plan_id)
+
+        # Also update validate-target and split target_column
+        plan_service.update_params(
+            plan_id=self.plan_id,
+            step_id="validate-target",
+            base_plan_version_id=self.pv_id,
+            params={"target_column": "credit_risk_class"},
+        )
+        self.pv_id = self.store.get_latest_plan_version_id(self.plan_id)
+        plan_service.update_params(
+            plan_id=self.plan_id,
+            step_id="split",
+            base_plan_version_id=self.pv_id,
+            params={
+                "strategy": "random_stratified",
+                "train_fraction": 0.6, "test_fraction": 0.2, "oot_fraction": 0.2,
+                "target_column": "credit_risk_class", "role_column": None, "random_seed": 42,
+            },
         )
         self.pv_id = self.store.get_latest_plan_version_id(self.plan_id)
 
@@ -283,6 +327,37 @@ class TestAcceptanceNoChampionBranch:
             step_id="import",
             base_plan_version_id=self.pv_id,
             params={"source_path": self.source_path},
+        )
+        self.pv_id = self.store.get_latest_plan_version_id(self.plan_id)
+
+        plan_service.update_params(
+            plan_id=self.plan_id,
+            step_id="define-metadata",
+            base_plan_version_id=self.pv_id,
+            params={
+                "target_column": "credit_risk_class",
+                "good_values": ["1"], "bad_values": ["2"],
+                "indeterminate_values": [],
+            },
+        )
+        self.pv_id = self.store.get_latest_plan_version_id(self.plan_id)
+
+        plan_service.update_params(
+            plan_id=self.plan_id,
+            step_id="validate-target",
+            base_plan_version_id=self.pv_id,
+            params={"target_column": "credit_risk_class"},
+        )
+        self.pv_id = self.store.get_latest_plan_version_id(self.plan_id)
+        plan_service.update_params(
+            plan_id=self.plan_id,
+            step_id="split",
+            base_plan_version_id=self.pv_id,
+            params={
+                "strategy": "random_stratified",
+                "train_fraction": 0.6, "test_fraction": 0.2, "oot_fraction": 0.2,
+                "target_column": "credit_risk_class", "role_column": None, "random_seed": 42,
+            },
         )
         self.pv_id = self.store.get_latest_plan_version_id(self.plan_id)
 

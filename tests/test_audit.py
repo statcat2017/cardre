@@ -193,7 +193,7 @@ class StepSpecBranchExtensionTests(unittest.TestCase):
         steps = [
             StepSpec(
                 step_id="import",
-                node_type="cardre.import_dataset",
+                node_type="cardre.import_fixture_uci_german_credit",
                 node_version="1",
                 category="transform",
                 params={"source": "data.csv"},

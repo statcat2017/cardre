@@ -34,6 +34,14 @@ def import_dataset(body: ImportDatasetRequest):
     import_plan_id = get_or_create_import_plan(store, body.project_id)
 
     params = {"source_path": str(source.resolve())}
+    if body.format and body.format != "auto":
+        params["format"] = body.format
+    if body.delimiter is not None:
+        params["delimiter"] = body.delimiter
+    if not body.has_header:
+        params["has_header"] = False
+    if body.dataset_id:
+        params["dataset_id"] = body.dataset_id
     import_step = StepSpec(
         step_id="import",
         node_type="cardre.import_dataset",
