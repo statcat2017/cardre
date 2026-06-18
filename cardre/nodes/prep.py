@@ -61,7 +61,6 @@ class ImportGermanCreditNode(NodeType):
         else:
             try:
                 if src.suffix == ".zip":
-                    import zipfile
                     with zipfile.ZipFile(src) as zf:
                         names = zf.namelist()
                         data_file = next((n for n in names if Path(n).name == "german.data"), None)
