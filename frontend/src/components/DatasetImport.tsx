@@ -12,8 +12,14 @@ export function DatasetImport({ projectId, onImported }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const importMutation = useMutation({
-    mutationFn: (body: { project_id: string; source_path: string; dataset_id: string }) =>
-      api.importDataset(body),
+    mutationFn: (body: { project_id: string; source_path: string }) =>
+      api.importDataset({
+        ...body,
+        dataset_id: "",
+        format: "auto",
+        has_header: true,
+        schema_overrides: {},
+      }),
     onSuccess: () => {
       setError(null);
       onImported();
@@ -30,7 +36,6 @@ export function DatasetImport({ projectId, onImported }: Props) {
     importMutation.mutate({
       project_id: projectId,
       source_path: importPath.trim(),
-      dataset_id: "uci-statlog-german-credit",
     });
   };
 
@@ -53,7 +58,7 @@ export function DatasetImport({ projectId, onImported }: Props) {
             type="text"
             value={importPath}
             onChange={(e) => setImportPath(e.target.value)}
-            placeholder="/path/to/german.data"
+            placeholder="/path/to/applications.csv"
             style={{
               width: "100%",
               padding: "8px 12px",

@@ -81,11 +81,21 @@ def import_dataset(body: ImportDatasetRequest):
     if artifact is None:
         raise HTTPException(status_code=500, detail={"code": "ARTIFACT_NOT_FOUND", "message": "Import artifact not found in store"})
 
-    # Update pathway import params
-    extra_params = {}
+    # Forward the same import params to the pathway's import step
+    # so the pathway re-import uses the same format/delimiter/header/schema settings.
+    pathway_extra: dict[str, object] = {}
+    if body.format and body.format != "auto":
+        pathway_extra["format"] = body.format
+    if body.delimiter is not None:
+        pathway_extra["delimiter"] = body.delimiter
+    if not body.has_header:
+        pathway_extra["has_header"] = False
     if body.schema_overrides:
-        extra_params["schema_overrides"] = dict(body.schema_overrides)
-    update_plan_import_params(store, body.project_id, str(source.resolve()), extra_params=extra_params or None)
+        pathway_extra["schema_overrides"] = dict(body.schema_overrides)
+    update_plan_import_params(
+        store, body.project_id, str(source.resolve()),
+        extra_params=pathway_extra or None,
+    )
 
     return ArtifactResponse(
         artifact_id=artifact.artifact_id,
@@ -97,7 +107,6 @@ def import_dataset(body: ImportDatasetRequest):
         media_type=artifact.media_type,
         created_at=artifact.created_at,
         metadata={
-            "source_dataset_id": artifact.metadata.get("source_dataset_id", ""),
             "row_count": artifact.metadata.get("row_count", 0),
             "column_count": artifact.metadata.get("column_count", 0),
         },
