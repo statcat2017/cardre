@@ -38,6 +38,13 @@ suppressPackageStartupMessages({
   library(jsonlite)
 })
 
+# Enforce the reference package version so re-extraction always produces
+# the same fixture shape.
+stopifnot(
+  "Reference fixtures require scorecard v0.4.6" =
+    as.character(utils::packageVersion("scorecard")) == "0.4.6"
+)
+
 parse_out_dir <- function(args) {
   default_out_dir <- file.path("tests", "fixtures", "reference_scorecard_r_german_credit")
 
@@ -282,13 +289,14 @@ metadata <- list(
 write_json_pretty(metadata, "metadata.json")
 
 # Lightweight sanity checks for deterministic fixture shape.
-# Note: scorecard v0.4.6 produces 620/380 split (not 600/400 as earlier
-# versions). If the package version changes, update these.
-stopifnot(nrow(dt_list$train) >= 500L)
-stopifnot(nrow(dt_list$test) >= 300L)
-stopifnot(nrow(train_scores) >= 500L)
-stopifnot(nrow(test_scores) >= 300L)
-stopifnot(nrow(coef_df) >= 2L)
+# scorecard v0.4.6 with seed=30 and ratios=0.6/0.4 produces exactly
+# 620 train + 380 test rows.  If the package version changes this
+# assertion must be updated.
+stopifnot(nrow(dt_list$train) == 620L)
+stopifnot(nrow(dt_list$test) == 380L)
+stopifnot(nrow(train_scores) == 620L)
+stopifnot(nrow(test_scores) == 380L)
+stopifnot(nrow(coef_df) == 11L)
 stopifnot(file.exists(file.path(out_dir, "metadata.json")))
 
 cat("German Credit scorecard reference extraction complete.\n")
