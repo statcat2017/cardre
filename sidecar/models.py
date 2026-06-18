@@ -99,6 +99,8 @@ class RunRequest(BaseModel):
     plan_version_id: str
     run_scope: str = "full_plan"
     branch_id: str | None = None
+    target_step_id: str | None = None
+    force: bool = False
 
 
 class RunResponse(BaseModel):
@@ -547,6 +549,22 @@ class ReportMetadataResponse(BaseModel):
     export_path: str = ""
     zip_path: str = ""
     status: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Staleness (Task 4)
+# ---------------------------------------------------------------------------
+
+class StalenessItem(BaseModel):
+    step_id: str
+    is_stale: bool
+    reason: str | None = None
+
+
+class StalenessResponse(BaseModel):
+    plan_version_id: str
+    branch_id: str | None = None
+    nodes: list[StalenessItem]
 
 
 # ---------------------------------------------------------------------------

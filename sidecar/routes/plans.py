@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from cardre.services import PlanService
 from cardre.services.manual_binning_service import ManualBinningService
 from cardre.services.project_registry import load_registry
+from cardre.staleness import staleness_detail
 from cardre.store import ProjectStore
 from sidecar.dependencies import project_store_from_registry, resolve_registry_entry
 from sidecar.models import (
@@ -17,6 +18,8 @@ from sidecar.models import (
     ManualBinningPreviewRequest,
     ManualBinningPreviewResponse,
     PlanResponse,
+    StalenessItem,
+    StalenessResponse,
     UpdateStepParamsRequest,
     UpdateStepParamsResponse,
 )
@@ -62,4 +65,18 @@ def preview_manual_binning_overrides(plan_id: str, step_id: str, req: ManualBinn
     store = ProjectStore(Path(entry["path"]))
     result = ManualBinningService(store).preview_overrides(plan_id, req.plan_version_id, req.overrides, step_id=step_id)
     return ManualBinningPreviewResponse(**dataclasses.asdict(result))
+
+
+@router.get("/{plan_id}/versions/{plan_version_id}/staleness", response_model=StalenessResponse)
+def get_staleness_detail(plan_id: str, plan_version_id: str, project_id: str, branch_id: str | None = None):
+    store = project_store_from_registry(project_id)
+    pv = store.get_plan_version(plan_version_id)
+    if pv is None:
+        raise HTTPException(status_code=404, detail={"code": "PLAN_VERSION_NOT_FOUND", "message": f"No plan version with ID {plan_version_id}"})
+    if pv["plan_id"] != plan_id:
+        raise HTTPException(status_code=400, detail={"code": "VERSION_NOT_IN_PLAN", "message": "Plan version does not belong to the specified plan"})
+
+    detail_items = staleness_detail(store, plan_version_id, branch_id=branch_id)
+    nodes = [StalenessItem(step_id=d.step_id, is_stale=d.is_stale, reason=d.reason) for d in detail_items]
+    return StalenessResponse(plan_version_id=plan_version_id, branch_id=branch_id, nodes=nodes)
 

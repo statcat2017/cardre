@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 
 if TYPE_CHECKING:
+    from cardre.cancellation import CancellationToken
     from cardre.store import ProjectStore
 
 
@@ -134,6 +135,7 @@ class ExecutionContext:
     input_artifacts: list[ArtifactRef]
     validated_params: JsonDict
     runtime_metadata: JsonDict
+    cancellation_token: CancellationToken | None = None
 
 
 @dataclass

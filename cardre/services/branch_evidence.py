@@ -62,6 +62,7 @@ class BranchEvidenceResolver:
         store: ProjectStore,
         branch_id: str,
         plan_version_id: str,
+        force: bool = False,
     ) -> BranchRunContext:
         """Validate branch state, compute staleness, and seed initial evidence.
 
@@ -138,7 +139,7 @@ class BranchEvidenceResolver:
             )
 
         # 6. Identify stale branch-owned steps
-        stale_branch_step_ids = [
+        stale_branch_step_ids = list(branch_owned_step_ids) if force else [
             sid for sid in branch_owned_step_ids
             if branch_staleness.get(sid, True)
         ]
@@ -175,14 +176,15 @@ class BranchEvidenceResolver:
             step_outputs[sid] = self._exec._resolve_output_artifacts(store, rs)
 
         # 8b. Current (non-stale) branch-owned step evidence
-        for spec in steps:
-            if spec.step_id in branch_owned_step_ids and not branch_staleness.get(spec.step_id, True):
-                rs = store.get_latest_successful_run_step_for_step(
-                    plan_version_id, spec.step_id, branch_id=branch_id,
-                )
-                if rs is not None:
-                    run_step_records[spec.step_id] = rs
-                    step_outputs[spec.step_id] = self._exec._resolve_output_artifacts(store, rs)
+        if not force:
+            for spec in steps:
+                if spec.step_id in branch_owned_step_ids and not branch_staleness.get(spec.step_id, True):
+                    rs = store.get_latest_successful_run_step_for_step(
+                        plan_version_id, spec.step_id, branch_id=branch_id,
+                    )
+                    if rs is not None:
+                        run_step_records[spec.step_id] = rs
+                        step_outputs[spec.step_id] = self._exec._resolve_output_artifacts(store, rs)
 
         return BranchRunContext(
             branch=branch,

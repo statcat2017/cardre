@@ -211,6 +211,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/plans/{plan_id}/versions/{plan_version_id}/staleness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Staleness Detail */
+        get: operations["get_staleness_detail_plans__plan_id__versions__plan_version_id__staleness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs": {
         parameters: {
             query?: never;
@@ -254,6 +271,40 @@ export interface paths {
         };
         /** Get Run Steps */
         get: operations["get_run_steps_runs__run_id__steps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Run */
+        post: operations["cancel_run_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run Manifest */
+        get: operations["get_run_manifest_runs__run_id__manifest_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1724,6 +1775,13 @@ export interface components {
             run_scope: string;
             /** Branch Id */
             branch_id?: string | null;
+            /** Target Step Id */
+            target_step_id?: string | null;
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
         };
         /** RunResponse */
         RunResponse: {
@@ -1785,6 +1843,24 @@ export interface components {
             run_id: string;
             /** Steps */
             steps: components["schemas"]["RunStepItem"][];
+        };
+        /** StalenessItem */
+        StalenessItem: {
+            /** Step Id */
+            step_id: string;
+            /** Is Stale */
+            is_stale: boolean;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** StalenessResponse */
+        StalenessResponse: {
+            /** Plan Version Id */
+            plan_version_id: string;
+            /** Branch Id */
+            branch_id?: string | null;
+            /** Nodes */
+            nodes: components["schemas"]["StalenessItem"][];
         };
         /** StepStatusItem */
         StepStatusItem: {
@@ -2241,6 +2317,41 @@ export interface operations {
             };
         };
     };
+    get_staleness_detail_plans__plan_id__versions__plan_version_id__staleness_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                branch_id?: string | null;
+            };
+            header?: never;
+            path: {
+                plan_id: string;
+                plan_version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StalenessResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     run_plan_runs_post: {
         parameters: {
             query?: {
@@ -2326,6 +2437,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunStepsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_run_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_manifest_runs__run_id__manifest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

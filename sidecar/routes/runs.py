@@ -10,33 +10,29 @@ from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
 from cardre.services.project_registry import get_store_for_project, load_registry, ProjectNotFoundError, ProjectPathMissingError
 from cardre.store import ProjectStore
-from sidecar.models import RunRequest, RunResponse, RunStepsResponse, RunStepItem
+from sidecar.models import RunRequest, RunResponse, RunStepsResponse, RunStepItem, ArtifactResponse
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
 
-def _run_background(project_path: str, plan_version_id: str, run_id: str) -> None:
+def _run_background(project_path: str, plan_version_id: str, run_id: str, force: bool = False) -> None:
     """Execute plan steps in a background thread."""
     store = ProjectStore(project_path)
     executor = PlanExecutor(NodeRegistry.with_defaults())
     try:
-        executor.run_plan_version(store, plan_version_id, run_id=run_id)
+        executor.run_plan_version(store, plan_version_id, run_id=run_id, force=force)
     except BaseException:
         import traceback
         print(f"[sidecar] run_plan_version({run_id}) failed: {traceback.format_exc()}", flush=True)
-        # Backstop: executor may have raised before its own try/finally
-        # (e.g. during _validate_topology or get_plan_version_steps).
         _fail_run_if_running(store, run_id)
 
 
-def _branch_run_background(project_path: str, plan_version_id: str, branch_id: str, run_id: str) -> None:
+def _branch_run_background(project_path: str, plan_version_id: str, branch_id: str, run_id: str, force: bool = False) -> None:
     """Execute branch-owned steps in a background thread."""
     store = ProjectStore(project_path)
     executor = PlanExecutor(NodeRegistry.with_defaults())
     try:
-        result_id = executor.run_branch(store, plan_version_id, branch_id, run_id=run_id)
-        # run_branch short-circuits when no steps need executing,
-        # returning an existing run ID instead of using ours.
+        result_id = executor.run_branch(store, plan_version_id, branch_id, run_id=run_id, force=force)
         if result_id != run_id:
             store.finish_run(run_id, "cancelled")
     except BaseException:
@@ -71,6 +67,18 @@ def _build_run_response(store: ProjectStore, run_id: str, executed_ids: list[str
     )
 
 
+def _to_node_background(project_path: str, plan_version_id: str, target_step_id: str, run_id: str, force: bool = False) -> None:
+    """Execute ancestor closure of a target node in a background thread."""
+    store = ProjectStore(project_path)
+    executor = PlanExecutor(NodeRegistry.with_defaults())
+    try:
+        executor.run_to_node(store, plan_version_id, target_step_id, run_id=run_id, force=force)
+    except BaseException:
+        import traceback
+        print(f"[sidecar] run_to_node({run_id}) failed: {traceback.format_exc()}", flush=True)
+        _fail_run_if_running(store, run_id)
+
+
 @router.post("", response_model=RunResponse, status_code=201)
 def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Execute synchronously (for tests)")):
     store = get_store_for_project(body.project_id)
@@ -81,10 +89,29 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
 
     executor = PlanExecutor(NodeRegistry.with_defaults())
 
+    if body.run_scope == "to_node":
+        if not body.target_step_id:
+            raise HTTPException(status_code=400, detail={"code": "TARGET_STEP_REQUIRED", "message": "target_step_id is required for to_node scope"})
+        if sync:
+            try:
+                run_id = executor.run_to_node(store, body.plan_version_id, body.target_step_id, force=body.force)
+                executed_ids = [rs.step_id for rs in store.get_run_steps(run_id)]
+                return _build_run_response(store, run_id, executed_ids)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail={"code": "TO_NODE_RUN_FAILED", "message": str(exc)})
+        run_id = store.create_run(body.plan_version_id)
+        project_path = str(store.root)
+        try:
+            t = threading.Thread(target=_to_node_background, args=(project_path, body.plan_version_id, body.target_step_id, run_id, body.force), name="run-to-node-bg")
+            t.start()
+        except Exception:
+            store.finish_run(run_id, "failed")
+        return _build_run_response(store, run_id)
+
     if body.run_scope == "branch" and body.branch_id:
         if sync:
             try:
-                run_id = executor.run_branch(store, body.plan_version_id, body.branch_id)
+                run_id = executor.run_branch(store, body.plan_version_id, body.branch_id, force=body.force)
                 executed_ids = [rs.step_id for rs in store.get_run_steps(run_id)]
                 return _build_run_response(store, run_id, executed_ids)
             except ValueError as exc:
@@ -92,7 +119,7 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
         run_id = store.create_run(body.plan_version_id, branch_id=body.branch_id)
         project_path = str(store.root)
         try:
-            t = threading.Thread(target=_branch_run_background, args=(project_path, body.plan_version_id, body.branch_id, run_id), name="run-branch-bg")
+            t = threading.Thread(target=_branch_run_background, args=(project_path, body.plan_version_id, body.branch_id, run_id, body.force), name="run-branch-bg")
             t.start()
         except Exception:
             store.finish_run(run_id, "failed")
@@ -100,7 +127,7 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
 
     if sync:
         try:
-            run_id = executor.run_plan_version(store, body.plan_version_id)
+            run_id = executor.run_plan_version(store, body.plan_version_id, force=body.force)
         except Exception as exc:
             run_id = store.create_run(body.plan_version_id)
             store.finish_run(run_id, "failed")
@@ -111,7 +138,7 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
     run_id = store.create_run(body.plan_version_id)
     project_path = str(store.root)
     try:
-        t = threading.Thread(target=_run_background, args=(project_path, body.plan_version_id, run_id), name="run-plan-bg")
+        t = threading.Thread(target=_run_background, args=(project_path, body.plan_version_id, run_id, body.force), name="run-plan-bg")
         t.start()
     except Exception:
         store.finish_run(run_id, "failed")
@@ -162,4 +189,32 @@ def get_run_steps(run_id: str):
                     for rs in steps
                 ],
             )
+    raise HTTPException(status_code=404, detail={"code": "RUN_NOT_FOUND", "message": f"No run with ID {run_id}"})
+
+
+@router.post("/{run_id}/cancel")
+def cancel_run(run_id: str):
+    from cardre.cancellation import cancel_run as _cancel
+    _cancel(run_id)
+    return {"run_id": run_id, "status": "cancelling"}
+
+
+@router.get("/{run_id}/manifest")
+def get_run_manifest(run_id: str):
+    registry = load_registry()
+    for pid in registry:
+        try:
+            store = get_store_for_project(pid)
+        except (ProjectNotFoundError, ProjectPathMissingError):
+            continue
+        run = store.get_run(run_id)
+        if run is None:
+            continue
+        for art in store.list_artifacts():
+            if art.artifact_type == "run_manifest" and art.metadata.get("run_id") == run_id:
+                path = store.artifact_path(art)
+                if path.exists():
+                    import json
+                    return json.loads(path.read_text())
+        raise HTTPException(status_code=404, detail={"code": "MANIFEST_NOT_FOUND", "message": f"No manifest for run {run_id}"})
     raise HTTPException(status_code=404, detail={"code": "RUN_NOT_FOUND", "message": f"No run with ID {run_id}"})
