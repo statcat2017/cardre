@@ -10,9 +10,7 @@ import json
 from typing import Any
 
 from cardre.audit import RunStepRecord, StepSpec
-from cardre.executor import PlanExecutor
 from cardre.nodes import validate_manual_binning_overrides, apply_manual_binning_overrides
-from cardre.registry import NodeRegistry
 from cardre.staleness import compute_staleness
 from cardre.store import ProjectStore
 from cardre.services.plan_dto import (
@@ -30,8 +28,6 @@ class ManualBinningService:
 
     def __init__(self, store: ProjectStore):
         self._store = store
-        self._registry = NodeRegistry.with_defaults()
-        self._executor = PlanExecutor(self._registry)
 
     # ------------------------------------------------------------------
     # Public methods
@@ -98,15 +94,7 @@ class ManualBinningService:
                 required_steps=["fine-classing"],
             )
 
-        ancestors = self._executor.find_ancestors(fc_actual_id, steps)
-        if "fine-classing" not in ancestors and fc_spec is None:
-            return ManualBinningEditorStateResponse(
-                plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
-                ready=False, blocked_reason="Fine-classing step is not an ancestor of this manual-binning step.",
-                required_steps=["fine-classing"],
-            )
-
-        staleness = compute_staleness(self._store, latest_pv_id)
+        staleness = compute_staleness(self._store, latest_pv_id, branch_id=branch_id)
         fc_stale = staleness.get(fc_actual_id, True)
         vs_stale = staleness.get(vs_actual_id, True) if vs_spec else True
 
