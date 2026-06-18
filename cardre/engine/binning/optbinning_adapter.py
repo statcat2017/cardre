@@ -265,12 +265,11 @@ def _is_special_bin(row, optb) -> bool:
     label = str(row.get("Bin", ""))
     if not label:
         return False
-    # All special codes go into a single bin; any code match identifies it.
-    # Sort by length descending to avoid -99 matching inside -999 (both go to
-    # same bin so either match is fine, but the shorter code could match a
-    # value like 99 in a regular bin label — unlikely for credit scorecards).
-    for code in sorted(sc, key=str, reverse=True):
-        if str(code) in label:
+    # Match special code as a delimited token — prevents 99 matching in 199/999.
+    import re
+    for code in sc:
+        pattern = rf"(?<![-\d]){re.escape(str(code))}(?![-\d])"
+        if re.search(pattern, label):
             return True
     return False
 

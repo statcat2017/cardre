@@ -584,6 +584,9 @@ def apply_manual_binning_overrides(
             override_event["after"] = "excluded"
             var_info["status"] = "excluded"
             var_info["active"] = False
+            # Remove from active variable list — downstream nodes
+            # iterate "variables" without checking active/status.
+            var_info["reject_reason"] = reason
 
         elif action == "reorder_missing_bin":
             missing_bins = [b for b in var_bins if b.get("is_missing_bin")]
@@ -605,10 +608,16 @@ def apply_manual_binning_overrides(
     if selected_vars is not None:
         var_map = {k: v for k, v in var_map.items() if k in selected_vars}
 
+    # Split into active variables and rejected (non-active) variables.
+    # Downstream nodes iterate "variables" without checking active/status.
+    active_vars = [v for v in var_map.values() if v.get("active", True)]
+    rejected_vars = [v for v in var_map.values() if not v.get("active", True)]
+
     if not overrides:
         warnings.append({"message": "No manual overrides applied; passing through auto bins for selected variables"})
 
     return {
-        "variables": list(var_map.values()),
+        "variables": active_vars,
+        "rejected": rejected_vars if rejected_vars else None,
         "warnings": bin_def.get("warnings", []) + warnings,
     }

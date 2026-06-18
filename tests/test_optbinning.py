@@ -237,16 +237,31 @@ class TestExtractBins:
 class TestAutoBinningFitNode:
     """Test AutoBinningFitNode with mocked optbinning."""
 
-    def test_validate_params(self):
+    def test_validate_params_rejects_unknown_engine(self):
         node = AutoBinningFitNode()
         errs = node.validate_params({"engine": "bad"})
         assert len(errs) > 0
-        # optbinning not installed: should return availability error
-        opt_errs = node.validate_params({"engine": "optbinning"})
-        assert len(opt_errs) > 0
-        assert "optbinning" in str(opt_errs[0]).lower()
-        errs3 = node.validate_params({"engine": "optbinning", "solver": "bad"})
-        assert len(errs3) > 0
+
+    def test_validate_params_rejects_bad_solver(self):
+        node = AutoBinningFitNode()
+        errs = node.validate_params({"engine": "optbinning", "solver": "bad"})
+        assert len(errs) > 0
+
+    def test_validate_params_optbinning_availability_mocked(self, monkeypatch):
+        """Simulate optbinning ImportError regardless of actual environment."""
+        import builtins
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "optbinning":
+                raise ImportError("mocked: optbinning not available")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+        node = AutoBinningFitNode()
+        errs = node.validate_params({"engine": "optbinning"})
+        assert len(errs) > 0
+        assert "optbinning" in str(errs[0]).lower()
 
     @patch("cardre.nodes.build.auto_binning_fit.fit_variables")
     def test_node_runs_and_produces_bin_definition(self, mock_fit):

@@ -379,8 +379,13 @@ def test_reject_variable_marks_excluded() -> None:
         {"variable": "x", "action": "reject_variable",
          "source_bin_ids": [], "reason": "High missing rate"},
     ])
-    assert result["variables"][0]["status"] == "excluded"
-    assert len(result["variables"][0].get("override_history", [])) == 1
+    # Variable should be removed from active variables list
+    assert len(result["variables"]) == 0
+    assert result["rejected"] is not None
+    assert len(result["rejected"]) == 1
+    assert result["rejected"][0]["status"] == "excluded"
+    assert result["rejected"][0]["active"] is False
+    assert len(result["rejected"][0].get("override_history", [])) == 1
 
 
 def test_override_history_logged() -> None:
