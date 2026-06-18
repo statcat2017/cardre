@@ -38,6 +38,13 @@ suppressPackageStartupMessages({
   library(jsonlite)
 })
 
+# Enforce the reference package version so re-extraction always produces
+# the same fixture shape.
+stopifnot(
+  "Reference fixtures require scorecard v0.4.6" =
+    as.character(utils::packageVersion("scorecard")) == "0.4.6"
+)
+
 parse_out_dir <- function(args) {
   default_out_dir <- file.path("tests", "fixtures", "reference_scorecard_r_german_credit")
 
@@ -166,16 +173,16 @@ m2 <- step(m1, direction = "both", trace = FALSE)
 card <- scorecard::scorecard(bins_adj, m2)
 score_list <- lapply(dt_list, function(x) scorecard::scorecard_ply(x, card))
 
-# perf_psi returns plot objects as well as tabular payloads in some versions of
-# scorecard. Keep the raw JSON export best-effort; the core test fixtures are the
-# CSV/JSON tables above.
-psi <- tryCatch(
+# perf_psi returns plot (`pic`) and tabular (`psi`) components. Only the
+# tabular payload is exported as JSON; the gg objects cannot be serialized.
+psi_raw <- tryCatch(
   scorecard::perf_psi(
     score = score_list,
     label = lapply(dt_list, function(x) x$creditability)
   ),
   error = function(e) list(error = conditionMessage(e))
 )
+psi <- if (inherits(psi_raw$psi, "data.frame")) psi_raw$psi else psi_raw
 
 # -----------------------------------------------------------------------------
 # 3. Export frozen reference artifacts.
@@ -282,11 +289,14 @@ metadata <- list(
 write_json_pretty(metadata, "metadata.json")
 
 # Lightweight sanity checks for deterministic fixture shape.
-stopifnot(nrow(dt_list$train) == 600L)
-stopifnot(nrow(dt_list$test) == 400L)
-stopifnot(nrow(train_scores) == 600L)
-stopifnot(nrow(test_scores) == 400L)
-stopifnot(nrow(coef_df) >= 2L)
+# scorecard v0.4.6 with seed=30 and ratios=0.6/0.4 produces exactly
+# 620 train + 380 test rows.  If the package version changes this
+# assertion must be updated.
+stopifnot(nrow(dt_list$train) == 620L)
+stopifnot(nrow(dt_list$test) == 380L)
+stopifnot(nrow(train_scores) == 620L)
+stopifnot(nrow(test_scores) == 380L)
+stopifnot(nrow(coef_df) == 11L)
 stopifnot(file.exists(file.path(out_dir, "metadata.json")))
 
 cat("German Credit scorecard reference extraction complete.\n")

@@ -1,0 +1,66 @@
+{
+  "reference_name": "R scorecard German Credit vignette extractor",
+  "reference_url": "https://shichen.name/scorecard/articles/demo.html",
+  "generated_at": "2026-06-18T14:42:10+0100",
+  "r_version": "R version 4.3.3 (2024-02-29)",
+  "platform": "x86_64-pc-linux-gnu",
+  "packages": {
+    "scorecard": "0.4.6",
+    "data.table": "1.18.4",
+    "jsonlite": "2.0.0"
+  },
+  "dataset": {
+    "package": "scorecard",
+    "object": "germancredit",
+    "original_rows": 1000,
+    "filtered_rows": 1000,
+    "filtered_columns": ["status.of.existing.checking.account", "duration.in.month", "credit.history", "purpose", "credit.amount", "savings.account.and.bonds", "present.employment.since", "installment.rate.in.percentage.of.disposable.income", "other.debtors.or.guarantors", "property", "age.in.years", "other.installment.plans", "housing", "creditability"],
+    "target": "creditability"
+  },
+  "split": {
+    "seed": 30,
+    "ratios": [0.6, 0.4],
+    "train_rows": 620,
+    "test_rows": 380
+  },
+  "manual_breaks": {
+    "age.in.years": [26, 35, 40],
+    "other.debtors.or.guarantors": ["none", "co-applicant%,%guarantor"]
+  },
+  "model": {
+    "initial_formula": "creditability ~ status.of.existing.checking.account_woe + duration.in.month_woe +      credit.history_woe + purpose_woe + credit.amount_woe + savings.account.and.bonds_woe +      present.employment.since_woe + installment.rate.in.percentage.of.disposable.income_woe +      other.debtors.or.guarantors_woe + property_woe + age.in.years_woe +      other.installment.plans_woe + housing_woe",
+    "selected_formula": "creditability ~ status.of.existing.checking.account_woe + duration.in.month_woe +      credit.history_woe + purpose_woe + credit.amount_woe + savings.account.and.bonds_woe +      installment.rate.in.percentage.of.disposable.income_woe +      age.in.years_woe + other.installment.plans_woe + housing_woe",
+    "family": "binomial",
+    "selection": "stats::step(direction = 'both', trace = FALSE)"
+  },
+  "scorecard_scaling": {
+    "source": "scorecard::scorecard defaults unless changed by package version",
+    "expected_vignette_defaults": {
+      "points0": 600,
+      "odds0": 0.0526315789473684,
+      "pdo": 50
+    }
+  },
+  "woe_convention": {
+    "cardre_formula": "ln(good_distribution / bad_distribution)",
+    "r_formula": "ln(bad_distribution / good_distribution)",
+    "relationship": "Cardre WOE = -R WOE (opposite sign)",
+    "iv_direction": "IV is sign-invariant and identical between Cardre and R",
+    "cardre_source": "cardre/nodes/build/features.py line 154",
+    "r_source": "scorecard::woebin"
+  },
+  "files": {
+    "filtered_data": "filtered_data.csv",
+    "train_raw": "train_raw.csv",
+    "test_raw": "test_raw.csv",
+    "bins": ["bins_adj.csv", "bins_adj.json"],
+    "train_woe": "train_woe.csv",
+    "test_woe": "test_woe.csv",
+    "coefficients": "model_coefficients.csv",
+    "selected_terms": "selected_terms.csv",
+    "scorecard": ["scorecard.csv", "scorecard.json"],
+    "train_scores": "train_scores.csv",
+    "test_scores": "test_scores.csv",
+    "psi": "psi.json"
+  }
+}

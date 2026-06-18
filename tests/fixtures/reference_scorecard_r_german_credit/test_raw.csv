@@ -1,0 +1,381 @@
+cardre_reference_row_number,status.of.existing.checking.account,duration.in.month,credit.history,purpose,credit.amount,savings.account.and.bonds,present.employment.since,installment.rate.in.percentage.of.disposable.income,other.debtors.or.guarantors,property,age.in.years,other.installment.plans,housing,creditability
+5,... < 0 DM,24,delay in paying off in the past,car (new),4870,... < 100 DM,1 <= ... < 4 years,3,none,unknown / no property,53,none,for free,1
+9,no checking account,12,existing credits paid back duly till now,radio/television,3059,... >= 1000 DM,4 <= ... < 7 years,2,none,real estate,61,none,own,0
+11,0 <= ... < 200 DM,12,existing credits paid back duly till now,car (new),1295,... < 100 DM,... < 1 year,3,none,"car or other, not in attribute Savings account/bonds",25,none,rent,1
+14,... < 0 DM,24,critical account/ other credits existing (not at this bank),car (new),1199,... < 100 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",60,none,own,1
+15,... < 0 DM,15,existing credits paid back duly till now,car (new),1403,... < 100 DM,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",28,none,rent,0
+19,0 <= ... < 200 DM,24,existing credits paid back duly till now,car (used),12579,... < 100 DM,... >= 7 years,4,none,unknown / no property,44,none,for free,1
+22,... < 0 DM,6,existing credits paid back duly till now,radio/television,2647,500 <= ... < 1000 DM,1 <= ... < 4 years,2,none,real estate,44,none,rent,0
+24,0 <= ... < 200 DM,12,critical account/ other credits existing (not at this bank),car (used),1804,100 <= ... < 500 DM,... < 1 year,3,none,building society savings agreement/ life insurance,44,none,own,0
+26,... < 0 DM,6,existing credits paid back duly till now,furniture/equipment,1374,... < 100 DM,1 <= ... < 4 years,1,none,real estate,36,bank,own,0
+27,no checking account,6,no credits taken/ all credits paid back duly,radio/television,426,... < 100 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",39,none,own,0
+40,0 <= ... < 200 DM,9,existing credits paid back duly till now,radio/television,458,... < 100 DM,1 <= ... < 4 years,4,none,real estate,24,none,own,0
+42,0 <= ... < 200 DM,12,existing credits paid back duly till now,radio/television,1158,500 <= ... < 1000 DM,1 <= ... < 4 years,3,none,"car or other, not in attribute Savings account/bonds",26,none,own,0
+46,no checking account,11,critical account/ other credits existing (not at this bank),car (new),1393,... < 100 DM,... < 1 year,4,none,"car or other, not in attribute Savings account/bonds",35,none,own,0
+48,... < 0 DM,6,existing credits paid back duly till now,car (used),1352,500 <= ... < 1000 DM,unemployed,1,none,building society savings agreement/ life insurance,23,none,rent,0
+54,no checking account,18,existing credits paid back duly till now,car (used),3378,unknown/ no savings account,1 <= ... < 4 years,2,none,building society savings agreement/ life insurance,31,none,own,0
+56,no checking account,6,all credits at this bank paid back duly,car (new),783,unknown/ no savings account,1 <= ... < 4 years,1,guarantor,real estate,26,stores,own,0
+61,0 <= ... < 200 DM,9,existing credits paid back duly till now,business,1391,... < 100 DM,1 <= ... < 4 years,2,none,real estate,27,bank,own,0
+62,0 <= ... < 200 DM,15,critical account/ other credits existing (not at this bank),radio/television,1537,unknown/ no savings account,... >= 7 years,4,guarantor,real estate,50,none,own,0
+64,0 <= ... < 200 DM,48,no credits taken/ all credits paid back duly,business,14421,... < 100 DM,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",25,none,own,1
+66,no checking account,27,existing credits paid back duly till now,repairs,5190,unknown/ no savings account,... >= 7 years,4,none,building society savings agreement/ life insurance,48,none,own,0
+69,no checking account,36,existing credits paid back duly till now,education,1819,... < 100 DM,1 <= ... < 4 years,4,none,unknown / no property,37,stores,for free,1
+74,0 <= ... < 200 DM,42,critical account/ other credits existing (not at this bank),business,5954,... < 100 DM,4 <= ... < 7 years,2,none,real estate,41,bank,own,0
+80,0 <= ... < 200 DM,30,existing credits paid back duly till now,furniture/equipment,3832,... < 100 DM,... < 1 year,2,none,building society savings agreement/ life insurance,22,none,own,0
+84,... < 0 DM,24,existing credits paid back duly till now,others,1755,... < 100 DM,... >= 7 years,4,guarantor,real estate,58,none,own,0
+86,no checking account,12,critical account/ other credits existing (not at this bank),business,1412,... < 100 DM,1 <= ... < 4 years,4,guarantor,real estate,29,none,own,0
+87,0 <= ... < 200 DM,18,critical account/ other credits existing (not at this bank),furniture/equipment,1295,... < 100 DM,... < 1 year,4,none,building society savings agreement/ life insurance,27,none,own,0
+88,0 <= ... < 200 DM,36,existing credits paid back duly till now,education,12612,100 <= ... < 500 DM,1 <= ... < 4 years,1,none,unknown / no property,47,none,for free,1
+93,no checking account,12,critical account/ other credits existing (not at this bank),radio/television,797,unknown/ no savings account,... >= 7 years,4,none,building society savings agreement/ life insurance,33,bank,own,1
+94,... >= 200 DM / salary assignments for at least 1 year,24,critical account/ other credits existing (not at this bank),furniture/equipment,3617,unknown/ no savings account,... >= 7 years,4,co-applicant,unknown / no property,20,none,rent,0
+95,0 <= ... < 200 DM,12,existing credits paid back duly till now,car (new),1318,... >= 1000 DM,... >= 7 years,4,none,real estate,54,none,own,0
+99,0 <= ... < 200 DM,36,critical account/ other credits existing (not at this bank),radio/television,2337,... < 100 DM,... >= 7 years,4,none,real estate,36,none,own,0
+100,0 <= ... < 200 DM,20,delay in paying off in the past,car (used),7057,unknown/ no savings account,4 <= ... < 7 years,3,none,building society savings agreement/ life insurance,36,bank,rent,0
+102,0 <= ... < 200 DM,36,existing credits paid back duly till now,radio/television,2323,... < 100 DM,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",24,none,rent,0
+103,no checking account,6,delay in paying off in the past,radio/television,932,... < 100 DM,1 <= ... < 4 years,3,none,real estate,24,none,own,0
+106,0 <= ... < 200 DM,24,critical account/ other credits existing (not at this bank),others,11938,... < 100 DM,1 <= ... < 4 years,2,co-applicant,"car or other, not in attribute Savings account/bonds",39,none,own,1
+110,0 <= ... < 200 DM,14,existing credits paid back duly till now,business,1410,500 <= ... < 1000 DM,... >= 7 years,1,none,real estate,35,none,own,0
+111,0 <= ... < 200 DM,6,delay in paying off in the past,business,1449,100 <= ... < 500 DM,... >= 7 years,1,none,"car or other, not in attribute Savings account/bonds",31,bank,own,0
+118,... < 0 DM,10,critical account/ other credits existing (not at this bank),furniture/equipment,2132,unknown/ no savings account,... < 1 year,2,co-applicant,real estate,27,none,rent,0
+120,0 <= ... < 200 DM,12,critical account/ other credits existing (not at this bank),car (new),2366,500 <= ... < 1000 DM,4 <= ... < 7 years,3,none,"car or other, not in attribute Savings account/bonds",36,none,own,0
+126,... < 0 DM,12,critical account/ other credits existing (not at this bank),car (new),2121,... < 100 DM,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,30,none,own,0
+128,0 <= ... < 200 DM,12,existing credits paid back duly till now,repairs,639,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",30,none,own,1
+129,0 <= ... < 200 DM,12,critical account/ other credits existing (not at this bank),car (used),1860,... < 100 DM,unemployed,4,none,"car or other, not in attribute Savings account/bonds",34,none,own,0
+130,... < 0 DM,12,critical account/ other credits existing (not at this bank),car (new),3499,... < 100 DM,1 <= ... < 4 years,3,co-applicant,real estate,29,none,own,1
+132,... < 0 DM,36,delay in paying off in the past,education,6887,... < 100 DM,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,29,stores,own,1
+137,no checking account,27,delay in paying off in the past,car (used),8613,... >= 1000 DM,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",27,none,own,0
+138,0 <= ... < 200 DM,12,existing credits paid back duly till now,radio/television,766,500 <= ... < 1000 DM,1 <= ... < 4 years,4,none,real estate,66,none,own,1
+140,... >= 200 DM / salary assignments for at least 1 year,12,existing credits paid back duly till now,radio/television,1881,... < 100 DM,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",44,none,rent,0
+145,no checking account,21,critical account/ other credits existing (not at this bank),furniture/equipment,2288,... < 100 DM,... < 1 year,4,none,building society savings agreement/ life insurance,23,none,own,0
+146,0 <= ... < 200 DM,48,all credits at this bank paid back duly,business,3566,100 <= ... < 500 DM,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",30,none,own,0
+147,... < 0 DM,6,critical account/ other credits existing (not at this bank),car (new),860,... < 100 DM,... >= 7 years,1,none,unknown / no property,39,none,own,0
+150,no checking account,18,critical account/ other credits existing (not at this bank),radio/television,1582,... >= 1000 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",46,none,own,0
+151,no checking account,6,existing credits paid back duly till now,radio/television,1346,100 <= ... < 500 DM,... >= 7 years,2,none,unknown / no property,42,bank,for free,0
+156,... < 0 DM,12,existing credits paid back duly till now,furniture/equipment,1282,... < 100 DM,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",20,none,rent,1
+157,... < 0 DM,9,critical account/ other credits existing (not at this bank),repairs,1288,100 <= ... < 500 DM,... >= 7 years,3,guarantor,real estate,48,none,own,0
+158,... < 0 DM,12,all credits at this bank paid back duly,retraining,339,... < 100 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",45,bank,own,0
+159,0 <= ... < 200 DM,24,existing credits paid back duly till now,car (new),3512,100 <= ... < 500 DM,4 <= ... < 7 years,2,none,"car or other, not in attribute Savings account/bonds",38,bank,own,0
+161,no checking account,24,critical account/ other credits existing (not at this bank),radio/television,2872,100 <= ... < 500 DM,... >= 7 years,3,none,real estate,36,none,own,0
+163,no checking account,15,existing credits paid back duly till now,domestic appliances,1262,500 <= ... < 1000 DM,4 <= ... < 7 years,4,none,building society savings agreement/ life insurance,36,none,own,0
+167,... < 0 DM,18,existing credits paid back duly till now,furniture/equipment,1131,... < 100 DM,unemployed,4,none,"car or other, not in attribute Savings account/bonds",33,none,own,1
+168,0 <= ... < 200 DM,11,existing credits paid back duly till now,furniture/equipment,1577,... >= 1000 DM,... < 1 year,4,none,real estate,20,none,own,0
+170,0 <= ... < 200 DM,24,critical account/ other credits existing (not at this bank),business,1935,... < 100 DM,... >= 7 years,4,none,real estate,31,none,own,1
+171,... < 0 DM,15,no credits taken/ all credits paid back duly,car (new),950,... < 100 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",33,none,rent,1
+172,no checking account,12,existing credits paid back duly till now,furniture/equipment,763,... < 100 DM,1 <= ... < 4 years,4,none,real estate,26,none,own,0
+173,0 <= ... < 200 DM,24,delay in paying off in the past,furniture/equipment,2064,... < 100 DM,unemployed,3,none,building society savings agreement/ life insurance,34,none,own,1
+179,no checking account,12,existing credits paid back duly till now,radio/television,1963,... < 100 DM,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",31,none,rent,0
+183,... < 0 DM,21,all credits at this bank paid back duly,car (new),1647,unknown/ no savings account,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,40,none,own,1
+184,no checking account,24,critical account/ other credits existing (not at this bank),furniture/equipment,3777,... >= 1000 DM,1 <= ... < 4 years,4,none,real estate,50,none,own,0
+186,no checking account,15,critical account/ other credits existing (not at this bank),radio/television,1360,... < 100 DM,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,31,none,own,0
+188,0 <= ... < 200 DM,16,critical account/ other credits existing (not at this bank),car (new),1175,... < 100 DM,unemployed,2,none,"car or other, not in attribute Savings account/bonds",68,none,for free,0
+189,... < 0 DM,12,existing credits paid back duly till now,radio/television,674,100 <= ... < 500 DM,4 <= ... < 7 years,4,none,building society savings agreement/ life insurance,20,none,own,1
+191,no checking account,24,existing credits paid back duly till now,business,4591,... >= 1000 DM,1 <= ... < 4 years,2,none,building society savings agreement/ life insurance,54,none,own,1
+193,0 <= ... < 200 DM,27,existing credits paid back duly till now,business,3915,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",36,none,own,1
+194,no checking account,6,existing credits paid back duly till now,radio/television,2108,... < 100 DM,4 <= ... < 7 years,2,none,real estate,29,none,rent,0
+197,no checking account,6,critical account/ other credits existing (not at this bank),radio/television,1382,... < 100 DM,1 <= ... < 4 years,1,none,"car or other, not in attribute Savings account/bonds",28,none,own,0
+198,0 <= ... < 200 DM,12,existing credits paid back duly till now,furniture/equipment,951,100 <= ... < 500 DM,... < 1 year,4,none,"car or other, not in attribute Savings account/bonds",27,bank,rent,1
+202,... < 0 DM,12,existing credits paid back duly till now,car (new),1168,... < 100 DM,1 <= ... < 4 years,4,none,real estate,27,none,own,0
+209,... < 0 DM,24,existing credits paid back duly till now,business,6568,... < 100 DM,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",21,stores,own,0
+213,... < 0 DM,27,no credits taken/ all credits paid back duly,business,5293,... < 100 DM,unemployed,2,none,building society savings agreement/ life insurance,50,stores,own,1
+214,... >= 200 DM / salary assignments for at least 1 year,30,delay in paying off in the past,business,1908,... < 100 DM,... >= 7 years,4,none,real estate,66,none,own,1
+215,no checking account,36,critical account/ other credits existing (not at this bank),radio/television,3342,unknown/ no savings account,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",51,none,own,0
+218,... >= 200 DM / salary assignments for at least 1 year,36,existing credits paid back duly till now,radio/television,3913,... < 100 DM,1 <= ... < 4 years,2,none,real estate,23,none,own,0
+221,0 <= ... < 200 DM,12,existing credits paid back duly till now,radio/television,625,... < 100 DM,... < 1 year,4,guarantor,real estate,26,bank,own,0
+222,... < 0 DM,12,existing credits paid back duly till now,education,1200,unknown/ no savings account,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,23,bank,rent,0
+226,no checking account,36,no credits taken/ all credits paid back duly,repairs,2613,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",27,none,own,0
+227,0 <= ... < 200 DM,48,existing credits paid back duly till now,radio/television,10961,... >= 1000 DM,4 <= ... < 7 years,1,co-applicant,unknown / no property,27,bank,own,1
+231,... >= 200 DM / salary assignments for at least 1 year,36,existing credits paid back duly till now,radio/television,4210,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",26,none,own,1
+232,no checking account,9,existing credits paid back duly till now,car (new),2507,500 <= ... < 1000 DM,... >= 7 years,2,none,unknown / no property,51,none,for free,0
+233,no checking account,12,existing credits paid back duly till now,radio/television,2141,100 <= ... < 500 DM,4 <= ... < 7 years,3,none,unknown / no property,35,none,own,0
+234,0 <= ... < 200 DM,18,existing credits paid back duly till now,radio/television,866,... < 100 DM,1 <= ... < 4 years,4,guarantor,real estate,25,none,own,0
+236,... < 0 DM,24,existing credits paid back duly till now,radio/television,1823,... < 100 DM,unemployed,4,none,"car or other, not in attribute Savings account/bonds",30,stores,own,1
+237,0 <= ... < 200 DM,6,existing credits paid back duly till now,car (new),14555,unknown/ no savings account,unemployed,1,none,building society savings agreement/ life insurance,23,none,own,1
+239,no checking account,12,critical account/ other credits existing (not at this bank),radio/television,1291,... < 100 DM,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,35,none,own,0
+242,no checking account,6,existing credits paid back duly till now,radio/television,1595,... < 100 DM,4 <= ... < 7 years,3,none,building society savings agreement/ life insurance,51,none,own,0
+244,no checking account,12,critical account/ other credits existing (not at this bank),business,1185,... < 100 DM,1 <= ... < 4 years,3,none,real estate,27,none,own,0
+245,no checking account,12,all credits at this bank paid back duly,retraining,3447,500 <= ... < 1000 DM,1 <= ... < 4 years,4,none,real estate,35,none,own,0
+248,no checking account,6,no credits taken/ all credits paid back duly,car (new),1204,100 <= ... < 500 DM,1 <= ... < 4 years,4,none,unknown / no property,35,bank,rent,0
+251,... < 0 DM,6,critical account/ other credits existing (not at this bank),car (new),666,... >= 1000 DM,4 <= ... < 7 years,3,none,real estate,39,none,own,0
+252,... >= 200 DM / salary assignments for at least 1 year,12,existing credits paid back duly till now,furniture/equipment,2251,... < 100 DM,1 <= ... < 4 years,1,none,"car or other, not in attribute Savings account/bonds",46,none,own,0
+253,0 <= ... < 200 DM,30,existing credits paid back duly till now,car (new),2150,... < 100 DM,1 <= ... < 4 years,4,guarantor,unknown / no property,24,bank,own,1
+255,0 <= ... < 200 DM,9,existing credits paid back duly till now,furniture/equipment,2030,unknown/ no savings account,4 <= ... < 7 years,2,none,"car or other, not in attribute Savings account/bonds",24,none,own,0
+257,no checking account,24,critical account/ other credits existing (not at this bank),radio/television,2684,... < 100 DM,1 <= ... < 4 years,4,none,real estate,35,none,own,0
+258,... < 0 DM,12,all credits at this bank paid back duly,radio/television,2149,... < 100 DM,1 <= ... < 4 years,4,none,unknown / no property,29,none,for free,1
+259,no checking account,15,existing credits paid back duly till now,car (used),3812,100 <= ... < 500 DM,... < 1 year,1,none,"car or other, not in attribute Savings account/bonds",23,none,own,0
+263,... < 0 DM,18,critical account/ other credits existing (not at this bank),car (new),5302,... < 100 DM,... >= 7 years,2,none,unknown / no property,36,none,for free,0
+264,no checking account,12,critical account/ other credits existing (not at this bank),education,2748,... < 100 DM,... >= 7 years,2,none,unknown / no property,57,bank,for free,0
+266,0 <= ... < 200 DM,15,existing credits paid back duly till now,radio/television,802,... < 100 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",37,none,own,1
+268,no checking account,24,existing credits paid back duly till now,radio/television,1533,... < 100 DM,... < 1 year,4,none,"car or other, not in attribute Savings account/bonds",38,stores,own,0
+276,no checking account,9,existing credits paid back duly till now,radio/television,2697,... < 100 DM,1 <= ... < 4 years,1,none,real estate,32,none,own,0
+277,no checking account,18,critical account/ other credits existing (not at this bank),radio/television,2404,... < 100 DM,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",26,none,own,0
+279,no checking account,6,existing credits paid back duly till now,furniture/equipment,4611,... < 100 DM,... < 1 year,1,none,building society savings agreement/ life insurance,32,none,own,1
+281,no checking account,15,critical account/ other credits existing (not at this bank),car (used),3368,... >= 1000 DM,... >= 7 years,3,none,unknown / no property,23,none,rent,0
+282,no checking account,12,existing credits paid back duly till now,furniture/equipment,1574,... < 100 DM,1 <= ... < 4 years,4,none,real estate,50,none,own,0
+283,... >= 200 DM / salary assignments for at least 1 year,18,all credits at this bank paid back duly,radio/television,1445,unknown/ no savings account,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",49,bank,own,0
+287,... < 0 DM,48,existing credits paid back duly till now,car (used),4788,... < 100 DM,4 <= ... < 7 years,4,none,building society savings agreement/ life insurance,26,none,own,0
+289,0 <= ... < 200 DM,12,existing credits paid back duly till now,radio/television,1092,... < 100 DM,1 <= ... < 4 years,4,guarantor,real estate,49,none,own,0
+294,... >= 200 DM / salary assignments for at least 1 year,42,critical account/ other credits existing (not at this bank),car (used),4796,... < 100 DM,... >= 7 years,4,none,unknown / no property,56,none,for free,0
+295,no checking account,48,critical account/ other credits existing (not at this bank),business,7629,unknown/ no savings account,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",46,bank,own,0
+302,0 <= ... < 200 DM,36,no credits taken/ all credits paid back duly,radio/television,3804,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",42,none,own,1
+303,... >= 200 DM / salary assignments for at least 1 year,24,critical account/ other credits existing (not at this bank),car (new),1344,unknown/ no savings account,4 <= ... < 7 years,4,none,real estate,37,bank,own,1
+304,... < 0 DM,10,critical account/ other credits existing (not at this bank),car (new),1038,... < 100 DM,4 <= ... < 7 years,4,co-applicant,building society savings agreement/ life insurance,49,none,own,0
+308,... < 0 DM,12,existing credits paid back duly till now,radio/television,727,100 <= ... < 500 DM,... < 1 year,4,none,unknown / no property,33,none,own,1
+315,... >= 200 DM / salary assignments for at least 1 year,4,existing credits paid back duly till now,car (new),1494,unknown/ no savings account,... < 1 year,1,none,real estate,29,none,own,0
+317,... < 0 DM,12,existing credits paid back duly till now,furniture/equipment,708,... < 100 DM,1 <= ... < 4 years,2,guarantor,building society savings agreement/ life insurance,38,none,own,0
+320,... < 0 DM,15,delay in paying off in the past,furniture/equipment,3643,... < 100 DM,... >= 7 years,1,none,building society savings agreement/ life insurance,27,none,own,0
+322,... < 0 DM,24,existing credits paid back duly till now,radio/television,1938,... < 100 DM,... < 1 year,4,none,building society savings agreement/ life insurance,32,none,own,1
+326,... < 0 DM,8,critical account/ other credits existing (not at this bank),car (new),3398,... < 100 DM,4 <= ... < 7 years,1,none,real estate,39,none,own,0
+327,no checking account,12,critical account/ other credits existing (not at this bank),furniture/equipment,5801,unknown/ no savings account,... >= 7 years,2,none,building society savings agreement/ life insurance,49,none,rent,0
+328,no checking account,24,existing credits paid back duly till now,car (new),1525,... >= 1000 DM,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",34,none,own,0
+334,no checking account,48,critical account/ other credits existing (not at this bank),car (used),11590,100 <= ... < 500 DM,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",24,bank,rent,1
+335,... < 0 DM,24,no credits taken/ all credits paid back duly,furniture/equipment,4110,... < 100 DM,... >= 7 years,3,none,unknown / no property,23,bank,rent,1
+336,... < 0 DM,6,critical account/ other credits existing (not at this bank),furniture/equipment,3384,... < 100 DM,1 <= ... < 4 years,1,none,real estate,44,none,rent,1
+339,... < 0 DM,24,existing credits paid back duly till now,furniture/equipment,4169,... < 100 DM,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,28,none,own,0
+340,0 <= ... < 200 DM,10,existing credits paid back duly till now,furniture/equipment,1521,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",31,none,own,0
+342,... < 0 DM,21,existing credits paid back duly till now,furniture/equipment,3599,... < 100 DM,4 <= ... < 7 years,1,none,"car or other, not in attribute Savings account/bonds",26,none,rent,0
+343,0 <= ... < 200 DM,18,existing credits paid back duly till now,radio/television,3213,500 <= ... < 1000 DM,... < 1 year,1,none,real estate,25,none,rent,0
+346,no checking account,15,critical account/ other credits existing (not at this bank),radio/television,1459,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",43,none,own,0
+349,no checking account,6,delay in paying off in the past,business,1743,100 <= ... < 500 DM,1 <= ... < 4 years,1,none,real estate,34,none,own,0
+352,0 <= ... < 200 DM,9,existing credits paid back duly till now,furniture/equipment,959,... < 100 DM,1 <= ... < 4 years,1,none,"car or other, not in attribute Savings account/bonds",29,none,own,1
+353,no checking account,18,critical account/ other credits existing (not at this bank),car (used),3229,unknown/ no savings account,unemployed,2,none,unknown / no property,38,none,own,0
+361,0 <= ... < 200 DM,18,existing credits paid back duly till now,education,1239,unknown/ no savings account,1 <= ... < 4 years,4,none,unknown / no property,61,none,for free,0
+366,no checking account,12,existing credits paid back duly till now,business,1542,... < 100 DM,4 <= ... < 7 years,2,none,"car or other, not in attribute Savings account/bonds",36,none,own,0
+368,... < 0 DM,18,existing credits paid back duly till now,furniture/equipment,3650,... < 100 DM,... < 1 year,1,none,"car or other, not in attribute Savings account/bonds",22,none,rent,0
+369,... < 0 DM,36,existing credits paid back duly till now,furniture/equipment,3446,... < 100 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",42,none,own,1
+370,0 <= ... < 200 DM,18,existing credits paid back duly till now,furniture/equipment,3001,... < 100 DM,4 <= ... < 7 years,2,none,real estate,40,none,rent,0
+371,no checking account,36,existing credits paid back duly till now,car (new),3079,unknown/ no savings account,1 <= ... < 4 years,4,none,real estate,36,none,own,0
+372,no checking account,18,critical account/ other credits existing (not at this bank),radio/television,6070,... < 100 DM,... >= 7 years,3,none,"car or other, not in attribute Savings account/bonds",33,none,own,0
+374,no checking account,60,critical account/ other credits existing (not at this bank),car (new),13756,unknown/ no savings account,... >= 7 years,2,none,unknown / no property,63,bank,for free,0
+376,... < 0 DM,48,all credits at this bank paid back duly,business,7685,... < 100 DM,4 <= ... < 7 years,2,guarantor,"car or other, not in attribute Savings account/bonds",37,none,rent,1
+377,no checking account,18,delay in paying off in the past,radio/television,2320,... < 100 DM,unemployed,2,none,real estate,34,none,own,0
+378,no checking account,7,delay in paying off in the past,radio/television,846,unknown/ no savings account,... >= 7 years,3,none,unknown / no property,36,none,for free,0
+379,0 <= ... < 200 DM,36,existing credits paid back duly till now,car (new),14318,... < 100 DM,... >= 7 years,4,none,unknown / no property,57,none,for free,1
+382,0 <= ... < 200 DM,18,existing credits paid back duly till now,car (used),12976,... < 100 DM,unemployed,3,none,unknown / no property,38,none,for free,1
+383,no checking account,22,existing credits paid back duly till now,car (new),1283,unknown/ no savings account,4 <= ... < 7 years,4,none,building society savings agreement/ life insurance,25,none,rent,0
+391,no checking account,18,existing credits paid back duly till now,car (new),1820,... < 100 DM,1 <= ... < 4 years,2,none,building society savings agreement/ life insurance,30,none,own,0
+393,... < 0 DM,36,existing credits paid back duly till now,car (new),3249,... < 100 DM,4 <= ... < 7 years,2,none,unknown / no property,39,bank,for free,0
+395,no checking account,9,critical account/ other credits existing (not at this bank),furniture/equipment,2406,... < 100 DM,unemployed,2,none,"car or other, not in attribute Savings account/bonds",31,none,own,0
+396,0 <= ... < 200 DM,39,delay in paying off in the past,education,11760,100 <= ... < 500 DM,4 <= ... < 7 years,2,none,unknown / no property,32,none,rent,0
+397,... < 0 DM,12,existing credits paid back duly till now,furniture/equipment,2578,... < 100 DM,unemployed,3,none,unknown / no property,55,none,for free,0
+405,0 <= ... < 200 DM,18,delay in paying off in the past,car (new),2899,unknown/ no savings account,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",43,none,own,0
+413,no checking account,12,critical account/ other credits existing (not at this bank),business,2292,... < 100 DM,unemployed,4,none,"car or other, not in attribute Savings account/bonds",42,stores,own,1
+414,no checking account,10,existing credits paid back duly till now,car (new),1597,500 <= ... < 1000 DM,1 <= ... < 4 years,3,none,unknown / no property,40,none,rent,0
+415,... < 0 DM,24,existing credits paid back duly till now,car (new),1381,unknown/ no savings account,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,35,none,own,1
+417,... < 0 DM,12,existing credits paid back duly till now,car (new),2579,... < 100 DM,... < 1 year,4,none,real estate,33,none,own,1
+418,... < 0 DM,18,delay in paying off in the past,education,8471,unknown/ no savings account,1 <= ... < 4 years,1,none,"car or other, not in attribute Savings account/bonds",23,none,rent,0
+420,0 <= ... < 200 DM,18,existing credits paid back duly till now,car (new),1042,unknown/ no savings account,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,33,none,own,1
+421,no checking account,15,existing credits paid back duly till now,car (new),3186,... >= 1000 DM,4 <= ... < 7 years,2,none,"car or other, not in attribute Savings account/bonds",20,none,rent,0
+424,no checking account,21,delay in paying off in the past,furniture/equipment,1591,100 <= ... < 500 DM,4 <= ... < 7 years,4,none,real estate,34,none,own,0
+425,0 <= ... < 200 DM,12,existing credits paid back duly till now,furniture/equipment,2762,unknown/ no savings account,... >= 7 years,1,none,building society savings agreement/ life insurance,25,bank,own,1
+428,no checking account,18,critical account/ other credits existing (not at this bank),radio/television,1149,... >= 1000 DM,1 <= ... < 4 years,4,none,real estate,46,none,own,0
+430,... < 0 DM,18,critical account/ other credits existing (not at this bank),repairs,1190,... < 100 DM,unemployed,2,none,unknown / no property,55,none,for free,1
+433,... < 0 DM,6,critical account/ other credits existing (not at this bank),furniture/equipment,1872,... < 100 DM,unemployed,4,none,unknown / no property,36,none,for free,0
+437,no checking account,6,existing credits paid back duly till now,repairs,660,500 <= ... < 1000 DM,4 <= ... < 7 years,2,none,real estate,23,none,rent,0
+441,no checking account,12,existing credits paid back duly till now,car (new),1884,... < 100 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",39,none,own,0
+448,0 <= ... < 200 DM,7,existing credits paid back duly till now,radio/television,2576,... < 100 DM,1 <= ... < 4 years,2,guarantor,real estate,35,none,own,0
+449,... >= 200 DM / salary assignments for at least 1 year,12,existing credits paid back duly till now,furniture/equipment,1424,unknown/ no savings account,... >= 7 years,3,none,real estate,55,none,own,0
+451,no checking account,36,critical account/ other credits existing (not at this bank),car (used),11054,unknown/ no savings account,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",30,none,own,0
+458,... < 0 DM,12,existing credits paid back duly till now,car (used),3386,... < 100 DM,... >= 7 years,3,none,unknown / no property,35,none,for free,1
+467,... < 0 DM,24,delay in paying off in the past,radio/television,1659,... < 100 DM,... < 1 year,4,none,"car or other, not in attribute Savings account/bonds",29,none,rent,1
+472,... < 0 DM,6,existing credits paid back duly till now,education,448,... < 100 DM,... < 1 year,4,none,building society savings agreement/ life insurance,23,none,own,1
+473,... < 0 DM,9,existing credits paid back duly till now,car (new),654,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",28,none,own,1
+482,0 <= ... < 200 DM,24,existing credits paid back duly till now,car (new),1201,... < 100 DM,... < 1 year,4,none,building society savings agreement/ life insurance,26,none,own,0
+488,no checking account,24,existing credits paid back duly till now,car (new),3757,... < 100 DM,... >= 7 years,4,co-applicant,unknown / no property,62,none,for free,0
+492,0 <= ... < 200 DM,27,no credits taken/ all credits paid back duly,business,8318,... < 100 DM,... >= 7 years,2,none,unknown / no property,42,none,for free,1
+495,... < 0 DM,12,critical account/ other credits existing (not at this bank),car (new),2122,... < 100 DM,1 <= ... < 4 years,3,none,real estate,39,none,rent,0
+496,... < 0 DM,24,existing credits paid back duly till now,furniture/equipment,2996,unknown/ no savings account,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",20,none,own,1
+500,... >= 200 DM / salary assignments for at least 1 year,6,critical account/ other credits existing (not at this bank),car (new),1323,100 <= ... < 500 DM,... >= 7 years,2,none,"car or other, not in attribute Savings account/bonds",28,none,own,0
+501,... < 0 DM,24,existing credits paid back duly till now,car (new),3123,... < 100 DM,... < 1 year,4,none,building society savings agreement/ life insurance,27,none,own,1
+504,0 <= ... < 200 DM,24,critical account/ other credits existing (not at this bank),radio/television,1216,100 <= ... < 500 DM,... < 1 year,4,none,unknown / no property,38,bank,own,1
+505,... < 0 DM,24,existing credits paid back duly till now,car (new),1207,... < 100 DM,... < 1 year,4,none,building society savings agreement/ life insurance,24,none,rent,1
+506,no checking account,10,existing credits paid back duly till now,car (new),1309,unknown/ no savings account,1 <= ... < 4 years,4,guarantor,building society savings agreement/ life insurance,27,none,own,1
+507,... >= 200 DM / salary assignments for at least 1 year,15,critical account/ other credits existing (not at this bank),car (used),2360,500 <= ... < 1000 DM,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",36,none,own,0
+509,no checking account,24,existing credits paid back duly till now,radio/television,1413,... < 100 DM,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,28,none,own,0
+510,no checking account,39,existing credits paid back duly till now,car (used),8588,100 <= ... < 500 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",45,none,own,0
+513,... >= 200 DM / salary assignments for at least 1 year,15,existing credits paid back duly till now,business,2687,... < 100 DM,4 <= ... < 7 years,2,none,building society savings agreement/ life insurance,26,none,rent,0
+514,0 <= ... < 200 DM,12,delay in paying off in the past,radio/television,585,... < 100 DM,1 <= ... < 4 years,4,co-applicant,real estate,20,none,rent,0
+519,... < 0 DM,6,existing credits paid back duly till now,car (new),1203,100 <= ... < 500 DM,... >= 7 years,3,none,building society savings agreement/ life insurance,43,none,own,0
+520,no checking account,6,critical account/ other credits existing (not at this bank),radio/television,700,unknown/ no savings account,... >= 7 years,4,none,unknown / no property,36,none,for free,0
+528,no checking account,4,critical account/ other credits existing (not at this bank),radio/television,1503,... < 100 DM,4 <= ... < 7 years,2,none,real estate,42,none,own,0
+529,... < 0 DM,36,existing credits paid back duly till now,radio/television,2302,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",31,none,rent,1
+531,0 <= ... < 200 DM,36,existing credits paid back duly till now,education,2273,... < 100 DM,4 <= ... < 7 years,3,none,"car or other, not in attribute Savings account/bonds",32,none,own,0
+532,0 <= ... < 200 DM,15,existing credits paid back duly till now,car (new),2631,100 <= ... < 500 DM,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",28,none,rent,1
+533,no checking account,12,delay in paying off in the past,car (used),1503,... < 100 DM,1 <= ... < 4 years,4,none,real estate,41,none,rent,0
+534,no checking account,24,existing credits paid back duly till now,radio/television,1311,100 <= ... < 500 DM,4 <= ... < 7 years,4,none,building society savings agreement/ life insurance,26,none,own,0
+535,no checking account,24,existing credits paid back duly till now,radio/television,3105,unknown/ no savings account,... < 1 year,4,none,"car or other, not in attribute Savings account/bonds",25,none,own,0
+536,... >= 200 DM / salary assignments for at least 1 year,21,critical account/ other credits existing (not at this bank),education,2319,... < 100 DM,... < 1 year,2,none,"car or other, not in attribute Savings account/bonds",33,none,rent,1
+541,0 <= ... < 200 DM,12,existing credits paid back duly till now,radio/television,1534,... < 100 DM,... < 1 year,1,none,real estate,23,none,rent,1
+542,no checking account,24,delay in paying off in the past,car (new),2032,... < 100 DM,... >= 7 years,4,none,unknown / no property,60,none,for free,0
+543,... < 0 DM,30,existing credits paid back duly till now,furniture/equipment,6350,unknown/ no savings account,... >= 7 years,4,none,building society savings agreement/ life insurance,31,none,own,1
+548,no checking account,24,existing credits paid back duly till now,radio/television,1552,... < 100 DM,4 <= ... < 7 years,3,none,"car or other, not in attribute Savings account/bonds",32,bank,own,0
+556,0 <= ... < 200 DM,12,existing credits paid back duly till now,radio/television,1331,... < 100 DM,... < 1 year,2,none,"car or other, not in attribute Savings account/bonds",22,stores,own,1
+559,... < 0 DM,24,all credits at this bank paid back duly,furniture/equipment,3552,... < 100 DM,4 <= ... < 7 years,3,none,"car or other, not in attribute Savings account/bonds",27,bank,own,1
+565,0 <= ... < 200 DM,24,delay in paying off in the past,business,4712,unknown/ no savings account,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,37,bank,own,0
+566,0 <= ... < 200 DM,24,delay in paying off in the past,radio/television,1553,100 <= ... < 500 DM,4 <= ... < 7 years,3,none,building society savings agreement/ life insurance,23,none,rent,0
+567,... < 0 DM,12,existing credits paid back duly till now,car (new),1372,... < 100 DM,4 <= ... < 7 years,2,none,"car or other, not in attribute Savings account/bonds",36,none,own,1
+568,no checking account,24,critical account/ other credits existing (not at this bank),radio/television,2578,... >= 1000 DM,... >= 7 years,2,none,"car or other, not in attribute Savings account/bonds",34,none,own,0
+569,0 <= ... < 200 DM,48,existing credits paid back duly till now,radio/television,3979,unknown/ no savings account,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",41,none,own,0
+570,... < 0 DM,48,existing credits paid back duly till now,radio/television,6758,... < 100 DM,1 <= ... < 4 years,3,none,"car or other, not in attribute Savings account/bonds",31,none,own,1
+573,no checking account,24,existing credits paid back duly till now,car (used),5433,unknown/ no savings account,unemployed,2,none,building society savings agreement/ life insurance,26,none,rent,0
+574,... < 0 DM,15,existing credits paid back duly till now,business,806,... < 100 DM,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,22,none,own,0
+578,no checking account,24,critical account/ other credits existing (not at this bank),education,1927,unknown/ no savings account,1 <= ... < 4 years,3,none,"car or other, not in attribute Savings account/bonds",33,none,own,0
+579,0 <= ... < 200 DM,36,critical account/ other credits existing (not at this bank),car (new),2820,... < 100 DM,... < 1 year,4,none,"car or other, not in attribute Savings account/bonds",27,none,own,1
+580,no checking account,24,existing credits paid back duly till now,retraining,937,... < 100 DM,... < 1 year,4,none,"car or other, not in attribute Savings account/bonds",27,none,own,0
+581,0 <= ... < 200 DM,18,critical account/ other credits existing (not at this bank),car (new),1056,... < 100 DM,... >= 7 years,3,guarantor,real estate,30,bank,own,1
+582,0 <= ... < 200 DM,12,critical account/ other credits existing (not at this bank),car (new),3124,... < 100 DM,... < 1 year,1,none,real estate,49,bank,own,0
+589,... < 0 DM,18,existing credits paid back duly till now,domestic appliances,1217,... < 100 DM,1 <= ... < 4 years,4,none,real estate,47,none,own,1
+591,... < 0 DM,12,critical account/ other credits existing (not at this bank),radio/television,385,... < 100 DM,4 <= ... < 7 years,4,none,real estate,58,none,own,0
+592,0 <= ... < 200 DM,24,delay in paying off in the past,car (new),1965,unknown/ no savings account,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",42,none,rent,0
+594,0 <= ... < 200 DM,24,existing credits paid back duly till now,car (new),2718,... < 100 DM,1 <= ... < 4 years,3,none,building society savings agreement/ life insurance,20,none,rent,1
+597,... < 0 DM,24,existing credits paid back duly till now,car (new),1442,... < 100 DM,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",23,none,rent,1
+599,no checking account,18,critical account/ other credits existing (not at this bank),car (new),2775,... < 100 DM,4 <= ... < 7 years,2,none,building society savings agreement/ life insurance,31,bank,own,1
+601,0 <= ... < 200 DM,7,existing credits paid back duly till now,radio/television,2329,... < 100 DM,... < 1 year,1,guarantor,real estate,45,none,own,0
+604,no checking account,36,existing credits paid back duly till now,furniture/equipment,3349,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",28,none,own,1
+605,... >= 200 DM / salary assignments for at least 1 year,10,existing credits paid back duly till now,furniture/equipment,1275,... < 100 DM,... < 1 year,4,none,building society savings agreement/ life insurance,23,none,own,0
+612,... >= 200 DM / salary assignments for at least 1 year,10,existing credits paid back duly till now,car (new),1240,100 <= ... < 500 DM,... >= 7 years,1,none,unknown / no property,48,none,for free,1
+613,... < 0 DM,21,existing credits paid back duly till now,radio/television,3357,... >= 1000 DM,... < 1 year,4,none,"car or other, not in attribute Savings account/bonds",29,bank,own,0
+614,... < 0 DM,24,all credits at this bank paid back duly,car (used),3632,... < 100 DM,1 <= ... < 4 years,1,guarantor,"car or other, not in attribute Savings account/bonds",22,bank,rent,0
+616,0 <= ... < 200 DM,48,no credits taken/ all credits paid back duly,business,12204,unknown/ no savings account,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",48,bank,own,0
+618,... < 0 DM,6,critical account/ other credits existing (not at this bank),car (new),3676,... < 100 DM,1 <= ... < 4 years,1,none,real estate,37,none,rent,0
+623,no checking account,48,existing credits paid back duly till now,business,3914,unknown/ no savings account,1 <= ... < 4 years,4,none,real estate,38,bank,own,1
+624,... < 0 DM,12,existing credits paid back duly till now,furniture/equipment,1858,... < 100 DM,... < 1 year,4,none,"car or other, not in attribute Savings account/bonds",22,none,rent,0
+626,no checking account,15,existing credits paid back duly till now,radio/television,1979,unknown/ no savings account,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",35,none,own,0
+630,no checking account,9,existing credits paid back duly till now,education,3832,unknown/ no savings account,... >= 7 years,1,none,real estate,64,none,own,0
+632,... < 0 DM,18,all credits at this bank paid back duly,furniture/equipment,1553,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",44,bank,own,1
+634,no checking account,9,existing credits paid back duly till now,furniture/equipment,1980,... < 100 DM,... < 1 year,2,co-applicant,"car or other, not in attribute Savings account/bonds",19,none,rent,1
+637,no checking account,24,existing credits paid back duly till now,radio/television,1376,500 <= ... < 1000 DM,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",28,none,own,0
+639,no checking account,12,existing credits paid back duly till now,radio/television,1493,... < 100 DM,... < 1 year,4,none,"car or other, not in attribute Savings account/bonds",34,none,own,0
+643,no checking account,15,existing credits paid back duly till now,education,4623,100 <= ... < 500 DM,1 <= ... < 4 years,3,none,building society savings agreement/ life insurance,40,none,own,1
+644,no checking account,24,critical account/ other credits existing (not at this bank),radio/television,1851,... < 100 DM,4 <= ... < 7 years,4,guarantor,"car or other, not in attribute Savings account/bonds",33,none,own,0
+646,no checking account,36,delay in paying off in the past,business,7980,unknown/ no savings account,... < 1 year,4,none,"car or other, not in attribute Savings account/bonds",27,none,rent,1
+650,... < 0 DM,12,existing credits paid back duly till now,education,684,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",40,none,rent,1
+652,0 <= ... < 200 DM,12,existing credits paid back duly till now,furniture/equipment,1922,... < 100 DM,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,37,none,own,1
+653,... < 0 DM,24,existing credits paid back duly till now,car (new),2303,... < 100 DM,... >= 7 years,4,co-applicant,real estate,45,none,own,1
+655,no checking account,24,critical account/ other credits existing (not at this bank),car (used),2346,... < 100 DM,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",35,none,own,0
+656,... < 0 DM,14,existing credits paid back duly till now,car (new),3973,... < 100 DM,unemployed,1,none,unknown / no property,22,none,for free,0
+663,no checking account,21,existing credits paid back duly till now,furniture/equipment,2241,... < 100 DM,... >= 7 years,4,none,real estate,50,none,own,0
+671,no checking account,24,critical account/ other credits existing (not at this bank),business,4139,100 <= ... < 500 DM,1 <= ... < 4 years,3,none,building society savings agreement/ life insurance,27,none,own,0
+673,no checking account,60,existing credits paid back duly till now,car (new),10366,... < 100 DM,... >= 7 years,2,none,building society savings agreement/ life insurance,42,none,own,0
+675,no checking account,21,delay in paying off in the past,business,2580,500 <= ... < 1000 DM,... < 1 year,4,none,real estate,41,bank,own,1
+680,no checking account,18,existing credits paid back duly till now,radio/television,1453,... < 100 DM,... < 1 year,3,none,real estate,26,none,own,0
+681,no checking account,6,existing credits paid back duly till now,education,1538,... < 100 DM,... < 1 year,1,none,unknown / no property,56,none,own,0
+685,0 <= ... < 200 DM,36,delay in paying off in the past,business,9857,100 <= ... < 500 DM,4 <= ... < 7 years,1,none,building society savings agreement/ life insurance,31,none,own,0
+686,no checking account,60,existing credits paid back duly till now,car (new),6527,unknown/ no savings account,1 <= ... < 4 years,4,none,unknown / no property,34,none,for free,0
+687,... >= 200 DM / salary assignments for at least 1 year,10,critical account/ other credits existing (not at this bank),radio/television,1347,unknown/ no savings account,4 <= ... < 7 years,4,none,building society savings agreement/ life insurance,27,none,own,0
+692,0 <= ... < 200 DM,15,existing credits paid back duly till now,repairs,2631,100 <= ... < 500 DM,1 <= ... < 4 years,3,none,real estate,25,none,own,0
+693,0 <= ... < 200 DM,24,existing credits paid back duly till now,radio/television,2896,100 <= ... < 500 DM,... < 1 year,2,none,"car or other, not in attribute Savings account/bonds",29,none,own,0
+695,no checking account,24,existing credits paid back duly till now,radio/television,2284,... < 100 DM,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",28,none,own,0
+696,no checking account,6,existing credits paid back duly till now,car (used),1236,500 <= ... < 1000 DM,1 <= ... < 4 years,2,none,building society savings agreement/ life insurance,50,none,rent,0
+697,0 <= ... < 200 DM,12,existing credits paid back duly till now,radio/television,1103,... < 100 DM,4 <= ... < 7 years,4,guarantor,real estate,29,none,own,0
+700,... >= 200 DM / salary assignments for at least 1 year,15,existing credits paid back duly till now,education,1905,... < 100 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",40,none,rent,0
+707,0 <= ... < 200 DM,48,existing credits paid back duly till now,car (new),6560,100 <= ... < 500 DM,4 <= ... < 7 years,3,none,building society savings agreement/ life insurance,24,none,own,1
+712,... < 0 DM,6,all credits at this bank paid back duly,education,1198,... < 100 DM,... >= 7 years,4,none,unknown / no property,35,none,for free,1
+715,0 <= ... < 200 DM,60,existing credits paid back duly till now,car (new),14027,... < 100 DM,4 <= ... < 7 years,4,none,unknown / no property,27,none,own,1
+716,no checking account,30,critical account/ other credits existing (not at this bank),car (used),7596,unknown/ no savings account,... >= 7 years,1,none,"car or other, not in attribute Savings account/bonds",63,none,own,0
+719,... >= 200 DM / salary assignments for at least 1 year,24,critical account/ other credits existing (not at this bank),radio/television,3148,unknown/ no savings account,1 <= ... < 4 years,3,none,"car or other, not in attribute Savings account/bonds",31,none,own,0
+720,0 <= ... < 200 DM,20,no credits taken/ all credits paid back duly,car (used),6148,100 <= ... < 500 DM,... >= 7 years,3,none,"car or other, not in attribute Savings account/bonds",31,bank,own,0
+721,... >= 200 DM / salary assignments for at least 1 year,9,no credits taken/ all credits paid back duly,radio/television,1337,... < 100 DM,... < 1 year,4,none,"car or other, not in attribute Savings account/bonds",34,none,own,1
+723,... < 0 DM,12,existing credits paid back duly till now,car (new),1228,... < 100 DM,1 <= ... < 4 years,4,none,real estate,24,none,own,1
+726,no checking account,6,critical account/ other credits existing (not at this bank),car (new),250,... >= 1000 DM,1 <= ... < 4 years,2,none,real estate,41,bank,own,0
+728,... < 0 DM,18,existing credits paid back duly till now,radio/television,1882,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",25,bank,rent,1
+729,0 <= ... < 200 DM,48,all credits at this bank paid back duly,business,6416,... < 100 DM,... >= 7 years,4,none,unknown / no property,59,none,rent,1
+731,0 <= ... < 200 DM,24,delay in paying off in the past,radio/television,6403,... < 100 DM,... < 1 year,1,none,"car or other, not in attribute Savings account/bonds",33,none,own,0
+734,no checking account,24,existing credits paid back duly till now,car (used),2603,... >= 1000 DM,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",28,none,rent,0
+736,0 <= ... < 200 DM,36,all credits at this bank paid back duly,domestic appliances,3990,unknown/ no savings account,... < 1 year,3,none,unknown / no property,29,bank,own,0
+742,0 <= ... < 200 DM,10,all credits at this bank paid back duly,radio/television,1048,... < 100 DM,1 <= ... < 4 years,4,none,real estate,23,stores,own,0
+747,... < 0 DM,15,existing credits paid back duly till now,car (new),2511,... < 100 DM,unemployed,1,none,"car or other, not in attribute Savings account/bonds",23,none,rent,0
+751,... < 0 DM,6,existing credits paid back duly till now,furniture/equipment,428,... < 100 DM,... >= 7 years,2,none,building society savings agreement/ life insurance,49,bank,own,0
+753,0 <= ... < 200 DM,12,existing credits paid back duly till now,business,841,100 <= ... < 500 DM,4 <= ... < 7 years,2,none,real estate,23,none,rent,0
+754,no checking account,30,critical account/ other credits existing (not at this bank),radio/television,5771,... < 100 DM,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",25,none,own,0
+759,no checking account,24,existing credits paid back duly till now,car (new),1393,... < 100 DM,1 <= ... < 4 years,2,guarantor,real estate,31,none,own,0
+761,no checking account,15,critical account/ other credits existing (not at this bank),car (new),5045,unknown/ no savings account,... >= 7 years,1,none,"car or other, not in attribute Savings account/bonds",59,none,own,0
+762,... < 0 DM,18,critical account/ other credits existing (not at this bank),furniture/equipment,2124,... < 100 DM,1 <= ... < 4 years,4,none,real estate,24,none,rent,1
+768,no checking account,10,existing credits paid back duly till now,car (used),2901,unknown/ no savings account,... < 1 year,1,none,real estate,31,none,rent,0
+771,... < 0 DM,24,existing credits paid back duly till now,car (used),2812,unknown/ no savings account,... >= 7 years,2,none,real estate,26,none,rent,0
+772,... < 0 DM,36,critical account/ other credits existing (not at this bank),education,8065,... < 100 DM,1 <= ... < 4 years,3,none,unknown / no property,25,none,own,1
+776,... < 0 DM,24,existing credits paid back duly till now,car (new),1371,unknown/ no savings account,1 <= ... < 4 years,4,none,real estate,25,none,rent,1
+781,0 <= ... < 200 DM,39,critical account/ other credits existing (not at this bank),radio/television,4933,... < 100 DM,4 <= ... < 7 years,2,guarantor,real estate,25,none,own,1
+783,0 <= ... < 200 DM,12,no credits taken/ all credits paid back duly,retraining,1410,... < 100 DM,1 <= ... < 4 years,2,none,real estate,31,none,own,0
+784,0 <= ... < 200 DM,12,existing credits paid back duly till now,car (new),836,100 <= ... < 500 DM,... < 1 year,4,none,building society savings agreement/ life insurance,23,bank,own,1
+785,0 <= ... < 200 DM,20,existing credits paid back duly till now,car (used),6468,unknown/ no savings account,unemployed,1,none,real estate,60,none,own,0
+787,no checking account,22,existing credits paid back duly till now,radio/television,2675,500 <= ... < 1000 DM,... >= 7 years,3,none,"car or other, not in attribute Savings account/bonds",40,none,own,0
+790,... < 0 DM,40,critical account/ other credits existing (not at this bank),education,5998,... < 100 DM,1 <= ... < 4 years,4,none,unknown / no property,27,bank,own,1
+791,0 <= ... < 200 DM,21,existing credits paid back duly till now,business,1188,... < 100 DM,... >= 7 years,2,none,building society savings agreement/ life insurance,39,none,own,1
+793,no checking account,6,critical account/ other credits existing (not at this bank),furniture/equipment,1221,unknown/ no savings account,1 <= ... < 4 years,1,none,building society savings agreement/ life insurance,27,none,own,0
+795,no checking account,24,existing credits paid back duly till now,furniture/equipment,3062,500 <= ... < 1000 DM,... >= 7 years,4,none,unknown / no property,32,none,rent,0
+798,no checking account,12,critical account/ other credits existing (not at this bank),furniture/equipment,1258,... < 100 DM,... < 1 year,2,none,building society savings agreement/ life insurance,22,none,rent,0
+802,0 <= ... < 200 DM,18,critical account/ other credits existing (not at this bank),radio/television,1795,... < 100 DM,... >= 7 years,3,guarantor,real estate,48,bank,rent,0
+810,0 <= ... < 200 DM,15,no credits taken/ all credits paid back duly,car (new),1778,... < 100 DM,... < 1 year,2,none,real estate,26,none,rent,1
+813,... < 0 DM,36,critical account/ other credits existing (not at this bank),car (used),9629,... < 100 DM,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",24,none,own,1
+817,no checking account,6,existing credits paid back duly till now,domestic appliances,1338,500 <= ... < 1000 DM,1 <= ... < 4 years,1,none,real estate,62,none,own,0
+818,no checking account,6,critical account/ other credits existing (not at this bank),radio/television,1554,... < 100 DM,4 <= ... < 7 years,1,none,"car or other, not in attribute Savings account/bonds",24,none,rent,0
+819,... < 0 DM,36,existing credits paid back duly till now,others,15857,... < 100 DM,unemployed,2,co-applicant,"car or other, not in attribute Savings account/bonds",43,none,own,0
+820,... < 0 DM,18,existing credits paid back duly till now,radio/television,1345,... < 100 DM,1 <= ... < 4 years,4,none,real estate,26,bank,own,1
+823,... < 0 DM,36,existing credits paid back duly till now,furniture/equipment,2712,... < 100 DM,... >= 7 years,2,none,building society savings agreement/ life insurance,41,bank,own,1
+826,... < 0 DM,21,critical account/ other credits existing (not at this bank),car (new),1602,... < 100 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",30,none,own,0
+838,no checking account,4,existing credits paid back duly till now,furniture/equipment,601,... < 100 DM,... < 1 year,1,none,real estate,23,none,rent,0
+840,no checking account,24,critical account/ other credits existing (not at this bank),radio/television,2611,... < 100 DM,... >= 7 years,4,co-applicant,real estate,46,none,own,0
+842,no checking account,21,delay in paying off in the past,car (used),2993,... < 100 DM,1 <= ... < 4 years,3,none,real estate,28,stores,own,0
+847,no checking account,18,existing credits paid back duly till now,car (new),6761,unknown/ no savings account,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",68,none,rent,1
+848,no checking account,24,existing credits paid back duly till now,car (new),1249,... < 100 DM,... < 1 year,4,none,real estate,28,none,own,0
+852,no checking account,24,critical account/ other credits existing (not at this bank),car (used),4042,unknown/ no savings account,4 <= ... < 7 years,3,none,building society savings agreement/ life insurance,43,none,own,0
+853,no checking account,15,critical account/ other credits existing (not at this bank),radio/television,1471,... < 100 DM,1 <= ... < 4 years,4,none,unknown / no property,35,none,for free,0
+854,... < 0 DM,18,all credits at this bank paid back duly,car (new),1442,... < 100 DM,4 <= ... < 7 years,4,none,unknown / no property,32,none,for free,1
+855,no checking account,36,delay in paying off in the past,car (new),10875,... < 100 DM,... >= 7 years,2,none,"car or other, not in attribute Savings account/bonds",45,none,own,0
+856,no checking account,24,existing credits paid back duly till now,car (new),1474,100 <= ... < 500 DM,... < 1 year,4,none,real estate,33,none,own,0
+859,... < 0 DM,15,existing credits paid back duly till now,car (new),3959,... < 100 DM,1 <= ... < 4 years,3,none,building society savings agreement/ life insurance,29,none,own,1
+865,no checking account,10,existing credits paid back duly till now,furniture/equipment,2210,... < 100 DM,1 <= ... < 4 years,2,none,real estate,25,bank,rent,1
+867,... < 0 DM,18,existing credits paid back duly till now,radio/television,2389,... < 100 DM,... < 1 year,4,none,"car or other, not in attribute Savings account/bonds",27,stores,own,0
+868,no checking account,12,critical account/ other credits existing (not at this bank),furniture/equipment,3331,... < 100 DM,... >= 7 years,2,none,building society savings agreement/ life insurance,42,stores,own,0
+872,... >= 200 DM / salary assignments for at least 1 year,6,critical account/ other credits existing (not at this bank),car (new),1343,... < 100 DM,... >= 7 years,1,none,real estate,46,none,own,0
+876,0 <= ... < 200 DM,11,critical account/ other credits existing (not at this bank),car (new),1322,... >= 1000 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",40,none,own,0
+877,... < 0 DM,18,all credits at this bank paid back duly,radio/television,1940,... < 100 DM,... < 1 year,3,co-applicant,unknown / no property,36,bank,for free,0
+879,... < 0 DM,9,existing credits paid back duly till now,car (new),1422,... < 100 DM,... < 1 year,3,none,unknown / no property,27,none,for free,1
+882,no checking account,24,existing credits paid back duly till now,car (used),9277,unknown/ no savings account,1 <= ... < 4 years,2,none,unknown / no property,48,none,for free,0
+884,no checking account,18,critical account/ other credits existing (not at this bank),radio/television,1098,... < 100 DM,unemployed,4,none,"car or other, not in attribute Savings account/bonds",65,none,own,0
+889,no checking account,36,critical account/ other credits existing (not at this bank),car (new),6614,... < 100 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",34,none,own,0
+890,no checking account,28,all credits at this bank paid back duly,car (used),7824,unknown/ no savings account,... < 1 year,3,guarantor,real estate,40,bank,rent,0
+892,no checking account,15,critical account/ other credits existing (not at this bank),radio/television,1829,... < 100 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",46,none,own,0
+893,... < 0 DM,12,critical account/ other credits existing (not at this bank),car (new),2171,... < 100 DM,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,38,bank,own,0
+894,0 <= ... < 200 DM,36,critical account/ other credits existing (not at this bank),car (used),5800,... < 100 DM,1 <= ... < 4 years,3,none,"car or other, not in attribute Savings account/bonds",34,none,own,0
+895,no checking account,18,critical account/ other credits existing (not at this bank),radio/television,1169,unknown/ no savings account,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,29,none,own,0
+902,no checking account,20,critical account/ other credits existing (not at this bank),car (new),3485,unknown/ no savings account,... < 1 year,2,none,real estate,44,none,own,0
+905,no checking account,24,existing credits paid back duly till now,radio/television,1278,... < 100 DM,... >= 7 years,4,none,real estate,36,none,own,0
+908,0 <= ... < 200 DM,36,existing credits paid back duly till now,education,3711,unknown/ no savings account,1 <= ... < 4 years,2,none,"car or other, not in attribute Savings account/bonds",27,none,own,0
+910,0 <= ... < 200 DM,9,existing credits paid back duly till now,car (new),3195,unknown/ no savings account,1 <= ... < 4 years,1,none,real estate,33,none,own,0
+911,no checking account,36,delay in paying off in the past,radio/television,4454,... < 100 DM,1 <= ... < 4 years,4,none,real estate,34,none,own,0
+915,... < 0 DM,24,all credits at this bank paid back duly,business,3161,... < 100 DM,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,31,none,rent,1
+916,0 <= ... < 200 DM,48,no credits taken/ all credits paid back duly,others,18424,... < 100 DM,1 <= ... < 4 years,1,none,building society savings agreement/ life insurance,32,bank,own,1
+918,... < 0 DM,6,existing credits paid back duly till now,car (new),14896,... < 100 DM,... >= 7 years,1,none,unknown / no property,68,bank,own,1
+922,no checking account,48,delay in paying off in the past,radio/television,12749,500 <= ... < 1000 DM,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",37,none,own,0
+924,0 <= ... < 200 DM,12,existing credits paid back duly till now,car (new),2002,... < 100 DM,4 <= ... < 7 years,3,none,building society savings agreement/ life insurance,30,none,rent,0
+930,... < 0 DM,12,delay in paying off in the past,car (new),1344,... < 100 DM,1 <= ... < 4 years,4,none,real estate,43,none,own,0
+934,no checking account,12,critical account/ other credits existing (not at this bank),radio/television,522,500 <= ... < 1000 DM,... >= 7 years,4,none,building society savings agreement/ life insurance,42,none,own,0
+935,... < 0 DM,12,existing credits paid back duly till now,radio/television,1498,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",23,bank,own,0
+937,... >= 200 DM / salary assignments for at least 1 year,9,existing credits paid back duly till now,radio/television,745,... < 100 DM,1 <= ... < 4 years,3,none,real estate,28,none,own,1
+939,0 <= ... < 200 DM,60,existing credits paid back duly till now,education,6288,... < 100 DM,1 <= ... < 4 years,4,none,unknown / no property,42,none,for free,1
+943,no checking account,24,existing credits paid back duly till now,furniture/equipment,929,unknown/ no savings account,4 <= ... < 7 years,4,none,"car or other, not in attribute Savings account/bonds",31,stores,own,0
+944,no checking account,4,critical account/ other credits existing (not at this bank),car (new),1455,... < 100 DM,4 <= ... < 7 years,2,none,real estate,42,none,own,0
+948,no checking account,12,existing credits paid back duly till now,car (new),2859,unknown/ no savings account,unemployed,4,none,unknown / no property,38,none,own,0
+952,... < 0 DM,36,delay in paying off in the past,business,2145,... < 100 DM,4 <= ... < 7 years,2,none,"car or other, not in attribute Savings account/bonds",24,none,own,1
+958,0 <= ... < 200 DM,9,critical account/ other credits existing (not at this bank),radio/television,1154,... < 100 DM,... >= 7 years,2,none,real estate,37,none,own,0
+959,... < 0 DM,28,existing credits paid back duly till now,car (new),4006,... < 100 DM,1 <= ... < 4 years,3,none,"car or other, not in attribute Savings account/bonds",45,none,own,1
+960,0 <= ... < 200 DM,24,existing credits paid back duly till now,furniture/equipment,3069,100 <= ... < 500 DM,... >= 7 years,4,none,unknown / no property,30,none,for free,0
+961,no checking account,6,critical account/ other credits existing (not at this bank),radio/television,1740,... < 100 DM,... >= 7 years,2,none,real estate,30,none,rent,0
+963,no checking account,15,existing credits paid back duly till now,car (new),3556,unknown/ no savings account,1 <= ... < 4 years,3,none,unknown / no property,29,none,own,0
+965,0 <= ... < 200 DM,6,existing credits paid back duly till now,repairs,454,... < 100 DM,... < 1 year,3,none,building society savings agreement/ life insurance,22,none,own,0
+967,0 <= ... < 200 DM,27,critical account/ other credits existing (not at this bank),radio/television,2520,500 <= ... < 1000 DM,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,23,none,own,1
+968,no checking account,15,existing credits paid back duly till now,radio/television,3568,... < 100 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",54,bank,rent,0
+969,no checking account,42,existing credits paid back duly till now,radio/television,7166,unknown/ no savings account,4 <= ... < 7 years,2,none,building society savings agreement/ life insurance,29,none,rent,0
+970,... < 0 DM,11,critical account/ other credits existing (not at this bank),car (new),3939,... < 100 DM,1 <= ... < 4 years,1,none,real estate,40,none,own,0
+971,0 <= ... < 200 DM,15,existing credits paid back duly till now,repairs,1514,100 <= ... < 500 DM,1 <= ... < 4 years,4,guarantor,real estate,22,none,own,0
+972,no checking account,24,existing credits paid back duly till now,car (new),7393,... < 100 DM,1 <= ... < 4 years,1,none,building society savings agreement/ life insurance,43,none,own,0
+973,... < 0 DM,24,all credits at this bank paid back duly,car (new),1193,... < 100 DM,unemployed,1,co-applicant,unknown / no property,29,none,rent,1
+975,no checking account,30,critical account/ other credits existing (not at this bank),radio/television,2831,... < 100 DM,1 <= ... < 4 years,4,none,"car or other, not in attribute Savings account/bonds",33,none,own,0
+976,... >= 200 DM / salary assignments for at least 1 year,24,existing credits paid back duly till now,radio/television,1258,500 <= ... < 1000 DM,1 <= ... < 4 years,3,none,"car or other, not in attribute Savings account/bonds",57,none,own,0
+978,0 <= ... < 200 DM,18,delay in paying off in the past,business,2427,unknown/ no savings account,... >= 7 years,4,none,building society savings agreement/ life insurance,42,none,own,0
+984,... < 0 DM,36,existing credits paid back duly till now,car (used),8229,... < 100 DM,1 <= ... < 4 years,2,none,building society savings agreement/ life insurance,26,none,own,1
+986,... < 0 DM,15,critical account/ other credits existing (not at this bank),furniture/equipment,1433,... < 100 DM,1 <= ... < 4 years,4,none,building society savings agreement/ life insurance,25,none,rent,0
+992,no checking account,15,all credits at this bank paid back duly,radio/television,1569,100 <= ... < 500 DM,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",34,bank,own,0
+993,... < 0 DM,18,existing credits paid back duly till now,radio/television,1936,unknown/ no savings account,4 <= ... < 7 years,2,none,"car or other, not in attribute Savings account/bonds",23,none,rent,0
+995,no checking account,12,existing credits paid back duly till now,car (new),2390,unknown/ no savings account,... >= 7 years,4,none,"car or other, not in attribute Savings account/bonds",50,none,own,0

@@ -1,0 +1,12 @@
+term,coefficient
+(Intercept),-0.94310901904204
+status.of.existing.checking.account_woe,0.729430315969274
+duration.in.month_woe,0.796654283026978
+credit.history_woe,0.826866723063604
+purpose_woe,0.90772355196786
+credit.amount_woe,0.819962451962513
+savings.account.and.bonds_woe,0.769999719927955
+installment.rate.in.percentage.of.disposable.income_woe,1.85900611129401
+age.in.years_woe,1.0258432696045
+other.installment.plans_woe,0.752492010023097
+housing_woe,0.77624503296647
