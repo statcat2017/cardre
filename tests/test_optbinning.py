@@ -718,8 +718,9 @@ class TestBinningNodeOptbinning:
         )
         node.run(ctx)
 
-        # After run, 'method' should be gone from validated_params
-        assert "method" not in ctx.validated_params
+        # After run, original context is NOT mutated; method is preserved
+        assert "method" in ctx.validated_params
+        assert ctx.validated_params.get("method") == "optbinning"
         assert ctx.validated_params.get("engine") == "optbinning"
 
 

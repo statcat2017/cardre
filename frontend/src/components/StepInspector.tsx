@@ -4,7 +4,7 @@ import { api } from "../api/client";
 import type { StepStatus } from "../types";
 import { getStepDisplayMetadata } from "../config/stepDisplayMetadata";
 import { StatusBadge } from "./StatusBadge";
-import { SchemaDrivenParamsEditor } from "./SchemaDrivenParamsEditor";
+import { SchemaDrivenParamsEditor } from "./params/SchemaDrivenParamsEditor";
 import type { UpdateStepParamsResponse } from "../types";
 
 interface Props {

@@ -124,7 +124,7 @@ class BinningNode(NodeType):
                             label="Prebinning method",
                             kind="string",
                             default="cart",
-                            constraint=ParameterConstraint(enum_values=["cart", "quantile"]),
+                            constraint=ParameterConstraint(enum_values=["cart"]),
                             help_text="Method for initial prebinning.",
                         ),
                         ParameterDefinition(
@@ -344,15 +344,19 @@ class BinningNode(NodeType):
         from cardre.nodes.build.bins import FineClassingNode
 
         node = FineClassingNode()
-        context.validated_params.pop("method", None)
-        return node.run(context)
+        delegated_params = {k: v for k, v in context.validated_params.items() if k != "method"}
+        from dataclasses import replace
+        delegated_ctx = replace(context, validated_params=delegated_params)
+        return node.run(delegated_ctx)
 
     def _run_optbinning(self, context: ExecutionContext) -> NodeOutput:
         from cardre.nodes.build.auto_binning_fit import AutoBinningFitNode
 
         node = AutoBinningFitNode()
-        context.validated_params.pop("method", None)
-        return node.run(context)
+        delegated_params = {k: v for k, v in context.validated_params.items() if k != "method"}
+        from dataclasses import replace
+        delegated_ctx = replace(context, validated_params=delegated_params)
+        return node.run(delegated_ctx)
 
 
 __all__ = ["BinningNode"]

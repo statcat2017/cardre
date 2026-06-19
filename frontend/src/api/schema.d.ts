@@ -1381,6 +1381,25 @@ export interface components {
             /** Variable Selection Artifact Id */
             variable_selection_artifact_id: string;
         };
+        /** MethodOptionResponse */
+        MethodOptionResponse: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @default available
+             */
+            status: string;
+            /** Params */
+            params?: components["schemas"]["ParameterDefinitionResponse"][];
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+        };
         /** MethodSummaryResponse */
         MethodSummaryResponse: {
             /** Branch Id */
@@ -1526,6 +1545,13 @@ export interface components {
             node_type: string;
             /** Version */
             version: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /** Methods */
+            methods?: components["schemas"]["MethodOptionResponse"][];
             /** Params Schema */
             params_schema?: {
                 [key: string]: unknown;
@@ -1539,6 +1565,61 @@ export interface components {
              * @default
              */
             description: string;
+        };
+        /** ParameterConstraintResponse */
+        ParameterConstraintResponse: {
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /** Min Value */
+            min_value?: number | null;
+            /** Max Value */
+            max_value?: number | null;
+            /** Exclusive Min */
+            exclusive_min?: number | null;
+            /** Exclusive Max */
+            exclusive_max?: number | null;
+            /** Min Length */
+            min_length?: number | null;
+            /** Max Length */
+            max_length?: number | null;
+            /** Min Items */
+            min_items?: number | null;
+            /** Max Items */
+            max_items?: number | null;
+            /** Enum Values */
+            enum_values?: unknown[] | null;
+            /** Pattern */
+            pattern?: string | null;
+        };
+        /** ParameterDefinitionResponse */
+        ParameterDefinitionResponse: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /** Kind */
+            kind: string;
+            /** Default */
+            default?: unknown;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            constraint?: components["schemas"]["ParameterConstraintResponse"] | null;
+            /**
+             * Help Text
+             * @default
+             */
+            help_text: string;
+            /**
+             * Group
+             * @default
+             */
+            group: string;
         };
         /** PlanListItem */
         PlanListItem: {

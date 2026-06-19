@@ -119,6 +119,12 @@ def validate_against_schema(schema: NodeParameterSchema, params: dict) -> list[s
         errors.append(f"Unknown method: {params.get('method')!r}")
         return errors
 
+    if method.status != "available":
+        errors.append(
+            f"Method {method.id!r} is {method.status!r} and cannot be executed"
+        )
+        return errors
+
     for pdef in method.params:
         value = params.get(pdef.name, pdef.default)
         _validate_param(pdef, value, errors)
