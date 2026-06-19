@@ -154,14 +154,16 @@ def make_full_german_credit_download(tmp: Path) -> Path:
                 parent_step_ids=["split"], branch_label="", position=7,
             ),
             StepSpec(
-                step_id="fine-classing", node_type="cardre.fine_classing",
+                step_id="binning", node_type="cardre.binning",
                 node_version="1", category="fit",
                 params={
+                    "method": "fine_classing",
                     "max_bins": 20, "min_bin_fraction": 0.05,
                     "missing_policy": "separate_bin",
                     "max_categorical_levels": 50, "exclude_columns": [],
                 },
                 params_hash=json_logical_hash({
+                    "method": "fine_classing",
                     "max_bins": 20, "min_bin_fraction": 0.05,
                     "missing_policy": "separate_bin",
                     "max_categorical_levels": 50, "exclude_columns": [],
@@ -178,7 +180,7 @@ def make_full_german_credit_download(tmp: Path) -> Path:
                 params_hash=json_logical_hash({
                     "zero_cell_policy": "block", "smoothing": None, "purpose": "initial",
                 }),
-                parent_step_ids=["explicit-missing-outlier-treatment", "fine-classing", "define-metadata"],
+                parent_step_ids=["explicit-missing-outlier-treatment", "binning", "define-metadata"],
                 branch_label="", position=9,
             ),
             StepSpec(
@@ -208,7 +210,7 @@ def make_full_german_credit_download(tmp: Path) -> Path:
                 node_version="1", category="refinement",
                 params={"overrides": []},
                 params_hash=json_logical_hash({"overrides": []}),
-                parent_step_ids=["fine-classing", "variable-selection"],
+                parent_step_ids=["binning", "variable-selection"],
                 branch_label="", position=12,
             ),
             StepSpec(
@@ -243,7 +245,7 @@ def make_full_german_credit_download(tmp: Path) -> Path:
                 params_hash=json_logical_hash({}),
                 parent_step_ids=[
                     "define-metadata", "sample-definition", "split",
-                    "explicit-missing-outlier-treatment", "fine-classing",
+                    "explicit-missing-outlier-treatment", "binning",
                     "variable-selection", "manual-binning", "final-woe-iv",
                 ],
                 branch_label="", position=14,
@@ -271,7 +273,7 @@ def make_full_german_credit_download(tmp: Path) -> Path:
         # Verify key artifacts exist
         artifact_types_by_step = {
             "define-metadata": "definition",
-            "fine-classing": "definition",
+            "binning": "definition",
             "variable-selection": "definition",
             "manual-binning": "definition",
             "technical-manifest-stub": "manifest",
@@ -520,12 +522,13 @@ class Phase2BEndToEndTests:
         meta_art = _make_json_artifact(store, meta_params, stem="meta")
 
         fine_params = {
+            "method": "fine_classing",
             "max_bins": 5, "min_bin_fraction": 0.01,
             "missing_policy": "separate_bin",
             "max_categorical_levels": 50, "exclude_columns": [],
         }
         fine_spec = StepSpec(
-            step_id="fine-classing", node_type="cardre.fine_classing",
+            step_id="binning", node_type="cardre.binning",
             node_version="1", category="fit",
             params=fine_params, params_hash=json_logical_hash(fine_params),
             parent_step_ids=[], branch_label="", position=0,

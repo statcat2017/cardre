@@ -134,7 +134,7 @@ class CalculateWoeIvTests(unittest.TestCase):
             node_version="1", category="selection",
             params=params,
             params_hash=json_logical_hash(params),
-            parent_step_ids=["fine-classing"], branch_label="", position=1,
+            parent_step_ids=["binning"], branch_label="", position=1,
         )
         ctx = ExecutionContext(
             store=store, run_id="r1", plan_version_id="pv1",

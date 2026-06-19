@@ -111,12 +111,13 @@ def binned_data(split_data):
     meta_art = split_data["meta_art"]
 
     fine_params = {
+        "method": "fine_classing",
         "max_bins": 20, "min_bin_fraction": 0.05,
         "missing_policy": "separate_bin", "max_categorical_levels": 50,
         "exclude_columns": [],
     }
     fine_spec = StepSpec(
-        step_id="fine", node_type="cardre.fine_classing",
+        step_id="fine", node_type="cardre.binning",
         node_version="1", category="fit",
         params=fine_params, params_hash=json_logical_hash(fine_params),
         parent_step_ids=[], branch_label="", position=0,

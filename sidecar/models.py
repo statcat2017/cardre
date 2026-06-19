@@ -263,8 +263,9 @@ class ArtifactPreviewResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class ManualBinningSourceInfo(BaseModel):
-    fine_classing_step_id: str
-    fine_classing_artifact_id: str
+    binning_step_id: str
+    binning_artifact_id: str
+    binning_method: str
     variable_selection_step_id: str
     variable_selection_artifact_id: str
 
@@ -657,6 +658,7 @@ class BinningEngineInfo(BaseModel):
     available: bool
     version: str | None = None
     target_types: list[str] = Field(default_factory=list)
+    reason: str | None = None
 
 
 class BinningEnginesResponse(BaseModel):

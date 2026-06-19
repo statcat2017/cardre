@@ -30,7 +30,7 @@ from tests.helpers import SAMPLE_GERMAN_CREDIT_LINES, _make_json_artifact, _make
 
 # German Credit columns must be loaded as strings for scorecard pipeline compat.
 # With proper CSV inference polars converts numeric codes (e.g. duration=6,
-# credit_amount=1169) to Int64, breaking fine-classing/WOE.
+# credit_amount=1169) to Int64, breaking binning/WOE.
 _GERMAN_COLS_STR = {c: "str" for c in [
     "checking_account_status", "duration_months", "credit_history", "purpose",
     "credit_amount", "savings_account_bonds", "present_employment_since",

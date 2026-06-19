@@ -24,6 +24,7 @@ def list_binning_engines() -> BinningEnginesResponse:
             available=ob.get("available", False),
             version=ob.get("version"),
             target_types=ob.get("target_types", []),
+            reason=ob.get("reason"),
         ))
 
     # Quantile / fine classing is always available (Polars built-in)

@@ -2462,6 +2462,17 @@
             },
             "type": "array",
             "title": "Target Types"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           }
         },
         "type": "object",
@@ -3646,13 +3657,17 @@
       },
       "ManualBinningSourceInfo": {
         "properties": {
-          "fine_classing_step_id": {
+          "binning_step_id": {
             "type": "string",
-            "title": "Fine Classing Step Id"
+            "title": "Binning Step Id"
           },
-          "fine_classing_artifact_id": {
+          "binning_artifact_id": {
             "type": "string",
-            "title": "Fine Classing Artifact Id"
+            "title": "Binning Artifact Id"
+          },
+          "binning_method": {
+            "type": "string",
+            "title": "Binning Method"
           },
           "variable_selection_step_id": {
             "type": "string",
@@ -3665,8 +3680,9 @@
         },
         "type": "object",
         "required": [
-          "fine_classing_step_id",
-          "fine_classing_artifact_id",
+          "binning_step_id",
+          "binning_artifact_id",
+          "binning_method",
           "variable_selection_step_id",
           "variable_selection_artifact_id"
         ],

@@ -59,3 +59,20 @@ def find_nearest_ancestor_by_canonical_step_id(
             f"Multiple ancestors found for canonical step {canonical_step_id}"
         )
     return candidates[0][2]
+
+
+BINNING_SOURCE_CANONICAL_IDS = ["binning", "fine-classing"]  # fine-classing is developer-store defence-in-depth only
+
+
+def find_nearest_binning_source(
+    steps: list[StepSpec],
+    target_step_id: str,
+    branch_step_map: list[dict],
+) -> StepSpec | None:
+    for canonical in BINNING_SOURCE_CANONICAL_IDS:
+        spec = find_nearest_ancestor_by_canonical_step_id(
+            steps, target_step_id, branch_step_map, canonical,
+        )
+        if spec is not None:
+            return spec
+    return None

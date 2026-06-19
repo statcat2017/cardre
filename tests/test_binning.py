@@ -85,7 +85,7 @@ class FineClassingTests(unittest.TestCase):
             "exclude_columns": [],
         }
         step_spec = StepSpec(
-            step_id="fine-classing", node_type="cardre.fine_classing",
+            step_id="binning", node_type="cardre.binning",
             node_version="1", category="fit",
             params=params,
             params_hash=json_logical_hash(params),
@@ -147,7 +147,7 @@ class FineClassingTests(unittest.TestCase):
         store.register_artifact(meta_artifact)
         params = {"max_bins": 6, "min_bin_fraction": 0.01, "missing_policy": "ignore"}
         step_spec = StepSpec(
-            step_id="fine-classing", node_type="cardre.fine_classing",
+            step_id="binning", node_type="cardre.binning",
             node_version="1", category="fit",
             params=params, params_hash=json_logical_hash(params),
             parent_step_ids=[], branch_label="", position=1,
@@ -189,7 +189,7 @@ class FineClassingTests(unittest.TestCase):
             path="nonexistent", physical_hash="a", logical_hash="b",
         )
         step_spec = StepSpec(
-            step_id="fc", node_type="cardre.fine_classing",
+            step_id="fc", node_type="cardre.binning",
             node_version="1", category="fit",
             params=params,
             params_hash=json_logical_hash(params),
@@ -269,7 +269,7 @@ class ManualBinningTests(unittest.TestCase):
             node_version="1", category="refinement",
             params=params,
             params_hash=json_logical_hash(params),
-            parent_step_ids=["fine-classing"], branch_label="", position=0,
+            parent_step_ids=["binning"], branch_label="", position=0,
         )
         ctx = ExecutionContext(
             store=store, run_id="r1", plan_version_id="pv1",
@@ -508,13 +508,14 @@ def test_high_cardinality_creates_other_bin() -> None:
     store.register_artifact(meta_art)
 
     params = {
+        "method": "fine_classing",
         "max_bins": 20, "min_bin_fraction": 0.01,
         "missing_policy": "separate_bin",
         "max_categorical_levels": 10,
         "exclude_columns": [],
     }
     spec = StepSpec(
-        step_id="fc", node_type="cardre.fine_classing",
+        step_id="fc", node_type="cardre.binning",
         node_version="1", category="fit",
         params=params, params_hash=json_logical_hash(params),
         parent_step_ids=[], branch_label="", position=0,

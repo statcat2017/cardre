@@ -837,6 +837,8 @@ export interface components {
             version?: string | null;
             /** Target Types */
             target_types?: string[];
+            /** Reason */
+            reason?: string | null;
         };
         /** BinningEnginesResponse */
         BinningEnginesResponse: {
@@ -1373,10 +1375,12 @@ export interface components {
         };
         /** ManualBinningSourceInfo */
         ManualBinningSourceInfo: {
-            /** Fine Classing Step Id */
-            fine_classing_step_id: string;
-            /** Fine Classing Artifact Id */
-            fine_classing_artifact_id: string;
+            /** Binning Step Id */
+            binning_step_id: string;
+            /** Binning Artifact Id */
+            binning_artifact_id: string;
+            /** Binning Method */
+            binning_method: string;
             /** Variable Selection Step Id */
             variable_selection_step_id: string;
             /** Variable Selection Artifact Id */

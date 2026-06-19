@@ -14,9 +14,12 @@ from typing import Any
 
 @dataclass(frozen=True)
 class BinningDiagnostic:
-    variable: str
-    diagnostic_type: str
-    message: str
+    code: str
+    severity: str          # "info" | "warning" | "error"
+    variable: str | None = None
+    bin_id: str | None = None
+    message: str = ""
+    requires_acknowledgement: bool = False
     details: dict[str, Any] = field(default_factory=dict)
 
 
@@ -28,8 +31,9 @@ def check_solver_status(
     if not status or status.upper() not in ("OPTIMAL", "FEASIBLE"):
         return [
             BinningDiagnostic(
+                code="SOLVER_NOT_OPTIMAL",
+                severity="warning",
                 variable=variable,
-                diagnostic_type="solver_not_optimal",
                 message=f"Solver status: {status}",
                 details={"status": status},
             )
@@ -37,8 +41,9 @@ def check_solver_status(
     if status.upper() == "FEASIBLE":
         return [
             BinningDiagnostic(
+                code="SOLVER_NOT_OPTIMAL",
+                severity="info",
                 variable=variable,
-                diagnostic_type="solver_feasible_not_optimal",
                 message=f"Solver reached FEASIBLE (not OPTIMAL): {status}",
                 details={"status": status},
             )
@@ -55,8 +60,9 @@ def check_too_few_bins(
     if len(bins) < min_bins:
         return [
             BinningDiagnostic(
+                code="TOO_FEW_BINS",
+                severity="warning",
                 variable=variable,
-                diagnostic_type="too_few_bins",
                 message=f"Only {len(bins)} bin(s) found (minimum: {min_bins})",
                 details={"bin_count": len(bins), "min_bins": min_bins},
             )
@@ -74,13 +80,17 @@ def check_sparse_bins(
     for b in bins:
         count = b.get("row_count", 0)
         if count < min_count:
+            bid = b.get("bin_id", "")
             results.append(
                 BinningDiagnostic(
-                    variable=variable,
-                    diagnostic_type="sparse_bin",
-                    message=f"Bin '{b.get('label', b.get('bin_id', ''))}' has {count} rows (minimum: {min_count})",
+                    code="SPARSE_BIN",
+                    severity="warning",
+                    variable=variable or b.get("variable"),
+                    bin_id=bid,
+                    message=f"Bin '{b.get('label', bid)}' has {count} rows (minimum: {min_count})",
+                    requires_acknowledgement=True,
                     details={
-                        "bin_id": b.get("bin_id", ""),
+                        "bin_id": bid,
                         "row_count": count,
                         "min_count": min_count,
                     },
@@ -92,16 +102,25 @@ def check_sparse_bins(
 def check_variable_failed(
     variable: str,
     status: str,
-    warnings: list[str],
+    warnings: list | None = None,
 ) -> list[BinningDiagnostic]:
     """Variable failed during optbinning fit."""
     if status == "FAILED":
+        warning_msgs = []
+        if warnings:
+            for w in warnings:
+                if isinstance(w, dict):
+                    warning_msgs.append(w.get("message", str(w)))
+                else:
+                    warning_msgs.append(str(w))
         return [
             BinningDiagnostic(
+                code="VARIABLE_FAILED",
+                severity="error",
                 variable=variable,
-                diagnostic_type="variable_failed",
-                message=f"Variable failed: {'; '.join(warnings)}" if warnings else "Variable failed",
-                details={"status": status, "warnings": warnings},
+                message=f"Variable failed: {'; '.join(warning_msgs)}" if warning_msgs else "Variable failed",
+                requires_acknowledgement=True,
+                details={"status": status, "warnings": warnings or []},
             )
         ]
     return []

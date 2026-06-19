@@ -21,7 +21,11 @@ class VariableBinningResult:
     dtype: str
     status: str       # "OPTIMAL", "FEASIBLE", "INFEASIBLE", "FAILED"
     bins: list[dict[str, Any]]
-    warnings: list[str]
+    warnings: list[dict[str, Any]]
+    metrics: dict[str, Any] = field(default_factory=dict)
+    splits: list[Any] = field(default_factory=list)
+    raw_engine_payload: dict[str, Any] | None = None
+    failure_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -29,7 +33,7 @@ class AdapterResult:
     engine_name: str = "optbinning"
     engine_version: str = ""
     variables: list[VariableBinningResult] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[dict[str, Any]] = field(default_factory=list)
     manifest: dict[str, Any] = field(default_factory=dict)
 
 
@@ -71,7 +75,7 @@ def fit_variables(
     y_np = y.to_numpy().astype(int)
 
     results: list[VariableBinningResult] = []
-    warnings: list[str] = []
+    warnings: list[dict[str, Any]] = []
 
     for variable in variable_names:
         x = df[variable].to_numpy()
@@ -82,16 +86,28 @@ def fit_variables(
         try:
             optb.fit(x, y_np)
             bins = _extract_bins(variable, dtype, optb)
+            metrics = _extract_variable_metrics(variable, bins, optb)
+            splits = list(optb.splits) if hasattr(optb, 'splits') else []
+            raw_engine_payload = _safe_to_dict(optb)
             results.append(VariableBinningResult(
                 variable=variable, dtype=dtype,
                 status=_resolve_status(optb),
-                bins=bins, warnings=[],
+                bins=bins, warnings=[], metrics=metrics,
+                splits=splits, raw_engine_payload=raw_engine_payload,
             ))
         except Exception as exc:
-            warnings.append(f"{variable}: optbinning failed: {exc}")
+            warnings.append({
+                "code": "VARIABLE_FAILED",
+                "severity": "error",
+                "variable": variable,
+                "message": f"OptBinning failed: {exc}",
+                "requires_acknowledgement": True,
+                "details": {"exception": str(exc)},
+            })
             results.append(VariableBinningResult(
                 variable=variable, dtype=dtype,
-                status="FAILED", bins=[], warnings=[str(exc)],
+                status="FAILED", bins=[], warnings=[{"code": "VARIABLE_FAILED", "severity": "error", "variable": variable, "message": str(exc)}],
+                failure_reason=str(exc),
             ))
 
     try:
@@ -99,13 +115,19 @@ def fit_variables(
     except Exception:
         engine_version = "unknown"
 
+    succeeded = [r.variable for r in results if r.status in ("OPTIMAL", "FEASIBLE")]
+    failed = [r.variable for r in results if r.status == "FAILED"]
+    total_warnings = sum(len(r.warnings) for r in results)
     manifest = {
         "engine": "optbinning",
         "engine_version": engine_version,
         "parameters": params,
         "variable_count": len(variable_names),
-        "succeeded": [r.variable for r in results if r.status in ("OPTIMAL", "FEASIBLE")],
-        "failed": [r.variable for r in results if r.status == "FAILED"],
+        "variables_succeeded": len(succeeded),
+        "variables_failed": len(failed),
+        "succeeded": succeeded,
+        "failed": failed,
+        "warnings_count": total_warnings,
     }
 
     return AdapterResult(
@@ -166,13 +188,22 @@ def _extract_bins(
     dtype: str,
     optb,
 ) -> list[dict[str, Any]]:
-    """Convert optbinning output to Cardre SCHEMA_BIN_DEFINITION bin dicts."""
+    """Convert optbinning output to Cardre SCHEMA_BIN_DEFINITION bin dicts
+    with rich per-bin metrics (WOE, IV, bad_rate, row_pct)."""
     table = optb.binning_table.build()
     splits = list(optb.splits) if hasattr(optb, 'splits') else []
 
     bins: list[dict[str, Any]] = []
     table_bin_idx = 0
     regular_numeric_idx = 0
+    total_count = 0
+
+    # First pass: count total rows for row_pct
+    for _, row in table.iterrows():
+        label = str(row.get("Bin", ""))
+        if label.lower().startswith("totals"):
+            continue
+        total_count += int(row.get("Count", 0))
 
     for _, row in table.iterrows():
         label = str(row.get("Bin", ""))
@@ -187,6 +218,11 @@ def _extract_bins(
         is_missing = _is_missing_bin(row)
         is_special = _is_special_bin(row, optb)
 
+        bad_rate = float(row.get("Event rate", 0)) if "Event rate" in row else (event / count if count > 0 else None)
+        woe = float(row.get("WoE", 0)) if "WoE" in row else None
+        iv = float(row.get("IV", 0)) if "IV" in row else None
+        row_pct = count / total_count if total_count > 0 else 0.0
+
         bin_dict: dict[str, Any] = {
             "bin_id": f"{variable}_bin_{table_bin_idx:03d}",
             "label": _clean_label(label),
@@ -198,8 +234,12 @@ def _extract_bins(
             "categories": None,
             "is_missing_bin": is_missing,
             "row_count": count,
+            "row_pct": row_pct,
             "good_count": nonevent,
             "bad_count": event,
+            "bad_rate": bad_rate,
+            "woe": woe,
+            "iv": iv,
         }
 
         if is_special:
@@ -221,6 +261,41 @@ def _extract_bins(
         bins.append(bin_dict)
 
     return bins
+
+
+def _extract_variable_metrics(
+    variable: str,
+    bins: list[dict[str, Any]],
+    optb,
+) -> dict[str, Any]:
+    metrics: dict[str, Any] = {
+        "n_bins": len(bins),
+        "row_count": sum(b.get("row_count", 0) for b in bins),
+        "missing_count": sum(b.get("row_count", 0) for b in bins if b.get("is_missing_bin")),
+    }
+    iv_vals = [b.get("iv") for b in bins if b.get("iv") is not None]
+    if iv_vals:
+        metrics["iv"] = sum(iv_vals)
+    non_missing = [b for b in bins if not b.get("is_missing_bin")]
+    if non_missing:
+        metrics["min_bin_count"] = min(b.get("row_count", 0) for b in non_missing)
+        metrics["max_bin_pct"] = max(b.get("row_pct", 0) for b in non_missing)
+    missing_count = metrics.get("missing_count", 0)
+    total = metrics.get("row_count", 0) or 1
+    metrics["missing_rate"] = missing_count / total
+    woe_vals = [b.get("woe") for b in bins if b.get("woe") is not None and not b.get("is_missing_bin") and not b.get("is_special_bin")]
+    if len(woe_vals) >= 2:
+        increasing = all(woe_vals[i] <= woe_vals[i + 1] for i in range(len(woe_vals) - 1))
+        decreasing = all(woe_vals[i] >= woe_vals[i + 1] for i in range(len(woe_vals) - 1))
+        metrics["monotonic_woe"] = increasing or decreasing
+    return metrics
+
+
+def _safe_to_dict(optb) -> dict[str, Any] | None:
+    try:
+        return optb.to_dict()
+    except Exception:
+        return None
 
 
 def _assign_numeric_bounds(
