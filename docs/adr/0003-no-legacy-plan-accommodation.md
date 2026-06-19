@@ -1,4 +1,4 @@
-# No Legacy Plan Accommodation
+# ADR 0003 — Pre-launch persisted-plan compatibility policy
 
 Cardre has not launched and has never been used in production. No persisted plans
 exist in any store, and any plan created going forward will be the first plan

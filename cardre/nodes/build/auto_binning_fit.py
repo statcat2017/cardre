@@ -404,15 +404,18 @@ class AutoBinningFitNode(NodeType):
         )
 
         # Variable summary (Parquet — supports UI sidebar, branch comparison)
+        # Built from final post-Cardre decision state (variables_out + rejected_vars)
+        # so it reflects rejection decisions, not raw adapter results.
+        summary_entries = variables_out + rejected_vars
         var_summary_rows = []
-        for var_result in result.variables:
-            metrics = var_result.metrics or {}
-            row = {
-                "variable": var_result.variable,
-                "dtype": var_result.dtype,
-                "kind": "numeric" if var_result.dtype == "numerical" else "categorical",
-                "status": var_result.status,
-                "active": var_result.status != "FAILED",
+        for v in summary_entries:
+            metrics = v.get("metrics") or {}
+            var_summary_rows.append({
+                "variable": v["variable"],
+                "dtype": v.get("dtype"),
+                "kind": v.get("kind"),
+                "status": v.get("status"),
+                "active": bool(v.get("active")),
                 "iv": metrics.get("iv"),
                 "n_bins": metrics.get("n_bins"),
                 "row_count": metrics.get("row_count"),
@@ -421,10 +424,9 @@ class AutoBinningFitNode(NodeType):
                 "min_bin_count": metrics.get("min_bin_count"),
                 "max_bin_pct": metrics.get("max_bin_pct"),
                 "monotonic_woe": metrics.get("monotonic_woe"),
-                "warning_count": len(var_result.warnings or []),
-                "failure_reason": var_result.failure_reason,
-            }
-            var_summary_rows.append(row)
+                "warning_count": len(v.get("warnings") or []),
+                "failure_reason": v.get("failure_reason"),
+            })
 
         if var_summary_rows:
             var_summary_df = pl.DataFrame(var_summary_rows)

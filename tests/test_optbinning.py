@@ -614,6 +614,13 @@ class TestAutoBinningFitNode:
             assert isinstance(w, dict)
             assert "code" in w
 
+        # Verify variable summary reflects the rejection (not raw adapter state)
+        summary = pl.read_parquet(store.artifact_path(output.artifacts[1]))
+        age_row = summary.filter(pl.col("variable") == "age").row(0, named=True)
+        assert age_row["active"] is False
+        assert age_row["status"] == "REJECTED_NO_BOUNDARY"
+        assert "no boundary" in age_row["failure_reason"].lower()
+
 
 # ======================================================================
 # BinningNode optbinning dispatch tests
