@@ -33,7 +33,7 @@ class AdapterResult:
     engine_name: str = "optbinning"
     engine_version: str = ""
     variables: list[VariableBinningResult] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[dict[str, Any]] = field(default_factory=list)
     manifest: dict[str, Any] = field(default_factory=dict)
 
 
@@ -75,7 +75,7 @@ def fit_variables(
     y_np = y.to_numpy().astype(int)
 
     results: list[VariableBinningResult] = []
-    warnings: list[str] = []
+    warnings: list[dict[str, Any]] = []
 
     for variable in variable_names:
         x = df[variable].to_numpy()
@@ -96,7 +96,14 @@ def fit_variables(
                 splits=splits, raw_engine_payload=raw_engine_payload,
             ))
         except Exception as exc:
-            warnings.append(f"{variable}: optbinning failed: {exc}")
+            warnings.append({
+                "code": "VARIABLE_FAILED",
+                "severity": "error",
+                "variable": variable,
+                "message": f"OptBinning failed: {exc}",
+                "requires_acknowledgement": True,
+                "details": {"exception": str(exc)},
+            })
             results.append(VariableBinningResult(
                 variable=variable, dtype=dtype,
                 status="FAILED", bins=[], warnings=[{"code": "VARIABLE_FAILED", "severity": "error", "variable": variable, "message": str(exc)}],

@@ -412,17 +412,33 @@ class TestAutoBinningFitNode:
         assert payload["source"]["fit_sample_role"] == "train"
         assert "train_artifact_id" in payload["source"]
         assert "target_column" in payload["source"]
+        assert "train_physical_hash" in payload["source"]
+        assert "train_logical_hash" in payload["source"]
 
-        # Verify variable summary artifact
-        sum_payload = json.loads(store.artifact_path(sum_art).read_text())
-        assert "variables" in sum_payload
-        assert len(sum_payload["variables"]) == 2
+        # Verify all warnings are structured (no free-text strings)
+        for warning in payload.get("warnings", []):
+            assert isinstance(warning, dict), f"Warning is not structured: {warning}"
+            assert "code" in warning, f"Warning missing code: {warning}"
+            assert "severity" in warning, f"Warning missing severity: {warning}"
 
-        # Verify manifest artifact
+        # Verify variable summary artifact (Parquet)
+        assert sum_art.media_type == "application/vnd.apache.parquet"
+        assert str(store.artifact_path(sum_art)).endswith(".parquet")
+        sum_df = pl.read_parquet(store.artifact_path(sum_art))
+        assert len(sum_df) == 2
+        assert "variable" in sum_df.columns
+        assert "iv" in sum_df.columns
+        assert "status" in sum_df.columns
+
+        # Verify manifest artifact has full target/train metadata
         man_payload = json.loads(store.artifact_path(man_art).read_text())
         assert man_payload["engine"] == "optbinning"
         assert "succeeded" in man_payload
         assert "variables_succeeded" in man_payload
+        assert "good_values" in man_payload
+        assert "bad_values" in man_payload
+        assert "train_physical_hash" in man_payload
+        assert "train_logical_hash" in man_payload
 
     @patch("cardre.nodes.build.auto_binning_fit.fit_variables")
     def test_target_conversion_rejected_by_adapter(self, mock_fit):
@@ -499,6 +515,104 @@ class TestAutoBinningFitNode:
             "max_n_bins": -1,
         })
         assert errs, "Expected validation errors for negative max_n_bins"
+
+    @patch("cardre.nodes.build.auto_binning_fit.fit_variables")
+    def test_rejects_single_bin_numeric_no_boundary(self, mock_fit):
+        """Numeric variable with single all-values bin is rejected, not left active."""
+        import io
+        from cardre.audit import (
+            ArtifactRef, ExecutionContext, StepSpec, json_logical_hash,
+            physical_hash, relative_path, table_logical_hash,
+        )
+        from cardre.evidence import SCHEMA_BIN_DEFINITION
+
+        store, tmp = make_store()
+        store.initialize()
+
+        df = pl.DataFrame({
+            "age": [25.0, 30.0, 35.0, 40.0, 45.0, 50.0],
+            "target": ["good", "bad", "good", "bad", "good", "bad"],
+        })
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        train_path = store.root / "datasets" / "test-train.parquet"
+        train_path.parent.mkdir(parents=True, exist_ok=True)
+        train_path.write_bytes(buf.getvalue())
+        train_artifact = ArtifactRef(
+            artifact_id="train1", artifact_type="dataset", role="train",
+            path=relative_path(train_path, store.root),
+            physical_hash=physical_hash(train_path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet", metadata={},
+        )
+        store.register_artifact(train_artifact)
+
+        meta_payload = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_path = store.root / "artifacts" / "test-meta.json"
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(meta_payload, sort_keys=True))
+        meta_artifact = ArtifactRef(
+            artifact_id="meta1", artifact_type="definition", role="definition",
+            path=relative_path(meta_path, store.root),
+            physical_hash=physical_hash(meta_path),
+            logical_hash=json_logical_hash(meta_payload),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(meta_artifact)
+
+        # Mock a single-bin result with no boundary (lower=None, upper=None)
+        from cardre.engine.binning.optbinning_adapter import AdapterResult, VariableBinningResult
+        mock_fit.return_value = AdapterResult(
+            engine_version="0.21.0",
+            variables=[
+                VariableBinningResult(
+                    variable="age", dtype="numerical", status="OPTIMAL",
+                    bins=[{
+                        "bin_id": "age_bin_001", "label": "All values",
+                        "kind": "numeric", "lower": None, "upper": None,
+                        "lower_inclusive": False, "upper_inclusive": False,
+                        "categories": None, "is_missing_bin": False,
+                        "row_count": 6, "good_count": 3, "bad_count": 3,
+                    }],
+                    warnings=[], metrics={"n_bins": 1, "iv": 0.0},
+                ),
+            ],
+            manifest={
+                "engine": "optbinning", "engine_version": "0.21.0",
+                "parameters": {}, "succeeded": [], "failed": [],
+                "variables_succeeded": 0, "variables_failed": 0, "warnings_count": 0,
+            },
+        )
+
+        node = AutoBinningFitNode()
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=StepSpec(
+                step_id="ab-001", node_type="cardre.auto_binning_fit",
+                node_version="1", category="fit",
+                params={}, params_hash="abc",
+                parent_step_ids=["split-001"], branch_label="baseline", position=5,
+            ),
+            parent_run_steps=[], input_artifacts=[train_artifact, meta_artifact],
+            validated_params={"engine": "optbinning"}, runtime_metadata={},
+        )
+        output = node.run(ctx)
+
+        bin_artifact = output.artifacts[0]
+        payload = json.loads(store.artifact_path(bin_artifact).read_text())
+
+        # age should be in rejected, not active variables
+        active_vars = {v["variable"] for v in payload.get("variables", [])}
+        assert "age" not in active_vars, "Single-bin no-boundary variable should not be active"
+
+        rejected = payload.get("rejected", [])
+        rejected_vars = {v["variable"] for v in rejected}
+        assert "age" in rejected_vars, "Single-bin no-boundary variable should be in rejected"
+
+        # Verify the rejection warning is structured
+        for w in payload.get("warnings", []):
+            assert isinstance(w, dict)
+            assert "code" in w
 
 
 # ======================================================================

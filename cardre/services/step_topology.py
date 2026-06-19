@@ -70,12 +70,9 @@ def find_nearest_binning_source(
     branch_step_map: list[dict],
 ) -> StepSpec | None:
     for canonical in BINNING_SOURCE_CANONICAL_IDS:
-        try:
-            spec = find_nearest_ancestor_by_canonical_step_id(
-                steps, target_step_id, branch_step_map, canonical,
-            )
-            if spec is not None:
-                return spec
-        except AmbiguousBranchAncestorError:
-            continue
+        spec = find_nearest_ancestor_by_canonical_step_id(
+            steps, target_step_id, branch_step_map, canonical,
+        )
+        if spec is not None:
+            return spec
     return None

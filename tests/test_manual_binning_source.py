@@ -6,6 +6,8 @@ canonical step IDs as upstream binning sources.
 
 from __future__ import annotations
 
+import pytest
+
 from cardre.audit import StepSpec
 from cardre.services.step_topology import (
     BINNING_SOURCE_CANONICAL_IDS,
@@ -107,6 +109,37 @@ class TestFindNearestBinningSource:
     def test_constant_has_expected_ids(self):
         assert "binning" in BINNING_SOURCE_CANONICAL_IDS
         assert "fine-classing" in BINNING_SOURCE_CANONICAL_IDS
+
+    def test_ambiguous_ancestor_propagates_error(self):
+        """AmbiguousBranchAncestorError is not swallowed by find_nearest_binning_source.
+        Two binning steps at same depth and position from target = ambiguous."""
+        steps = [
+            StepSpec(
+                step_id="branch-1-binning", node_type="cardre.binning",
+                node_version="1", category="fit",
+                params={"method": "fine_classing"}, params_hash="a",
+                parent_step_ids=["import"], branch_label="", position=1,
+                canonical_step_id="binning",
+            ),
+            StepSpec(
+                step_id="branch-2-binning", node_type="cardre.binning",
+                node_version="1", category="fit",
+                params={"method": "optbinning"}, params_hash="b",
+                parent_step_ids=["import"], branch_label="", position=1,
+                canonical_step_id="binning",
+            ),
+            StepSpec(
+                step_id="manual-binning", node_type="cardre.manual_binning",
+                node_version="1", category="refinement",
+                params={"overrides": []}, params_hash="c",
+                parent_step_ids=["branch-1-binning", "branch-2-binning"],
+                branch_label="", position=2,
+                canonical_step_id="manual-binning",
+            ),
+        ]
+        branch_map = [{"step_id": s.step_id} for s in steps]
+        with pytest.raises(AmbiguousBranchAncestorError):
+            find_nearest_binning_source(steps, "manual-binning", branch_map)
 
 
 class TestManualBinningSourceInfoConstruction:

@@ -9,7 +9,7 @@ from typing import Any
 
 import polars as pl
 
-from cardre.artifacts import write_json_artifact
+from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import ExecutionContext, NodeOutput, NodeType
 from cardre.evidence import (
     ArtifactEvidenceReader,
@@ -349,11 +349,33 @@ class AutoBinningFitNode(NodeType):
                     })
             var_entry["warnings"] = [w for w in (var_result.warnings or []) if isinstance(w, dict)]
 
+        # Reject active numeric variables with no usable boundary (single bin, no splits)
+        for var_entry in variables_out:
+            if var_entry.get("kind") == "numeric" and var_entry.get("status") == "OPTIMAL":
+                bins = var_entry.get("bins", [])
+                regular_bins = [b for b in bins if not b.get("is_missing_bin") and not b.get("is_special_bin")]
+                if len(regular_bins) == 1:
+                    b = regular_bins[0]
+                    if b.get("lower") is None and b.get("upper") is None:
+                        var_entry["active"] = False
+                        var_entry["status"] = "REJECTED_NO_BOUNDARY"
+                        var_entry["failure_reason"] = "Numeric variable has a single bin with no boundary; cannot be safely applied downstream."
+                        rejected_vars.append(var_entry)
+                        variables_out = [v for v in variables_out if v["variable"] != var_entry["variable"]]
+                        all_warnings.append({
+                            "code": "ALL_MISSING_OR_CONSTANT",
+                            "severity": "error",
+                            "variable": var_entry["variable"],
+                            "message": "Numeric variable has a single bin with no boundary; rejected from active definitions.",
+                            "requires_acknowledgement": True,
+                            "details": {},
+                        })
+
         bin_def = {
             "schema_version": SCHEMA_BIN_DEFINITION,
             "variables": variables_out,
             "rejected": rejected_vars if rejected_vars else [],
-            "warnings": all_warnings + (result.warnings if isinstance(result.warnings, list) else []),
+            "warnings": all_warnings + list(result.warnings),
             "source": {
                 "engine": "optbinning",
                 "engine_version": result.engine_version,
@@ -406,31 +428,38 @@ class AutoBinningFitNode(NodeType):
 
         if var_summary_rows:
             var_summary_df = pl.DataFrame(var_summary_rows)
-            var_summary_artifact = write_json_artifact(
+            var_summary_artifact = write_parquet_artifact(
                 store, artifact_type="report", role="report",
                 stem=f"auto-binning-summary-{context.step_spec.step_id}",
-                payload={"variables": var_summary_rows},
+                frame=var_summary_df,
                 metadata={
                     "engine": "optbinning",
                     "variable_count": len(var_summary_rows),
                 },
+                directory="artifacts",
             )
         else:
-            var_summary_artifact = write_json_artifact(
+            empty_df = pl.DataFrame({"placeholder": []})
+            var_summary_artifact = write_parquet_artifact(
                 store, artifact_type="report", role="report",
                 stem=f"auto-binning-summary-{context.step_spec.step_id}",
-                payload={"variables": []},
+                frame=empty_df,
                 metadata={"engine": "optbinning", "variable_count": 0},
+                directory="artifacts",
             )
 
-        # Engine manifest (secondary evidence)
+        # Engine manifest (secondary evidence — mirrors bin definition source)
         manifest = dict(result.manifest)
         manifest.update({
             "cardre_node_type": "cardre.binning",
             "method": "optbinning",
             "fit_sample_role": "train",
             "train_artifact_id": train_artifact.artifact_id,
+            "train_physical_hash": train_artifact.physical_hash,
+            "train_logical_hash": train_artifact.logical_hash,
             "target_column": target_column,
+            "good_values": sorted(good_values),
+            "bad_values": sorted(bad_values),
         })
         manifest_artifact = write_json_artifact(
             store, artifact_type="report", role="report",
