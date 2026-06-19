@@ -295,8 +295,8 @@ class BinningNode(NodeType):
                 )
 
         pbm = params.get("prebinning_method", "cart")
-        if pbm not in {"cart", "quantile"}:
-            errors.append(f"prebinning_method must be one of {{'cart', 'quantile'}}")
+        if pbm not in {"cart"}:
+            errors.append("prebinning_method must be 'cart'")
 
         solver = params.get("solver", "cp")
         if solver not in {"cp", "mip"}:
