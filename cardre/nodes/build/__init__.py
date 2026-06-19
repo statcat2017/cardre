@@ -4,12 +4,13 @@ from cardre.nodes.build.bins import FineClassingNode, ManualBinningNode, validat
 from cardre.nodes.build.features import CalculateWoeIvNode, VariableClusteringNode, VariableSelectionNode, WoeTransformTrainNode
 from cardre.nodes.build.models import LogisticRegressionNode, ScoreScalingNode, BuildSummaryReportNode, DummyFitNode
 from cardre.nodes.build.export import TechnicalManifestExportNode
+from cardre.nodes.build.freeze import FrozenScorecardBundleNode
 
 __all__ = [
     "AutoBinningFitNode",
     "BinningNode",
     "BuildSummaryReportNode", "CalculateWoeIvNode", "DummyFitNode",
-    "FineClassingNode", "LogisticRegressionNode", "ManualBinningNode",
+    "FineClassingNode", "FrozenScorecardBundleNode", "LogisticRegressionNode", "ManualBinningNode",
     "ScoreScalingNode", "TechnicalManifestExportNode",
     "VariableClusteringNode", "VariableSelectionNode",
     "WoeTransformTrainNode",

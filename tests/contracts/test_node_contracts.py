@@ -26,6 +26,7 @@ from cardre.nodes import (
     FeatureSelectionEmbeddedNode,
     FeatureSelectionFilterNode,
     FineClassingNode,
+    FrozenScorecardBundleNode,
     GradientBoostingClassifierNode,
     HyperparameterTuningNode,
     ImportGermanCreditNode,
@@ -359,6 +360,17 @@ class TestManualBinningContract(NodeContractTestBase):
 
     def get_good_params(self, tmp_path: Path) -> dict[str, Any]:
         return {}
+
+
+# ======================================================================
+# Frozen scorecard bundle
+# ======================================================================
+
+class TestFrozenScorecardBundleContract(NodeContractTestBase):
+    node_cls = FrozenScorecardBundleNode
+    bad_params = None
+    expected_output_roles = {"scorecard"}
+    expected_category = "fit"
 
 
 # ======================================================================

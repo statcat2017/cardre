@@ -468,7 +468,7 @@ class DecisionTreeApplyTests:
         apply_node = ApplyModelNode()
         apply_output = apply_node.run(apply_ctx)
 
-        assert len(apply_output.artifacts) == 1
+        assert len(apply_output.artifacts) == 2  # dataset + evidence
         scored_df = pl.read_parquet(store.artifact_path(apply_output.artifacts[0]))
         assert "predicted_bad_probability" in scored_df.columns
         assert "model_artifact_id" in scored_df.columns
@@ -599,8 +599,8 @@ class DecisionTreeValidationTests:
         val_output = val_node.run(val_ctx)
 
         report = json.loads(store.artifact_path(val_output.artifacts[0]).read_text())
-        assert "train" in report
-        train_metrics = report["train"]
+        assert "roles" in report
+        train_metrics = report["roles"]["train"]
         assert "auc" in train_metrics
         assert train_metrics["auc"] is not None
 

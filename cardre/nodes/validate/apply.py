@@ -8,7 +8,7 @@ import numpy as np
 import polars as pl
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.audit import ExecutionContext, JsonDict, NodeOutput, NodeType
+from cardre.audit import ArtifactRef, ExecutionContext, JsonDict, NodeOutput, NodeType
 from cardre.node_parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -16,14 +16,21 @@ from cardre.node_parameters import (
     ParameterDefinition,
 )
 from cardre.nodes._bin_mask import build_bin_condition
-from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
+from cardre.evidence import (
+    ArtifactEvidenceReader,
+    EvidenceKind,
+    SCHEMA_FROZEN_SCORECARD_BUNDLE,
+    SCHEMA_SCORE_APPLICATION_EVIDENCE,
+    SCHEMA_SELECTION_DEFINITION,
+    SCHEMA_WOE_APPLICATION_EVIDENCE,
+)
 
 
 class ApplyWoeMappingNode(NodeType):
     node_type = "cardre.apply_woe_mapping"
     version = "1"
     category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "definition", "report"]
+    input_roles: list[str] = ["train", "test", "oot", "definition", "report", "scorecard"]
     output_roles: list[str] = ["train", "test", "oot"]
 
     VALID_UNMATCHED_POLICIES = {"fill_zero", "warn", "fail"}
@@ -68,6 +75,15 @@ class ApplyWoeMappingNode(NodeType):
         params = context.validated_params
         woe_unmatched_policy = params.get("woe_unmatched_policy", "warn")
 
+        # Detect frozen scorecard bundle for governed-path defaults
+        bundle_art = next(
+            (a for a in context.input_artifacts
+             if a.metadata.get("schema_version") == SCHEMA_FROZEN_SCORECARD_BUNDLE),
+            None,
+        )
+        if bundle_art is not None and "woe_unmatched_policy" not in params:
+            woe_unmatched_policy = "fail"
+
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
         bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
         woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
@@ -83,7 +99,16 @@ class ApplyWoeMappingNode(NodeType):
         if selected_names is not None:
             var_defs = [v for v in var_defs if v.variable in selected_names]
 
-        fallback_report: dict[str, dict] = {}
+        # Find referenced artifact ids for evidence
+        # (source_artifact_id is populated by the evidence reader's typed parsers)
+        sel_art = next(
+            (a for a in context.input_artifacts
+             if a.metadata.get("schema_version") == SCHEMA_SELECTION_DEFINITION),
+            None,
+        )
+
+        # Per-role evidence tracking
+        roles_evidence: dict[str, JsonDict] = {}
         outputs: list[ArtifactRef] = []
         unmatched_total = 0
 
@@ -91,6 +116,8 @@ class ApplyWoeMappingNode(NodeType):
             df = pl.read_parquet(store.artifact_path(data_art))
             role = data_art.role
             fallback_counts: dict[str, int] = {}
+            woe_columns_created: list[str] = []
+            variables_applied: list[str] = []
 
             for vd in var_defs:
                 var = vd.variable
@@ -115,6 +142,8 @@ class ApplyWoeMappingNode(NodeType):
                 if woe_expr is not None:
                     woe_expr = woe_expr.otherwise(pl.lit(None, dtype=pl.Float64))
                     df = df.with_columns(woe_expr.alias(woe_col))
+                    woe_columns_created.append(woe_col)
+                    variables_applied.append(var)
                     n_unmatched = df.filter(pl.col(woe_col).is_null()).height
                     if n_unmatched > 0:
                         fallback_counts[var] = n_unmatched
@@ -126,23 +155,47 @@ class ApplyWoeMappingNode(NodeType):
                             )
                         df = df.with_columns(pl.col(woe_col).fill_null(0.0))
 
-            fallback_report[role] = fallback_counts
             art = write_parquet_artifact(
                 store, artifact_type="dataset", role=role,
                 stem=f"woe-apply-{role}-{context.step_spec.step_id}",
                 frame=df,
-                metadata={"source_id": data_art.artifact_id},
+                metadata={"source_artifact_id": data_art.artifact_id},
             )
             outputs.append(art)
 
-        fallback_art = write_json_artifact(
+            roles_evidence[role] = {
+                "source_artifact_id": data_art.artifact_id,
+                "output_artifact_id": art.artifact_id,
+                "source_physical_hash": data_art.physical_hash,
+                "source_logical_hash": data_art.logical_hash,
+                "row_count": df.height,
+                "variables_applied": variables_applied,
+                "woe_columns_created": woe_columns_created,
+                "unmatched_by_variable": fallback_counts,
+                "unmatched_row_count": sum(fallback_counts.values()),
+            }
+
+        evidence: JsonDict = {
+            "schema_version": SCHEMA_WOE_APPLICATION_EVIDENCE,
+            "policy": {"woe_unmatched_policy": woe_unmatched_policy},
+            "roles": roles_evidence,
+            "warnings": [],
+        }
+        if bundle_art is not None:
+            evidence["frozen_bundle_artifact_id"] = bundle_art.artifact_id
+        evidence["bin_definition_artifact_id"] = bin_def.source_artifact_id
+        evidence["woe_table_artifact_id"] = woe_table.source_artifact_id
+        if sel_art is not None:
+            evidence["selection_artifact_id"] = sel_art.artifact_id
+
+        evidence_art = write_json_artifact(
             store, artifact_type="report", role="report",
-            stem=f"woe-apply-fallback-{context.step_spec.step_id}",
-            payload=fallback_report,
-            metadata={},
+            stem=f"woe-apply-evidence-{context.step_spec.step_id}",
+            payload=evidence,
+            metadata={"schema_version": SCHEMA_WOE_APPLICATION_EVIDENCE},
         )
 
-        all_artifacts = outputs + [fallback_art]
+        all_artifacts = outputs + [evidence_art]
         return NodeOutput(
             artifacts=all_artifacts,
             metrics={
@@ -185,6 +238,25 @@ class ApplyModelNode(NodeType):
         if model_art is None:
             raise ValueError("apply_model requires a model artifact")
 
+        # Detect frozen bundle
+        bundle_art = next(
+            (a for a in context.input_artifacts
+             if a.metadata.get("schema_version") == SCHEMA_FROZEN_SCORECARD_BUNDLE),
+            None,
+        )
+        if bundle_art is not None:
+            bundle_meta = bundle_art.metadata
+            if bundle_meta.get("model_artifact_id") != model_art.artifact_id:
+                raise ValueError(
+                    f"Frozen bundle model_artifact_id ({bundle_meta.get('model_artifact_id')}) "
+                    f"does not match input model artifact ({model_art.artifact_id})"
+                )
+            if scorecard_art is not None and bundle_meta.get("scorecard_artifact_id") != scorecard_art.artifact_id:
+                raise ValueError(
+                    f"Frozen bundle scorecard_artifact_id ({bundle_meta.get('scorecard_artifact_id')}) "
+                    f"does not match input scorecard artifact ({scorecard_art.artifact_id})"
+                )
+
         model = json.loads(store.artifact_path(model_art).read_text())
         if "model_family" not in model:
             typed_model = reader.find_optional(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
@@ -193,14 +265,14 @@ class ApplyModelNode(NodeType):
 
         model_family = model.get("model_family", "logistic_regression")
         if model_family == "logistic_regression":
-            return self._apply_logistic(context, model, model_art, scorecard_art)
+            return self._apply_logistic(context, model, model_art, scorecard_art, bundle_art)
         elif model_family in (
             "decision_tree", "random_forest", "gbdt",
             "xgboost", "lightgbm", "catboost",
         ):
-            return self._apply_sklearn_estimator(context, model, model_art, scorecard_art)
+            return self._apply_sklearn_estimator(context, model, model_art, scorecard_art, bundle_art)
         elif model_family in ("voting_ensemble", "weighted_ensemble"):
-            return self._apply_voting_weighted_ensemble(context, model, model_art)
+            return self._apply_voting_weighted_ensemble(context, model, model_art, bundle_art)
         else:
             raise ValueError(
                 f"apply_model: unsupported model_family {model_family!r}. "
@@ -209,7 +281,7 @@ class ApplyModelNode(NodeType):
             )
 
     def _apply_logistic(
-        self, context: ExecutionContext, model: dict, model_art, scorecard_art,
+        self, context: ExecutionContext, model: dict, model_art, scorecard_art, bundle_art=None,
     ) -> NodeOutput:
         store = context.store
 
@@ -217,22 +289,21 @@ class ApplyModelNode(NodeType):
         intercept = float(model.get("intercept", 0))
         coefficients = model.get("coefficients", {})
 
-        prob_col_idx = model.get("probability_column_index", 1)
-
         if scorecard_art is not None:
             scorecard = json.loads(store.artifact_path(scorecard_art).read_text())
             offset = float(scorecard.get("offset", 0))
-            factor = float(scorecard.get("factor", 1))
+            factor_val = float(scorecard.get("factor", 1))
             direction = -1.0 if scorecard.get("higher_score_is_lower_risk", True) else 1.0
             has_scorecard = True
         else:
             offset = 0.0
-            factor = 1.0
+            factor_val = 1.0
             direction = -1.0
             has_scorecard = False
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        outputs = []
+        outputs: list[ArtifactRef] = []
+        roles_evidence: dict[str, JsonDict] = {}
 
         for data_art in data_arts:
             df = pl.read_parquet(store.artifact_path(data_art))
@@ -248,31 +319,79 @@ class ApplyModelNode(NodeType):
                 coef = float(coefficients.get(feat, 0))
                 log_odds_expr = log_odds_expr + pl.col(feat) * pl.lit(coef)
 
-            columns_to_add = [
-                (1.0 / (1.0 + (-log_odds_expr).exp())).alias("predicted_bad_probability"),
-                log_odds_expr.alias("raw_model_output"),
-                pl.lit(model_art.artifact_id).alias("model_artifact_id"),
-                pl.lit("logistic_regression").alias("model_family"),
-            ]
+            prob_expr = (1.0 / (1.0 + (-log_odds_expr).exp())).alias("predicted_bad_probability")
+            raw_expr = log_odds_expr.alias("raw_model_output")
+
+            base_metadata: JsonDict = {"model_artifact_id": model_art.artifact_id, "model_family": "logistic_regression"}
+            if scorecard_art is not None:
+                base_metadata["scorecard_artifact_id"] = scorecard_art.artifact_id
+            if bundle_art is not None:
+                base_metadata["frozen_bundle_artifact_id"] = bundle_art.artifact_id
+
+            output_cols = ["predicted_bad_probability", "raw_model_output", "model_artifact_id", "model_family"]
+            add_exprs = [prob_expr, raw_expr,
+                         pl.lit(model_art.artifact_id).alias("model_artifact_id"),
+                         pl.lit("logistic_regression").alias("model_family")]
 
             if has_scorecard:
-                score_expr = pl.lit(offset) + pl.lit(direction * factor) * log_odds_expr
-                columns_to_add.append(score_expr.alias("score"))
-                columns_to_add.append(score_expr.alias("cardre_scaled_score"))
+                score_expr = pl.lit(offset) + pl.lit(direction * factor_val) * log_odds_expr
+                add_exprs.append(score_expr.alias("score"))
+                add_exprs.append(score_expr.alias("cardre_scaled_score"))
+                output_cols.extend(["score", "cardre_scaled_score"])
 
-            df = df.with_columns(columns_to_add)
+            df = df.with_columns(add_exprs)
             art = write_parquet_artifact(
                 store, artifact_type="dataset", role=role,
                 stem=f"scored-{role}-{context.step_spec.step_id}",
                 frame=df,
-                metadata={"model_artifact_id": model_art.artifact_id},
+                metadata=base_metadata,
             )
             outputs.append(art)
 
-        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)})
+            pd_series = df["predicted_bad_probability"]
+            role_entry: JsonDict = {
+                "source_artifact_id": data_art.artifact_id,
+                "output_artifact_id": art.artifact_id,
+                "row_count": df.height,
+                "required_features": features,
+                "missing_features": missing,
+                "output_columns": output_cols,
+                "pd_min": round(float(pd_series.min()), 6),
+                "pd_max": round(float(pd_series.max()), 6),
+                "pd_mean": round(float(pd_series.mean()), 6),
+            }
+            if has_scorecard and "score" in df.columns:
+                score_series = df["score"]
+                role_entry["score_min"] = round(float(score_series.min()), 2)
+                role_entry["score_max"] = round(float(score_series.max()), 2)
+                role_entry["score_mean"] = round(float(score_series.mean()), 2)
+            roles_evidence[role] = role_entry
+
+        evidence: JsonDict = {
+            "schema_version": SCHEMA_SCORE_APPLICATION_EVIDENCE,
+            "model_artifact_id": model_art.artifact_id,
+            "roles": roles_evidence,
+            "warnings": [],
+        }
+        if bundle_art is not None:
+            evidence["frozen_bundle_artifact_id"] = bundle_art.artifact_id
+        if scorecard_art is not None:
+            evidence["scorecard_artifact_id"] = scorecard_art.artifact_id
+
+        evidence_art = write_json_artifact(
+            store, artifact_type="report", role="report",
+            stem=f"score-apply-evidence-{context.step_spec.step_id}",
+            payload=evidence,
+            metadata={"schema_version": SCHEMA_SCORE_APPLICATION_EVIDENCE},
+        )
+
+        return NodeOutput(
+            artifacts=outputs + [evidence_art],
+            metrics={"output_count": len(outputs)},
+        )
 
     def _apply_sklearn_estimator(
-        self, context: ExecutionContext, model: dict, model_art, scorecard_art,
+        self, context: ExecutionContext, model: dict, model_art, scorecard_art, bundle_art=None,
     ) -> NodeOutput:
         store = context.store
 
@@ -291,7 +410,8 @@ class ApplyModelNode(NodeType):
             scorecard = json.loads(store.artifact_path(scorecard_art).read_text())
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        outputs = []
+        outputs: list[ArtifactRef] = []
+        roles_evidence: dict[str, JsonDict] = {}
 
         if not estimator_artifact_id:
             raise ValueError(
@@ -314,6 +434,9 @@ class ApplyModelNode(NodeType):
         import joblib
         estimator = joblib.load(io.BytesIO(estimator_bytes))
 
+        model_family = model.get("model_family", "unknown")
+        has_scorecard = scorecard is not None
+
         for data_art in data_arts:
             df = pl.read_parquet(store.artifact_path(data_art))
             role = data_art.role
@@ -335,35 +458,84 @@ class ApplyModelNode(NodeType):
                 raw_output = estimator.predict(X)
                 pred_bad = raw_output.astype(np.float64)
 
-            columns_to_add = [
+            base_metadata: JsonDict = {"model_artifact_id": model_art.artifact_id, "model_family": model_family}
+            if scorecard_art is not None:
+                base_metadata["scorecard_artifact_id"] = scorecard_art.artifact_id
+            if bundle_art is not None:
+                base_metadata["frozen_bundle_artifact_id"] = bundle_art.artifact_id
+
+            output_cols = ["predicted_bad_probability", "model_artifact_id", "model_family"]
+            add_exprs = [
                 pl.Series("predicted_bad_probability", pred_bad, dtype=pl.Float64),
                 pl.lit(model_art.artifact_id).alias("model_artifact_id"),
-                pl.lit(model.get("model_family", "unknown")).alias("model_family"),
+                pl.lit(model_family).alias("model_family"),
             ]
 
-            if scorecard is not None:
+            if has_scorecard:
                 offset = float(scorecard.get("offset", 0))
                 factor = float(scorecard.get("factor", 1))
                 higher_is_lower = scorecard.get("higher_score_is_lower_risk", True)
                 direction = -1.0 if higher_is_lower else 1.0
                 log_odds = np.log(np.clip(pred_bad / np.maximum(1 - pred_bad, 1e-15), 1e-15, None))
                 score_vals = offset + direction * factor * log_odds
-                columns_to_add.append(pl.Series("score", score_vals, dtype=pl.Float64))
-                columns_to_add.append(pl.Series("cardre_scaled_score", score_vals, dtype=pl.Float64))
+                score_series = pl.Series("score", score_vals, dtype=pl.Float64)
+                add_exprs.append(score_series)
+                add_exprs.append(score_series.alias("cardre_scaled_score"))
+                output_cols.extend(["score", "cardre_scaled_score"])
 
-            df = df.with_columns(columns_to_add)
+            df = df.with_columns(add_exprs)
             art = write_parquet_artifact(
                 store, artifact_type="dataset", role=role,
                 stem=f"scored-{role}-{context.step_spec.step_id}",
                 frame=df,
-                metadata={"model_artifact_id": model_art.artifact_id},
+                metadata=base_metadata,
             )
             outputs.append(art)
 
-        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)})
+            pd_series = df["predicted_bad_probability"]
+            role_entry: JsonDict = {
+                "source_artifact_id": data_art.artifact_id,
+                "output_artifact_id": art.artifact_id,
+                "row_count": df.height,
+                "required_features": features,
+                "missing_features": missing,
+                "output_columns": output_cols,
+                "pd_min": round(float(pd_series.min()), 6),
+                "pd_max": round(float(pd_series.max()), 6),
+                "pd_mean": round(float(pd_series.mean()), 6),
+            }
+            if has_scorecard and "score" in df.columns:
+                score_series = df["score"]
+                role_entry["score_min"] = round(float(score_series.min()), 2)
+                role_entry["score_max"] = round(float(score_series.max()), 2)
+                role_entry["score_mean"] = round(float(score_series.mean()), 2)
+            roles_evidence[role] = role_entry
+
+        evidence: JsonDict = {
+            "schema_version": SCHEMA_SCORE_APPLICATION_EVIDENCE,
+            "model_artifact_id": model_art.artifact_id,
+            "roles": roles_evidence,
+            "warnings": [],
+        }
+        if bundle_art is not None:
+            evidence["frozen_bundle_artifact_id"] = bundle_art.artifact_id
+        if scorecard_art is not None:
+            evidence["scorecard_artifact_id"] = scorecard_art.artifact_id
+
+        evidence_art = write_json_artifact(
+            store, artifact_type="report", role="report",
+            stem=f"score-apply-evidence-{context.step_spec.step_id}",
+            payload=evidence,
+            metadata={"schema_version": SCHEMA_SCORE_APPLICATION_EVIDENCE},
+        )
+
+        return NodeOutput(
+            artifacts=outputs + [evidence_art],
+            metrics={"output_count": len(outputs)},
+        )
 
     def _apply_voting_weighted_ensemble(
-        self, context: ExecutionContext, model: dict, model_art,
+        self, context: ExecutionContext, model: dict, model_art, bundle_art=None,
     ) -> NodeOutput:
         store = context.store
         model_payload = model.get("model_payload", {})
@@ -393,7 +565,10 @@ class ApplyModelNode(NodeType):
             raise ValueError("No base model artifacts could be loaded for ensemble apply")
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        outputs = []
+        outputs: list[ArtifactRef] = []
+        roles_evidence: dict[str, JsonDict] = {}
+
+        model_family = model.get("model_family", "unknown")
 
         for data_art in data_arts:
             df = pl.read_parquet(store.artifact_path(data_art))
@@ -457,21 +632,59 @@ class ApplyModelNode(NodeType):
                 predictions = (prob_matrix >= threshold).astype(int)
                 pred_bad = (np.sum(predictions, axis=1) > (len(base_artifacts) / 2)).astype(float)
 
-            columns_to_add = [
+            base_metadata: JsonDict = {"model_artifact_id": model_art.artifact_id, "model_family": model_family}
+            if bundle_art is not None:
+                base_metadata["frozen_bundle_artifact_id"] = bundle_art.artifact_id
+
+            output_cols = ["predicted_bad_probability", "model_artifact_id", "model_family"]
+            add_exprs = [
                 pl.Series("predicted_bad_probability", pred_bad, dtype=pl.Float64),
                 pl.lit(model_art.artifact_id).alias("model_artifact_id"),
-                pl.lit(model.get("model_family", "unknown")).alias("model_family"),
+                pl.lit(model_family).alias("model_family"),
             ]
-            df = df.with_columns(columns_to_add)
+
+            df = df.with_columns(add_exprs)
             art = write_parquet_artifact(
                 store, artifact_type="dataset", role=role,
                 stem=f"scored-{role}-{context.step_spec.step_id}",
                 frame=df,
-                metadata={"model_artifact_id": model_art.artifact_id},
+                metadata=base_metadata,
             )
             outputs.append(art)
 
-        return NodeOutput(artifacts=outputs, metrics={"output_count": len(outputs)})
+            pd_series = df["predicted_bad_probability"]
+            roles_evidence[role] = {
+                "source_artifact_id": data_art.artifact_id,
+                "output_artifact_id": art.artifact_id,
+                "row_count": df.height,
+                "required_features": features,
+                "missing_features": [],
+                "output_columns": output_cols,
+                "pd_min": round(float(pd_series.min()), 6),
+                "pd_max": round(float(pd_series.max()), 6),
+                "pd_mean": round(float(pd_series.mean()), 6),
+            }
+
+        evidence: JsonDict = {
+            "schema_version": SCHEMA_SCORE_APPLICATION_EVIDENCE,
+            "model_artifact_id": model_art.artifact_id,
+            "roles": roles_evidence,
+            "warnings": [],
+        }
+        if bundle_art is not None:
+            evidence["frozen_bundle_artifact_id"] = bundle_art.artifact_id
+
+        evidence_art = write_json_artifact(
+            store, artifact_type="report", role="report",
+            stem=f"score-apply-evidence-{context.step_spec.step_id}",
+            payload=evidence,
+            metadata={"schema_version": SCHEMA_SCORE_APPLICATION_EVIDENCE},
+        )
+
+        return NodeOutput(
+            artifacts=outputs + [evidence_art],
+            metrics={"output_count": len(outputs)},
+        )
 
 
 class DummyApplyNode(NodeType):

@@ -44,6 +44,10 @@ SCHEMA_SCORE_SCALING = "cardre.score_scaling.v1"
 SCHEMA_VALIDATION_METRICS = "cardre.validation_metrics.v1"
 SCHEMA_CUTOFF_ANALYSIS = "cardre.cutoff_analysis.v1"
 SCHEMA_MANUAL_BINNING_OVERRIDES = "cardre.manual_binning_overrides.v1"
+SCHEMA_FROZEN_SCORECARD_BUNDLE = "cardre.frozen_scorecard_bundle.v1"
+SCHEMA_WOE_APPLICATION_EVIDENCE = "cardre.woe_application_evidence.v1"
+SCHEMA_SCORE_APPLICATION_EVIDENCE = "cardre.score_application_evidence.v1"
+SCHEMA_VALIDATION_EVIDENCE = "cardre.validation_evidence.v1"
 
 # ---------------------------------------------------------------------------
 # Errors
@@ -96,6 +100,10 @@ class EvidenceKind(Enum):
     SCORED_DATASET = "scored_dataset"
     MANUAL_BINNING_OVERRIDES = "manual_binning_overrides"
     IV_TABLE = "iv_table"
+    FROZEN_SCORECARD_BUNDLE = "frozen_scorecard_bundle"
+    WOE_APPLICATION_EVIDENCE = "woe_application_evidence"
+    SCORE_APPLICATION_EVIDENCE = "score_application_evidence"
+    VALIDATION_EVIDENCE = "validation_evidence"
 
 
 # ---------------------------------------------------------------------------
@@ -417,19 +425,33 @@ class ValidationMetrics:
     @classmethod
     def from_json(cls, data: JsonDict) -> ValidationMetrics:
         metrics_by_role: dict[str, RoleMetrics] = {}
-        raw_metrics = data.get("metrics", {})
+        # cardre.validation_evidence.v1 uses "roles" key; 
+        # cardre.validation_metrics.v1 used top-level per-role keys (legacy).
+        raw_metrics = data.get("roles", data.get("metrics", {}))
+        if not raw_metrics:
+            # Legacy: check top-level role keys
+            for key in ("train", "test", "oot"):
+                if key in data and isinstance(data[key], dict):
+                    raw_metrics[key] = data[key]
+
         for role, m in raw_metrics.items():
             if isinstance(m, dict):
+                bad_count = m.get("bad_count")
+                n_bad = int(bad_count) if bad_count is not None else 0
+                n_good = int(m.get("good_count", 0))
+                bad_rate = m.get("bad_rate")
+                if bad_rate is None and (n_bad + n_good) > 0:
+                    bad_rate = n_bad / (n_bad + n_good)
                 metrics_by_role[role] = RoleMetrics(
                     row_count=m.get("row_count", 0),
                     auc=m.get("auc"),
                     gini=m.get("gini"),
                     ks=m.get("ks"),
-                    bad_rate=m.get("bad_rate"),
+                    bad_rate=bad_rate,
                 )
 
         psi: dict[str, float] = {}
-        raw_psi = data.get("psi", {})
+        raw_psi = data.get("stability", data.get("psi", {}))
         if isinstance(raw_psi, dict):
             for k, v in raw_psi.items():
                 if isinstance(v, (int, float)):
@@ -558,6 +580,30 @@ _EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_roles={"definition", "report"},
         expected_artifact_types={"definition", "report"},
         schema_version=SCHEMA_MANUAL_BINNING_OVERRIDES,
+    ),
+    EvidenceKind.FROZEN_SCORECARD_BUNDLE: _Profile(
+        expected_roles={"scorecard"},
+        expected_artifact_types={"scorecard"},
+        schema_version=SCHEMA_FROZEN_SCORECARD_BUNDLE,
+        required_keys={"components", "feature_contract", "score_scaling"},
+    ),
+    EvidenceKind.WOE_APPLICATION_EVIDENCE: _Profile(
+        expected_roles={"report"},
+        expected_artifact_types={"report"},
+        schema_version=SCHEMA_WOE_APPLICATION_EVIDENCE,
+        required_keys={"roles", "policy"},
+    ),
+    EvidenceKind.SCORE_APPLICATION_EVIDENCE: _Profile(
+        expected_roles={"report"},
+        expected_artifact_types={"report"},
+        schema_version=SCHEMA_SCORE_APPLICATION_EVIDENCE,
+        required_keys={"roles", "model_artifact_id"},
+    ),
+    EvidenceKind.VALIDATION_EVIDENCE: _Profile(
+        expected_roles={"report"},
+        expected_artifact_types={"report"},
+        schema_version=SCHEMA_VALIDATION_EVIDENCE,
+        required_keys={"roles", "stability", "gates"},
     ),
 }
 
@@ -800,6 +846,10 @@ class ArtifactEvidenceReader:
             EvidenceKind.VALIDATION_METRICS: ValidationMetrics.from_json,
             EvidenceKind.CUTOFF_ANALYSIS: CutoffAnalysis.from_json,
             EvidenceKind.MANUAL_BINNING_OVERRIDES: lambda d: d,
+            EvidenceKind.FROZEN_SCORECARD_BUNDLE: lambda d: d,
+            EvidenceKind.WOE_APPLICATION_EVIDENCE: lambda d: d,
+            EvidenceKind.SCORE_APPLICATION_EVIDENCE: lambda d: d,
+            EvidenceKind.VALIDATION_EVIDENCE: ValidationMetrics.from_json,
         }
 
         parser = parsers.get(kind)
@@ -846,12 +896,16 @@ __all__ = [
     "ScoreScaling",
     "SCHEMA_BIN_DEFINITION",
     "SCHEMA_CUTOFF_ANALYSIS",
+    "SCHEMA_FROZEN_SCORECARD_BUNDLE",
     "SCHEMA_MANUAL_BINNING_OVERRIDES",
     "SCHEMA_MODELLING_METADATA",
     "SCHEMA_MODEL_ARTIFACT",
+    "SCHEMA_SCORE_APPLICATION_EVIDENCE",
     "SCHEMA_SCORE_SCALING",
     "SCHEMA_SELECTION_DEFINITION",
+    "SCHEMA_VALIDATION_EVIDENCE",
     "SCHEMA_VALIDATION_METRICS",
+    "SCHEMA_WOE_APPLICATION_EVIDENCE",
     "SCHEMA_WOE_IV_EVIDENCE",
     "SCHEMA_WOE_TABLE",
     "SelectedVariable",

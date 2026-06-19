@@ -455,7 +455,9 @@ class ReportCollector:
             ))
             return
 
-        val = self.reader.read_step_output_optional(rs, EvidenceKind.VALIDATION_METRICS)
+        val = self.reader.read_step_output_optional(rs, EvidenceKind.VALIDATION_EVIDENCE)
+        if val is None:
+            val = self.reader.read_step_output_optional(rs, EvidenceKind.VALIDATION_METRICS)
         if val is None:
             return
 

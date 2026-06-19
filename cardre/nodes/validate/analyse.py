@@ -25,7 +25,9 @@ from cardre.evidence import (
     ArtifactEvidenceReader,
     EvidenceKind,
     SCHEMA_CUTOFF_ANALYSIS,
-    SCHEMA_VALIDATION_METRICS,
+    SCHEMA_FROZEN_SCORECARD_BUNDLE,
+    SCHEMA_SCORE_APPLICATION_EVIDENCE,
+    SCHEMA_VALIDATION_EVIDENCE,
 )
 
 
@@ -33,7 +35,7 @@ class ValidationMetricsNode(NodeType):
     node_type = "cardre.validation_metrics"
     version = "2"
     category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "definition"]
+    input_roles: list[str] = ["train", "test", "oot", "definition", "report"]
     output_roles: list[str] = ["report"]
 
     @classmethod
@@ -63,6 +65,48 @@ class ValidationMetricsNode(NodeType):
                             kind="boolean",
                             default=False,
                             help_text="Whether to include calibration curve data (prob_true, prob_pred) alongside bucketed calibration.",
+                        ),
+                        ParameterDefinition(
+                            name="require_test",
+                            label="Require Test",
+                            kind="boolean",
+                            default=True,
+                            help_text="Whether a test dataset is required.",
+                        ),
+                        ParameterDefinition(
+                            name="require_oot",
+                            label="Require OOT",
+                            kind="boolean",
+                            default=False,
+                            help_text="Whether an OOT dataset is required.",
+                        ),
+                        ParameterDefinition(
+                            name="minimum_auc",
+                            label="Minimum AUC",
+                            kind="float",
+                            default=None,
+                            help_text="Minimum acceptable AUC (null = no threshold).",
+                        ),
+                        ParameterDefinition(
+                            name="maximum_psi",
+                            label="Maximum PSI",
+                            kind="float",
+                            default=None,
+                            help_text="Maximum acceptable PSI (null = no threshold).",
+                        ),
+                        ParameterDefinition(
+                            name="fail_on_missing_score",
+                            label="Fail on Missing Score",
+                            kind="boolean",
+                            default=True,
+                            help_text="Whether missing score column is a gate failure.",
+                        ),
+                        ParameterDefinition(
+                            name="fail_on_missing_target",
+                            label="Fail on Missing Target",
+                            kind="boolean",
+                            default=True,
+                            help_text="Whether missing target column is a gate failure.",
                         ),
                     ],
                 ),
@@ -119,12 +163,57 @@ class ValidationMetricsNode(NodeType):
         bad = set(str(v) for v in (meta.bad_values if meta is not None else []))
         bad_list = list(bad)
 
-        cutoffs = list(context.validated_params.get("cutoffs", [0.5]))
-        include_calibration_display = context.validated_params.get("include_calibration_display", False)
+        params = context.validated_params
+        cutoffs = list(params.get("cutoffs", [0.5]))
+        include_calibration_display = params.get("include_calibration_display", False)
+        require_test = params.get("require_test", True)
+        require_oot = params.get("require_oot", False)
+        minimum_auc = params.get("minimum_auc")
+        maximum_psi = params.get("maximum_psi")
+        fail_on_missing_score = params.get("fail_on_missing_score", True)
+        fail_on_missing_target = params.get("fail_on_missing_target", True)
+
+        # Detect linked artifacts
+        bundle_art = next(
+            (a for a in context.input_artifacts
+             if a.metadata.get("schema_version") == SCHEMA_FROZEN_SCORECARD_BUNDLE),
+            None,
+        )
+        score_evidence_art = next(
+            (a for a in context.input_artifacts
+             if a.metadata.get("schema_version") == SCHEMA_SCORE_APPLICATION_EVIDENCE),
+            None,
+        )
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        metrics_report: dict = {}
+        roles_metrics: dict[str, JsonDict] = {}
         psi_data: dict[str, pl.Series] = {}
+        gates: list[JsonDict] = []
+
+        # Gate: sample presence
+        role_names = {a.role for a in data_arts}
+        gates.append({
+            "code": "TRAIN_SAMPLE_PRESENT",
+            "status": "pass",
+        })
+        if require_test:
+            gates.append({
+                "code": "TEST_SAMPLE_PRESENT",
+                "status": "pass" if "test" in role_names else "fail",
+                "message": "Test sample not supplied" if "test" not in role_names else "",
+            })
+        if require_oot:
+            gates.append({
+                "code": "OOT_SAMPLE_PRESENT",
+                "status": "pass" if "oot" in role_names else "fail",
+                "message": "OOT not supplied" if "oot" not in role_names else "",
+            })
+        elif "oot" not in role_names:
+            gates.append({
+                "code": "OOT_SAMPLE_PRESENT",
+                "status": "warning",
+                "message": "OOT not supplied",
+            })
 
         for data_art in data_arts:
             role = data_art.role
@@ -132,7 +221,16 @@ class ValidationMetricsNode(NodeType):
             n = df.height
 
             if "predicted_bad_probability" not in df.columns:
-                metrics_report[role] = {"row_count": n, "error": "Missing predicted_bad_probability"}
+                roles_metrics[role] = {
+                    "row_count": n,
+                    "error": "Missing predicted_bad_probability",
+                }
+                if fail_on_missing_score:
+                    gates.append({
+                        "code": "NO_MISSING_SCORE",
+                        "status": "fail",
+                        "message": f"Role {role!r} missing predicted_bad_probability",
+                    })
                 continue
 
             y_bin, warnings = self._derive_y_bin(df, target_col, good, bad)
@@ -142,10 +240,16 @@ class ValidationMetricsNode(NodeType):
             scores = scores_series.to_numpy()
 
             if y_bin is None:
-                metrics_report[role] = {
+                roles_metrics[role] = {
                     "row_count": n,
                     "warnings": warnings,
                 }
+                if fail_on_missing_target:
+                    gates.append({
+                        "code": "TARGET_AVAILABLE",
+                        "status": "fail",
+                        "message": f"Role {role!r}: target column not available",
+                    })
                 continue
 
             n_bad = sum(y_bin)
@@ -214,8 +318,10 @@ class ValidationMetricsNode(NodeType):
                     "g_mean": g_mean,
                 }
 
-            metrics_report[role] = {
+            roles_metrics[role] = {
                 "row_count": n,
+                "bad_count": int(n_bad),
+                "good_count": int(n_good),
                 "auc": auc_val,
                 "gini": gini_val,
                 "ks": ks_val,
@@ -228,17 +334,63 @@ class ValidationMetricsNode(NodeType):
             }
             psi_data[role] = scores_series
 
+        # Stability (PSI)
+        stability: JsonDict = {
+            "psi_train_vs_test": None,
+            "psi_train_vs_oot": None,
+        }
         if "train" in psi_data and "test" in psi_data:
-            metrics_report.setdefault("psi", {})["train_vs_test"] = self._psi(psi_data["train"], psi_data["test"])
+            stability["psi_train_vs_test"] = self._psi(psi_data["train"], psi_data["test"])
         if "train" in psi_data and "oot" in psi_data:
-            metrics_report.setdefault("psi", {})["train_vs_oot"] = self._psi(psi_data["train"], psi_data["oot"])
+            stability["psi_train_vs_oot"] = self._psi(psi_data["train"], psi_data["oot"])
 
-        metrics_report["schema_version"] = SCHEMA_VALIDATION_METRICS
+        # Gate: AUC threshold
+        if minimum_auc is not None:
+            for role_name, rm in roles_metrics.items():
+                role_auc = rm.get("auc")
+                if role_auc is not None and role_auc < minimum_auc:
+                    gates.append({
+                        "code": f"MINIMUM_AUC_{role_name.upper()}",
+                        "status": "fail",
+                        "message": f"AUC ({role_auc}) below minimum ({minimum_auc}) for role {role_name!r}",
+                    })
+
+        # Gate: PSI threshold
+        if maximum_psi is not None:
+            for key in ("psi_train_vs_test", "psi_train_vs_oot"):
+                val = stability.get(key)
+                if val is not None and val > maximum_psi:
+                    gates.append({
+                        "code": f"MAXIMUM_PSI_{key.upper()}",
+                        "status": "fail",
+                        "message": f"PSI ({val}) exceeds maximum ({maximum_psi}) for {key}",
+                    })
+
+        # Build payload
+        target_payload: JsonDict = {
+            "target_column": target_col,
+            "good_values": [str(v) for v in good],
+            "bad_values": [str(v) for v in bad],
+        }
+
+        payload: JsonDict = {
+            "schema_version": SCHEMA_VALIDATION_EVIDENCE,
+            "target": target_payload,
+            "roles": roles_metrics,
+            "stability": stability,
+            "gates": gates,
+            "warnings": [],
+        }
+        if bundle_art is not None:
+            payload["frozen_bundle_artifact_id"] = bundle_art.artifact_id
+        if score_evidence_art is not None:
+            payload["score_application_evidence_artifact_id"] = score_evidence_art.artifact_id
+
         art = write_json_artifact(
             store, artifact_type="report", role="report",
             stem=f"validation-metrics-{context.step_spec.step_id}",
-            payload=metrics_report,
-            metadata={"schema_version": SCHEMA_VALIDATION_METRICS},
+            payload=payload,
+            metadata={"schema_version": SCHEMA_VALIDATION_EVIDENCE},
         )
         return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
 
