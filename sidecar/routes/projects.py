@@ -19,6 +19,8 @@ from sidecar.models import (
     CreateProjectRequest,
     PlanListItem,
     ProjectDetailResponse,
+    ProjectListResponse,
+    ProjectListItem,
     ProjectPlansResponse,
     ProjectResponse,
     ProjectRunsResponse,
@@ -63,14 +65,33 @@ def create_project(body: CreateProjectRequest):
     )
 
 
+@router.get("", response_model=ProjectListResponse)
+def list_projects():
+    registry = load_registry()
+    items = []
+    missing = 0
+    for pid, entry in registry.items():
+        exists = project_path_exists(pid)
+        if not exists:
+            missing += 1
+        items.append(ProjectListItem(
+            project_id=pid,
+            name=entry.get("name", ""),
+            path=entry.get("path", ""),
+            path_exists=exists,
+        ))
+    return ProjectListResponse(
+        projects=items,
+        total_count=len(items),
+        missing_path_count=missing,
+    )
+
+
 @router.get("/{project_id}", response_model=ProjectDetailResponse)
 def get_project(project_id: str):
     entry = get_entry(project_id)
     if entry is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
-
-    if not project_path_exists(project_id):
-        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project directory no longer exists"})
 
     store = get_store_for_project(project_id)
     proj = store.get_project(project_id)
@@ -95,9 +116,6 @@ def get_project_plans(project_id: str):
     entry = get_entry(project_id)
     if entry is None:
         raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": f"No project with ID {project_id}"})
-
-    if not project_path_exists(project_id):
-        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "Project directory no longer exists"})
 
     store = get_store_for_project(project_id)
     proj = store.get_project(project_id)

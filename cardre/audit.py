@@ -224,6 +224,7 @@ class RunStepRecord:
     execution_fingerprint: JsonDict
     warnings: list[JsonDict]
     errors: list[JsonDict]
+    is_carried_forward: bool = False
 
 
 def replace_step_params(

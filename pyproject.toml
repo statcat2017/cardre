@@ -16,6 +16,9 @@ dependencies = [
     "jinja2",
 ]
 
+[project.scripts]
+cardre-api = "sidecar.main:main"
+
 [project.optional-dependencies]
 sidecar = ["fastapi", "uvicorn"]
 test = ["pytest", "pytest-cov", "pytest-mock", "httpx", "starlette"]

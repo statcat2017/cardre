@@ -40,6 +40,20 @@ class ProjectDetailResponse(ProjectResponse):
     run_count: int = 0
 
 
+class ProjectListItem(BaseModel):
+    project_id: str
+    name: str
+    path: str
+    path_exists: bool = True
+    last_accessed: str = ""
+
+
+class ProjectListResponse(BaseModel):
+    projects: list[ProjectListItem]
+    total_count: int = 0
+    missing_path_count: int = 0
+
+
 # ---------------------------------------------------------------------------
 # Datasets / Import
 # ---------------------------------------------------------------------------

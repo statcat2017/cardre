@@ -48,7 +48,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Projects */
+        get: operations["list_projects_projects_get"];
         put?: never;
         /** Create Project */
         post: operations["create_project_projects_post"];
@@ -1691,6 +1692,40 @@ export interface components {
              */
             run_count: number;
         };
+        /** ProjectListItem */
+        ProjectListItem: {
+            /** Project Id */
+            project_id: string;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /**
+             * Path Exists
+             * @default true
+             */
+            path_exists: boolean;
+            /**
+             * Last Accessed
+             * @default
+             */
+            last_accessed: string;
+        };
+        /** ProjectListResponse */
+        ProjectListResponse: {
+            /** Projects */
+            projects: components["schemas"]["ProjectListItem"][];
+            /**
+             * Total Count
+             * @default 0
+             */
+            total_count: number;
+            /**
+             * Missing Path Count
+             * @default 0
+             */
+            missing_path_count: number;
+        };
         /** ProjectPlansResponse */
         ProjectPlansResponse: {
             /** Project Id */
@@ -2058,6 +2093,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BinningEnginesResponse"];
+                };
+            };
+        };
+    };
+    list_projects_projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectListResponse"];
                 };
             };
         };

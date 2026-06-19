@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { linkButtonSmallStyle, preBlockStyle, pageButtonStyle } from "../styles";
 
 const LARGE_ROW_THRESHOLD = 100_000;
+const HARD_ROW_CAP = 1_000_000;
 
 interface Props {
   artifactId: string;
@@ -25,6 +26,7 @@ export function ArtifactPreviewPane({ artifactId, mediaType, rowCount, summaryPr
 
   const total = rowCount ?? preview?.row_count ?? 0;
   const isLarge = total > LARGE_ROW_THRESHOLD;
+  const isTooLarge = total > HARD_ROW_CAP;
 
   if (summaryPreview) {
     return (
@@ -38,6 +40,13 @@ export function ArtifactPreviewPane({ artifactId, mediaType, rowCount, summaryPr
   }
 
   if (mediaType === "application/vnd.apache.parquet" || mediaType === "application/json") {
+    if (isTooLarge) {
+      return (
+        <div style={{ marginTop: 8, padding: "8px 12px", backgroundColor: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, fontSize: 12, color: "#92400e" }}>
+          Dataset has {total.toLocaleString()} rows — too large to preview. Use the summary endpoint or download the artifact directly.
+        </div>
+      );
+    }
     return (
       <div style={{ marginTop: 8 }}>
         {!showPreview ? (
@@ -113,5 +122,9 @@ export function ArtifactPreviewPane({ artifactId, mediaType, rowCount, summaryPr
     );
   }
 
-  return null;
+  return (
+    <div style={{ marginTop: 8, padding: "8px 12px", backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12, color: "#64748b" }}>
+      Preview not supported for media type <code>{mediaType}</code>. Use the summary endpoint or download the artifact directly.
+    </div>
+  );
 }

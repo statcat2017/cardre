@@ -78,6 +78,11 @@ cd frontend && npm install
 - macOS: Xcode CLI tools
 - Windows: WebView2 (included in Windows 10+)
 
+Make sure the sidecar API is on your PATH first:
+```bash
+pip install -e ".[sidecar]"   # installs cardre-api console script on PATH
+```
+
 ### Build Sidecar Binary
 
 ```bash

@@ -48,8 +48,29 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit
 
+  build-sidecar:
+    runs-on: ubuntu-latest
+    needs: [test-python]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install -e ".[sidecar]"
+      - name: Build sidecar
+        run: bash scripts/build-sidecar.sh
+      - name: Upload sidecar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardre-api-sidecar
+          path: frontend/src-tauri/binaries/cardre-api-*
+
   check-tauri:
     runs-on: ubuntu-latest
+    needs: [build-sidecar]
     steps:
       - uses: actions/checkout@v4
       - name: Install system deps
@@ -57,13 +78,16 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-workspaces: "frontend/src-tauri"
-      - name: Create placeholder sidecar for cargo check
+      - name: Download real sidecar binary
+        uses: actions/download-artifact@v4
+        with:
+          name: cardre-api-sidecar
+          path: frontend/src-tauri/binaries/
+      - name: Validate sidecar exists
         working-directory: frontend/src-tauri
         run: |
-          TARGET="$(rustc -vV | awk '/host:/ {print $2}')"
-          mkdir -p binaries
-          printf '#!/usr/bin/env sh\necho cardre-api placeholder\n' > "binaries/cardre-api-${TARGET}"
-          chmod +x "binaries/cardre-api-${TARGET}"
+          ls -la binaries/
+          file binaries/cardre-api-*
       - name: cargo check
         working-directory: frontend/src-tauri
         run: cargo check
@@ -90,23 +114,3 @@ jobs:
         run: python3 scripts/generate-openapi-types.py
       - name: Check for stale generated types
         run: git diff --exit-code frontend/src/api/schema.d.ts
-
-  build-sidecar:
-    runs-on: ubuntu-latest
-    needs: [test-python]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Install dependencies
-        run: |
-          pip install pyinstaller
-          pip install -e ".[sidecar]"
-      - name: Build sidecar
-        run: bash scripts/build-sidecar.sh
-      - name: Upload sidecar artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cardre-api-sidecar
-          path: frontend/src-tauri/binaries/cardre-api-*

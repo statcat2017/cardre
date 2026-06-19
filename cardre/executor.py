@@ -679,6 +679,7 @@ class PlanExecutor:
                     execution_fingerprint=copied_fp,
                     warnings=prev_rs.warnings,
                     errors=prev_rs.errors,
+                    is_carried_forward=True,
                 )
                 store.save_run_step(copied_rs)
                 run_step_records[spec.step_id] = copied_rs
@@ -762,6 +763,7 @@ class PlanExecutor:
             execution_fingerprint=copied_fp,
             warnings=prev_rs.warnings,
             errors=prev_rs.errors,
+            is_carried_forward=True,
         )
         store.save_run_step(copied_rs)
         return copied_rs

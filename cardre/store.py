@@ -71,6 +71,11 @@ class ProjectStore:
         if "branch_id" not in run_cols:
             conn.execute("ALTER TABLE runs ADD COLUMN branch_id TEXT")
 
+        # Add is_carried_forward to run_steps table if missing
+        run_step_cols = {r["name"] for r in conn.execute("PRAGMA table_info(run_steps)").fetchall()}
+        if "is_carried_forward" not in run_step_cols:
+            conn.execute("ALTER TABLE run_steps ADD COLUMN is_carried_forward INTEGER NOT NULL DEFAULT 0")
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -111,6 +116,10 @@ class ProjectStore:
 
     @staticmethod
     def _row_to_run_step(row: dict) -> RunStepRecord:
+        try:
+            is_cf = bool(row["is_carried_forward"])
+        except (KeyError, TypeError):
+            is_cf = False
         return RunStepRecord(
             run_step_id=row["run_step_id"],
             run_id=row["run_id"],
@@ -124,6 +133,7 @@ class ProjectStore:
             execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
             warnings=json.loads(row["warnings_json"]),
             errors=json.loads(row["errors_json"]),
+            is_carried_forward=is_cf,
         )
 
     @staticmethod
@@ -608,8 +618,8 @@ class ProjectStore:
                 "(run_step_id, run_id, step_id, plan_version_id, status, "
                 " started_at, finished_at, input_artifact_ids_json, "
                 " output_artifact_ids_json, execution_fingerprint_json, "
-                " warnings_json, errors_json) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " warnings_json, errors_json, is_carried_forward) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     rs.run_step_id,
                     rs.run_id,
@@ -623,6 +633,7 @@ class ProjectStore:
                     json.dumps(rs.execution_fingerprint),
                     json.dumps(rs.warnings),
                     json.dumps(rs.errors),
+                    int(rs.is_carried_forward),
                 ),
             )
 
