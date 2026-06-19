@@ -832,7 +832,11 @@ class ApplyWoeMappingEvidenceTests(unittest.TestCase):
             self.store, artifact_type="scorecard", role="scorecard",
             stem="bundle",
             payload=bundle_payload,
-            metadata={"schema_version": SCHEMA_FROZEN_SCORECARD_BUNDLE},
+            metadata={
+                "schema_version": SCHEMA_FROZEN_SCORECARD_BUNDLE,
+                "bin_definition_artifact_id": "bins_1",
+                "woe_table_artifact_id": "woe_1",
+            },
         )
         df_oot = pl.DataFrame({"x": [-1.0], "target": ["g"]})
         oot_art = _make_train_artifact(self.store, df_oot, role="oot")
@@ -861,7 +865,11 @@ class ApplyWoeMappingEvidenceTests(unittest.TestCase):
             self.store, artifact_type="scorecard", role="scorecard",
             stem="bundle",
             payload=bundle_payload,
-            metadata={"schema_version": SCHEMA_FROZEN_SCORECARD_BUNDLE},
+            metadata={
+                "schema_version": SCHEMA_FROZEN_SCORECARD_BUNDLE,
+                "bin_definition_artifact_id": "bins_1",
+                "woe_table_artifact_id": "woe_1",
+            },
         )
         df_oot = pl.DataFrame({"x": [-1.0], "target": ["g"]})
         oot_art = _make_train_artifact(self.store, df_oot, role="oot")

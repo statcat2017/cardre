@@ -4,6 +4,7 @@ import json
 import math
 
 import polars as pl
+import pytest
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import (
@@ -379,14 +380,17 @@ class TestFrozenScorecardBundleHappyPath:
         bin_art = write_json_artifact(
             store, artifact_type="definition", role="definition",
             stem="bin_def",
-            payload={"variables": [], "warnings": []},
+            payload={
+                "variables": [{"variable": "x", "kind": "numeric", "bins": []}],
+                "warnings": [],
+            },
             metadata={"schema_version": SCHEMA_BIN_DEFINITION},
         )
         woe_df = pl.DataFrame({
-            "variable": [], "bin_id": [], "label": [],
-            "row_count": [], "good_count": [], "bad_count": [],
-            "good_distribution": [], "bad_distribution": [],
-            "woe": [], "iv_component": [],
+            "variable": ["x"], "bin_id": ["x_b1"], "label": ["x"],
+            "row_count": [1], "good_count": [1], "bad_count": [0],
+            "good_distribution": [1.0], "bad_distribution": [0.0],
+            "woe": [0.0], "iv_component": [0.0],
         })
         woe_art = write_parquet_artifact(
             store, artifact_type="report", role="report",
@@ -425,7 +429,7 @@ class TestFrozenScorecardBundleHappyPath:
 
 class TestFrozenScorecardBundleWarnings:
 
-    def test_warns_on_target_mismatch(self):
+    def test_raises_on_target_mismatch(self):
         store, tmp = make_store()
         store.initialize()
 
@@ -442,10 +446,10 @@ class TestFrozenScorecardBundleWarnings:
             metadata={"schema_version": SCHEMA_BIN_DEFINITION},
         )
         woe_df = pl.DataFrame({
-            "variable": [], "bin_id": [], "label": [],
-            "row_count": [], "good_count": [], "bad_count": [],
-            "good_distribution": [], "bad_distribution": [],
-            "woe": [], "iv_component": [],
+            "variable": ["x"], "bin_id": ["x_b1"], "label": ["x"],
+            "row_count": [1], "good_count": [1], "bad_count": [0],
+            "good_distribution": [1.0], "bad_distribution": [0.0],
+            "woe": [0.0], "iv_component": [0.0],
         })
         woe_art = write_parquet_artifact(
             store, artifact_type="report", role="report",
@@ -468,12 +472,10 @@ class TestFrozenScorecardBundleWarnings:
             input_artifacts=[meta_art, bin_art, woe_art, model_art, scorecard_art],
             validated_params={}, runtime_metadata={},
         )
-        output = FrozenScorecardBundleNode().run(ctx)
-        bundle = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        codes = {w["code"] for w in bundle["warnings"]}
-        assert "METADATA_TARGET_MISMATCH" in codes
+        with pytest.raises(ValueError, match="metadata target"):
+            FrozenScorecardBundleNode().run(ctx)
 
-    def test_warns_on_intercept_mismatch(self):
+    def test_raises_on_intercept_mismatch(self):
         store, tmp = make_store()
         store.initialize()
 
@@ -486,14 +488,17 @@ class TestFrozenScorecardBundleWarnings:
         bin_art = write_json_artifact(
             store, artifact_type="definition", role="definition",
             stem="bin_def",
-            payload={"variables": [], "warnings": []},
+            payload={
+                "variables": [{"variable": "x", "kind": "numeric", "bins": []}],
+                "warnings": [],
+            },
             metadata={"schema_version": SCHEMA_BIN_DEFINITION},
         )
         woe_df = pl.DataFrame({
-            "variable": [], "bin_id": [], "label": [],
-            "row_count": [], "good_count": [], "bad_count": [],
-            "good_distribution": [], "bad_distribution": [],
-            "woe": [], "iv_component": [],
+            "variable": ["x"], "bin_id": ["x_b1"], "label": ["x"],
+            "row_count": [1], "good_count": [1], "bad_count": [0],
+            "good_distribution": [1.0], "bad_distribution": [0.0],
+            "woe": [0.0], "iv_component": [0.0],
         })
         woe_art = write_parquet_artifact(
             store, artifact_type="report", role="report",
@@ -516,12 +521,10 @@ class TestFrozenScorecardBundleWarnings:
             input_artifacts=[meta_art, bin_art, woe_art, model_art, scorecard_art],
             validated_params={}, runtime_metadata={},
         )
-        output = FrozenScorecardBundleNode().run(ctx)
-        bundle = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        codes = {w["code"] for w in bundle["warnings"]}
-        assert "SCORECARD_INTERCEPT_MISMATCH" in codes
+        with pytest.raises(ValueError, match="intercept"):
+            FrozenScorecardBundleNode().run(ctx)
 
-    def test_warns_on_feature_missing_in_woe_mapping(self):
+    def test_raises_on_feature_missing_in_woe_mapping(self):
         store, tmp = make_store()
         store.initialize()
 
@@ -564,7 +567,5 @@ class TestFrozenScorecardBundleWarnings:
             input_artifacts=[meta_art, bin_art, woe_art, model_art, scorecard_art],
             validated_params={}, runtime_metadata={},
         )
-        output = FrozenScorecardBundleNode().run(ctx)
-        bundle = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        codes = {w["code"] for w in bundle["warnings"]}
-        assert "MODEL_FEATURE_MISSING_IN_WOE_MAPPING" in codes
+        with pytest.raises(ValueError, match="WOE mapping"):
+            FrozenScorecardBundleNode().run(ctx)

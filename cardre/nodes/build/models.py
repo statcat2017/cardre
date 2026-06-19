@@ -512,7 +512,11 @@ class BuildSummaryReportNode(NodeType):
         store = context.store
         reader = ArtifactEvidenceReader(store)
 
-        scorecard_artifact = next(a for a in context.input_artifacts if a.role == "scorecard")
+        scorecard_artifact = next(
+            a for a in context.input_artifacts
+            if a.role == "scorecard"
+            and a.metadata.get("schema_version") == SCHEMA_SCORE_SCALING
+        )
         scorecard = json.loads(store.artifact_path(scorecard_artifact).read_text())
 
         try:

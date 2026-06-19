@@ -13,11 +13,13 @@ from pathlib import Path
 import polars as pl
 import pytest
 
+from cardre.artifacts import write_json_artifact
 from cardre.audit import (
     ExecutionContext,
     StepSpec,
     json_logical_hash,
 )
+from cardre.evidence import SCHEMA_SCORE_SCALING
 from cardre.executor import PlanExecutor
 from cardre.nodes import BuildSummaryReportNode
 from cardre.registry import NodeRegistry
@@ -454,12 +456,18 @@ class BuildSummaryReportTests(unittest.TestCase):
         store.initialize()
 
         scorecard = {
+            "schema_version": "cardre.score_scaling.v1",
             "base_score": 600, "base_odds": 50,
             "points_to_double_odds": 20, "higher_score_is_lower_risk": True,
             "intercept": -0.5, "base_points": 500, "attributes": [],
             "target_column": "target",
         }
-        sc_art = _make_json_artifact(store, scorecard, role="scorecard", stem="sc")
+        sc_art = write_json_artifact(
+            store, artifact_type="scorecard", role="scorecard",
+            stem="sc",
+            payload=scorecard,
+            metadata={"schema_version": SCHEMA_SCORE_SCALING},
+        )
 
         model = {
             "target_column": "target", "features": ["x_woe"],

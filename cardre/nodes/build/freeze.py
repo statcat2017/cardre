@@ -12,6 +12,7 @@ from cardre.evidence import (
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
     SCHEMA_MODEL_ARTIFACT,
     SCHEMA_MODELLING_METADATA,
+    SCHEMA_SCORE_SCALING,
     SCHEMA_SELECTION_DEFINITION,
     SCHEMA_WOE_TABLE,
 )
@@ -34,7 +35,9 @@ class FrozenScorecardBundleNode(NodeType):
         model = reader.find(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
 
         scorecard_art = next(
-            a for a in context.input_artifacts if a.role == "scorecard"
+            a for a in context.input_artifacts
+            if a.role == "scorecard"
+            and a.metadata.get("schema_version") == SCHEMA_SCORE_SCALING
         )
         scorecard = json.loads(store.artifact_path(scorecard_art).read_text())
 
@@ -144,27 +147,21 @@ class FrozenScorecardBundleNode(NodeType):
             "base_points": scorecard.get("base_points", 0.0),
         }
 
-        warnings: list[dict[str, Any]] = []
-
         woe_mapped_vars = set(woe_table.mapping.keys())
         for var in source_variables:
             if var not in woe_mapped_vars:
-                warnings.append(
-                    {
-                        "code": "MODEL_FEATURE_MISSING_IN_WOE_MAPPING",
-                        "message": f"Source variable '{var}' used by model but not found in WOE mapping",
-                    }
+                raise ValueError(
+                    f"Frozen scorecard bundle cannot be created: source variable "
+                    f"'{var}' used by model but not found in WOE mapping"
                 )
 
         expected_order_hash = json_logical_hash(
             {"features": model_features}
         )
         if order_hash != expected_order_hash:
-            warnings.append(
-                {
-                    "code": "FEATURE_ORDER_HASH_MISMATCH",
-                    "message": f"Feature order hash ({order_hash}) does not match computed hash ({expected_order_hash})",
-                }
+            raise ValueError(
+                f"Frozen scorecard bundle cannot be created: feature order hash "
+                f"({order_hash}) does not match computed hash ({expected_order_hash})"
             )
 
         model_intercept = model.intercept
@@ -172,32 +169,26 @@ class FrozenScorecardBundleNode(NodeType):
         if scorecard_intercept is not None and abs(
             float(scorecard_intercept) - float(model_intercept)
         ) > 1e-6:
-            warnings.append(
-                {
-                    "code": "SCORECARD_INTERCEPT_MISMATCH",
-                    "message": f"Scorecard intercept ({scorecard_intercept}) differs from model intercept ({model_intercept})",
-                }
+            raise ValueError(
+                f"Frozen scorecard bundle cannot be created: scorecard intercept "
+                f"({scorecard_intercept}) differs from model intercept ({model_intercept})"
             )
 
         model_target = model.target_column
         scorecard_target = str(scorecard.get("target_column", ""))
         if model_target and scorecard_target and model_target != scorecard_target:
-            warnings.append(
-                {
-                    "code": "TARGET_COLUMN_MISMATCH",
-                    "message": f"Model target ({model_target}) differs from scorecard target ({scorecard_target})",
-                }
+            raise ValueError(
+                f"Frozen scorecard bundle cannot be created: model target "
+                f"({model_target}) differs from scorecard target ({scorecard_target})"
             )
         if (
             meta.target_column
             and model_target
             and meta.target_column != model_target
         ):
-            warnings.append(
-                {
-                    "code": "METADATA_TARGET_MISMATCH",
-                    "message": f"Modelling metadata target ({meta.target_column}) differs from model target ({model_target})",
-                }
+            raise ValueError(
+                f"Frozen scorecard bundle cannot be created: modelling metadata target "
+                f"({meta.target_column}) differs from model target ({model_target})"
             )
 
         bundle = {
@@ -208,7 +199,7 @@ class FrozenScorecardBundleNode(NodeType):
             "components": components,
             "feature_contract": feature_contract,
             "score_scaling": score_scaling,
-            "warnings": warnings,
+            "warnings": [],
         }
 
         sidecar_metadata: dict[str, Any] = {
@@ -235,8 +226,5 @@ class FrozenScorecardBundleNode(NodeType):
 
         return NodeOutput(
             artifacts=[artifact],
-            metrics={
-                "feature_count": len(model_features),
-                "warning_count": len(warnings),
-            },
+            metrics={"feature_count": len(model_features)},
         )

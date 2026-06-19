@@ -21,6 +21,7 @@ from cardre.evidence import (
     EvidenceKind,
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
     SCHEMA_SCORE_APPLICATION_EVIDENCE,
+    SCHEMA_SCORE_SCALING,
     SCHEMA_SELECTION_DEFINITION,
     SCHEMA_WOE_APPLICATION_EVIDENCE,
 )
@@ -106,6 +107,32 @@ class ApplyWoeMappingNode(NodeType):
              if a.metadata.get("schema_version") == SCHEMA_SELECTION_DEFINITION),
             None,
         )
+
+        # Verify bundle components against actual artifacts being applied
+        if bundle_art is not None:
+            bundle_meta = bundle_art.metadata
+            if bundle_meta.get("bin_definition_artifact_id") != bin_def.source_artifact_id:
+                raise ValueError(
+                    f"Frozen bundle bin_definition_artifact_id "
+                    f"({bundle_meta.get('bin_definition_artifact_id')}) "
+                    f"does not match the bin definition being applied "
+                    f"({bin_def.source_artifact_id})"
+                )
+            if bundle_meta.get("woe_table_artifact_id") != woe_table.source_artifact_id:
+                raise ValueError(
+                    f"Frozen bundle woe_table_artifact_id "
+                    f"({bundle_meta.get('woe_table_artifact_id')}) "
+                    f"does not match the WOE table being applied "
+                    f"({woe_table.source_artifact_id})"
+                )
+            if bundle_meta.get("selection_artifact_id") and sel_art is not None:
+                if bundle_meta["selection_artifact_id"] != sel_art.artifact_id:
+                    raise ValueError(
+                        f"Frozen bundle selection_artifact_id "
+                        f"({bundle_meta['selection_artifact_id']}) "
+                        f"does not match the selection being applied "
+                        f"({sel_art.artifact_id})"
+                    )
 
         # Per-role evidence tracking
         roles_evidence: dict[str, JsonDict] = {}
@@ -234,7 +261,12 @@ class ApplyModelNode(NodeType):
         reader = ArtifactEvidenceReader(store)
 
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
-        scorecard_art = next((a for a in context.input_artifacts if a.role == "scorecard"), None)
+        scorecard_art = next(
+            (a for a in context.input_artifacts
+             if a.role == "scorecard"
+             and a.metadata.get("schema_version") == SCHEMA_SCORE_SCALING),
+            None,
+        )
         if model_art is None:
             raise ValueError("apply_model requires a model artifact")
 
