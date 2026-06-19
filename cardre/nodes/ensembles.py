@@ -25,6 +25,9 @@ from cardre.audit import (
     NodeType,
     json_logical_hash,
 )
+from cardre.node_parameters import (
+    MethodOption, NodeParameterSchema, ParameterConstraint, ParameterDefinition,
+)
 
 
 def _load_estimator(store, estimator_ref: dict):
@@ -96,6 +99,48 @@ class VotingEnsembleNode(NodeType):
     category = "fit"
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Voting Ensemble",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    description="Hard or soft voting ensemble across fitted model artifacts.",
+                    params=[
+                        ParameterDefinition(
+                            name="model_artifact_ids",
+                            label="Model Artifact IDs",
+                            kind="list",
+                            required=True,
+                            constraint=ParameterConstraint(min_items=2),
+                        ),
+                        ParameterDefinition(
+                            name="voting",
+                            label="Voting",
+                            kind="enum",
+                            default="soft",
+                            constraint=ParameterConstraint(
+                                enum_values=["hard", "soft"],
+                            ),
+                        ),
+                        ParameterDefinition(
+                            name="threshold",
+                            label="Threshold",
+                            kind="float",
+                            default=0.5,
+                            constraint=ParameterConstraint(min_value=0, max_value=1),
+                        ),
+                    ],
+                ),
+            ],
+            default_method="default",
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -262,6 +307,44 @@ class WeightedEnsembleNode(NodeType):
     category = "fit"
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Weighted Ensemble",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    description="Weighted ensemble with user-defined or validation-optimized weights.",
+                    params=[
+                        ParameterDefinition(
+                            name="model_artifact_ids",
+                            label="Model Artifact IDs",
+                            kind="list",
+                            required=True,
+                            constraint=ParameterConstraint(min_items=2),
+                        ),
+                        ParameterDefinition(
+                            name="weights",
+                            label="Weights",
+                            kind="list",
+                            default=None,
+                        ),
+                        ParameterDefinition(
+                            name="optimize_weights",
+                            label="Optimize Weights",
+                            kind="boolean",
+                            default=False,
+                        ),
+                    ],
+                ),
+            ],
+            default_method="default",
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []

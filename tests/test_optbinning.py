@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import polars as pl
 import pytest
 
-from cardre.nodes import AutoBinningFitNode
+from cardre.nodes import AutoBinningFitNode, BinningNode
 from cardre.engine.binning.optbinning_adapter import (
     AdapterResult,
     VariableBinningResult,
@@ -487,6 +487,240 @@ class TestAutoBinningFitNode:
             "max_n_bins": -1,
         })
         assert errs, "Expected validation errors for negative max_n_bins"
+
+
+# ======================================================================
+# BinningNode optbinning dispatch tests
+# ======================================================================
+
+
+class TestBinningNodeOptbinning:
+    """Test BinningNode dispatching to optbinning path."""
+
+    def test_validate_params_rejects_unknown_method(self):
+        node = BinningNode()
+        errs = node.validate_params({"method": "unknown"})
+        assert len(errs) > 0
+        assert "unknown" in str(errs[0])
+
+    def test_validate_params_rejects_bad_solver_for_optbinning(self):
+        node = BinningNode()
+        errs = node.validate_params({"method": "optbinning", "solver": "bad"})
+        assert len(errs) > 0
+
+    def test_validate_params_optbinning_availability_mocked(self, monkeypatch):
+        import builtins
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "optbinning":
+                raise ImportError("mocked: optbinning not available")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+        node = BinningNode()
+        errs = node.validate_params({"method": "optbinning"})
+        assert len(errs) > 0
+        assert "optbinning" in str(errs[0]).lower()
+
+    @patch("cardre.nodes.build.auto_binning_fit.fit_variables")
+    def test_binning_node_delegates_to_autobinning(self, mock_fit):
+        """BinningNode with method=optbinning produces same output as
+        AutoBinningFitNode."""
+        store, tmp = make_store()
+        store.initialize()
+
+        df = pl.DataFrame({
+            "age": [25.0, 30.0, 35.0, 40.0, 45.0, 50.0],
+            "income": [40000.0, 50000.0, 60000.0, 70000.0, 80000.0, 90000.0],
+            "target": ["good", "bad", "good", "bad", "good", "bad"],
+        })
+        from cardre.audit import (
+            ArtifactRef,
+            json_logical_hash,
+            physical_hash,
+            relative_path,
+            table_logical_hash,
+        )
+        import io
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        train_path = store.root / "datasets" / "test-train.parquet"
+        train_path.parent.mkdir(parents=True, exist_ok=True)
+        train_path.write_bytes(buf.getvalue())
+        train_artifact = ArtifactRef(
+            artifact_id="train1", artifact_type="dataset", role="train",
+            path=relative_path(train_path, store.root),
+            physical_hash=physical_hash(train_path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet", metadata={},
+        )
+        store.register_artifact(train_artifact)
+
+        meta_payload = {
+            "target_column": "target",
+            "good_values": ["good"],
+            "bad_values": ["bad"],
+        }
+        meta_path = store.root / "artifacts" / "test-meta.json"
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(meta_payload, sort_keys=True))
+        meta_artifact = ArtifactRef(
+            artifact_id="meta1", artifact_type="definition", role="definition",
+            path=relative_path(meta_path, store.root),
+            physical_hash=physical_hash(meta_path),
+            logical_hash=json_logical_hash(meta_payload),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(meta_artifact)
+
+        mock_fit.return_value = AdapterResult(
+            engine_version="0.21.0",
+            variables=[
+                VariableBinningResult(
+                    variable="age", dtype="numerical", status="OPTIMAL",
+                    bins=[{
+                        "bin_id": "age_bin_001", "label": "(-inf, 30.0)",
+                        "kind": "numeric", "lower": None, "upper": 30.0,
+                        "lower_inclusive": False, "upper_inclusive": False,
+                        "categories": None, "is_missing_bin": False,
+                        "row_count": 150, "good_count": 100, "bad_count": 50,
+                    }],
+                    warnings=[],
+                ),
+                VariableBinningResult(
+                    variable="income", dtype="numerical", status="OPTIMAL",
+                    bins=[{
+                        "bin_id": "income_bin_001", "label": "(-inf, 60000.0)",
+                        "kind": "numeric", "lower": None, "upper": 60000.0,
+                        "lower_inclusive": False, "upper_inclusive": False,
+                        "categories": None, "is_missing_bin": False,
+                        "row_count": 200, "good_count": 120, "bad_count": 80,
+                    }],
+                    warnings=[],
+                ),
+            ],
+            manifest={"engine": "optbinning", "engine_version": "0.21.0",
+                      "parameters": {}, "succeeded": ["age", "income"], "failed": []},
+        )
+
+        from cardre.audit import ExecutionContext, StepSpec
+        from cardre.evidence import SCHEMA_BIN_DEFINITION
+
+        node = BinningNode()
+        ctx = ExecutionContext(
+            store=store,
+            run_id="run1",
+            plan_version_id="pv1",
+            step_spec=StepSpec(
+                step_id="bin-opt-001",
+                node_type="cardre.binning",
+                node_version="1",
+                category="fit",
+                params={},
+                params_hash="abc",
+                parent_step_ids=["split-001"],
+                branch_label="baseline",
+                position=5,
+            ),
+            parent_run_steps=[],
+            input_artifacts=[train_artifact, meta_artifact],
+            validated_params={"method": "optbinning", "engine": "optbinning"},
+            runtime_metadata={},
+        )
+        output = node.run(ctx)
+
+        assert len(output.artifacts) == 2
+        bin_art = output.artifacts[0]
+        assert store.artifact_path(bin_art).exists()
+        payload = json.loads(store.artifact_path(bin_art).read_text())
+        assert "variables" in payload
+        assert len(payload["variables"]) == 2
+        assert payload["variables"][0]["variable"] == "age"
+        assert payload["schema_version"] == SCHEMA_BIN_DEFINITION
+        assert payload["source"]["engine"] == "optbinning"
+        assert "method" not in payload["source"]["params"]
+
+    @patch("cardre.nodes.build.auto_binning_fit.fit_variables")
+    def test_method_popped_before_delegation(self, mock_fit):
+        """BinningNode._run_optbinning pops 'method' from validated_params
+        so AutoBinningFitNode never sees it."""
+        store, tmp = make_store()
+        store.initialize()
+
+        df = pl.DataFrame({
+            "age": [25.0, 30.0],
+            "target": ["good", "bad"],
+        })
+        from cardre.audit import (
+            ArtifactRef,
+            json_logical_hash,
+            physical_hash,
+            relative_path,
+            table_logical_hash,
+        )
+        import io
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        train_path = store.root / "datasets" / "test-train.parquet"
+        train_path.parent.mkdir(parents=True, exist_ok=True)
+        train_path.write_bytes(buf.getvalue())
+        train_artifact = ArtifactRef(
+            artifact_id="train2", artifact_type="dataset", role="train",
+            path=relative_path(train_path, store.root),
+            physical_hash=physical_hash(train_path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet", metadata={},
+        )
+        store.register_artifact(train_artifact)
+
+        meta_payload = {
+            "target_column": "target",
+            "good_values": ["good"],
+            "bad_values": ["bad"],
+        }
+        meta_path = store.root / "artifacts" / "test-meta2.json"
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(meta_payload, sort_keys=True))
+        meta_artifact = ArtifactRef(
+            artifact_id="meta2", artifact_type="definition", role="definition",
+            path=relative_path(meta_path, store.root),
+            physical_hash=physical_hash(meta_path),
+            logical_hash=json_logical_hash(meta_payload),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(meta_artifact)
+
+        mock_fit.return_value = AdapterResult(
+            engine_version="0.21.0",
+            variables=[],
+            manifest={"engine": "optbinning", "engine_version": "0.21.0",
+                      "parameters": {}, "succeeded": [], "failed": []},
+        )
+
+        from cardre.audit import ExecutionContext, StepSpec
+
+        node = BinningNode()
+        validated_params = {"method": "optbinning", "engine": "optbinning"}
+        ctx = ExecutionContext(
+            store=store, run_id="run2", plan_version_id="pv2",
+            step_spec=StepSpec(
+                step_id="bin-opt-002", node_type="cardre.binning",
+                node_version="1", category="fit",
+                params={}, params_hash="abc",
+                parent_step_ids=["split-001"],
+                branch_label="baseline", position=5,
+            ),
+            parent_run_steps=[],
+            input_artifacts=[train_artifact, meta_artifact],
+            validated_params=validated_params,
+            runtime_metadata={},
+        )
+        node.run(ctx)
+
+        # After run, 'method' should be gone from validated_params
+        assert "method" not in ctx.validated_params
+        assert ctx.validated_params.get("engine") == "optbinning"
 
 
 # ======================================================================

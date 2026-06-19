@@ -19,6 +19,9 @@ from cardre.audit import (
     NodeOutput,
     NodeType,
 )
+from cardre.node_parameters import (
+    MethodOption, NodeParameterSchema, ParameterConstraint, ParameterDefinition,
+)
 
 
 EXPLAINABILITY_LEVELS = {
@@ -54,6 +57,63 @@ class ModelExplainabilityNode(NodeType):
     category = "report"
     input_roles: list[str] = ["model", "train", "test", "oot"]
     output_roles: list[str] = ["report"]
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Model Explainability",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    description="Produce explainability report for a fitted model.",
+                    params=[
+                        ParameterDefinition(
+                            name="include_permutation_importance",
+                            label="Include Permutation Importance",
+                            kind="boolean",
+                            default=False,
+                            help_text="Whether to compute permutation feature importance.",
+                        ),
+                        ParameterDefinition(
+                            name="permutation_data_role",
+                            label="Permutation Data Role",
+                            kind="string",
+                            default="train",
+                            constraint=ParameterConstraint(
+                                enum_values=["train", "test", "oot"],
+                            ),
+                            help_text="Which data role to use for permutation importance computation.",
+                        ),
+                        ParameterDefinition(
+                            name="random_seeds",
+                            label="Random Seeds",
+                            kind="list",
+                            default=None,
+                            help_text="List of random seeds for stability analysis (null to skip).",
+                        ),
+                        ParameterDefinition(
+                            name="include_pdp",
+                            label="Include Partial Dependence",
+                            kind="boolean",
+                            default=False,
+                            help_text="Whether to compute partial dependence plots.",
+                        ),
+                        ParameterDefinition(
+                            name="include_shap",
+                            label="Include SHAP",
+                            kind="boolean",
+                            default=False,
+                            help_text="Whether to compute SHAP explanations.",
+                        ),
+                    ],
+                ),
+            ],
+            default_method="default",
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -487,6 +547,32 @@ class ModelLimitationsNode(NodeType):
     category = "report"
     input_roles: list[str] = ["model", "train", "definition"]
     output_roles: list[str] = ["report"]
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Model Limitations",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    description="Produce structured limitations report for a fitted model.",
+                    params=[
+                        ParameterDefinition(
+                            name="accepted_limitations",
+                            label="Accepted Limitations",
+                            kind="list",
+                            default=[],
+                            help_text="List of limitation codes the user has explicitly accepted.",
+                        ),
+                    ],
+                ),
+            ],
+            default_method="default",
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []

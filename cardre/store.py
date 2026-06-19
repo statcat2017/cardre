@@ -28,6 +28,12 @@ from cardre.audit import (
 
 from cardre.store_schema import SCHEMA_SQL, BRANCH_TABLES_SQL
 
+# Read-time migration map for legacy node types → canonical
+_LEGACY_NODE_TYPE_METHOD: dict[str, tuple[str, str]] = {
+    "cardre.fine_classing": ("cardre.binning", "fine_classing"),
+    "cardre.auto_binning_fit": ("cardre.binning", "optbinning"),
+}
+
 
 class ProjectStore:
     """SQLite-backed metadata store for a single Cardre project.
@@ -387,7 +393,7 @@ class ProjectStore:
         has_canonical = "canonical_step_id" in col_names
         has_branch = "branch_id" in col_names
         return [
-            StepSpec(
+            self._migrate_step_spec(StepSpec(
                 step_id=r["step_id"],
                 node_type=r["node_type"],
                 node_version=r["node_version"],
@@ -399,9 +405,33 @@ class ProjectStore:
                 position=r["position"],
                 canonical_step_id=r["canonical_step_id"] if has_canonical else r["step_id"],
                 branch_id=r["branch_id"] if has_branch else None,
-            )
+            ))
             for r in rows
         ]
+
+    @staticmethod
+    def _migrate_step_spec(spec: StepSpec) -> StepSpec:
+        """Rewrite legacy node types to canonical form at read time."""
+        mapping = _LEGACY_NODE_TYPE_METHOD.get(spec.node_type)
+        if mapping is None:
+            return spec
+        canonical_type, method = mapping
+        new_params = dict(spec.params)
+        if "method" not in new_params:
+            new_params["method"] = method
+        return StepSpec(
+            step_id=spec.step_id,
+            node_type=canonical_type,
+            node_version="1",
+            category=spec.category,
+            params=new_params,
+            params_hash=json_logical_hash(new_params),
+            parent_step_ids=spec.parent_step_ids,
+            branch_label=spec.branch_label,
+            position=spec.position,
+            canonical_step_id=spec.canonical_step_id,
+            branch_id=spec.branch_id,
+        )
 
     def get_latest_plan_version_id(self, plan_id: str) -> str | None:
         row = self._connect().execute(

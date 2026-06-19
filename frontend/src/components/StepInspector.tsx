@@ -4,7 +4,7 @@ import { api } from "../api/client";
 import type { StepStatus } from "../types";
 import { getStepDisplayMetadata } from "../config/stepDisplayMetadata";
 import { StatusBadge } from "./StatusBadge";
-import { ParamsEditor } from "./ParamsEditor";
+import { SchemaDrivenParamsEditor } from "./SchemaDrivenParamsEditor";
 import type { UpdateStepParamsResponse } from "../types";
 
 interface Props {
@@ -199,12 +199,13 @@ export function StepInspector({
               {showParams ? "▼ Hide Parameters" : "▶ Configure Parameters"}
             </button>
             {showParams && (
-              <ParamsEditor
+              <SchemaDrivenParamsEditor
                 planId={planId!}
                 stepId={step.step_id}
                 projectId={projectId!}
                 currentParams={currentParams}
                 basePlanVersionId={basePlanVersionId!}
+                nodeType={step.node_type}
                 onSaved={onPlanRefreshed}
               />
             )}

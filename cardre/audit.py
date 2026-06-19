@@ -124,6 +124,21 @@ class NodeType(ABC):
         An empty list means the params are valid."""
         return []
 
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        """Return a parameter schema describing this node's method options and params.
+
+        The default implementation returns an empty schema.  Subclasses
+        that participate in the Node Method & Parameter Schema Framework
+        should override this to provide full metadata.
+        """
+        from cardre.node_parameters import NodeParameterSchema as _NodeParameterSchema
+        return _NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=getattr(cls, "version", "1"),
+            title=cls.node_type,
+        )
+
 
 @dataclass
 class ExecutionContext:

@@ -10,6 +10,12 @@ from sklearn.linear_model import LogisticRegression
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import ExecutionContext, NodeOutput, NodeType, json_logical_hash
+from cardre.node_parameters import (
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
+)
 from cardre.evidence import (
     AmbiguousEvidenceError,
     ArtifactEvidenceReader,
@@ -31,6 +37,112 @@ class LogisticRegressionNode(NodeType):
 
     VALID_PENALTIES = {"l1", "l2", "elasticnet", None}
     VALID_SOLVERS = {"lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"}
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Logistic Regression",
+            default_method="standard_logit",
+            methods=[
+                MethodOption(
+                    id="standard_logit",
+                    label="Standard Logit",
+                    status="available",
+                    description="Standard logistic regression with L2 penalty (default).",
+                    params=[
+                        ParameterDefinition(
+                            name="solver",
+                            label="Solver",
+                            kind="enum",
+                            default="lbfgs",
+                            help_text="Algorithm to use in the optimization problem.",
+                            constraint=ParameterConstraint(enum_values=sorted(cls.VALID_SOLVERS)),
+                        ),
+                        ParameterDefinition(
+                            name="C",
+                            label="Inverse Regularization Strength",
+                            kind="float",
+                            default=1.0,
+                            help_text="Inverse of regularization strength; must be positive.",
+                            constraint=ParameterConstraint(min_value=0.0, exclusive_min=0.0),
+                        ),
+                        ParameterDefinition(
+                            name="max_iter",
+                            label="Max Iterations",
+                            kind="integer",
+                            default=1000,
+                            help_text="Maximum number of iterations for convergence.",
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="random_seed",
+                            label="Random Seed",
+                            kind="integer",
+                            default=42,
+                            help_text="Random state for reproducibility.",
+                            constraint=ParameterConstraint(min_value=0),
+                        ),
+                    ],
+                ),
+                MethodOption(
+                    id="penalised_logit",
+                    label="Penalised Logit",
+                    status="available",
+                    description="Logistic regression with configurable penalty.",
+                    params=[
+                        ParameterDefinition(
+                            name="penalty",
+                            label="Penalty",
+                            kind="enum",
+                            default="l2",
+                            help_text="Norm used in the penalization.",
+                            constraint=ParameterConstraint(enum_values=["l1", "l2", "elasticnet"]),
+                        ),
+                        ParameterDefinition(
+                            name="solver",
+                            label="Solver",
+                            kind="enum",
+                            default="lbfgs",
+                            help_text="Algorithm to use in the optimization problem.",
+                            constraint=ParameterConstraint(enum_values=sorted(cls.VALID_SOLVERS)),
+                        ),
+                        ParameterDefinition(
+                            name="C",
+                            label="Inverse Regularization Strength",
+                            kind="float",
+                            default=1.0,
+                            help_text="Inverse of regularization strength; must be positive.",
+                            constraint=ParameterConstraint(min_value=0.0, exclusive_min=0.0),
+                        ),
+                        ParameterDefinition(
+                            name="max_iter",
+                            label="Max Iterations",
+                            kind="integer",
+                            default=1000,
+                            help_text="Maximum number of iterations for convergence.",
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="random_seed",
+                            label="Random Seed",
+                            kind="integer",
+                            default=42,
+                            help_text="Random state for reproducibility.",
+                            constraint=ParameterConstraint(min_value=0),
+                        ),
+                    ],
+                ),
+                MethodOption(
+                    id="lasso_logit",
+                    label="Lasso Logit",
+                    status="coming_soon",
+                    description="L1-regularized logistic regression (LASSO).",
+                    params=[],
+                ),
+            ],
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -209,6 +321,54 @@ class ScoreScalingNode(NodeType):
     category = "fit"
     input_roles: list[str] = ["model", "definition", "report"]
     output_roles: list[str] = ["scorecard"]
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Score Scaling",
+            methods=[
+                MethodOption(
+                    id="score_scaling",
+                    label="Score Scaling",
+                    status="available",
+                    description="Scale model log-odds into a credit scorecard.",
+                    params=[
+                        ParameterDefinition(
+                            name="base_score",
+                            label="Base Score",
+                            kind="integer",
+                            default=600,
+                            help_text="Score assigned to the base odds.",
+                            constraint=ParameterConstraint(min_value=0),
+                        ),
+                        ParameterDefinition(
+                            name="base_odds",
+                            label="Base Odds",
+                            kind="string",
+                            default="50:1",
+                            help_text="Odds at the base score (e.g. '50:1' or a number).",
+                        ),
+                        ParameterDefinition(
+                            name="points_to_double_odds",
+                            label="Points to Double Odds",
+                            kind="float",
+                            default=20.0,
+                            help_text="Number of points required to double the odds.",
+                            constraint=ParameterConstraint(exclusive_min=0.0),
+                        ),
+                        ParameterDefinition(
+                            name="higher_score_is_lower_risk",
+                            label="Higher Score = Lower Risk",
+                            kind="boolean",
+                            default=True,
+                            help_text="If True, higher scores indicate lower risk.",
+                        ),
+                    ],
+                ),
+            ],
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []

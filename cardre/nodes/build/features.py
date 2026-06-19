@@ -9,6 +9,12 @@ import polars as pl
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import ExecutionContext, NodeOutput, NodeType
+from cardre.node_parameters import (
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
+)
 from cardre.nodes._bin_mask import build_bin_condition
 from cardre.evidence import (
     AmbiguousEvidenceError,
@@ -27,6 +33,47 @@ class CalculateWoeIvNode(NodeType):
     category = "selection"
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["report"]
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Calculate WOE & IV",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="zero_cell_policy",
+                            label="Zero Cell Policy",
+                            kind="string",
+                            default="block",
+                            constraint=ParameterConstraint(enum_values=["block"]),
+                            help_text="Policy for handling zero-cell bins in final WOE calculation",
+                        ),
+                        ParameterDefinition(
+                            name="purpose",
+                            label="Purpose",
+                            kind="enum",
+                            default="initial",
+                            constraint=ParameterConstraint(enum_values=["initial", "final"]),
+                            help_text="Calculation purpose: initial exploratory or final production",
+                        ),
+                        ParameterDefinition(
+                            name="smoothing",
+                            label="Smoothing",
+                            kind="object",
+                            default=None,
+                            required=False,
+                            help_text="Optional additive smoothing configuration with method, alpha, and rationale",
+                        ),
+                    ],
+                ),
+            ],
+        )
 
     def run(self, context: ExecutionContext) -> NodeOutput:
 
@@ -423,6 +470,55 @@ class VariableSelectionNode(NodeType):
     category = "selection"
     input_roles: list[str] = ["report"]
     output_roles: list[str] = ["definition"]
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Variable Selection",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="min_iv",
+                            label="Minimum IV",
+                            kind="float",
+                            default=0.02,
+                            constraint=ParameterConstraint(min_value=0.0),
+                            help_text="Minimum Information Value threshold for variable inclusion",
+                        ),
+                        ParameterDefinition(
+                            name="max_variables",
+                            label="Max Variables",
+                            kind="integer",
+                            default=15,
+                            constraint=ParameterConstraint(min_value=1),
+                            help_text="Maximum number of variables to select",
+                        ),
+                        ParameterDefinition(
+                            name="manual_includes",
+                            label="Manual Includes",
+                            kind="list",
+                            default=[],
+                            required=False,
+                            help_text="List of dicts with 'variable' and 'reason' keys for forced inclusions",
+                        ),
+                        ParameterDefinition(
+                            name="manual_excludes",
+                            label="Manual Excludes",
+                            kind="list",
+                            default=[],
+                            required=False,
+                            help_text="List of dicts with 'variable' and 'reason' keys for forced exclusions",
+                        ),
+                    ],
+                ),
+            ],
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []

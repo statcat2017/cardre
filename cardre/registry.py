@@ -55,6 +55,7 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
     from cardre.nodes import (
         AutoBinningFitNode,
         AlternativeDataManifestNode,
+        BinningNode,
         ApplyExclusionsNode,
         ApplyModelNode,
         ApplyWoeMappingNode,
@@ -101,6 +102,7 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
     )
 
     for n in [
+        BinningNode,
         ImportGermanCreditNode,
         ImportTabularDatasetNode,
         ProfileDatasetNode,

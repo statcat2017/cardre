@@ -590,9 +590,44 @@ class NodeTypeListResponse(BaseModel):
     count: int
 
 
+class ParameterConstraintResponse(BaseModel):
+    required: bool = False
+    min_value: float | None = None
+    max_value: float | None = None
+    exclusive_min: float | None = None
+    exclusive_max: float | None = None
+    min_length: int | None = None
+    max_length: int | None = None
+    min_items: int | None = None
+    max_items: int | None = None
+    enum_values: list[Any] | None = None
+    pattern: str | None = None
+
+
+class ParameterDefinitionResponse(BaseModel):
+    name: str
+    label: str
+    kind: str
+    default: Any = None
+    required: bool = False
+    constraint: ParameterConstraintResponse | None = None
+    help_text: str = ""
+    group: str = ""
+
+
+class MethodOptionResponse(BaseModel):
+    id: str
+    label: str
+    status: str = "available"
+    params: list[ParameterDefinitionResponse] = Field(default_factory=list)
+    description: str = ""
+
+
 class NodeTypeSchemaResponse(BaseModel):
     node_type: str
     version: str
+    title: str = ""
+    methods: list[MethodOptionResponse] = Field(default_factory=list)
     params_schema: dict[str, Any] = Field(default_factory=dict)
     defaults: dict[str, Any] = Field(default_factory=dict)
     description: str = ""
