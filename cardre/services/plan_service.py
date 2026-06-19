@@ -12,6 +12,7 @@ from typing import Any
 
 from cardre.audit import StepSpec, replace_step_params, utc_now_iso
 from cardre.executor import PlanExecutor
+from cardre.node_parameters import merge_defaults, validate_against_schema
 from cardre.registry import NodeRegistry
 from cardre.staleness import compute_staleness
 from cardre.store import ProjectStore
@@ -194,14 +195,22 @@ class PlanService:
 
         new_params = dict(params)
 
-        # Validate params against node schema
+        # Validate params against schema (method + parameter) framework
         try:
             node = self._registry.instantiate(target_step.node_type)
-            validation_errors = node.validate_params(new_params)
-            if validation_errors:
+            schema = node.parameter_schema()
+            new_params = merge_defaults(schema, new_params)
+            schema_errors = validate_against_schema(schema, new_params)
+            if schema_errors:
                 raise PlanValidationError(
                     "PARAMS_VALIDATION_FAILED",
-                    "; ".join(validation_errors),
+                    "; ".join(schema_errors),
+                )
+            custom_errors = node.validate_params(new_params)
+            if custom_errors:
+                raise PlanValidationError(
+                    "PARAMS_VALIDATION_FAILED",
+                    "; ".join(custom_errors),
                 )
         except KeyError:
             pass

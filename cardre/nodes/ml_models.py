@@ -11,6 +11,9 @@ from typing import Any
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier, export_text
 
+from cardre.node_parameters import (
+    MethodOption, NodeParameterSchema, ParameterConstraint, ParameterDefinition,
+)
 from cardre.nodes._classifier_base import BaseClassifierNode, _ClassifierResult
 
 
@@ -84,6 +87,60 @@ class DecisionTreeNode(BaseClassifierNode):
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
     model_family = "decision_tree"
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Decision Tree",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    description="Decision tree with human-readable rule export.",
+                    params=[
+                        ParameterDefinition(
+                            name="feature_strategy",
+                            label="Feature Strategy",
+                            kind="enum",
+                            default="raw_numeric",
+                            constraint=ParameterConstraint(
+                                enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
+                            ),
+                        ),
+                        ParameterDefinition(
+                            name="max_depth",
+                            label="Max Depth",
+                            kind="integer",
+                            default=None,
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="min_samples_leaf",
+                            label="Min Samples Leaf",
+                            kind="integer",
+                            default=1,
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="class_weight",
+                            label="Class Weight",
+                            kind="string",
+                            default=None,
+                        ),
+                        ParameterDefinition(
+                            name="random_seed",
+                            label="Random Seed",
+                            kind="integer",
+                            default=42,
+                        ),
+                    ],
+                ),
+            ],
+            default_method="default",
+        )
 
     VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
 
@@ -222,6 +279,67 @@ class RandomForestClassifierNode(BaseClassifierNode):
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
     model_family = "random_forest"
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Random Forest",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    description="Random forest ensemble with feature importance.",
+                    params=[
+                        ParameterDefinition(
+                            name="feature_strategy",
+                            label="Feature Strategy",
+                            kind="enum",
+                            default="raw_numeric",
+                            constraint=ParameterConstraint(
+                                enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
+                            ),
+                        ),
+                        ParameterDefinition(
+                            name="n_estimators",
+                            label="N Estimators",
+                            kind="integer",
+                            default=100,
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="max_depth",
+                            label="Max Depth",
+                            kind="integer",
+                            default=None,
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="min_samples_leaf",
+                            label="Min Samples Leaf",
+                            kind="integer",
+                            default=1,
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="class_weight",
+                            label="Class Weight",
+                            kind="string",
+                            default=None,
+                        ),
+                        ParameterDefinition(
+                            name="random_seed",
+                            label="Random Seed",
+                            kind="integer",
+                            default=42,
+                        ),
+                    ],
+                ),
+            ],
+            default_method="default",
+        )
 
     VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
 
@@ -363,6 +481,68 @@ class GradientBoostingClassifierNode(BaseClassifierNode):
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
     model_family = "gbdt"
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Gradient Boosting",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    description="Sklearn gradient boosting classifier.",
+                    params=[
+                        ParameterDefinition(
+                            name="feature_strategy",
+                            label="Feature Strategy",
+                            kind="enum",
+                            default="raw_numeric",
+                            constraint=ParameterConstraint(
+                                enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
+                            ),
+                        ),
+                        ParameterDefinition(
+                            name="n_estimators",
+                            label="N Estimators",
+                            kind="integer",
+                            default=100,
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="max_depth",
+                            label="Max Depth",
+                            kind="integer",
+                            default=3,
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="learning_rate",
+                            label="Learning Rate",
+                            kind="float",
+                            default=0.1,
+                            constraint=ParameterConstraint(exclusive_min=0),
+                        ),
+                        ParameterDefinition(
+                            name="min_samples_leaf",
+                            label="Min Samples Leaf",
+                            kind="integer",
+                            default=1,
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="random_seed",
+                            label="Random Seed",
+                            kind="integer",
+                            default=42,
+                        ),
+                    ],
+                ),
+            ],
+            default_method="default",
+        )
 
     VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
 

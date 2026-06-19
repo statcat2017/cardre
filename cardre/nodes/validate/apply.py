@@ -9,6 +9,12 @@ import polars as pl
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import ExecutionContext, JsonDict, NodeOutput, NodeType
+from cardre.node_parameters import (
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
+)
 from cardre.nodes._bin_mask import build_bin_condition
 from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 
@@ -21,6 +27,31 @@ class ApplyWoeMappingNode(NodeType):
     output_roles: list[str] = ["train", "test", "oot"]
 
     VALID_UNMATCHED_POLICIES = {"fill_zero", "warn", "fail"}
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Apply WOE Mapping",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="woe_unmatched_policy",
+                            label="Unmatched Policy",
+                            kind="enum",
+                            default="warn",
+                            constraint=ParameterConstraint(enum_values=["fill_zero", "warn", "fail"]),
+                            help_text="Policy when rows do not match any WOE bin: fill_zero, warn, or fail",
+                        ),
+                    ],
+                ),
+            ],
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -127,6 +158,23 @@ class ApplyModelNode(NodeType):
     category = "apply"
     input_roles: list[str] = ["train", "test", "oot", "model", "scorecard"]
     output_roles: list[str] = ["train", "test", "oot"]
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Apply Model",
+            methods=[
+                MethodOption(
+                    id="apply_model",
+                    label="Apply Model",
+                    status="available",
+                    description="Apply a fitted model to score datasets.",
+                    params=[],
+                ),
+            ],
+        )
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store

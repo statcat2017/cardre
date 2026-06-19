@@ -20,6 +20,7 @@ from cardre.nodes.prep import (
 )
 from cardre.nodes.build import (
     AutoBinningFitNode,
+    BinningNode,
     BuildSummaryReportNode,
     CalculateWoeIvNode,
     DummyFitNode,
@@ -77,6 +78,7 @@ from cardre.nodes.validate import (
 
 __all__ = [
     "AlternativeDataManifestNode",
+    "BinningNode",
     "ApplyExclusionsNode",
     "ApplyModelNode",
     "ApplyWoeMappingNode",

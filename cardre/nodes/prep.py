@@ -13,6 +13,12 @@ from cardre.audit import (
     NodeType,
 )
 from cardre.evidence import SCHEMA_MODELLING_METADATA
+from cardre.node_parameters import (
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
+)
 
 
 GERMAN_CREDIT_COLUMNS = [
@@ -172,6 +178,76 @@ class ImportTabularDatasetNode(NodeType):
     output_roles: list[str] = ["input"]
 
     SUPPORTED_FORMATS = frozenset({"csv", "tsv", "parquet"})
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        encoding_constraint = ParameterConstraint(enum_values=["utf-8", "latin-1", "utf-16", "ascii"])
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Import Tabular Dataset",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="source_path",
+                            label="Source Path",
+                            kind="string",
+                            required=True,
+                            help_text="Absolute path to the source data file (CSV, TSV, or Parquet)",
+                        ),
+                        ParameterDefinition(
+                            name="format",
+                            label="Format",
+                            kind="string",
+                            default="auto",
+                            constraint=ParameterConstraint(
+                                enum_values=["auto", "csv", "tsv", "parquet"],
+                            ),
+                            help_text="File format override. 'auto' infers from file extension",
+                        ),
+                        ParameterDefinition(
+                            name="delimiter",
+                            label="Delimiter",
+                            kind="string",
+                            help_text="Column delimiter for text files. Inferred from format if omitted",
+                        ),
+                        ParameterDefinition(
+                            name="has_header",
+                            label="Has Header Row",
+                            kind="boolean",
+                            default=True,
+                            help_text="Whether the first row contains column headers",
+                        ),
+                        ParameterDefinition(
+                            name="encoding",
+                            label="File Encoding",
+                            kind="string",
+                            default="utf-8",
+                            constraint=encoding_constraint,
+                            help_text="Character encoding of the source file",
+                        ),
+                        ParameterDefinition(
+                            name="null_values",
+                            label="Null Values",
+                            kind="list",
+                            default=[],
+                            help_text="List of strings to treat as null values during import",
+                        ),
+                        ParameterDefinition(
+                            name="schema_overrides",
+                            label="Schema Overrides",
+                            kind="object",
+                            default={},
+                            help_text="Dict mapping column names to dtype strings, e.g. {'age': 'int', 'income': 'float'}",
+                        ),
+                    ],
+                ),
+            ],
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -354,6 +430,58 @@ class ValidateBinaryTargetNode(NodeType):
     input_roles: list[str] = ["input", "train"]
     output_roles: list[str] = ["report"]
 
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Validate Binary Target",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="target_column",
+                            label="Target Column",
+                            kind="string",
+                            default="credit_risk_class",
+                            help_text="Name of the column containing the binary target",
+                        ),
+                        ParameterDefinition(
+                            name="min_class_fraction",
+                            label="Minimum Class Fraction",
+                            kind="float",
+                            default=0.05,
+                            constraint=ParameterConstraint(
+                                min_value=0.0,
+                                max_value=1.0,
+                            ),
+                            help_text="Minimum allowed fraction of the minority class",
+                        ),
+                        ParameterDefinition(
+                            name="max_class_ratio",
+                            label="Maximum Class Ratio",
+                            kind="float",
+                            default=20.0,
+                            constraint=ParameterConstraint(
+                                min_value=1.0,
+                            ),
+                            help_text="Maximum allowed ratio of majority count to minority count",
+                        ),
+                        ParameterDefinition(
+                            name="strict",
+                            label="Strict Validation",
+                            kind="boolean",
+                            default=True,
+                            help_text="If true, raise an error when validation constraints are violated",
+                        ),
+                    ],
+                ),
+            ],
+        )
+
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         input_artifact = context.input_artifacts[0]
@@ -401,6 +529,77 @@ class SplitTrainTestOotNode(NodeType):
     category = "transform"
     input_roles: list[str] = ["input", "definition"]
     output_roles: list[str] = ["train", "test", "oot"]
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        fraction_constraint = ParameterConstraint(min_value=0.0, max_value=1.0)
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Split Train / Test / OOT",
+            methods=[
+                MethodOption(
+                    id="random_stratified",
+                    label="Random Stratified Split",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="train_fraction",
+                            label="Train Fraction",
+                            kind="float",
+                            default=0.6,
+                            constraint=fraction_constraint,
+                            help_text="Fraction of rows allocated to the training set",
+                        ),
+                        ParameterDefinition(
+                            name="test_fraction",
+                            label="Test Fraction",
+                            kind="float",
+                            default=0.2,
+                            constraint=fraction_constraint,
+                            help_text="Fraction of rows allocated to the test set",
+                        ),
+                        ParameterDefinition(
+                            name="oot_fraction",
+                            label="OOT Fraction",
+                            kind="float",
+                            default=0.2,
+                            constraint=fraction_constraint,
+                            help_text="Fraction of rows allocated to the out-of-time validation set",
+                        ),
+                        ParameterDefinition(
+                            name="random_seed",
+                            label="Random Seed",
+                            kind="integer",
+                            default=42,
+                            constraint=ParameterConstraint(min_value=0),
+                            help_text="Seed for reproducible shuffling",
+                        ),
+                        ParameterDefinition(
+                            name="target_column",
+                            label="Target Column",
+                            kind="string",
+                            default="credit_risk_class",
+                            help_text="Name of the target column for stratified splitting",
+                        ),
+                    ],
+                ),
+                MethodOption(
+                    id="preassigned_role_column",
+                    label="Preassigned Role Column",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="role_column",
+                            label="Role Column",
+                            kind="string",
+                            required=True,
+                            help_text="Name of a column with preassigned role values ('train', 'test', 'oot')",
+                        ),
+                    ],
+                ),
+            ],
+        )
 
     def run(self, context: ExecutionContext) -> NodeOutput:
 

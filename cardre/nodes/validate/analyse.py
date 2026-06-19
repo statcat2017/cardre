@@ -15,6 +15,12 @@ from sklearn.metrics import (
 
 from cardre.artifacts import write_json_artifact
 from cardre.audit import ExecutionContext, JsonDict, NodeOutput, NodeType
+from cardre.node_parameters import (
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
+)
 from cardre.evidence import (
     ArtifactEvidenceReader,
     EvidenceKind,
@@ -29,6 +35,40 @@ class ValidationMetricsNode(NodeType):
     category = "apply"
     input_roles: list[str] = ["train", "test", "oot", "definition"]
     output_roles: list[str] = ["report"]
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Validation Metrics",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    description="Compute validation metrics (AUC, KS, Gini, precision, recall, F1, G-Mean) at given cutoffs.",
+                    params=[
+                        ParameterDefinition(
+                            name="cutoffs",
+                            label="Cutoffs",
+                            kind="list",
+                            default=[0.5],
+                            help_text="List of probability thresholds at which to compute confusion-matrix derived metrics.",
+                            constraint=ParameterConstraint(min_items=1),
+                        ),
+                        ParameterDefinition(
+                            name="include_calibration_display",
+                            label="Include Calibration Display",
+                            kind="boolean",
+                            default=False,
+                            help_text="Whether to include calibration curve data (prob_true, prob_pred) alongside bucketed calibration.",
+                        ),
+                    ],
+                ),
+            ],
+            default_method="default",
+        )
 
     def _derive_y_bin(
         self, df: pl.DataFrame, target_col: str, good: set[str], bad: set[str],
@@ -287,6 +327,57 @@ class ThresholdOptimizationNode(NodeType):
 
     OBJECTIVES = {"youden", "max_f1", "max_g_mean", "cost_minimize"}
 
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Threshold optimization",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="objective",
+                            label="Objective",
+                            kind="enum",
+                            default="youden",
+                            constraint=ParameterConstraint(
+                                enum_values=["youden", "max_f1", "max_g_mean", "cost_minimize"],
+                            ),
+                            help_text="Optimization objective for threshold selection.",
+                        ),
+                        ParameterDefinition(
+                            name="n_thresholds",
+                            label="Number of thresholds",
+                            kind="integer",
+                            default=200,
+                            constraint=ParameterConstraint(min_value=10),
+                            help_text="Number of evenly-spaced threshold candidates to evaluate.",
+                        ),
+                        ParameterDefinition(
+                            name="cost_fp",
+                            label="False positive cost",
+                            kind="float",
+                            default=1.0,
+                            constraint=ParameterConstraint(min_value=0.0),
+                            help_text="Cost of a false positive (used with cost_minimize objective).",
+                        ),
+                        ParameterDefinition(
+                            name="cost_fn",
+                            label="False negative cost",
+                            kind="float",
+                            default=10.0,
+                            constraint=ParameterConstraint(min_value=0.0),
+                            help_text="Cost of a false negative (used with cost_minimize objective).",
+                        ),
+                    ],
+                ),
+            ],
+        )
+
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
         objective = params.get("objective", "youden")
@@ -422,6 +513,40 @@ class CutoffAnalysisNode(NodeType):
     category = "apply"
     input_roles: list[str] = ["train", "test", "oot", "definition"]
     output_roles: list[str] = ["report"]
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Cutoff Analysis",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    description="Analyse approval rate, bad rate, and capture rate across score bands / cutoffs.",
+                    params=[
+                        ParameterDefinition(
+                            name="band_count",
+                            label="Band Count",
+                            kind="integer",
+                            default=20,
+                            help_text="Number of equal-width score bands to divide the score range into (used when cutoffs is empty).",
+                            constraint=ParameterConstraint(min_value=2),
+                        ),
+                        ParameterDefinition(
+                            name="cutoffs",
+                            label="Cutoffs",
+                            kind="list",
+                            default=[],
+                            help_text="Explicit list of score cutoffs (overrides band_count when non-empty).",
+                        ),
+                    ],
+                ),
+            ],
+            default_method="default",
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []

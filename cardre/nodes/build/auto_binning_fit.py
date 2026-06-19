@@ -18,6 +18,9 @@ from cardre.evidence import (
 )
 from cardre.engine.binning.optbinning_adapter import fit_variables
 from cardre.engine.binning.diagnostics import run_all as run_diagnostics
+from cardre.node_parameters import (
+    MethodOption, NodeParameterSchema, ParameterConstraint, ParameterDefinition,
+)
 
 
 class AutoBinningFitNode(NodeType):
@@ -36,6 +39,137 @@ class AutoBinningFitNode(NodeType):
         pl.Float64, pl.Float32, pl.Int64, pl.Int32,
         pl.Int16, pl.Int8, pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8,
     }
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Auto Binning Fit",
+            methods=[
+                MethodOption(
+                    id="optbinning",
+                    label="OptBinning",
+                    status="available",
+                    description="Supervised optimal binning using optbinning engine.",
+                    params=[
+                        ParameterDefinition(
+                            name="engine",
+                            label="Engine",
+                            kind="string",
+                            default="optbinning",
+                            help_text="Binning engine to use.",
+                            constraint=ParameterConstraint(enum_values=["optbinning"]),
+                        ),
+                        ParameterDefinition(
+                            name="prebinning_method",
+                            label="Prebinning Method",
+                            kind="string",
+                            default="cart",
+                            help_text="Method for initial prebinning.",
+                            constraint=ParameterConstraint(enum_values=["cart", "quantile"]),
+                        ),
+                        ParameterDefinition(
+                            name="solver",
+                            label="Solver",
+                            kind="string",
+                            default="cp",
+                            help_text="Optimization solver.",
+                            constraint=ParameterConstraint(enum_values=["cp", "mip"]),
+                        ),
+                        ParameterDefinition(
+                            name="divergence",
+                            label="Divergence",
+                            kind="string",
+                            default="iv",
+                            help_text="Divergence measure for binning optimality.",
+                            constraint=ParameterConstraint(enum_values=["iv", "js", "hellinger"]),
+                        ),
+                        ParameterDefinition(
+                            name="monotonic_trend",
+                            label="Monotonic Trend",
+                            kind="string",
+                            default="auto",
+                            help_text="Monotonicity constraint for WOE trend.",
+                            constraint=ParameterConstraint(
+                                enum_values=["auto", "none", "ascending", "descending"],
+                            ),
+                        ),
+                        ParameterDefinition(
+                            name="max_n_prebins",
+                            label="Max N Prebins",
+                            kind="integer",
+                            help_text="Maximum number of prebins (optional).",
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="min_prebin_size",
+                            label="Min Prebin Size",
+                            kind="float",
+                            help_text="Minimum fraction of rows per prebin (optional, 0-1 exclusive).",
+                            constraint=ParameterConstraint(exclusive_min=0, exclusive_max=1),
+                        ),
+                        ParameterDefinition(
+                            name="max_n_bins",
+                            label="Max N Bins",
+                            kind="integer",
+                            help_text="Maximum number of final bins (optional).",
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="min_bin_size",
+                            label="Min Bin Size",
+                            kind="float",
+                            help_text="Minimum fraction of rows per final bin (optional, 0-1 exclusive).",
+                            constraint=ParameterConstraint(exclusive_min=0, exclusive_max=1),
+                        ),
+                        ParameterDefinition(
+                            name="min_bin_n_event",
+                            label="Min Bin N Event",
+                            kind="integer",
+                            help_text="Minimum number of event observations per bin (optional).",
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="min_bin_n_nonevent",
+                            label="Min Bin N Nonevent",
+                            kind="integer",
+                            help_text="Minimum number of non-event observations per bin (optional).",
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="cat_cutoff",
+                            label="Cat Cutoff",
+                            kind="float",
+                            help_text="Category frequency cutoff for categorical variables (optional, 0-1 exclusive).",
+                            constraint=ParameterConstraint(exclusive_min=0, exclusive_max=1),
+                        ),
+                        ParameterDefinition(
+                            name="time_limit",
+                            label="Time Limit",
+                            kind="integer",
+                            help_text="Time limit in seconds for the solver (optional).",
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="special_codes",
+                            label="Special Codes",
+                            kind="object",
+                            default={},
+                            help_text="Map of variable names to lists of special code values.",
+                        ),
+                        ParameterDefinition(
+                            name="exclude_columns",
+                            label="Exclude Columns",
+                            kind="list",
+                            default=[],
+                            help_text="Column names to exclude from binning.",
+                        ),
+                    ],
+                ),
+            ],
+            default_method="optbinning",
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []

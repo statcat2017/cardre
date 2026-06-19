@@ -9,6 +9,9 @@ import polars as pl
 from cardre.artifacts import write_json_artifact
 from cardre.audit import ExecutionContext, NodeOutput, NodeType
 from cardre.evidence import ArtifactEvidenceReader, EvidenceKind, SCHEMA_BIN_DEFINITION
+from cardre.node_parameters import (
+    MethodOption, NodeParameterSchema, ParameterConstraint, ParameterDefinition,
+)
 
 
 class FineClassingNode(NodeType):
@@ -17,6 +20,64 @@ class FineClassingNode(NodeType):
     category = "fit"
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["definition"]
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Fine Classing",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    description="Fine classing (equal-frequency binning with optional missing handling).",
+                    params=[
+                        ParameterDefinition(
+                            name="max_bins",
+                            label="Max Bins",
+                            kind="integer",
+                            default=20,
+                            help_text="Maximum number of bins per numeric variable.",
+                            constraint=ParameterConstraint(min_value=2),
+                        ),
+                        ParameterDefinition(
+                            name="min_bin_fraction",
+                            label="Min Bin Fraction",
+                            kind="float",
+                            default=0.05,
+                            help_text="Minimum fraction of rows a bin must contain (exclusive bounds).",
+                            constraint=ParameterConstraint(exclusive_min=0, exclusive_max=1),
+                        ),
+                        ParameterDefinition(
+                            name="missing_policy",
+                            label="Missing Policy",
+                            kind="string",
+                            default="separate_bin",
+                            help_text="How to treat missing values: separate bin or ignore.",
+                            constraint=ParameterConstraint(enum_values=["separate_bin", "ignore"]),
+                        ),
+                        ParameterDefinition(
+                            name="max_categorical_levels",
+                            label="Max Categorical Levels",
+                            kind="integer",
+                            default=50,
+                            help_text="Maximum number of category levels to keep per categorical variable.",
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="exclude_columns",
+                            label="Exclude Columns",
+                            kind="list",
+                            default=[],
+                            help_text="Column names to exclude from binning.",
+                        ),
+                    ],
+                ),
+            ],
+            default_method="default",
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -373,6 +434,38 @@ class ManualBinningNode(NodeType):
         "merge_bins", "group_categories",
         "reject_variable", "reorder_missing_bin", "reorder_special_bin",
     }
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Manual Binning",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    description="Apply manual binning overrides (merge, group, reject, reorder).",
+                    params=[
+                        ParameterDefinition(
+                            name="overrides",
+                            label="Overrides",
+                            kind="list",
+                            default=[],
+                            help_text=(
+                                "List of override objects. Each object requires: "
+                                "variable (str), action (one of merge_bins, group_categories, "
+                                "reject_variable, reorder_missing_bin, reorder_special_bin), "
+                                "reason (str), source_bin_ids (list[str]), "
+                                "and optionally new_label (str)."
+                            ),
+                        ),
+                    ],
+                ),
+            ],
+            default_method="default",
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []

@@ -9,6 +9,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from cardre.node_parameters import (
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
+)
 from cardre.nodes._classifier_base import BaseClassifierNode, _ClassifierResult
 
 
@@ -38,6 +44,63 @@ class XGBoostClassifierNode(BaseClassifierNode):
     model_family = "xgboost"
 
     VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="XGBoost classifier",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="feature_strategy",
+                            label="Feature strategy",
+                            kind="enum",
+                            constraint=ParameterConstraint(
+                                enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
+                            ),
+                            help_text="Strategy for handling input features.",
+                        ),
+                        ParameterDefinition(
+                            name="n_estimators",
+                            label="Number of estimators",
+                            kind="integer",
+                            default=100,
+                            constraint=ParameterConstraint(min_value=1),
+                            help_text="Number of boosting rounds.",
+                        ),
+                        ParameterDefinition(
+                            name="max_depth",
+                            label="Max tree depth",
+                            kind="integer",
+                            default=6,
+                            constraint=ParameterConstraint(min_value=1),
+                            help_text="Maximum tree depth.",
+                        ),
+                        ParameterDefinition(
+                            name="learning_rate",
+                            label="Learning rate",
+                            kind="float",
+                            default=0.1,
+                            constraint=ParameterConstraint(exclusive_min=0.0),
+                            help_text="Boosting learning rate.",
+                        ),
+                        ParameterDefinition(
+                            name="random_seed",
+                            label="Random seed",
+                            kind="integer",
+                            default=42,
+                            help_text="Random seed for reproducibility.",
+                        ),
+                    ],
+                ),
+            ],
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -160,6 +223,63 @@ class LightGBMClassifierNode(BaseClassifierNode):
     model_family = "lightgbm"
 
     VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="LightGBM classifier",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="feature_strategy",
+                            label="Feature strategy",
+                            kind="enum",
+                            constraint=ParameterConstraint(
+                                enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
+                            ),
+                            help_text="Strategy for handling input features.",
+                        ),
+                        ParameterDefinition(
+                            name="n_estimators",
+                            label="Number of estimators",
+                            kind="integer",
+                            default=100,
+                            constraint=ParameterConstraint(min_value=1),
+                            help_text="Number of boosting rounds.",
+                        ),
+                        ParameterDefinition(
+                            name="max_depth",
+                            label="Max tree depth",
+                            kind="integer",
+                            default=-1,
+                            constraint=ParameterConstraint(min_value=-1),
+                            help_text="Maximum tree depth. -1 means no limit.",
+                        ),
+                        ParameterDefinition(
+                            name="learning_rate",
+                            label="Learning rate",
+                            kind="float",
+                            default=0.1,
+                            constraint=ParameterConstraint(exclusive_min=0.0),
+                            help_text="Boosting learning rate.",
+                        ),
+                        ParameterDefinition(
+                            name="random_seed",
+                            label="Random seed",
+                            kind="integer",
+                            default=42,
+                            help_text="Random seed for reproducibility.",
+                        ),
+                    ],
+                ),
+            ],
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -286,6 +406,63 @@ class CatBoostClassifierNode(BaseClassifierNode):
     model_family = "catboost"
 
     VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="CatBoost classifier",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="feature_strategy",
+                            label="Feature strategy",
+                            kind="enum",
+                            constraint=ParameterConstraint(
+                                enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
+                            ),
+                            help_text="Strategy for handling input features.",
+                        ),
+                        ParameterDefinition(
+                            name="iterations",
+                            label="Iterations",
+                            kind="integer",
+                            default=100,
+                            constraint=ParameterConstraint(min_value=1),
+                            help_text="Number of boosting iterations.",
+                        ),
+                        ParameterDefinition(
+                            name="depth",
+                            label="Tree depth",
+                            kind="integer",
+                            default=6,
+                            constraint=ParameterConstraint(min_value=1),
+                            help_text="Depth of the trees.",
+                        ),
+                        ParameterDefinition(
+                            name="learning_rate",
+                            label="Learning rate",
+                            kind="float",
+                            default=0.1,
+                            constraint=ParameterConstraint(exclusive_min=0.0),
+                            help_text="Boosting learning rate.",
+                        ),
+                        ParameterDefinition(
+                            name="random_seed",
+                            label="Random seed",
+                            kind="integer",
+                            default=42,
+                            help_text="Random seed for reproducibility.",
+                        ),
+                    ],
+                ),
+            ],
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []

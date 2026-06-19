@@ -15,6 +15,9 @@ from sklearn.tree import DecisionTreeClassifier
 from cardre.artifacts import write_json_artifact
 from cardre.audit import ExecutionContext, NodeOutput, NodeType
 from cardre.modeling.builders import build_model_artifact
+from cardre.node_parameters import (
+    MethodOption, NodeParameterSchema, ParameterConstraint, ParameterDefinition,
+)
 from cardre.nodes._training_utils import _prepare_training_data, _write_estimator
 
 ESTIMATOR_MAP = {
@@ -45,6 +48,96 @@ class HyperparameterTuningNode(NodeType):
     category = "fit"
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Hyperparameter Tuning",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    description="Hyperparameter tuning using GridSearchCV / RandomizedSearchCV.",
+                    params=[
+                        ParameterDefinition(
+                            name="estimator_type",
+                            label="Estimator Type",
+                            kind="enum",
+                            required=True,
+                            constraint=ParameterConstraint(
+                                enum_values=["decision_tree", "random_forest", "gbdt", "logistic_regression"],
+                            ),
+                        ),
+                        ParameterDefinition(
+                            name="search_method",
+                            label="Search Method",
+                            kind="enum",
+                            default="grid",
+                            constraint=ParameterConstraint(
+                                enum_values=["grid", "randomized"],
+                            ),
+                        ),
+                        ParameterDefinition(
+                            name="param_grid",
+                            label="Param Grid",
+                            kind="object",
+                            required=True,
+                        ),
+                        ParameterDefinition(
+                            name="cv_folds",
+                            label="CV Folds",
+                            kind="integer",
+                            default=5,
+                            constraint=ParameterConstraint(min_value=2),
+                        ),
+                        ParameterDefinition(
+                            name="scoring",
+                            label="Scoring",
+                            kind="string",
+                            default="roc_auc",
+                        ),
+                        ParameterDefinition(
+                            name="n_jobs",
+                            label="N Jobs",
+                            kind="integer",
+                            default=-1,
+                        ),
+                        ParameterDefinition(
+                            name="n_iter",
+                            label="N Iter",
+                            kind="integer",
+                            default=10,
+                            constraint=ParameterConstraint(min_value=1),
+                        ),
+                        ParameterDefinition(
+                            name="refit",
+                            label="Refit",
+                            kind="boolean",
+                            default=True,
+                        ),
+                        ParameterDefinition(
+                            name="random_seed",
+                            label="Random Seed",
+                            kind="integer",
+                            default=42,
+                        ),
+                        ParameterDefinition(
+                            name="feature_strategy",
+                            label="Feature Strategy",
+                            kind="enum",
+                            default="raw_numeric",
+                            constraint=ParameterConstraint(
+                                enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
+                            ),
+                        ),
+                    ],
+                ),
+            ],
+            default_method="default",
+        )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []

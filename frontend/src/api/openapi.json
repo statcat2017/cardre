@@ -3653,6 +3653,41 @@
         ],
         "title": "ManualBinningSourceInfo"
       },
+      "MethodOptionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "available"
+          },
+          "params": {
+            "items": {
+              "$ref": "#/components/schemas/ParameterDefinitionResponse"
+            },
+            "type": "array",
+            "title": "Params"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "MethodOptionResponse"
+      },
       "MethodSummaryResponse": {
         "properties": {
           "branch_id": {
@@ -4032,6 +4067,18 @@
             "type": "string",
             "title": "Version"
           },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "default": ""
+          },
+          "methods": {
+            "items": {
+              "$ref": "#/components/schemas/MethodOptionResponse"
+            },
+            "type": "array",
+            "title": "Methods"
+          },
           "params_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -4054,6 +4101,179 @@
           "version"
         ],
         "title": "NodeTypeSchemaResponse"
+      },
+      "ParameterConstraintResponse": {
+        "properties": {
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "default": false
+          },
+          "min_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Value"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Value"
+          },
+          "exclusive_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusive Min"
+          },
+          "exclusive_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusive Max"
+          },
+          "min_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Length"
+          },
+          "max_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Length"
+          },
+          "min_items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Items"
+          },
+          "max_items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Items"
+          },
+          "enum_values": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enum Values"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern"
+          }
+        },
+        "type": "object",
+        "title": "ParameterConstraintResponse"
+      },
+      "ParameterDefinitionResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "default": {
+            "title": "Default"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "default": false
+          },
+          "constraint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ParameterConstraintResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "help_text": {
+            "type": "string",
+            "title": "Help Text",
+            "default": ""
+          },
+          "group": {
+            "type": "string",
+            "title": "Group",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "label",
+          "kind"
+        ],
+        "title": "ParameterDefinitionResponse"
       },
       "PlanListItem": {
         "properties": {
