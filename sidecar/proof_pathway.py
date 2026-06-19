@@ -137,7 +137,7 @@ SCORECARD_PATHWAY = PathwaySpec(
         # Phase 2C: Apply WOE, apply model, validation, cutoff analysis
         [
             PathwayStepSpec("apply-woe", "cardre.apply_woe_mapping", category="apply",
-                            parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv", "freeze-scorecard-bundle"]),
+                            parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv", "freeze-scorecard-bundle", "variable-selection"]),
             PathwayStepSpec("apply-model", "cardre.apply_model", category="apply",
                             parent_step_ids=["apply-woe", "logistic-regression", "score-scaling", "freeze-scorecard-bundle"]),
             PathwayStepSpec("validation-metrics", "cardre.validation_metrics", category="apply",

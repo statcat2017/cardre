@@ -880,3 +880,36 @@ class ApplyWoeMappingEvidenceTests(unittest.TestCase):
         out = ApplyWoeMappingNode().run(ctx)
         df = pl.read_parquet(self.store.artifact_path(out.artifacts[1]))
         self.assertEqual(df["x_woe"][0], 0.0)
+
+    def test_bundle_requires_selection_artifact_when_bundle_has_one(self):
+        """When frozen bundle has selection_artifact_id, selection must be present."""
+        params = {}
+        spec = StepSpec(step_id="aw", node_type="cardre.apply_woe_mapping", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        bundle_payload = {
+            "schema_version": "cardre.frozen_scorecard_bundle.v1",
+            "bundle_type": "scorecard_application",
+            "components": {},
+            "feature_contract": {"features": []},
+            "score_scaling": {},
+            "warnings": [],
+        }
+        bundle_art = write_json_artifact(
+            self.store, artifact_type="scorecard", role="scorecard",
+            stem="bundle",
+            payload=bundle_payload,
+            metadata={
+                "schema_version": SCHEMA_FROZEN_SCORECARD_BUNDLE,
+                "bin_definition_artifact_id": "bins_1",
+                "woe_table_artifact_id": "woe_1",
+                "selection_artifact_id": "sel_1",
+            },
+        )
+        ctx = ExecutionContext(store=self.store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[],
+                               input_artifacts=[self.train_art, self.bin_art, self.woe_art, bundle_art],
+                               validated_params=params, runtime_metadata={})
+        with self.assertRaises(ValueError) as cm:
+            ApplyWoeMappingNode().run(ctx)
+        self.assertIn("selection artifact", str(cm.exception))

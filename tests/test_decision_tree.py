@@ -9,7 +9,9 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
+from cardre.artifacts import write_json_artifact
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
+from cardre.evidence import SCHEMA_FROZEN_SCORECARD_BUNDLE
 from cardre.modeling.schema import validate_model_artifact
 from cardre.nodes.ml_models import DecisionTreeNode
 from cardre.nodes.validate import ApplyModelNode, ValidationMetricsNode
@@ -630,3 +632,53 @@ class DecisionTreeDeterminismTests:
         assert model1["model_payload"]["tree_rules"] == model2["model_payload"]["tree_rules"]
         assert model1["model_payload"]["tree_depth"] == model2["model_payload"]["tree_depth"]
         assert model1["model_payload"]["leaf_count"] == model2["model_payload"]["leaf_count"]
+
+
+# ======================================================================
+# Frozen bundle validation
+# ======================================================================
+
+class FrozenBundleApplyModelTests:
+
+    def test_bundle_requires_scorecard_artifact(self):
+        """When frozen bundle has scorecard_artifact_id, the scorecard must be present."""
+        store, tmp = make_store()
+        data_art, def_art, train_df = make_numeric_dataset(store)
+
+        dt_ctx = make_dt_context(store, data_art, def_art)
+        dt_output = DecisionTreeNode().run(dt_ctx)
+        model_art = dt_output.artifacts[0]
+
+        bundle_payload = {
+            "schema_version": "cardre.frozen_scorecard_bundle.v1",
+            "bundle_type": "scorecard_application",
+            "components": {},
+            "feature_contract": {"features": []},
+            "score_scaling": {},
+            "warnings": [],
+        }
+        bundle_art = write_json_artifact(
+            store, artifact_type="scorecard", role="scorecard",
+            stem="bundle",
+            payload=bundle_payload,
+            metadata={
+                "schema_version": SCHEMA_FROZEN_SCORECARD_BUNDLE,
+                "model_artifact_id": model_art.artifact_id,
+                "scorecard_artifact_id": "some-scorecard-id",
+            },
+        )
+
+        step_spec = StepSpec(
+            step_id="apply", node_type="cardre.apply_model",
+            node_version="2", category="apply",
+            params={}, params_hash=json_logical_hash({}),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=step_spec, parent_run_steps=[],
+            input_artifacts=[data_art, model_art, bundle_art],
+            validated_params={}, runtime_metadata={},
+        )
+        with pytest.raises(ValueError, match="no scorecard scaling artifact was provided"):
+            ApplyModelNode().run(ctx)

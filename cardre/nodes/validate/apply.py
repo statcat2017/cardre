@@ -125,11 +125,17 @@ class ApplyWoeMappingNode(NodeType):
                     f"does not match the WOE table being applied "
                     f"({woe_table.source_artifact_id})"
                 )
-            if bundle_meta.get("selection_artifact_id") and sel_art is not None:
-                if bundle_meta["selection_artifact_id"] != sel_art.artifact_id:
+            expected_selection_id = bundle_meta.get("selection_artifact_id")
+            if expected_selection_id:
+                if sel_art is None:
+                    raise ValueError(
+                        f"Frozen bundle requires selection artifact "
+                        f"{expected_selection_id}, but no selection artifact was provided"
+                    )
+                if expected_selection_id != sel_art.artifact_id:
                     raise ValueError(
                         f"Frozen bundle selection_artifact_id "
-                        f"({bundle_meta['selection_artifact_id']}) "
+                        f"({expected_selection_id}) "
                         f"does not match the selection being applied "
                         f"({sel_art.artifact_id})"
                     )
@@ -283,11 +289,18 @@ class ApplyModelNode(NodeType):
                     f"Frozen bundle model_artifact_id ({bundle_meta.get('model_artifact_id')}) "
                     f"does not match input model artifact ({model_art.artifact_id})"
                 )
-            if scorecard_art is not None and bundle_meta.get("scorecard_artifact_id") != scorecard_art.artifact_id:
-                raise ValueError(
-                    f"Frozen bundle scorecard_artifact_id ({bundle_meta.get('scorecard_artifact_id')}) "
-                    f"does not match input scorecard artifact ({scorecard_art.artifact_id})"
-                )
+            expected_scorecard_id = bundle_meta.get("scorecard_artifact_id")
+            if expected_scorecard_id:
+                if scorecard_art is None:
+                    raise ValueError(
+                        f"Frozen bundle requires scorecard artifact "
+                        f"{expected_scorecard_id}, but no scorecard scaling artifact was provided"
+                    )
+                if expected_scorecard_id != scorecard_art.artifact_id:
+                    raise ValueError(
+                        f"Frozen bundle scorecard_artifact_id ({expected_scorecard_id}) "
+                        f"does not match input scorecard artifact ({scorecard_art.artifact_id})"
+                    )
 
         model = json.loads(store.artifact_path(model_art).read_text())
         if "model_family" not in model:
