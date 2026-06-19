@@ -14,7 +14,7 @@ from sidecar.main import app
 
 # All 21 German Credit columns must be read as strings for scorecard compatibility.
 # With proper CSV type inference polars converts numeric-looking fields (e.g.
-# duration_months=6, credit_amount=1169) to Int64, breaking fine-classing/WOE
+# duration_months=6, credit_amount=1169) to Int64, breaking binning/WOE
 # which expects string-typed categorical bins.
 _GERMAN_COLS_STR = {
     c: "str" for c in [
@@ -634,7 +634,7 @@ class TestStepParamsUpdate:
         plan_id = scorecard["plan_id"]
         orig_pv_id = store.get_latest_plan_version_id(plan_id)
 
-        resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+        resp = client.post(f"/plans/{plan_id}/steps/binning/params", json={
             "project_id": pid,
             "base_plan_version_id": orig_pv_id,
             "params": {"max_bins": 25, "min_bin_fraction": 0.03},
@@ -643,7 +643,7 @@ class TestStepParamsUpdate:
         data = resp.json()
         assert data["plan_id"] == plan_id
         assert data["new_plan_version_id"] != orig_pv_id
-        assert data["changed_step_id"] == "fine-classing"
+        assert data["changed_step_id"] == "binning"
         assert len(data["stale_step_ids"]) > 0
 
     def test_update_params_invalid_step(self, client, tmp_dir):
@@ -677,13 +677,13 @@ class TestStepParamsUpdate:
         v1_pv_id = store.get_latest_plan_version_id(plan_id)
 
         # Update once to create v2
-        client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+        client.post(f"/plans/{plan_id}/steps/binning/params", json={
             "project_id": pid, "base_plan_version_id": v1_pv_id,
             "params": {"max_bins": 30},
         })
 
         # Try updating with stale v1 id — should get 409
-        resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+        resp = client.post(f"/plans/{plan_id}/steps/binning/params", json={
             "project_id": pid, "base_plan_version_id": v1_pv_id,
             "params": {"max_bins": 25},
         })
@@ -703,7 +703,7 @@ class TestStepParamsUpdate:
         orig_pv_id = store.get_latest_plan_version_id(plan_id)
 
         # max_bins=1 is invalid (must be >= 2)
-        resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+        resp = client.post(f"/plans/{plan_id}/steps/binning/params", json={
             "project_id": pid, "base_plan_version_id": orig_pv_id,
             "params": {"max_bins": 1},
         })
@@ -1155,14 +1155,14 @@ class TestE2EWithNewEndpoints:
 
         # Update step params
         scorecard_pv_id = store.get_latest_plan_version_id(plan_id)
-        params_resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+        params_resp = client.post(f"/plans/{plan_id}/steps/binning/params", json={
             "project_id": pid,
             "base_plan_version_id": scorecard_pv_id,
             "params": {"max_bins": 15},
         })
         assert params_resp.status_code == 200
         params_data = params_resp.json()
-        assert params_data["changed_step_id"] == "fine-classing"
+        assert params_data["changed_step_id"] == "binning"
 
         # Check editor state
         editor_resp = client.get(f"/plans/{plan_id}/steps/manual-binning/editor-state?project_id={pid}")
@@ -1297,24 +1297,24 @@ class TestScorecardPathwayE2E:
 
         # 6. Update step params and verify staleness is scoped
         new_pv_id = store.get_latest_plan_version_id(plan_id)
-        params_resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+        params_resp = client.post(f"/plans/{plan_id}/steps/binning/params", json={
             "project_id": pid,
             "base_plan_version_id": new_pv_id,
             "params": {"max_bins": 15},
         })
         assert params_resp.status_code == 200
         params_data = params_resp.json()
-        assert params_data["changed_step_id"] == "fine-classing"
+        assert params_data["changed_step_id"] == "binning"
 
-        # Stale should only include fine-classing + its descendants,
+        # Stale should only include binning + its descendants,
         # NOT e.g. import, define-modelling-metadata, apply-exclusions, etc.
         stale_ids = set(params_data["stale_step_ids"])
-        assert "fine-classing" in stale_ids
+        assert "binning" in stale_ids
         non_stale_ancestors = {"import", "define-modelling-metadata", "apply-exclusions",
                                 "development-sample-definition", "split"}
         for anc in non_stale_ancestors:
             assert anc not in stale_ids, (
-                f"Unchanged ancestor {anc} should not be stale after fine-classing param update"
+                f"Unchanged ancestor {anc} should not be stale after binning param update"
             )
 
         # 6. Manual-binning save with invalid overrides is rejected
@@ -1402,7 +1402,7 @@ class TestScorecardPathwayE2E:
         assert resp.status_code == 422, (
             f"Expected 422 without any successful run, got {resp.status_code}: {resp.json()}"
         )
-        assert "Run fine-classing" in resp.json()["detail"]["message"]
+        assert "Run binning" in resp.json()["detail"]["message"]
 
     def test_staleness_and_status_after_param_update(self, client, tmp_dir, larger_german_credit):
         """Regression test: after a param update, unchanged upstream steps
@@ -1465,9 +1465,9 @@ class TestScorecardPathwayE2E:
         assert run_resp.status_code == 201
         assert run_resp.json()["status"] == "succeeded"
 
-        # Update fine-classing params
+        # Update binning params
         new_pv_id = store.get_latest_plan_version_id(plan_id)
-        params_resp = client.post(f"/plans/{plan_id}/steps/fine-classing/params", json={
+        params_resp = client.post(f"/plans/{plan_id}/steps/binning/params", json={
             "project_id": pid,
             "base_plan_version_id": new_pv_id,
             "params": {"max_bins": 12},
@@ -1492,7 +1492,7 @@ class TestScorecardPathwayE2E:
             )
 
         # The changed step is stale
-        assert steps_map["fine-classing"]["is_stale"]
+        assert steps_map["binning"]["is_stale"]
         # Its transitive descendants are stale
         stale_downstream = ["initial-woe-iv", "variable-clustering", "variable-selection",
                             "manual-binning", "final-woe-iv", "woe-transform-train",
@@ -1501,7 +1501,7 @@ class TestScorecardPathwayE2E:
                             "validation-metrics", "cutoff-analysis", "technical-manifest-stub"]
         for step_id in stale_downstream:
             s = steps_map[step_id]
-            assert s["is_stale"], f"{step_id} should be stale (descendant of fine-classing)"
+            assert s["is_stale"], f"{step_id} should be stale (descendant of binning)"
             # Stale steps should show "not_run" (no run on new version for them)
             assert s["status"] == "not_run", (
                 f"{step_id} should show 'not_run' (stale), got {s['status']!r}"

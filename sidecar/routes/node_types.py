@@ -130,13 +130,12 @@ _MODEL_FAMILIES: dict[str, dict] = {
         "champion_eligibility": None,
         "description": "Hyperparameter tuning using GridSearchCV / RandomizedSearchCV for decision tree, random forest, GBDT, or logistic regression.",
     },
-    "cardre.auto_binning_fit": {
+    "cardre.binning": {
         "model_family": None,
         "feature_strategies": [],
         "interpretability_level": None,
         "champion_eligibility": None,
-        "description": "Supervised optimal binning using optbinning engine.",
-        "optional_dependencies": ["optimal-binning"],
+        "description": "Canonical binning node supporting Fine Classing and OptBinning methods.",
     },
 }
 
@@ -153,6 +152,8 @@ def list_node_types() -> NodeTypeListResponse:
 
     for node_type in sorted(registry.list_types()):
         cls = registry.resolve(node_type)
+        if getattr(cls, "is_internal", False):
+            continue
         meta = _MODEL_FAMILIES.get(node_type, {})
 
         items.append(NodeTypeItem(

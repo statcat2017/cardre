@@ -114,6 +114,9 @@ class NodeType(ABC):
     category: str
     input_roles: list[str]
     output_roles: list[str]
+    is_internal: bool = False
+    is_deprecated: bool = False
+    replacement_node_type: str | None = None
 
     @abstractmethod
     def run(self, context: ExecutionContext) -> NodeOutput:

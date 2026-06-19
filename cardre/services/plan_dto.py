@@ -42,8 +42,9 @@ class UpdateStepParamsResponse:
 
 @dataclass
 class ManualBinningSourceInfo:
-    fine_classing_step_id: str
-    fine_classing_artifact_id: str
+    binning_step_id: str
+    binning_artifact_id: str
+    binning_method: str
     variable_selection_step_id: str
     variable_selection_artifact_id: str
 

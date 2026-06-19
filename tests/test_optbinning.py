@@ -363,7 +363,8 @@ class TestAutoBinningFitNode:
                 ),
             ],
             manifest={"engine": "optbinning", "engine_version": "0.21.0",
-                      "parameters": {}, "succeeded": ["age", "income"], "failed": []},
+                      "parameters": {}, "succeeded": ["age", "income"], "failed": [],
+                      "variables_succeeded": 2, "variables_failed": 0, "warnings_count": 0},
         )
 
         from cardre.audit import ExecutionContext, StepSpec
@@ -392,9 +393,10 @@ class TestAutoBinningFitNode:
         )
         output = node.run(ctx)
 
-        assert len(output.artifacts) == 2  # bin definition + manifest
+        assert len(output.artifacts) == 3  # bin definition + variable summary + manifest
         bin_art = output.artifacts[0]
-        man_art = output.artifacts[1]
+        sum_art = output.artifacts[1]
+        man_art = output.artifacts[2]
 
         # Verify bin definition artifact
         assert store.artifact_path(bin_art).exists()
@@ -406,11 +408,21 @@ class TestAutoBinningFitNode:
         assert payload["schema_version"] == SCHEMA_BIN_DEFINITION
         assert "source" in payload
         assert payload["source"]["engine"] == "optbinning"
+        assert payload["source"]["method"] == "optbinning"
+        assert payload["source"]["fit_sample_role"] == "train"
+        assert "train_artifact_id" in payload["source"]
+        assert "target_column" in payload["source"]
+
+        # Verify variable summary artifact
+        sum_payload = json.loads(store.artifact_path(sum_art).read_text())
+        assert "variables" in sum_payload
+        assert len(sum_payload["variables"]) == 2
 
         # Verify manifest artifact
         man_payload = json.loads(store.artifact_path(man_art).read_text())
         assert man_payload["engine"] == "optbinning"
         assert "succeeded" in man_payload
+        assert "variables_succeeded" in man_payload
 
     @patch("cardre.nodes.build.auto_binning_fit.fit_variables")
     def test_target_conversion_rejected_by_adapter(self, mock_fit):
@@ -601,13 +613,15 @@ class TestBinningNodeOptbinning:
                 ),
             ],
             manifest={"engine": "optbinning", "engine_version": "0.21.0",
-                      "parameters": {}, "succeeded": ["age", "income"], "failed": []},
+                      "parameters": {}, "succeeded": ["age", "income"], "failed": [],
+                      "variables_succeeded": 2, "variables_failed": 0, "warnings_count": 0},
         )
 
         from cardre.audit import ExecutionContext, StepSpec
         from cardre.evidence import SCHEMA_BIN_DEFINITION
 
         node = BinningNode()
+
         ctx = ExecutionContext(
             store=store,
             run_id="run1",
@@ -630,7 +644,7 @@ class TestBinningNodeOptbinning:
         )
         output = node.run(ctx)
 
-        assert len(output.artifacts) == 2
+        assert len(output.artifacts) == 3  # bin definition + summary + manifest
         bin_art = output.artifacts[0]
         assert store.artifact_path(bin_art).exists()
         payload = json.loads(store.artifact_path(bin_art).read_text())
@@ -639,6 +653,7 @@ class TestBinningNodeOptbinning:
         assert payload["variables"][0]["variable"] == "age"
         assert payload["schema_version"] == SCHEMA_BIN_DEFINITION
         assert payload["source"]["engine"] == "optbinning"
+        assert payload["source"]["method"] == "optbinning"
         assert "method" not in payload["source"]["params"]
 
     @patch("cardre.nodes.build.auto_binning_fit.fit_variables")
@@ -695,7 +710,8 @@ class TestBinningNodeOptbinning:
             engine_version="0.21.0",
             variables=[],
             manifest={"engine": "optbinning", "engine_version": "0.21.0",
-                      "parameters": {}, "succeeded": [], "failed": []},
+                      "parameters": {}, "succeeded": [], "failed": [],
+                      "variables_succeeded": 0, "variables_failed": 0, "warnings_count": 0},
         )
 
         from cardre.audit import ExecutionContext, StepSpec
@@ -903,7 +919,7 @@ class TestDiagnostics:
         from cardre.engine.binning.diagnostics import check_solver_status
         diags = check_solver_status("FAILED", "x")
         assert len(diags) == 1
-        assert diags[0].diagnostic_type == "solver_not_optimal"
+        assert diags[0].code == "SOLVER_NOT_OPTIMAL"
 
     def test_too_few_bins_warns(self):
         from cardre.engine.binning.diagnostics import check_too_few_bins
@@ -917,7 +933,7 @@ class TestDiagnostics:
             variable="x", min_count=30,
         )
         assert len(diags) == 1
-        assert diags[0].diagnostic_type == "sparse_bin"
+        assert diags[0].code == "SPARSE_BIN"
 
     def test_sparse_bin_no_warning(self):
         from cardre.engine.binning.diagnostics import check_sparse_bins
@@ -929,9 +945,9 @@ class TestDiagnostics:
 
     def test_variable_failed_warns(self):
         from cardre.engine.binning.diagnostics import check_variable_failed
-        diags = check_variable_failed("x", "FAILED", ["exception"])
+        diags = check_variable_failed("x", "FAILED", [{"message": "exception"}])
         assert len(diags) == 1
-        assert diags[0].diagnostic_type == "variable_failed"
+        assert diags[0].code == "VARIABLE_FAILED"
 
     def test_run_all_integration(self):
         from cardre.engine.binning.diagnostics import run_all
@@ -941,7 +957,7 @@ class TestDiagnostics:
             VBR(variable="ok", dtype="numerical", status="OPTIMAL",
                 bins=[{"bin_id": "b1", "row_count": 100}], warnings=[]),
             VBR(variable="bad", dtype="numerical", status="FAILED",
-                bins=[], warnings=["solver crashed"]),
+                bins=[], warnings=[{"code": "VARIABLE_FAILED", "message": "solver crashed"}]),
             VBR(variable="sparse", dtype="numerical", status="OPTIMAL",
                 bins=[{"bin_id": "b1", "row_count": 5}], warnings=[]),
         ]
@@ -949,9 +965,9 @@ class TestDiagnostics:
         # bad: solver failed + too few bins
         # sparse: sparse bin
         assert len(diags) >= 2
-        types = {d.diagnostic_type for d in diags}
-        assert "variable_failed" in types
-        assert "sparse_bin" in types
+        codes = {d.code for d in diags}
+        assert "VARIABLE_FAILED" in codes
+        assert "SPARSE_BIN" in codes
 
 
 # ======================================================================
@@ -1035,3 +1051,273 @@ class TestOptBinningIntegration:
         )
         # ok_var should succeed
         assert result.variables[0].status in ("OPTIMAL", "FEASIBLE")
+
+
+# ======================================================================
+# End-to-end integration: optbinning → WOE/IV → manual binning → WOE transform → LR
+# ======================================================================
+
+
+@pytest.mark.optional_binning
+@pytest.mark.skipif(not HAS_OPTBINNING, reason="optbinning not installed")
+class TestOptBinningFullIntegration:
+    """End-to-end test of the optbinning pathway through logistic regression."""
+
+    @patch("cardre.nodes.build.auto_binning_fit.fit_variables")
+    def test_optbinning_pathway_to_logistic_regression(self, mock_fit):
+        """All nodes succeed, WOE columns produced, LR model artifact produced."""
+        store, tmp = make_store()
+        store.initialize()
+
+        import io
+        from cardre.audit import (
+            ArtifactRef, json_logical_hash, physical_hash, relative_path, table_logical_hash,
+        )
+        from cardre.evidence import SCHEMA_BIN_DEFINITION, SCHEMA_WOE_TABLE
+
+        df = pl.DataFrame({
+            "age": [25.0, 30.0, 35.0, 40.0, 45.0, 50.0,
+                    22.0, 33.0, 44.0, 55.0, 66.0, 77.0],
+            "income": [40000.0, 50000.0, 60000.0, 70000.0, 80000.0, 90000.0,
+                       30000.0, 55000.0, 65000.0, 75000.0, 85000.0, 95000.0],
+            "target": ["good", "bad", "good", "bad", "good", "bad",
+                       "good", "bad", "good", "bad", "good", "bad"],
+        })
+
+        # Train artifact
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        train_path = store.root / "datasets" / "train.parquet"
+        train_path.parent.mkdir(parents=True, exist_ok=True)
+        train_path.write_bytes(buf.getvalue())
+        train_artifact = ArtifactRef(
+            artifact_id="train1", artifact_type="dataset", role="train",
+            path=relative_path(train_path, store.root),
+            physical_hash=physical_hash(train_path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet", metadata={},
+        )
+        store.register_artifact(train_artifact)
+
+        # Metadata artifact
+        meta_payload = {
+            "target_column": "target",
+            "good_values": ["good"],
+            "bad_values": ["bad"],
+        }
+        meta_artifact = _make_json_artifact(store, meta_payload, role="definition", stem="meta")
+
+        # Mock optbinning result
+        mock_fit.return_value = AdapterResult(
+            engine_version="0.21.0",
+            variables=[
+                VariableBinningResult(
+                    variable="age", dtype="numerical", status="OPTIMAL",
+                    bins=[
+                        {
+                            "bin_id": "age_bin_001", "label": "(-inf, 30.0)",
+                            "kind": "numeric", "lower": None, "upper": 30.0,
+                            "lower_inclusive": False, "upper_inclusive": False,
+                            "categories": None, "is_missing_bin": False,
+                            "row_count": 4, "good_count": 3, "bad_count": 1,
+                        },
+                        {
+                            "bin_id": "age_bin_002", "label": "[30.0, +inf)",
+                            "kind": "numeric", "lower": 30.0, "upper": None,
+                            "lower_inclusive": True, "upper_inclusive": False,
+                            "categories": None, "is_missing_bin": False,
+                            "row_count": 8, "good_count": 3, "bad_count": 5,
+                        },
+                    ],
+                    warnings=[],
+                ),
+                VariableBinningResult(
+                    variable="income", dtype="numerical", status="OPTIMAL",
+                    bins=[
+                        {
+                            "bin_id": "income_bin_001", "label": "(-inf, 55000.0)",
+                            "kind": "numeric", "lower": None, "upper": 55000.0,
+                            "lower_inclusive": False, "upper_inclusive": False,
+                            "categories": None, "is_missing_bin": False,
+                            "row_count": 5, "good_count": 3, "bad_count": 2,
+                        },
+                        {
+                            "bin_id": "income_bin_002", "label": "[55000.0, 75000.0)",
+                            "kind": "numeric", "lower": 55000.0, "upper": 75000.0,
+                            "lower_inclusive": True, "upper_inclusive": False,
+                            "categories": None, "is_missing_bin": False,
+                            "row_count": 4, "good_count": 2, "bad_count": 2,
+                        },
+                        {
+                            "bin_id": "income_bin_003", "label": "[75000.0, +inf)",
+                            "kind": "numeric", "lower": 75000.0, "upper": None,
+                            "lower_inclusive": True, "upper_inclusive": False,
+                            "categories": None, "is_missing_bin": False,
+                            "row_count": 3, "good_count": 1, "bad_count": 2,
+                        },
+                    ],
+                    warnings=[],
+                ),
+            ],
+            manifest={
+                "engine": "optbinning", "engine_version": "0.21.0",
+                "parameters": {}, "succeeded": ["age", "income"], "failed": [],
+                "variables_succeeded": 2, "variables_failed": 0, "warnings_count": 0,
+            },
+        )
+
+        # Step 1: Binning(method=optbinning) via BinningNode
+        from cardre.audit import ExecutionContext, StepSpec
+        from cardre.nodes import BinningNode
+
+        binning_node = BinningNode()
+        binning_ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=StepSpec(
+                step_id="binning", node_type="cardre.binning",
+                node_version="1", category="fit",
+                params={"method": "optbinning", "engine": "optbinning"},
+                params_hash="h1", parent_step_ids=["split"],
+                branch_label="baseline", position=5,
+            ),
+            parent_run_steps=[], runtime_metadata={},
+            input_artifacts=[train_artifact, meta_artifact],
+            validated_params={"method": "optbinning", "engine": "optbinning"},
+        )
+        bin_out = binning_node.run(binning_ctx)
+        assert len(bin_out.artifacts) >= 1
+        bin_def_artifact = next(a for a in bin_out.artifacts if a.role == "definition")
+
+        # Verify bin definition is readable
+        bin_def = json.loads(store.artifact_path(bin_def_artifact).read_text())
+        assert "variables" in bin_def
+        assert "age" in {v["variable"] for v in bin_def["variables"]}
+        assert "income" in {v["variable"] for v in bin_def["variables"]}
+        assert bin_def.get("schema_version") == SCHEMA_BIN_DEFINITION
+
+        # Step 2: CalculateWoeIvNode
+        from cardre.nodes import CalculateWoeIvNode
+
+        woe_node = CalculateWoeIvNode()
+        woe_ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=StepSpec(
+                step_id="calculate-woe", node_type="cardre.calculate_woe_iv",
+                node_version="1", category="selection",
+                params={}, params_hash="h2",
+                parent_step_ids=["binning"], branch_label="baseline", position=6,
+            ),
+            parent_run_steps=[], runtime_metadata={},
+            input_artifacts=[train_artifact, bin_def_artifact, meta_artifact],
+            validated_params={},
+        )
+        woe_out = woe_node.run(woe_ctx)
+        assert len(woe_out.artifacts) > 0
+
+        # Find the WOE table artifact
+        from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
+        reader = ArtifactEvidenceReader(store)
+        woe_table_artifact = None
+        for a in woe_out.artifacts:
+            try:
+                woe_evidence = reader.read(a.artifact_id, EvidenceKind.WOE_TABLE)
+                if woe_evidence.mapping:
+                    woe_table_artifact = a
+                    break
+            except Exception:
+                continue
+        assert woe_table_artifact is not None, "No WOE table found"
+
+        # Step 3: Manual binning (no overrides)
+        from cardre.nodes import ManualBinningNode
+
+        manual_node = ManualBinningNode()
+        manual_ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=StepSpec(
+                step_id="manual-binning", node_type="cardre.manual_binning",
+                node_version="1", category="refinement",
+                params={"overrides": []}, params_hash="h3",
+                parent_step_ids=["binning"], branch_label="baseline", position=7,
+            ),
+            parent_run_steps=[], runtime_metadata={},
+            input_artifacts=[bin_def_artifact],
+            validated_params={"overrides": []},
+        )
+        manual_out = manual_node.run(manual_ctx)
+        assert len(manual_out.artifacts) == 1
+        refined_artifact = manual_out.artifacts[0]
+
+        # Step 4: WoeTransformTrainNode
+        from cardre.nodes import WoeTransformTrainNode
+
+        woe_transform_node = WoeTransformTrainNode()
+        woe_transform_ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=StepSpec(
+                step_id="woe-transform", node_type="cardre.woe_transform_train",
+                node_version="1", category="fit",
+                params={}, params_hash="h4",
+                parent_step_ids=["manual-binning"], branch_label="baseline", position=8,
+            ),
+            parent_run_steps=[], runtime_metadata={},
+            input_artifacts=[train_artifact, refined_artifact, woe_table_artifact],
+            validated_params={},
+        )
+        woe_transform_out = woe_transform_node.run(woe_transform_ctx)
+        assert len(woe_transform_out.artifacts) > 0
+
+        # Verify WOE columns in output
+        woe_train_path = store.artifact_path(woe_transform_out.artifacts[0])
+        woe_train_df = pl.read_parquet(woe_train_path)
+        assert "age_woe" in woe_train_df.columns, "age_woe column missing"
+        assert "income_woe" in woe_train_df.columns, "income_woe column missing"
+        assert woe_train_df["age_woe"].is_not_null().all()
+        assert woe_train_df["income_woe"].is_not_null().all()
+
+        # Step 5: LogisticRegressionNode
+        from cardre.nodes import LogisticRegressionNode
+        from cardre.artifacts import write_parquet_artifact
+
+        lr_node = LogisticRegressionNode()
+        lr_ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=StepSpec(
+                step_id="logistic-regression", node_type="cardre.logistic_regression",
+                node_version="1", category="fit",
+                params={"C": 1.0, "max_iter": 1000, "solver": "lbfgs"},
+                params_hash="h5",
+                parent_step_ids=["woe-transform", "manual-binning", "define-metadata"],
+                branch_label="baseline", position=9,
+            ),
+            parent_run_steps=[], runtime_metadata={},
+            input_artifacts=[woe_transform_out.artifacts[0], meta_artifact],
+            validated_params={"C": 1.0, "max_iter": 1000, "solver": "lbfgs"},
+        )
+        lr_out = lr_node.run(lr_ctx)
+        assert len(lr_out.artifacts) >= 1
+
+        # Verify LR model artifact produced
+        lr_artifact = lr_out.artifacts[0]
+        assert store.artifact_path(lr_artifact).exists()
+
+    def test_optbinning_apply_path_no_optbinning_import(self):
+        """Re-verifies that apply/scoring path has no optbinning dependency."""
+        from cardre.nodes import ApplyWoeMappingNode, WoeTransformTrainNode
+        import cardre.nodes._bin_mask
+        import cardre.nodes.validate.apply
+        import cardre.nodes.build.features
+        import sys
+
+        for mod_name in ("cardre.nodes._bin_mask", "cardre.nodes.validate.apply",
+                          "cardre.nodes.build.features"):
+            mod = sys.modules.get(mod_name)
+            if mod is not None:
+                source = mod.__dict__.get("__file__", "")
+                if source:
+                    with open(source) as f:
+                        content = f.read()
+                        assert "optbinning" not in content.lower(), (
+                            f"File {source} references optbinning. "
+                            f"Apply path must not depend on optbinning."
+                        )

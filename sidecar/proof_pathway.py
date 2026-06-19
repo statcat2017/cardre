@@ -80,8 +80,9 @@ SCORECARD_PATHWAY = PathwaySpec(
                             "cardre.explicit_missing_outlier_treatment", category="apply",
                             params={"imputations": {}, "caps": {}, "floors": {}},
                             parent_step_ids=["split"]),
-            PathwayStepSpec("fine-classing", "cardre.fine_classing", category="fit",
+            PathwayStepSpec("binning", "cardre.binning", category="fit",
                             params={
+                                "method": "fine_classing",
                                 "max_bins": 20, "min_bin_fraction": 0.05,
                                 "missing_policy": "separate_bin",
                                 "max_categorical_levels": 50, "exclude_columns": [],
@@ -89,7 +90,7 @@ SCORECARD_PATHWAY = PathwaySpec(
                             parent_step_ids=["explicit-missing-outlier-treatment", "define-metadata"]),
             PathwayStepSpec("initial-woe-iv", "cardre.calculate_woe_iv", category="selection",
                             params={"zero_cell_policy": "block", "smoothing": None, "purpose": "initial"},
-                            parent_step_ids=["explicit-missing-outlier-treatment", "fine-classing", "define-metadata"]),
+                            parent_step_ids=["explicit-missing-outlier-treatment", "binning", "define-metadata"]),
             PathwayStepSpec("variable-clustering", "cardre.variable_clustering", category="selection",
                             params={"correlation_threshold": 0.7, "candidate_limit": 50},
                             parent_step_ids=["explicit-missing-outlier-treatment", "initial-woe-iv"]),
@@ -101,7 +102,7 @@ SCORECARD_PATHWAY = PathwaySpec(
                             parent_step_ids=["initial-woe-iv", "variable-clustering"]),
             PathwayStepSpec("manual-binning", "cardre.manual_binning", category="refinement",
                             params={"overrides": []},
-                            parent_step_ids=["fine-classing", "variable-selection"]),
+                            parent_step_ids=["binning", "variable-selection"]),
             PathwayStepSpec("final-woe-iv", "cardre.calculate_woe_iv", category="selection",
                             params={
                                 "zero_cell_policy": "block",
@@ -149,7 +150,7 @@ SCORECARD_PATHWAY = PathwaySpec(
             PathwayStepSpec("technical-manifest-stub", "cardre.technical_manifest_export",
                             parent_step_ids=[
                                 "define-metadata", "sample-definition", "split",
-                                "explicit-missing-outlier-treatment", "fine-classing",
+                                "explicit-missing-outlier-treatment", "binning",
                                 "variable-selection", "manual-binning", "final-woe-iv",
                                 "woe-transform-train", "logistic-regression", "score-scaling",
                                 "build-summary-report", "apply-woe", "apply-model",

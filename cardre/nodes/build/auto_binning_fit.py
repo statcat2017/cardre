@@ -29,9 +29,10 @@ class AutoBinningFitNode(NodeType):
     category = "fit"
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["definition", "report"]
+    is_internal = True
 
     VALID_ENGINES = {"optbinning"}
-    VALID_PREBINNING = {"cart", "quantile"}
+    VALID_PREBINNING = {"cart"}
     VALID_SOLVERS = {"cp", "mip"}
     VALID_DIVERGENCES = {"iv", "js", "hellinger"}
     VALID_MONOTONIC = {"auto", "none", "ascending", "descending"}
@@ -67,7 +68,7 @@ class AutoBinningFitNode(NodeType):
                             kind="string",
                             default="cart",
                             help_text="Method for initial prebinning.",
-                            constraint=ParameterConstraint(enum_values=["cart", "quantile"]),
+                            constraint=ParameterConstraint(enum_values=["cart"]),
                         ),
                         ParameterDefinition(
                             name="solver",
@@ -225,13 +226,22 @@ class AutoBinningFitNode(NodeType):
 
         return errors
 
+    @staticmethod
+    def _resolve_train_input(context: ExecutionContext) -> ArtifactRef:
+        train_artifacts = [a for a in context.input_artifacts if a.role == "train"]
+        if len(train_artifacts) != 1:
+            raise ValueError(
+                f"OptBinning requires exactly one train artifact, found {len(train_artifacts)}."
+            )
+        return train_artifacts[0]
+
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         params = context.validated_params
         reader = ArtifactEvidenceReader(store)
 
-        # Resolve input artifacts
-        train_artifact = next(a for a in context.input_artifacts if a.role == "train")
+        # Resolve input artifacts — train only, no leakage
+        train_artifact = self._resolve_train_input(context)
         meta_def = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
 
         df = pl.read_parquet(store.artifact_path(train_artifact))
@@ -283,13 +293,19 @@ class AutoBinningFitNode(NodeType):
         )
 
         # Build bin definition (Cardre SCHEMA_BIN_DEFINITION)
+        from cardre.engine.binning.diagnostics import BinningDiagnostic
+
         variables_out: list[dict[str, Any]] = []
         all_warnings: list[dict[str, Any]] = []
         for d in diagnostics:
             all_warnings.append({
+                "code": d.code,
+                "severity": d.severity,
                 "variable": d.variable,
+                "bin_id": d.bin_id,
                 "message": d.message,
-                "diagnostic_type": d.diagnostic_type,
+                "requires_acknowledgement": d.requires_acknowledgement,
+                "details": d.details,
             })
         rejected_vars: list[dict[str, Any]] = []
         for var_result in result.variables:
@@ -301,33 +317,55 @@ class AutoBinningFitNode(NodeType):
                 "bins": var_result.bins,
                 "status": var_result.status,
             }
+            if var_result.metrics:
+                var_entry["metrics"] = var_result.metrics
             # Failed variables go to rejected list, not active definition
             if is_failed:
                 var_entry["active"] = False
+                if var_result.failure_reason:
+                    var_entry["failure_reason"] = var_result.failure_reason
                 rejected_vars.append(var_entry)
                 all_warnings.append({
+                    "code": "VARIABLE_FAILED",
+                    "severity": "error",
                     "variable": var_result.variable,
                     "message": f"Variable failed optbinning fit; excluded from active definition",
-                    "diagnostic_type": "variable_failed",
+                    "requires_acknowledgement": True,
+                    "details": {},
                 })
             else:
                 var_entry["active"] = True
                 variables_out.append(var_entry)
             for w in var_result.warnings:
-                all_warnings.append({
-                    "variable": var_result.variable,
-                    "message": w,
-                })
+                if isinstance(w, dict):
+                    all_warnings.append(w)
+                else:
+                    all_warnings.append({
+                        "code": "ADAPTER_WARNING",
+                        "severity": "warning",
+                        "variable": var_result.variable,
+                        "message": str(w),
+                        "details": {},
+                    })
+            var_entry["warnings"] = [w for w in (var_result.warnings or []) if isinstance(w, dict)]
 
         bin_def = {
             "schema_version": SCHEMA_BIN_DEFINITION,
             "variables": variables_out,
-            "rejected": rejected_vars if rejected_vars else None,
-            "warnings": all_warnings + result.warnings,
+            "rejected": rejected_vars if rejected_vars else [],
+            "warnings": all_warnings + (result.warnings if isinstance(result.warnings, list) else []),
             "source": {
                 "engine": "optbinning",
                 "engine_version": result.engine_version,
+                "method": "optbinning",
                 "node_id": context.step_spec.step_id,
+                "fit_sample_role": "train",
+                "train_artifact_id": train_artifact.artifact_id,
+                "train_physical_hash": train_artifact.physical_hash,
+                "train_logical_hash": train_artifact.logical_hash,
+                "target_column": target_column,
+                "good_values": sorted(good_values),
+                "bad_values": sorted(bad_values),
                 "params": context.validated_params,
             },
         }
@@ -343,11 +381,61 @@ class AutoBinningFitNode(NodeType):
             },
         )
 
+        # Variable summary (Parquet — supports UI sidebar, branch comparison)
+        var_summary_rows = []
+        for var_result in result.variables:
+            metrics = var_result.metrics or {}
+            row = {
+                "variable": var_result.variable,
+                "dtype": var_result.dtype,
+                "kind": "numeric" if var_result.dtype == "numerical" else "categorical",
+                "status": var_result.status,
+                "active": var_result.status != "FAILED",
+                "iv": metrics.get("iv"),
+                "n_bins": metrics.get("n_bins"),
+                "row_count": metrics.get("row_count"),
+                "missing_count": metrics.get("missing_count"),
+                "missing_rate": metrics.get("missing_rate"),
+                "min_bin_count": metrics.get("min_bin_count"),
+                "max_bin_pct": metrics.get("max_bin_pct"),
+                "monotonic_woe": metrics.get("monotonic_woe"),
+                "warning_count": len(var_result.warnings or []),
+                "failure_reason": var_result.failure_reason,
+            }
+            var_summary_rows.append(row)
+
+        if var_summary_rows:
+            var_summary_df = pl.DataFrame(var_summary_rows)
+            var_summary_artifact = write_json_artifact(
+                store, artifact_type="report", role="report",
+                stem=f"auto-binning-summary-{context.step_spec.step_id}",
+                payload={"variables": var_summary_rows},
+                metadata={
+                    "engine": "optbinning",
+                    "variable_count": len(var_summary_rows),
+                },
+            )
+        else:
+            var_summary_artifact = write_json_artifact(
+                store, artifact_type="report", role="report",
+                stem=f"auto-binning-summary-{context.step_spec.step_id}",
+                payload={"variables": []},
+                metadata={"engine": "optbinning", "variable_count": 0},
+            )
+
         # Engine manifest (secondary evidence)
+        manifest = dict(result.manifest)
+        manifest.update({
+            "cardre_node_type": "cardre.binning",
+            "method": "optbinning",
+            "fit_sample_role": "train",
+            "train_artifact_id": train_artifact.artifact_id,
+            "target_column": target_column,
+        })
         manifest_artifact = write_json_artifact(
             store, artifact_type="report", role="report",
             stem=f"auto-binning-manifest-{context.step_spec.step_id}",
-            payload=result.manifest,
+            payload=manifest,
             metadata={
                 "engine": "optbinning",
                 "engine_version": result.engine_version,
@@ -362,6 +450,6 @@ class AutoBinningFitNode(NodeType):
         }
 
         return NodeOutput(
-            artifacts=[bin_artifact, manifest_artifact],
+            artifacts=[bin_artifact, var_summary_artifact, manifest_artifact],
             metrics=metrics,
         )
