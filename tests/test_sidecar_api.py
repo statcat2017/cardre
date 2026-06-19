@@ -1231,7 +1231,7 @@ class TestScorecardPathwayE2E:
         plan_resp = client.get(f"/plans/{plan_id}?project_id={pid}")
         assert plan_resp.status_code == 200
         plan_data = plan_resp.json()
-        assert len(plan_data["steps"]) == 23
+        assert len(plan_data["steps"]) == 24
         for step in plan_data["steps"]:
             assert "params" in step
             assert step["params"] is not None
@@ -1285,6 +1285,14 @@ class TestScorecardPathwayE2E:
         })
         assert split_resp.status_code == 200
         pv_id = split_resp.json()["new_plan_version_id"]
+
+        # Override WOE unmatched policy to warn (bundle-driven default is fail)
+        aw_resp = client.post(f"/plans/{plan_id}/steps/apply-woe/params", json={
+            "project_id": pid, "base_plan_version_id": pv_id,
+            "params": {"woe_unmatched_policy": "warn"},
+        })
+        assert aw_resp.status_code == 200
+        pv_id = aw_resp.json()["new_plan_version_id"]
 
         # 5. Run the Scorecard Pathway
         run_resp = client.post("/runs?sync=true", json={
@@ -1458,6 +1466,14 @@ class TestScorecardPathwayE2E:
         assert split_resp.status_code == 200
         pv_id = split_resp.json()["new_plan_version_id"]
 
+        # Override WOE unmatched policy to warn (bundle-driven default is fail)
+        aw_resp = client.post(f"/plans/{plan_id}/steps/apply-woe/params", json={
+            "project_id": pid, "base_plan_version_id": pv_id,
+            "params": {"woe_unmatched_policy": "warn"},
+        })
+        assert aw_resp.status_code == 200
+        pv_id = aw_resp.json()["new_plan_version_id"]
+
         # Run the Scorecard Pathway
         run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": pv_id,
@@ -1584,6 +1600,14 @@ class TestPhase4BranchingFlow:
         })
         assert split_resp.status_code == 200
         pv_id = split_resp.json()["new_plan_version_id"]
+
+        # Override WOE unmatched policy to warn (bundle-driven default is fail)
+        aw_resp = client.post(f"/plans/{plan_id}/steps/apply-woe/params", json={
+            "project_id": pid, "base_plan_version_id": pv_id,
+            "params": {"woe_unmatched_policy": "warn"},
+        })
+        assert aw_resp.status_code == 200
+        pv_id = aw_resp.json()["new_plan_version_id"]
 
         # 4. Run full scorecard pathway
         run_resp = client.post("/runs?sync=true", json={

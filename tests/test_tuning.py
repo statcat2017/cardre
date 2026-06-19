@@ -420,7 +420,7 @@ class HyperparameterTuningApplyTests:
         apply_node = ApplyModelNode()
         apply_output = apply_node.run(apply_ctx)
 
-        assert len(apply_output.artifacts) == 1
+        assert len(apply_output.artifacts) == 2  # dataset + evidence
         scored_df = pl.read_parquet(store.artifact_path(apply_output.artifacts[0]))
         assert "predicted_bad_probability" in scored_df.columns
         for p in scored_df["predicted_bad_probability"]:

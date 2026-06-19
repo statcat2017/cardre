@@ -20,7 +20,13 @@ from cardre.audit import (
     relative_path,
     table_logical_hash,
 )
-from cardre.evidence import AmbiguousEvidenceError
+from cardre.evidence import (
+    AmbiguousEvidenceError,
+    SCHEMA_FROZEN_SCORECARD_BUNDLE,
+    SCHEMA_SELECTION_DEFINITION,
+    SCHEMA_WOE_APPLICATION_EVIDENCE,
+)
+from cardre.artifacts import write_json_artifact
 from cardre.nodes import (
     ApplyWoeMappingNode,
     CalculateWoeIvNode,
@@ -720,3 +726,190 @@ class ApplyWoeMappingTests(unittest.TestCase):
         out = ApplyWoeMappingNode().run(ctx)
         df = pl.read_parquet(self.store.artifact_path(out.artifacts[1]))
         self.assertEqual(df["x_woe"][0], 0.0)
+
+
+# ======================================================================
+# Apply WOE Mapping — Evidence Artifact
+# ======================================================================
+
+class ApplyWoeMappingEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        self.store, self.tmp = make_store()
+        self.store.initialize()
+        self.df_train = pl.DataFrame({"x": [1.0, 2.0], "target": ["g", "b"]})
+        self.train_art = _make_train_artifact(self.store, self.df_train, role="train")
+        self.bin_def = {
+            "variables": [{
+                "variable": "x", "kind": "numeric",
+                "bins": [
+                    {"bin_id": "x_b1", "label": "Low", "lower": 0, "upper": 3,
+                     "lower_inclusive": True, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 2, "good_count": 1, "bad_count": 1},
+                ],
+            }],
+            "warnings": [],
+        }
+        self.bin_art = _make_json_artifact(self.store, self.bin_def, stem="bins")
+        self.woe_df = pl.DataFrame({
+            "variable": ["x"], "bin_id": ["x_b1"], "label": ["Low"],
+            "row_count": [2], "good_count": [1], "bad_count": [1],
+            "good_distribution": [0.5], "bad_distribution": [0.5],
+            "woe": [0.5], "iv_component": [0.25],
+        })
+        self.woe_art = _make_parquet_report(self.store, self.woe_df, stem="woe")
+
+    def test_evidence_artifact_present(self):
+        params = {}
+        spec = StepSpec(step_id="aw", node_type="cardre.apply_woe_mapping", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=self.store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[],
+                               input_artifacts=[self.train_art, self.bin_art, self.woe_art],
+                               validated_params=params, runtime_metadata={})
+        out = ApplyWoeMappingNode().run(ctx)
+        evidence_arts = [a for a in out.artifacts if a.role == "report"]
+        self.assertEqual(len(evidence_arts), 1)
+        evidence = json.loads(self.store.artifact_path(evidence_arts[0]).read_text())
+        self.assertEqual(evidence["schema_version"], SCHEMA_WOE_APPLICATION_EVIDENCE)
+        self.assertIn("roles", evidence)
+        self.assertIn("policy", evidence)
+        self.assertEqual(evidence["policy"]["woe_unmatched_policy"], "warn")
+
+    def test_evidence_records_source_artifact_id(self):
+        params = {}
+        spec = StepSpec(step_id="aw", node_type="cardre.apply_woe_mapping", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=self.store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[],
+                               input_artifacts=[self.train_art, self.bin_art, self.woe_art],
+                               validated_params=params, runtime_metadata={})
+        out = ApplyWoeMappingNode().run(ctx)
+        evidence_arts = [a for a in out.artifacts if a.role == "report"]
+        evidence = json.loads(self.store.artifact_path(evidence_arts[0]).read_text())
+        role_entry = evidence["roles"].get("train")
+        self.assertIsNotNone(role_entry)
+        self.assertEqual(role_entry["source_artifact_id"], self.train_art.artifact_id)
+        self.assertIn("output_artifact_id", role_entry)
+        self.assertIn("source_physical_hash", role_entry)
+        self.assertIn("source_logical_hash", role_entry)
+        self.assertIn("variables_applied", role_entry)
+        self.assertIn("woe_columns_created", role_entry)
+        self.assertIn("unmatched_by_variable", role_entry)
+        self.assertIn("unmatched_row_count", role_entry)
+
+    def test_evidence_records_bin_and_woe_artifact_ids(self):
+        params = {}
+        spec = StepSpec(step_id="aw", node_type="cardre.apply_woe_mapping", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=self.store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[],
+                               input_artifacts=[self.train_art, self.bin_art, self.woe_art],
+                               validated_params=params, runtime_metadata={})
+        out = ApplyWoeMappingNode().run(ctx)
+        evidence_arts = [a for a in out.artifacts if a.role == "report"]
+        evidence = json.loads(self.store.artifact_path(evidence_arts[0]).read_text())
+        self.assertIn("bin_definition_artifact_id", evidence)
+        self.assertIn("woe_table_artifact_id", evidence)
+
+    def test_bundle_driven_fail_policy(self):
+        params = {}
+        spec = StepSpec(step_id="aw", node_type="cardre.apply_woe_mapping", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        bundle_payload = {
+            "schema_version": "cardre.frozen_scorecard_bundle.v1",
+            "bundle_type": "scorecard_application",
+            "components": {},
+            "feature_contract": {"features": []},
+            "score_scaling": {},
+            "warnings": [],
+        }
+        bundle_art = write_json_artifact(
+            self.store, artifact_type="scorecard", role="scorecard",
+            stem="bundle",
+            payload=bundle_payload,
+            metadata={
+                "schema_version": SCHEMA_FROZEN_SCORECARD_BUNDLE,
+                "bin_definition_artifact_id": "bins_1",
+                "woe_table_artifact_id": "woe_1",
+            },
+        )
+        df_oot = pl.DataFrame({"x": [-1.0], "target": ["g"]})
+        oot_art = _make_train_artifact(self.store, df_oot, role="oot")
+        ctx = ExecutionContext(store=self.store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[],
+                               input_artifacts=[self.train_art, oot_art, self.bin_art, self.woe_art, bundle_art],
+                               validated_params=params, runtime_metadata={})
+        with self.assertRaises(ValueError) as cm:
+            ApplyWoeMappingNode().run(ctx)
+        self.assertIn("did not match any bin", str(cm.exception))
+
+    def test_bundle_present_with_explicit_warn_policy_respected(self):
+        params = {"woe_unmatched_policy": "warn"}
+        spec = StepSpec(step_id="aw", node_type="cardre.apply_woe_mapping", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        bundle_payload = {
+            "schema_version": "cardre.frozen_scorecard_bundle.v1",
+            "bundle_type": "scorecard_application",
+            "components": {},
+            "feature_contract": {"features": []},
+            "score_scaling": {},
+            "warnings": [],
+        }
+        bundle_art = write_json_artifact(
+            self.store, artifact_type="scorecard", role="scorecard",
+            stem="bundle",
+            payload=bundle_payload,
+            metadata={
+                "schema_version": SCHEMA_FROZEN_SCORECARD_BUNDLE,
+                "bin_definition_artifact_id": "bins_1",
+                "woe_table_artifact_id": "woe_1",
+            },
+        )
+        df_oot = pl.DataFrame({"x": [-1.0], "target": ["g"]})
+        oot_art = _make_train_artifact(self.store, df_oot, role="oot")
+        ctx = ExecutionContext(store=self.store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[],
+                               input_artifacts=[self.train_art, oot_art, self.bin_art, self.woe_art, bundle_art],
+                               validated_params=params, runtime_metadata={})
+        out = ApplyWoeMappingNode().run(ctx)
+        df = pl.read_parquet(self.store.artifact_path(out.artifacts[1]))
+        self.assertEqual(df["x_woe"][0], 0.0)
+
+    def test_bundle_requires_selection_artifact_when_bundle_has_one(self):
+        """When frozen bundle has selection_artifact_id, selection must be present."""
+        params = {}
+        spec = StepSpec(step_id="aw", node_type="cardre.apply_woe_mapping", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        bundle_payload = {
+            "schema_version": "cardre.frozen_scorecard_bundle.v1",
+            "bundle_type": "scorecard_application",
+            "components": {},
+            "feature_contract": {"features": []},
+            "score_scaling": {},
+            "warnings": [],
+        }
+        bundle_art = write_json_artifact(
+            self.store, artifact_type="scorecard", role="scorecard",
+            stem="bundle",
+            payload=bundle_payload,
+            metadata={
+                "schema_version": SCHEMA_FROZEN_SCORECARD_BUNDLE,
+                "bin_definition_artifact_id": "bins_1",
+                "woe_table_artifact_id": "woe_1",
+                "selection_artifact_id": "sel_1",
+            },
+        )
+        ctx = ExecutionContext(store=self.store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[],
+                               input_artifacts=[self.train_art, self.bin_art, self.woe_art, bundle_art],
+                               validated_params=params, runtime_metadata={})
+        with self.assertRaises(ValueError) as cm:
+            ApplyWoeMappingNode().run(ctx)
+        self.assertIn("selection artifact", str(cm.exception))

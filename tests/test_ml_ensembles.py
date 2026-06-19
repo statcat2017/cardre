@@ -392,8 +392,8 @@ class ExpandedValidationMetricsTests:
         report_out = ValidationMetricsNode().run(val_ctx)
         report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
 
-        assert "train" in report
-        train_metrics = report["train"]
+        assert "roles" in report
+        train_metrics = report["roles"]["train"]
         assert "at_cutoffs" in train_metrics
         assert "0.3" in train_metrics["at_cutoffs"]
         assert "0.5" in train_metrics["at_cutoffs"]
@@ -418,7 +418,7 @@ class ExpandedValidationMetricsTests:
         report_out = ValidationMetricsNode().run(val_ctx)
         report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
 
-        at_05 = report["train"]["at_cutoffs"]["0.5"]
+        at_05 = report["roles"]["train"]["at_cutoffs"]["0.5"]
         assert "precision" in at_05
         assert "recall" in at_05
         assert "f1" in at_05
@@ -440,8 +440,8 @@ class ExpandedValidationMetricsTests:
         report_out = ValidationMetricsNode().run(val_ctx)
         report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
 
-        assert "train" in report
-        assert report["train"]["auc"] is not None
+        assert "roles" in report
+        assert report["roles"]["train"]["auc"] is not None
 
     def test_single_class_role_produces_warnings(self) -> None:
         store, tmp = make_store()
@@ -467,9 +467,9 @@ class ExpandedValidationMetricsTests:
         report_out = ValidationMetricsNode().run(val_ctx)
         report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
 
-        assert "train" in report
-        assert "warnings" in report["train"]
-        assert len(report["train"]["warnings"]) > 0
+        assert "roles" in report
+        assert "warnings" in report["roles"]["train"]
+        assert len(report["roles"]["train"]["warnings"]) > 0
 
     def test_gbdt_with_validation_metrics(self) -> None:
         store, tmp = make_store()
@@ -484,10 +484,10 @@ class ExpandedValidationMetricsTests:
         report_out = ValidationMetricsNode().run(val_ctx)
         report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
 
-        assert "train" in report
-        assert "at_cutoffs" in report["train"]
-        assert "0.5" in report["train"]["at_cutoffs"]
-        assert report["train"]["auc"] is not None
+        assert "roles" in report
+        assert "at_cutoffs" in report["roles"]["train"]
+        assert "0.5" in report["roles"]["train"]["at_cutoffs"]
+        assert report["roles"]["train"]["auc"] is not None
 
     def test_calibration_display_with_default_deps(self) -> None:
         store, tmp = make_store()
@@ -505,8 +505,8 @@ class ExpandedValidationMetricsTests:
         report_out = ValidationMetricsNode().run(val_ctx)
         report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
 
-        assert "train" in report
-        calib = report["train"].get("calibration_display", {})
+        assert "roles" in report
+        calib = report["roles"]["train"].get("calibration_display", {})
         assert "prob_true" in calib
         assert "prob_pred" in calib
         assert calib["n_bins"] == 10

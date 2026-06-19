@@ -94,7 +94,15 @@ class TestGenericCsvFullPipeline:
         )
         self.pv_id = resp.new_plan_version_id
 
-        # 5. Run the pathway
+        # 5. Override WOE unmatched policy to warn (bundle-driven default is fail)
+        resp = ps.update_params(
+            plan_id=self.plan_id, step_id="apply-woe",
+            base_plan_version_id=self.pv_id,
+            params={"woe_unmatched_policy": "warn"},
+        )
+        self.pv_id = resp.new_plan_version_id
+
+        # 6. Run the pathway
         reg = NodeRegistry.with_defaults()
         executor = PlanExecutor(reg)
         run_id = executor.run_plan_version(self.store, self.pv_id)

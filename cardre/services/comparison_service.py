@@ -265,8 +265,10 @@ def _build_comparison_content(
         vm_b = _find_artifact(step_map_b, "validation-metrics", plan_version_id_baseline, None)
         vm_c = _find_artifact(step_map_c, "validation-metrics", plan_version_id_challenger, branch_id_challenger)
         for role_name in ("train", "test", "oot"):
-            b_role = vm_b.get(role_name, {}) if isinstance(vm_b, dict) else {}
-            c_role = vm_c.get(role_name, {}) if isinstance(vm_c, dict) else {}
+            vm_b_roles = vm_b.get("roles", vm_b) if isinstance(vm_b, dict) else {}
+            vm_c_roles = vm_c.get("roles", vm_c) if isinstance(vm_c, dict) else {}
+            b_role = vm_b_roles.get(role_name, {}) if isinstance(vm_b_roles, dict) else {}
+            c_role = vm_c_roles.get(role_name, {}) if isinstance(vm_c_roles, dict) else {}
             role_data = {}
             if b_role and isinstance(b_role, dict):
                 role_data["baseline"] = {
