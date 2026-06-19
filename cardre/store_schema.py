@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS run_steps (
     output_artifact_ids_json TEXT NOT NULL,
     execution_fingerprint_json TEXT NOT NULL,
     warnings_json TEXT NOT NULL DEFAULT '[]',
-    errors_json TEXT NOT NULL DEFAULT '[]'
+    errors_json TEXT NOT NULL DEFAULT '[]',
+    is_carried_forward INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS artifacts (

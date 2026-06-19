@@ -7,9 +7,11 @@ interface Props {
   steps: StepStatus[];
   selectedStepId: string | null;
   onStepSelect: (stepId: string) => void;
+  carriedForwardSteps?: Record<string, boolean>;
+  liveStepStatus?: Record<string, string>;
 }
 
-export function PathwayView({ steps, selectedStepId, onStepSelect }: Props) {
+export function PathwayView({ steps, selectedStepId, onStepSelect, carriedForwardSteps, liveStepStatus }: Props) {
   const stepsBySection: Record<string, StepStatus[]> = {};
   for (const step of steps) {
     const meta = STEP_DISPLAY_METADATA[step.step_id];
@@ -51,6 +53,8 @@ export function PathwayView({ steps, selectedStepId, onStepSelect }: Props) {
                 step={step}
                 isSelected={selectedStepId === step.step_id}
                 onSelect={onStepSelect}
+                carriedForward={carriedForwardSteps?.[step.step_id]}
+                liveStatus={liveStepStatus?.[step.step_id]}
               />
             ))}
           </div>

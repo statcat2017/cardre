@@ -184,7 +184,7 @@ def get_run_steps(run_id: str):
                         output_artifact_ids=rs.output_artifact_ids,
                         warnings=rs.warnings,
                         errors=rs.errors,
-                        is_carried_forward=rs.execution_fingerprint.get("cardre_step_carried_forward", False),
+                        is_carried_forward=rs.is_carried_forward or rs.execution_fingerprint.get("cardre_step_carried_forward", False),
                     )
                     for rs in steps
                 ],

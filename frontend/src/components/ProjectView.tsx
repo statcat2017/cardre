@@ -26,6 +26,8 @@ export function ProjectView({ projectId, onBack }: Props) {
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<string[]>([]);
+  const [carriedForwardSteps, setCarriedForwardSteps] = useState<Record<string, boolean>>({});
+  const [liveStepStatus, setLiveStepStatus] = useState<Record<string, string>>({});
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
@@ -115,6 +117,14 @@ export function ProjectView({ projectId, onBack }: Props) {
             api.getRunSteps(runId),
           ]);
           consecutiveErrors = 0;
+          const cfMap: Record<string, boolean> = {};
+          const liveMap: Record<string, string> = {};
+          steps.steps.forEach((s) => {
+            cfMap[s.step_id] = s.is_carried_forward ?? false;
+            liveMap[s.step_id] = s.status;
+          });
+          setCarriedForwardSteps(cfMap);
+          setLiveStepStatus(liveMap);
           const stepStatuses = steps.steps.map((s) => `${s.step_id}: ${s.status}${s.is_carried_forward ? " (carried forward)" : ""}`);
           setDiagnostics((prev) => {
             const prevCleaned = prev.filter((m) => !m.startsWith("  └ "));
@@ -130,6 +140,7 @@ export function ProjectView({ projectId, onBack }: Props) {
             queryClient.invalidateQueries({ queryKey: ["projectRuns", projectId] });
             await refetchPlan();
             setRunning(false);
+            setLiveStepStatus({});
             setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Run ${run.status}`]);
           }
         } catch {
@@ -192,6 +203,14 @@ export function ProjectView({ projectId, onBack }: Props) {
     error ? `[error] ${error}` : null,
   ].filter(Boolean) as string[];
 
+  const totalPlanSteps = planData?.steps?.length ?? 0;
+  const progressCompleted = Object.values(liveStepStatus).filter((s) =>
+    ["succeeded", "failed", "cancelled"].includes(s)
+  ).length;
+  const stepProgress = running && totalPlanSteps > 0
+    ? { completed: progressCompleted, total: totalPlanSteps }
+    : null;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <TopBar
@@ -200,6 +219,7 @@ export function ProjectView({ projectId, onBack }: Props) {
         running={running}
         onRun={handleRun}
         canRun={!!scorecardPlan && !running}
+        stepProgress={stepProgress}
       />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -224,6 +244,8 @@ export function ProjectView({ projectId, onBack }: Props) {
               steps={planData.steps}
               selectedStepId={selectedStepId}
               onStepSelect={handleStepSelect}
+              carriedForwardSteps={carriedForwardSteps}
+              liveStepStatus={liveStepStatus}
             />
           )}
 

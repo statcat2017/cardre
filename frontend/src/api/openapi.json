@@ -49,6 +49,25 @@
       }
     },
     "/projects": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "List Projects",
+        "operationId": "list_projects_projects_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "projects"
@@ -4420,6 +4439,65 @@
           "created_at"
         ],
         "title": "ProjectDetailResponse"
+      },
+      "ProjectListItem": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "path_exists": {
+            "type": "boolean",
+            "title": "Path Exists",
+            "default": true
+          },
+          "last_accessed": {
+            "type": "string",
+            "title": "Last Accessed",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "name",
+          "path"
+        ],
+        "title": "ProjectListItem"
+      },
+      "ProjectListResponse": {
+        "properties": {
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectListItem"
+            },
+            "type": "array",
+            "title": "Projects"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count",
+            "default": 0
+          },
+          "missing_path_count": {
+            "type": "integer",
+            "title": "Missing Path Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "projects"
+        ],
+        "title": "ProjectListResponse"
       },
       "ProjectPlansResponse": {
         "properties": {
