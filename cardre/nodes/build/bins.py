@@ -496,11 +496,7 @@ class ManualBinningNode(NodeType):
         bin_def_obj = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
         sel_def = reader.find_optional(context.input_artifacts, EvidenceKind.SELECTION_DEFINITION)
 
-        # Resolve to raw dict via the matched artifact's source ID
-        bin_artifact = store.get_artifact(bin_def_obj.source_artifact_id)
-        if bin_artifact is None:
-            raise ValueError("Bin definition artifact not found in store")
-        bin_def = json.loads(store.artifact_path(bin_artifact).read_text())
+        bin_def = bin_def_obj.to_dict()
 
         selected_vars: set[str] = set()
         if sel_def is not None:

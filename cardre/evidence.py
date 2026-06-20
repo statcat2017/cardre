@@ -35,7 +35,7 @@ from cardre.store import ProjectStore
 # ---------------------------------------------------------------------------
 
 SCHEMA_MODELLING_METADATA = "cardre.modelling_metadata.v1"
-SCHEMA_BIN_DEFINITION = "cardre.bin_definition.v1"
+from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION  # noqa: E402, F401
 SCHEMA_SELECTION_DEFINITION = "cardre.selection_definition.v1"
 SCHEMA_WOE_TABLE = "cardre.woe_table.v1"
 SCHEMA_WOE_IV_EVIDENCE = "cardre.woe_iv_evidence.v1"

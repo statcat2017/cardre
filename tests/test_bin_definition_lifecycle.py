@@ -923,3 +923,281 @@ class TestRicherBinDefinitionAccessors:
         assert rp["schema_version"] == fc_payload["schema_version"]
         assert len(rp["variables"]) == len(fc_payload["variables"])
         assert json_logical_hash(rp) == json_logical_hash(parsed.to_payload())
+
+
+# ======================================================================
+# Post-review: unknown field preservation (extra dicts)
+# ======================================================================
+
+
+class TestExtraFieldPreservation:
+    """Unknown payload fields must survive lifecycle round-trips."""
+
+    def test_extra_bin_field_preserved(self, fc_payload):
+        fc_payload["variables"][0]["bins"][0]["custom_field"] = "survive_bin"
+        d = LifecycleBinDefinition.from_payload(fc_payload)
+        out = d.to_payload()
+        assert out["variables"][0]["bins"][0]["custom_field"] == "survive_bin"
+
+    def test_extra_variable_field_preserved(self, fc_payload):
+        fc_payload["variables"][0]["custom_var_field"] = "survive_variable"
+        d = LifecycleBinDefinition.from_payload(fc_payload)
+        out = d.to_payload()
+        assert out["variables"][0]["custom_var_field"] == "survive_variable"
+
+    def test_extra_definition_field_preserved(self, fc_payload):
+        fc_payload["custom_def_field"] = "survive_definition"
+        d = LifecycleBinDefinition.from_payload(fc_payload)
+        out = d.to_payload()
+        assert out["custom_def_field"] == "survive_definition"
+
+    def test_reject_reason_preserved_in_rejected_variables(self, optbinning_payload):
+        """Manual variable rejection writes reject_reason; it must survive."""
+        d = LifecycleBinDefinition.from_payload(optbinning_payload)
+        out = d.to_payload()
+        assert len(out["rejected"]) == 1
+        assert out["rejected"][0]["failure_reason"] is not None
+        assert "no variance" in out["rejected"][0]["failure_reason"]
+
+    def test_manual_rejection_reject_reason(self, fc_payload):
+        """After applying reject_variable, reject_reason is set and preserved."""
+        from cardre.nodes import apply_manual_binning_overrides
+
+        overrides = [{
+            "variable": "age",
+            "action": "reject_variable",
+            "source_bin_ids": [],
+            "reason": "High missing rate",
+        }]
+        result = apply_manual_binning_overrides(fc_payload, overrides)
+        rejected = result.get("rejected") or []
+        age_rejected = next(r for r in rejected if r["variable"] == "age")
+        assert "reject_reason" in age_rejected
+
+
+# ======================================================================
+# Post-review: shape preservation with present_fields tracking
+# ======================================================================
+
+
+class TestShapePreservation:
+    """Lifecycle serialization preserves which optional fields were
+    present in the source payload (backward-compatible hash behavior)."""
+
+    def test_fc_payload_no_active_field(self, fc_payload):
+        """Fine-classing variables do not have 'active'; to_payload
+        must not add it."""
+        d = LifecycleBinDefinition.from_payload(fc_payload)
+        out = d.to_payload()
+        for v in out["variables"]:
+            assert "active" not in v, f"Variable {v['variable']} has active field added"
+
+    def test_fc_payload_no_rejected_field(self, fc_payload):
+        """Fine-classing payloads do not have 'rejected'; to_payload
+        must not add it."""
+        d = LifecycleBinDefinition.from_payload(fc_payload)
+        out = d.to_payload()
+        assert "rejected" not in out, "rejected field added to fine-classing output"
+
+    def test_optbinning_retains_active_field(self, optbinning_payload):
+        """OptBinning variables have 'active'; to_payload preserves it."""
+        d = LifecycleBinDefinition.from_payload(optbinning_payload)
+        out = d.to_payload()
+        for v in out["variables"]:
+            assert "active" in v, f"Variable {v['variable']} missing active field"
+            assert v["active"] is True
+
+    def test_optbinning_retains_rejected_field(self, optbinning_payload):
+        """OptBinning payloads have 'rejected'; to_payload preserves it."""
+        d = LifecycleBinDefinition.from_payload(optbinning_payload)
+        out = d.to_payload()
+        assert "rejected" in out
+        assert len(out["rejected"]) == 1
+
+    def test_fc_payload_still_has_warnings(self, fc_payload):
+        """Fine-classing payloads have 'warnings' (even empty); preserved."""
+        d = LifecycleBinDefinition.from_payload(fc_payload)
+        out = d.to_payload()
+        assert "warnings" in out
+        assert out["warnings"] == []
+
+    def test_deterministic_hash_same_payload(self, fc_payload):
+        d = LifecycleBinDefinition.from_payload(fc_payload)
+        h1 = json_logical_hash(d.to_payload())
+        h2 = json_logical_hash(d.to_payload())
+        assert h1 == h2
+
+    def test_deterministic_hash_preserved_after_round_trip(self, fc_payload):
+        """Round-tripping the same payload through the lifecycle module
+        must produce the same hash each time."""
+        d1 = LifecycleBinDefinition.from_payload(fc_payload)
+        p1 = d1.to_payload()
+        d2 = LifecycleBinDefinition.from_payload(p1)
+        p2 = d2.to_payload()
+        assert json_logical_hash(p1) == json_logical_hash(p2)
+
+
+# ======================================================================
+# Post-review: per-override error isolation in validate_overrides
+# ======================================================================
+
+
+class TestOverrideValidationErrors:
+    """validate_overrides must check each override independently so that
+    a single invalid override does not block action-specific validation
+    on later overrides."""
+
+    def test_validation_unblocks_after_early_fail(self):
+        """An override rejected for missing reason should not block
+        adjacency validation on a later merge override."""
+        from cardre.engine.binning.definition import LifecycleBinDefinition
+
+        payload = {
+            "schema_version": "cardre.bin_definition.v1",
+            "variables": [
+                {
+                    "variable": "x", "kind": "numeric",
+                    "bins": [
+                        {"bin_id": "b1", "lower": 0, "upper": 10,
+                         "row_count": 5, "good_count": 4, "bad_count": 1},
+                        {"bin_id": "b2", "lower": 10, "upper": 20,
+                         "row_count": 5, "good_count": 4, "bad_count": 1},
+                    ],
+                },
+            ],
+        }
+        overrides = [
+            {"variable": "x", "action": "merge_bins",
+             "source_bin_ids": ["b1", "b2"], "reason": ""},
+            {"variable": "x", "action": "merge_bins",
+             "source_bin_ids": ["b1", "b2"], "reason": "Merge adjacent"},
+        ]
+        errors = LifecycleBinDefinition.validate_overrides(payload, overrides)
+        assert len(errors) >= 1
+        assert any("requires a non-empty reason" in e for e in errors)
+        assert not any("adjacent" in e for e in errors), (
+            "Adjacency check should pass for adjacent bins — only the "
+            "first override should produce errors"
+        )
+
+    def test_non_adjacent_merge_caught_after_reason_fail(self):
+        """Non-adjacent merge error should still be raised for an
+        override with a valid reason even if a prior override had
+        a missing reason."""
+        from cardre.engine.binning.definition import LifecycleBinDefinition
+
+        payload = {
+            "schema_version": "cardre.bin_definition.v1",
+            "variables": [
+                {
+                    "variable": "x", "kind": "numeric",
+                    "bins": [
+                        {"bin_id": "b1", "lower": 0, "upper": 10,
+                         "row_count": 5, "good_count": 4, "bad_count": 1},
+                        {"bin_id": "b2", "lower": 10, "upper": 20,
+                         "row_count": 5, "good_count": 4, "bad_count": 1},
+                        {"bin_id": "b3", "lower": 20, "upper": 30,
+                         "row_count": 5, "good_count": 4, "bad_count": 1},
+                    ],
+                },
+            ],
+        }
+        overrides = [
+            {"variable": "x", "action": "merge_bins",
+             "source_bin_ids": ["b1", "b2"], "reason": ""},
+            {"variable": "x", "action": "merge_bins",
+             "source_bin_ids": ["b1", "b3"], "reason": "Non-adjacent attempt"},
+        ]
+        errors = LifecycleBinDefinition.validate_overrides(payload, overrides)
+        assert any("requires a non-empty reason" in e for e in errors)
+        assert any("adjacent" in e for e in errors), (
+            "Second override with valid reason should still get adjacency check"
+        )
+
+    def test_scoped_validation_continues_after_reason_fail(self):
+        """Scoped errors (missing reason) from an earlier override
+        should not prevent scoped errors from a later override."""
+        from cardre.engine.binning.definition import LifecycleBinDefinition
+
+        payload = {
+            "schema_version": "cardre.bin_definition.v1",
+            "variables": [
+                {
+                    "variable": "x", "kind": "numeric",
+                    "bins": [
+                        {"bin_id": "b1", "lower": 0, "upper": 10,
+                         "row_count": 5, "good_count": 4, "bad_count": 1},
+                    ],
+                },
+            ],
+        }
+        overrides = [
+            {"variable": "x", "action": "merge_bins",
+             "source_bin_ids": ["b1", "b2"], "reason": ""},
+            {"variable": "x", "action": "merge_bins",
+             "source_bin_ids": ["b1", "b2"], "reason": ""},
+        ]
+        errors = LifecycleBinDefinition.validate_overrides(payload, overrides)
+        reason_errors = [e for e in errors if "requires a non-empty reason" in e]
+        assert len(reason_errors) == 2, (
+            "Each override should independently fail on missing reason"
+        )
+
+    def test_unknown_bin_id_in_second_override(self):
+        """A bin_id error in a later override must be found even if
+        a prior override was rejected for missing reason."""
+        from cardre.engine.binning.definition import LifecycleBinDefinition
+
+        payload = {
+            "schema_version": "cardre.bin_definition.v1",
+            "variables": [
+                {
+                    "variable": "x", "kind": "numeric",
+                    "bins": [
+                        {"bin_id": "b1",
+                         "row_count": 5, "good_count": 4, "bad_count": 1},
+                    ],
+                },
+            ],
+        }
+        overrides = [
+            {"variable": "x", "action": "merge_bins",
+             "source_bin_ids": ["b1", "b2"], "reason": ""},
+            {"variable": "x", "action": "merge_bins",
+             "source_bin_ids": ["b1", "b999"], "reason": "Valid reason"},
+        ]
+        errors = LifecycleBinDefinition.validate_overrides(payload, overrides)
+        assert any("requires a non-empty reason" in e for e in errors)
+        assert any("b999" in e for e in errors), (
+            "Non-existent bin_id in a valid-reason override should be reported"
+        )
+
+
+# ======================================================================
+# Post-review: ManualBinningNode uses bin_def.to_dict() not raw JSON
+# ======================================================================
+
+
+class TestManualBinningNodeNoRawJson:
+    """ManualBinningNode must not reload raw JSON — it should use
+    bin_def.to_dict() from the evidence reader."""
+
+    def test_manual_binning_merge_preserves_counts(self, fc_payload):
+        """The node still produces correct output even through the
+        to_dict() path."""
+        from cardre.nodes import apply_manual_binning_overrides
+
+        overrides = [
+            {
+                "variable": "age",
+                "action": "merge_bins",
+                "source_bin_ids": ["age_bin_001", "age_bin_002"],
+                "new_label": "Low-Mid",
+                "reason": "Merged adjacent",
+            }
+        ]
+        result = apply_manual_binning_overrides(fc_payload, overrides)
+        age_var = next(v for v in result["variables"] if v["variable"] == "age")
+        merged = age_var["bins"][0]
+        assert merged["row_count"] == 40 + 60
+        assert merged["good_count"] == 25 + 35

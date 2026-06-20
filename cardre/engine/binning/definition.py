@@ -12,7 +12,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from cardre.audit import JsonDict
-from cardre.evidence import SCHEMA_BIN_DEFINITION
+
+# Schema constant lives here, re-exported from evidence.py for backward
+# compatibility.  The lifecycle module is the deeper domain module;
+# evidence depends on it, not the other way around.
+SCHEMA_BIN_DEFINITION = "cardre.bin_definition.v1"
+
+# Which fields are always emitted vs tracked for presence preservation
+_VAR_ALWAYS: frozenset[str] = frozenset({"variable", "kind", "bins"})
+_DEF_ALWAYS: frozenset[str] = frozenset({"schema_version", "variables"})
 
 # ---------------------------------------------------------------------------
 # Lifecycle-owned records
@@ -40,9 +48,19 @@ class LifecycleBin:
     row_pct: float | None = None
     kind: str = ""
     special_values: list[Any] | None = None
+    extra: JsonDict = field(default_factory=dict)
+
+    _BIN_KNOWN: frozenset[str] = frozenset({
+        "bin_id", "label", "lower", "upper", "lower_inclusive",
+        "upper_inclusive", "categories", "is_missing_bin", "is_special_bin",
+        "is_other_bin", "row_count", "good_count", "bad_count", "bad_rate",
+        "woe", "iv", "row_pct", "kind", "special_values",
+    })
 
     @staticmethod
     def from_dict(data: JsonDict) -> LifecycleBin:
+        known = LifecycleBin._BIN_KNOWN
+        extra = {k: v for k, v in data.items() if k not in known}
         return LifecycleBin(
             bin_id=data.get("bin_id", ""),
             label=data.get("label", ""),
@@ -63,6 +81,7 @@ class LifecycleBin:
             row_pct=data.get("row_pct"),
             kind=data.get("kind", ""),
             special_values=data.get("special_values"),
+            extra=extra,
         )
 
     def to_dict(self) -> JsonDict:
@@ -95,6 +114,7 @@ class LifecycleBin:
             d["row_pct"] = self.row_pct
         if self.special_values is not None:
             d["special_values"] = self.special_values
+        d.update(self.extra)
         return d
 
 
@@ -110,9 +130,22 @@ class LifecycleVariable:
     warnings: list[JsonDict] = field(default_factory=list)
     override_history: list[JsonDict] = field(default_factory=list)
     failure_reason: str | None = None
+    extra: JsonDict = field(default_factory=dict)
+
+    # Optional fields whose presence in the source payload should be
+    # tracked so to_dict() reproduces the original shape.
+    _present_fields: frozenset[str] | None = field(default=None, repr=False)
+
+    _VAR_OPTIONAL: frozenset[str] = frozenset({
+        "active", "dtype", "status", "metrics", "warnings",
+        "override_history", "failure_reason",
+    })
 
     @staticmethod
     def from_dict(data: JsonDict) -> LifecycleVariable:
+        known = _VAR_ALWAYS | LifecycleVariable._VAR_OPTIONAL
+        extra = {k: v for k, v in data.items() if k not in known}
+        present = frozenset(k for k in data if k in LifecycleVariable._VAR_OPTIONAL)
         return LifecycleVariable(
             variable=data.get("variable", ""),
             kind=data.get("kind", ""),
@@ -124,6 +157,8 @@ class LifecycleVariable:
             warnings=list(data.get("warnings", [])),
             override_history=list(data.get("override_history", [])),
             failure_reason=data.get("failure_reason"),
+            extra=extra,
+            _present_fields=present,
         )
 
     def to_dict(self) -> JsonDict:
@@ -131,20 +166,29 @@ class LifecycleVariable:
             "variable": self.variable,
             "kind": self.kind,
             "bins": [b.to_dict() for b in self.bins],
-            "active": self.active,
         }
-        if self.dtype:
-            d["dtype"] = self.dtype
-        if self.status:
-            d["status"] = self.status
-        if self.metrics:
-            d["metrics"] = self.metrics
-        if self.warnings:
-            d["warnings"] = self.warnings
-        if self.override_history:
-            d["override_history"] = self.override_history
-        if self.failure_reason:
-            d["failure_reason"] = self.failure_reason
+        present = self._present_fields
+        if present is None or "active" in present:
+            d["active"] = self.active
+        if present is None or "dtype" in present:
+            if self.dtype:
+                d["dtype"] = self.dtype
+        if present is None or "status" in present:
+            if self.status:
+                d["status"] = self.status
+        if present is None or "metrics" in present:
+            if self.metrics:
+                d["metrics"] = self.metrics
+        if present is None or "warnings" in present:
+            if self.warnings:
+                d["warnings"] = self.warnings
+        if present is None or "override_history" in present:
+            if self.override_history:
+                d["override_history"] = self.override_history
+        if present is None or "failure_reason" in present:
+            if self.failure_reason:
+                d["failure_reason"] = self.failure_reason
+        d.update(self.extra)
         return d
 
 
@@ -155,6 +199,13 @@ class LifecycleBinDefinition:
     rejected: list[LifecycleVariable] = field(default_factory=list)
     warnings: list[JsonDict] = field(default_factory=list)
     source: JsonDict | None = None
+    extra: JsonDict = field(default_factory=dict)
+
+    _DEF_OPTIONAL: frozenset[str] = frozenset({
+        "rejected", "warnings", "source",
+    })
+
+    _present_fields: frozenset[str] | None = field(default=None, repr=False)
 
     # ------------------------------------------------------------------
     # Parse
@@ -166,12 +217,17 @@ class LifecycleBinDefinition:
             return [LifecycleVariable.from_dict(v) for v in raw]
 
         rejected_raw = payload.get("rejected", []) or []
+        known = _DEF_ALWAYS | cls._DEF_OPTIONAL
+        extra = {k: v for k, v in payload.items() if k not in known}
+        present = frozenset(k for k in payload if k in cls._DEF_OPTIONAL)
         return cls(
             schema_version=payload.get("schema_version", SCHEMA_BIN_DEFINITION),
             variables=_parse_variable_list(payload.get("variables", [])),
             rejected=_parse_variable_list(rejected_raw),
             warnings=list(payload.get("warnings", [])),
             source=copy.deepcopy(payload.get("source")) if "source" in payload else None,
+            extra=extra,
+            _present_fields=present,
         )
 
     @classmethod
@@ -182,11 +238,19 @@ class LifecycleBinDefinition:
         warnings: list[JsonDict] | None = None,
         source: JsonDict | None = None,
     ) -> LifecycleBinDefinition:
+        present: set[str] = set()
+        if rejected is not None:
+            present.add("rejected")
+        if warnings is not None:
+            present.add("warnings")
+        if source is not None:
+            present.add("source")
         return cls(
             variables=variables,
             rejected=rejected or [],
             warnings=warnings or [],
             source=source,
+            _present_fields=frozenset(present) if present else None,
         )
 
     # ------------------------------------------------------------------
@@ -194,14 +258,19 @@ class LifecycleBinDefinition:
     # ------------------------------------------------------------------
 
     def to_payload(self) -> JsonDict:
+        present = self._present_fields
         payload: JsonDict = {
             "schema_version": self.schema_version,
             "variables": [v.to_dict() for v in self.variables],
-            "warnings": list(self.warnings),
-            "rejected": [r.to_dict() for r in self.rejected],
         }
-        if self.source is not None:
-            payload["source"] = copy.deepcopy(self.source)
+        if present is None or "warnings" in present:
+            payload["warnings"] = list(self.warnings)
+        if present is None or "rejected" in present:
+            payload["rejected"] = [r.to_dict() for r in self.rejected]
+        if present is None or "source" in present:
+            if self.source is not None:
+                payload["source"] = copy.deepcopy(self.source)
+        payload.update(self.extra)
         return payload
 
     # ------------------------------------------------------------------
@@ -241,6 +310,7 @@ class LifecycleBinDefinition:
                 row_pct=b.row_pct,
                 kind=b.kind,
                 special_values=b.special_values,
+                extra=dict(b.extra),
             )
             normalized_bins.append(nb)
         return LifecycleVariable(
@@ -254,6 +324,8 @@ class LifecycleBinDefinition:
             warnings=list(var.warnings),
             override_history=list(var.override_history),
             failure_reason=var.failure_reason,
+            extra=dict(var.extra),
+            _present_fields=var._present_fields,
         )
 
     # ------------------------------------------------------------------
@@ -310,32 +382,35 @@ class LifecycleBinDefinition:
             reason = override.get("reason", "")
             source_bin_ids = override.get("source_bin_ids", [])
 
+            override_errors: list[str] = []
+
             if not reason:
-                errors.append(f"{prefix}: override for '{variable}' requires a non-empty reason")
-                continue
+                override_errors.append(f"{prefix}: override for '{variable}' requires a non-empty reason")
             if variable not in var_map:
-                errors.append(f"{prefix}: references unknown variable '{variable}'")
-                continue
+                override_errors.append(f"{prefix}: references unknown variable '{variable}'")
             if selected_vars is not None and variable not in selected_vars:
-                errors.append(
+                override_errors.append(
                     f"{prefix}: variable '{variable}' was not selected by variable-selection "
                     f"and cannot accept manual binning overrides"
                 )
-                continue
             VALID = ("merge_bins", "group_categories",
                       "reject_variable", "reorder_missing_bin", "reorder_special_bin")
             if action not in VALID:
-                errors.append(f"{prefix}: unsupported action '{action}'")
+                override_errors.append(f"{prefix}: unsupported action '{action}'")
+
+            if override_errors:
+                errors.extend(override_errors)
                 continue
 
             var_bins = var_map[variable].get("bins", [])
             bin_id_map = {b["bin_id"]: b for b in var_bins}
 
+            bin_id_errors: list[str] = []
             for bid in source_bin_ids:
                 if bid not in bin_id_map:
-                    errors.append(f"{prefix}: bin_id '{bid}' not found in variable '{variable}'")
-
-            if errors:
+                    bin_id_errors.append(f"{prefix}: bin_id '{bid}' not found in variable '{variable}'")
+            if bin_id_errors:
+                errors.extend(bin_id_errors)
                 continue
 
             if action == "merge_bins":
@@ -476,3 +551,11 @@ class LifecycleBinDefinition:
             "rejected": combined_rejected if combined_rejected else None,
             "warnings": bin_def.get("warnings", []) + warnings,
         }
+
+
+__all__ = [
+    "LifecycleBin",
+    "LifecycleBinDefinition",
+    "LifecycleVariable",
+    "SCHEMA_BIN_DEFINITION",
+]
