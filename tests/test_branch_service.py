@@ -12,10 +12,10 @@ from cardre.audit import StepSpec, json_logical_hash
 from cardre.services import migrate_project_to_branch_model
 from cardre.services.branch_service import (
     BranchService,
-    _descendant_closure,
     _validate_segment_filter_rules,
     ALLOWED_BRANCH_POINTS,
 )
+from cardre.step_graph import descendant_closure as _descendant_closure
 from cardre.pathway import build_pathway_steps
 from cardre.store import ProjectStore
 from sidecar.proof_pathway import PROOF_PATHWAY, SCORECARD_PATHWAY
