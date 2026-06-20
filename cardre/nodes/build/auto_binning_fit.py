@@ -16,6 +16,7 @@ from cardre.evidence import (
     EvidenceKind,
     SCHEMA_BIN_DEFINITION,
 )
+from cardre.engine.binning.definition import LifecycleBinDefinition
 from cardre.engine.binning.optbinning_adapter import fit_variables
 from cardre.engine.binning.diagnostics import run_all as run_diagnostics
 from cardre.node_parameters import (
@@ -371,7 +372,7 @@ class AutoBinningFitNode(NodeType):
                             "details": {},
                         })
 
-        bin_def = {
+        bin_def = LifecycleBinDefinition.from_payload({
             "schema_version": SCHEMA_BIN_DEFINITION,
             "variables": variables_out,
             "rejected": rejected_vars if rejected_vars else [],
@@ -390,7 +391,7 @@ class AutoBinningFitNode(NodeType):
                 "bad_values": sorted(bad_values),
                 "params": context.validated_params,
             },
-        }
+        }).to_payload()
 
         bin_artifact = write_json_artifact(
             store, artifact_type="definition", role="definition",

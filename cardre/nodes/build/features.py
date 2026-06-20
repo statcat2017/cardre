@@ -687,7 +687,6 @@ class WoeTransformTrainNode(NodeType):
         target_column = meta.target_column if meta is not None else ""
 
         df = pl.read_parquet(store.artifact_path(train_artifact))
-        bin_def_dict = bin_def.to_dict()
         woe_map = woe_table.mapping
 
         missing_woe_bins: list[str] = []
