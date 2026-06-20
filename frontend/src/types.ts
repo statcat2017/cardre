@@ -1,7 +1,6 @@
-// Auto-generated from backend OpenAPI schema via scripts/generate-openapi-types.py
-// DO NOT EDIT MANUALLY — all types derive from schema.d.ts
-//
-// Run `python3 scripts/generate-openapi-types.py` to regenerate from the backend spec.
+// TypeScript aliases for generated OpenAPI schema types.
+// Add new aliases here when adding API client methods.
+// Run `python3 scripts/generate-openapi-types.py` to regenerate the base schema.
 
 import type { components } from './api/schema';
 

@@ -12,12 +12,14 @@ from cardre.nodes import (
     ApplyModelNode,
     ApplyWoeMappingNode,
     AutoBinningFitNode,
+    BinningNode,
     BuildSummaryReportNode,
     CalculateWoeIvNode,
     CatBoostClassifierNode,
     CutoffAnalysisNode,
     DecisionTreeNode,
     DefineModellingMetadataNode,
+    DefineRejectPopulationNode,
     DevelopmentSampleDefinitionNode,
     DummyApplyNode,
     DummyFitNode,
@@ -39,6 +41,8 @@ from cardre.nodes import (
     ProfileDatasetNode,
     ProxyRiskReportNode,
     RandomForestClassifierNode,
+    RejectInferenceAugmentationNode,
+    RejectInferenceNoneNode,
     ResampleTrainingDataNode,
     ScoreScalingNode,
     SmoteTrainingDataNode,
@@ -290,8 +294,50 @@ class TestExplicitMissingOutlierTreatmentContract(NodeContractTestBase):
 
 
 # ======================================================================
+# Reject inference nodes
+# ======================================================================
+
+class TestDefineRejectPopulationContract(NodeContractTestBase):
+    node_cls = DefineRejectPopulationNode
+    bad_params: dict[str, Any] = {"exclusion_categories": {"cat": "not_a_dict"}}
+    expected_output_roles = {"input", "definition"}
+    expected_category = "transform"
+
+    def get_good_params(self, tmp_path: Path) -> dict[str, Any]:
+        return {"exclusion_categories": {}}
+
+
+class TestRejectInferenceNoneContract(NodeContractTestBase):
+    node_cls = RejectInferenceNoneNode
+    bad_params = None
+    expected_output_roles = {"input", "report"}
+    expected_category = "transform"
+
+
+class TestRejectInferenceAugmentationContract(NodeContractTestBase):
+    node_cls = RejectInferenceAugmentationNode
+    bad_params: dict[str, Any] = {"n_score_bands": 0}
+    expected_output_roles = {"input", "report"}
+    expected_category = "transform"
+
+    def get_good_params(self, tmp_path: Path) -> dict[str, Any]:
+        return {"n_score_bands": 10, "min_samples_per_band": 30, "band_min_p_financed": 0.01, "random_seed": 42}
+
+
+# ======================================================================
 # Binning / WOE nodes
 # ======================================================================
+
+class TestBinningContract(NodeContractTestBase):
+    node_cls = BinningNode
+    bad_params: dict[str, Any] = {"method": "invalid"}
+    expected_output_roles = {"definition", "report"}
+    expected_category = "fit"
+
+    def get_good_params(self, tmp_path: Path) -> dict[str, Any]:
+        return {"method": "fine_classing", "max_bins": 20, "min_bin_fraction": 0.05,
+                "missing_policy": "separate_bin", "max_categorical_levels": 50, "exclude_columns": []}
+
 
 class TestAutoBinningFitContract(NodeContractTestBase):
     node_cls = AutoBinningFitNode
@@ -675,3 +721,79 @@ class TestAlternativeDataManifestContract(NodeContractTestBase):
 
     def get_good_params(self, tmp_path: Path) -> dict[str, Any]:
         return {"data_sources": [{"source_name": "test", "consent_basis": "consent", "permitted_use": "scoring"}]}
+
+
+# ======================================================================
+# Registry reconciliation — every registered public node must have coverage
+# ======================================================================
+
+_COVERED_NODE_TYPES: set[str] = {
+    cls.node_type
+    for cls in [
+        ImportGermanCreditNode,
+        ImportTabularDatasetNode,
+        ProfileDatasetNode,
+        ValidateBinaryTargetNode,
+        SplitTrainTestOotNode,
+        DefineModellingMetadataNode,
+        ApplyExclusionsNode,
+        DefineRejectPopulationNode,
+        DevelopmentSampleDefinitionNode,
+        ExplicitMissingOutlierTreatmentNode,
+        AutoBinningFitNode,
+        BinningNode,
+        FineClassingNode,
+        CalculateWoeIvNode,
+        VariableClusteringNode,
+        VariableSelectionNode,
+        ManualBinningNode,
+        TechnicalManifestExportNode,
+        WoeTransformTrainNode,
+        LogisticRegressionNode,
+        DecisionTreeNode,
+        RandomForestClassifierNode,
+        RejectInferenceAugmentationNode,
+        RejectInferenceNoneNode,
+        GradientBoostingClassifierNode,
+        XGBoostClassifierNode,
+        LightGBMClassifierNode,
+        CatBoostClassifierNode,
+        ScoreScalingNode,
+        FrozenScorecardBundleNode,
+        BuildSummaryReportNode,
+        VotingEnsembleNode,
+        WeightedEnsembleNode,
+        HyperparameterTuningNode,
+        FeatureSelectionFilterNode,
+        FeatureSelectionEmbeddedNode,
+        ResampleTrainingDataNode,
+        SmoteTrainingDataNode,
+        ApplyWoeMappingNode,
+        ApplyModelNode,
+        ValidationMetricsNode,
+        ThresholdOptimizationNode,
+        CutoffAnalysisNode,
+        ModelExplainabilityNode,
+        ModelLimitationsNode,
+        FairnessReportNode,
+        ProxyRiskReportNode,
+        AlternativeDataManifestNode,
+    ]
+}
+
+_INTERNAL_NODE_TYPES: set[str] = {
+    "cardre.dummy_fit",
+    "cardre.dummy_apply",
+}
+
+
+def test_all_registered_public_nodes_have_contract_coverage():
+    """Every registered non-internal node type must have a contract test class."""
+    from cardre.registry import NodeRegistry
+    registry = NodeRegistry.with_defaults()
+    registered = set(registry.list_types())
+    missing = registered - _COVERED_NODE_TYPES - _INTERNAL_NODE_TYPES
+    assert not missing, (
+        f"Registered node types missing contract coverage: {sorted(missing)}. "
+        "Add a Test* class and add its node_type to _COVERED_NODE_TYPES."
+    )

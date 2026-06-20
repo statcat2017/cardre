@@ -105,10 +105,15 @@ export function SchemaDrivenParamsEditor({
 
   useEffect(() => {
     if (schema && !selectedMethodId) {
-      const first = availableMethods[0] ?? null;
-      setSelectedMethodId(first?.id ?? null);
+      const currentMethod = currentParams.method as string | undefined;
+      if (currentMethod && availableMethods.some((m) => m.id === currentMethod)) {
+        setSelectedMethodId(currentMethod);
+      } else {
+        const first = availableMethods[0] ?? null;
+        setSelectedMethodId(first?.id ?? null);
+      }
     }
-  }, [schema, availableMethods, selectedMethodId]);
+  }, [schema, availableMethods, selectedMethodId, currentParams.method]);
 
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});

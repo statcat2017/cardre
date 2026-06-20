@@ -113,4 +113,4 @@ jobs:
       - name: Generate OpenAPI types
         run: python3 scripts/generate-openapi-types.py
       - name: Check for stale generated types
-        run: git diff --exit-code frontend/src/api/schema.d.ts
+        run: git diff --exit-code
