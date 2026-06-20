@@ -639,7 +639,7 @@ class TestClusteringNodeBehaviours(unittest.TestCase):
         self, store: ProjectStore, df: pl.DataFrame,
         iv_map: dict[str, float], params: dict[str, Any],
     ) -> dict[str, Any]:
-        from cardre.nodes.build.features import VariableClusteringNode
+        from cardre.nodes.build.clustering import VariableClusteringNode
 
         buf = io.BytesIO()
         df.write_parquet(buf)
@@ -769,14 +769,14 @@ class TestClusteringNodeBehaviours(unittest.TestCase):
 
     def test_validate_params_rejects_invalid_method(self) -> None:
         """An invalid method should produce a validation error."""
-        from cardre.nodes.build.features import VariableClusteringNode
+        from cardre.nodes.build.clustering import VariableClusteringNode
         node = VariableClusteringNode()
         errors = node.validate_params({"method": "nonexistent"})
         self.assertTrue(any("Unknown method" in e for e in errors))
 
     def test_validate_params_rejects_invalid_cluster_rule(self) -> None:
         """Invalid cluster_representative_rule should produce a validation error."""
-        from cardre.nodes.build.features import VariableSelectionNode
+        from cardre.nodes.build.selection import VariableSelectionNode
         node = VariableSelectionNode()
         errors = node.validate_params({
             "cluster_representative_rule": "bogus_value",
@@ -785,7 +785,7 @@ class TestClusteringNodeBehaviours(unittest.TestCase):
 
     def test_validate_params_legacy_alias(self) -> None:
         """Legacy 'highest_iv' rule should produce a helpful migration error."""
-        from cardre.nodes.build.features import VariableSelectionNode
+        from cardre.nodes.build.selection import VariableSelectionNode
         node = VariableSelectionNode()
         errors = node.validate_params({
             "cluster_representative_rule": "highest_iv",
