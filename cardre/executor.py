@@ -12,7 +12,8 @@ from __future__ import annotations
 import sys
 import traceback
 import uuid
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from cardre.audit import (
@@ -62,6 +63,7 @@ class _StepAction:
     spec: StepSpec
     action: Literal["execute", "reuse", "skip"]
     evidence_source: RunStepRecord | None = None
+    before_execute: Callable[[], None] | None = None
 
 
 def resolve_output_artifacts(
@@ -106,14 +108,14 @@ class PlanExecutor:
             for s in steps
         ]
 
-        has_failure, was_cancelled = self._execute_actions(
+        has_failure, was_cancelled, outputs, records = self._execute_actions(
             store, actions, plan_version_id, run_id, lifecycle,
         )
         status = self._compute_final_status(has_failure, was_cancelled, actions, force)
 
         lifecycle.finalise(
             status=status, execution_mode="force" if force else "full",
-            run_step_records=self._rs_records, steps=steps,
+            run_step_records=records, steps=steps,
         )
         return run_id
 
@@ -135,6 +137,9 @@ class PlanExecutor:
         lifecycle = RunLifecycle.start(store, plan_version_id, run_id=run_id, branch_id=branch_id)
         run_id = lifecycle.run_id
 
+        # Build action list but defer parent evidence resolution to
+        # just-before-execute so branch-owned parent steps produce
+        # fresh evidence before their children resolve inputs.
         actions: list[_StepAction] = []
         for spec in ctx.steps:
             if spec.step_id not in ctx.branch_owned_step_ids:
@@ -142,10 +147,14 @@ class PlanExecutor:
             elif not force and spec.step_id not in ctx.stale_branch_step_ids:
                 actions.append(_StepAction(spec=spec, action="skip"))
             else:
-                resolver.resolve_parent_evidence(store, ctx, spec)
-                actions.append(_StepAction(spec=spec, action="execute"))
+                actions.append(_StepAction(
+                    spec=spec, action="execute",
+                    before_execute=lambda s=spec: resolver.resolve_parent_evidence(
+                        store, ctx, s,
+                    ),
+                ))
 
-        has_failure, was_cancelled = self._execute_actions(
+        has_failure, was_cancelled, outputs, records = self._execute_actions(
             store, actions, plan_version_id, run_id, lifecycle,
             step_outputs=ctx.step_outputs,
             run_step_records=ctx.run_step_records,
@@ -154,7 +163,7 @@ class PlanExecutor:
 
         lifecycle.finalise(
             status=status, execution_mode="force" if force else "branch",
-            run_step_records=ctx.run_step_records, steps=ctx.steps,
+            run_step_records=records, steps=ctx.steps,
             branch_id=branch_id,
         )
         return run_id
@@ -196,14 +205,14 @@ class PlanExecutor:
                     continue
             actions.append(_StepAction(spec=spec, action="execute"))
 
-        has_failure, was_cancelled = self._execute_actions(
+        has_failure, was_cancelled, outputs, records = self._execute_actions(
             store, actions, plan_version_id, run_id, lifecycle,
         )
         status = self._compute_final_status(has_failure, was_cancelled, actions, force)
 
         lifecycle.finalise(
             status=status, execution_mode="force" if force else "to_node",
-            run_step_records=self._rs_records, steps=closure_steps,
+            run_step_records=records, steps=closure_steps,
             target_step_id=target_step_id,
             in_scope_step_ids=sorted(closure),
         )
@@ -212,9 +221,6 @@ class PlanExecutor:
     # ------------------------------------------------------------------
     # Shared action execution loop
     # ------------------------------------------------------------------
-
-    _step_outputs: dict[str, list[ArtifactRef]] = {}
-    _rs_records: dict[str, RunStepRecord] = {}
 
     def _execute_actions(
         self,
@@ -225,13 +231,13 @@ class PlanExecutor:
         lifecycle: Any,
         step_outputs: dict[str, list[ArtifactRef]] | None = None,
         run_step_records: dict[str, RunStepRecord] | None = None,
-    ) -> tuple[bool, bool]:
+    ) -> tuple[bool, bool, dict[str, list[ArtifactRef]], dict[str, RunStepRecord]]:
         """Execute a sequence of step actions.
 
-        Returns ``(has_failure, was_cancelled)``.
+        Returns ``(has_failure, was_cancelled, step_outputs, rs_records)``.
         """
-        self._step_outputs = step_outputs or {}
-        self._rs_records = run_step_records or {}
+        outputs: dict[str, list[ArtifactRef]] = step_outputs or {}
+        records: dict[str, RunStepRecord] = run_step_records or {}
         has_failure = False
         was_cancelled = False
 
@@ -245,25 +251,29 @@ class PlanExecutor:
                     continue
 
                 if action.action == "reuse" and action.evidence_source is not None:
-                    self._rs_records[action.spec.step_id] = action.evidence_source
-                    self._step_outputs[action.spec.step_id] = resolve_output_artifacts(
+                    records[action.spec.step_id] = action.evidence_source
+                    outputs[action.spec.step_id] = resolve_output_artifacts(
                         store, action.evidence_source,
                     )
                     continue
 
-                rs = self._execute_step(
-                    store, action.spec, plan_version_id, run_id,
-                    self._step_outputs, self._rs_records, lifecycle.token,
-                )
-                self._rs_records[action.spec.step_id] = rs
-                self._step_outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
-                if rs.status == STATUS_FAILED:
-                    has_failure = True
+                if action.action == "execute":
+                    if action.before_execute is not None:
+                        action.before_execute()
+
+                    rs = self._execute_step(
+                        store, action.spec, plan_version_id, run_id,
+                        outputs, records, lifecycle.token,
+                    )
+                    records[action.spec.step_id] = rs
+                    outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
+                    if rs.status == STATUS_FAILED:
+                        has_failure = True
 
         except CancellationError:
             was_cancelled = True
 
-        return has_failure, was_cancelled
+        return has_failure, was_cancelled, outputs, records
 
     @staticmethod
     def _compute_final_status(
