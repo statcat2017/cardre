@@ -200,6 +200,7 @@ export function StepInspector({
             </button>
             {showParams && (
               <SchemaDrivenParamsEditor
+                key={`${step.step_id}:${step.node_type}`}
                 planId={planId!}
                 stepId={step.step_id}
                 projectId={projectId!}
