@@ -281,6 +281,41 @@ class ManualIntervention(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Redundancy / variable clustering
+# ---------------------------------------------------------------------------
+
+class RedundancyClusterMember(BaseModel):
+    variable: str
+    iv: float | None = None
+    missing_rate: float | None = None
+
+
+class RedundancyCluster(BaseModel):
+    cluster_id: str
+    variables: list[RedundancyClusterMember] = Field(default_factory=list)
+    representative_suggestion: str | None = None
+    representative_reason: str = ""
+    max_pairwise_abs_corr: float | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
+class RedundancyReviewInfo(BaseModel):
+    method: str = ""
+    input_representation: str = ""
+    similarity_metric: str = ""
+    threshold: float | None = None
+    absolute_correlation: bool = True
+    missing_handling: str = "pairwise"
+    candidate_limit: int = 50
+    representative_rule: str = ""
+    cluster_count: int = 0
+    singleton_count: int = 0
+    clusters: list[RedundancyCluster] = Field(default_factory=list)
+    singleton_variables: list[str] = Field(default_factory=list)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Limitation / warning
 # ---------------------------------------------------------------------------
 
@@ -374,6 +409,7 @@ class ReportBundle(BaseModel):
     validation: ValidationInfo = Field(default_factory=ValidationInfo)
     cutoffs: CutoffInfo = Field(default_factory=CutoffInfo)
     manual_interventions: list[ManualIntervention] = Field(default_factory=list)
+    redundancy_review: RedundancyReviewInfo = Field(default_factory=RedundancyReviewInfo)
     limitations: list[Limitation] = Field(default_factory=list)
     reproducibility: ReproducibilityInfo = Field(default_factory=ReproducibilityInfo)
     artifacts: list[ArtifactEntry] = Field(default_factory=list)

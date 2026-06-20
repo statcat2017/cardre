@@ -186,8 +186,8 @@ def make_full_german_credit_download(tmp: Path) -> Path:
             StepSpec(
                 step_id="variable-clustering", node_type="cardre.variable_clustering",
                 node_version="1", category="selection",
-                params={"correlation_threshold": 0.7, "candidate_limit": 50},
-                params_hash=json_logical_hash({"correlation_threshold": 0.7, "candidate_limit": 50}),
+                params={"method": "correlation_threshold", "threshold": 0.7, "candidate_limit": 50},
+                params_hash=json_logical_hash({"method": "correlation_threshold", "threshold": 0.7, "candidate_limit": 50}),
                 parent_step_ids=["explicit-missing-outlier-treatment", "initial-woe-iv"],
                 branch_label="", position=10,
             ),

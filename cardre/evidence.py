@@ -42,6 +42,7 @@ SCHEMA_REJECT_INFERENCE_RESULT = "cardre.reject_inference_result.v1"
 SCHEMA_SELECTION_DEFINITION = "cardre.selection_definition.v1"
 SCHEMA_WOE_TABLE = "cardre.woe_table.v1"
 SCHEMA_WOE_IV_EVIDENCE = "cardre.woe_iv_evidence.v1"
+SCHEMA_VARIABLE_CLUSTERING_EVIDENCE = "cardre.variable_clustering_evidence.v1"
 SCHEMA_MODEL_ARTIFACT = "cardre.model_artifact.v1"
 SCHEMA_SCORE_SCALING = "cardre.score_scaling.v1"
 SCHEMA_VALIDATION_METRICS = "cardre.validation_metrics.v1"
@@ -99,6 +100,7 @@ class EvidenceKind(Enum):
     SELECTION_DEFINITION = "selection_definition"
     WOE_TABLE = "woe_table"
     WOE_IV_EVIDENCE = "woe_iv_evidence"
+    VARIABLE_CLUSTERING = "variable_clustering"
     MODEL_ARTIFACT = "model_artifact"
     SCORE_SCALING = "score_scaling"
     VALIDATION_METRICS = "validation_metrics"
@@ -454,6 +456,78 @@ class WoeIvEvidence:
 
 
 @dataclass(frozen=True)
+class ClusterMember:
+    variable: str
+    iv: float | None = None
+    missing_rate: float | None = None
+
+
+@dataclass(frozen=True)
+class VariableCluster:
+    cluster_id: str
+    variables: list[ClusterMember]
+    representative_suggestion: str | None = None
+    representative_reason: str = ""
+    max_pairwise_abs_corr: float | None = None
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class VariableClusteringEvidence:
+    method: str
+    input_representation: str = ""
+    similarity_metric: str = ""
+    threshold: float | None = None
+    absolute_correlation: bool = True
+    missing_handling: str = "pairwise"
+    candidate_limit: int = 50
+    representative_rule: str = "highest_iv"
+    clusters: list[VariableCluster] = field(default_factory=list)
+    singleton_variables: list[str] = field(default_factory=list)
+    warnings: list[dict[str, Any]] = field(default_factory=list)
+    schema_version: str = SCHEMA_VARIABLE_CLUSTERING_EVIDENCE
+
+    @classmethod
+    def from_json(cls, data: JsonDict) -> VariableClusteringEvidence:
+        raw_clusters = data.get("clusters", [])
+        clusters = []
+        for rc in raw_clusters:
+            raw_vars = rc.get("variables", [])
+            members = []
+            for v in raw_vars:
+                if isinstance(v, dict):
+                    members.append(ClusterMember(
+                        variable=v["variable"],
+                        iv=v.get("iv"),
+                        missing_rate=v.get("missing_rate"),
+                    ))
+                else:
+                    members.append(ClusterMember(variable=str(v)))
+            clusters.append(VariableCluster(
+                cluster_id=rc.get("cluster_id", ""),
+                variables=members,
+                representative_suggestion=rc.get("representative_suggestion"),
+                representative_reason=rc.get("representative_reason", ""),
+                max_pairwise_abs_corr=rc.get("max_pairwise_abs_corr"),
+                notes=list(rc.get("notes", [])),
+            ))
+        return cls(
+            method=data.get("method", ""),
+            input_representation=data.get("input_representation", ""),
+            similarity_metric=data.get("similarity_metric", ""),
+            threshold=data.get("threshold"),
+            absolute_correlation=data.get("absolute_correlation", True),
+            missing_handling=data.get("missing_handling", "pairwise"),
+            candidate_limit=data.get("candidate_limit", 50),
+            representative_rule=data.get("representative_rule", "highest_iv"),
+            clusters=clusters,
+            singleton_variables=list(data.get("singleton_variables", [])),
+            warnings=list(data.get("warnings", [])),
+            schema_version=data.get("schema_version", SCHEMA_VARIABLE_CLUSTERING_EVIDENCE),
+        )
+
+
+@dataclass(frozen=True)
 class Coefficient:
     variable_name: str
     coefficient: float = 0.0
@@ -713,6 +787,12 @@ _EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"report"},
         schema_version=SCHEMA_WOE_IV_EVIDENCE,
         required_keys={"variables"},
+    ),
+    EvidenceKind.VARIABLE_CLUSTERING: _Profile(
+        expected_roles={"report"},
+        expected_artifact_types={"report"},
+        schema_version=SCHEMA_VARIABLE_CLUSTERING_EVIDENCE,
+        required_keys={"method", "clusters"},
     ),
     EvidenceKind.SCORED_DATASET: _Profile(
         expected_roles={"train", "test", "oot"},
@@ -1012,6 +1092,7 @@ class ArtifactEvidenceReader:
             EvidenceKind.BIN_DEFINITION: lambda d: BinDefinition.from_json(d, artifact.artifact_id),
             EvidenceKind.SELECTION_DEFINITION: SelectionDefinition.from_json,
             EvidenceKind.WOE_IV_EVIDENCE: WoeIvEvidence.from_json,
+            EvidenceKind.VARIABLE_CLUSTERING: VariableClusteringEvidence.from_json,
             EvidenceKind.MODEL_ARTIFACT: ModelArtifact.from_json,
             EvidenceKind.SCORE_SCALING: ScoreScaling.from_json,
             EvidenceKind.VALIDATION_METRICS: ValidationMetrics.from_json,
@@ -1056,6 +1137,7 @@ __all__ = [
     "BinVariable",
     "Coefficient",
     "CutoffAnalysis",
+    "ClusterMember",
     "CutoffRow",
     "EvidenceError",
     "EvidenceKind",
@@ -1082,12 +1164,15 @@ __all__ = [
     "SCHEMA_SELECTION_DEFINITION",
     "SCHEMA_VALIDATION_EVIDENCE",
     "SCHEMA_VALIDATION_METRICS",
+    "SCHEMA_VARIABLE_CLUSTERING_EVIDENCE",
     "SCHEMA_WOE_APPLICATION_EVIDENCE",
     "SCHEMA_WOE_IV_EVIDENCE",
     "SCHEMA_WOE_TABLE",
     "SelectedVariable",
     "SelectionDefinition",
     "ValidationMetrics",
+    "VariableCluster",
+    "VariableClusteringEvidence",
     "WoeBin",
     "WoeIvEvidence",
     "WoeIvVariable",

@@ -40,6 +40,7 @@ class LimitationCode(StrEnum):
     SMOOTHING_APPLIED = "SMOOTHING_APPLIED"
     ZERO_CELL_POLICY_USED = "ZERO_CELL_POLICY_USED"
     LEGACY_WOE_SUMMARY_USED = "LEGACY_WOE_SUMMARY_USED"
+    MISSING_VARIABLE_CLUSTERING_EVIDENCE = "MISSING_VARIABLE_CLUSTERING_EVIDENCE"
     PDF_OUT_OF_SCOPE = "PDF_OUT_OF_SCOPE"
 
     # --- Collector block codes (not in readiness BLOCKER_CODES) ---
@@ -80,5 +81,6 @@ class LimitationCode(StrEnum):
             cls.SMOOTHING_APPLIED,
             cls.ZERO_CELL_POLICY_USED,
             cls.LEGACY_WOE_SUMMARY_USED,
+            cls.MISSING_VARIABLE_CLUSTERING_EVIDENCE,
             cls.PDF_OUT_OF_SCOPE,
         }

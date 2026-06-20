@@ -17,6 +17,7 @@ from cardre.store import ProjectStore
 from cardre.evidence import (
     ArtifactEvidenceReader,
     EvidenceKind,
+    SCHEMA_VARIABLE_CLUSTERING_EVIDENCE,
 )
 from cardre.reporting.limitation_codes import LimitationCode
 from cardre.step_id import resolve_run_step, resolve_required_steps
@@ -42,6 +43,9 @@ from cardre.reporting.schema import (
     PathwayStep,
     PathwaySummary,
     PsiEntry,
+    RedundancyCluster,
+    RedundancyClusterMember,
+    RedundancyReviewInfo,
     ReportBundle,
     ReportGenerationInfo,
     ReportSource,
@@ -64,6 +68,7 @@ REQUIRED_CANONICAL_STEPS = [
     "validation-metrics",
     "cutoff-analysis",
     "manual-binning",
+    "variable-clustering",
 ]
 
 CARDRE_VERSION = "0.1.0"
@@ -237,6 +242,9 @@ class ReportCollector:
         manual_ref = resolved.get("manual-binning")
         if manual_ref:
             self._collect_manual_interventions(bundle, manual_ref, plan_version_id)
+
+        # Redundancy review
+        self._collect_redundancy_review(bundle, plan_version_id)
 
         # Reproducibility
         self._collect_reproducibility(bundle, plan_version_id)
@@ -531,6 +539,79 @@ class ReportCollector:
                             reason=ov.get("reason", ""),
                             created_at=ov.get("created_at", ""),
                         ))
+
+    def _collect_redundancy_review(
+        self, bundle: ReportBundle, plan_version_id: str,
+    ) -> None:
+        from cardre.evidence import VariableClusteringEvidence
+
+        ref = None
+        step_map = self.store.get_branch_step_map(self.target_branch_id, plan_version_id)
+        if not step_map:
+            return
+        for cid, r in resolve_required_steps(
+            branch_id=self.target_branch_id,
+            canonical_step_ids=["variable-clustering"],
+            branch_step_map=step_map,
+        ).items():
+            ref = r
+            break
+
+        if ref is None:
+            return
+
+        rs = self._resolve_run_step(ref, plan_version_id)
+        if rs is None:
+            self.limitations.append(Limitation(
+                severity="warning",
+                code=LimitationCode.MISSING_VARIABLE_CLUSTERING_EVIDENCE,
+                message=f"Variable clustering step {ref.step_id} has no successful run.",
+            ))
+            return
+
+        evidence = self.reader.read_step_output_optional(rs, EvidenceKind.VARIABLE_CLUSTERING)
+        if evidence is None:
+            self.limitations.append(Limitation(
+                severity="warning",
+                code=LimitationCode.MISSING_VARIABLE_CLUSTERING_EVIDENCE,
+                message=f"Variable clustering step {ref.step_id} has no cardre.variable_clustering_evidence.v1 artifact.",
+            ))
+            return
+
+        clusters = []
+        for cl in evidence.clusters:
+            members = [
+                RedundancyClusterMember(
+                    variable=m.variable,
+                    iv=m.iv,
+                    missing_rate=m.missing_rate,
+                )
+                for m in cl.variables
+            ]
+            clusters.append(RedundancyCluster(
+                cluster_id=cl.cluster_id,
+                variables=members,
+                representative_suggestion=cl.representative_suggestion,
+                representative_reason=cl.representative_reason,
+                max_pairwise_abs_corr=cl.max_pairwise_abs_corr,
+                notes=list(cl.notes),
+            ))
+
+        bundle.redundancy_review = RedundancyReviewInfo(
+            method=evidence.method,
+            input_representation=evidence.input_representation,
+            similarity_metric=evidence.similarity_metric,
+            threshold=evidence.threshold,
+            absolute_correlation=evidence.absolute_correlation,
+            missing_handling=evidence.missing_handling,
+            candidate_limit=evidence.candidate_limit,
+            representative_rule=evidence.representative_rule,
+            cluster_count=len(evidence.clusters),
+            singleton_count=len(evidence.singleton_variables),
+            clusters=clusters,
+            singleton_variables=list(evidence.singleton_variables),
+            warnings=[dict(w) for w in evidence.warnings],
+        )
 
     def _collect_reproducibility(
         self, bundle: ReportBundle, plan_version_id: str,

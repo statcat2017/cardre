@@ -334,12 +334,16 @@ class TestWoeTransformTrainContract(NodeContractTestBase):
 
 class TestVariableClusteringContract(NodeContractTestBase):
     node_cls = VariableClusteringNode
-    bad_params: dict[str, Any] = {"correlation_threshold": 2.0}
+    bad_params: dict[str, Any] = {"method": "correlation_threshold", "threshold": 2.0}
     expected_output_roles = {"report"}
     expected_category = "selection"
 
     def get_good_params(self, tmp_path: Path) -> dict[str, Any]:
-        return {"correlation_threshold": 0.7}
+        return {
+            "method": "correlation_threshold",
+            "threshold": 0.7,
+            "candidate_limit": 50,
+        }
 
 
 class TestVariableSelectionContract(NodeContractTestBase):
@@ -349,7 +353,11 @@ class TestVariableSelectionContract(NodeContractTestBase):
     expected_category = "selection"
 
     def get_good_params(self, tmp_path: Path) -> dict[str, Any]:
-        return {"min_iv": 0.02, "max_variables": 15}
+        return {
+            "min_iv": 0.02, "max_variables": 15,
+            "cluster_representative_rule": "none",
+            "cluster_representative_overrides": [],
+        }
 
 
 class TestManualBinningContract(NodeContractTestBase):
