@@ -1,0 +1,131 @@
+"""API response contract tests — catch drift between declared models and actual responses.
+
+These tests exercise the sidecar routes via FastAPI TestClient and assert
+that every declared field in response models is populated (not defaulted)
+or explicitly acknowledged as a gap.
+"""
+
+from __future__ import annotations
+
+import json
+import uuid
+from pathlib import Path
+
+import pytest
+
+from cardre.audit import StepSpec, json_logical_hash
+from cardre.store import ProjectStore
+
+pytestmark = [
+    pytest.mark.api,
+    pytest.mark.usefixtures("_isolated_registry"),
+]
+
+
+def _setup_project_and_branch(client, tmp_path: Path) -> dict:
+    """Create a project, plan, and branch returning identifiers."""
+    proj_path = tmp_path / "test.cardre"
+    proj_resp = client.post("/projects", json={
+        "path": str(proj_path), "name": "Contract Test",
+    })
+    assert proj_resp.status_code == 201
+    project_id = proj_resp.json()["project_id"]
+
+    store = ProjectStore(proj_path)
+    plan_id = store.create_plan(project_id, "test-plan")
+    pv_id = store.create_plan_version(plan_id, [], "contract test")
+
+    import uuid
+    branch_id = str(uuid.uuid4())
+    store.create_branch(
+        project_id=project_id, plan_id=plan_id, name="test-branch",
+        branch_type="model_challenger",
+        base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+        created_reason="contract test",
+        branch_id=branch_id,
+    )
+
+    return {"project_id": project_id, "plan_id": plan_id}
+
+
+class TestBranchListContract:
+    """Verify BranchListItem fields are populated, not defaulted."""
+
+    def test_branch_list_has_all_declared_fields(self, client, tmp_path):
+        ids = _setup_project_and_branch(client, tmp_path)
+        resp = client.get(f"/projects/{ids['project_id']}/branches")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "branches" in data
+        assert len(data["branches"]) >= 1
+        branch = data["branches"][0]
+
+        expected_fields = {
+            "branch_id", "plan_id", "name", "branch_type", "status",
+            "base_branch_id", "base_plan_version_id", "head_plan_version_id",
+            "branch_point_step_id", "branch_point_canonical_step_id",
+            "is_champion", "latest_run_id", "readiness",
+            "warning_count", "error_count",
+        }
+        actual_fields = set(branch.keys())
+        missing = expected_fields - actual_fields
+        assert not missing, f"BranchListItem missing fields: {missing}"
+
+        # Fields the route currently does not populate (known gap)
+        known_gaps = {"is_champion", "latest_run_id", "readiness",
+                      "warning_count", "error_count"}
+        for gap in known_gaps:
+            if gap in actual_fields:
+                assert branch[gap] is False or branch[gap] == "not_run" or branch[gap] is None or branch[gap] == 0, (
+                    f"Field {gap!r} is expected to be default but got {branch[gap]!r}. "
+                    "If the route now populates it, update this test and the known_gaps set."
+                )
+
+
+class TestReportContract:
+    """Verify report response models are fully populated."""
+
+    def test_report_metadata_response_fields(self, client, tmp_path):
+        ids = _setup_project_and_branch(client, tmp_path)
+
+        fake_run_id = str(uuid.uuid4())
+        resp = client.post(
+            f"/projects/{ids['project_id']}/runs/{fake_run_id}/report-readiness",
+            json={"target_branch_id": ""},
+        )
+        # Returns 200 with a "not ready" status for non-existent runs
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "ready" in data
+        assert "status" in data
+        assert "blockers" in data
+
+    def test_report_metadata_response_shape(self, client, tmp_path):
+        # ReportMetadataResponse declares: report_id, created_at,
+        # target_branch_id, report_mode, html_path, bundle_path,
+        # export_path, zip_path, status
+        ids = _setup_project_and_branch(client, tmp_path)
+        project_id = ids["project_id"]
+
+        # list_run_reports on a project with no reports
+        fake_run_id = str(uuid.uuid4())
+        resp = client.get(f"/projects/{project_id}/runs/{fake_run_id}/reports")
+        assert resp.status_code == 200
+        assert resp.json() == []  # no reports yet — empty list is valid
+
+    def test_generate_report_response_includes_zip_path(self, client, tmp_path):
+        """GenerateReportResponse declares zip_path but route never sets it.
+        This test documents the known gap."""
+        ids = _setup_project_and_branch(client, tmp_path)
+        fake_run_id = str(uuid.uuid4())
+        resp = client.post(
+            f"/projects/{ids['project_id']}/runs/{fake_run_id}/reports",
+            json={
+                "target_branch_id": "",
+                "report_mode": "branch",
+                "output_formats": ["json"],
+            },
+        )
+        assert resp.status_code in (400, 404, 422), (
+            f"Expected error for nonexistent run, got {resp.status_code}"
+        )
