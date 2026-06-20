@@ -104,3 +104,29 @@ These are two different node types: `impute_missing` (data transform) and the `m
 - **Artifact**: any immutable output of a step execution. Includes datasets, models, metrics JSONs, reports, charts. Every artifact is content-addressed (by canonical hash) and stored immutably.
 - **Dataset**: a tabular artifact (Parquet). Has schema, row count, column metadata, split roles. A *kind of* artifact, not a separate concept.
 - **Snapshot**: not a separate entity. "Snapshot" describes an immutability property of artifacts (content-addressed, never mutated), not a distinct storage concept. Every artifact is a snapshot.
+
+## Run Lifecycle
+
+The `PlanExecutor` remains the single execution seam for all run modes
+(full-plan, branch, to-node). A dedicated run lifecycle module
+(`cardre/run_lifecycle.py`) owns generic run mechanics that are the same
+regardless of mode:
+
+- Run creation and `run_id` resolution.
+- Cancellation token registration and guaranteed removal in `finally`.
+- Final status setting (succeeded / failed / cancelled) and manifest
+  artifact writing, combined into one atomic `finalise_run()` call.
+- Manifest payload construction (`build_manifest_payload`) and labelling
+  (`step_action`).
+
+`PlanExecutor` still owns execution semantics: topological ordering, node
+execution, role and leakage enforcement, parent evidence resolution, and
+run-step evidence recording. The lifecycle module does not decide what
+to run or how to execute nodes — it owns how runs start, get cancelled,
+finish, and produce manifests.
+
+### RunScope
+
+`RunScope` is a planning dataclass that captures which mode a run is in
+(full / branch / to-node), which steps are in scope, and whether force
+mode is enabled. It does not carry execution semantics.

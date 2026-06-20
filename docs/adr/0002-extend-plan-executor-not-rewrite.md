@@ -89,3 +89,21 @@ These are non-negotiable and must survive all execution-core changes:
   `cardre/engine/binning/` (OptBinning adapter) remains alongside the existing
   `cardre/executor.py` rather than becoming one sub-package in a parallel
   execution tree.
+
+## Subsequent refactor (consistent with this ADR)
+
+A post-merge refactor deepened the PlanExecutor seam by extracting generic
+run lifecycle mechanics into a new ``cardre/run_lifecycle.py`` module. This
+module owns manifest construction, cancellation token lifecycle, and run
+finalisation — concerns that are mode-independent and were previously
+duplicated across the three public run methods (full-plan, branch, to-node).
+
+The refactor is consistent with this ADR because:
+
+- ``PlanExecutor`` remains the only public execution seam and is not renamed.
+- No new public execution API or vocabulary was introduced (``run_plan_version``,
+  ``run_branch``, ``run_to_node`` signatures are unchanged).
+- The ``cardre/engine/execution/`` module tree was not created.
+- Node execution semantics, role enforcement, leakage rules, and parent
+  evidence resolution remain in ``PlanExecutor``.
+- Every run still goes through ``PlanExecutor`` (single execution path).

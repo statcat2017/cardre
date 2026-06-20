@@ -15,32 +15,6 @@ from sidecar.models import RunRequest, RunResponse, RunStepsResponse, RunStepIte
 router = APIRouter(prefix="/runs", tags=["runs"])
 
 
-def _run_background(project_path: str, plan_version_id: str, run_id: str, force: bool = False) -> None:
-    """Execute plan steps in a background thread."""
-    store = ProjectStore(project_path)
-    executor = PlanExecutor(NodeRegistry.with_defaults())
-    try:
-        executor.run_plan_version(store, plan_version_id, run_id=run_id, force=force)
-    except BaseException:
-        import traceback
-        print(f"[sidecar] run_plan_version({run_id}) failed: {traceback.format_exc()}", flush=True)
-        _fail_run_if_running(store, run_id)
-
-
-def _branch_run_background(project_path: str, plan_version_id: str, branch_id: str, run_id: str, force: bool = False) -> None:
-    """Execute branch-owned steps in a background thread."""
-    store = ProjectStore(project_path)
-    executor = PlanExecutor(NodeRegistry.with_defaults())
-    try:
-        result_id = executor.run_branch(store, plan_version_id, branch_id, run_id=run_id, force=force)
-        if result_id != run_id:
-            store.finish_run(run_id, "cancelled")
-    except BaseException:
-        import traceback
-        print(f"[sidecar] run_branch({run_id}) failed: {traceback.format_exc()}", flush=True)
-        _fail_run_if_running(store, run_id)
-
-
 def _fail_run_if_running(store: ProjectStore, run_id: str) -> None:
     """Finish *run_id* as failed, but only if it is still in ``running``
     state (avoid overwriting a finish already written by the executor)."""
@@ -67,15 +41,32 @@ def _build_run_response(store: ProjectStore, run_id: str, executed_ids: list[str
     )
 
 
-def _to_node_background(project_path: str, plan_version_id: str, target_step_id: str, run_id: str, force: bool = False) -> None:
-    """Execute ancestor closure of a target node in a background thread."""
+def _dispatch_run(
+    *,
+    project_path: str,
+    plan_version_id: str,
+    run_id: str,
+    force: bool = False,
+    run_scope: str = "full",
+    branch_id: str | None = None,
+    target_step_id: str | None = None,
+) -> None:
+    """Execute a run in a background thread.  Dispatches to the correct
+    executor method based on *run_scope*."""
     store = ProjectStore(project_path)
     executor = PlanExecutor(NodeRegistry.with_defaults())
     try:
-        executor.run_to_node(store, plan_version_id, target_step_id, run_id=run_id, force=force)
+        if run_scope == "branch" and branch_id:
+            result_id = executor.run_branch(store, plan_version_id, branch_id, run_id=run_id, force=force)
+            if result_id != run_id:
+                store.finish_run(run_id, "cancelled")
+        elif run_scope == "to_node" and target_step_id:
+            executor.run_to_node(store, plan_version_id, target_step_id, run_id=run_id, force=force)
+        else:
+            executor.run_plan_version(store, plan_version_id, run_id=run_id, force=force)
     except BaseException:
         import traceback
-        print(f"[sidecar] run_to_node({run_id}) failed: {traceback.format_exc()}", flush=True)
+        print(f"[sidecar] _dispatch_run({run_id}) failed: {traceback.format_exc()}", flush=True)
         _fail_run_if_running(store, run_id)
 
 
@@ -89,56 +80,44 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
 
     executor = PlanExecutor(NodeRegistry.with_defaults())
 
-    if body.run_scope == "to_node":
-        if not body.target_step_id:
-            raise HTTPException(status_code=400, detail={"code": "TARGET_STEP_REQUIRED", "message": "target_step_id is required for to_node scope"})
-        if sync:
-            try:
-                run_id = executor.run_to_node(store, body.plan_version_id, body.target_step_id, force=body.force)
-                executed_ids = [rs.step_id for rs in store.get_run_steps(run_id)]
-                return _build_run_response(store, run_id, executed_ids)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail={"code": "TO_NODE_RUN_FAILED", "message": str(exc)})
-        run_id = store.create_run(body.plan_version_id)
-        project_path = str(store.root)
-        try:
-            t = threading.Thread(target=_to_node_background, args=(project_path, body.plan_version_id, body.target_step_id, run_id, body.force), name="run-to-node-bg")
-            t.start()
-        except Exception:
-            store.finish_run(run_id, "failed")
-        return _build_run_response(store, run_id)
+    # Validate scope-specific requirements
+    if body.run_scope == "to_node" and not body.target_step_id:
+        raise HTTPException(status_code=400, detail={"code": "TARGET_STEP_REQUIRED", "message": "target_step_id is required for to_node scope"})
 
-    if body.run_scope == "branch" and body.branch_id:
-        if sync:
-            try:
-                run_id = executor.run_branch(store, body.plan_version_id, body.branch_id, force=body.force)
-                executed_ids = [rs.step_id for rs in store.get_run_steps(run_id)]
-                return _build_run_response(store, run_id, executed_ids)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail={"code": "BRANCH_RUN_FAILED", "message": str(exc)})
-        run_id = store.create_run(body.plan_version_id, branch_id=body.branch_id)
-        project_path = str(store.root)
-        try:
-            t = threading.Thread(target=_branch_run_background, args=(project_path, body.plan_version_id, body.branch_id, run_id, body.force), name="run-branch-bg")
-            t.start()
-        except Exception:
-            store.finish_run(run_id, "failed")
-        return _build_run_response(store, run_id)
-
+    # Synchronous execution path
     if sync:
         try:
-            run_id = executor.run_plan_version(store, body.plan_version_id, force=body.force)
-        except Exception as exc:
-            run_id = store.create_run(body.plan_version_id)
-            store.finish_run(run_id, "failed")
-            return _build_run_response(store, run_id)
-        return _build_run_response(store, run_id)
+            if body.run_scope == "to_node":
+                run_id = executor.run_to_node(store, body.plan_version_id, body.target_step_id, force=body.force)
+            elif body.run_scope == "branch" and body.branch_id:
+                run_id = executor.run_branch(store, body.plan_version_id, body.branch_id, force=body.force)
+            else:
+                run_id = executor.run_plan_version(store, body.plan_version_id, force=body.force)
+            executed_ids = [rs.step_id for rs in store.get_run_steps(run_id)]
+            return _build_run_response(store, run_id, executed_ids)
+        except ValueError as exc:
+            scope_label = body.run_scope or "full"
+            detail_code = f"{scope_label.upper()}_RUN_FAILED"
+            raise HTTPException(status_code=400, detail={"code": detail_code, "message": str(exc)})
 
     # Async (default): create run immediately, execute in background
-    run_id = store.create_run(body.plan_version_id)
+    branch_kw = {"branch_id": body.branch_id} if body.branch_id else {}
+    run_id = store.create_run(body.plan_version_id, **branch_kw)
     project_path = str(store.root)
     try:
-        t = threading.Thread(target=_run_background, args=(project_path, body.plan_version_id, run_id, body.force), name="run-plan-bg")
+        t = threading.Thread(
+            target=_dispatch_run,
+            kwargs={
+                "project_path": project_path,
+                "plan_version_id": body.plan_version_id,
+                "run_id": run_id,
+                "force": body.force,
+                "run_scope": body.run_scope or "full",
+                "branch_id": body.branch_id,
+                "target_step_id": body.target_step_id,
+            },
+            name="run-bg",
+        )
         t.start()
     except Exception:
         store.finish_run(run_id, "failed")
