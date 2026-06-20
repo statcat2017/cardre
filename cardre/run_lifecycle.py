@@ -92,14 +92,18 @@ def write_manifest(
     *,
     run_id: str,
     plan_version_id: str,
-    run_step_records: dict[str, RunStepRecord],
-    steps: list[Any],
     execution_mode: str,
     branch_id: str | None = None,
     target_step_id: str | None = None,
     in_scope_step_ids: list[str] | None = None,
 ) -> None:
-    """Read current run state and write a manifest artifact."""
+    """Read current run state and write a manifest artifact.
+
+    The manifest is built directly from store state (run record + run
+    steps), so *run_step_records* and *steps* are intentionally omitted
+    from the signature — they are carried by ``RunFinalisation`` for
+    future deterministic manifest construction, not used here yet.
+    """
     run_record = store.get_run(run_id)
     if run_record is None:
         return
@@ -155,15 +159,16 @@ def finalise_run(
     """Finish a run with the given status and write its manifest.
 
     This is the single place where a run transitions from 'running'
-    to its final state.
+    to its final state.  The ``run_step_records`` and ``steps`` fields
+    on ``RunFinalisation`` are reserved for future deterministic
+    manifest construction but are not yet forwarded to
+    ``write_manifest``, which reads directly from store state.
     """
     store.finish_run(finalisation.run_id, finalisation.status)
     write_manifest(
         store,
         run_id=finalisation.run_id,
         plan_version_id=finalisation.plan_version_id,
-        run_step_records=finalisation.run_step_records,
-        steps=finalisation.steps,
         execution_mode=finalisation.execution_mode,
         branch_id=finalisation.branch_id,
         target_step_id=finalisation.target_step_id,
@@ -195,6 +200,7 @@ class RunLifecycle:
         self.run_id = run_id
         self.plan_version_id = plan_version_id
         self._token = token
+        self._finalised = False
 
     # ------------------------------------------------------------------
     # Factory
@@ -248,6 +254,9 @@ class RunLifecycle:
     ) -> None:
         """Finish the run exactly once, remove the cancellation token,
         and write the run manifest."""
+        if self._finalised:
+            return
+        self._finalised = True
         remove_token(self.run_id)
         finalise_run(self.store, RunFinalisation(
             run_id=self.run_id,
@@ -283,3 +292,55 @@ class RunScope:
     force: bool = False
     branch_id: str | None = None
     target_step_id: str | None = None
+
+    @classmethod
+    def full_plan(
+        cls,
+        store: ProjectStore,
+        plan_version_id: str,
+        force: bool = False,
+    ) -> RunScope:
+        steps = store.get_plan_version_steps(plan_version_id)
+        return cls(
+            mode="full", plan_version_id=plan_version_id, steps=steps,
+            in_scope_step_ids=frozenset(s.step_id for s in steps), force=force,
+        )
+
+    @classmethod
+    def to_node(
+        cls,
+        store: ProjectStore,
+        plan_version_id: str,
+        target_step_id: str,
+        force: bool = False,
+    ) -> RunScope:
+        steps = store.get_plan_version_steps(plan_version_id)
+        from cardre.executor import PlanExecutor
+        ancestors = PlanExecutor.find_ancestors(PlanExecutor, target_step_id, steps)  # noqa: SLF001
+        closure = ancestors | {target_step_id}
+        closure_steps = [s for s in steps if s.step_id in closure]
+        return cls(
+            mode="to_node", plan_version_id=plan_version_id, steps=closure_steps,
+            in_scope_step_ids=frozenset(closure), force=force,
+            target_step_id=target_step_id,
+        )
+
+    @classmethod
+    def branch(
+        cls,
+        store: ProjectStore,
+        plan_version_id: str,
+        branch_id: str,
+        force: bool = False,
+    ) -> RunScope:
+        steps = store.get_plan_version_steps(plan_version_id)
+        branch = store.get_branch(branch_id)
+        if branch is None:
+            raise ValueError(f"Branch {branch_id} not found")
+        step_map = store.get_branch_step_map(branch_id, plan_version_id)
+        owned = {r["step_id"] for r in step_map if r.get("is_branch_owned")}
+        return cls(
+            mode="branch", plan_version_id=plan_version_id, steps=steps,
+            in_scope_step_ids=frozenset(owned), force=force,
+            branch_id=branch_id,
+        )
