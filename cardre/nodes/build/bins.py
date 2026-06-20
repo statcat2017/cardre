@@ -521,7 +521,7 @@ class ManualBinningNode(NodeType):
             metrics={"override_count": len(overrides)})
 
 
-from cardre.engine.binning.definition import LifecycleBinDefinition, LifecycleVariable
+from cardre.engine.binning.definition import LifecycleBinDefinition
 
 
 def validate_manual_binning_overrides(

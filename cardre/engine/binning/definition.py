@@ -284,6 +284,8 @@ class LifecycleBinDefinition:
             rejected=[self._normalize_var(r) for r in self.rejected],
             warnings=list(self.warnings),
             source=copy.deepcopy(self.source) if self.source is not None else None,
+            extra=copy.deepcopy(self.extra),
+            _present_fields=self._present_fields,
         )
 
     @staticmethod

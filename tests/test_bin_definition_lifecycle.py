@@ -1036,6 +1036,19 @@ class TestShapePreservation:
         p2 = d2.to_payload()
         assert json_logical_hash(p1) == json_logical_hash(p2)
 
+    def test_normalize_preserves_extra_and_shape(self, fc_payload):
+        """normalize() must preserve document-level extra fields and
+        optional-field presence tracking (_present_fields)."""
+        payload = dict(fc_payload)
+        payload["custom_doc_field"] = "survive_normalize"
+        d = LifecycleBinDefinition.from_payload(payload)
+        n = d.normalize()
+        out = n.to_payload()
+        assert out["custom_doc_field"] == "survive_normalize"
+        assert "rejected" not in out
+        for v in out["variables"]:
+            assert "active" not in v
+
 
 # ======================================================================
 # Post-review: per-override error isolation in validate_overrides
