@@ -12,7 +12,9 @@ from __future__ import annotations
 import sys
 import traceback
 import uuid
-from typing import Any
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any, Literal
 
 from cardre.audit import (
     ArtifactRef,
@@ -54,6 +56,29 @@ STATUS_FAILED = "failed"
 STATUS_CANCELLED = "cancelled"
 
 
+@dataclass
+class _StepAction:
+    """A planned action for a single step during execution."""
+
+    spec: StepSpec
+    action: Literal["execute", "reuse", "skip"]
+    evidence_source: RunStepRecord | None = None
+    before_execute: Callable[[], None] | None = None
+
+
+def resolve_output_artifacts(
+    store: ProjectStore,
+    rs: RunStepRecord,
+) -> list[ArtifactRef]:
+    """Resolve ``ArtifactRef`` objects for a run-step's output artifact IDs."""
+    artifacts = []
+    for aid in rs.output_artifact_ids:
+        a = store.get_artifact(aid)
+        if a is not None:
+            artifacts.append(a)
+    return artifacts
+
+
 class PlanExecutor:
     """Executes plan versions using a node registry."""
 
@@ -71,51 +96,27 @@ class PlanExecutor:
         run_id: str | None = None,
         force: bool = False,
     ) -> str:
-        """Execute all steps in a plan version. Returns the run_id.
-
-        Every step is wrapped in its own per-step try/except to ensure
-        that even if node instantiation or step execution fails, a
-        RunStepRecord with structured errors is saved and the run is
-        finished as FAILED. The run is never left in 'running' state.
-
-        When *run_id* is provided, use that existing run (must be in
-        'running' status) instead of creating a new one.
-
-        When *force* is True, all steps are executed unconditionally
-        (no staleness/reuse check).
-        """
         steps = store.get_plan_version_steps(plan_version_id)
         self._validate_topology(steps)
 
         from cardre.run_lifecycle import RunLifecycle
         lifecycle = RunLifecycle.start(store, plan_version_id, run_id=run_id)
         run_id = lifecycle.run_id
-        step_outputs: dict[str, list[ArtifactRef]] = {}
-        run_step_records: dict[str, RunStepRecord] = {}
-        has_failure = False
-        status = STATUS_SUCCEEDED
 
-        try:
-            for spec in steps:
-                lifecycle.raise_if_cancelled()
-                rs = self._execute_and_record_step(
-                    store, spec, plan_version_id, run_id,
-                    step_outputs, run_step_records, lifecycle,
-                )
-                if rs.status == STATUS_FAILED:
-                    has_failure = True
+        actions = [
+            _StepAction(spec=s, action="execute")
+            for s in steps
+        ]
 
-            all_processed = len(run_step_records) == len(steps)
-            if has_failure or not all_processed:
-                status = STATUS_FAILED
-        except CancellationError:
-            status = STATUS_CANCELLED
-        finally:
-            lifecycle.finalise(
-                status=status, execution_mode="force" if force else "full",
-                run_step_records=run_step_records, steps=steps,
-            )
+        has_failure, was_cancelled, outputs, records = self._execute_actions(
+            store, actions, plan_version_id, run_id, lifecycle,
+        )
+        status = self._compute_final_status(has_failure, was_cancelled, actions, force)
 
+        lifecycle.finalise(
+            status=status, execution_mode="force" if force else "full",
+            run_step_records=records, steps=steps,
+        )
         return run_id
 
     def run_branch(
@@ -126,22 +127,6 @@ class PlanExecutor:
         run_id: str | None = None,
         force: bool = False,
     ) -> str:
-        """Execute stale/not-run branch-owned steps for a single branch.
-
-        Shared upstream steps are left untouched. Short-circuits if all
-        branch-owned steps are already current.
-
-        Blocks if shared upstream evidence is stale (checked against
-        full-plan evidence, not the branch run's partial record).
-
-        When *run_id* is provided, use that existing run (must be in
-        'running' status) instead of creating a new one.
-
-        When *force* is True, all branch-owned steps are executed
-        unconditionally (treated as stale).
-
-        Returns the run_id.
-        """
         from cardre.run_lifecycle import RunLifecycle
         from cardre.services.branch_evidence import BranchEvidenceResolver
         resolver = BranchEvidenceResolver(self)
@@ -151,39 +136,36 @@ class PlanExecutor:
 
         lifecycle = RunLifecycle.start(store, plan_version_id, run_id=run_id, branch_id=branch_id)
         run_id = lifecycle.run_id
-        has_failure = False
-        status = STATUS_SUCCEEDED
 
-        try:
-            for spec in ctx.steps:
-                lifecycle.raise_if_cancelled()
-                if has_failure:
-                    break
-                if spec.step_id not in ctx.branch_owned_step_ids:
-                    continue
-                if not force and spec.step_id not in ctx.stale_branch_step_ids:
-                    continue
+        # Build action list but defer parent evidence resolution to
+        # just-before-execute so branch-owned parent steps produce
+        # fresh evidence before their children resolve inputs.
+        actions: list[_StepAction] = []
+        for spec in ctx.steps:
+            if spec.step_id not in ctx.branch_owned_step_ids:
+                actions.append(_StepAction(spec=spec, action="skip"))
+            elif not force and spec.step_id not in ctx.stale_branch_step_ids:
+                actions.append(_StepAction(spec=spec, action="skip"))
+            else:
+                actions.append(_StepAction(
+                    spec=spec, action="execute",
+                    before_execute=lambda s=spec: resolver.resolve_parent_evidence(
+                        store, ctx, s,
+                    ),
+                ))
 
-                resolver.resolve_parent_evidence(store, ctx, spec)
+        has_failure, was_cancelled, outputs, records = self._execute_actions(
+            store, actions, plan_version_id, run_id, lifecycle,
+            step_outputs=ctx.step_outputs,
+            run_step_records=ctx.run_step_records,
+        )
+        status = self._compute_final_status(has_failure, was_cancelled, actions, force)
 
-                rs = self._execute_and_record_step(
-                    store, spec, plan_version_id, run_id,
-                    ctx.step_outputs, ctx.run_step_records, lifecycle,
-                )
-                if rs.status == STATUS_FAILED:
-                    has_failure = True
-
-            if has_failure:
-                status = STATUS_FAILED
-        except CancellationError:
-            status = STATUS_CANCELLED
-        finally:
-            lifecycle.finalise(
-                status=status, execution_mode="force" if force else "branch",
-                run_step_records=ctx.run_step_records, steps=ctx.steps,
-                branch_id=branch_id,
-            )
-
+        lifecycle.finalise(
+            status=status, execution_mode="force" if force else "branch",
+            run_step_records=records, steps=ctx.steps,
+            branch_id=branch_id,
+        )
         return run_id
 
     def run_to_node(
@@ -194,13 +176,6 @@ class PlanExecutor:
         run_id: str | None = None,
         force: bool = False,
     ) -> str:
-        """Execute only the ancestor closure of *target_step_id*.
-
-        Steps outside the closure are neither executed nor recorded.
-        Non-stale ancestors are reused; stale ones are re-executed.
-
-        Returns the run_id.
-        """
         steps = store.get_plan_version_steps(plan_version_id)
         self._validate_topology(steps)
 
@@ -212,7 +187,6 @@ class PlanExecutor:
 
         ancestors = ancestor_closure(target_step_id, steps)
         closure = ancestors | {target_step_id}
-
         closure_steps = [s for s in steps if s.step_id in closure]
 
         from cardre.run_lifecycle import RunLifecycle
@@ -222,41 +196,104 @@ class PlanExecutor:
         from cardre.staleness import compute_staleness
         staleness = compute_staleness(store, plan_version_id)
 
-        step_outputs: dict[str, list[ArtifactRef]] = {}
-        run_step_records: dict[str, RunStepRecord] = {}
+        actions: list[_StepAction] = []
+        for spec in closure_steps:
+            if not force and spec.step_id in staleness and not staleness[spec.step_id]:
+                rs = self._reuse_run_step(store, spec, plan_version_id, run_id, {}, {})
+                if rs is not None:
+                    actions.append(_StepAction(spec=spec, action="reuse", evidence_source=rs))
+                    continue
+            actions.append(_StepAction(spec=spec, action="execute"))
+
+        has_failure, was_cancelled, outputs, records = self._execute_actions(
+            store, actions, plan_version_id, run_id, lifecycle,
+        )
+        status = self._compute_final_status(has_failure, was_cancelled, actions, force)
+
+        lifecycle.finalise(
+            status=status, execution_mode="force" if force else "to_node",
+            run_step_records=records, steps=closure_steps,
+            target_step_id=target_step_id,
+            in_scope_step_ids=sorted(closure),
+        )
+        return run_id
+
+    # ------------------------------------------------------------------
+    # Shared action execution loop
+    # ------------------------------------------------------------------
+
+    def _execute_actions(
+        self,
+        store: ProjectStore,
+        actions: list[_StepAction],
+        plan_version_id: str,
+        run_id: str,
+        lifecycle: Any,
+        step_outputs: dict[str, list[ArtifactRef]] | None = None,
+        run_step_records: dict[str, RunStepRecord] | None = None,
+    ) -> tuple[bool, bool, dict[str, list[ArtifactRef]], dict[str, RunStepRecord]]:
+        """Execute a sequence of step actions.
+
+        Returns ``(has_failure, was_cancelled, step_outputs, rs_records)``.
+        """
+        outputs: dict[str, list[ArtifactRef]] = step_outputs or {}
+        records: dict[str, RunStepRecord] = run_step_records or {}
         has_failure = False
-        status = STATUS_SUCCEEDED
+        was_cancelled = False
 
         try:
-            for spec in closure_steps:
+            for action in actions:
                 lifecycle.raise_if_cancelled()
-                if not force and spec.step_id in staleness and not staleness[spec.step_id]:
-                    rs = self._reuse_run_step(store, spec, plan_version_id, run_id, run_step_records, step_outputs)
-                    if rs is not None:
-                        run_step_records[spec.step_id] = rs
-                        step_outputs[spec.step_id] = self._resolve_output_artifacts(store, rs)
-                        continue
+                if has_failure:
+                    break
 
-                rs = self._execute_and_record_step(
-                    store, spec, plan_version_id, run_id,
-                    step_outputs, run_step_records, lifecycle,
-                )
-                if rs.status == STATUS_FAILED:
-                    has_failure = True
+                if action.action == "skip":
+                    continue
 
-            if has_failure:
-                status = STATUS_FAILED
+                if action.action == "reuse" and action.evidence_source is not None:
+                    records[action.spec.step_id] = action.evidence_source
+                    outputs[action.spec.step_id] = resolve_output_artifacts(
+                        store, action.evidence_source,
+                    )
+                    continue
+
+                if action.action == "execute":
+                    if action.before_execute is not None:
+                        action.before_execute()
+
+                    rs = self._execute_step(
+                        store, action.spec, plan_version_id, run_id,
+                        outputs, records, lifecycle.token,
+                    )
+                    records[action.spec.step_id] = rs
+                    outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
+                    if rs.status == STATUS_FAILED:
+                        has_failure = True
+
         except CancellationError:
-            status = STATUS_CANCELLED
-        finally:
-            lifecycle.finalise(
-                status=status, execution_mode="force" if force else "to_node",
-                run_step_records=run_step_records, steps=closure_steps,
-                target_step_id=target_step_id,
-                in_scope_step_ids=sorted(closure),
-            )
+            was_cancelled = True
 
-        return run_id
+        return has_failure, was_cancelled, outputs, records
+
+    @staticmethod
+    def _compute_final_status(
+        has_failure: bool,
+        was_cancelled: bool,
+        actions: list[_StepAction],
+        force: bool,
+    ) -> str:
+        if was_cancelled:
+            return STATUS_CANCELLED
+        if has_failure:
+            return STATUS_FAILED
+        executed = sum(1 for a in actions if a.action == "execute")
+        if executed == 0:
+            return STATUS_SUCCEEDED
+        return STATUS_SUCCEEDED
+
+    # ------------------------------------------------------------------
+    # Step execution internals
+    # ------------------------------------------------------------------
 
     def _execute_step(
         self,
@@ -268,8 +305,7 @@ class PlanExecutor:
         run_step_records: dict[str, RunStepRecord],
         cancellation_token: CancellationToken | None = None,
     ) -> RunStepRecord:
-        # Initialise before try so failure can still record partial
-        # evidence.
+        # Initialise before try so failure can still record partial evidence.
         raw_inputs: list[ArtifactRef] = []
         input_artifacts: list[ArtifactRef] = []
         parent_run_steps: list[RunStepRecord] = []
@@ -360,15 +396,11 @@ class PlanExecutor:
                 "category": category,
             }
 
-            # If node was never instantiated, do it now for metadata
             try:
                 node = self.registry.instantiate(spec.node_type)
             except BaseException:
                 node = None
 
-            # Include whatever input evidence was resolved before
-            # failure (may be partial if node instantiation itself
-            # failed).
             recorded_input_ids = [a.artifact_id for a in input_artifacts]
 
             output = NodeOutput(
@@ -520,18 +552,6 @@ class PlanExecutor:
             "cardre_version": "0.1.0",
         }
 
-    def _resolve_output_artifacts(
-        self,
-        store: ProjectStore,
-        rs: RunStepRecord,
-    ) -> list[ArtifactRef]:
-        artifacts = []
-        for aid in rs.output_artifact_ids:
-            a = store.get_artifact(aid)
-            if a is not None:
-                artifacts.append(a)
-        return artifacts
-
     def _validate_input_artifact_files(
         self,
         store: ProjectStore,
@@ -597,13 +617,6 @@ class PlanExecutor:
         new_params: dict[str, Any],
         description: str = "Replay from changed step",
     ) -> str:
-        """Incremental replay: create a new plan version, copy unchanged
-        ancestor run-step evidence into the new run, and execute only
-        the affected subgraph (changed step + descendants).
-
-        Copied fingerprints are rewritten with the new plan_version_id
-        to maintain internal consistency.
-        """
         previous_steps = store.get_plan_version_steps(previous_plan_version_id)
         previous_plan = store.get_plan_version(previous_plan_version_id)
         if previous_plan is None:
@@ -619,8 +632,6 @@ class PlanExecutor:
         previous_run_steps = store.get_run_steps(previous_run_id)
         prev_rs_by_step = {rs.step_id: rs for rs in previous_run_steps}
 
-        # Determine which step_ids are in the affected subgraph
-        all_step_ids = {s.step_id for s in previous_steps}
         affected = descendant_closure(changed_step_id, previous_steps)
 
         new_steps = replace_step_params(previous_steps, changed_step_id, new_params)
@@ -631,23 +642,17 @@ class PlanExecutor:
             description=description,
         )
 
-        # Build new run, copying ancestor run-steps and executing
-        # the affected subgraph
         run_id = store.create_run(new_plan_version_id)
         step_outputs: dict[str, list[ArtifactRef]] = {}
         run_step_records: dict[str, RunStepRecord] = {}
 
         for spec in new_steps:
             if spec.step_id not in affected:
-                # Copy previous run-step evidence into the new run,
-                # rewriting the fingerprint to reference the new context
                 prev_rs = prev_rs_by_step.get(spec.step_id)
                 if prev_rs is None:
                     raise ValueError(
                         f"Cannot retain missing prior record for {spec.step_id!r}"
                     )
-                # Rewrite the copied fingerprint to match the new
-                # plan_version_id
                 copied_fp = dict(prev_rs.execution_fingerprint)
                 copied_fp["plan_version_id"] = new_plan_version_id
                 copied_fp["cardre_step_carried_forward"] = True
@@ -670,7 +675,7 @@ class PlanExecutor:
                 )
                 store.save_run_step(copied_rs)
                 run_step_records[spec.step_id] = copied_rs
-                step_outputs[spec.step_id] = self._resolve_output_artifacts(store, copied_rs)
+                step_outputs[spec.step_id] = resolve_output_artifacts(store, copied_rs)
                 continue
 
             rs = self._execute_step(
@@ -678,7 +683,7 @@ class PlanExecutor:
                 step_outputs, run_step_records,
             )
             run_step_records[spec.step_id] = rs
-            step_outputs[spec.step_id] = self._resolve_output_artifacts(store, rs)
+            step_outputs[spec.step_id] = resolve_output_artifacts(store, rs)
 
             if rs.status == STATUS_FAILED:
                 break
@@ -696,34 +701,7 @@ class PlanExecutor:
         return run_id
 
     # ------------------------------------------------------------------
-    # Shared step loop component
-    # ------------------------------------------------------------------
-
-    def _execute_and_record_step(
-        self,
-        store: ProjectStore,
-        spec: StepSpec,
-        plan_version_id: str,
-        run_id: str,
-        step_outputs: dict[str, list[ArtifactRef]],
-        run_step_records: dict[str, RunStepRecord],
-        lifecycle: RunLifecycle,
-    ) -> RunStepRecord:
-        """Execute a single step and record its output.
-
-        Callers must have already applied any mode-specific skip or
-        reuse logic before calling this method.
-        """
-        rs = self._execute_step(
-            store, spec, plan_version_id, run_id,
-            step_outputs, run_step_records, lifecycle.token,
-        )
-        run_step_records[spec.step_id] = rs
-        step_outputs[spec.step_id] = self._resolve_output_artifacts(store, rs)
-        return rs
-
-    # ------------------------------------------------------------------
-    # Utilities
+    # Reuse run step (carry-forward)
     # ------------------------------------------------------------------
 
     def _reuse_run_step(
@@ -735,8 +713,6 @@ class PlanExecutor:
         run_step_records: dict[str, RunStepRecord],
         step_outputs: dict[str, list[ArtifactRef]],
     ) -> RunStepRecord | None:
-        """Copy a non-stale run-step record from a previous successful
-        run into the current run, rewriting the fingerprint."""
         latest_run_id = store.get_latest_successful_run_id(plan_version_id)
         if latest_run_id is None:
             return None
@@ -783,6 +759,3 @@ def _build_parent_output_hashes(
         rs.step_id: rs.execution_fingerprint.get("output_artifact_logical_hashes", [])
         for rs in parent_run_steps
     }
-
-
-
