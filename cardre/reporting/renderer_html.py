@@ -61,7 +61,7 @@ def render_report_bundle_to_html(bundle: dict[str, Any]) -> str:
             "method": "", "input_representation": "", "similarity_metric": "",
             "threshold": None, "absolute_correlation": True,
             "missing_handling": "pairwise", "candidate_limit": 50,
-            "representative_rule": "",
+            "minimum_pair_count": 30, "representative_rule": "",
         }
 
     html = template.render(

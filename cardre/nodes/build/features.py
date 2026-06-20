@@ -410,6 +410,12 @@ class VariableClusteringNode(NodeType):
                             constraint=ParameterConstraint(enum_values=["highest_iv", "lowest_missing", "manual"]),
                             help_text="Rule for selecting cluster representative",
                         ),
+                        ParameterDefinition(
+                            name="minimum_pair_count", label="Minimum Pair Count",
+                            kind="integer", default=30,
+                            constraint=ParameterConstraint(min_value=1),
+                            help_text="Minimum number of joint non-null rows required for a reliable pairwise correlation estimate",
+                        ),
                     ],
                 ),
                 MethodOption(
@@ -458,6 +464,12 @@ class VariableClusteringNode(NodeType):
                             kind="enum", default="highest_iv",
                             constraint=ParameterConstraint(enum_values=["highest_iv", "lowest_missing", "manual"]),
                             help_text="Rule for selecting cluster representative",
+                        ),
+                        ParameterDefinition(
+                            name="minimum_pair_count", label="Minimum Pair Count",
+                            kind="integer", default=30,
+                            constraint=ParameterConstraint(min_value=1),
+                            help_text="Minimum number of joint non-null rows required for a reliable pairwise correlation estimate",
                         ),
                     ],
                 ),
@@ -547,10 +559,18 @@ class VariableClusteringNode(NodeType):
 
         return woe_exprs
 
+    @staticmethod
+    def _tie_aware_rank(arr: np.ndarray) -> np.ndarray:
+        """Assign average ranks, handling ties correctly."""
+        import numpy as np
+        import scipy.stats as stats  # type: ignore[import-untyped]
+
+        return stats.rankdata(arr, method="average").astype(float)
+
     def _compute_correlation_matrix(
         self, df: pl.DataFrame, columns: list[str],
         method: str, missing_handling: str,
-        absolute: bool,
+        absolute: bool, minimum_pair_count: int = 30,
     ) -> tuple[pl.DataFrame, list[dict]]:
         import numpy as np
 
@@ -562,17 +582,16 @@ class VariableClusteringNode(NodeType):
             df_corr = pl.DataFrame(arr, schema=columns, orient="row").with_row_index("_col")
             return df_corr, warnings_list
 
-        MIN_PAIR_COUNT = 30
-
         if missing_handling == "complete_case":
             matrix_df = df.select(columns).drop_nulls()
             mat = matrix_df.to_numpy()
-            if mat.shape[0] < MIN_PAIR_COUNT:
+            if mat.shape[0] < minimum_pair_count:
                 warnings_list.append({
-                    "message": f"Complete-case rows ({mat.shape[0]}) below minimum pair count ({MIN_PAIR_COUNT})",
+                    "code": "LOW_PAIR_COUNT",
+                    "message": f"Complete-case rows ({mat.shape[0]}) below minimum pair count ({minimum_pair_count})",
                 })
             if method == "spearman":
-                ranks = np.argsort(np.argsort(mat, axis=0), axis=0).astype(float)
+                ranks = np.apply_along_axis(self._tie_aware_rank, 0, mat)
                 corr_mat = np.corrcoef(ranks.T)
             else:
                 corr_mat = np.corrcoef(mat.T)
@@ -587,20 +606,31 @@ class VariableClusteringNode(NodeType):
                     col_j = mat[:, j]
                     valid = ~(np.isnan(col_i) | np.isnan(col_j))
                     n_valid = int(valid.sum())
-                    if n_valid < MIN_PAIR_COUNT:
-                        if n_valid > 0:
-                            warnings_list.append({
-                                "message": (
-                                    f"Pairwise correlation {columns[i]!r} vs {columns[j]!r}: "
-                                    f"only {n_valid} joint non-null rows (< {MIN_PAIR_COUNT}); "
-                                    f"correlation estimate may be unreliable"
-                                ),
-                            })
+                    if n_valid == 0:
+                        warnings_list.append({
+                            "code": "NO_PAIRWISE_OVERLAP",
+                            "message": (
+                                f"No joint non-null rows for {columns[i]!r} vs {columns[j]!r}; "
+                                f"correlation set to 0.0"
+                            ),
+                        })
+                        arr[i, j] = 0.0
+                        arr[j, i] = 0.0
+                        continue
+                    if n_valid < minimum_pair_count:
+                        warnings_list.append({
+                            "code": "LOW_PAIR_COUNT",
+                            "message": (
+                                f"Pairwise correlation {columns[i]!r} vs {columns[j]!r}: "
+                                f"only {n_valid} joint non-null rows (< {minimum_pair_count}); "
+                                f"correlation estimate may be unreliable"
+                            ),
+                        })
                     xi = col_i[valid]
                     xj = col_j[valid]
                     if method == "spearman":
-                        xi = np.argsort(np.argsort(xi)).astype(float)
-                        xj = np.argsort(np.argsort(xj)).astype(float)
+                        xi = self._tie_aware_rank(xi)
+                        xj = self._tie_aware_rank(xj)
                     r = np.corrcoef(xi, xj)[0, 1]
                     r = 0.0 if np.isnan(r) else r
                     arr[i, j] = r
@@ -791,6 +821,7 @@ class VariableClusteringNode(NodeType):
         candidate_limit = int(params.get("candidate_limit", 50))
         missing_handling = params.get("missing_handling", "pairwise")
         representative_rule = params.get("representative_rule", "highest_iv")
+        minimum_pair_count = int(params.get("minimum_pair_count", 30))
 
         if method == "correlation_threshold":
             threshold = float(params.get("threshold", params.get("correlation_threshold", 0.7)))
@@ -850,6 +881,8 @@ class VariableClusteringNode(NodeType):
                 )
                 if has_woe:
                     candidates.append(vname)
+            if iv_map:
+                candidates = sorted(candidates, key=lambda c: iv_map.get(c, 0.0), reverse=True)
             if not candidates:
                 candidates = [c for c in df.columns if df.schema[c].is_numeric()]
         else:
@@ -894,6 +927,7 @@ class VariableClusteringNode(NodeType):
                         else:
                             corr_matrix, corr_warnings = self._compute_correlation_matrix(
                                 woe_df, woe_cols, similarity_metric, missing_handling, absolute_correlation,
+                                minimum_pair_count=minimum_pair_count,
                             )
                             warnings_list.extend(corr_warnings)
                             woe_candidate_map = {c: c.replace("_woe", "") for c in woe_cols}
@@ -901,15 +935,16 @@ class VariableClusteringNode(NodeType):
                             missing_map_woe = {wc: missing_map.get(oc, 0.0) for wc, oc in woe_candidate_map.items()}
 
                             if method == "hierarchical":
-                                clusters_out, singleton_variables, warnings_list = self._hierarchical_clusters(
+                                clusters_out, singleton_variables, cluster_warnings = self._hierarchical_clusters(
                                     woe_df, woe_cols, corr_matrix, linkage, threshold,
                                     iv_map_woe, missing_map_woe, representative_rule,
                                 )
                             else:
-                                clusters_out, singleton_variables, warnings_list = self._correlation_threshold_clusters(
+                                clusters_out, singleton_variables, cluster_warnings = self._correlation_threshold_clusters(
                                     woe_df, woe_cols, corr_matrix, threshold,
                                     iv_map_woe, missing_map_woe, representative_rule,
                                 )
+                            warnings_list.extend(cluster_warnings)
 
                             # Map WOE column names back to original variable names
                             for cl in clusters_out:
@@ -934,19 +969,21 @@ class VariableClusteringNode(NodeType):
                 else:
                     corr_matrix, corr_warnings = self._compute_correlation_matrix(
                         df, candidates, similarity_metric, missing_handling, absolute_correlation,
+                        minimum_pair_count=minimum_pair_count,
                     )
                     warnings_list.extend(corr_warnings)
 
                     if method == "hierarchical":
-                        clusters_out, singleton_variables, warnings_list = self._hierarchical_clusters(
+                        clusters_out, singleton_variables, cluster_warnings = self._hierarchical_clusters(
                             df, candidates, corr_matrix, linkage, threshold,
                             iv_map, missing_map, representative_rule,
                         )
                     else:
-                        clusters_out, singleton_variables, warnings_list = self._correlation_threshold_clusters(
+                        clusters_out, singleton_variables, cluster_warnings = self._correlation_threshold_clusters(
                             df, candidates, corr_matrix, threshold,
                             iv_map, missing_map, representative_rule,
                         )
+                    warnings_list.extend(cluster_warnings)
 
             except ImportError:
                 for col in candidates:
@@ -963,6 +1000,7 @@ class VariableClusteringNode(NodeType):
             "missing_handling": missing_handling,
             "candidate_limit": candidate_limit,
             "representative_rule": representative_rule,
+            "minimum_pair_count": minimum_pair_count,
             "clusters": clusters_out,
             "singleton_variables": singleton_variables,
             "warnings": warnings_list,
@@ -976,6 +1014,7 @@ class VariableClusteringNode(NodeType):
                 "candidate_count": len(candidates),
                 "cluster_count": len(clusters_out),
                 "singleton_count": len(singleton_variables),
+                "minimum_pair_count": minimum_pair_count,
                 "schema_version": SCHEMA_VARIABLE_CLUSTERING_EVIDENCE,
             },
         )
@@ -1057,6 +1096,26 @@ class VariableSelectionNode(NodeType):
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
+
+        # Validate cluster_representative_rule with legacy alias support
+        cluster_rule = params.get("cluster_representative_rule", "none")
+        valid_rules = {"none", "one_per_cluster_highest_iv", "one_per_cluster_lowest_missing", "manual_override"}
+        legacy_aliases = {
+            "highest_iv": "one_per_cluster_highest_iv",
+            "lowest_missing": "one_per_cluster_lowest_missing",
+        }
+        if cluster_rule not in valid_rules:
+            if cluster_rule in legacy_aliases:
+                errors.append(
+                    f"cluster_representative_rule {cluster_rule!r} has been renamed to "
+                    f"{legacy_aliases[cluster_rule]!r} — please update your configuration"
+                )
+            else:
+                errors.append(
+                    f"Unknown cluster_representative_rule {cluster_rule!r}; "
+                    f"valid values: {', '.join(sorted(valid_rules))}"
+                )
+
         for key in ("manual_includes", "manual_excludes"):
             for entry in list(params.get(key, [])):
                 if not isinstance(entry, dict):
@@ -1101,6 +1160,13 @@ class VariableSelectionNode(NodeType):
         manual_entries_raw = list(params.get("manual_includes", []))
         manual_excludes_raw = list(params.get("manual_excludes", []))
         cluster_rule = params.get("cluster_representative_rule", "none")
+        # Resolve legacy aliases
+        _legacy_aliases = {
+            "highest_iv": "one_per_cluster_highest_iv",
+            "lowest_missing": "one_per_cluster_lowest_missing",
+        }
+        if cluster_rule in _legacy_aliases:
+            cluster_rule = _legacy_aliases[cluster_rule]
         cluster_overrides_raw = list(params.get("cluster_representative_overrides", []))
 
         for entry in manual_entries_raw + manual_excludes_raw:

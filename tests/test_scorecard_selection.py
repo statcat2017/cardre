@@ -627,3 +627,167 @@ class TestVariableSelectionClusterRules(unittest.TestCase):
             d["selected_variable"] == "v2" and "Business preference" in d["reason"]
             for d in decisions
         ))
+
+
+# ======================================================================
+# Regression tests for clustering behaviour
+# ======================================================================
+
+class TestClusteringNodeBehaviours(unittest.TestCase):
+
+    def _run_clustering(
+        self, store: ProjectStore, df: pl.DataFrame,
+        iv_map: dict[str, float], params: dict[str, Any],
+    ) -> dict[str, Any]:
+        from cardre.nodes.build.features import VariableClusteringNode
+
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        parquet_path = store.root / "datasets" / "test-clustering-behaviour.parquet"
+        parquet_path.parent.mkdir(parents=True, exist_ok=True)
+        parquet_path.write_bytes(buf.getvalue())
+        train_artifact = ArtifactRef(
+            artifact_id="train_cl", artifact_type="dataset", role="train",
+            path=relative_path(parquet_path, store.root),
+            physical_hash=physical_hash(parquet_path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet",
+            metadata={},
+        )
+        store.register_artifact(train_artifact)
+
+        iv_df = pl.DataFrame({
+            "variable": list(iv_map.keys()),
+            "iv": list(iv_map.values()),
+            "bin_count": [3] * len(iv_map),
+            "zero_cell_count": [0] * len(iv_map),
+            "warning_count": [0] * len(iv_map),
+        })
+        if not iv_df.is_empty():
+            iv_buf = io.BytesIO()
+            iv_df.write_parquet(iv_buf)
+            iv_path = store.root / "datasets" / "test-clustering-iv.parquet"
+            iv_path.write_bytes(iv_buf.getvalue())
+            iv_artifact = ArtifactRef(
+                artifact_id="iv_cl", artifact_type="report", role="report",
+                path=relative_path(iv_path, store.root),
+                physical_hash=physical_hash(iv_path),
+                logical_hash=table_logical_hash(iv_df),
+                media_type="application/vnd.apache.parquet",
+                metadata={},
+            )
+            store.register_artifact(iv_artifact)
+            input_arts = [train_artifact, iv_artifact]
+        else:
+            input_arts = [train_artifact]
+
+        step_spec = StepSpec(
+            step_id="cluster-test", node_type="cardre.variable_clustering",
+            node_version="1", category="selection",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r_cl", plan_version_id="pv_cl",
+            step_spec=step_spec,
+            parent_run_steps=[], input_artifacts=input_arts,
+            validated_params=params, runtime_metadata={},
+        )
+        node = VariableClusteringNode()
+        output = node.run(ctx)
+        return json.loads(store.artifact_path(output.artifacts[0]).read_text())
+
+    def test_correlation_warnings_preserved(self) -> None:
+        """Clustering artifact should contain warnings from low-overlap correlation pairs."""
+        store, tmp = make_store()
+        store.initialize()
+
+        import numpy as np
+        import math
+        rng = np.random.default_rng(42)
+        n = 100
+        nan = float("nan")
+        # v3 has only 2 non-null rows, well below minimum_pair_count=50
+        vals_v3 = [nan] * n
+        vals_v3[0] = 1.0
+        vals_v3[1] = 2.0
+        df = pl.DataFrame({
+            "v1": list(rng.normal(size=n)),
+            "v2": list(rng.normal(size=n)),
+            "v3": vals_v3,
+        })
+
+        payload = self._run_clustering(store, df, {}, {
+            "method": "correlation_threshold",
+            "threshold": 0.7,
+            "candidate_limit": 50,
+            "minimum_pair_count": 50,
+        })
+
+        warning_messages = [w.get("message", "") for w in payload.get("warnings", [])]
+        overlap_warnings = [m for m in warning_messages if "joint non-null rows" in m or "NO_PAIRWISE_OVERLAP" in m]
+        self.assertGreater(len(overlap_warnings), 0,
+                           msg="Expected at least one correlation-pair warning in the artifact")
+
+    def test_zero_overlap_warning(self) -> None:
+        """Zero-overlap pairs should produce explicit NO_PAIRWISE_OVERLAP warnings."""
+        store, tmp = make_store()
+        store.initialize()
+
+        nan = float("nan")
+        df = pl.DataFrame({
+            "v1": [1.0, 2.0, 3.0],
+            "v2": [nan, nan, nan],
+        })
+
+        payload = self._run_clustering(store, df, {}, {
+            "method": "correlation_threshold",
+            "threshold": 0.5,
+            "candidate_limit": 50,
+            "minimum_pair_count": 1,
+        })
+
+        warnings_list = payload.get("warnings", [])
+        no_overlap = [w for w in warnings_list if "NO_PAIRWISE_OVERLAP" in str(w)]
+        self.assertGreater(len(no_overlap), 0)
+
+    def test_minimum_pair_count_in_artifact(self) -> None:
+        """minimum_pair_count should appear in the clustering artifact metadata and payload."""
+        store, tmp = make_store()
+        store.initialize()
+
+        df = pl.DataFrame({"v1": [1.0, 2.0], "v2": [3.0, 4.0]})
+
+        payload = self._run_clustering(store, df, {}, {
+            "method": "correlation_threshold",
+            "threshold": 0.5,
+            "candidate_limit": 50,
+            "minimum_pair_count": 15,
+        })
+
+        self.assertEqual(payload.get("minimum_pair_count"), 15)
+
+    def test_validate_params_rejects_invalid_method(self) -> None:
+        """An invalid method should produce a validation error."""
+        from cardre.nodes.build.features import VariableClusteringNode
+        node = VariableClusteringNode()
+        errors = node.validate_params({"method": "nonexistent"})
+        self.assertTrue(any("Unknown method" in e for e in errors))
+
+    def test_validate_params_rejects_invalid_cluster_rule(self) -> None:
+        """Invalid cluster_representative_rule should produce a validation error."""
+        from cardre.nodes.build.features import VariableSelectionNode
+        node = VariableSelectionNode()
+        errors = node.validate_params({
+            "cluster_representative_rule": "bogus_value",
+        })
+        self.assertTrue(any("Unknown" in e for e in errors))
+
+    def test_validate_params_legacy_alias(self) -> None:
+        """Legacy 'highest_iv' rule should produce a helpful migration error."""
+        from cardre.nodes.build.features import VariableSelectionNode
+        node = VariableSelectionNode()
+        errors = node.validate_params({
+            "cluster_representative_rule": "highest_iv",
+        })
+        self.assertTrue(any("has been renamed" in e for e in errors))

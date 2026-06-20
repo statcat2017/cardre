@@ -606,6 +606,7 @@ class ReportCollector:
             missing_handling=evidence.missing_handling,
             candidate_limit=evidence.candidate_limit,
             representative_rule=evidence.representative_rule,
+            minimum_pair_count=evidence.minimum_pair_count,
             cluster_count=len(evidence.clusters),
             singleton_count=len(evidence.singleton_variables),
             clusters=clusters,
