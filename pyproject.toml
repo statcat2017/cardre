@@ -9,6 +9,7 @@ description = "Auditable open-source credit scorecard builder"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "numpy",
     "polars",
     "pyarrow",
     "pydantic",
@@ -32,6 +33,9 @@ all-methods = ["xgboost", "lightgbm", "catboost", "imbalanced-learn", "shap", "l
 
 [tool.setuptools.packages.find]
 include = ["cardre*", "sidecar*"]
+
+[tool.setuptools.package-data]
+cardre = ["reporting/templates/*.j2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

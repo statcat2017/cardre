@@ -10,11 +10,11 @@ opencode.json
 .cardre/
 frontend/node_modules/
 frontend/dist/
+/build/
 _legacy/
 .opencode/git-credentials
 .opencode/github-token
 frontend/src-tauri/target/
-frontend/src-tauri/Cargo.lock
 
 node_modules/
 package.json

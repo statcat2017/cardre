@@ -58,6 +58,8 @@ def make_full_german_credit_download(tmp: Path) -> Path:
 # Workstream 12: End-to-End Scorecard Pathway Test
 # ======================================================================
 
+class Phase2AEndToEndTests:
+    """Runs the full Phase 2A pathway through the executor."""
 
     def test_full_phase2a_pathway_import_through_manifest(self) -> None:
         store, tmp = make_store()
@@ -257,18 +259,14 @@ def make_full_german_credit_download(tmp: Path) -> Path:
         executor = PlanExecutor(reg)
         run_id = executor.run_plan_version(store, pv_id)
 
-
         run_steps = store.get_run_steps(run_id)
         run_steps_by_id = {rs.step_id: rs for rs in run_steps}
 
         # Verify all steps succeeded
         for step in steps:
             rs = run_steps_by_id.get(step.step_id)
-            self.assertIsNotNone(rs, f"No run step for {step.step_id}")
-            self.assertEqual(
-                rs.status, "succeeded",
-                f"Step {step.step_id} failed: {rs.errors}",
-            )
+            assert rs is not None, f"No run step for {step.step_id}"
+            assert rs.status == "succeeded", f"Step {step.step_id} failed: {rs.errors}"
 
         # Verify key artifacts exist
         artifact_types_by_step = {
@@ -285,7 +283,7 @@ def make_full_german_credit_download(tmp: Path) -> Path:
                 if art and art.artifact_type == expected_type:
                     break
             else:
-                self.fail(f"No {expected_type} artifact found for step {step_id}")
+                assert False, f"No {expected_type} artifact found for step {step_id}"
 
         # Verify initial and final WOE/IV produce report artifacts
         for woe_step in ("initial-woe-iv", "final-woe-iv"):
@@ -294,7 +292,7 @@ def make_full_german_credit_download(tmp: Path) -> Path:
                 store.get_artifact(aid) and store.get_artifact(aid).artifact_type == "report"
                 for aid in rs.output_artifact_ids
             )
-            self.assertTrue(report_found, f"No report artifact for {woe_step}")
+            assert report_found, f"No report artifact for {woe_step}"
 
 
 # ======================================================================

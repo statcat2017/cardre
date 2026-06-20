@@ -29,6 +29,21 @@ export function StepInspector({
 }: Props) {
   const [showParams, setShowParams] = useState(false);
 
+  const meta = step ? getStepDisplayMetadata(step.step_id) : null;
+  const label = meta?.label ?? step?.step_id ?? "";
+  const isManualBinning = step?.node_type === "cardre.manual_binning";
+  const canEdit = !!planId && !!projectId && !!basePlanVersionId;
+
+  const editorStateQuery = useQuery({
+    queryKey: ["manualBinningEditorState", planId, projectId, step?.step_id],
+    queryFn: () =>
+      isManualBinning && planId && projectId
+        ? api.getManualBinningEditorState(planId, projectId, step!.step_id)
+        : Promise.reject("not manual-binning"),
+    enabled: !!step && isManualBinning && !!planId && !!projectId,
+    retry: false,
+  });
+
   if (!step) {
     return (
       <div
@@ -45,22 +60,6 @@ export function StepInspector({
       </div>
     );
   }
-
-  const meta = getStepDisplayMetadata(step.step_id);
-  const label = meta?.label ?? step.step_id;
-  const isManualBinning = step.node_type === "cardre.manual_binning";
-  const canEdit = !!planId && !!projectId && !!basePlanVersionId;
-
-  // Only fetch editor state for manual-binning
-  const editorStateQuery = useQuery({
-    queryKey: ["manualBinningEditorState", planId, projectId, step.step_id],
-    queryFn: () =>
-      isManualBinning && planId && projectId
-        ? api.getManualBinningEditorState(planId, projectId, step.step_id)
-        : Promise.reject("not manual-binning"),
-    enabled: isManualBinning && !!planId && !!projectId,
-    retry: false,
-  });
 
   const mbState = isManualBinning ? editorStateQuery.data : null;
 
@@ -201,6 +200,7 @@ export function StepInspector({
             </button>
             {showParams && (
               <SchemaDrivenParamsEditor
+                key={`${step.step_id}:${step.node_type}`}
                 planId={planId!}
                 stepId={step.step_id}
                 projectId={projectId!}
