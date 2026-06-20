@@ -470,6 +470,28 @@ class VariableClusteringNode(NodeType):
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
         method = params.get("method", "correlation_threshold")
+
+        valid_methods = {"correlation_threshold", "hierarchical", "varclus_pca", "mixed_type", "target_aware"}
+        if method not in valid_methods:
+            errors.append(f"Unknown method: {method!r}")
+            return errors
+
+        if method in ("varclus_pca", "mixed_type", "target_aware"):
+            errors.append(f"Method {method!r} is not yet available")
+            return errors
+
+        # Common numeric param validation
+        candidate_limit = params.get("candidate_limit", 50)
+        try:
+            if int(candidate_limit) < 1:
+                errors.append("candidate_limit must be >= 1")
+        except (ValueError, TypeError):
+            errors.append("candidate_limit must be an integer")
+
+        similarity_metric = params.get("similarity_metric", "pearson")
+        if similarity_metric not in ("pearson", "spearman"):
+            errors.append(f"Unknown similarity_metric: {similarity_metric!r}")
+
         if method == "correlation_threshold":
             threshold = params.get("threshold", params.get("correlation_threshold", 0.7))
             try:
@@ -477,6 +499,19 @@ class VariableClusteringNode(NodeType):
                     errors.append("threshold must be between 0 and 1 (exclusive)")
             except (ValueError, TypeError):
                 errors.append("threshold must be a number")
+
+        elif method == "hierarchical":
+            cut_threshold = params.get("cut_threshold", 0.3)
+            try:
+                if float(cut_threshold) <= 0:
+                    errors.append("cut_threshold must be > 0")
+            except (ValueError, TypeError):
+                errors.append("cut_threshold must be a number")
+
+            linkage = params.get("linkage", "average")
+            if linkage not in ("average", "complete"):
+                errors.append(f"Unknown linkage: {linkage!r}")
+
         return errors
 
     def _build_woe_columns(
@@ -491,8 +526,6 @@ class VariableClusteringNode(NodeType):
             bins = var_def.bins
 
             if variable not in df.columns:
-                continue
-            if not df.schema[variable].is_numeric():
                 continue
 
             woe_expr = None
@@ -518,31 +551,65 @@ class VariableClusteringNode(NodeType):
         self, df: pl.DataFrame, columns: list[str],
         method: str, missing_handling: str,
         absolute: bool,
-    ) -> pl.DataFrame:
+    ) -> tuple[pl.DataFrame, list[dict]]:
         import numpy as np
 
-        # Select candidate columns
-        matrix_df = df.select(columns)
+        warnings_list: list[dict] = []
+        n = len(columns)
+        arr = np.eye(n)
+
+        if n < 2:
+            df_corr = pl.DataFrame(arr, schema=columns, orient="row").with_row_index("_col")
+            return df_corr, warnings_list
+
+        MIN_PAIR_COUNT = 30
 
         if missing_handling == "complete_case":
-            matrix_df = matrix_df.drop_nulls()
-
-        arr = matrix_df.to_numpy()
-        if arr.shape[1] < 2:
-            n = arr.shape[1]
-            corr = np.eye(n)
-        elif method == "spearman":
-            ranks = np.argsort(np.argsort(arr, axis=0), axis=0).astype(float)
-            corr = np.corrcoef(ranks.T)
+            matrix_df = df.select(columns).drop_nulls()
+            mat = matrix_df.to_numpy()
+            if mat.shape[0] < MIN_PAIR_COUNT:
+                warnings_list.append({
+                    "message": f"Complete-case rows ({mat.shape[0]}) below minimum pair count ({MIN_PAIR_COUNT})",
+                })
+            if method == "spearman":
+                ranks = np.argsort(np.argsort(mat, axis=0), axis=0).astype(float)
+                corr_mat = np.corrcoef(ranks.T)
+            else:
+                corr_mat = np.corrcoef(mat.T)
+            corr_mat = np.nan_to_num(corr_mat, nan=0.0)
+            arr = corr_mat
         else:
-            corr = np.corrcoef(arr.T)
-
-        corr = np.nan_to_num(corr, nan=0.0)
+            # Pairwise: compute each pair on their joint non-null rows
+            mat = df.select(columns).to_numpy()
+            for i in range(n):
+                for j in range(i + 1, n):
+                    col_i = mat[:, i]
+                    col_j = mat[:, j]
+                    valid = ~(np.isnan(col_i) | np.isnan(col_j))
+                    n_valid = int(valid.sum())
+                    if n_valid < MIN_PAIR_COUNT:
+                        if n_valid > 0:
+                            warnings_list.append({
+                                "message": (
+                                    f"Pairwise correlation {columns[i]!r} vs {columns[j]!r}: "
+                                    f"only {n_valid} joint non-null rows (< {MIN_PAIR_COUNT}); "
+                                    f"correlation estimate may be unreliable"
+                                ),
+                            })
+                    xi = col_i[valid]
+                    xj = col_j[valid]
+                    if method == "spearman":
+                        xi = np.argsort(np.argsort(xi)).astype(float)
+                        xj = np.argsort(np.argsort(xj)).astype(float)
+                    r = np.corrcoef(xi, xj)[0, 1]
+                    r = 0.0 if np.isnan(r) else r
+                    arr[i, j] = r
+                    arr[j, i] = r
 
         if absolute:
-            corr = np.abs(corr)
+            arr = np.abs(arr)
 
-        return pl.DataFrame(corr, schema=columns, orient="row").with_row_index("_col")
+        return pl.DataFrame(arr, schema=columns, orient="row").with_row_index("_col"), warnings_list
 
     def _correlation_threshold_clusters(
         self, df: pl.DataFrame, columns: list[str],
@@ -759,15 +826,39 @@ class VariableClusteringNode(NodeType):
             n_null = df[col].null_count()
             missing_map[col] = n_null / df.height if df.height > 0 else 0.0
 
-        # Determine candidate variables
-        numeric_cols = [c for c in df.columns if df.schema[c].is_numeric()]
+        # Pre-read WOE artifacts for woe_train mode (used for both candidate discovery and clustering)
+        bin_def: Any = None
+        woe_table: Any = None
+        if input_representation == "woe_train":
+            try:
+                bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
+                woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
+            except Exception:
+                bin_def = None
+                woe_table = None
 
-        # If we have IV map, use that as candidate source (preferred)
-        if iv_map:
-            candidates = [c for c in numeric_cols if c in iv_map]
-            candidates = sorted(candidates, key=lambda c: iv_map.get(c, 0.0), reverse=True)
+        # Determine candidate variables
+        if input_representation == "woe_train" and bin_def is not None and woe_table is not None:
+            candidates = []
+            for var_def in bin_def.variables:
+                vname = var_def.variable
+                if vname not in df.columns:
+                    continue
+                has_woe = any(
+                    woe_table.mapping.get(vname, {}).get(b["bin_id"]) is not None
+                    for b in var_def.bins
+                )
+                if has_woe:
+                    candidates.append(vname)
+            if not candidates:
+                candidates = [c for c in df.columns if df.schema[c].is_numeric()]
         else:
-            candidates = numeric_cols
+            numeric_cols = [c for c in df.columns if df.schema[c].is_numeric()]
+            if iv_map:
+                candidates = [c for c in numeric_cols if c in iv_map]
+                candidates = sorted(candidates, key=lambda c: iv_map.get(c, 0.0), reverse=True)
+            else:
+                candidates = numeric_cols
 
         candidates = candidates[:candidate_limit]
 
@@ -785,8 +876,9 @@ class VariableClusteringNode(NodeType):
         else:
             try:
                 if input_representation == "woe_train":
-                    bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
-                    woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
+                    if bin_def is None or woe_table is None:
+                        bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
+                        woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
                     woe_exprs = self._build_woe_columns(df, bin_def, woe_table)
                     if woe_exprs:
                         woe_df = df.with_columns(woe_exprs)
@@ -800,9 +892,10 @@ class VariableClusteringNode(NodeType):
                                 "message": "Fewer than 2 WOE-transformed columns available; using singleton pass-through",
                             })
                         else:
-                            corr_matrix = self._compute_correlation_matrix(
+                            corr_matrix, corr_warnings = self._compute_correlation_matrix(
                                 woe_df, woe_cols, similarity_metric, missing_handling, absolute_correlation,
                             )
+                            warnings_list.extend(corr_warnings)
                             woe_candidate_map = {c: c.replace("_woe", "") for c in woe_cols}
                             iv_map_woe = {wc: iv_map.get(oc, 0.0) for wc, oc in woe_candidate_map.items()}
                             missing_map_woe = {wc: missing_map.get(oc, 0.0) for wc, oc in woe_candidate_map.items()}
@@ -839,9 +932,10 @@ class VariableClusteringNode(NodeType):
                             "message": "No WOE-transformed columns could be built; using singleton pass-through on raw variables",
                         })
                 else:
-                    corr_matrix = self._compute_correlation_matrix(
+                    corr_matrix, corr_warnings = self._compute_correlation_matrix(
                         df, candidates, similarity_metric, missing_handling, absolute_correlation,
                     )
+                    warnings_list.extend(corr_warnings)
 
                     if method == "hierarchical":
                         clusters_out, singleton_variables, warnings_list = self._hierarchical_clusters(
@@ -942,7 +1036,12 @@ class VariableSelectionNode(NodeType):
                             name="cluster_representative_rule", label="Cluster Representative Rule",
                             kind="enum", default="none",
                             constraint=ParameterConstraint(
-                                enum_values=["none", "highest_iv", "lowest_missing", "manual_override"],
+                                enum_values=[
+                                    "none",
+                                    "one_per_cluster_highest_iv",
+                                    "one_per_cluster_lowest_missing",
+                                    "manual_override",
+                                ],
                             ),
                             help_text="How to use variable clustering evidence for representative selection",
                         ),
@@ -987,6 +1086,8 @@ class VariableSelectionNode(NodeType):
         for v in variables:
             if isinstance(v, dict):
                 result.append(str(v.get("variable", "")))
+            elif hasattr(v, "variable"):
+                result.append(str(v.variable))
             else:
                 result.append(str(v))
         return result
@@ -1063,9 +1164,19 @@ class VariableSelectionNode(NodeType):
 
         # Build cluster map: variable -> cluster_id
         cluster_map: dict[str, str] = {}
+        cluster_member_metrics: dict[tuple[str, str], dict[str, float | None]] = {}
         for cl in clusters:
             for var in cl.get("variables", []):
                 cluster_map[var] = cl["cluster_id"]
+            if clustering_evidence is not None:
+                for ev_cl in clustering_evidence.clusters:
+                    if ev_cl.cluster_id == cl["cluster_id"]:
+                        for m in ev_cl.variables:
+                            cluster_member_metrics[(cl["cluster_id"], m.variable)] = {
+                                "iv": m.iv,
+                                "missing_rate": m.missing_rate,
+                            }
+                        break
 
         # Build per-cluster ordered variable list (by IV descending)
         cluster_vars: dict[str, list[str]] = {}
@@ -1093,7 +1204,7 @@ class VariableSelectionNode(NodeType):
                 rejected.append({"variable": var, "reason": manual_excludes[var]})
 
         # Apply cluster representative rule
-        if cluster_rule != "none" and clusters:
+        if cluster_rule == "one_per_cluster_highest_iv" or cluster_rule == "one_per_cluster_lowest_missing":
             for cl in clusters:
                 cid = cl["cluster_id"]
                 vars_in_cluster = cluster_vars.get(cid, [])
@@ -1125,14 +1236,13 @@ class VariableSelectionNode(NodeType):
                     continue
 
                 # Pick representative by rule
-                if cluster_rule == "highest_iv":
+                if cluster_rule == "one_per_cluster_highest_iv":
                     rep = eligible[0]  # Already sorted by IV descending
                     rep_reason = f"highest IV ({iv_map.get(rep, 0.0):.4f}) in cluster"
-                elif cluster_rule == "lowest_missing":
-                    rep = min(eligible, key=lambda v: 0.0)
-                    rep_reason = "lowest missing rate in cluster"
-                else:
-                    continue
+                elif cluster_rule == "one_per_cluster_lowest_missing":
+                    rep = min(eligible, key=lambda v: cluster_member_metrics.get((cid, v), {}).get("missing_rate") or float("inf"))
+                    mr = cluster_member_metrics.get((cid, rep), {}).get("missing_rate")
+                    rep_reason = f"lowest missing rate ({mr:.4f}) in cluster" if mr is not None else "lowest missing rate in cluster"
 
                 if rep not in seen_clusters:
                     selected.append({"variable": rep, "reason": rep_reason})
@@ -1172,8 +1282,56 @@ class VariableSelectionNode(NodeType):
                 selected.append({"variable": var, "reason": "IV above threshold"})
                 if cid and cid not in seen_clusters:
                     seen_clusters.add(cid)
+
+        elif cluster_rule == "manual_override":
+            for cl in clusters:
+                cid = cl["cluster_id"]
+                if cid not in cluster_overrides:
+                    continue
+                vars_in_cluster = cluster_vars.get(cid, [])
+                eligible = [v for v in vars_in_cluster if v not in manual_excludes]
+                for override_var, override_reason in cluster_overrides[cid].items():
+                    if override_var in eligible and override_var not in seen_clusters:
+                        selected.append({
+                            "variable": override_var,
+                            "reason": f"Cluster representative override: {override_reason}",
+                        })
+                        seen_clusters.add(cid)
+                        cluster_decisions.append({
+                            "cluster_id": cid,
+                            "selected_variable": override_var,
+                            "reason": override_reason,
+                            "candidate_variables": eligible,
+                        })
+
+            # Process remaining non-clustered variables
+            for var in candidates:
+                if var in manual_excludes:
+                    continue
+                if var in manual_includes:
+                    if var not in [s["variable"] for s in selected]:
+                        selected.append({"variable": var, "reason": manual_includes[var]})
+                    continue
+                cid = cluster_map.get(var)
+                if cid and cid in seen_clusters:
+                    continue
+                if var in [s["variable"] for s in selected]:
+                    continue
+                if var in [r["variable"] for r in rejected]:
+                    continue
+                iv_info_val = iv_map.get(var, 0.0)
+                if iv_info_val < min_iv:
+                    rejected.append({"variable": var, "reason": f"IV {iv_info_val:.4f} below threshold {min_iv}"})
+                    continue
+                if len(selected) >= max_variables:
+                    rejected.append({"variable": var, "reason": f"Reached max_variables limit ({max_variables})"})
+                    continue
+                selected.append({"variable": var, "reason": "IV above threshold"})
+                if cid and cid not in seen_clusters:
+                    seen_clusters.add(cid)
+
         else:
-            # Original behaviour (no cluster representative rule)
+            # "none": genuinely ignore clustering evidence, pure IV-based selection
             for var in candidates:
                 if var in manual_excludes:
                     continue
@@ -1181,7 +1339,6 @@ class VariableSelectionNode(NodeType):
                     reason = manual_includes.get(var, "Manual inclusion")
                     if var not in [s["variable"] for s in selected]:
                         selected.append({"variable": var, "reason": reason})
-                    seen_clusters.add(cluster_map.get(var, var))
                     continue
 
                 iv_info_val = iv_map.get(var, 0.0)
@@ -1189,23 +1346,11 @@ class VariableSelectionNode(NodeType):
                     rejected.append({"variable": var, "reason": f"IV {iv_info_val:.4f} below threshold {min_iv}"})
                     continue
 
-                cluster_id = cluster_map.get(var, var)
-                if cluster_id in seen_clusters:
-                    rejected.append({
-                        "variable": var,
-                        "reason": f"Lower IV than selected correlated variable in cluster {cluster_id}",
-                    })
-                    continue
-
                 if len(selected) >= max_variables:
                     rejected.append({"variable": var, "reason": f"Reached max_variables limit ({max_variables})"})
                     continue
 
-                selected.append({
-                    "variable": var,
-                    "reason": "IV above threshold and strongest in cluster" if cluster_id not in seen_clusters else "IV above threshold",
-                })
-                seen_clusters.add(cluster_id)
+                selected.append({"variable": var, "reason": f"IV {iv_info_val:.4f} above threshold {min_iv}"})
 
         # Trim to max_variables if needed (only when cluster_rule is active)
         if cluster_rule != "none" and len(selected) > max_variables:

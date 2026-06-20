@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import unittest
+import uuid
 from pathlib import Path
 
 import polars as pl
@@ -440,3 +441,189 @@ def test_variable_selection_requires_reasons_for_dict_entries() -> None:
     node = VariableSelectionNode()
     with pytest.raises(ValueError):
         node.run(ctx)
+
+
+# ======================================================================
+# Regression tests for cluster representative rules
+# ======================================================================
+
+
+def _build_clustering_artifact(
+    store: ProjectStore,
+    cluster_list: list[dict],
+    singletons: list[str] | None = None,
+    **meta: Any,
+) -> ArtifactRef:
+    payload = {
+        "schema_version": "cardre.variable_clustering_evidence.v1",
+        "method": meta.get("method", "correlation_threshold"),
+        "input_representation": "raw_train",
+        "similarity_metric": "pearson",
+        "absolute_correlation": True,
+        "threshold": meta.get("threshold", 0.7),
+        "missing_handling": "pairwise",
+        "candidate_limit": 50,
+        "representative_rule": "highest_iv",
+        "clusters": cluster_list,
+        "singleton_variables": singletons or [],
+        "warnings": [],
+    }
+    clust_path = store.root / "artifacts" / "test-clust-evidence.json"
+    clust_path.write_text(json.dumps(payload, sort_keys=True))
+    art = ArtifactRef(
+        artifact_id="ce_" + uuid.uuid4().hex[:8],
+        artifact_type="report", role="report",
+        path=relative_path(clust_path, store.root),
+        physical_hash=physical_hash(clust_path),
+        logical_hash=json_logical_hash(payload),
+        media_type="application/json",
+        metadata={"schema_version": "cardre.variable_clustering_evidence.v1"},
+    )
+    store.register_artifact(art)
+    return art
+
+
+def _build_iv_artifact(store: ProjectStore, vars_iv: list[tuple[str, float]]) -> ArtifactRef:
+    iv_df = pl.DataFrame({
+        "variable": [v for v, _ in vars_iv],
+        "iv": [iv for _, iv in vars_iv],
+        "bin_count": [3] * len(vars_iv),
+        "zero_cell_count": [0] * len(vars_iv),
+        "warning_count": [0] * len(vars_iv),
+    })
+    buf = io.BytesIO()
+    iv_df.write_parquet(buf)
+    iv_path = store.root / "datasets" / "test-iv-selection.parquet"
+    iv_path.parent.mkdir(parents=True, exist_ok=True)
+    iv_path.write_bytes(buf.getvalue())
+    art = ArtifactRef(
+        artifact_id="iv_" + uuid.uuid4().hex[:8],
+        artifact_type="report", role="report",
+        path=relative_path(iv_path, store.root),
+        physical_hash=physical_hash(iv_path),
+        logical_hash=table_logical_hash(iv_df),
+        media_type="application/vnd.apache.parquet",
+        metadata={},
+    )
+    store.register_artifact(art)
+    return art
+
+
+def _run_selection(
+    store: ProjectStore, iv_art: ArtifactRef, clust_art: ArtifactRef,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    step_spec = StepSpec(
+        step_id="sel", node_type="cardre.variable_selection",
+        node_version="1", category="selection",
+        params=params,
+        params_hash=json_logical_hash(params),
+        parent_step_ids=[], branch_label="", position=0,
+    )
+    ctx = ExecutionContext(
+        store=store, run_id="r1", plan_version_id="pv1",
+        step_spec=step_spec,
+        parent_run_steps=[],
+        input_artifacts=[iv_art, clust_art],
+        validated_params=params, runtime_metadata={},
+    )
+    node = VariableSelectionNode()
+    output = node.run(ctx)
+    return json.loads(store.artifact_path(output.artifacts[0]).read_text())
+
+
+class TestVariableSelectionClusterRules(unittest.TestCase):
+
+    def test_none_ignores_clusters(self) -> None:
+        """rule=none should select all vars passing IV threshold, ignoring cluster groups."""
+        store, tmp = make_store()
+        store.initialize()
+        iv_art = _build_iv_artifact(store, [("v1", 0.5), ("v2", 0.4), ("v3", 0.01)])
+        clust_art = _build_clustering_artifact(store, [
+            {"cluster_id": "c1", "variables": [{"variable": "v1"}, {"variable": "v2"}],
+             "representative_suggestion": "v1", "representative_reason": "highest IV",
+             "max_pairwise_abs_corr": 0.95, "notes": []},
+        ], singletons=["v3"])
+        payload = _run_selection(store, iv_art, clust_art, {
+            "min_iv": 0.02, "max_variables": 15,
+            "cluster_representative_rule": "none",
+            "cluster_representative_overrides": [],
+        })
+        selected_vars = [s["variable"] for s in payload["selected"]]
+        self.assertIn("v1", selected_vars)
+        self.assertIn("v2", selected_vars)
+        self.assertNotIn("v3", selected_vars)
+
+    def test_one_per_cluster_highest_iv(self) -> None:
+        """Should select exactly one var per cluster (highest IV)."""
+        store, tmp = make_store()
+        store.initialize()
+        iv_art = _build_iv_artifact(store, [("v1", 0.5), ("v2", 0.3), ("v3", 0.2), ("v4", 0.4)])
+        clust_art = _build_clustering_artifact(store, [
+            {"cluster_id": "c1", "variables": [{"variable": "v1"}, {"variable": "v2"}],
+             "representative_suggestion": "v1", "representative_reason": "highest IV",
+             "max_pairwise_abs_corr": 0.9, "notes": []},
+            {"cluster_id": "c2", "variables": [{"variable": "v3"}, {"variable": "v4"}],
+             "representative_suggestion": "v4", "representative_reason": "highest IV",
+             "max_pairwise_abs_corr": 0.8, "notes": []},
+        ])
+        payload = _run_selection(store, iv_art, clust_art, {
+            "min_iv": 0.02, "max_variables": 15,
+            "cluster_representative_rule": "one_per_cluster_highest_iv",
+            "cluster_representative_overrides": [],
+        })
+        selected_vars = [s["variable"] for s in payload["selected"]]
+        self.assertIn("v1", selected_vars)
+        self.assertIn("v4", selected_vars)
+        self.assertNotIn("v2", selected_vars)
+        self.assertNotIn("v3", selected_vars)
+
+    def test_one_per_cluster_lowest_missing(self) -> None:
+        """Should select one var per cluster using evidence missing rates."""
+        store, tmp = make_store()
+        store.initialize()
+        iv_art = _build_iv_artifact(store, [("v1", 0.5), ("v2", 0.3)])
+        clust_art = _build_clustering_artifact(store, [
+            {"cluster_id": "c1",
+             "variables": [
+                 {"variable": "v1", "iv": 0.5, "missing_rate": 0.1},
+                 {"variable": "v2", "iv": 0.3, "missing_rate": 0.01},
+             ],
+             "representative_suggestion": None, "representative_reason": "",
+             "max_pairwise_abs_corr": 0.9, "notes": []},
+        ])
+        payload = _run_selection(store, iv_art, clust_art, {
+            "min_iv": 0.02, "max_variables": 15,
+            "cluster_representative_rule": "one_per_cluster_lowest_missing",
+            "cluster_representative_overrides": [],
+        })
+        selected_vars = [s["variable"] for s in payload["selected"]]
+        self.assertIn("v2", selected_vars, "v2 has lower missing rate (0.01 < 0.1)")
+        self.assertNotIn("v1", selected_vars)
+
+    def test_manual_override(self) -> None:
+        """Manual override should select the override variable even if not highest IV."""
+        store, tmp = make_store()
+        store.initialize()
+        iv_art = _build_iv_artifact(store, [("v1", 0.5), ("v2", 0.3)])
+        clust_art = _build_clustering_artifact(store, [
+            {"cluster_id": "c1",
+             "variables": [{"variable": "v1"}, {"variable": "v2"}],
+             "representative_suggestion": "v1", "representative_reason": "highest IV",
+             "max_pairwise_abs_corr": 0.9, "notes": []},
+        ])
+        payload = _run_selection(store, iv_art, clust_art, {
+            "min_iv": 0.02, "max_variables": 15,
+            "cluster_representative_rule": "manual_override",
+            "cluster_representative_overrides": [
+                {"cluster_id": "c1", "variable": "v2", "reason": "Business preference"},
+            ],
+        })
+        selected_vars = [s["variable"] for s in payload["selected"]]
+        self.assertIn("v2", selected_vars)
+        self.assertNotIn("v1", selected_vars)
+        decisions = payload.get("cluster_decisions", [])
+        self.assertTrue(any(
+            d["selected_variable"] == "v2" and "Business preference" in d["reason"]
+            for d in decisions
+        ))
