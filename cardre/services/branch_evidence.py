@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
 from cardre.audit import ArtifactRef, RunStepRecord, StepSpec
+from cardre.executor import resolve_output_artifacts
 from cardre.staleness import compute_staleness, step_is_stale
 from cardre.store import ProjectStore
 from cardre.topology import validate_topology
@@ -173,7 +174,7 @@ class BranchEvidenceResolver:
         # 8a. Shared upstream evidence (use pre-collected evidence)
         for sid, rs in shared_evidence_map.items():
             run_step_records[sid] = rs
-            step_outputs[sid] = self._exec._resolve_output_artifacts(store, rs)
+            step_outputs[sid] = resolve_output_artifacts(store, rs)
 
         # 8b. Current (non-stale) branch-owned step evidence
         if not force:
@@ -184,7 +185,7 @@ class BranchEvidenceResolver:
                     )
                     if rs is not None:
                         run_step_records[spec.step_id] = rs
-                        step_outputs[spec.step_id] = self._exec._resolve_output_artifacts(store, rs)
+                        step_outputs[spec.step_id] = resolve_output_artifacts(store, rs)
 
         return BranchRunContext(
             branch=branch,
@@ -218,7 +219,7 @@ class BranchEvidenceResolver:
                 )
                 if rs is not None:
                     ctx.run_step_records[pid] = rs
-                    ctx.step_outputs[pid] = self._exec._resolve_output_artifacts(store, rs)
+                    ctx.step_outputs[pid] = resolve_output_artifacts(store, rs)
 
             if pid in ctx.branch_owned_step_ids and pid not in ctx.step_outputs:
                 rs = store.get_latest_successful_run_step_for_step(
@@ -226,7 +227,7 @@ class BranchEvidenceResolver:
                 )
                 if rs is not None:
                     ctx.run_step_records[pid] = rs
-                    ctx.step_outputs[pid] = self._exec._resolve_output_artifacts(store, rs)
+                    ctx.step_outputs[pid] = resolve_output_artifacts(store, rs)
 
     # ------------------------------------------------------------------
     # internal helpers
