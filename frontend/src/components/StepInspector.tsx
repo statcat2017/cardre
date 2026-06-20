@@ -6,6 +6,7 @@ import { getStepDisplayMetadata } from "../config/stepDisplayMetadata";
 import { StatusBadge } from "./StatusBadge";
 import { SchemaDrivenParamsEditor } from "./params/SchemaDrivenParamsEditor";
 import type { UpdateStepParamsResponse } from "../types";
+import { theme } from "../styles";
 
 interface Props {
   step: StepStatus | null;
@@ -32,15 +33,15 @@ export function StepInspector({
     return (
       <div
         style={{
-          width: 300,
-          borderLeft: "1px solid #e2e8f0",
-          backgroundColor: "#fafafa",
-          padding: 16,
+          width: 320,
+          borderLeft: `1px solid ${theme.border}`,
+          backgroundColor: theme.canvasSoft,
+          padding: 20,
           flexShrink: 0,
           overflowY: "auto",
         }}
       >
-        <div style={{ color: "#94a3b8", fontSize: 13 }}>Select a step to inspect</div>
+        <div style={{ color: theme.muted, fontSize: 13 }}>Select a step to inspect</div>
       </div>
     );
   }
@@ -66,15 +67,15 @@ export function StepInspector({
   return (
     <div
       style={{
-        width: 300,
-        borderLeft: "1px solid #e2e8f0",
-        backgroundColor: "#fafafa",
-        padding: 16,
+        width: 320,
+        borderLeft: `1px solid ${theme.border}`,
+        backgroundColor: theme.canvasSoft,
+        padding: 20,
         flexShrink: 0,
         overflowY: "auto",
       }}
     >
-      <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{label}</h3>
+      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 14, color: theme.text }}>{label}</h3>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <InspectorField label="Step ID" value={step.step_id} mono />
@@ -83,7 +84,7 @@ export function StepInspector({
         <InspectorField label="Backend Position" value={String(step.position)} />
 
         <div style={{ marginTop: 4 }}>
-          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Status</div>
+          <div style={{ fontSize: 11, color: theme.muted, marginBottom: 2 }}>Status</div>
           <StatusBadge status={step.status} />
         </div>
 
@@ -91,14 +92,14 @@ export function StepInspector({
           <div
             style={{
               padding: "6px 8px",
-              backgroundColor: "#fffbeb",
-              border: "1px solid #fde68a",
+              backgroundColor: theme.yellowBg,
+              border: `1px solid ${theme.border}`,
               borderRadius: 4,
               fontSize: 11,
-              color: "#92400e",
+              color: theme.yellowText,
             }}
           >
-            Stale — upstream has changed since last run
+            Stale - upstream has changed since last run
           </div>
         )}
 
@@ -106,8 +107,8 @@ export function StepInspector({
           <>
             <InspectorField label="Section" value={meta.section} />
             <div style={{ marginTop: 4 }}>
-              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Description</div>
-              <div style={{ fontSize: 12, color: "#334155" }}>{meta.shortDescription}</div>
+              <div style={{ fontSize: 11, color: theme.muted, marginBottom: 2 }}>Description</div>
+              <div style={{ fontSize: 12, color: theme.textSoft }}>{meta.shortDescription}</div>
             </div>
           </>
         )}
@@ -117,36 +118,36 @@ export function StepInspector({
           <div
             style={{
               marginTop: 8,
-              padding: 10,
-              border: "1px solid #e2e8f0",
-              borderRadius: 6,
-              backgroundColor: "#fff",
+              padding: 12,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 8,
+              backgroundColor: theme.surface,
             }}
           >
-            <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", marginBottom: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: theme.text, marginBottom: 6 }}>
               Manual Bin Editing
             </div>
             {editorStateQuery.isLoading && (
-              <div style={{ fontSize: 11, color: "#64748b" }}>Loading editor state...</div>
+              <div style={{ fontSize: 11, color: theme.muted }}>Loading editor state...</div>
             )}
             {editorStateQuery.isError && (
-              <div style={{ fontSize: 11, color: "#dc2626" }}>Error loading editor state</div>
+              <div style={{ fontSize: 11, color: theme.redText }}>Error loading editor state</div>
             )}
             {mbState && !mbState.ready && (
               <div
                 style={{
                   padding: "6px 8px",
-                  backgroundColor: "#fffbeb",
-                  border: "1px solid #fde68a",
+                  backgroundColor: theme.yellowBg,
+                  border: `1px solid ${theme.border}`,
                   borderRadius: 4,
                   fontSize: 11,
-                  color: "#92400e",
+                  color: theme.yellowText,
                 }}
               >
                 <strong>Not Ready</strong>
                 <div style={{ marginTop: 4 }}>{mbState.blocked_reason}</div>
                 {mbState.required_steps && mbState.required_steps.length > 0 && (
-                  <div style={{ marginTop: 4, color: "#78350f" }}>
+                  <div style={{ marginTop: 4, color: theme.yellowText }}>
                     Need: {mbState.required_steps.join(", ")}
                   </div>
                 )}
@@ -154,7 +155,7 @@ export function StepInspector({
             )}
             {mbState?.ready && (
               <>
-                <div style={{ fontSize: 11, color: "#166534", marginBottom: 6 }}>
+                <div style={{ fontSize: 11, color: theme.greenText, marginBottom: 6 }}>
                   {mbState.selected_variables?.length || 0} variables selected, ready to edit.
                 </div>
                 <button
@@ -162,9 +163,9 @@ export function StepInspector({
                   style={{
                     padding: "6px 12px",
                     borderRadius: 4,
-                    border: "1px solid #3b82f6",
-                    backgroundColor: "#fff",
-                    color: "#3b82f6",
+                    border: `1px solid ${theme.text}`,
+                    backgroundColor: theme.surface,
+                    color: theme.text,
                     fontSize: 12,
                     fontWeight: 600,
                     cursor: "pointer",
@@ -187,16 +188,16 @@ export function StepInspector({
                 width: "100%",
                 padding: "6px 10px",
                 borderRadius: 4,
-                border: "1px solid #e2e8f0",
-                backgroundColor: showParams ? "#eff6ff" : "#fff",
-                color: showParams ? "#3b82f6" : "#475569",
+                border: `1px solid ${theme.border}`,
+                backgroundColor: showParams ? theme.blueBg : theme.surface,
+                color: showParams ? theme.blueText : theme.textSoft,
                 fontSize: 12,
                 fontWeight: 500,
                 cursor: "pointer",
                 textAlign: "left",
               }}
             >
-              {showParams ? "▼ Hide Parameters" : "▶ Configure Parameters"}
+              {showParams ? "- Hide Parameters" : "+ Configure Parameters"}
             </button>
             {showParams && (
               <SchemaDrivenParamsEditor
@@ -219,12 +220,12 @@ export function StepInspector({
 function InspectorField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 11, color: theme.muted, marginBottom: 2 }}>{label}</div>
       <div
         style={{
           fontSize: 12,
-          color: "#1e293b",
-          fontFamily: mono ? "monospace" : undefined,
+          color: theme.text,
+          fontFamily: mono ? theme.fontMono : undefined,
           wordBreak: "break-all",
         }}
       >

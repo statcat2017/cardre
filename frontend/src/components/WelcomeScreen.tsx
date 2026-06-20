@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { theme } from "../styles";
 
 interface Props {
   onProjectCreated: (projectId: string) => void;
@@ -77,23 +78,46 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
         alignItems: "center",
         justifyContent: "center",
         minHeight: "100vh",
-        padding: 24,
+        padding: 32,
+        backgroundColor: theme.canvas,
       }}
     >
-      <div style={{ maxWidth: 480, width: "100%" }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>
+      <div style={{ maxWidth: 560, width: "100%" }}>
+        <div
+          style={{
+            margin: "0 auto 18px",
+            width: 48,
+            height: 28,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 6,
+            backgroundColor: theme.surface,
+          }}
+        />
+        <h1
+          style={{
+            fontFamily: theme.fontSerif,
+            fontSize: 44,
+            fontWeight: 600,
+            letterSpacing: "-0.04em",
+            lineHeight: 1.05,
+            marginBottom: 8,
+            textAlign: "center",
+            color: theme.text,
+          }}
+        >
           Cardre
         </h1>
-        <p style={{ textAlign: "center", color: "#6b7280", marginBottom: 32 }}>
-          Auditable credit scorecard builder
+        <p style={{ textAlign: "center", color: theme.muted, marginBottom: 40, fontSize: 15 }}>
+          A quiet workspace for auditable credit scorecard modelling.
         </p>
 
         {error && (
           <div
             style={{
-              padding: "8px 12px",
-              backgroundColor: "#fef2f2",
-              color: "#dc2626",
+              padding: "10px 12px",
+              backgroundColor: theme.redBg,
+              color: theme.redText,
+              border: `1px solid ${theme.border}`,
               borderRadius: 6,
               marginBottom: 16,
               fontSize: 13,
@@ -106,16 +130,17 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
         {step === "create" && (
           <div
             style={{
-              padding: 24,
-              border: "1px solid #e5e7eb",
-              borderRadius: 8,
+              padding: 32,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 12,
+              backgroundColor: theme.surface,
             }}
           >
-            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 18, color: theme.text }}>
               Create Project
             </h2>
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 500, marginBottom: 4 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: theme.textSoft }}>
                 Project Path
               </label>
               <input
@@ -125,19 +150,21 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
                 placeholder="/home/user/my-scorecard.cardre"
                 style={{
                   width: "100%",
-                  padding: "8px 12px",
-                  border: "1px solid #d1d5db",
+                  padding: "10px 12px",
+                  border: `1px solid ${theme.borderStrong}`,
                   borderRadius: 6,
                   fontSize: 14,
                   boxSizing: "border-box",
+                  color: theme.text,
+                  backgroundColor: theme.surface,
                 }}
               />
-              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
+              <div style={{ fontSize: 11, color: theme.muted, marginTop: 4 }}>
                 Directory path ending in .cardre (e.g. ~/my-project.cardre)
               </div>
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 500, marginBottom: 4 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: theme.textSoft }}>
                 Project Name
               </label>
               <input
@@ -147,11 +174,13 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
                 placeholder="My Scorecard"
                 style={{
                   width: "100%",
-                  padding: "8px 12px",
-                  border: "1px solid #d1d5db",
+                  padding: "10px 12px",
+                  border: `1px solid ${theme.borderStrong}`,
                   borderRadius: 6,
                   fontSize: 14,
                   boxSizing: "border-box",
+                  color: theme.text,
+                  backgroundColor: theme.surface,
                 }}
               />
             </div>
@@ -163,7 +192,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
                 padding: "10px 16px",
                 borderRadius: 6,
                 border: "none",
-                backgroundColor: createMutation.isPending ? "#93c5fd" : "#3b82f6",
+                backgroundColor: createMutation.isPending ? theme.mutedSoft : theme.text,
                 color: "#fff",
                 fontSize: 14,
                 fontWeight: 600,
@@ -178,22 +207,23 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
         {step === "import" && (
           <div
             style={{
-              padding: 24,
-              border: "1px solid #e5e7eb",
-              borderRadius: 8,
+              padding: 32,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 12,
+              backgroundColor: theme.surface,
             }}
           >
-            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 18, color: theme.text }}>
               Import Dataset
             </h2>
             <div
               style={{
-                padding: "8px 12px",
-                backgroundColor: "#f0f9ff",
-                border: "1px solid #bae6fd",
+                padding: "12px 14px",
+                backgroundColor: theme.blueBg,
+                border: `1px solid ${theme.border}`,
                 borderRadius: 6,
                 fontSize: 12,
-                color: "#0369a1",
+                color: theme.blueText,
                 marginBottom: 16,
                 lineHeight: 1.5,
               }}
@@ -206,7 +236,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
               visible in the Artifacts browser.
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 500, marginBottom: 4 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: theme.textSoft }}>
                 File Path
               </label>
               <input
@@ -216,11 +246,13 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
                 placeholder="/path/to/applications.csv"
                 style={{
                   width: "100%",
-                  padding: "8px 12px",
-                  border: "1px solid #d1d5db",
+                  padding: "10px 12px",
+                  border: `1px solid ${theme.borderStrong}`,
                   borderRadius: 6,
                   fontSize: 14,
                   boxSizing: "border-box",
+                  color: theme.text,
+                  backgroundColor: theme.surface,
                 }}
               />
             </div>
@@ -232,7 +264,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
                 padding: "10px 16px",
                 borderRadius: 6,
                 border: "none",
-                backgroundColor: importMutation.isPending ? "#93c5fd" : "#3b82f6",
+                backgroundColor: importMutation.isPending ? theme.mutedSoft : theme.text,
                 color: "#fff",
                 fontSize: 14,
                 fontWeight: 600,
@@ -247,17 +279,33 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
         {step === "ready" && (
           <div
             style={{
-              padding: 24,
-              border: "1px solid #e5e7eb",
-              borderRadius: 8,
+              padding: 32,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 12,
               textAlign: "center",
+              backgroundColor: theme.surface,
             }}
           >
-            <div style={{ fontSize: 24, marginBottom: 8 }}>&#10003;</div>
-            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
+            <div
+              style={{
+                display: "inline-flex",
+                padding: "2px 8px",
+                borderRadius: 9999,
+                backgroundColor: theme.greenBg,
+                color: theme.greenText,
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+                marginBottom: 10,
+              }}
+            >
+              Ready
+            </div>
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, color: theme.text }}>
               Ready to Go
             </h2>
-            <p style={{ color: "#6b7280", fontSize: 13, marginBottom: 16 }}>
+            <p style={{ color: theme.muted, fontSize: 13, marginBottom: 16 }}>
               Dataset imported and proof pathway registered.
             </p>
             <button
@@ -266,7 +314,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
                 padding: "10px 24px",
                 borderRadius: 6,
                 border: "none",
-                backgroundColor: "#22c55e",
+                backgroundColor: theme.text,
                 color: "#fff",
                 fontSize: 14,
                 fontWeight: 600,

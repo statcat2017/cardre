@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { ProjectView } from "./components/ProjectView";
+import { theme } from "./styles";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 2000 } },
@@ -20,7 +21,17 @@ function AppContent() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AppContent />
+      <div
+        style={{
+          minHeight: "100vh",
+          backgroundColor: theme.canvas,
+          color: theme.text,
+          fontFamily: theme.fontSans,
+          lineHeight: 1.6,
+        }}
+      >
+        <AppContent />
+      </div>
     </QueryClientProvider>
   );
 }

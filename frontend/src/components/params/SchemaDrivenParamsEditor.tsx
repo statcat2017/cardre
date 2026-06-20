@@ -7,6 +7,7 @@ import { useMessage } from "../../hooks/useMessage";
 import { MessageBanner } from "../MessageBanner";
 import { ParamField } from "./ParamField";
 import { RawJsonParamsFallback } from "./RawJsonParamsFallback";
+import { theme } from "../../styles";
 
 interface Props {
   planId: string;
@@ -284,8 +285,8 @@ export function SchemaDrivenParamsEditor({
 
   if (schemaLoading) {
     return (
-      <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 12, paddingTop: 12 }}>
-        <div style={{ fontSize: 11, color: "#64748b" }}>Loading schema...</div>
+      <div style={{ borderTop: `1px solid ${theme.border}`, marginTop: 12, paddingTop: 12 }}>
+        <div style={{ fontSize: 11, color: theme.muted }}>Loading schema...</div>
       </div>
     );
   }
@@ -304,17 +305,17 @@ export function SchemaDrivenParamsEditor({
   }
 
   return (
-    <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 12, paddingTop: 12 }}>
+    <div style={{ borderTop: `1px solid ${theme.border}`, marginTop: 12, paddingTop: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>Parameters</span>
-        <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace" }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>Parameters</span>
+        <span style={{ fontSize: 10, color: theme.mutedSoft, fontFamily: theme.fontMono }}>
           v{basePlanVersionId.slice(0, 8)}…
         </span>
       </div>
 
       {schema.methods.length > 1 && (
         <div style={{ marginBottom: 10 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: "#475569", marginBottom: 4, display: "block" }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: theme.textSoft, marginBottom: 4, display: "block" }}>
             Method
           </label>
           <select
@@ -322,8 +323,8 @@ export function SchemaDrivenParamsEditor({
             onChange={(e) => setSelectedMethodId(e.target.value)}
             disabled={saving}
             style={{
-              width: "100%", padding: "4px 8px", border: "1px solid #d1d5db",
-              borderRadius: 4, fontSize: 12, boxSizing: "border-box",
+              width: "100%", padding: "4px 8px", border: `1px solid ${theme.borderStrong}`,
+              borderRadius: 4, fontSize: 12, boxSizing: "border-box", backgroundColor: theme.surface, color: theme.text,
             }}
           >
             {schema.methods.map((m) => (
@@ -336,7 +337,7 @@ export function SchemaDrivenParamsEditor({
       )}
 
       {selectedMethod?.description && (
-        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 11, color: theme.muted, marginBottom: 8, lineHeight: 1.4 }}>
           {selectedMethod.description}
         </div>
       )}
@@ -355,7 +356,7 @@ export function SchemaDrivenParamsEditor({
           ))}
         </div>
       ) : (
-        <div style={{ fontSize: 11, color: "#94a3b8" }}>
+        <div style={{ fontSize: 11, color: theme.mutedSoft }}>
           {selectedMethod ? "No parameters for this method." : "No available methods for this node type."}
         </div>
       )}
@@ -367,7 +368,7 @@ export function SchemaDrivenParamsEditor({
         disabled={saving}
         style={{
           marginTop: 8, padding: "6px 16px", borderRadius: 4, border: "none",
-          backgroundColor: saving ? "#93c5fd" : "#3b82f6", color: "#fff",
+          backgroundColor: saving ? theme.mutedSoft : theme.text, color: "#fff",
           fontSize: 12, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer",
         }}
       >

@@ -2,6 +2,7 @@ import React from "react";
 import type { StepStatus } from "../types";
 import { STEP_DISPLAY_METADATA, SECTION_ORDER } from "../config/stepDisplayMetadata";
 import { StepCard } from "./StepCard";
+import { theme } from "../styles";
 
 interface Props {
   steps: StepStatus[];
@@ -23,19 +24,19 @@ export function PathwayView({ steps, selectedStepId, onStepSelect, carriedForwar
   const orderedSections = SECTION_ORDER.filter((s) => stepsBySection[s]?.length);
 
   return (
-    <div style={{ padding: 16, overflowY: "auto", flex: 1 }}>
+    <div style={{ padding: 24, overflowY: "auto", flex: 1, backgroundColor: theme.canvas }}>
       {orderedSections.map((section) => (
-        <div key={section} style={{ marginBottom: 20 }}>
+        <div key={section} style={{ marginBottom: 28 }}>
           <h3
             style={{
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: 600,
-              color: "#64748b",
+              color: theme.muted,
               textTransform: "uppercase",
               letterSpacing: "0.05em",
-              marginBottom: 8,
-              paddingBottom: 4,
-              borderBottom: "1px solid #e2e8f0",
+              marginBottom: 12,
+              paddingBottom: 6,
+              borderBottom: `1px solid ${theme.border}`,
             }}
           >
             {section}
@@ -43,8 +44,8 @@ export function PathwayView({ steps, selectedStepId, onStepSelect, carriedForwar
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-              gap: 8,
+              gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+              gap: 12,
             }}
           >
             {stepsBySection[section].map((step) => (

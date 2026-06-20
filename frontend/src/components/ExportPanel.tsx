@@ -7,6 +7,7 @@ import type {
   ReportReadinessItem,
   GenerateReportResponse,
 } from "../types";
+import { theme } from "../styles";
 
 interface Props {
   projectId: string;
@@ -198,23 +199,23 @@ export function ExportPanel({ projectId }: Props) {
   const selectedBranch = branchOptions.find((b) => b.branch_id === targetBranchId);
 
   return (
-    <div style={{ padding: 16, overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Audit Pack Export</h3>
+    <div style={{ padding: 24, overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
+      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4, color: theme.text }}>Audit Pack Export</h3>
 
       {/* Configuration */}
-      <div style={{ padding: 16, border: "1px solid #e2e8f0", borderRadius: 8, backgroundColor: "#fff" }}>
+      <div style={{ padding: 16, border: `1px solid ${theme.border}`, borderRadius: 8, backgroundColor: theme.surface }}>
         <div style={{ display: "flex", gap: 24, marginBottom: 12, flexWrap: "wrap" }}>
           {/* Report mode */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: theme.textSoft, display: "block", marginBottom: 4 }}>
               Report mode
             </label>
             <select
               value={reportMode}
               onChange={(e) => setReportMode(e.target.value as ReportMode)}
               style={{
-                padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1",
-                fontSize: 13, backgroundColor: "#fff",
+                padding: "6px 10px", borderRadius: 6, border: `1px solid ${theme.borderStrong}`,
+                fontSize: 13, backgroundColor: theme.surface, color: theme.text,
               }}
             >
               <option value="champion">Champion report</option>
@@ -224,15 +225,15 @@ export function ExportPanel({ projectId }: Props) {
 
           {/* Target branch */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: theme.textSoft, display: "block", marginBottom: 4 }}>
               Target branch
             </label>
             <select
               value={targetBranchId}
               onChange={(e) => setTargetBranchId(e.target.value)}
               style={{
-                padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1",
-                fontSize: 13, backgroundColor: "#fff",
+                padding: "6px 10px", borderRadius: 6, border: `1px solid ${theme.borderStrong}`,
+                fontSize: 13, backgroundColor: theme.surface, color: theme.text,
               }}
             >
               {branchOptions.length === 0 && <option value="">No branches available</option>}
@@ -246,8 +247,8 @@ export function ExportPanel({ projectId }: Props) {
 
           {/* Latest run */}
           <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Latest run</div>
-            <div style={{ fontSize: 13, color: "#64748b", paddingTop: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: theme.textSoft, marginBottom: 4 }}>Latest run</div>
+            <div style={{ fontSize: 13, color: theme.muted, paddingTop: 6 }}>
               {latestRun ? (
                 <span>
                   <code>{latestRun.run_id.slice(0, 8)}&hellip;</code>
@@ -266,9 +267,9 @@ export function ExportPanel({ projectId }: Props) {
             onClick={() => checkReadinessMutation.mutate()}
             disabled={checkReadinessMutation.isPending || !latestRun || !targetBranchId}
             style={{
-              padding: "8px 16px", borderRadius: 6, border: "1px solid #cbd5e1",
-              fontSize: 13, backgroundColor: "#f8fafc", cursor: "pointer",
-              fontWeight: 500, color: "#334155",
+              padding: "8px 16px", borderRadius: 6, border: `1px solid ${theme.border}`,
+              fontSize: 13, backgroundColor: theme.surfaceMuted, cursor: "pointer",
+              fontWeight: 500, color: theme.textSoft,
               opacity: checkReadinessMutation.isPending || !latestRun || !targetBranchId ? 0.5 : 1,
             }}
           >
@@ -280,7 +281,7 @@ export function ExportPanel({ projectId }: Props) {
             disabled={uiState.value !== "ready" && uiState.value !== "ready_with_warnings"}
             style={{
               padding: "8px 16px", borderRadius: 6, border: "none",
-              fontSize: 13, backgroundColor: uiState.value === "ready" || uiState.value === "ready_with_warnings" ? "#0369a1" : "#94a3b8",
+              fontSize: 13, backgroundColor: uiState.value === "ready" || uiState.value === "ready_with_warnings" ? theme.text : theme.mutedSoft,
               color: "#fff", cursor: uiState.value === "ready" || uiState.value === "ready_with_warnings" ? "pointer" : "not-allowed",
               fontWeight: 600,
             }}
@@ -294,25 +295,25 @@ export function ExportPanel({ projectId }: Props) {
       {(uiState.value === "blocked" || uiState.value === "ready" || uiState.value === "ready_with_warnings") && (
         <div
           style={{
-            padding: 16, border: "1px solid #e2e8f0", borderRadius: 8,
-            backgroundColor: uiState.value === "blocked" ? "#fef2f2" : "#f8fafc",
+            padding: 16, border: `1px solid ${theme.border}`, borderRadius: 8,
+            backgroundColor: uiState.value === "blocked" ? theme.redBg : theme.surfaceMuted,
           }}
         >
           {blockers.map((b) => (
-            <div key={b.code} style={{ padding: "4px 0", fontSize: 13, color: "#dc2626" }}>
-              <strong style={{ marginRight: 8 }}>&#10060;</strong>
+            <div key={b.code} style={{ padding: "4px 0", fontSize: 13, color: theme.redText }}>
+              <strong style={{ marginRight: 8 }}>Blocked</strong>
               <strong>{b.code}:</strong> {b.message}
             </div>
           ))}
           {warnings.map((w) => (
-            <div key={w.code} style={{ padding: "4px 0", fontSize: 13, color: "#92400e" }}>
-              <strong style={{ marginRight: 8 }}>&#9888;</strong>
+            <div key={w.code} style={{ padding: "4px 0", fontSize: 13, color: theme.yellowText }}>
+              <strong style={{ marginRight: 8 }}>Warning</strong>
               <strong>{w.code}:</strong> {w.message}
             </div>
           ))}
           {blockers.length === 0 && warnings.length === 0 && (
-            <div style={{ fontSize: 13, color: "#166534" }}>
-              <strong>&#10003;</strong> All evidence available. Ready to generate.
+            <div style={{ fontSize: 13, color: theme.greenText }}>
+              <strong>Ready.</strong> All evidence available. Ready to generate.
             </div>
           )}
         </div>
@@ -320,18 +321,18 @@ export function ExportPanel({ projectId }: Props) {
 
       {/* Error state */}
       {uiState.value === "failed" && errorMsg && (
-        <div style={{ padding: 12, border: "1px solid #fca5a5", borderRadius: 8, backgroundColor: "#fef2f2", fontSize: 13, color: "#dc2626" }}>
+        <div style={{ padding: 12, border: `1px solid ${theme.border}`, borderRadius: 8, backgroundColor: theme.redBg, fontSize: 13, color: theme.redText }}>
           <strong>Error:</strong> {errorMsg}
         </div>
       )}
 
       {/* Generated report info */}
       {lastReport && (
-        <div style={{ padding: 16, border: "1px solid #bbf7d0", borderRadius: 8, backgroundColor: "#f0fdf4" }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#166534", marginBottom: 8 }}>
-            &#10003; Report generated
+        <div style={{ padding: 16, border: `1px solid ${theme.border}`, borderRadius: 8, backgroundColor: theme.greenBg }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: theme.greenText, marginBottom: 8 }}>
+            Report generated
           </div>
-          <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.8 }}>
+          <div style={{ fontSize: 12, color: theme.textSoft, lineHeight: 1.8 }}>
             <div><strong>Bundle:</strong> <code>{lastReport.report_bundle_path}</code></div>
             <div><strong>HTML:</strong> <code>{lastReport.html_path}</code></div>
             <div><strong>Export:</strong> <code>{lastReport.export_path}</code></div>
@@ -341,21 +342,21 @@ export function ExportPanel({ projectId }: Props) {
 
       {/* Generated report history */}
       {mergedReports.length > 0 && (
-        <div style={{ padding: 16, border: "1px solid #e2e8f0", borderRadius: 8, backgroundColor: "#fff" }}>
-          <h4 style={{ fontSize: 13, fontWeight: 600, margin: "0 0 8px 0" }}>Generated reports</h4>
+        <div style={{ padding: 16, border: `1px solid ${theme.border}`, borderRadius: 8, backgroundColor: theme.surface }}>
+          <h4 style={{ fontSize: 13, fontWeight: 600, margin: "0 0 8px 0", color: theme.text }}>Generated reports</h4>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {mergedReports.slice(0, 10).map((r) => (
               <div
                 key={r.report_id}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6,
-                  backgroundColor: "#f8fafc", fontSize: 12, gap: 12,
+                  padding: "8px 10px", border: `1px solid ${theme.border}`, borderRadius: 6,
+                  backgroundColor: theme.surfaceMuted, fontSize: 12, gap: 12,
                 }}
               >
                 <div style={{ flex: 1 }}>
                   <code style={{ marginRight: 8 }}>{r.report_id.slice(0, 8)}</code>
-                  <span style={{ color: "#64748b" }}>
+                  <span style={{ color: theme.muted }}>
                     {new Date(r.created_at).toLocaleString()} &middot; {r.target_branch_id} &middot; {MODE_LABELS[r.mode]}
                   </span>
                 </div>
@@ -364,8 +365,8 @@ export function ExportPanel({ projectId }: Props) {
                     <button
                       onClick={() => handleOpenReport(r.html_path)}
                       style={{
-                        padding: "4px 10px", borderRadius: 4, border: "1px solid #cbd5e1",
-                        fontSize: 11, backgroundColor: "#fff", cursor: "pointer",
+                        padding: "4px 10px", borderRadius: 4, border: `1px solid ${theme.border}`,
+                        fontSize: 11, backgroundColor: theme.surface, cursor: "pointer", color: theme.text,
                       }}
                     >
                       Open report
@@ -380,7 +381,7 @@ export function ExportPanel({ projectId }: Props) {
 
       {/* Fallback when no runs */}
       {successfulRuns.length === 0 && (
-        <div style={{ padding: 16, border: "1px solid #fde68a", borderRadius: 8, backgroundColor: "#fffbeb", fontSize: 12, color: "#92400e" }}>
+        <div style={{ padding: 16, border: `1px solid ${theme.border}`, borderRadius: 8, backgroundColor: theme.yellowBg, fontSize: 12, color: theme.yellowText }}>
           Run the Scorecard Pathway to completion before exporting. All build, validation, and cutoff steps must succeed.
         </div>
       )}

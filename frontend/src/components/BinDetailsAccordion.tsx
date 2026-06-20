@@ -1,5 +1,5 @@
 import React from 'react';
-import { tableHeaderStyle, tableDataStyle } from '../styles';
+import { tableHeaderStyle, tableDataStyle, theme } from '../styles';
 
 interface Props {
   selectedVars: string[];
@@ -10,14 +10,14 @@ interface Props {
 export function BinDetailsAccordion({ selectedVars, sourceBins }: Props) {
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", marginBottom: 8 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: theme.text, marginBottom: 8 }}>
         Bin Details
       </div>
       {selectedVars.slice(0, 5).map((v) => {
         const bins = sourceBins[v]?.bins || [];
         return (
           <details key={v} style={{ marginBottom: 6 }}>
-            <summary style={{ cursor: "pointer", fontSize: 12, color: "#334155", fontWeight: 500 }}>
+            <summary style={{ cursor: "pointer", fontSize: 12, color: theme.textSoft, fontWeight: 500 }}>
               {v} ({bins.length} bins)
             </summary>
             <div
@@ -25,9 +25,9 @@ export function BinDetailsAccordion({ selectedVars, sourceBins }: Props) {
                 marginTop: 4,
                 marginLeft: 12,
                 padding: "4px 8px",
-                border: "1px solid #e2e8f0",
+                border: `1px solid ${theme.border}`,
                 borderRadius: 4,
-                backgroundColor: "#fff",
+                backgroundColor: theme.surface,
                 maxHeight: 200,
                 overflowY: "auto",
                 fontSize: 10,
@@ -35,7 +35,7 @@ export function BinDetailsAccordion({ selectedVars, sourceBins }: Props) {
             >
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                  <tr style={{ borderBottom: `1px solid ${theme.border}` }}>
                     <th style={tableHeaderStyle}>Bin ID</th>
                     <th style={tableHeaderStyle}>Lower</th>
                     <th style={tableHeaderStyle}>Upper</th>
@@ -62,7 +62,7 @@ export function BinDetailsAccordion({ selectedVars, sourceBins }: Props) {
         );
       })}
       {selectedVars.length > 5 && (
-        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+        <div style={{ fontSize: 11, color: theme.mutedSoft, marginTop: 4 }}>
           +{selectedVars.length - 5} more variables
         </div>
       )}

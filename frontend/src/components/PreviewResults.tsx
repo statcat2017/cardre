@@ -1,5 +1,6 @@
 import React from 'react';
 import type { ManualBinningPreviewResponse } from '../types';
+import { theme } from '../styles';
 
 interface Props {
   previewData: ManualBinningPreviewResponse | undefined;
@@ -13,16 +14,16 @@ export function PreviewResults({ previewData }: Props) {
       style={{
         marginBottom: 16,
         padding: 12,
-        border: `1px solid ${previewData.valid ? "#bbf7d0" : "#fecaca"}`,
+        border: `1px solid ${theme.border}`,
         borderRadius: 6,
-        backgroundColor: previewData.valid ? "#f0fdf4" : "#fef2f2",
+        backgroundColor: previewData.valid ? theme.greenBg : theme.redBg,
       }}
     >
       <div
         style={{
           fontSize: 12,
           fontWeight: 600,
-          color: previewData.valid ? "#166534" : "#dc2626",
+          color: previewData.valid ? theme.greenText : theme.redText,
           marginBottom: 6,
         }}
       >
@@ -30,9 +31,9 @@ export function PreviewResults({ previewData }: Props) {
       </div>
       {previewData.diagnostics?.warnings &&
         previewData.diagnostics.warnings.length > 0 && (
-        <div style={{ fontSize: 11, color: "#dc2626", marginBottom: 6 }}>
+        <div style={{ fontSize: 11, color: theme.redText, marginBottom: 6 }}>
           {previewData.diagnostics.warnings.map((w, i) => (
-            <div key={i}>• {w}</div>
+            <div key={i}>Warning: {w}</div>
           ))}
         </div>
       )}
@@ -40,15 +41,15 @@ export function PreviewResults({ previewData }: Props) {
         previewData.refined_bins_by_variable &&
         Object.keys(previewData.refined_bins_by_variable).length > 0 && (
         <details>
-          <summary style={{ cursor: "pointer", fontSize: 11, color: "#166534" }}>
+          <summary style={{ cursor: "pointer", fontSize: 11, color: theme.greenText }}>
             Show refined bins
           </summary>
           <pre
             style={{
               marginTop: 8,
               padding: 8,
-              backgroundColor: "#fff",
-              border: "1px solid #e2e8f0",
+              backgroundColor: theme.surface,
+              border: `1px solid ${theme.border}`,
               borderRadius: 4,
               fontSize: 10,
               maxHeight: 300,

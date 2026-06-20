@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { ArtifactListItem } from "../types";
 import { ArtifactRow } from "./ArtifactRow";
+import { theme } from "../styles";
 
 interface Props {
   projectId: string;
@@ -37,11 +38,11 @@ export function ArtifactBrowser({ projectId }: Props) {
   const artifacts: ArtifactListItem[] = data?.artifacts ?? [];
 
   return (
-    <div style={{ padding: 16, overflowY: "auto", flex: 1 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Artifacts</h3>
+    <div style={{ padding: 24, overflowY: "auto", flex: 1 }}>
+      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>Artifacts</h3>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-        <label style={{ fontSize: 11, color: "#64748b" }}>
+        <label style={{ fontSize: 11, color: theme.muted }}>
           Role
           <select
             value={role}
@@ -53,10 +54,11 @@ export function ArtifactBrowser({ projectId }: Props) {
               display: "block",
               marginTop: 2,
               padding: "4px 8px",
-              border: "1px solid #d1d5db",
+              border: `1px solid ${theme.borderStrong}`,
               borderRadius: 4,
               fontSize: 12,
-              backgroundColor: "#fff",
+              backgroundColor: theme.surface,
+              color: theme.text,
             }}
           >
             {ROLES.map((r) => (
@@ -66,7 +68,7 @@ export function ArtifactBrowser({ projectId }: Props) {
             ))}
           </select>
         </label>
-        <label style={{ fontSize: 11, color: "#64748b" }}>
+        <label style={{ fontSize: 11, color: theme.muted }}>
           Type
           <select
             value={artifactType}
@@ -78,10 +80,11 @@ export function ArtifactBrowser({ projectId }: Props) {
               display: "block",
               marginTop: 2,
               padding: "4px 8px",
-              border: "1px solid #d1d5db",
+              border: `1px solid ${theme.borderStrong}`,
               borderRadius: 4,
               fontSize: 12,
-              backgroundColor: "#fff",
+              backgroundColor: theme.surface,
+              color: theme.text,
             }}
           >
             {TYPES.map((t) => (
@@ -93,15 +96,15 @@ export function ArtifactBrowser({ projectId }: Props) {
         </label>
       </div>
 
-      {isLoading && <div style={{ color: "#64748b", fontSize: 13 }}>Loading artifacts...</div>}
+      {isLoading && <div style={{ color: theme.muted, fontSize: 13 }}>Loading artifacts...</div>}
       {isError && (
-        <div style={{ color: "#dc2626", fontSize: 13 }}>
+        <div style={{ color: theme.redText, fontSize: 13 }}>
           Failed to load artifacts: {(error as Error)?.message || "Unknown error"}
         </div>
       )}
 
       {!isLoading && !isError && artifacts.length === 0 && (
-        <div style={{ color: "#64748b", fontSize: 13 }}>
+        <div style={{ color: theme.muted, fontSize: 13 }}>
           No artifacts yet. Import a dataset and run the pathway to generate artifacts.
         </div>
       )}
@@ -114,10 +117,10 @@ export function ArtifactBrowser({ projectId }: Props) {
               gridTemplateColumns: "1fr 70px 80px 90px 130px",
               gap: 8,
               padding: "6px 8px",
-              borderBottom: "2px solid #e2e8f0",
+              borderBottom: `1px solid ${theme.border}`,
               fontSize: 11,
               fontWeight: 600,
-              color: "#64748b",
+              color: theme.muted,
               textTransform: "uppercase",
               letterSpacing: "0.05em",
             }}
