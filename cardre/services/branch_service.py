@@ -20,6 +20,7 @@ ALLOWED_BRANCH_POINTS: dict[str, str] = {
     "logistic-regression": "model_challenger",
     "score-scaling": "score_scaling_challenger",
     "cutoff-analysis": "cutoff_strategy_challenger",
+    "define-reject-population": "reject_inference_challenger",
 }
 
 
@@ -131,6 +132,25 @@ class BranchService:
                 f"BRANCH_POINT_NOT_IN_PLAN: Step {branch_point_step_id} "
                 f"not found in plan version {head_pv_id}."
             )
+
+        if branch_type == "reject_inference_challenger":
+            sample_def_step = next(
+                (s for s in steps if s.canonical_step_id == "sample-definition"),
+                None,
+            )
+            if sample_def_step is None:
+                raise ValueError(
+                    "REJECT_INFERENCE_CHALLENGER_MISSING_SAMPLE_DEF: "
+                    "No sample-definition step found in plan. "
+                    "A reject inference challenger requires a sample-definition step."
+                )
+            sample_domain = sample_def_step.params.get("sample_domain", "ttd")
+            if sample_domain != "ttd":
+                raise ValueError(
+                    f"REJECT_INFERENCE_CHALLENGER_REQUIRES_TTD: "
+                    f"sample_domain must be 'ttd', got {sample_domain!r}. "
+                    "Cannot add reject inference to an OTB sample."
+                )
 
         # --- Generate branch ID and step IDs ---
 

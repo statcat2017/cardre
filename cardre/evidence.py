@@ -36,6 +36,9 @@ from cardre.store import ProjectStore
 
 SCHEMA_MODELLING_METADATA = "cardre.modelling_metadata.v1"
 from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION  # noqa: E402, F401
+SCHEMA_SAMPLE_DEFINITION = "cardre.sample_definition.v1"
+SCHEMA_REJECT_POPULATION_CONFIG = "cardre.reject_population_config.v1"
+SCHEMA_REJECT_INFERENCE_RESULT = "cardre.reject_inference_result.v1"
 SCHEMA_SELECTION_DEFINITION = "cardre.selection_definition.v1"
 SCHEMA_WOE_TABLE = "cardre.woe_table.v1"
 SCHEMA_WOE_IV_EVIDENCE = "cardre.woe_iv_evidence.v1"
@@ -90,6 +93,9 @@ class EvidenceParseError(EvidenceError):
 class EvidenceKind(Enum):
     MODELLING_METADATA = "modelling_metadata"
     BIN_DEFINITION = "bin_definition"
+    SAMPLE_DEFINITION = "sample_definition"
+    REJECT_POPULATION_CONFIG = "reject_population_config"
+    REJECT_INFERENCE_RESULT = "reject_inference_result"
     SELECTION_DEFINITION = "selection_definition"
     WOE_TABLE = "woe_table"
     WOE_IV_EVIDENCE = "woe_iv_evidence"
@@ -219,6 +225,122 @@ class ModellingMetadata:
             extra={k: v for k, v in data.items()
                    if k not in ("target_column", "good_values", "bad_values",
                                 "indeterminate_values")},
+        )
+
+
+@dataclass(frozen=True)
+class SampleDefinition:
+    sample_method: str = "full_population"
+    sample_domain: str = "ttd"
+    total_rows: int = 0
+    financed_rows: int = 0
+    non_financed_rows: int = 0
+    rejection_source: str | None = None
+    rejection_column: str | None = None
+    rejection_values: list[Any] | None = None
+    approval_column: str | None = None
+    approval_values: list[Any] = field(default_factory=list)
+    weight_column: str | None = None
+    sample_description: str = ""
+    extra: JsonDict = field(default_factory=dict)
+
+    @classmethod
+    def from_json(cls, data: JsonDict) -> SampleDefinition:
+        return cls(
+            sample_method=data.get("sample_method", "full_population"),
+            sample_domain=data.get("sample_domain", "ttd"),
+            total_rows=data.get("total_rows", 0),
+            financed_rows=data.get("financed_rows", 0),
+            non_financed_rows=data.get("non_financed_rows", 0),
+            rejection_source=data.get("rejection_source"),
+            rejection_column=data.get("rejection_column"),
+            rejection_values=data.get("rejection_values"),
+            approval_column=data.get("approval_column"),
+            approval_values=data.get("approval_values", []),
+            weight_column=data.get("weight_column"),
+            sample_description=data.get("sample_description", ""),
+            extra={k: v for k, v in data.items()
+                   if k not in (
+                       "schema_version", "sample_method", "sample_domain",
+                       "total_rows", "financed_rows", "non_financed_rows",
+                       "rejection_source", "rejection_column", "rejection_values",
+                       "approval_column", "approval_values",
+                       "weight_column", "sample_description",
+                   )},
+        )
+
+
+@dataclass(frozen=True)
+class RejectPopulationConfig:
+    schema_version: str = SCHEMA_REJECT_POPULATION_CONFIG
+    source_artifact_id: str = ""
+    total_rows: int = 0
+    financed_rows: int = 0
+    non_financed_rows: int = 0
+    indeterminate_rows: int = 0
+    unlabeled_accepted_rows: int = 0
+    rejection_source: str = "target_missing"
+    rejection_column: str | None = None
+    rejection_values: list[str] | None = None
+    exclusion_categories: dict[str, int] = field(default_factory=dict)
+    observation_window_note: str = ""
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> RejectPopulationConfig:
+        return cls(
+            schema_version=data.get("schema_version", SCHEMA_REJECT_POPULATION_CONFIG),
+            source_artifact_id=data.get("source_artifact_id", ""),
+            total_rows=data.get("total_rows", 0),
+            financed_rows=data.get("financed_rows", 0),
+            non_financed_rows=data.get("non_financed_rows", 0),
+            indeterminate_rows=data.get("indeterminate_rows", 0),
+            unlabeled_accepted_rows=data.get("unlabeled_accepted_rows", 0),
+            rejection_source=data.get("rejection_source", "target_missing"),
+            rejection_column=data.get("rejection_column"),
+            rejection_values=data.get("rejection_values"),
+            exclusion_categories=dict(data.get("exclusion_categories", {})),
+            observation_window_note=data.get("observation_window_note", ""),
+        )
+
+
+@dataclass(frozen=True)
+class RejectInferenceResult:
+    schema_version: str = SCHEMA_REJECT_INFERENCE_RESULT
+    source_artifact_id: str = ""
+    method: str = "none"
+    method_params: dict[str, Any] = field(default_factory=dict)
+    missingness_assumption: str = "MAR"
+    ignorability_note: str = ""
+    theoretical_limitations: list[str] = field(default_factory=list)
+    n_financed: int = 0
+    n_non_financed: int = 0
+    n_inferred_good: int = 0
+    n_inferred_bad: int = 0
+    n_never_labeled: int = 0
+    resampling_factor: float | None = None
+    weight_summary: dict[str, float] | None = None
+    convergence: dict[str, Any] | None = None
+    runtime_seconds: float = 0.0
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> RejectInferenceResult:
+        return cls(
+            schema_version=data.get("schema_version", SCHEMA_REJECT_INFERENCE_RESULT),
+            source_artifact_id=data.get("source_artifact_id", ""),
+            method=data.get("method", "none"),
+            method_params=dict(data.get("method_params", {})),
+            missingness_assumption=data.get("missingness_assumption", "MAR"),
+            ignorability_note=data.get("ignorability_note", ""),
+            theoretical_limitations=list(data.get("theoretical_limitations", [])),
+            n_financed=data.get("n_financed", 0),
+            n_non_financed=data.get("n_non_financed", 0),
+            n_inferred_good=data.get("n_inferred_good", 0),
+            n_inferred_bad=data.get("n_inferred_bad", 0),
+            n_never_labeled=data.get("n_never_labeled", 0),
+            resampling_factor=data.get("resampling_factor"),
+            weight_summary=data.get("weight_summary"),
+            convergence=data.get("convergence"),
+            runtime_seconds=data.get("runtime_seconds", 0.0),
         )
 
 
@@ -540,6 +662,24 @@ _EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"definition"},
         schema_version=SCHEMA_MODELLING_METADATA,
         required_keys={"target_column", "good_values", "bad_values"},
+    ),
+    EvidenceKind.SAMPLE_DEFINITION: _Profile(
+        expected_roles={"definition"},
+        expected_artifact_types={"definition"},
+        schema_version=SCHEMA_SAMPLE_DEFINITION,
+        required_keys={"sample_method"},
+    ),
+    EvidenceKind.REJECT_POPULATION_CONFIG: _Profile(
+        expected_roles={"definition"},
+        expected_artifact_types={"definition"},
+        schema_version=SCHEMA_REJECT_POPULATION_CONFIG,
+        required_keys={"total_rows", "rejection_source"},
+    ),
+    EvidenceKind.REJECT_INFERENCE_RESULT: _Profile(
+        expected_roles={"report"},
+        expected_artifact_types={"report"},
+        schema_version=SCHEMA_REJECT_INFERENCE_RESULT,
+        required_keys={"method", "missingness_assumption"},
     ),
     EvidenceKind.BIN_DEFINITION: _Profile(
         expected_roles={"definition"},
@@ -866,6 +1006,9 @@ class ArtifactEvidenceReader:
 
         parsers = {
             EvidenceKind.MODELLING_METADATA: ModellingMetadata.from_json,
+            EvidenceKind.SAMPLE_DEFINITION: SampleDefinition.from_json,
+            EvidenceKind.REJECT_POPULATION_CONFIG: RejectPopulationConfig.from_json,
+            EvidenceKind.REJECT_INFERENCE_RESULT: RejectInferenceResult.from_json,
             EvidenceKind.BIN_DEFINITION: lambda d: BinDefinition.from_json(d, artifact.artifact_id),
             EvidenceKind.SELECTION_DEFINITION: SelectionDefinition.from_json,
             EvidenceKind.WOE_IV_EVIDENCE: WoeIvEvidence.from_json,
@@ -922,11 +1065,17 @@ __all__ = [
     "ModelArtifact",
     "RoleMetrics",
     "ScoreScaling",
+    "RejectInferenceResult",
+    "RejectPopulationConfig",
+    "SampleDefinition",
     "SCHEMA_BIN_DEFINITION",
     "SCHEMA_CUTOFF_ANALYSIS",
     "SCHEMA_FROZEN_SCORECARD_BUNDLE",
     "SCHEMA_MANUAL_BINNING_OVERRIDES",
     "SCHEMA_MODELLING_METADATA",
+    "SCHEMA_REJECT_INFERENCE_RESULT",
+    "SCHEMA_REJECT_POPULATION_CONFIG",
+    "SCHEMA_SAMPLE_DEFINITION",
     "SCHEMA_MODEL_ARTIFACT",
     "SCHEMA_SCORE_APPLICATION_EVIDENCE",
     "SCHEMA_SCORE_SCALING",

@@ -12,7 +12,7 @@ from cardre.audit import (
     NodeOutput,
     NodeType,
 )
-from cardre.evidence import SCHEMA_MODELLING_METADATA
+from cardre.evidence import SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION
 from cardre.node_parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -919,32 +919,66 @@ class DevelopmentSampleDefinitionNode(NodeType):
     input_roles: list[str] = ["input", "train", "definition"]
     output_roles: list[str] = ["definition"]
 
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        domain = params.get("sample_domain", "ttd")
+        if domain not in ("ttd", "otb"):
+            errors.append("sample_domain must be 'ttd' or 'otb'")
+        if domain == "ttd":
+            rejection_source = params.get("rejection_source")
+            if rejection_source is not None and rejection_source not in ("flag_column", "target_missing"):
+                errors.append("rejection_source must be 'flag_column', 'target_missing', or None")
+        if domain == "otb":
+            if not params.get("approval_column"):
+                errors.append("approval_column is required for otb sample domain")
+        return errors
+
     def run(self, context: ExecutionContext) -> NodeOutput:
 
         store = context.store
         params = context.validated_params
 
+        sample_domain = params.get("sample_domain", "ttd")
+        rejection_source = params.get("rejection_source")
+        rejection_column = params.get("rejection_column")
+        rejection_values = params.get("rejection_values")
+        approval_column = params.get("approval_column")
+        approval_values = params.get("approval_values", [])
         weight_column = params.get("weight_column")
+
+        dataset_artifact = next(a for a in context.input_artifacts if a.role in ("input", "train"))
+        df = pl.read_parquet(store.artifact_path(dataset_artifact))
+        total_rows = df.height
+
         if weight_column:
-            dataset_artifact = next(a for a in context.input_artifacts if a.role in ("input", "train"))
-            df = pl.read_parquet(store.artifact_path(dataset_artifact))
             if weight_column not in df.columns:
                 raise ValueError(f"Weight column '{weight_column}' not found in dataset")
             if not df.schema[weight_column].is_numeric():
                 raise ValueError(f"Weight column '{weight_column}' must be numeric")
 
         sample_def = {
+            "schema_version": SCHEMA_SAMPLE_DEFINITION,
             "sample_method": params.get("sample_method", "full_population"),
             "weight_column": weight_column,
             "population_bad_rate": params.get("population_bad_rate"),
             "prior_probability_adjustment": params.get("prior_probability_adjustment"),
+            "sample_domain": sample_domain,
+            "total_rows": total_rows,
+            "financed_rows": 0,
+            "non_financed_rows": 0,
+            "rejection_source": rejection_source,
+            "rejection_column": rejection_column,
+            "rejection_values": rejection_values,
+            "approval_column": approval_column,
+            "approval_values": approval_values,
+            "sample_description": params.get("sample_description", ""),
         }
 
         artifact = write_json_artifact(
             store, artifact_type="definition", role="definition",
             stem=f"sample-definition-{context.step_spec.step_id}",
             payload=sample_def,
-            metadata={},
+            metadata={"schema_version": SCHEMA_SAMPLE_DEFINITION},
         )
 
         return NodeOutput(

@@ -57,6 +57,11 @@ from cardre.nodes.ensembles import (
 from cardre.nodes.tuning import (
     HyperparameterTuningNode,
 )
+from cardre.nodes.reject_inference import (
+    DefineRejectPopulationNode,
+    RejectInferenceAugmentationNode,
+    RejectInferenceNoneNode,
+)
 from cardre.nodes.fairness import (
     AlternativeDataManifestNode,
     FairnessReportNode,
@@ -89,6 +94,7 @@ __all__ = [
     "CutoffAnalysisNode",
     "DecisionTreeNode",
     "DefineModellingMetadataNode",
+    "DefineRejectPopulationNode",
     "DevelopmentSampleDefinitionNode",
     "DummyApplyNode",
     "DummyFitNode",
@@ -110,6 +116,8 @@ __all__ = [
     "ModelLimitationsNode",
     "ProfileDatasetNode",
     "ProxyRiskReportNode",
+    "RejectInferenceAugmentationNode",
+    "RejectInferenceNoneNode",
     "RandomForestClassifierNode",
     "ResampleTrainingDataNode",
     "ScoreScalingNode",
