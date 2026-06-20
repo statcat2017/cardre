@@ -481,6 +481,7 @@ class VariableClusteringEvidence:
     absolute_correlation: bool = True
     missing_handling: str = "pairwise"
     candidate_limit: int = 50
+    minimum_pair_count: int = 30
     representative_rule: str = "highest_iv"
     clusters: list[VariableCluster] = field(default_factory=list)
     singleton_variables: list[str] = field(default_factory=list)
@@ -520,6 +521,7 @@ class VariableClusteringEvidence:
             missing_handling=data.get("missing_handling", "pairwise"),
             candidate_limit=data.get("candidate_limit", 50),
             representative_rule=data.get("representative_rule", "highest_iv"),
+            minimum_pair_count=data.get("minimum_pair_count", 30),
             clusters=clusters,
             singleton_variables=list(data.get("singleton_variables", [])),
             warnings=list(data.get("warnings", [])),

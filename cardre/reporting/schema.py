@@ -307,6 +307,7 @@ class RedundancyReviewInfo(BaseModel):
     absolute_correlation: bool = True
     missing_handling: str = "pairwise"
     candidate_limit: int = 50
+    minimum_pair_count: int = 30
     representative_rule: str = ""
     cluster_count: int = 0
     singleton_count: int = 0
