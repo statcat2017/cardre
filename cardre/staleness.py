@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from cardre.audit import RunStepRecord, StepSpec
+from cardre.evidence_locator import collect_run_steps_for_plan_version
 from cardre.store import ProjectStore
 
 
@@ -31,34 +32,10 @@ def compute_staleness(
     (non-branch) runs only.
     """
     steps = store.get_plan_version_steps(plan_version_id)
-    run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=branch_id)
 
-    if run_id is None and branch_id:
-        pv = store.get_plan_version(plan_version_id)
-        if pv is not None:
-            run_id = store.get_any_successful_run_id_for_plan(pv["plan_id"])
-
-    if run_id is None:
-        pv = store.get_plan_version(plan_version_id)
-        if pv is not None:
-            run_id = store.get_latest_successful_run_id_for_plan(pv["plan_id"])
-
-        if run_id is None:
-            return {s.step_id: True for s in steps}
-
-    run_steps = store.get_run_steps(run_id)
-    rs_by_step = {rs.step_id: rs for rs in run_steps}
-
-    if branch_id:
-        pv = store.get_plan_version(plan_version_id)
-        if pv is not None:
-            full_run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=None)
-            if full_run_id is None:
-                full_run_id = store.get_latest_successful_run_id_for_plan(pv["plan_id"])
-            if full_run_id is not None and full_run_id != run_id:
-                for prs in store.get_run_steps(full_run_id):
-                    if prs.step_id not in rs_by_step:
-                        rs_by_step[prs.step_id] = prs
+    rs_by_step = collect_run_steps_for_plan_version(store, plan_version_id, branch_id=branch_id)
+    if not rs_by_step:
+        return {s.step_id: True for s in steps}
 
     stale: dict[str, bool] = {}
     for spec in steps:
@@ -168,33 +145,10 @@ def staleness_detail(
     branch_id: str | None = None,
 ) -> list[StalenessDetail]:
     steps = store.get_plan_version_steps(plan_version_id)
-    run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=branch_id)
 
-    if run_id is None and branch_id:
-        pv = store.get_plan_version(plan_version_id)
-        if pv is not None:
-            run_id = store.get_any_successful_run_id_for_plan(pv["plan_id"])
-
-    if run_id is None:
-        pv = store.get_plan_version(plan_version_id)
-        if pv is not None:
-            run_id = store.get_latest_successful_run_id_for_plan(pv["plan_id"])
-        if run_id is None:
-            return [StalenessDetail(step_id=s.step_id, is_stale=True, reason="never_run") for s in steps]
-
-    run_steps = store.get_run_steps(run_id)
-    rs_by_step = {rs.step_id: rs for rs in run_steps}
-
-    if branch_id:
-        pv = store.get_plan_version(plan_version_id)
-        if pv is not None:
-            full_run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=None)
-            if full_run_id is None:
-                full_run_id = store.get_latest_successful_run_id_for_plan(pv["plan_id"])
-            if full_run_id is not None and full_run_id != run_id:
-                for prs in store.get_run_steps(full_run_id):
-                    if prs.step_id not in rs_by_step:
-                        rs_by_step[prs.step_id] = prs
+    rs_by_step = collect_run_steps_for_plan_version(store, plan_version_id, branch_id=branch_id)
+    if not rs_by_step:
+        return [StalenessDetail(step_id=s.step_id, is_stale=True, reason="never_run") for s in steps]
 
     stale_results = compute_staleness(store, plan_version_id, branch_id=branch_id)
     results: list[StalenessDetail] = []

@@ -315,8 +315,8 @@ class RunScope:
         force: bool = False,
     ) -> RunScope:
         steps = store.get_plan_version_steps(plan_version_id)
-        from cardre.executor import PlanExecutor
-        ancestors = PlanExecutor.find_ancestors(PlanExecutor, target_step_id, steps)  # noqa: SLF001
+        from cardre.step_graph import ancestor_closure
+        ancestors = ancestor_closure(target_step_id, steps)
         closure = ancestors | {target_step_id}
         closure_steps = [s for s in steps if s.step_id in closure]
         return cls(

@@ -10,6 +10,7 @@ import uuid
 from typing import Any
 
 from cardre.audit import StepSpec, utc_now_iso
+from cardre.step_graph import descendant_closure
 from cardre.store import ProjectStore
 
 
@@ -22,23 +23,6 @@ ALLOWED_BRANCH_POINTS: dict[str, str] = {
     "cutoff-analysis": "cutoff_strategy_challenger",
     "define-reject-population": "reject_inference_challenger",
 }
-
-
-def _descendant_closure(step_id: str, steps: list[StepSpec]) -> set[str]:
-    step_ids = {s.step_id for s in steps}
-    if step_id not in step_ids:
-        raise KeyError(step_id)
-    descendants = set()
-    changed = True
-    while changed:
-        changed = False
-        for s in steps:
-            if s.step_id in descendants:
-                continue
-            if s.step_id == step_id or descendants.intersection(s.parent_step_ids):
-                descendants.add(s.step_id)
-                changed = True
-    return descendants | {step_id}
 
 
 class BranchService:
@@ -155,7 +139,7 @@ class BranchService:
         # --- Generate branch ID and step IDs ---
 
         branch_id = f"br_{uuid.uuid4().hex[:6]}"
-        duplicate_closure = _descendant_closure(branch_point_step_id, steps)
+        duplicate_closure = descendant_closure(branch_point_step_id, steps)
 
         # Build step_id mapping: original -> generated (for duplicated steps)
         step_id_map: dict[str, str] = {}

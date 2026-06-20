@@ -39,6 +39,7 @@ from cardre.errors import (
     ParameterValidationError,
 )
 from cardre.registry import NodeRegistry
+from cardre.step_graph import ancestor_closure, descendant_closure
 from cardre.store import ProjectStore
 from cardre.topology import validate_topology
 
@@ -209,7 +210,7 @@ class PlanExecutor:
                 f"Target step {target_step_id!r} not found in plan version {plan_version_id}"
             )
 
-        ancestors = self.find_ancestors(target_step_id, steps)
+        ancestors = ancestor_closure(target_step_id, steps)
         closure = ancestors | {target_step_id}
 
         closure_steps = [s for s in steps if s.step_id in closure]
@@ -620,7 +621,7 @@ class PlanExecutor:
 
         # Determine which step_ids are in the affected subgraph
         all_step_ids = {s.step_id for s in previous_steps}
-        affected = self._descendants(changed_step_id, previous_steps)
+        affected = descendant_closure(changed_step_id, previous_steps)
 
         new_steps = replace_step_params(previous_steps, changed_step_id, new_params)
 
@@ -694,22 +695,6 @@ class PlanExecutor:
 
         return run_id
 
-    def _descendants(self, step_id: str, steps: list[StepSpec]) -> set[str]:
-        step_ids = {s.step_id for s in steps}
-        if step_id not in step_ids:
-            raise KeyError(step_id)
-        descendants = set()
-        changed = True
-        while changed:
-            changed = False
-            for s in steps:
-                if s.step_id in descendants:
-                    continue
-                if s.step_id == step_id or descendants.intersection(s.parent_step_ids):
-                    descendants.add(s.step_id)
-                    changed = True
-        return descendants | {step_id}
-
     # ------------------------------------------------------------------
     # Shared step loop component
     # ------------------------------------------------------------------
@@ -780,21 +765,6 @@ class PlanExecutor:
         )
         store.save_run_step(copied_rs)
         return copied_rs
-
-    def find_ancestors(self, step_id: str, steps: list[StepSpec]) -> set[str]:
-        """Return all ancestor step_ids of the given step (reverse
-        topological walk)."""
-        step_map = {s.step_id: s for s in steps}
-        ancestors: set[str] = set()
-        queue = list(step_map[step_id].parent_step_ids) if step_id in step_map else []
-        while queue:
-            pid = queue.pop()
-            if pid in ancestors:
-                continue
-            ancestors.add(pid)
-            if pid in step_map:
-                queue.extend(step_map[pid].parent_step_ids)
-        return ancestors
 
 
 class RoleAccessError(ValueError):
