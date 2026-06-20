@@ -194,6 +194,25 @@ class VariableClusteringNode(NodeType):
             if linkage not in ("average", "complete"):
                 errors.append(f"Unknown linkage: {linkage!r}")
 
+        input_representation = params.get("input_representation", "raw_train")
+        if input_representation not in ("raw_train", "woe_train"):
+            errors.append(f"Unknown input_representation: {input_representation!r}")
+
+        missing_handling = params.get("missing_handling", "pairwise")
+        if missing_handling not in ("pairwise", "complete_case"):
+            errors.append(f"Unknown missing_handling: {missing_handling!r}")
+
+        representative_rule = params.get("representative_rule", "highest_iv")
+        if representative_rule not in ("highest_iv", "lowest_missing", "manual"):
+            errors.append(f"Unknown representative_rule: {representative_rule!r}")
+
+        minimum_pair_count = params.get("minimum_pair_count", 30)
+        try:
+            if int(minimum_pair_count) < 1:
+                errors.append("minimum_pair_count must be >= 1")
+        except (ValueError, TypeError):
+            errors.append("minimum_pair_count must be a positive integer")
+
         return errors
 
     def _build_woe_columns(
@@ -253,6 +272,16 @@ class VariableClusteringNode(NodeType):
         if missing_handling == "complete_case":
             matrix_df = df.select(columns).drop_nulls()
             mat = matrix_df.to_numpy()
+            if mat.shape[0] == 0:
+                warnings_list.append({
+                    "code": "NO_COMPLETE_CASE_ROWS",
+                    "severity": "warning",
+                    "variable_a": "",
+                    "variable_b": "",
+                    "message": "No complete-case rows available; returning identity correlation matrix",
+                })
+                df_corr = pl.DataFrame(arr, schema=columns, orient="row").with_row_index("_col")
+                return df_corr, warnings_list
             if mat.shape[0] < minimum_pair_count:
                 warnings_list.append({
                     "code": "LOW_PAIR_COUNT",

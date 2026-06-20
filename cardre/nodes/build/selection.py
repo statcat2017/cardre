@@ -285,7 +285,10 @@ class VariableSelectionNode(NodeType):
                     rep = eligible[0]
                     rep_reason = f"highest IV ({iv_map.get(rep, 0.0):.4f}) in cluster"
                 elif cluster_rule == "one_per_cluster_lowest_missing":
-                    rep = min(eligible, key=lambda v: cluster_member_metrics.get((cid, v), {}).get("missing_rate") or float("inf"))
+                    def _missing_key(v: str) -> float:
+                        mr = cluster_member_metrics.get((cid, v), {}).get("missing_rate")
+                        return float("inf") if mr is None else mr
+                    rep = min(eligible, key=_missing_key)
                     mr = cluster_member_metrics.get((cid, rep), {}).get("missing_rate")
                     rep_reason = f"lowest missing rate ({mr:.4f}) in cluster" if mr is not None else "lowest missing rate in cluster"
 

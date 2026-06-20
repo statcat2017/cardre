@@ -628,6 +628,29 @@ class TestVariableSelectionClusterRules(unittest.TestCase):
             for d in decisions
         ))
 
+    def test_one_per_cluster_lowest_missing_zero_rate_wins(self) -> None:
+        """A variable with missing_rate=0.0 should be preferred over one with missing_rate=0.01."""
+        store, tmp = make_store()
+        store.initialize()
+        iv_art = _build_iv_artifact(store, [("v1", 0.5), ("v2", 0.3)])
+        clust_art = _build_clustering_artifact(store, [
+            {"cluster_id": "c1",
+             "variables": [
+                 {"variable": "v1", "iv": 0.5, "missing_rate": 0.01},
+                 {"variable": "v2", "iv": 0.3, "missing_rate": 0.0},
+             ],
+             "representative_suggestion": None, "representative_reason": "",
+             "max_pairwise_abs_corr": 0.9, "notes": []},
+        ])
+        payload = _run_selection(store, iv_art, clust_art, {
+            "min_iv": 0.02, "max_variables": 15,
+            "cluster_representative_rule": "one_per_cluster_lowest_missing",
+            "cluster_representative_overrides": [],
+        })
+        selected_vars = [s["variable"] for s in payload["selected"]]
+        self.assertIn("v2", selected_vars, "v2 has missing_rate=0.0 and should win over v1's 0.01")
+        self.assertNotIn("v1", selected_vars)
+
 
 # ======================================================================
 # Regression tests for clustering behaviour
