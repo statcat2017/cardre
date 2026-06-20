@@ -113,9 +113,11 @@ class TestReportContract:
         assert resp.status_code == 200
         assert resp.json() == []  # no reports yet — empty list is valid
 
-    def test_generate_report_response_includes_zip_path(self, client, tmp_path):
+    def test_generate_report_returns_error_with_fake_run(self, client, tmp_path):
         """GenerateReportResponse declares zip_path but route never sets it.
-        This test documents the known gap."""
+        This test documents the known gap by verifying the endpoint accepts
+        the request shape. A full success-path test would require a real run
+        and report pipeline."""
         ids = _setup_project_and_branch(client, tmp_path)
         fake_run_id = str(uuid.uuid4())
         resp = client.post(
