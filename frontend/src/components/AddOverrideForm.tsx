@@ -1,5 +1,5 @@
 import React from 'react';
-import { formInputStyle, addButtonStyle } from '../styles';
+import { formInputStyle, addButtonStyle, theme } from '../styles';
 
 interface Props {
   overrideVar: string;
@@ -34,18 +34,18 @@ export function AddOverrideForm({
     <div
       style={{
         padding: 12,
-        border: "1px solid #dbeafe",
+        border: `1px solid ${theme.border}`,
         borderRadius: 6,
-        backgroundColor: "#eff6ff",
+        backgroundColor: theme.surface,
         marginBottom: 16,
       }}
     >
-      <div style={{ fontSize: 12, fontWeight: 600, color: "#1e40af", marginBottom: 8 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: theme.text, marginBottom: 8 }}>
         Add Override
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", gap: 8 }}>
-          <label style={{ fontSize: 11, color: "#64748b", flex: 1 }}>
+          <label style={{ fontSize: 11, color: theme.muted, flex: 1 }}>
             Variable
             <select
               value={overrideVar}
@@ -58,7 +58,7 @@ export function AddOverrideForm({
               ))}
             </select>
           </label>
-          <label style={{ fontSize: 11, color: "#64748b", flex: 1 }}>
+          <label style={{ fontSize: 11, color: theme.muted, flex: 1 }}>
             Action
             <select
               value={overrideAction}
@@ -72,7 +72,7 @@ export function AddOverrideForm({
             </select>
           </label>
         </div>
-        <label style={{ fontSize: 11, color: "#64748b" }}>
+        <label style={{ fontSize: 11, color: theme.muted }}>
           Source Bin IDs (comma-separated)
           <input
             type="text"
@@ -82,7 +82,7 @@ export function AddOverrideForm({
             placeholder="bin_0, bin_1, bin_2"
           />
         </label>
-        <label style={{ fontSize: 11, color: "#64748b" }}>
+        <label style={{ fontSize: 11, color: theme.muted }}>
           New Label (optional, for merge/group)
           <input
             type="text"
@@ -92,7 +92,7 @@ export function AddOverrideForm({
             placeholder="e.g. Combined Low-Risk"
           />
         </label>
-        <label style={{ fontSize: 11, color: "#64748b" }}>
+        <label style={{ fontSize: 11, color: theme.muted }}>
           Reason (required)
           <input
             type="text"

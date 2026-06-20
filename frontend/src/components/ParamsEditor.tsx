@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { UpdateStepParamsResponse } from "../types";
 import { useMessage } from "../hooks/useMessage";
 import { MessageBanner } from "./MessageBanner";
+import { theme } from "../styles";
 
 interface Props {
   planId: string;
@@ -79,7 +80,7 @@ export function ParamsEditor({
   return (
     <div
       style={{
-        borderTop: "1px solid #e2e8f0",
+        borderTop: `1px solid ${theme.border}`,
         marginTop: 12,
         paddingTop: 12,
       }}
@@ -92,10 +93,10 @@ export function ParamsEditor({
           marginBottom: 8,
         }}
       >
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>
           Parameters
         </span>
-        <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace" }}>
+        <span style={{ fontSize: 10, color: theme.mutedSoft, fontFamily: theme.fontMono }}>
           v{basePlanVersionId.slice(0, 8)}…
         </span>
       </div>
@@ -108,14 +109,14 @@ export function ParamsEditor({
         style={{
           width: "100%",
           padding: "8px 10px",
-          border: "1px solid #d1d5db",
+          border: `1px solid ${theme.borderStrong}`,
           borderRadius: 4,
           fontSize: 11,
-          fontFamily: "monospace",
+          fontFamily: theme.fontMono,
           resize: "vertical",
           boxSizing: "border-box",
-          backgroundColor: saving ? "#f1f5f9" : "#fff",
-          color: "#1e293b",
+          backgroundColor: saving ? theme.canvasSoft : theme.surface,
+          color: theme.text,
           lineHeight: 1.5,
         }}
         spellCheck={false}
@@ -131,7 +132,7 @@ export function ParamsEditor({
           padding: "6px 16px",
           borderRadius: 4,
           border: "none",
-          backgroundColor: saving ? "#93c5fd" : "#3b82f6",
+          backgroundColor: saving ? theme.mutedSoft : theme.text,
           color: "#fff",
           fontSize: 12,
           fontWeight: 600,

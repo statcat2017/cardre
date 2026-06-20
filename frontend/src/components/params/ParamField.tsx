@@ -1,5 +1,6 @@
 import React from "react";
 import type { SafeDefinition } from "./paramsTypes";
+import { theme } from "../../styles";
 
 interface Props {
   param: SafeDefinition;
@@ -14,11 +15,12 @@ export function ParamField({ param, value, error, disabled, onChange }: Props) {
     display: "block",
     width: "100%",
     padding: "4px 8px",
-    border: error ? "1px solid #dc2626" : "1px solid #d1d5db",
+    border: error ? `1px solid ${theme.redText}` : `1px solid ${theme.borderStrong}`,
     borderRadius: 4,
     fontSize: 12,
     boxSizing: "border-box",
-    backgroundColor: disabled ? "#f1f5f9" : "#fff",
+    backgroundColor: disabled ? theme.canvasSoft : theme.surface,
+    color: theme.text,
   };
 
   const renderControl = () => {
@@ -93,10 +95,10 @@ export function ParamField({ param, value, error, disabled, onChange }: Props) {
         return (
           <div>
             {isComplex && (
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "#64748b",
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: theme.muted,
                   marginBottom: 2,
                 }}
               >
@@ -111,7 +113,7 @@ export function ParamField({ param, value, error, disabled, onChange }: Props) {
               style={{
                 ...inputStyle,
                 resize: "vertical",
-                fontFamily: "monospace",
+                fontFamily: theme.fontMono,
                 fontSize: 11,
                 lineHeight: 1.4,
               }}
@@ -135,7 +137,7 @@ export function ParamField({ param, value, error, disabled, onChange }: Props) {
             style={{
               ...inputStyle,
               resize: "vertical",
-              fontFamily: "monospace",
+              fontFamily: theme.fontMono,
               fontSize: 11,
               lineHeight: 1.4,
             }}
@@ -171,12 +173,12 @@ export function ParamField({ param, value, error, disabled, onChange }: Props) {
           style={{
             fontSize: 11,
             fontWeight: 600,
-            color: "#1e293b",
+            color: theme.text,
           }}
         >
           {param.label}
           {param.required && (
-            <span style={{ color: "#dc2626", marginLeft: 2 }}>*</span>
+            <span style={{ color: theme.redText, marginLeft: 2 }}>*</span>
           )}
         </label>
         {param.help_text && (
@@ -184,17 +186,17 @@ export function ParamField({ param, value, error, disabled, onChange }: Props) {
             title={param.help_text}
             style={{
               fontSize: 10,
-              color: "#94a3b8",
+              color: theme.mutedSoft,
               cursor: "help",
             }}
           >
-            ⓘ
+            i
           </span>
         )}
       </div>
       {renderControl()}
       {error && (
-        <div style={{ fontSize: 10, color: "#dc2626", marginTop: 2 }}>
+        <div style={{ fontSize: 10, color: theme.redText, marginTop: 2 }}>
           {error}
         </div>
       )}

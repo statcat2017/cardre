@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { ManualBinningEditorStateResponse, ManualBinningPreviewResponse } from "../types";
-import { backButtonStyle, linkButtonStyle } from "../styles";
+import { backButtonStyle, linkButtonStyle, theme } from "../styles";
 import { useMessage } from "../hooks/useMessage";
 import { MessageBanner } from "./MessageBanner";
 import { SourceBinsChips } from "./SourceBinsChips";
@@ -129,7 +129,7 @@ export function ManualBinningEditor({
 
   if (isLoading) {
     return (
-      <div style={{ padding: 24, color: "#64748b", fontSize: 13 }}>
+      <div style={{ padding: 24, color: theme.muted, fontSize: 13 }}>
         Loading manual binning editor state...
       </div>
     );
@@ -137,7 +137,7 @@ export function ManualBinningEditor({
 
   if (!es) {
     return (
-      <div style={{ padding: 24, color: "#dc2626", fontSize: 13 }}>
+      <div style={{ padding: 24, color: theme.redText, fontSize: 13 }}>
         Could not load editor state.
         <button onClick={onBack} style={linkButtonStyle}>Back</button>
       </div>
@@ -147,21 +147,21 @@ export function ManualBinningEditor({
   if (!es.ready) {
     return (
       <div style={{ padding: 24 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Manual Bin Editing</h3>
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>Manual Bin Editing</h3>
         <div
           style={{
             padding: 16,
-            backgroundColor: "#fffbeb",
-            border: "1px solid #fde68a",
+            backgroundColor: theme.yellowBg,
+            border: `1px solid ${theme.border}`,
             borderRadius: 6,
-            color: "#92400e",
+            color: theme.yellowText,
             fontSize: 13,
           }}
         >
           <strong>Not Ready</strong>
           <p style={{ margin: "8px 0 0 0" }}>{es.blocked_reason}</p>
           {es.required_steps && es.required_steps.length > 0 && (
-            <div style={{ marginTop: 8, fontSize: 12, color: "#78350f" }}>
+            <div style={{ marginTop: 8, fontSize: 12, color: theme.yellowText }}>
               Required steps: {es.required_steps.join(", ")}
             </div>
           )}
@@ -177,14 +177,14 @@ export function ManualBinningEditor({
   const sourceBins = (es.source_bins_by_variable || {}) as Record<string, { bins?: Record<string, unknown>[] }>;
 
   return (
-    <div style={{ padding: 16, overflowY: "auto", flex: 1 }}>
+    <div style={{ padding: 24, overflowY: "auto", flex: 1 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <button onClick={onBack} style={backButtonStyle}>
-          ← Back
+          Back
         </button>
-        <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Manual Bin Editing</h3>
+        <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: theme.text }}>Manual Bin Editing</h3>
         {es.warnings && es.warnings.length > 0 && (
-          <span style={{ fontSize: 11, color: "#f59e0b" }}>
+          <span style={{ fontSize: 11, color: theme.yellowText }}>
             {es.warnings.length} warning{es.warnings.length > 1 ? "s" : ""}
           </span>
         )}
@@ -236,9 +236,9 @@ export function ManualBinningEditor({
           style={{
             padding: "8px 16px",
             borderRadius: 4,
-            border: "1px solid #3b82f6",
-            backgroundColor: previewMutation.isPending ? "#eff6ff" : "#fff",
-            color: "#3b82f6",
+            border: `1px solid ${theme.text}`,
+            backgroundColor: previewMutation.isPending ? theme.canvasSoft : theme.surface,
+            color: theme.text,
             fontSize: 12,
             fontWeight: 600,
             cursor: previewMutation.isPending || draftOverrides.length === 0 ? "not-allowed" : "pointer",
@@ -256,7 +256,7 @@ export function ManualBinningEditor({
             padding: "8px 16px",
             borderRadius: 4,
             border: "none",
-            backgroundColor: saveMutation.isPending ? "#93c5fd" : "#3b82f6",
+            backgroundColor: saveMutation.isPending ? theme.mutedSoft : theme.text,
             color: "#fff",
             fontSize: 12,
             fontWeight: 600,
@@ -274,11 +274,11 @@ export function ManualBinningEditor({
               key={i}
               style={{
                 padding: "4px 8px",
-                backgroundColor: "#fffbeb",
-                border: "1px solid #fde68a",
+                backgroundColor: theme.yellowBg,
+                border: `1px solid ${theme.border}`,
                 borderRadius: 4,
                 fontSize: 11,
-                color: "#92400e",
+                color: theme.yellowText,
                 marginBottom: 4,
               }}
             >

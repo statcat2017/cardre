@@ -1,4 +1,5 @@
 import React from 'react';
+import { theme } from '../styles';
 
 interface Props {
   selectedVars: string[];
@@ -9,7 +10,7 @@ interface Props {
 export function SourceBinsChips({ selectedVars, sourceBins, draftOverrides }: Props) {
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", marginBottom: 8 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: theme.text, marginBottom: 8 }}>
         Source Bins ({selectedVars.length} selected variable{selectedVars.length !== 1 ? "s" : ""})
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -21,11 +22,11 @@ export function SourceBinsChips({ selectedVars, sourceBins, draftOverrides }: Pr
               key={v}
               style={{
                 padding: "4px 10px",
-                borderRadius: 12,
-                border: `1px solid ${hasOverride ? "#3b82f6" : "#e2e8f0"}`,
-                backgroundColor: hasOverride ? "#eff6ff" : "#f8fafc",
+                borderRadius: 9999,
+                border: `1px solid ${theme.border}`,
+                backgroundColor: hasOverride ? theme.blueBg : theme.canvasSoft,
                 fontSize: 11,
-                color: hasOverride ? "#2563eb" : "#475569",
+                color: hasOverride ? theme.blueText : theme.textSoft,
                 fontWeight: hasOverride ? 600 : 400,
               }}
             >

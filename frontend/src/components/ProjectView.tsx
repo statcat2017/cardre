@@ -12,6 +12,7 @@ import { ArtifactBrowser } from "./ArtifactBrowser";
 import { ManualBinningEditor } from "./ManualBinningEditor";
 import { ExportPanel } from "./ExportPanel";
 import type { PlanResponse, StepStatus, UpdateStepParamsResponse } from "../types";
+import { theme } from "../styles";
 
 interface Props {
   projectId: string;
@@ -191,11 +192,11 @@ export function ProjectView({ projectId, onBack }: Props) {
   const planId = scorecardPlan?.plan_id ?? null;
 
   if (projectLoading) {
-    return <div style={{ padding: 24 }}>Loading project...</div>;
+    return <div style={{ padding: 24, backgroundColor: theme.canvas, color: theme.muted }}>Loading project...</div>;
   }
 
   if (!project) {
-    return <div style={{ padding: 24 }}>Project not found.</div>;
+    return <div style={{ padding: 24, backgroundColor: theme.canvas, color: theme.muted }}>Project not found.</div>;
   }
 
   const diagnosticsMessages = [
@@ -212,7 +213,7 @@ export function ProjectView({ projectId, onBack }: Props) {
     : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: theme.canvas }}>
       <TopBar
         project={project}
         planName={planName}
@@ -225,7 +226,7 @@ export function ProjectView({ projectId, onBack }: Props) {
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <LeftNav activeSection={activeSection} onSectionChange={setActiveSection} />
 
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", backgroundColor: theme.canvas }}>
           {/* Manual Binning Editor takes over center when editing */}
           {editingStepId && planId && basePlanVersionId && (
             <ManualBinningEditor
@@ -250,7 +251,7 @@ export function ProjectView({ projectId, onBack }: Props) {
           )}
 
           {activeSection === "pathway" && !editingStepId && !planData && (
-            <div style={{ padding: 24, color: "#64748b" }}>
+            <div style={{ padding: 24, color: theme.muted }}>
               No scorecard pathway found. Create a project to get started.
             </div>
           )}
@@ -266,21 +267,21 @@ export function ProjectView({ projectId, onBack }: Props) {
           {activeSection === "exports" && <ExportPanel projectId={projectId} />}
 
           {activeSection === "diagnostics" && (
-            <div style={{ padding: 16, overflowY: "auto", flex: 1 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Diagnostics</h3>
+            <div style={{ padding: 24, overflowY: "auto", flex: 1, backgroundColor: theme.canvas }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>Diagnostics</h3>
               {diagnosticsMessages.length === 0 ? (
-                <div style={{ color: "#64748b", fontSize: 13 }}>No diagnostics yet.</div>
+                <div style={{ color: theme.muted, fontSize: 13 }}>No diagnostics yet.</div>
               ) : (
                 diagnosticsMessages.map((msg, i) => (
                   <div
                     key={i}
                     style={{
-                      fontFamily: "monospace",
+                      fontFamily: theme.fontMono,
                       fontSize: 12,
                       lineHeight: 1.8,
                       padding: "4px 0",
-                      borderBottom: "1px solid #f1f5f9",
-                      color: msg.startsWith("[error]") ? "#dc2626" : "#475569",
+                      borderBottom: `1px solid ${theme.border}`,
+                      color: msg.startsWith("[error]") ? theme.redText : theme.textSoft,
                     }}
                   >
                     {msg}

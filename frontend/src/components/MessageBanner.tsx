@@ -1,4 +1,5 @@
 import React from 'react';
+import { theme } from '../styles';
 
 interface MessageBannerProps {
   message?: string | null;
@@ -7,6 +8,23 @@ interface MessageBannerProps {
 
 export function MessageBanner({ message, type }: MessageBannerProps) {
   if (!message) return null;
-  const bgColor = type === 'error' ? '#f8d7da' : type === 'success' ? '#d4edda' : '#d1ecf1';
-  return <div style={{ backgroundColor: bgColor, color: '#0c5460', padding: '10px 16px', borderRadius: '6px', marginBottom: '16px' }}>{message}</div>;
+  const colors = type === 'error'
+    ? { bg: theme.redBg, text: theme.redText }
+    : type === 'success'
+      ? { bg: theme.greenBg, text: theme.greenText }
+      : { bg: theme.blueBg, text: theme.blueText };
+  return (
+    <div
+      style={{
+        backgroundColor: colors.bg,
+        color: colors.text,
+        border: `1px solid ${theme.border}`,
+        padding: '10px 16px',
+        borderRadius: '6px',
+        marginBottom: '16px',
+      }}
+    >
+      {message}
+    </div>
+  );
 }

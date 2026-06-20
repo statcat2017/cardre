@@ -1,13 +1,14 @@
 import React from "react";
 import type { StepStatusCode } from "../types";
+import { theme } from "../styles";
 
-const STATUS_COLORS: Record<StepStatusCode, string> = {
-  not_run: "#9ca3af",
-  queued: "#3b82f6",
-  running: "#eab308",
-  succeeded: "#22c55e",
-  failed: "#ef4444",
-  cancelled: "#6b7280",
+const STATUS_COLORS: Record<StepStatusCode, { bg: string; text: string }> = {
+  not_run: { bg: theme.canvasSoft, text: theme.muted },
+  queued: { bg: theme.blueBg, text: theme.blueText },
+  running: { bg: theme.yellowBg, text: theme.yellowText },
+  succeeded: { bg: theme.greenBg, text: theme.greenText },
+  failed: { bg: theme.redBg, text: theme.redText },
+  cancelled: { bg: theme.canvasSoft, text: theme.muted },
 };
 
 const STATUS_LABELS: Record<StepStatusCode, string> = {
@@ -24,7 +25,7 @@ interface Props {
 }
 
 export function StatusBadge({ status }: Props) {
-  const color = STATUS_COLORS[status as StepStatusCode] || "#9ca3af";
+  const color = STATUS_COLORS[status as StepStatusCode] || { bg: theme.canvasSoft, text: theme.muted };
   const label = STATUS_LABELS[status as StepStatusCode] || status;
 
   return (
@@ -34,11 +35,13 @@ export function StatusBadge({ status }: Props) {
         alignItems: "center",
         gap: 4,
         padding: "2px 8px",
-        borderRadius: 12,
-        fontSize: 12,
+        borderRadius: 9999,
+        fontSize: 10,
         fontWeight: 600,
-        color: "#fff",
-        backgroundColor: color,
+        color: color.text,
+        backgroundColor: color.bg,
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
       }}
     >
       <span
@@ -46,8 +49,8 @@ export function StatusBadge({ status }: Props) {
           width: 6,
           height: 6,
           borderRadius: "50%",
-          backgroundColor: "#fff",
-          opacity: 0.8,
+          backgroundColor: color.text,
+          opacity: 0.7,
           ...(status === "running" ? { animation: "pulse 1s infinite" } : {}),
         }}
       />

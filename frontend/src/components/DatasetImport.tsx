@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { theme } from "../styles";
 
 interface Props {
   projectId: string;
@@ -40,18 +41,18 @@ export function DatasetImport({ projectId, onImported }: Props) {
   };
 
   return (
-    <div style={{ padding: 16, maxWidth: 560 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Import Dataset</h3>
+    <div style={{ padding: 24, maxWidth: 620 }}>
+      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>Import Dataset</h3>
       <div
         style={{
-          padding: 16,
-          border: "1px solid #e2e8f0",
-          borderRadius: 8,
-          backgroundColor: "#fff",
+          padding: 24,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 12,
+          backgroundColor: theme.surface,
         }}
       >
         <div style={{ marginBottom: 12 }}>
-          <label style={{ display: "block", fontSize: 12, fontWeight: 500, marginBottom: 4 }}>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: theme.textSoft }}>
             Source File Path
           </label>
           <input
@@ -61,11 +62,13 @@ export function DatasetImport({ projectId, onImported }: Props) {
             placeholder="/path/to/applications.csv"
             style={{
               width: "100%",
-              padding: "8px 12px",
-              border: "1px solid #d1d5db",
-              borderRadius: 4,
+              padding: "10px 12px",
+              border: `1px solid ${theme.borderStrong}`,
+              borderRadius: 6,
               fontSize: 13,
               boxSizing: "border-box",
+              color: theme.text,
+              backgroundColor: theme.surface,
             }}
           />
         </div>
@@ -74,8 +77,9 @@ export function DatasetImport({ projectId, onImported }: Props) {
           <div
             style={{
               padding: "8px 12px",
-              backgroundColor: "#fef2f2",
-              color: "#dc2626",
+              backgroundColor: theme.redBg,
+              color: theme.redText,
+              border: `1px solid ${theme.border}`,
               borderRadius: 4,
               marginBottom: 12,
               fontSize: 12,
@@ -92,7 +96,7 @@ export function DatasetImport({ projectId, onImported }: Props) {
             padding: "8px 16px",
             borderRadius: 4,
             border: "none",
-            backgroundColor: importMutation.isPending ? "#93c5fd" : "#3b82f6",
+            backgroundColor: importMutation.isPending ? theme.mutedSoft : theme.text,
             color: "#fff",
             fontSize: 13,
             fontWeight: 600,
@@ -107,8 +111,9 @@ export function DatasetImport({ projectId, onImported }: Props) {
             style={{
               marginTop: 12,
               padding: "8px 12px",
-              backgroundColor: "#f0fdf4",
-              color: "#166534",
+              backgroundColor: theme.greenBg,
+              color: theme.greenText,
+              border: `1px solid ${theme.border}`,
               borderRadius: 4,
               fontSize: 12,
             }}
