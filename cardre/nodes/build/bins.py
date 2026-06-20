@@ -182,12 +182,10 @@ class FineClassingNode(NodeType):
                     "bins": bins,
                 })
 
-        bin_def = {
+        bin_def = LifecycleBinDefinition.from_payload({
             "variables": variables,
             "warnings": warnings,
-        }
-
-        bin_def["schema_version"] = SCHEMA_BIN_DEFINITION
+        }).to_payload()
         artifact = write_json_artifact(
             store, artifact_type="definition", role="definition",
             stem=f"fine-classing-{context.step_spec.step_id}",
@@ -493,39 +491,22 @@ class ManualBinningNode(NodeType):
         store = context.store
         params = context.validated_params
         overrides = params.get("overrides", [])
+        reader = ArtifactEvidenceReader(store)
 
-        bin_artifacts = []
-        selection_artifacts = []
-        for a in context.input_artifacts:
-            if a.role != "definition":
-                continue
-            try:
-                payload = json.loads(store.artifact_path(a).read_text())
-                if "variables" in payload and "selected" not in payload:
-                    bin_artifacts.append(a)
-                elif "selected" in payload:
-                    selection_artifacts.append(a)
-            except Exception:
-                continue
+        bin_def_obj = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
+        sel_def = reader.find_optional(context.input_artifacts, EvidenceKind.SELECTION_DEFINITION)
 
-        if len(bin_artifacts) != 1:
-            raise ValueError(f"Manual binning requires exactly one bin definition artifact; found {len(bin_artifacts)}")
-        if len(selection_artifacts) > 1:
-            raise ValueError(f"Manual binning requires at most one selection artifact; found {len(selection_artifacts)}")
-        bin_artifact = bin_artifacts[0]
-        selection_artifact = selection_artifacts[0] if selection_artifacts else None
+        bin_def = bin_def_obj.to_dict()
 
-        bin_def = json.loads(store.artifact_path(bin_artifact).read_text())
         selected_vars: set[str] = set()
-        if selection_artifact:
-            sel = json.loads(store.artifact_path(selection_artifact).read_text())
-            selected_vars = {s["variable"] for s in sel.get("selected", [])}
+        if sel_def is not None:
+            selected_vars = sel_def.selected_names
 
-        errors = validate_manual_binning_overrides(bin_def, overrides, selected_vars if selection_artifact else None)
+        errors = validate_manual_binning_overrides(bin_def, overrides, selected_vars if sel_def else None)
         if errors:
             raise ValueError("; ".join(errors))
 
-        refined = apply_manual_binning_overrides(bin_def, overrides, selected_vars if selection_artifact else None)
+        refined = apply_manual_binning_overrides(bin_def, overrides, selected_vars if sel_def else None)
 
         refined["schema_version"] = SCHEMA_BIN_DEFINITION
         artifact = write_json_artifact(
@@ -540,182 +521,16 @@ class ManualBinningNode(NodeType):
             metrics={"override_count": len(overrides)})
 
 
+from cardre.engine.binning.definition import LifecycleBinDefinition
+
+
 def validate_manual_binning_overrides(
     bin_def: dict, overrides: list[dict], selected_vars: set[str] | None = None
 ) -> list[str]:
-    errors: list[str] = []
-    var_map = {v["variable"]: v for v in bin_def.get("variables", [])}
-
-    for i, override in enumerate(overrides):
-        prefix = f"overrides[{i}]"
-        variable = override.get("variable", "")
-        action = override.get("action", "")
-        reason = override.get("reason", "")
-        source_bin_ids = override.get("source_bin_ids", [])
-
-        if not reason:
-            errors.append(f"{prefix}: override for '{variable}' requires a non-empty reason")
-            continue
-        if variable not in var_map:
-            errors.append(f"{prefix}: references unknown variable '{variable}'")
-            continue
-        if selected_vars is not None and variable not in selected_vars:
-            errors.append(
-                f"{prefix}: variable '{variable}' was not selected by variable-selection "
-                f"and cannot accept manual binning overrides"
-            )
-            continue
-        VALID = ("merge_bins", "group_categories",
-                  "reject_variable", "reorder_missing_bin", "reorder_special_bin")
-        if action not in VALID:
-            errors.append(f"{prefix}: unsupported action '{action}'")
-            continue
-
-        var_bins = var_map[variable].get("bins", [])
-        bin_id_map = {b["bin_id"]: b for b in var_bins}
-
-        for bid in source_bin_ids:
-            if bid not in bin_id_map:
-                errors.append(f"{prefix}: bin_id '{bid}' not found in variable '{variable}'")
-
-        if errors:
-            continue
-
-        if action == "merge_bins":
-            if len(source_bin_ids) < 2:
-                errors.append(f"{prefix}: merge_bins requires at least 2 source bins")
-                continue
-            kind = var_map[variable].get("kind", "")
-            if kind == "numeric":
-                bin_positions = [var_bins.index(bin_id_map[bid]) for bid in source_bin_ids]
-                expected_positions = list(range(min(bin_positions), max(bin_positions) + 1))
-                if bin_positions != expected_positions:
-                    errors.append(
-                        f"{prefix}: numeric bin merge requires adjacent bins. "
-                        f"Source bins at positions {bin_positions} are not contiguous."
-                    )
-
-    return errors
+    return LifecycleBinDefinition.validate_overrides(bin_def, overrides, selected_vars)
 
 
 def apply_manual_binning_overrides(
     bin_def: dict, overrides: list[dict], selected_vars: set[str] | None = None
 ) -> dict:
-    var_map = {v["variable"]: dict(v) for v in bin_def.get("variables", [])}
-    warnings: list[dict] = []
-
-    for override in overrides:
-        variable = override.get("variable", "")
-        action = override.get("action", "")
-        source_bin_ids = override.get("source_bin_ids", [])
-        reason = override.get("reason", "")
-
-        if variable not in var_map:
-            raise ValueError(f"Override references unknown variable '{variable}'")
-
-        var_info = var_map[variable]
-        var_bins = list(var_info.get("bins", []))
-        bin_id_map = {b["bin_id"]: b for b in var_bins}
-
-        # Create immutable override event (no execution-time timestamp —
-        # timestamps from the user action live in the override params,
-        # not in the replayed bin definition.)
-        override_event = {
-            "user_action": action,
-            "variable": variable,
-            "reason": reason,
-            "source_bin_ids": source_bin_ids,
-        }
-        override_history = var_info.get("override_history", []) if isinstance(var_info.get("override_history"), list) else []
-
-        if action == "merge_bins":
-            before_labels = [bin_id_map[bid].get("label", bid) for bid in source_bin_ids]
-            merged = {
-                "bin_id": f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
-                "label": override.get("new_label", "Merged"),
-                "lower": bin_id_map[source_bin_ids[0]].get("lower"),
-                "upper": bin_id_map[source_bin_ids[-1]].get("upper"),
-                "lower_inclusive": bin_id_map[source_bin_ids[0]].get("lower_inclusive", False),
-                "upper_inclusive": bin_id_map[source_bin_ids[-1]].get("upper_inclusive", True),
-                "categories": None,
-                "is_missing_bin": False,
-                "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
-                "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
-                "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
-            }
-            override_event["before"] = before_labels
-            override_event["after"] = merged["label"]
-            new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
-            insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
-            new_bins.insert(insert_pos, merged)
-            var_info["bins"] = new_bins
-
-        elif action == "group_categories":
-            before_cats = []
-            for bid in source_bin_ids:
-                before_cats.extend(bin_id_map[bid].get("categories", []))
-            grouped = {
-                "bin_id": f"{variable}_manual_grouped",
-                "label": override.get("new_label", "Grouped"),
-                "lower": None, "upper": None,
-                "lower_inclusive": False, "upper_inclusive": False,
-                "categories": before_cats,
-                "is_missing_bin": False,
-                "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
-                "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
-                "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
-            }
-            override_event["before"] = before_cats
-            override_event["after"] = override.get("new_label", "Grouped")
-            new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
-            insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
-            new_bins.insert(insert_pos, grouped)
-            var_info["bins"] = new_bins
-
-        elif action == "reject_variable":
-            override_event["before"] = "included"
-            override_event["after"] = "excluded"
-            var_info["status"] = "excluded"
-            var_info["active"] = False
-            # Remove from active variable list — downstream nodes
-            # iterate "variables" without checking active/status.
-            var_info["reject_reason"] = reason
-
-        elif action == "reorder_missing_bin":
-            missing_bins = [b for b in var_bins if b.get("is_missing_bin")]
-            non_missing = [b for b in var_bins if not b.get("is_missing_bin")]
-            var_info["bins"] = non_missing + missing_bins
-            override_event["before"] = "missing_at_original_position"
-            override_event["after"] = "missing_moved_to_end"
-
-        elif action == "reorder_special_bin":
-            special_bins = [b for b in var_bins if b.get("is_special_bin")]
-            non_special = [b for b in var_bins if not b.get("is_special_bin")]
-            var_info["bins"] = non_special + special_bins
-            override_event["before"] = "special_at_original_position"
-            override_event["after"] = "special_moved_to_end"
-
-        override_history.append(override_event)
-        var_info["override_history"] = override_history
-
-    if selected_vars is not None:
-        var_map = {k: v for k, v in var_map.items() if k in selected_vars}
-
-    # Split into active variables and rejected (non-active) variables.
-    # Downstream nodes iterate "variables" without checking active/status.
-    active_vars = [v for v in var_map.values() if v.get("active", True)]
-    rejected_vars = [v for v in var_map.values() if not v.get("active", True)]
-
-    # Preserve pre-existing rejected variables from upstream nodes
-    # (e.g. AutoBinningFitNode failed variables).
-    existing_rejected = list(bin_def.get("rejected") or [])
-    combined_rejected = existing_rejected + rejected_vars
-
-    if not overrides:
-        warnings.append({"message": "No manual overrides applied; passing through auto bins for selected variables"})
-
-    return {
-        "variables": active_vars,
-        "rejected": combined_rejected if combined_rejected else None,
-        "warnings": bin_def.get("warnings", []) + warnings,
-    }
+    return LifecycleBinDefinition.apply_overrides(bin_def, overrides, selected_vars)

@@ -35,7 +35,7 @@ from cardre.store import ProjectStore
 # ---------------------------------------------------------------------------
 
 SCHEMA_MODELLING_METADATA = "cardre.modelling_metadata.v1"
-SCHEMA_BIN_DEFINITION = "cardre.bin_definition.v1"
+from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION  # noqa: E402, F401
 SCHEMA_SELECTION_DEFINITION = "cardre.selection_definition.v1"
 SCHEMA_WOE_TABLE = "cardre.woe_table.v1"
 SCHEMA_WOE_IV_EVIDENCE = "cardre.woe_iv_evidence.v1"
@@ -126,9 +126,13 @@ class BinVariable:
 class BinDefinition:
     variables: list[BinVariable]
     source_artifact_id: str
+    _lifecycle: Any = field(default=None, repr=False)
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> BinDefinition:
+        from cardre.engine.binning.definition import LifecycleBinDefinition
+
+        lifecycle = LifecycleBinDefinition.from_payload(data)
         variables = [
             BinVariable(
                 variable=v.get("variable", ""),
@@ -138,10 +142,34 @@ class BinDefinition:
             )
             for v in data.get("variables", [])
         ]
-        return cls(variables=variables, source_artifact_id=artifact_id)
+        return cls(variables=variables, source_artifact_id=artifact_id, _lifecycle=lifecycle)
 
     def to_dict(self) -> JsonDict:
+        if self._lifecycle is not None:
+            return self._lifecycle.to_payload()
         return {"variables": [v.to_dict() for v in self.variables]}
+
+    @property
+    def lifecycle(self) -> Any | None:
+        return self._lifecycle
+
+    @property
+    def rejected(self) -> list[Any]:
+        if self._lifecycle is not None:
+            return list(self._lifecycle.rejected)
+        return []
+
+    @property
+    def warnings(self) -> list[JsonDict]:
+        if self._lifecycle is not None:
+            return list(self._lifecycle.warnings)
+        return []
+
+    @property
+    def source(self) -> JsonDict | None:
+        if self._lifecycle is not None:
+            return self._lifecycle.source
+        return None
 
 
 @dataclass(frozen=True)

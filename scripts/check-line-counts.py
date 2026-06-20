@@ -27,6 +27,7 @@ ALLOWLIST: set[str] = {
     "cardre/nodes/validate.py",
     "tests/test_sidecar_api.py",
     "tests/test_optbinning.py",
+    "tests/test_bin_definition_lifecycle.py",
     # TypeScript/TSX (>600 lines)
     "frontend/src/components/ManualBinningEditor.tsx",
     # Auto-generated files
