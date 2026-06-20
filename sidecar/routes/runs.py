@@ -99,6 +99,12 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
             scope_label = body.run_scope or "full"
             detail_code = f"{scope_label.upper()}_RUN_FAILED"
             raise HTTPException(status_code=400, detail={"code": detail_code, "message": str(exc)})
+        except Exception:
+            # Unexpected sync failure: create a failed run so the client
+            # can still poll for status rather than getting a 500.
+            run_id = store.create_run(body.plan_version_id)
+            store.finish_run(run_id, "failed")
+            return _build_run_response(store, run_id)
 
     # Async (default): create run immediately, execute in background
     branch_kw = {"branch_id": body.branch_id} if body.branch_id else {}
