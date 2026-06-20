@@ -28,7 +28,7 @@ from sidecar.models import (
     ProjectArtifactsResponse,
     ArtifactListItem,
 )
-from sidecar.proof_pathway import register_proof_pathway, register_scorecard_pathway
+from sidecar.proof_pathway import register_proof_pathway, register_reject_inference_pathway, register_scorecard_pathway
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -56,6 +56,7 @@ def create_project(body: CreateProjectRequest):
 
     register_proof_pathway(store, project_id)
     register_scorecard_pathway(store, project_id)
+    register_reject_inference_pathway(store, project_id)
 
     return ProjectResponse(
         project_id=project_id,

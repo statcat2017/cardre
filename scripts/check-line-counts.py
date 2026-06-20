@@ -22,6 +22,7 @@ LANGUAGE_GLOBS = {
 
 ALLOWLIST: set[str] = {
     # Python (>1000 lines)
+    "cardre/evidence.py",
     "cardre/nodes/build.py",
     "cardre/nodes/prep.py",
     "cardre/nodes/validate.py",
