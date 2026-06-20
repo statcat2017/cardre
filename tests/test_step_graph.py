@@ -72,3 +72,7 @@ class TestAncestorClosure:
             _s("d", ["b", "c"]),
         ]
         assert ancestor_closure("d", steps) == {"a", "b", "c"}
+
+    def test_missing_step_raises(self):
+        with pytest.raises(KeyError):
+            ancestor_closure("z", [_s("a")])

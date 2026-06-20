@@ -36,10 +36,14 @@ def ancestor_closure(step_id: str, steps: list[StepSpec]) -> set[str]:
     """Return all step_ids that are transitively upstream of *step_id*.
 
     Does not include *step_id* itself.  Returns empty set for root steps.
+    Raises ``KeyError`` if *step_id* is not in *steps*.
     """
+    step_ids = {s.step_id for s in steps}
+    if step_id not in step_ids:
+        raise KeyError(step_id)
     step_map = {s.step_id: s for s in steps}
     ancestors: set[str] = set()
-    queue = list(step_map[step_id].parent_step_ids) if step_id in step_map else []
+    queue = list(step_map[step_id].parent_step_ids)
     while queue:
         pid = queue.pop()
         if pid in ancestors:
