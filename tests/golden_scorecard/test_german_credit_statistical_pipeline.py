@@ -175,7 +175,7 @@ def selected_data(binned_data):
     if iv_art is None:
         pytest.fail("No IV ranking artifact — missing evidence is a FAILURE")
 
-    cluster_params = {"correlation_threshold": 0.7, "candidate_limit": 50}
+    cluster_params = {"method": "correlation_threshold", "threshold": 0.7, "candidate_limit": 50}
     cluster_spec = StepSpec(
         step_id="cluster", node_type="cardre.variable_clustering",
         node_version="1", category="selection",

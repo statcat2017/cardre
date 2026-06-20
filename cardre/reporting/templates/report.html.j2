@@ -321,6 +321,67 @@ code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.85em;backgroun
 </section>
 {% endif %}
 
+{% if redundancy_review.cluster_count > 0 or redundancy_review.singleton_count > 0 %}
+<section class="section">
+<h2>Redundancy and Variable Clustering Review</h2>
+
+<table class="meta-table">
+  <tr><th>Method</th><td>{{ redundancy_review.method }}</td></tr>
+  <tr><th>Input Representation</th><td>{{ redundancy_review.input_representation }}</td></tr>
+  <tr><th>Similarity Metric</th><td>{{ redundancy_review.similarity_metric }}</td></tr>
+  {% if redundancy_review.threshold is not none %}
+  <tr><th>Threshold</th><td>{{ redundancy_review.threshold }}</td></tr>
+  {% endif %}
+  <tr><th>Absolute Correlation</th><td>{{ redundancy_review.absolute_correlation }}</td></tr>
+  <tr><th>Missing Handling</th><td>{{ redundancy_review.missing_handling }}</td></tr>
+  <tr><th>Candidate Limit</th><td>{{ redundancy_review.candidate_limit }}</td></tr>
+  <tr><th>Representative Rule</th><td>{{ redundancy_review.representative_rule }}</td></tr>
+  <tr><th>Clusters</th><td>{{ redundancy_review.cluster_count }}</td></tr>
+  <tr><th>Singleton Variables</th><td>{{ redundancy_review.singleton_count }}</td></tr>
+</table>
+
+{% if redundancy_review.clusters %}
+<h3>Clusters</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Cluster</th>
+      <th>Variables</th>
+      <th>Suggested Representative</th>
+      <th>Reason</th>
+      <th>Max Corr</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for cl in redundancy_review.clusters %}
+    <tr>
+      <td><code>{{ cl.cluster_id }}</code></td>
+      <td>{{ cl.variables | map(attribute='variable') | join(', ') }}</td>
+      <td>{{ cl.representative_suggestion or '—' }}</td>
+      <td>{{ cl.representative_reason }}</td>
+      <td>{{ '%.4f' | format(cl.max_pairwise_abs_corr) if cl.max_pairwise_abs_corr is not none else '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if redundancy_review.singleton_variables %}
+<h3>Singleton Variables</h3>
+<p>{{ redundancy_review.singleton_variables | join(', ') }}</p>
+{% endif %}
+
+{% if redundancy_review.warnings %}
+<h3>Warnings</h3>
+<ul>
+  {% for w in redundancy_review.warnings %}
+  <li>{{ w.message }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+</section>
+{% endif %}
+
 {% if reproducibility %}
 <section class="section">
 <h2>Reproducibility Manifest</h2>

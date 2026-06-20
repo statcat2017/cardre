@@ -53,6 +53,16 @@ def render_report_bundle_to_html(bundle: dict[str, Any]) -> str:
     artifacts = bundle.get("artifacts", []) or []
     manual_interventions = bundle.get("manual_interventions", []) or []
     pathway = bundle.get("pathway", {}) or {}
+    redundancy_review = bundle.get("redundancy_review")
+    if not redundancy_review:
+        redundancy_review = {
+            "cluster_count": 0, "singleton_count": 0,
+            "clusters": [], "singleton_variables": [], "warnings": [],
+            "method": "", "input_representation": "", "similarity_metric": "",
+            "threshold": None, "absolute_correlation": True,
+            "missing_handling": "pairwise", "candidate_limit": 50,
+            "representative_rule": "",
+        }
 
     html = template.render(
         project_name=summary.get("model_name", ""),
@@ -74,6 +84,7 @@ def render_report_bundle_to_html(bundle: dict[str, Any]) -> str:
         artifacts=artifacts,
         manual_interventions=manual_interventions,
         pathway=pathway,
+        redundancy_review=redundancy_review,
     )
     return html
 

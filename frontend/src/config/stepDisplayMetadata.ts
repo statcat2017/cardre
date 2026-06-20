@@ -94,7 +94,7 @@ export const STEP_DISPLAY_METADATA: Record<string, StepDisplayMetadata> = {
     displayOrder: 10,
     section: "Binning and Selection",
     label: "Variable Clustering",
-    shortDescription: "Identify and group correlated variables",
+    shortDescription: "Group redundant variables and suggest cluster representatives",
   },
   "variable-selection": {
     stepId: "variable-selection",
