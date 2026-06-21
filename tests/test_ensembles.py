@@ -260,7 +260,7 @@ class TestWeightedEnsembleNode:
             self.store, self.data_art, self.def_art,
             node.node_type,
             [self.dt_art.artifact_id, self.gb_art.artifact_id],
-            params={"optimize_weights": True},
+            params={"optimize_weights": True, "allow_train_optimization": True},
         )
         out = node.run(ctx)
         model = json.loads(self.store.artifact_path(out.artifacts[0]).read_text())

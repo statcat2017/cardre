@@ -90,7 +90,6 @@ class FeatureSelectionFilterNode(NodeType):
         max_correlation = float(params.get("max_correlation", 0.85))
         min_variance = float(params.get("min_variance", 1e-6))
         max_features = params.get("max_features")
-        target_column = params.get("target_column", "")
         exclude_columns = list(params.get("exclude_columns", []))
 
         train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
@@ -99,16 +98,29 @@ class FeatureSelectionFilterNode(NodeType):
 
         df = pl.read_parquet(store.artifact_path(train_art))
 
+        # Resolve target column from modelling metadata — fail closed if missing
+        reader = ArtifactEvidenceReader(store)
+        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        target_column = ""
+        if meta is not None:
+            target_column = meta.target_column or ""
+        if not target_column:
+            target_column = params.get("target_column", "")
+        if not target_column:
+            raise ValueError(
+                "feature_selection_filter requires a target_column. "
+                "Resolve it from modelling metadata or pass it as a parameter."
+            )
+
         # Resolve candidate columns (exclude target and explicit excludes)
         all_cols = [c for c in df.columns if c not in exclude_columns]
-        if target_column and target_column in all_cols:
+        if target_column in all_cols:
             all_cols.remove(target_column)
 
         # Keep only numeric columns
         numeric_cols = [c for c in all_cols if df.schema[c].is_numeric()]
 
         # Read IV data from report artifacts if available
-        reader = ArtifactEvidenceReader(store)
         iv_map: dict[str, float] = {}
         iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
         if iv_lf is not None:

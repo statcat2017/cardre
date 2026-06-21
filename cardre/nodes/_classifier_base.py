@@ -105,10 +105,22 @@ class BaseClassifierNode(NodeType):
         # 2. Build estimator kwargs
         kwargs = self._build_estimator_kwargs(params)
 
-        # 2b. Filter to only valid constructor params
+        # 2b. Validate kwargs against constructor signature.
+        # Raise on unknown params instead of silently dropping them.
         sig = inspect.signature(estimator_class.__init__)
         valid_init_params = {p for p in sig.parameters.keys() if p != "self"}
-        kwargs = {k: v for k, v in kwargs.items() if k in valid_init_params}
+        has_var_kwargs = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD
+            for p in sig.parameters.values()
+        )
+        if not has_var_kwargs:
+            unknown = {k for k in kwargs if k not in valid_init_params}
+            if unknown:
+                raise ValueError(
+                    f"Unknown parameters for {estimator_class.__name__}: "
+                    f"{sorted(unknown)}. Valid params: {sorted(valid_init_params)}"
+                )
+            kwargs = {k: v for k, v in kwargs.items() if k in valid_init_params}
 
         # 3. Fit
         start_time = time.monotonic()

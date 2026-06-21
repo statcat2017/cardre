@@ -414,7 +414,26 @@ class WeightedEnsembleNode(NodeType):
         if user_weights and not optimize:
             weights = np.array(user_weights, dtype=np.float64)
         elif optimize:
-            weights = self._optimize_weights(prob_matrix, df, target_col, bad_values)
+            # Require a validation/OOT artifact for weight optimization
+            val_art = next((a for a in context.input_artifacts if a.role in ("test", "oot")), None)
+            allow_train = params.get("allow_train_optimization", False)
+            if val_art is None and not allow_train:
+                raise ValueError(
+                    "weighted_ensemble with optimize_weights=True requires a test or OOT "
+                    "artifact for validation. Train-in-sample optimization is not permitted "
+                    "unless allow_train_optimization=True is set."
+                )
+            if val_art is not None:
+                val_df = pl.read_parquet(store.artifact_path(val_art))
+                val_probs: list[np.ndarray] = []
+                for model in models:
+                    model_features = model.get("features", [])
+                    probs = _get_predictions(store, model, val_df, model_features)
+                    val_probs.append(probs)
+                val_prob_matrix = np.column_stack(val_probs)
+                weights = self._optimize_weights(val_prob_matrix, val_df, target_col, bad_values)
+            else:
+                weights = self._optimize_weights(prob_matrix, df, target_col, bad_values)
         else:
             weights = np.ones(len(models)) / len(models)
 
