@@ -147,6 +147,8 @@ def apply_logistic(
         base_metadata: JsonDict = {
             "model_artifact_id": model_art.artifact_id,
             "model_family": "logistic_regression",
+            **({"scorecard_artifact_id": scorecard_artifact_id} if scorecard_artifact_id else {}),
+            **({"frozen_bundle_artifact_id": bundle_artifact_id} if bundle_artifact_id else {}),
         }
         output_cols = ["predicted_bad_probability", "raw_model_output",
                        "model_artifact_id", "model_family"]
@@ -237,6 +239,8 @@ def apply_sklearn_estimator(
         base_metadata: JsonDict = {
             "model_artifact_id": model_art.artifact_id,
             "model_family": model_family,
+            **({"scorecard_artifact_id": scorecard_artifact_id} if scorecard_artifact_id else {}),
+            **({"frozen_bundle_artifact_id": bundle_artifact_id} if bundle_artifact_id else {}),
         }
         output_cols = ["predicted_bad_probability", "model_artifact_id", "model_family"]
         add_exprs = [
@@ -361,6 +365,8 @@ def apply_ensemble(
         base_metadata: JsonDict = {
             "model_artifact_id": model_art.artifact_id,
             "model_family": model_family,
+            **({"scorecard_artifact_id": scorecard_artifact_id} if scorecard_artifact_id else {}),
+            **({"frozen_bundle_artifact_id": bundle_artifact_id} if bundle_artifact_id else {}),
         }
         output_cols = ["predicted_bad_probability", "model_artifact_id", "model_family"]
         add_exprs = [
