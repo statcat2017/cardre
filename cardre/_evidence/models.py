@@ -109,9 +109,9 @@ class SelectionDefinition:
 @dataclass(frozen=True)
 class ModellingMetadata:
     target_column: str
-    good_values: list[str]
-    bad_values: list[str]
-    indeterminate_values: list[str] = field(default_factory=list)
+    good_values: list[Any]
+    bad_values: list[Any]
+    indeterminate_values: list[Any] = field(default_factory=list)
     extra: JsonDict = field(default_factory=dict)
     _raw: JsonDict = field(default_factory=dict, repr=False)
 
@@ -119,9 +119,9 @@ class ModellingMetadata:
     def from_json(cls, data: JsonDict) -> ModellingMetadata:
         return cls(
             target_column=data.get("target_column", ""),
-            good_values=[str(v) for v in data.get("good_values", [])],
-            bad_values=[str(v) for v in data.get("bad_values", [])],
-            indeterminate_values=[str(v) for v in data.get("indeterminate_values", [])],
+            good_values=list(data.get("good_values", [])),
+            bad_values=list(data.get("bad_values", [])),
+            indeterminate_values=list(data.get("indeterminate_values", [])),
             extra={k: v for k, v in data.items()
                    if k not in ("target_column", "good_values", "bad_values", "indeterminate_values")},
             _raw=data,
@@ -148,7 +148,7 @@ class SampleDefinition:
     @classmethod
     def from_json(cls, data: JsonDict) -> SampleDefinition:
         return cls(
-            sample_method=data.get("sample_method", ""),
+            sample_method=data.get("sample_method", "full_population"),
             sample_domain=data.get("sample_domain", "ttd"),
             total_rows=data.get("total_rows", 0),
             financed_rows=data.get("financed_rows", 0),

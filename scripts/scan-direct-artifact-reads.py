@@ -33,7 +33,7 @@ EXCLUDED_MODULES: set[str] = {
 }
 
 PATTERNS = [
-    re.compile(r"store\.artifact_path\("),
+    re.compile(r"\.artifact_path\("),
 ]
 
 
