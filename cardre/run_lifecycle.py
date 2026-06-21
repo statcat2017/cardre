@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from cardre.artifacts import write_json_artifact
-from cardre.audit import RunStepRecord, JsonDict
+from cardre.audit import RunStepRecord, JsonDict, utc_now_iso
 from cardre.cancellation import CancellationToken, register_token, remove_token
 from cardre.store import ProjectStore
 
@@ -42,6 +42,8 @@ def build_manifest_payload(
     run_record: JsonDict,
     run_steps: list[RunStepRecord],
     execution_mode: str,
+    final_status: str,
+    finished_at: str,
     branch_id: str | None = None,
     target_step_id: str | None = None,
     in_scope_step_ids: list[str] | None = None,
@@ -57,8 +59,8 @@ def build_manifest_payload(
         "plan_version_id": plan_version_id,
         "branch_id": branch_id,
         "started_at": run_record["started_at"],
-        "finished_at": run_record.get("finished_at", ""),
-        "status": run_record["status"],
+        "finished_at": finished_at,
+        "status": final_status,
         "execution_mode": execution_mode,
         "cardre_version": "0.1.0",
         "steps": [
@@ -93,6 +95,8 @@ def write_manifest(
     run_id: str,
     plan_version_id: str,
     execution_mode: str,
+    final_status: str,
+    finished_at: str,
     branch_id: str | None = None,
     target_step_id: str | None = None,
     in_scope_step_ids: list[str] | None = None,
@@ -116,6 +120,8 @@ def write_manifest(
         run_record=run_record,
         run_steps=run_steps,
         execution_mode=execution_mode,
+        final_status=final_status,
+        finished_at=finished_at,
         branch_id=branch_id,
         target_step_id=target_step_id,
         in_scope_step_ids=in_scope_step_ids,
@@ -143,6 +149,7 @@ class RunFinalisation:
     plan_version_id: str
     status: str
     execution_mode: str
+    finished_at: str
     run_step_records: dict[str, RunStepRecord]
     steps: list[Any]
 
@@ -159,21 +166,22 @@ def finalise_run(
     """Finish a run with the given status and write its manifest.
 
     This is the single place where a run transitions from 'running'
-    to its final state.  The ``run_step_records`` and ``steps`` fields
-    on ``RunFinalisation`` are reserved for future deterministic
-    manifest construction but are not yet forwarded to
-    ``write_manifest``, which reads directly from store state.
+    to its final state.  The manifest is written *before* the status
+    transition so that a manifest write failure does not leave a run
+    marked succeeded without audit material.
     """
-    store.finish_run(finalisation.run_id, finalisation.status)
     write_manifest(
         store,
         run_id=finalisation.run_id,
         plan_version_id=finalisation.plan_version_id,
         execution_mode=finalisation.execution_mode,
+        final_status=finalisation.status,
+        finished_at=finalisation.finished_at,
         branch_id=finalisation.branch_id,
         target_step_id=finalisation.target_step_id,
         in_scope_step_ids=finalisation.in_scope_step_ids,
     )
+    store.finish_run(finalisation.run_id, finalisation.status)
 
 
 # ---------------------------------------------------------------------------
@@ -182,11 +190,21 @@ def finalise_run(
 
 
 class RunLifecycle:
-    """Stateful wrapper around a single run's lifecycle lifecycle.
+    """Stateful wrapper around a single run's lifecycle.
 
     Owns cancellation token registration/removal and run finalisation.
     The caller (PlanExecutor) checks ``raise_if_cancelled()`` between
     steps and calls ``finalise()`` in the finally block.
+
+    Can be used as a context manager to guarantee finalisation::
+
+        with RunLifecycle.start(store, pv_id) as lifecycle:
+            ...
+            lifecycle.finalise(status="succeeded", ...)
+
+    If the body raises before ``finalise()`` is called, ``__exit__``
+    finalises the run as ``failed`` using the execution mode and scope
+    metadata supplied at construction time.
     """
 
     def __init__(
@@ -195,12 +213,44 @@ class RunLifecycle:
         run_id: str,
         plan_version_id: str,
         token: CancellationToken,
+        execution_mode: str = "unknown",
+        branch_id: str | None = None,
+        target_step_id: str | None = None,
+        in_scope_step_ids: list[str] | None = None,
     ) -> None:
         self.store = store
         self.run_id = run_id
         self.plan_version_id = plan_version_id
         self._token = token
         self._finalised = False
+        self._execution_mode = execution_mode
+        self._branch_id = branch_id
+        self._target_step_id = target_step_id
+        self._in_scope_step_ids = in_scope_step_ids
+
+    # ------------------------------------------------------------------
+    # Context manager
+    # ------------------------------------------------------------------
+
+    def __enter__(self) -> RunLifecycle:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> bool | None:
+        if not self._finalised:
+            self.finalise(
+                status="failed",
+                execution_mode=self._execution_mode,
+                branch_id=self._branch_id,
+                target_step_id=self._target_step_id,
+                in_scope_step_ids=self._in_scope_step_ids,
+            )
+        remove_token(self.run_id)
+        return None
 
     # ------------------------------------------------------------------
     # Factory
@@ -213,6 +263,9 @@ class RunLifecycle:
         plan_version_id: str,
         run_id: str | None = None,
         branch_id: str | None = None,
+        execution_mode: str = "unknown",
+        target_step_id: str | None = None,
+        in_scope_step_ids: list[str] | None = None,
     ) -> RunLifecycle:
         """Create or accept a run and register its cancellation token.
 
@@ -222,7 +275,12 @@ class RunLifecycle:
         if run_id is None:
             run_id = store.create_run(plan_version_id, branch_id=branch_id)
         token = register_token(run_id)
-        return cls(store=store, run_id=run_id, plan_version_id=plan_version_id, token=token)
+        return cls(
+            store=store, run_id=run_id, plan_version_id=plan_version_id,
+            token=token, execution_mode=execution_mode,
+            branch_id=branch_id, target_step_id=target_step_id,
+            in_scope_step_ids=in_scope_step_ids,
+        )
 
     # ------------------------------------------------------------------
     # Cancellation
@@ -245,30 +303,40 @@ class RunLifecycle:
         self,
         status: str,
         execution_mode: str,
-        run_step_records: dict[str, RunStepRecord],
-        steps: list[Any],
+        run_step_records: dict[str, RunStepRecord] | None = None,
+        steps: list[Any] | None = None,
         *,
         branch_id: str | None = None,
         target_step_id: str | None = None,
         in_scope_step_ids: list[str] | None = None,
     ) -> None:
         """Finish the run exactly once, remove the cancellation token,
-        and write the run manifest."""
+        and write the run manifest.
+
+        ``_finalised`` is set only *after* ``finalise_run`` succeeds.
+        If ``finalise_run`` raises, the run is marked ``failed`` directly
+        so it is never left ``running``.
+        """
         if self._finalised:
             return
+        now = utc_now_iso()
+        try:
+            finalise_run(self.store, RunFinalisation(
+                run_id=self.run_id,
+                plan_version_id=self.plan_version_id,
+                status=status,
+                execution_mode=execution_mode,
+                finished_at=now,
+                run_step_records=run_step_records or {},
+                steps=steps or [],
+                branch_id=branch_id,
+                target_step_id=target_step_id,
+                in_scope_step_ids=in_scope_step_ids,
+            ))
+        except Exception:
+            self.store.finish_run(self.run_id, "failed")
+            raise
         self._finalised = True
-        remove_token(self.run_id)
-        finalise_run(self.store, RunFinalisation(
-            run_id=self.run_id,
-            plan_version_id=self.plan_version_id,
-            status=status,
-            execution_mode=execution_mode,
-            run_step_records=run_step_records,
-            steps=steps,
-            branch_id=branch_id,
-            target_step_id=target_step_id,
-            in_scope_step_ids=in_scope_step_ids,
-        ))
 
 
 # ---------------------------------------------------------------------------

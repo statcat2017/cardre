@@ -949,3 +949,160 @@ class Wave2Tests:
         run_id = executor.run_plan_version(store, pv_id)
         run = store.get_run(run_id)
         assert run["status"] == "cancelled", f"Expected cancelled, got {run['status']}"
+
+
+# ======================================================================
+# Phase 1 lifecycle regression tests
+# ======================================================================
+
+
+class Phase1LifecycleTests:
+
+    def test_exception_before_finalise_marks_failed(self) -> None:
+        """An exception inside the with block before finalise() is called
+        must still mark the run as failed with the correct execution_mode."""
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+
+        steps = [
+            StepSpec(
+                step_id="source", node_type="cardre.test.simple_source",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry()
+        reg.register(SimpleSourceNode)
+        executor = PlanExecutor(reg)
+
+        from cardre.run_lifecycle import RunLifecycle
+        try:
+            with RunLifecycle.start(store, pv_id, execution_mode="full") as lifecycle:
+                run_id = lifecycle.run_id
+                # Raise before finalise — __exit__ must catch this
+                raise RuntimeError("simulated failure before finalise")
+        except RuntimeError:
+            pass
+
+        run = store.get_run(run_id)
+        assert run["status"] == "failed", f"Expected failed, got {run['status']}"
+
+    def test_exception_before_finalise_preserves_execution_mode(self) -> None:
+        """When __exit__ finalises a failed run, the manifest must
+        contain the execution_mode supplied at start()."""
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+
+        steps = [
+            StepSpec(
+                step_id="source", node_type="cardre.test.simple_source",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry()
+        reg.register(SimpleSourceNode)
+        executor = PlanExecutor(reg)
+
+        from cardre.run_lifecycle import RunLifecycle
+        try:
+            with RunLifecycle.start(store, pv_id, execution_mode="to_node", target_step_id="source", in_scope_step_ids=["source"]) as lifecycle:
+                run_id = lifecycle.run_id
+                raise RuntimeError("simulated failure")
+        except RuntimeError:
+            pass
+
+        run = store.get_run(run_id)
+        assert run["status"] == "failed", f"Expected failed, got {run['status']}"
+
+        manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
+        assert len(manifest_arts) >= 1
+        import json
+        manifest = json.loads(store.artifact_path(manifest_arts[-1]).read_text())
+        assert manifest["execution_mode"] == "to_node", f"Expected to_node, got {manifest['execution_mode']}"
+        assert manifest["target_step_id"] == "source"
+        assert manifest["in_scope_step_ids"] == ["source"]
+
+    def test_cancellation_before_reuse_writes_no_carried_forward(self) -> None:
+        """If a run is cancelled before any reuse action executes,
+        no carried-forward run steps should exist in the store."""
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+
+        steps = [
+            StepSpec(
+                step_id="source", node_type="cardre.test.simple_source",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry()
+        reg.register(SimpleSourceNode)
+        executor = PlanExecutor(reg)
+
+        # First run to create reusable evidence
+        first_run_id = executor.run_plan_version(store, pv_id)
+
+        # Second run — cancel before any step executes
+        from cardre.cancellation import cancel_run
+        from cardre.run_lifecycle import RunLifecycle
+        from cardre.errors import CancellationError
+        try:
+            with RunLifecycle.start(store, pv_id, execution_mode="full") as lifecycle:
+                run_id = lifecycle.run_id
+                cancel_run(run_id)
+                lifecycle.raise_if_cancelled()
+        except CancellationError:
+            pass
+
+        run = store.get_run(run_id)
+        assert run["status"] in ("cancelled", "failed"), f"Expected cancelled/failed, got {run['status']}"
+
+        run_steps = store.get_run_steps(run_id)
+        carried = [rs for rs in run_steps if rs.is_carried_forward]
+        assert len(carried) == 0, f"Expected no carried-forward steps, got {len(carried)}"
+
+    def test_replay_writes_manifest(self) -> None:
+        """replay_from_step must write a run manifest with the correct
+        status and execution_mode."""
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+        source = make_sample_german_credit_file(tmp)
+
+        steps = [
+            StepSpec(
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
+                node_version="1", category="transform",
+                params={"source_path": str(source)},
+                params_hash=json_logical_hash({"source_path": str(source)}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry.with_defaults()
+        executor = PlanExecutor(reg)
+
+        first_run_id = executor.run_plan_version(store, pv_id)
+
+        new_params = {"source_path": str(source)}
+        new_run_id = executor.replay_from_step(store, plan_id, pv_id, "import", new_params)
+
+        new_run = store.get_run(new_run_id)
+        assert new_run["status"] == "succeeded"
+
+        manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
+        import json
+        replay_manifests = [json.loads(store.artifact_path(a).read_text()) for a in manifest_arts if json.loads(store.artifact_path(a).read_text())["run_id"] == new_run_id]
+        assert len(replay_manifests) == 1, "Expected exactly one manifest for replay run"
+        assert replay_manifests[0]["status"] == "succeeded"
+        assert replay_manifests[0]["execution_mode"] == "replay"
