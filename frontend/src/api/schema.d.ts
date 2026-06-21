@@ -527,6 +527,160 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Branches */
+        get: operations["list_branches_projects__project_id__branches_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branches/{branch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Branch */
+        get: operations["get_branch_branches__branch_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plans/{plan_id}/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Branch */
+        post: operations["create_branch_plans__plan_id__branches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/migrations/baseline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Migrate Baseline */
+        post: operations["migrate_baseline_migrations_baseline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branch-comparisons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Branch Comparison */
+        post: operations["create_branch_comparison_branch_comparisons_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branch-comparisons/{comparison_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Branch Comparison */
+        get: operations["get_branch_comparison_branch_comparisons__comparison_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branch-comparisons/{comparison_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Branch Comparison */
+        post: operations["refresh_branch_comparison_branch_comparisons__comparison_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branch-comparison-snapshots/{snapshot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Comparison Snapshot */
+        get: operations["get_comparison_snapshot_branch_comparison_snapshots__snapshot_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plans/{plan_id}/champion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan Champion */
+        get: operations["get_plan_champion_plans__plan_id__champion_get"];
+        put?: never;
+        /** Assign Plan Champion */
+        post: operations["assign_plan_champion_plans__plan_id__champion_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -631,6 +785,29 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** AssignChampionRequest */
+        AssignChampionRequest: {
+            /** Project Id */
+            project_id: string;
+            /** Branch Id */
+            branch_id: string;
+            /** Comparison Id */
+            comparison_id: string;
+            /** Comparison Snapshot Id */
+            comparison_snapshot_id: string;
+            /**
+             * Scope Type
+             * @default project
+             */
+            scope_type: string;
+            /**
+             * Scope Key
+             * @default default
+             */
+            scope_key: string;
+            /** Assigned Reason */
+            assigned_reason: string;
+        };
         /** BinningEngineInfo */
         BinningEngineInfo: {
             /** Id */
@@ -651,12 +828,265 @@ export interface components {
             /** Engines */
             engines: components["schemas"]["BinningEngineInfo"][];
         };
+        /** BranchListItem */
+        BranchListItem: {
+            /** Branch Id */
+            branch_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Name */
+            name: string;
+            /** Branch Type */
+            branch_type: string;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /** Base Branch Id */
+            base_branch_id?: string | null;
+            /** Base Plan Version Id */
+            base_plan_version_id: string;
+            /** Head Plan Version Id */
+            head_plan_version_id: string;
+            /** Branch Point Step Id */
+            branch_point_step_id?: string | null;
+            /** Branch Point Canonical Step Id */
+            branch_point_canonical_step_id?: string | null;
+        };
+        /** BranchListResponse */
+        BranchListResponse: {
+            /** Project Id */
+            project_id: string;
+            /** Branches */
+            branches: components["schemas"]["BranchListItem"][];
+        };
+        /** BranchResponse */
+        BranchResponse: {
+            /** Branch Id */
+            branch_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Branch Type */
+            branch_type: string;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /** Base Branch Id */
+            base_branch_id?: string | null;
+            /** Base Plan Version Id */
+            base_plan_version_id: string;
+            /** Head Plan Version Id */
+            head_plan_version_id: string;
+            /** Branch Point Step Id */
+            branch_point_step_id?: string | null;
+            /** Branch Point Canonical Step Id */
+            branch_point_canonical_step_id?: string | null;
+            /**
+             * Created Reason
+             * @default
+             */
+            created_reason: string;
+            /** Steps */
+            steps?: components["schemas"]["BranchStepItem"][];
+            /**
+             * Is Champion
+             * @default false
+             */
+            is_champion: boolean;
+            /** Latest Run Id */
+            latest_run_id?: string | null;
+            /**
+             * Readiness
+             * @default not_run
+             */
+            readiness: string;
+            /**
+             * Warning Count
+             * @default 0
+             */
+            warning_count: number;
+            /**
+             * Error Count
+             * @default 0
+             */
+            error_count: number;
+        };
+        /** BranchStepItem */
+        BranchStepItem: {
+            /** Step Id */
+            step_id: string;
+            /** Canonical Step Id */
+            canonical_step_id: string;
+            /** Branch Id */
+            branch_id?: string | null;
+            /**
+             * Is Shared Upstream
+             * @default false
+             */
+            is_shared_upstream: boolean;
+            /**
+             * Is Branch Owned
+             * @default true
+             */
+            is_branch_owned: boolean;
+        };
+        /** ChampionResponse */
+        ChampionResponse: {
+            /** Champion Assignment Id */
+            champion_assignment_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Champion Branch Id */
+            champion_branch_id: string;
+            /** Previous Champion Branch Id */
+            previous_champion_branch_id?: string | null;
+            /** Scope Type */
+            scope_type: string;
+            /** Scope Key */
+            scope_key: string;
+            /**
+             * Assigned At
+             * @default
+             */
+            assigned_at: string;
+            /**
+             * Assigned Reason
+             * @default
+             */
+            assigned_reason: string;
+        };
         /** ColumnInfo */
         ColumnInfo: {
             /** Name */
             name: string;
             /** Dtype */
             dtype: string;
+        };
+        /** ComparisonResponse */
+        ComparisonResponse: {
+            /** Comparison Id */
+            comparison_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Baseline Branch Id */
+            baseline_branch_id: string;
+            /** Challenger Branch Ids */
+            challenger_branch_ids: string[];
+            /** Latest Snapshot Id */
+            latest_snapshot_id?: string | null;
+            /** Latest Ready */
+            latest_ready?: boolean | null;
+            /** Blocked Reason */
+            blocked_reason?: string | null;
+            /** Missing Or Stale */
+            missing_or_stale?: components["schemas"]["MissingStaleEvidence"][];
+            /** Warnings */
+            warnings?: string[];
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+        };
+        /** ComparisonSnapshotResponse */
+        ComparisonSnapshotResponse: {
+            /** Comparison Snapshot Id */
+            comparison_snapshot_id: string;
+            /** Comparison Id */
+            comparison_id: string;
+            /** Comparison Artifact Id */
+            comparison_artifact_id: string;
+            /**
+             * Ready
+             * @default false
+             */
+            ready: boolean;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+        };
+        /** CreateBranchRequest */
+        CreateBranchRequest: {
+            /** Project Id */
+            project_id: string;
+            /** Base Plan Version Id */
+            base_plan_version_id: string;
+            /** Base Branch Id */
+            base_branch_id?: string | null;
+            /** Branch Point Step Id */
+            branch_point_step_id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Branch Type */
+            branch_type: string;
+            /** Created Reason */
+            created_reason: string;
+            /** Segment Filter Spec */
+            segment_filter_spec?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** CreateBranchResponse */
+        CreateBranchResponse: {
+            /** Branch Id */
+            branch_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** New Plan Version Id */
+            new_plan_version_id: string;
+            /** Name */
+            name: string;
+            /** Branch Type */
+            branch_type: string;
+            /** Branch Point Step Id */
+            branch_point_step_id?: string | null;
+            /** Branch Point Canonical Step Id */
+            branch_point_canonical_step_id?: string | null;
+            /** Created Step Ids */
+            created_step_ids?: {
+                [key: string]: string;
+            };
+            /** Shared Upstream Step Ids */
+            shared_upstream_step_ids?: string[];
+            /**
+             * Status
+             * @default not_run
+             */
+            status: string;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** CreateComparisonRequest */
+        CreateComparisonRequest: {
+            /** Project Id */
+            project_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Baseline Branch Id */
+            baseline_branch_id: string;
+            /** Challenger Branch Ids */
+            challenger_branch_ids: string[];
+            /** Comparison Spec */
+            comparison_spec?: {
+                [key: string]: unknown;
+            };
+            /** Created Reason */
+            created_reason?: string | null;
         };
         /** CreateProjectRequest */
         CreateProjectRequest: {
@@ -981,6 +1411,33 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** MigrateRequest */
+        MigrateRequest: {
+            /** Project Id */
+            project_id: string;
+        };
+        /** MigrateResponse */
+        MigrateResponse: {
+            /** Project Id */
+            project_id: string;
+            /** Branches Created */
+            branches_created: number;
+            /** Plan Versions Mapped */
+            plan_versions_mapped: number;
+            /** Steps Mapped */
+            steps_mapped: number;
+        };
+        /** MissingStaleEvidence */
+        MissingStaleEvidence: {
+            /** Branch Id */
+            branch_id: string;
+            /** Canonical Step Id */
+            canonical_step_id: string;
+            /** Step Id */
+            step_id: string;
+            /** Status */
+            status: string;
+        };
         /** ModelRankingItem */
         ModelRankingItem: {
             /** Branch Id */
@@ -1285,6 +1742,31 @@ export interface components {
             code: string;
             /** Message */
             message: string;
+        };
+        /** RefreshComparisonResponse */
+        RefreshComparisonResponse: {
+            /** Comparison Id */
+            comparison_id: string;
+            /** Comparison Snapshot Id */
+            comparison_snapshot_id?: string | null;
+            /**
+             * Ready
+             * @default false
+             */
+            ready: boolean;
+            /** Comparison Artifact Id */
+            comparison_artifact_id?: string | null;
+            /**
+             * Refreshed At
+             * @default
+             */
+            refreshed_at: string;
+            /** Blocked Reason */
+            blocked_reason?: string | null;
+            /** Missing Or Stale */
+            missing_or_stale?: components["schemas"]["MissingStaleEvidence"][];
+            /** Warnings */
+            warnings?: string[];
         };
         /** ReportMetadataResponse */
         ReportMetadataResponse: {
@@ -2528,6 +3010,338 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelRankingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_branches_projects__project_id__branches_get: {
+        parameters: {
+            query?: {
+                plan_id?: string | null;
+                branch_type?: string | null;
+                status?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_branch_branches__branch_id__get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path: {
+                branch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_branch_plans__plan_id__branches_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBranchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateBranchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    migrate_baseline_migrations_baseline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MigrateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_branch_comparison_branch_comparisons_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateComparisonRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_branch_comparison_branch_comparisons__comparison_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comparison_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_branch_comparison_branch_comparisons__comparison_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                comparison_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefreshComparisonResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_comparison_snapshot_branch_comparison_snapshots__snapshot_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonSnapshotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_champion_plans__plan_id__champion_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                scope_type?: string;
+                scope_key?: string;
+            };
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChampionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_plan_champion_plans__plan_id__champion_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignChampionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChampionResponse"];
                 };
             };
             /** @description Validation Error */
