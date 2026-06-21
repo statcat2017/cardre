@@ -308,7 +308,34 @@ class ApplyModelNode(NodeType):
             if typed_model is not None:
                 model.update(typed_model.as_legacy_dict())
 
-        return _apply_model_adapter(context, model, model_art, scorecard_art, bundle_art)
+        # Parse scorecard and ensemble base model artifacts here,
+        # not in adapters — adapters receive parsed payloads only.
+        scorecard_parsed: dict[str, Any] | None = None
+        if scorecard_art is not None:
+            scorecard_parsed = json.loads(store.artifact_path(scorecard_art).read_text())
+
+        scorecard_artifact_id: str | None = scorecard_art.artifact_id if scorecard_art else None
+        bundle_artifact_id: str | None = bundle_art.artifact_id if bundle_art else None
+
+        if model.get("model_family") in ("voting_ensemble", "weighted_ensemble"):
+            model_payload = model.get("model_payload", {})
+            base_parsed: list[dict[str, Any]] = []
+            for bm in model_payload.get("base_models", []):
+                aid = bm.get("artifact_id", "")
+                if not aid:
+                    continue
+                bm_art = store.get_artifact(aid)
+                if bm_art is not None:
+                    try:
+                        base_parsed.append(json.loads(store.artifact_path(bm_art).read_text()))
+                    except Exception:
+                        continue
+            model["_base_models_parsed"] = base_parsed
+
+        return _apply_model_adapter(
+            context, model, model_art,
+            scorecard_parsed, scorecard_artifact_id, bundle_artifact_id,
+        )
 
 
 class DummyApplyNode(NodeType):
