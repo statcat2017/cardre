@@ -100,7 +100,8 @@ class PlanExecutor:
         self._validate_topology(steps)
 
         from cardre.run_lifecycle import RunLifecycle
-        with RunLifecycle.start(store, plan_version_id, run_id=run_id) as lifecycle:
+        execution_mode = "force" if force else "full"
+        with RunLifecycle.start(store, plan_version_id, run_id=run_id, execution_mode=execution_mode) as lifecycle:
             run_id = lifecycle.run_id
 
             actions = [
@@ -114,7 +115,7 @@ class PlanExecutor:
             status = self._compute_final_status(has_failure, was_cancelled, actions, force)
 
             lifecycle.finalise(
-                status=status, execution_mode="force" if force else "full",
+                status=status, execution_mode=execution_mode,
                 run_step_records=records, steps=steps,
             )
         return run_id
@@ -134,7 +135,11 @@ class PlanExecutor:
         if not force and ctx.short_circuit_run_id is not None:
             return ctx.short_circuit_run_id
 
-        with RunLifecycle.start(store, plan_version_id, run_id=run_id, branch_id=branch_id) as lifecycle:
+        execution_mode = "force" if force else "branch"
+        with RunLifecycle.start(
+            store, plan_version_id, run_id=run_id,
+            branch_id=branch_id, execution_mode=execution_mode,
+        ) as lifecycle:
             run_id = lifecycle.run_id
 
             # Build action list but defer parent evidence resolution to
@@ -162,7 +167,7 @@ class PlanExecutor:
             status = self._compute_final_status(has_failure, was_cancelled, actions, force)
 
             lifecycle.finalise(
-                status=status, execution_mode="force" if force else "branch",
+                status=status, execution_mode=execution_mode,
                 run_step_records=records, steps=ctx.steps,
                 branch_id=branch_id,
             )
@@ -190,7 +195,13 @@ class PlanExecutor:
         closure_steps = [s for s in steps if s.step_id in closure]
 
         from cardre.run_lifecycle import RunLifecycle
-        with RunLifecycle.start(store, plan_version_id, run_id=run_id) as lifecycle:
+        execution_mode = "force" if force else "to_node"
+        with RunLifecycle.start(
+            store, plan_version_id, run_id=run_id,
+            execution_mode=execution_mode,
+            target_step_id=target_step_id,
+            in_scope_step_ids=sorted(closure),
+        ) as lifecycle:
             run_id = lifecycle.run_id
 
             from cardre.staleness import compute_staleness
@@ -210,7 +221,7 @@ class PlanExecutor:
             status = self._compute_final_status(has_failure, was_cancelled, actions, force)
 
             lifecycle.finalise(
-                status=status, execution_mode="force" if force else "to_node",
+                status=status, execution_mode=execution_mode,
                 run_step_records=records, steps=closure_steps,
                 target_step_id=target_step_id,
                 in_scope_step_ids=sorted(closure),
@@ -654,7 +665,7 @@ class PlanExecutor:
         )
 
         from cardre.run_lifecycle import RunLifecycle
-        with RunLifecycle.start(store, new_plan_version_id) as lifecycle:
+        with RunLifecycle.start(store, new_plan_version_id, execution_mode="replay") as lifecycle:
             run_id = lifecycle.run_id
 
             # Build actions: reuse for unaffected steps, execute for affected
