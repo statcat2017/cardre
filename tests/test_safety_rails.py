@@ -168,7 +168,7 @@ class TestMethodSummarySchemaDrift:
     @pytest.mark.governance
     @pytest.mark.skipif(
         os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower() not in ("1", "true"),
-        reason="requires CARDRE_GOVERNANCE=1",
+        reason="test requires branch/migration endpoints behind CARDRE_GOVERNANCE=1",
     )
     def test_method_summary_endpoint_200s_with_expected_fields(self, client, tmp_path, sample_german_credit):
         proj_path = tmp_path / "test.cardre"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -26,6 +27,9 @@ from cardre.store import ProjectStore
 from tests.helpers import make_numeric_dataset, make_oot_dataset, make_store
 
 import pytest
+
+_LAUNCH_MODE = os.environ.get("CARDRE_LAUNCH_MODE", "1").strip().lower() in ("1", "true")
+_skip_if_launch = pytest.mark.skipif(_LAUNCH_MODE, reason="GBDT is deferred at launch simplification")
 
 pytestmark = pytest.mark.integration
 
@@ -245,6 +249,7 @@ class RandomForestFitTests:
 # GradientBoostingClassifier Tests
 # ======================================================================
 
+@_skip_if_launch
 class GradientBoostingParameterTests:
 
     def test_valid_params(self) -> None:
@@ -270,6 +275,7 @@ class GradientBoostingParameterTests:
         assert len(errors) > 0
 
 
+@_skip_if_launch
 class GradientBoostingFitTests:
 
     def test_fit_produces_v1_model_artifact(self) -> None:
@@ -344,6 +350,7 @@ class EnsembleApplyTests:
         assert "predicted_bad_probability" in scored_df.columns
         assert scored_df["model_family"][0] == "random_forest"
 
+    @_skip_if_launch
     def test_apply_model_with_gbdt(self) -> None:
         store, tmp = make_store()
         data_art, def_art, _ = make_numeric_dataset(store)
@@ -471,6 +478,7 @@ class ExpandedValidationMetricsTests:
         assert "warnings" in report["roles"]["train"]
         assert len(report["roles"]["train"]["warnings"]) > 0
 
+    @_skip_if_launch
     def test_gbdt_with_validation_metrics(self) -> None:
         store, tmp = make_store()
         data_art, def_art, train_df = make_numeric_dataset(store)
@@ -731,6 +739,7 @@ class EnsembleDeterminismTests:
         m2 = json.loads(store.artifact_path(out2.artifacts[0]).read_text())
         assert m1["model_payload"]["feature_importance"] == m2["model_payload"]["feature_importance"]
 
+    @_skip_if_launch
     def test_gbdt_same_seed_produces_same_artifacts(self) -> None:
         store, tmp = make_store()
         data_art, def_art, _ = make_numeric_dataset(store)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -16,6 +17,9 @@ from cardre.store import ProjectStore
 
 from tests.helpers import make_numeric_dataset, make_store
 import pytest
+
+_LAUNCH_MODE = os.environ.get("CARDRE_LAUNCH_MODE", "1").strip().lower() in ("1", "true")
+_skip_if_launch = pytest.mark.skipif(_LAUNCH_MODE, reason="GBDT is deferred at launch simplification")
 
 pytestmark = pytest.mark.integration
 
@@ -107,6 +111,7 @@ class ExplainabilityDecisionTreeTests:
         assert "limitation" in report["champion_gate"]["message"].lower()
 
 
+@_skip_if_launch
 class ExplainabilityGBDTTests:
 
     def test_gbdt_explainability_report(self) -> None:
