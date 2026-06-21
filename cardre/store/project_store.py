@@ -26,7 +26,12 @@ from cardre.audit import (
 )
 
 
-from cardre.store_schema import SCHEMA_SQL, BRANCH_TABLES_SQL
+from cardre.store.schema import SCHEMA_SQL, BRANCH_TABLES_SQL
+from cardre.store.artifact_repo import ArtifactRepository
+from cardre.store.plan_repo import PlanRepository
+from cardre.store.run_repo import RunRepository
+from cardre.store.branch_repo import BranchRepository
+from cardre.store.project_repo import ProjectRepository
 
 # Read-time migration map for legacy node types → canonical
 _LEGACY_NODE_TYPE_METHOD: dict[str, tuple[str, str]] = {
@@ -49,6 +54,11 @@ class ProjectStore:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
         self._db: sqlite3.Connection | None = None
+        self.artifacts = ArtifactRepository(self)
+        self.plans = PlanRepository(self)
+        self.runs = RunRepository(self)
+        self.branches = BranchRepository(self)
+        self.projects_repo = ProjectRepository(self)
 
     def run_migrations(self) -> None:
         """Apply Phase 4 schema migrations to existing stores.
