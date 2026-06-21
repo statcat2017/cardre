@@ -11,8 +11,7 @@ from cardre.audit import utc_now_iso
 from cardre.evidence_locator import latest_successful_run_step
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_COMPARISON,
-    LEGACY_CANONICAL_ALIASES,
-    resolve_canonical_step_id,
+    canonical_alias_candidates,
 )
 from cardre.staleness import compute_staleness
 from cardre.store import ProjectStore
@@ -46,17 +45,20 @@ def _check_branch_readiness(
 
     missing: list[dict[str, str]] = []
     for cs in required_steps:
-        actual_id = canon_to_actual.get(cs)
-        if actual_id is None:
-            resolved = resolve_canonical_step_id(cs)
-            if resolved != cs:
-                actual_id = canon_to_actual.get(resolved)
-        if actual_id is None:
-            actual_id = cs
+        actual_id = None
+        for candidate in canonical_alias_candidates(cs):
+            actual_id = canon_to_actual.get(candidate)
+            if actual_id is not None:
+                break
+        actual_id = actual_id or cs
         evidence_branch = branch_id if not is_baseline else None
-        rs = latest_successful_run_step(
-            store, plan_version_id, actual_id, branch_id=evidence_branch,
-        )
+        rs = None
+        for candidate in [actual_id, *canonical_alias_candidates(cs)]:
+            rs = latest_successful_run_step(
+                store, plan_version_id, candidate, branch_id=evidence_branch,
+            )
+            if rs is not None:
+                break
         if rs is None:
             status = "stale" if staleness.get(actual_id, True) else "not_run"
             missing.append({
