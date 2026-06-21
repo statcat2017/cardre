@@ -28,11 +28,9 @@ from cardre.audit import (
     replace_step_params,
     utc_now_iso,
 )
-from cardre.cancellation import CancellationToken
 from cardre.errors import (
     ArtifactReadError,
     ArtifactWriteError,
-    CancellationError,
     CardreError,
     ContractViolationError,
     GraphValidationError,
@@ -96,10 +94,10 @@ class PlanExecutor:
                 for s in steps
             ]
 
-            has_failure, was_cancelled, outputs, records = self._execute_actions(
+            has_failure, outputs, records = self._execute_actions(
                 store, actions, plan_version_id, run_id, lifecycle,
             )
-            status = self._compute_final_status(has_failure, was_cancelled, actions, force)
+            status = self._compute_final_status(has_failure, actions, force)
 
             lifecycle.finalise(
                 status=status, execution_mode=execution_mode,
@@ -146,12 +144,12 @@ class PlanExecutor:
                         ),
                     ))
 
-            has_failure, was_cancelled, outputs, records = self._execute_actions(
+            has_failure, outputs, records = self._execute_actions(
                 store, actions, plan_version_id, run_id, lifecycle,
                 step_outputs=ctx.step_outputs,
                 run_step_records=ctx.run_step_records,
             )
-            status = self._compute_final_status(has_failure, was_cancelled, actions, force)
+            status = self._compute_final_status(has_failure, actions, force)
 
             lifecycle.finalise(
                 status=status, execution_mode=execution_mode,
@@ -202,10 +200,10 @@ class PlanExecutor:
                 else:
                     actions.append(_StepAction(spec=spec, action="execute"))
 
-            has_failure, was_cancelled, outputs, records = self._execute_actions(
+            has_failure, outputs, records = self._execute_actions(
                 store, actions, plan_version_id, run_id, lifecycle,
             )
-            status = self._compute_final_status(has_failure, was_cancelled, actions, force)
+            status = self._compute_final_status(has_failure, actions, force)
 
             lifecycle.finalise(
                 status=status, execution_mode=execution_mode,
@@ -236,63 +234,53 @@ class PlanExecutor:
         outputs: dict[str, list[ArtifactRef]] = step_outputs or {}
         records: dict[str, RunStepRecord] = run_step_records or {}
         has_failure = False
-        was_cancelled = False
 
-        try:
-            for action in actions:
-                lifecycle.raise_if_cancelled()
-                if has_failure:
-                    break
+        for action in actions:
+            if has_failure:
+                break
 
-                if action.action == "skip":
-                    continue
+            if action.action == "skip":
+                continue
 
-                if action.action == "reuse":
-                    rs = self._reuse_run_step(store, action.spec, plan_version_id, run_id, outputs, records, evidence_source=action.evidence_source)
-                    if rs is not None:
-                        records[action.spec.step_id] = rs
-                        outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
-                    else:
-                        # No prior successful run step to reuse — execute instead
-                        if action.before_execute is not None:
-                            action.before_execute()
-                        rs = self._execute_step(
-                            store, action.spec, plan_version_id, run_id,
-                            outputs, records, lifecycle.token,
-                        )
-                        records[action.spec.step_id] = rs
-                        outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
-                        if rs.status == STATUS_FAILED:
-                            has_failure = True
-                    continue
-
-                if action.action == "execute":
+            if action.action == "reuse":
+                rs = self._reuse_run_step(store, action.spec, plan_version_id, run_id, outputs, records, evidence_source=action.evidence_source)
+                if rs is not None:
+                    records[action.spec.step_id] = rs
+                    outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
+                else:
                     if action.before_execute is not None:
                         action.before_execute()
-
                     rs = self._execute_step(
                         store, action.spec, plan_version_id, run_id,
-                        outputs, records, lifecycle.token,
+                        outputs, records,
                     )
                     records[action.spec.step_id] = rs
                     outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
                     if rs.status == STATUS_FAILED:
                         has_failure = True
+                continue
 
-        except CancellationError:
-            was_cancelled = True
+            if action.action == "execute":
+                if action.before_execute is not None:
+                    action.before_execute()
 
-        return has_failure, was_cancelled, outputs, records
+                rs = self._execute_step(
+                    store, action.spec, plan_version_id, run_id,
+                    outputs, records,
+                )
+                records[action.spec.step_id] = rs
+                outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
+                if rs.status == STATUS_FAILED:
+                    has_failure = True
+
+        return has_failure, outputs, records
 
     @staticmethod
     def _compute_final_status(
         has_failure: bool,
-        was_cancelled: bool,
         actions: list[_StepAction],
         force: bool,
     ) -> str:
-        if was_cancelled:
-            return STATUS_CANCELLED
         if has_failure:
             return STATUS_FAILED
         executed = sum(1 for a in actions if a.action == "execute")
@@ -312,7 +300,6 @@ class PlanExecutor:
         run_id: str,
         step_outputs: dict[str, list[ArtifactRef]],
         run_step_records: dict[str, RunStepRecord],
-        cancellation_token: CancellationToken | None = None,
     ) -> RunStepRecord:
         # Initialise before try so failure can still record partial evidence.
         raw_inputs: list[ArtifactRef] = []
@@ -350,7 +337,6 @@ class PlanExecutor:
                 input_artifacts=input_artifacts,
                 validated_params=spec.params,
                 runtime_metadata={},
-                cancellation_token=cancellation_token,
             )
 
             output: NodeOutput = node.run(ctx)
@@ -373,15 +359,12 @@ class PlanExecutor:
             )
             return rs
 
-        except CancellationError:
-            raise
         except Exception:
             tb = traceback.format_exc()
             exc_type = sys.exc_info()[0]
             exc_value = sys.exc_info()[1]
 
             _CATEGORY_MAP: tuple = (
-                (CancellationError, "CancellationError"),
                 (GraphValidationError, "GraphValidationError"),
                 (MissingInputArtifactError, "MissingInputArtifactError"),
                 (ParameterValidationError, "ParameterValidationError"),
@@ -671,11 +654,11 @@ class PlanExecutor:
                 else:
                     actions.append(_StepAction(spec=spec, action="execute"))
 
-            has_failure, was_cancelled, outputs, records = self._execute_actions(
+            has_failure, outputs, records = self._execute_actions(
                 store, actions, new_plan_version_id, run_id, lifecycle,
             )
 
-            status = self._compute_final_status(has_failure, was_cancelled, actions, force=False)
+            status = self._compute_final_status(has_failure, actions, force=False)
             lifecycle.finalise(
                 status=status, execution_mode="replay",
                 run_step_records=records, steps=new_steps,

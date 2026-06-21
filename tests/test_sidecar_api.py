@@ -1530,6 +1530,8 @@ class TestScorecardPathwayE2E:
 
 class TestPhase4BranchingFlow:
 
+    @pytest.mark.governance
+    @pytest.mark.skip(reason="governance not enabled at launch simplification")
     def test_full_branch_flow(self, client, tmp_dir, larger_german_credit):
         """Complete Phase 4 branch flow:
         create/import/run baseline
@@ -1880,6 +1882,8 @@ class TestPhase4BranchingFlow:
 
 class TestCancelAndManifest:
 
+    @pytest.mark.cancellation
+    @pytest.mark.skip(reason="cancellation removed at launch simplification")
     def test_cancel_endpoint(self, client, tmp_dir, sample_german_credit):
         proj_path = tmp_dir / "cancel-test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Cancel Test"}).json()

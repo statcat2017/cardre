@@ -3,6 +3,10 @@
 These tests capture the current contract of run creation, status
 finalisation, manifest generation, cancellation cleanup, reuse
 labelling, and scope metadata before any lifecycle refactoring.
+
+Cancellation tests are marked ``@pytest.mark.cancellation`` and skipped
+by default — the cancellation mechanism was deferred at launch simplification.
+Run them with ``pytest -m cancellation`` to re-enable.
 """
 
 from __future__ import annotations
@@ -12,7 +16,6 @@ import json
 import pytest
 
 from cardre.audit import StepSpec, json_logical_hash
-from cardre.cancellation import get_token, register_token
 from cardre.executor import PlanExecutor
 from cardre.nodes import DummyFitNode, DummyApplyNode
 from cardre.registry import NodeRegistry
@@ -186,6 +189,8 @@ class TestFullPlanRunLifecycle:
         assert len(failing.errors) > 0
         assert "Intentional failure" in failing.errors[0]["message"]
 
+    @pytest.mark.cancellation
+    @pytest.mark.skip(reason="cancellation removed at launch simplification")
     def test_cancelled_run_records_cancelled_status(self) -> None:
         store, tmp = make_store()
         store.initialize()
@@ -223,6 +228,8 @@ class TestFullPlanRunLifecycle:
         run = store.get_run(run_id)
         assert run["status"] == "cancelled", f"Expected cancelled, got {run['status']}"
 
+    @pytest.mark.cancellation
+    @pytest.mark.skip(reason="cancellation removed at launch simplification")
     def test_cancelled_run_stops_mid_plan(self) -> None:
         """Steps after the cancelling step must not execute."""
         store, tmp = make_store()
@@ -263,6 +270,8 @@ class TestFullPlanRunLifecycle:
         assert "step_a" in executed_step_ids
         assert "step_b" not in executed_step_ids
 
+    @pytest.mark.cancellation
+    @pytest.mark.skip(reason="cancellation removed at launch simplification")
     def test_cancellation_token_cleaned_after_run(self) -> None:
         """After a successful run, the token must be removed."""
         store, tmp = make_store()

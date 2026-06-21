@@ -16,6 +16,9 @@ class HealthResponse(BaseModel):
     cardre_version: str = "0.1.0"
     registry_accessible: bool = False
     registered_node_count: int = 0
+    launch_node_count: int = 0
+    deferred_node_count: int = 0
+    governance_enabled: bool = False
     checked_at: str = ""
 
 

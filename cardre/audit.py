@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 
 if TYPE_CHECKING:
-    from cardre.cancellation import CancellationToken
     from cardre.store import ProjectStore
 
 
@@ -124,6 +123,13 @@ class NodeType(ABC):
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         """Validate param values and return a list of error messages.
+
+        Executed at *run time* (just before ``run()``). The primary
+        validation path is the schema layer (``parameter_schema`` +
+        ``validate_against_schema``) at *plan-submission time*. Override
+        this only for cross-parameter or runtime checks the schema
+        cannot express.
+
         An empty list means the params are valid."""
         return []
 
@@ -131,10 +137,12 @@ class NodeType(ABC):
     def parameter_schema(cls) -> NodeParameterSchema:
         """Return a parameter schema describing this node's method options and params.
 
-        The default implementation returns an empty schema.  Subclasses
+        Used at *plan-submission time* for UI rendering, default merging,
+        and schema-level validation (``validate_against_schema``).  Subclasses
         that participate in the Node Method & Parameter Schema Framework
         should override this to provide full metadata.
-        """
+
+        The default implementation returns an empty schema."""
         from cardre.node_parameters import NodeParameterSchema as _NodeParameterSchema
         return _NodeParameterSchema(
             node_type=cls.node_type,
@@ -153,7 +161,6 @@ class ExecutionContext:
     input_artifacts: list[ArtifactRef]
     validated_params: JsonDict
     runtime_metadata: JsonDict
-    cancellation_token: CancellationToken | None = None
 
 
 @dataclass

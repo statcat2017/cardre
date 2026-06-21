@@ -163,6 +163,8 @@ class TestMethodSummarySchemaDrift:
         p.write_text("\n".join([header] + rows))
         return p
 
+    @pytest.mark.governance
+    @pytest.mark.skip(reason="governance not enabled at launch simplification")
     def test_method_summary_endpoint_200s_with_expected_fields(self, client, tmp_path, sample_german_credit):
         proj_path = tmp_path / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Schema Drift Test"}).json()

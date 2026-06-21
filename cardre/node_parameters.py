@@ -2,8 +2,28 @@
 
 Provides the data model and validation helpers for the Node Method &
 Parameter Schema Framework. Each NodeType exposes its parameter metadata
-through ``parameter_schema()``, and the system uses this to validate
-params, merge defaults, and drive UI rendering.
+through ``parameter_schema()``.
+
+Two-layer validation system:
+
+1. **Schema layer** (``parameter_schema()`` + ``validate_against_schema()``):
+   Used at *plan-submission time* (plan_service.py) to validate params
+   before a plan is saved. The schema is also the source of truth for
+   UI rendering and default merging (``merge_defaults``).
+
+2. **Execution layer** (``NodeType.validate_params()``):
+   Used at *run-execution time* (executor.py) as a final check before
+   a node runs. The executor calls ``node.validate_params(spec.params)``
+   directly. Nodes should NOT re-implement schema constraints here —
+   use ``validate_against_schema`` at plan time for schema-level rules.
+   Override ``validate_params`` only for cross-param or runtime checks
+   that the schema cannot express.
+
+The two layers are NOT redundant: schema validation runs when a plan is
+created/edited (UI/API path); execution validation runs just before a
+step executes (runtime path). Deferred nodes (boosting, ensembles, etc.)
+are guarded at instantiation time so their execution validation is
+effectively bypassed without needing to strip the imperative code.
 """
 
 from __future__ import annotations

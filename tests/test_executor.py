@@ -21,7 +21,7 @@ from cardre.audit import (
     table_logical_hash,
 )
 from cardre.executor import PlanExecutor, RoleAccessError
-from cardre.errors import ArtifactReadError, GraphValidationError, CancellationError
+from cardre.errors import ArtifactReadError, GraphValidationError
 from cardre.staleness import compute_staleness
 from cardre.nodes import (
     DummyApplyNode,
@@ -812,6 +812,8 @@ class Wave2Tests:
         assert first_fp == second_fp, \
             "fingerprints should be identical between forced runs"
 
+    @pytest.mark.cancellation
+    @pytest.mark.skip(reason="cancellation removed at launch simplification")
     def test_cancellation_stops_mid_flight(self) -> None:
         store, tmp = make_store()
         project_id = store.create_project("test")
@@ -915,6 +917,11 @@ class Wave2Tests:
         with pytest.raises(GraphValidationError):
             executor.run_to_node(store, pv_id, "nonexistent_step")
 
+    @pytest.mark.cancellation
+    @pytest.mark.skipif(
+        not hasattr(ExecutionContext, "cancellation_token"),
+        reason="cancellation_token removed at launch simplification",
+    )
     def test_cancellation_raised_from_inside_node(self) -> None:
         store, tmp = make_store()
         project_id = store.create_project("test")
@@ -1029,6 +1036,8 @@ class Phase1LifecycleTests:
         assert manifest["target_step_id"] == "source"
         assert manifest["in_scope_step_ids"] == ["source"]
 
+    @pytest.mark.cancellation
+    @pytest.mark.skip(reason="cancellation mechanism removed at launch simplification")
     def test_cancellation_before_reuse_writes_no_carried_forward(self) -> None:
         """If a run is cancelled before any reuse action executes,
         no carried-forward run steps should exist in the store."""
