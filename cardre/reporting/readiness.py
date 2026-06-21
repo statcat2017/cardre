@@ -11,7 +11,7 @@ from typing import Any
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_BRANCH,
     REQUIRED_STEPS_CHAMPION,
-    LEGACY_CANONICAL_ALIASES,
+    canonical_alias_candidates,
     find_evidence_for_canonical_step,
 )
 from cardre.reporting.limitation_codes import LimitationCode
@@ -161,10 +161,7 @@ def check_report_readiness(
 
     resolved_step_ids_in_map: set[str] = set()
     for sid in step_ids_in_map:
-        resolved_step_ids_in_map.add(sid)
-        for legacy, modern in LEGACY_CANONICAL_ALIASES.items():
-            if sid == legacy:
-                resolved_step_ids_in_map.add(modern)
+        resolved_step_ids_in_map.update(canonical_alias_candidates(sid))
 
     missing_steps = [s for s in required if s not in resolved_step_ids_in_map]
     if missing_steps:
@@ -180,16 +177,16 @@ def check_report_readiness(
         branch_step_map=step_map,
     )
 
-    # Lazy legacy resolution: if a required modern step was not found,
-    # check if a legacy alias exists in the step map and resolve that instead.
-    legacy_reverse = {v: k for k, v in LEGACY_CANONICAL_ALIASES.items()}
+    # Lazy legacy resolution: if a required step was not found, check all
+    # equivalent current/legacy canonical IDs in the step map.
     for canonical_step_id in required:
         ref = resolved.get(canonical_step_id)
-        if ref is None and canonical_step_id in legacy_reverse:
-            legacy_id = legacy_reverse[canonical_step_id]
-            legacy_ref = resolved.get(legacy_id)
-            if legacy_ref is not None:
-                resolved[canonical_step_id] = legacy_ref
+        if ref is None:
+            for candidate in canonical_alias_candidates(canonical_step_id):
+                candidate_ref = resolved.get(candidate)
+                if candidate_ref is not None:
+                    resolved[canonical_step_id] = candidate_ref
+                    break
 
     for canonical_step_id in required:
         ref = resolved.get(canonical_step_id)

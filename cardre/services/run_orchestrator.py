@@ -23,7 +23,7 @@ def _fail_run_if_running(store: ProjectStore, run_id: str) -> None:
 def execute_run(
     store: ProjectStore,
     plan_version_id: str,
-    run_id: str,
+    run_id: str | None = None,
     run_scope: Literal["full_plan", "branch", "to_node"] = "full_plan",
     branch_id: str | None = None,
     target_step_id: str | None = None,
@@ -33,13 +33,18 @@ def execute_run(
     executor = PlanExecutor(NodeRegistry.with_defaults())
     if run_scope == "branch" and branch_id:
         result_id = executor.run_branch(store, plan_version_id, branch_id, run_id=run_id, force=force)
-        if result_id != run_id:
+        if run_id is not None and result_id != run_id:
             store.finish_run(run_id, "cancelled")
-    elif run_scope == "to_node" and target_step_id:
-        executor.run_to_node(store, plan_version_id, target_step_id, run_id=run_id, force=force)
+            return run_id
+        return result_id
+    if run_scope == "to_node" and target_step_id:
+        result_id = executor.run_to_node(store, plan_version_id, target_step_id, run_id=run_id, force=force)
     else:
-        executor.run_plan_version(store, plan_version_id, run_id=run_id, force=force)
-    return run_id
+        result_id = executor.run_plan_version(store, plan_version_id, run_id=run_id, force=force)
+    if run_id is not None and result_id != run_id:
+        store.finish_run(run_id, "cancelled")
+        return run_id
+    return result_id
 
 
 def dispatch_run_async(
