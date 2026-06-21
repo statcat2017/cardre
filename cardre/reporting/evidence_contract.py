@@ -66,6 +66,18 @@ def resolve_canonical_step_id(canonical_step_id: str) -> str:
     return LEGACY_CANONICAL_ALIASES.get(canonical_step_id, canonical_step_id)
 
 
+def canonical_alias_candidates(canonical_step_id: str) -> list[str]:
+    """Return current and legacy canonical IDs that may hold equivalent evidence."""
+    candidates = [canonical_step_id]
+    forward = LEGACY_CANONICAL_ALIASES.get(canonical_step_id)
+    if forward and forward not in candidates:
+        candidates.append(forward)
+    for legacy, current in LEGACY_CANONICAL_ALIASES.items():
+        if current == canonical_step_id and legacy not in candidates:
+            candidates.append(legacy)
+    return candidates
+
+
 def find_evidence_for_canonical_step(
     store: ProjectStore,
     plan_version_id: str,
@@ -77,5 +89,8 @@ def find_evidence_for_canonical_step(
     Resolves legacy aliases automatically.  Uses the evidence locator's
     branch-scoped → full-plan → across-plan fallback chain.
     """
-    actual = resolve_canonical_step_id(canonical_step_id)
-    return latest_successful_run_step(store, plan_version_id, actual, branch_id=branch_id)
+    for actual in canonical_alias_candidates(canonical_step_id):
+        rs = latest_successful_run_step(store, plan_version_id, actual, branch_id=branch_id)
+        if rs is not None:
+            return rs
+    return None
