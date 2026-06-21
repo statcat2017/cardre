@@ -18,6 +18,11 @@ from cardre.evidence import (
     EvidenceKind,
     SCHEMA_SELECTION_DEFINITION,
 )
+from cardre.nodes.build.selection_policy import (
+    ManualOverridePolicy,
+    NoClusterPolicy,
+    RepresentativePolicy,
+)
 
 
 class VariableSelectionNode(NodeType):
@@ -251,157 +256,60 @@ class VariableSelectionNode(NodeType):
             if var in manual_excludes:
                 rejected.append({"variable": var, "reason": manual_excludes[var]})
 
-        if cluster_rule in ("one_per_cluster_highest_iv", "one_per_cluster_lowest_missing"):
-            for cl in clusters:
-                cid = cl["cluster_id"]
-                vars_in_cluster = cluster_vars.get(cid, [])
-                eligible = [v for v in vars_in_cluster if v not in manual_excludes]
-                if not eligible:
-                    continue
+        # Select the cluster policy for this run
+        policy_map = {
+            "none": NoClusterPolicy(),
+            "one_per_cluster_highest_iv": RepresentativePolicy("one_per_cluster_highest_iv"),
+            "one_per_cluster_lowest_missing": RepresentativePolicy("one_per_cluster_lowest_missing"),
+            "manual_override": ManualOverridePolicy(),
+        }
+        policy = policy_map.get(cluster_rule, NoClusterPolicy())
 
-                overridden = False
-                if cid in cluster_overrides:
-                    for override_var, override_reason in cluster_overrides[cid].items():
-                        if override_var in eligible:
-                            if override_var not in seen_clusters:
-                                selected.append({
-                                    "variable": override_var,
-                                    "reason": f"Cluster representative override: {override_reason}",
-                                })
-                                seen_clusters.add(cid)
-                                cluster_decisions.append({
-                                    "cluster_id": cid,
-                                    "selected_variable": override_var,
-                                    "reason": override_reason,
-                                    "candidate_variables": eligible,
-                                })
-                                overridden = True
-                            break
+        # Cluster preselection: run policy per cluster
+        for cl in clusters:
+            cid = cl["cluster_id"]
+            vars_in_cluster = cluster_vars.get(cid, [])
+            eligible = [v for v in vars_in_cluster if v not in manual_excludes]
+            preselect = policy.preselect(
+                cid, vars_in_cluster, eligible,
+                cluster_overrides, iv_map, cluster_member_metrics, seen_clusters,
+            )
+            if preselect is not None and preselect.variable not in seen_clusters:
+                entry = {"variable": preselect.variable, "reason": preselect.reason}
+                selected.append(entry)
+                seen_clusters.add(cid)
+                cluster_decisions.append({
+                    "cluster_id": cid,
+                    "selected_variable": preselect.variable,
+                    "reason": preselect.reason,
+                    "candidate_variables": preselect.eligible,
+                })
 
-                if overridden:
-                    continue
-
-                if cluster_rule == "one_per_cluster_highest_iv":
-                    rep = eligible[0]
-                    rep_reason = f"highest IV ({iv_map.get(rep, 0.0):.4f}) in cluster"
-                elif cluster_rule == "one_per_cluster_lowest_missing":
-                    def _missing_key(v: str) -> float:
-                        mr = cluster_member_metrics.get((cid, v), {}).get("missing_rate")
-                        return float("inf") if mr is None else mr
-                    rep = min(eligible, key=_missing_key)
-                    mr = cluster_member_metrics.get((cid, rep), {}).get("missing_rate")
-                    rep_reason = f"lowest missing rate ({mr:.4f}) in cluster" if mr is not None else "lowest missing rate in cluster"
-
-                if rep not in seen_clusters:
-                    selected.append({"variable": rep, "reason": rep_reason})
-                    seen_clusters.add(cid)
-                    cluster_decisions.append({
-                        "cluster_id": cid,
-                        "selected_variable": rep,
-                        "reason": rep_reason,
-                        "candidate_variables": eligible,
-                    })
-
-            for var in candidates:
-                if var in manual_excludes:
-                    continue
-                if var in manual_includes:
-                    if var not in [s["variable"] for s in selected]:
-                        selected.append({"variable": var, "reason": manual_includes[var]})
-                    continue
-                cid = cluster_map.get(var)
-                if cid and cid in seen_clusters:
-                    continue
-                if var in [s["variable"] for s in selected]:
-                    continue
-                if var in [r["variable"] for r in rejected]:
-                    continue
-
-                iv_info_val = iv_map.get(var, 0.0)
-                if iv_info_val < min_iv:
-                    rejected.append({"variable": var, "reason": f"IV {iv_info_val:.4f} below threshold {min_iv}"})
-                    continue
-
-                if len(selected) >= max_variables:
-                    rejected.append({"variable": var, "reason": f"Reached max_variables limit ({max_variables})"})
-                    continue
-
-                selected.append({"variable": var, "reason": "IV above threshold"})
-                if cid and cid not in seen_clusters:
-                    seen_clusters.add(cid)
-
-        elif cluster_rule == "manual_override":
-            for cl in clusters:
-                cid = cl["cluster_id"]
-                if cid not in cluster_overrides:
-                    continue
-                vars_in_cluster = cluster_vars.get(cid, [])
-                eligible = [v for v in vars_in_cluster if v not in manual_excludes]
-                for override_var, override_reason in cluster_overrides[cid].items():
-                    if override_var in eligible and override_var not in seen_clusters:
-                        selected.append({
-                            "variable": override_var,
-                            "reason": f"Cluster representative override: {override_reason}",
-                        })
-                        seen_clusters.add(cid)
-                        cluster_decisions.append({
-                            "cluster_id": cid,
-                            "selected_variable": override_var,
-                            "reason": override_reason,
-                            "candidate_variables": eligible,
-                        })
-
-            for var in candidates:
-                if var in manual_excludes:
-                    continue
-                if var in manual_includes:
-                    if var not in [s["variable"] for s in selected]:
-                        selected.append({"variable": var, "reason": manual_includes[var]})
-                    continue
-                cid = cluster_map.get(var)
-                if cid and cid in seen_clusters:
-                    continue
-                if var in [s["variable"] for s in selected]:
-                    continue
-                if var in [r["variable"] for r in rejected]:
-                    continue
-                iv_info_val = iv_map.get(var, 0.0)
-                if iv_info_val < min_iv:
-                    rejected.append({"variable": var, "reason": f"IV {iv_info_val:.4f} below threshold {min_iv}"})
-                    continue
-                if len(selected) >= max_variables:
-                    rejected.append({"variable": var, "reason": f"Reached max_variables limit ({max_variables})"})
-                    continue
-                selected.append({"variable": var, "reason": "IV above threshold"})
-                if cid and cid not in seen_clusters:
-                    seen_clusters.add(cid)
-
-        else:
-            for var in candidates:
-                if var in manual_excludes:
-                    continue
-                if var in manual_includes:
-                    reason = manual_includes.get(var, "Manual inclusion")
-                    if var not in [s["variable"] for s in selected]:
-                        selected.append({"variable": var, "reason": reason})
-                    continue
-
-                iv_info_val = iv_map.get(var, 0.0)
-                if iv_info_val < min_iv:
-                    rejected.append({"variable": var, "reason": f"IV {iv_info_val:.4f} below threshold {min_iv}"})
-                    continue
-
-                if len(selected) >= max_variables:
-                    rejected.append({"variable": var, "reason": f"Reached max_variables limit ({max_variables})"})
-                    continue
-
-                selected.append({"variable": var, "reason": f"IV {iv_info_val:.4f} above threshold {min_iv}"})
-
-        if cluster_rule != "none" and len(selected) > max_variables:
-            extra_vars = selected[max_variables:]
-            selected = selected[:max_variables]
-            for ev in extra_vars:
-                rejected.append({"variable": ev["variable"], "reason": f"Reached max_variables limit ({max_variables})"})
+        # Shared candidate-selection loop — replaces the three ad-hoc branches
+        has_cluster_policy = cluster_rule != "none"
+        for var in candidates:
+            if var in manual_excludes:
+                continue
+            if var in manual_includes and var not in [s["variable"] for s in selected]:
+                selected.append({"variable": var, "reason": manual_includes[var]})
+                continue
+            cid = cluster_map.get(var)
+            if has_cluster_policy and cid and cid in seen_clusters:
+                continue
+            if var in [s["variable"] for s in selected]:
+                continue
+            if var in [r["variable"] for r in rejected]:
+                continue
+            iv_info_val = iv_map.get(var, 0.0)
+            if iv_info_val < min_iv:
+                rejected.append({"variable": var, "reason": f"IV {iv_info_val:.4f} below threshold {min_iv}"})
+                continue
+            if len(selected) >= max_variables:
+                rejected.append({"variable": var, "reason": f"Reached max_variables limit ({max_variables})"})
+                continue
+            selected.append({"variable": var, "reason": f"IV {iv_info_val:.4f} above threshold {min_iv}"})
+            if has_cluster_policy and cid and cid not in seen_clusters:
+                seen_clusters.add(cid)
 
         selection = {
             "schema_version": SCHEMA_SELECTION_DEFINITION,
