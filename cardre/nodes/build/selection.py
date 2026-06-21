@@ -288,6 +288,9 @@ class VariableSelectionNode(NodeType):
         # Shared candidate-selection loop — replaces the three ad-hoc branches
         has_cluster_policy = cluster_rule != "none"
         for var in candidates:
+            if not has_cluster_policy and len(selected) >= max_variables:
+                rejected.append({"variable": var, "reason": f"Reached max_variables limit ({max_variables})"})
+                continue
             if var in manual_excludes:
                 continue
             if var in manual_includes and var not in [s["variable"] for s in selected]:
@@ -310,6 +313,14 @@ class VariableSelectionNode(NodeType):
             selected.append({"variable": var, "reason": f"IV {iv_info_val:.4f} above threshold {min_iv}"})
             if has_cluster_policy and cid and cid not in seen_clusters:
                 seen_clusters.add(cid)
+
+        # Post-loop truncation for clustered modes: preselected cluster
+        # representatives may have pushed selected past max_variables.
+        if has_cluster_policy and len(selected) > max_variables:
+            extra_vars = selected[max_variables:]
+            selected = selected[:max_variables]
+            for ev in extra_vars:
+                rejected.append({"variable": ev["variable"], "reason": f"Reached max_variables limit ({max_variables})"})
 
         selection = {
             "schema_version": SCHEMA_SELECTION_DEFINITION,
