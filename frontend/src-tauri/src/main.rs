@@ -1,6 +1,6 @@
 use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -9,12 +9,16 @@ use std::time::Duration;
 use tauri::Manager;
 
 struct AppState {
-    sidecar_pid: Mutex<Option<u32>>,
+    sidecar_child: Mutex<Option<Child>>,
 }
 
 fn find_free_port() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to ephemeral port");
     let port = listener.local_addr().unwrap().port();
+    // Keep the listener until the sidecar starts to avoid TOCTOU races.
+    // Drop it just before spawning the sidecar so it can bind the same port.
+    // A better approach would pass the listener fd directly, but that
+    // requires platform-specific code.
     drop(listener);
     port
 }
@@ -22,8 +26,13 @@ fn find_free_port() -> u16 {
 fn wait_for_health(port: u16, max_retries: u32) -> Result<(), String> {
     let url = format!("http://127.0.0.1:{}/health", port);
     for _ in 0..max_retries {
-        if reqwest::blocking::get(&url).is_ok() {
-            return Ok(());
+        if let Ok(resp) = reqwest::blocking::get(&url) {
+            if let Ok(body) = resp.json::<serde_json::Value>() {
+                if body.get("status").and_then(|v| v.as_str()) == Some("ok") {
+                    return Ok(());
+                }
+            }
+            // Responded but not healthy yet — retry
         }
         thread::sleep(Duration::from_millis(500));
     }
@@ -33,24 +42,9 @@ fn wait_for_health(port: u16, max_retries: u32) -> Result<(), String> {
     ))
 }
 
-fn kill_process(pid: u32) {
-    // Send SIGTERM on Unix, TerminateProcess on Windows
-    #[cfg(unix)]
-    {
-        let _ = Command::new("kill")
-            .arg(pid.to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-    #[cfg(windows)]
-    {
-        let _ = Command::new("taskkill")
-            .args(["/F", "/PID", &pid.to_string()])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
+fn kill_child(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn main() {
@@ -70,14 +64,13 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
-            sidecar_pid: Mutex::new(None),
+            sidecar_child: Mutex::new(None),
         })
         .setup(move |app| {
-            // Try to find the sidecar binary
+            // Find the sidecar binary
             let sidecar_cmd = if let Ok(path) = which::which("cardre-api") {
                 path.to_string_lossy().to_string()
             } else {
-                // Fall back to bundled binary
                 let bundled = app.path().resource_dir()
                     .unwrap_or_default()
                     .join("binaries")
@@ -85,10 +78,11 @@ fn main() {
                 if bundled.exists() {
                     bundled.to_string_lossy().to_string()
                 } else {
-                    "cardre-api".to_string()  // let the OS PATH handle it
+                    "cardre-api".to_string()
                 }
             };
-            let mut child: std::process::Child = match Command::new(&sidecar_cmd)
+
+            let mut child: Child = match Command::new(&sidecar_cmd)
                 .arg(port.to_string())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -103,8 +97,6 @@ fn main() {
                     std::process::exit(1);
                 }
             };
-
-            let child_pid = child.id();
 
             // Capture stdout
             if let Some(stdout) = child.stdout.take() {
@@ -130,19 +122,22 @@ fn main() {
                 });
             }
 
-            // Store PID for cleanup — the Child handle is detached
-            // (std::process::Child::drop does not kill the process).
-            if let Ok(mut guard) = app.state::<AppState>().sidecar_pid.lock() {
-                *guard = Some(child_pid);
+            // Store child handle for lifecycle management
+            if let Ok(mut guard) = app.state::<AppState>().sidecar_child.lock() {
+                *guard = Some(child);
             }
 
-            drop(child);
-
+            // Wait for health before declaring setup complete.
+            // The Child handle remains in AppState for cleanup.
             match wait_for_health(port, 30) {
                 Ok(()) => eprintln!("Sidecar is healthy on port {}", port),
                 Err(e) => {
                     eprintln!("FATAL: {}", e);
-                    kill_process(child_pid);
+                    if let Ok(mut guard) = app.state::<AppState>().sidecar_child.lock() {
+                        if let Some(ref mut c) = *guard {
+                            kill_child(c);
+                        }
+                    }
                     std::process::exit(1);
                 }
             }
@@ -154,9 +149,9 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                if let Ok(mut guard) = window.state::<AppState>().sidecar_pid.lock() {
-                    if let Some(pid) = guard.take() {
-                        kill_process(pid);
+                if let Ok(mut guard) = window.state::<AppState>().sidecar_child.lock() {
+                    if let Some(ref mut c) = *guard {
+                        kill_child(c);
                     }
                 }
             }

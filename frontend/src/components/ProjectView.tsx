@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { TopBar } from "./TopBar";
@@ -11,6 +11,7 @@ import { RunHistoryPanel } from "./RunHistoryPanel";
 import { ArtifactBrowser } from "./ArtifactBrowser";
 import { ManualBinningEditor } from "./ManualBinningEditor";
 import { ExportPanel } from "./ExportPanel";
+import { useRunProgress } from "../hooks/useRunProgress";
 import type { PlanResponse, StepStatus, UpdateStepParamsResponse } from "../types";
 import { theme } from "../styles";
 
@@ -21,26 +22,9 @@ interface Props {
 
 export function ProjectView({ projectId, onBack }: Props) {
   const queryClient = useQueryClient();
-  const [running, setRunning] = useState(false);
   const [activeSection, setActiveSection] = useState("pathway");
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [diagnostics, setDiagnostics] = useState<string[]>([]);
-  const [carriedForwardSteps, setCarriedForwardSteps] = useState<Record<string, boolean>>({});
-  const [liveStepStatus, setLiveStepStatus] = useState<Record<string, string>>({});
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-      if (pollRef.current !== null) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, []);
 
   const { data: project, isLoading: projectLoading } = useQuery({
     queryKey: ["project", projectId],
@@ -62,108 +46,33 @@ export function ProjectView({ projectId, onBack }: Props) {
     enabled: !!scorecardPlan?.plan_id,
   });
 
+  const runProgress = useRunProgress(projectId, scorecardPlan?.plan_id ?? null, () => {
+    refetchPlan();
+  });
+  const { running, error, carriedForwardSteps, liveStepStatus, stepProgress, diagnostics, startRun, addDiagnostic } = runProgress;
+
   const handlePlanRefreshed = useCallback(
     (detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string }) => {
       refetchPlan();
       if ("latest_version_id" in detailOrResp && detailOrResp.latest_version_id) {
-        setDiagnostics((prev) => [
-          ...prev,
-          `[${new Date().toLocaleTimeString()}] Plan refreshed to version ${(detailOrResp.latest_version_id as string).slice(0, 8)}…`,
-        ]);
+        addDiagnostic(`Plan refreshed to version ${(detailOrResp.latest_version_id as string).slice(0, 8)}…`);
       } else if ("new_plan_version_id" in detailOrResp) {
-        setDiagnostics((prev) => [
-          ...prev,
-          `[${new Date().toLocaleTimeString()}] New plan version created: ${detailOrResp.new_plan_version_id.slice(0, 8)}…`,
-        ]);
+        addDiagnostic(`New plan version created: ${detailOrResp.new_plan_version_id.slice(0, 8)}…`);
       }
     },
-    [refetchPlan],
+    [refetchPlan, addDiagnostic],
   );
+
+  const handleRun = async () => {
+    if (!scorecardPlan || !planData) return;
+    await startRun(planData.latest_version_id);
+  };
 
   // After import, re-fetch project plans
   const handleImported = () => {
     queryClient.invalidateQueries({ queryKey: ["project", projectId] });
     queryClient.invalidateQueries({ queryKey: ["projectPlans", projectId] });
-    setDiagnostics((prev) => [
-      ...prev,
-      `[${new Date().toLocaleTimeString()}] Dataset imported — pathway import step configured`,
-    ]);
-  };
-
-  const handleRun = async () => {
-    if (!scorecardPlan || !planData) return;
-    setRunning(true);
-    setError(null);
-    setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Starting pathway run...`]);
-    try {
-      const runResp = await api.runPlan({
-        project_id: projectId,
-        plan_version_id: planData.latest_version_id,
-        run_scope: "full_plan",
-        force: false,
-      });
-      const runId = runResp.run_id;
-      setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Run started (${runId.slice(0, 8)}…)`]);
-
-      queryClient.invalidateQueries({ queryKey: ["projectRuns", projectId] });
-
-      let consecutiveErrors = 0;
-      const MAX_CONSECUTIVE_ERRORS = 5;
-
-      const checkProgress = async () => {
-        if (!mountedRef.current) return;
-        try {
-          const [run, steps] = await Promise.all([
-            api.getRun(runId),
-            api.getRunSteps(runId),
-          ]);
-          consecutiveErrors = 0;
-          const cfMap: Record<string, boolean> = {};
-          const liveMap: Record<string, string> = {};
-          steps.steps.forEach((s) => {
-            cfMap[s.step_id] = s.is_carried_forward ?? false;
-            liveMap[s.step_id] = s.status;
-          });
-          setCarriedForwardSteps(cfMap);
-          setLiveStepStatus(liveMap);
-          const stepStatuses = steps.steps.map((s) => `${s.step_id}: ${s.status}${s.is_carried_forward ? " (carried forward)" : ""}`);
-          setDiagnostics((prev) => {
-            const prevCleaned = prev.filter((m) => !m.startsWith("  └ "));
-            return [...prevCleaned, `  └ steps: [${stepStatuses.join(", ")}]`];
-          });
-
-          if (run.status !== "running") {
-            if (pollRef.current !== null) {
-              clearInterval(pollRef.current);
-              pollRef.current = null;
-            }
-            queryClient.invalidateQueries({ queryKey: ["project", projectId] });
-            queryClient.invalidateQueries({ queryKey: ["projectRuns", projectId] });
-            await refetchPlan();
-            setRunning(false);
-            setLiveStepStatus({});
-            setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Run ${run.status}`]);
-          }
-        } catch {
-          consecutiveErrors++;
-          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-            if (pollRef.current !== null) {
-              clearInterval(pollRef.current);
-              pollRef.current = null;
-            }
-            setRunning(false);
-            setError("Run polling failed after multiple retries. Check the diagnostics panel.");
-            setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Polling failed after ${MAX_CONSECUTIVE_ERRORS} consecutive errors`]);
-          }
-        }
-      };
-
-      pollRef.current = setInterval(checkProgress, 2000);
-    } catch (e: any) {
-      setError(e.message);
-      setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Run failed: ${e.message}`]);
-      setRunning(false);
-    }
+    addDiagnostic("Dataset imported — pathway import step configured");
   };
 
   const handleStepSelect = (stepId: string) => {
@@ -203,14 +112,6 @@ export function ProjectView({ projectId, onBack }: Props) {
     ...diagnostics,
     error ? `[error] ${error}` : null,
   ].filter(Boolean) as string[];
-
-  const totalPlanSteps = planData?.steps?.length ?? 0;
-  const progressCompleted = Object.values(liveStepStatus).filter((s) =>
-    ["succeeded", "failed", "cancelled"].includes(s)
-  ).length;
-  const stepProgress = running && totalPlanSteps > 0
-    ? { completed: progressCompleted, total: totalPlanSteps }
-    : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: theme.canvas }}>
