@@ -1,0 +1,387 @@
+{
+  "cardre/executor.py": [
+    570
+  ],
+  "cardre/modeling/adapters.py": [
+    134,
+    226,
+    316
+  ],
+  "cardre/modeling/serialization.py": [
+    109
+  ],
+  "cardre/nodes/_training_utils.py": [
+    86
+  ],
+  "cardre/nodes/build/auto_binning_fit.py": [
+    248
+  ],
+  "cardre/nodes/build/bins.py": [
+    130
+  ],
+  "cardre/nodes/build/clustering.py": [
+    538
+  ],
+  "cardre/nodes/build/export.py": [
+    92,
+    94,
+    97,
+    99,
+    101,
+    103,
+    105
+  ],
+  "cardre/nodes/build/features.py": [
+    92,
+    379
+  ],
+  "cardre/nodes/build/freeze.py": [
+    42,
+    69
+  ],
+  "cardre/nodes/build/models.py": [
+    191,
+    408,
+    520,
+    526,
+    606
+  ],
+  "cardre/nodes/build/selection.py": [
+    209
+  ],
+  "cardre/nodes/ensembles.py": [
+    56,
+    185,
+    390,
+    427
+  ],
+  "cardre/nodes/explainability.py": [
+    152,
+    303,
+    311,
+    413,
+    469,
+    594,
+    719
+  ],
+  "cardre/nodes/fairness.py": [
+    94,
+    315,
+    323,
+    458
+  ],
+  "cardre/nodes/feature_selection.py": [
+    99,
+    259,
+    344,
+    439,
+    540,
+    708
+  ],
+  "cardre/nodes/prep.py": [
+    364,
+    491,
+    622,
+    753,
+    828,
+    950,
+    1008
+  ],
+  "cardre/nodes/reject_inference.py": [
+    68,
+    206,
+    319
+  ],
+  "cardre/nodes/validate/analyse.py": [
+    220,
+    579,
+    735
+  ],
+  "cardre/nodes/validate/apply.py": [
+    149,
+    305,
+    315,
+    330,
+    368
+  ],
+  "cardre/reporting/collector.py": [
+    77
+  ],
+  "cardre/services/comparison_service.py": [
+    78
+  ],
+  "sidecar/routes/artifacts.py": [
+    56,
+    84
+  ],
+  "sidecar/routes/method_summary.py": [
+    57,
+    120
+  ],
+  "sidecar/routes/runs.py": [
+    156
+  ],
+  "tests/golden_scorecard/test_german_credit_statistical_pipeline.py": [
+    100,
+    101,
+    152,
+    207
+  ],
+  "tests/golden_scorecard/test_golden_r_scorecard_apply_scores.py": [
+    47
+  ],
+  "tests/golden_scorecard/test_golden_r_scorecard_scaling.py": [
+    100
+  ],
+  "tests/golden_scorecard/test_golden_r_scorecard_woe_iv.py": [
+    125,
+    268
+  ],
+  "tests/test_acceptance_generic_pipeline.py": [
+    154,
+    166
+  ],
+  "tests/test_artifact_guardrail.py": [
+    3
+  ],
+  "tests/test_binning.py": [
+    106,
+    162,
+    283,
+    532
+  ],
+  "tests/test_boosting_fairness.py": [
+    102,
+    251,
+    274,
+    304,
+    336,
+    374,
+    437,
+    458,
+    478
+  ],
+  "tests/test_decision_tree.py": [
+    147,
+    159,
+    173,
+    183,
+    203,
+    217,
+    230,
+    244,
+    260,
+    277,
+    391,
+    408,
+    424,
+    474,
+    516,
+    567,
+    603,
+    629,
+    630
+  ],
+  "tests/test_ensembles.py": [
+    37,
+    175,
+    189,
+    201,
+    218,
+    230,
+    253,
+    266,
+    279,
+    292
+  ],
+  "tests/test_executor.py": [
+    269,
+    281,
+    893,
+    1027,
+    1105
+  ],
+  "tests/test_explainability_limitations.py": [
+    71,
+    102,
+    133,
+    184,
+    217,
+    276,
+    312,
+    340,
+    372,
+    395
+  ],
+  "tests/test_feature_selection_resampling.py": [
+    116,
+    144,
+    156,
+    192,
+    196,
+    206,
+    215,
+    255,
+    265,
+    275,
+    318,
+    359,
+    375,
+    426
+  ],
+  "tests/test_frozen_scorecard_bundle.py": [
+    192,
+    307,
+    367
+  ],
+  "tests/test_generic_import.py": [
+    66,
+    68,
+    109,
+    125,
+    139,
+    148,
+    185
+  ],
+  "tests/test_ml_ensembles.py": [
+    143,
+    199,
+    209,
+    220,
+    230,
+    241,
+    283,
+    293,
+    304,
+    314,
+    324,
+    343,
+    356,
+    369,
+    393,
+    419,
+    441,
+    468,
+    485,
+    506,
+    594,
+    634,
+    669,
+    684,
+    710,
+    730,
+    731,
+    743,
+    744
+  ],
+  "tests/test_ml_scorecard_methods.py": [
+    164,
+    207
+  ],
+  "tests/test_model_adapters.py": [
+    131,
+    153,
+    197,
+    275
+  ],
+  "tests/test_nodes.py": [
+    122,
+    223,
+    473,
+    530,
+    561,
+    587,
+    668,
+    711,
+    727,
+    803
+  ],
+  "tests/test_optbinning.py": [
+    402,
+    403,
+    426,
+    427,
+    434,
+    602,
+    618,
+    770,
+    771,
+    998,
+    1313,
+    1392,
+    1423
+  ],
+  "tests/test_reject_inference.py": [
+    156,
+    161,
+    186,
+    215,
+    225,
+    246,
+    290,
+    294,
+    347,
+    350,
+    399,
+    445
+  ],
+  "tests/test_reporting_acceptance.py": [
+    508
+  ],
+  "tests/test_run_lifecycle.py": [
+    105,
+    125,
+    338,
+    423,
+    458,
+    462
+  ],
+  "tests/test_scorecard_model.py": [
+    341,
+    450,
+    657,
+    658,
+    725
+  ],
+  "tests/test_scorecard_selection.py": [
+    114,
+    194,
+    291,
+    370,
+    532,
+    721
+  ],
+  "tests/test_sidecar_api.py": [
+    924,
+    946
+  ],
+  "tests/test_tuning.py": [
+    133,
+    144,
+    158,
+    183,
+    198,
+    211,
+    214,
+    254,
+    281,
+    319,
+    348,
+    349,
+    373,
+    424
+  ],
+  "tests/test_woe.py": [
+    160,
+    161,
+    163,
+    517,
+    639,
+    671,
+    727,
+    774,
+    791,
+    814,
+    881
+  ]
+}

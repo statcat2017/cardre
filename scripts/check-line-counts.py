@@ -15,20 +15,18 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 LANGUAGE_GLOBS = {
-    "python": ["cardre/*.py", "cardre/**/*.py", "sidecar/*.py", "sidecar/**/*.py", "tests/*.py", "tests/**/*.py"],
+    "python": ["cardre/*.py", "cardre/**/*.py", "sidecar/*.py", "sidecar/**/*.py", "tests/*.py", "tests/**/*.py", "scripts/*.py"],
     "typescript": ["frontend/src/*.ts", "frontend/src/*.tsx", "frontend/src/**/*.ts", "frontend/src/**/*.tsx"],
     "rust": ["frontend/src-tauri/src/*.rs", "frontend/src-tauri/src/**/*.rs"],
 }
 
 ALLOWLIST: set[str] = {
     # Python (>1000 lines)
-    "cardre/evidence.py",
-    "cardre/nodes/build.py",
     "cardre/nodes/prep.py",
-    "cardre/nodes/validate.py",
-    "tests/test_sidecar_api.py",
     "tests/test_optbinning.py",
     "tests/test_bin_definition_lifecycle.py",
+    "tests/test_sidecar_api.py",
+    "tests/test_executor.py",
     # TypeScript/TSX (>600 lines)
     "frontend/src/components/ManualBinningEditor.tsx",
     # Auto-generated files

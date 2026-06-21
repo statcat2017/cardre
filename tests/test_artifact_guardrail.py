@@ -19,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Modules where direct artifact reads are approved.
 APPROVED_PATTERNS: set[str] = {
     "cardre/evidence.py",
+    "cardre/_evidence/",
 }
 
 # Existing violations that should be migrated to ArtifactEvidenceReader

@@ -28,11 +28,13 @@ from cardre.evidence import (
     SCHEMA_MANUAL_BINNING_OVERRIDES,
     SCHEMA_MODELLING_METADATA,
     SCHEMA_MODEL_ARTIFACT,
+    SCHEMA_SAMPLE_DEFINITION,
     SCHEMA_SCORE_SCALING,
     SCHEMA_SELECTION_DEFINITION,
     SCHEMA_VALIDATION_METRICS,
     SCHEMA_WOE_IV_EVIDENCE,
     SCHEMA_WOE_TABLE,
+    SampleDefinition,
 )
 from cardre.store import ProjectStore
 
@@ -145,6 +147,31 @@ class TestSchemaVersionMatching:
         reader = ArtifactEvidenceReader(store)
         result = reader.find([art], kind)
         assert result is not None
+
+    def test_modelling_metadata_preserves_raw_value_types(self):
+        store, _ = make_store()
+        art = _json_artifact(
+            store,
+            {
+                "target_column": "default_flag",
+                "good_values": [0],
+                "bad_values": [1],
+                "indeterminate_values": [2],
+            },
+            stem="metadata",
+            schema_version=SCHEMA_MODELLING_METADATA,
+        )
+
+        result = ArtifactEvidenceReader(store).find([art], EvidenceKind.MODELLING_METADATA)
+
+        assert result.good_values == [0]
+        assert result.bad_values == [1]
+        assert result.indeterminate_values == [2]
+
+    def test_sample_definition_preserves_default_sample_method(self):
+        result = SampleDefinition.from_json({"schema_version": SCHEMA_SAMPLE_DEFINITION})
+
+        assert result.sample_method == "full_population"
 
 
 def kind_profile(kind: EvidenceKind):
@@ -357,6 +384,4 @@ class TestAmbiguous:
         reader = ArtifactEvidenceReader(store)
         with pytest.raises(AmbiguousEvidenceError):
             reader.find([art1, art2], EvidenceKind.WOE_TABLE)
-
-
 
