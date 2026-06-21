@@ -64,22 +64,19 @@ class TestBranchListContract:
             "branch_id", "plan_id", "name", "branch_type", "status",
             "base_branch_id", "base_plan_version_id", "head_plan_version_id",
             "branch_point_step_id", "branch_point_canonical_step_id",
-            "is_champion", "latest_run_id", "readiness",
-            "warning_count", "error_count",
         }
         actual_fields = set(branch.keys())
         missing = expected_fields - actual_fields
         assert not missing, f"BranchListItem missing fields: {missing}"
 
-        # Fields the route currently does not populate (known gap)
-        known_gaps = {"is_champion", "latest_run_id", "readiness",
-                      "warning_count", "error_count"}
-        for gap in known_gaps:
-            if gap in actual_fields:
-                assert branch[gap] is False or branch[gap] == "not_run" or branch[gap] is None or branch[gap] == 0, (
-                    f"Field {gap!r} is expected to be default but got {branch[gap]!r}. "
-                    "If the route now populates it, update this test and the known_gaps set."
-                )
+        # Fields the route currently does not populate (removed from model)
+        removed_fields = {"is_champion", "latest_run_id", "readiness",
+                          "warning_count", "error_count"}
+        for field in removed_fields:
+            assert field not in actual_fields, (
+                f"Field {field!r} should not be in BranchListItem response. "
+                "If the route now populates it, add it back to expected_fields."
+            )
 
 
 class TestReportContract:

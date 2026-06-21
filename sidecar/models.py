@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -111,10 +111,18 @@ class PlanResponse(BaseModel):
 class RunRequest(BaseModel):
     project_id: str
     plan_version_id: str
-    run_scope: str = "full_plan"
+    run_scope: Literal["full_plan", "branch", "to_node"] = "full_plan"
     branch_id: str | None = None
     target_step_id: str | None = None
     force: bool = False
+
+    @model_validator(mode="after")
+    def _validate_scope(self) -> RunRequest:
+        if self.run_scope == "branch" and not self.branch_id:
+            raise ValueError("branch_id is required when run_scope is 'branch'")
+        if self.run_scope == "to_node" and not self.target_step_id:
+            raise ValueError("target_step_id is required when run_scope is 'to_node'")
+        return self
 
 
 class RunResponse(BaseModel):
@@ -346,11 +354,6 @@ class BranchListItem(BaseModel):
     head_plan_version_id: str
     branch_point_step_id: str | None = None
     branch_point_canonical_step_id: str | None = None
-    is_champion: bool = False
-    latest_run_id: str | None = None
-    readiness: str = "not_run"
-    warning_count: int = 0
-    error_count: int = 0
 
 
 class BranchListResponse(BaseModel):
