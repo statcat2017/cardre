@@ -7,16 +7,13 @@ into a dedicated resolver so the executor can focus on step iteration.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from cardre.audit import ArtifactRef, RunStepRecord, StepSpec
-from cardre.executor import resolve_output_artifacts
+from cardre.evidence_locator import resolve_output_artifacts
 from cardre.staleness import compute_staleness, step_is_stale
 from cardre.store import ProjectStore
 from cardre.topology import validate_topology
-
-if TYPE_CHECKING:
-    from cardre.executor import PlanExecutor
 
 STATUS_SUCCEEDED = "succeeded"
 

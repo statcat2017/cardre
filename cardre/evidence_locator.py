@@ -10,7 +10,7 @@ across-plan-versions.
 
 from __future__ import annotations
 
-from cardre.audit import RunStepRecord
+from cardre.audit import ArtifactRef, RunStepRecord
 from cardre.store import ProjectStore
 
 STATUS_SUCCEEDED = "succeeded"
@@ -163,3 +163,16 @@ def _merge_full_plan_steps(
         for prs in store.get_run_steps(full_run_id):
             if prs.step_id not in rs_by_step:
                 rs_by_step[prs.step_id] = prs
+
+
+def resolve_output_artifacts(
+    store: ProjectStore,
+    rs: RunStepRecord,
+) -> list[ArtifactRef]:
+    """Resolve ``ArtifactRef`` objects for a run-step's output artifact IDs."""
+    artifacts = []
+    for aid in rs.output_artifact_ids:
+        a = store.get_artifact(aid)
+        if a is not None:
+            artifacts.append(a)
+    return artifacts

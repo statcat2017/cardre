@@ -40,6 +40,7 @@ from cardre.errors import (
     NodeExecutionError,
     ParameterValidationError,
 )
+from cardre.evidence_locator import resolve_output_artifacts
 from cardre.registry import NodeRegistry
 from cardre.step_graph import ancestor_closure, descendant_closure
 from cardre.store import ProjectStore
@@ -66,21 +67,7 @@ class _StepAction:
     before_execute: Callable[[], None] | None = None
 
 
-def resolve_output_artifacts(
-    store: ProjectStore,
-    rs: RunStepRecord,
-) -> list[ArtifactRef]:
-    """Resolve ``ArtifactRef`` objects for a run-step's output artifact IDs."""
-    artifacts = []
-    for aid in rs.output_artifact_ids:
-        a = store.get_artifact(aid)
-        if a is not None:
-            artifacts.append(a)
-    return artifacts
-
-
 class PlanExecutor:
-    """Executes plan versions using a node registry."""
 
     def __init__(self, registry: NodeRegistry) -> None:
         self.registry = registry

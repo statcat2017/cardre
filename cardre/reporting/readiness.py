@@ -8,6 +8,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from cardre.reporting.evidence_contract import (
+    REQUIRED_STEPS_BRANCH,
+    REQUIRED_STEPS_CHAMPION,
+    LEGACY_CANONICAL_ALIASES,
+    find_evidence_for_canonical_step,
+)
 from cardre.reporting.limitation_codes import LimitationCode
 from cardre.step_id import resolve_run_step, resolve_required_steps
 from cardre.store import ProjectStore
@@ -21,23 +27,6 @@ def _check_oot_exists(store: ProjectStore, run_id: str) -> bool:
                 return True
     return False
 
-REQUIRED_STEPS_CHAMPION = [
-    "final-woe-iv",
-    "model-fit",
-    "score-scaling",
-    "validation-metrics",
-]
-
-REQUIRED_STEPS_BRANCH = [
-    "final-woe-iv",
-    "model-fit",
-    "score-scaling",
-    "validation-metrics",
-]
-
-LEGACY_CANONICAL_ALIASES: dict[str, str] = {
-    "logistic-regression": "model-fit",
-}
 
 BLOCKER_CODES = LimitationCode.blocker_codes()
 

@@ -61,15 +61,7 @@ from cardre.reporting.schema import (
     WoeSmoothingInfo,
 )
 
-REQUIRED_CANONICAL_STEPS = [
-    "final-woe-iv",
-    "logistic-regression",
-    "score-scaling",
-    "validation-metrics",
-    "cutoff-analysis",
-    "manual-binning",
-    "variable-clustering",
-]
+from cardre.reporting.evidence_contract import REQUIRED_STEPS_COLLECTOR, find_evidence_for_canonical_step
 
 CARDRE_VERSION = "0.1.0"
 
@@ -154,7 +146,7 @@ class ReportCollector:
         # Resolve required steps
         resolved = resolve_required_steps(
             branch_id=self.target_branch_id,
-            canonical_step_ids=REQUIRED_CANONICAL_STEPS,
+            canonical_step_ids=REQUIRED_STEPS_COLLECTOR,
             branch_step_map=step_map,
         )
 
