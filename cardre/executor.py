@@ -100,23 +100,23 @@ class PlanExecutor:
         self._validate_topology(steps)
 
         from cardre.run_lifecycle import RunLifecycle
-        lifecycle = RunLifecycle.start(store, plan_version_id, run_id=run_id)
-        run_id = lifecycle.run_id
+        with RunLifecycle.start(store, plan_version_id, run_id=run_id) as lifecycle:
+            run_id = lifecycle.run_id
 
-        actions = [
-            _StepAction(spec=s, action="execute")
-            for s in steps
-        ]
+            actions = [
+                _StepAction(spec=s, action="execute")
+                for s in steps
+            ]
 
-        has_failure, was_cancelled, outputs, records = self._execute_actions(
-            store, actions, plan_version_id, run_id, lifecycle,
-        )
-        status = self._compute_final_status(has_failure, was_cancelled, actions, force)
+            has_failure, was_cancelled, outputs, records = self._execute_actions(
+                store, actions, plan_version_id, run_id, lifecycle,
+            )
+            status = self._compute_final_status(has_failure, was_cancelled, actions, force)
 
-        lifecycle.finalise(
-            status=status, execution_mode="force" if force else "full",
-            run_step_records=records, steps=steps,
-        )
+            lifecycle.finalise(
+                status=status, execution_mode="force" if force else "full",
+                run_step_records=records, steps=steps,
+            )
         return run_id
 
     def run_branch(
@@ -134,38 +134,38 @@ class PlanExecutor:
         if not force and ctx.short_circuit_run_id is not None:
             return ctx.short_circuit_run_id
 
-        lifecycle = RunLifecycle.start(store, plan_version_id, run_id=run_id, branch_id=branch_id)
-        run_id = lifecycle.run_id
+        with RunLifecycle.start(store, plan_version_id, run_id=run_id, branch_id=branch_id) as lifecycle:
+            run_id = lifecycle.run_id
 
-        # Build action list but defer parent evidence resolution to
-        # just-before-execute so branch-owned parent steps produce
-        # fresh evidence before their children resolve inputs.
-        actions: list[_StepAction] = []
-        for spec in ctx.steps:
-            if spec.step_id not in ctx.branch_owned_step_ids:
-                actions.append(_StepAction(spec=spec, action="skip"))
-            elif not force and spec.step_id not in ctx.stale_branch_step_ids:
-                actions.append(_StepAction(spec=spec, action="skip"))
-            else:
-                actions.append(_StepAction(
-                    spec=spec, action="execute",
-                    before_execute=lambda s=spec: resolver.resolve_parent_evidence(
-                        store, ctx, s,
-                    ),
-                ))
+            # Build action list but defer parent evidence resolution to
+            # just-before-execute so branch-owned parent steps produce
+            # fresh evidence before their children resolve inputs.
+            actions: list[_StepAction] = []
+            for spec in ctx.steps:
+                if spec.step_id not in ctx.branch_owned_step_ids:
+                    actions.append(_StepAction(spec=spec, action="skip"))
+                elif not force and spec.step_id not in ctx.stale_branch_step_ids:
+                    actions.append(_StepAction(spec=spec, action="skip"))
+                else:
+                    actions.append(_StepAction(
+                        spec=spec, action="execute",
+                        before_execute=lambda s=spec: resolver.resolve_parent_evidence(
+                            store, ctx, s,
+                        ),
+                    ))
 
-        has_failure, was_cancelled, outputs, records = self._execute_actions(
-            store, actions, plan_version_id, run_id, lifecycle,
-            step_outputs=ctx.step_outputs,
-            run_step_records=ctx.run_step_records,
-        )
-        status = self._compute_final_status(has_failure, was_cancelled, actions, force)
+            has_failure, was_cancelled, outputs, records = self._execute_actions(
+                store, actions, plan_version_id, run_id, lifecycle,
+                step_outputs=ctx.step_outputs,
+                run_step_records=ctx.run_step_records,
+            )
+            status = self._compute_final_status(has_failure, was_cancelled, actions, force)
 
-        lifecycle.finalise(
-            status=status, execution_mode="force" if force else "branch",
-            run_step_records=records, steps=ctx.steps,
-            branch_id=branch_id,
-        )
+            lifecycle.finalise(
+                status=status, execution_mode="force" if force else "branch",
+                run_step_records=records, steps=ctx.steps,
+                branch_id=branch_id,
+            )
         return run_id
 
     def run_to_node(
@@ -190,32 +190,31 @@ class PlanExecutor:
         closure_steps = [s for s in steps if s.step_id in closure]
 
         from cardre.run_lifecycle import RunLifecycle
-        lifecycle = RunLifecycle.start(store, plan_version_id, run_id=run_id)
-        run_id = lifecycle.run_id
+        with RunLifecycle.start(store, plan_version_id, run_id=run_id) as lifecycle:
+            run_id = lifecycle.run_id
 
-        from cardre.staleness import compute_staleness
-        staleness = compute_staleness(store, plan_version_id)
+            from cardre.staleness import compute_staleness
+            staleness = compute_staleness(store, plan_version_id)
 
-        actions: list[_StepAction] = []
-        for spec in closure_steps:
-            if not force and spec.step_id in staleness and not staleness[spec.step_id]:
-                rs = self._reuse_run_step(store, spec, plan_version_id, run_id, {}, {})
-                if rs is not None:
-                    actions.append(_StepAction(spec=spec, action="reuse", evidence_source=rs))
-                    continue
-            actions.append(_StepAction(spec=spec, action="execute"))
+            # Planning is pure: reuse is recorded as action metadata, not written to store.
+            actions: list[_StepAction] = []
+            for spec in closure_steps:
+                if not force and spec.step_id in staleness and not staleness[spec.step_id]:
+                    actions.append(_StepAction(spec=spec, action="reuse"))
+                else:
+                    actions.append(_StepAction(spec=spec, action="execute"))
 
-        has_failure, was_cancelled, outputs, records = self._execute_actions(
-            store, actions, plan_version_id, run_id, lifecycle,
-        )
-        status = self._compute_final_status(has_failure, was_cancelled, actions, force)
+            has_failure, was_cancelled, outputs, records = self._execute_actions(
+                store, actions, plan_version_id, run_id, lifecycle,
+            )
+            status = self._compute_final_status(has_failure, was_cancelled, actions, force)
 
-        lifecycle.finalise(
-            status=status, execution_mode="force" if force else "to_node",
-            run_step_records=records, steps=closure_steps,
-            target_step_id=target_step_id,
-            in_scope_step_ids=sorted(closure),
-        )
+            lifecycle.finalise(
+                status=status, execution_mode="force" if force else "to_node",
+                run_step_records=records, steps=closure_steps,
+                target_step_id=target_step_id,
+                in_scope_step_ids=sorted(closure),
+            )
         return run_id
 
     # ------------------------------------------------------------------
@@ -250,11 +249,23 @@ class PlanExecutor:
                 if action.action == "skip":
                     continue
 
-                if action.action == "reuse" and action.evidence_source is not None:
-                    records[action.spec.step_id] = action.evidence_source
-                    outputs[action.spec.step_id] = resolve_output_artifacts(
-                        store, action.evidence_source,
-                    )
+                if action.action == "reuse":
+                    rs = self._reuse_run_step(store, action.spec, plan_version_id, run_id, outputs, records, evidence_source=action.evidence_source)
+                    if rs is not None:
+                        records[action.spec.step_id] = rs
+                        outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
+                    else:
+                        # No prior successful run step to reuse — execute instead
+                        if action.before_execute is not None:
+                            action.before_execute()
+                        rs = self._execute_step(
+                            store, action.spec, plan_version_id, run_id,
+                            outputs, records, lifecycle.token,
+                        )
+                        records[action.spec.step_id] = rs
+                        outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
+                        if rs.status == STATUS_FAILED:
+                            has_failure = True
                     continue
 
                 if action.action == "execute":
@@ -366,7 +377,7 @@ class PlanExecutor:
 
         except CancellationError:
             raise
-        except BaseException:
+        except Exception:
             tb = traceback.format_exc()
             exc_type = sys.exc_info()[0]
             exc_value = sys.exc_info()[1]
@@ -642,62 +653,35 @@ class PlanExecutor:
             description=description,
         )
 
-        run_id = store.create_run(new_plan_version_id)
-        step_outputs: dict[str, list[ArtifactRef]] = {}
-        run_step_records: dict[str, RunStepRecord] = {}
+        from cardre.run_lifecycle import RunLifecycle
+        with RunLifecycle.start(store, new_plan_version_id) as lifecycle:
+            run_id = lifecycle.run_id
 
-        for spec in new_steps:
-            if spec.step_id not in affected:
-                prev_rs = prev_rs_by_step.get(spec.step_id)
-                if prev_rs is None:
-                    raise ValueError(
-                        f"Cannot retain missing prior record for {spec.step_id!r}"
-                    )
-                copied_fp = dict(prev_rs.execution_fingerprint)
-                copied_fp["plan_version_id"] = new_plan_version_id
-                copied_fp["cardre_step_carried_forward"] = True
-                copied_fp["carried_forward_from_run_step_id"] = prev_rs.run_step_id
+            # Build actions: reuse for unaffected steps, execute for affected
+            actions: list[_StepAction] = []
+            for spec in new_steps:
+                if spec.step_id not in affected:
+                    prev_rs = prev_rs_by_step.get(spec.step_id)
+                    if prev_rs is None:
+                        raise ValueError(
+                            f"Cannot retain missing prior record for {spec.step_id!r}"
+                        )
+                    actions.append(_StepAction(
+                        spec=spec, action="reuse",
+                        evidence_source=prev_rs,
+                    ))
+                else:
+                    actions.append(_StepAction(spec=spec, action="execute"))
 
-                copied_rs = RunStepRecord(
-                    run_step_id=str(uuid.uuid4()),
-                    run_id=run_id,
-                    step_id=prev_rs.step_id,
-                    plan_version_id=new_plan_version_id,
-                    status=prev_rs.status,
-                    started_at=prev_rs.started_at,
-                    finished_at=prev_rs.finished_at,
-                    input_artifact_ids=prev_rs.input_artifact_ids,
-                    output_artifact_ids=prev_rs.output_artifact_ids,
-                    execution_fingerprint=copied_fp,
-                    warnings=prev_rs.warnings,
-                    errors=prev_rs.errors,
-                    is_carried_forward=True,
-                )
-                store.save_run_step(copied_rs)
-                run_step_records[spec.step_id] = copied_rs
-                step_outputs[spec.step_id] = resolve_output_artifacts(store, copied_rs)
-                continue
-
-            rs = self._execute_step(
-                store, spec, new_plan_version_id, run_id,
-                step_outputs, run_step_records,
+            has_failure, was_cancelled, outputs, records = self._execute_actions(
+                store, actions, new_plan_version_id, run_id, lifecycle,
             )
-            run_step_records[spec.step_id] = rs
-            step_outputs[spec.step_id] = resolve_output_artifacts(store, rs)
 
-            if rs.status == STATUS_FAILED:
-                break
-
-        has_failure = any(
-            rs.status == STATUS_FAILED
-            for rs in run_step_records.values()
-            if isinstance(rs, RunStepRecord)
-        )
-        if has_failure:
-            store.finish_run(run_id, STATUS_FAILED)
-        else:
-            store.finish_run(run_id, STATUS_SUCCEEDED)
-
+            status = self._compute_final_status(has_failure, was_cancelled, actions, force=False)
+            lifecycle.finalise(
+                status=status, execution_mode="replay",
+                run_step_records=records, steps=new_steps,
+            )
         return run_id
 
     # ------------------------------------------------------------------
@@ -710,17 +694,26 @@ class PlanExecutor:
         spec: StepSpec,
         plan_version_id: str,
         run_id: str,
-        run_step_records: dict[str, RunStepRecord],
         step_outputs: dict[str, list[ArtifactRef]],
+        run_step_records: dict[str, RunStepRecord],
+        evidence_source: RunStepRecord | None = None,
     ) -> RunStepRecord | None:
-        latest_run_id = store.get_latest_successful_run_id(plan_version_id)
-        if latest_run_id is None:
-            return None
-        prev_steps = store.get_run_steps(latest_run_id)
-        prev_rs_by_step = {rs.step_id: rs for rs in prev_steps}
-        prev_rs = prev_rs_by_step.get(spec.step_id)
+        """Carry forward a prior run step into the current run.
+
+        If *evidence_source* is provided, use it directly (replay path).
+        Otherwise look up the latest successful run step for the spec.
+        The write happens here, inside execution, not during planning.
+        """
+        prev_rs = evidence_source
         if prev_rs is None:
-            return None
+            latest_run_id = store.get_latest_successful_run_id(plan_version_id)
+            if latest_run_id is None:
+                return None
+            prev_steps = store.get_run_steps(latest_run_id)
+            prev_rs_by_step = {rs.step_id: rs for rs in prev_steps}
+            prev_rs = prev_rs_by_step.get(spec.step_id)
+            if prev_rs is None:
+                return None
         copied_fp = dict(prev_rs.execution_fingerprint)
         copied_fp["cardre_step_carried_forward"] = True
         copied_fp["carried_forward_from_run_step_id"] = prev_rs.run_step_id
