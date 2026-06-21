@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import os
+
+import pytest
+
 from cardre.services import run_orchestrator
 
 
@@ -58,6 +62,11 @@ def test_execute_run_returns_created_run_id_for_sync_to_node(monkeypatch):
     assert FakeExecutor.calls == [("to_node", None)]
 
 
+@pytest.mark.governance
+@pytest.mark.skipif(
+    os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower() not in ("1", "true"),
+    reason="requires CARDRE_GOVERNANCE=1",
+)
 def test_execute_run_returns_created_run_id_for_sync_branch(monkeypatch):
     _patch_executor(monkeypatch)
 
@@ -69,6 +78,11 @@ def test_execute_run_returns_created_run_id_for_sync_branch(monkeypatch):
     assert FakeExecutor.calls == [("branch", None)]
 
 
+@pytest.mark.governance
+@pytest.mark.skipif(
+    os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower() not in ("1", "true"),
+    reason="requires CARDRE_GOVERNANCE=1",
+)
 def test_execute_run_preserves_precreated_async_run_id_on_branch_short_circuit(monkeypatch):
     _patch_executor(monkeypatch)
     FakeExecutor.result_id = "existing-successful-run"

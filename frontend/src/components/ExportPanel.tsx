@@ -239,7 +239,7 @@ export function ExportPanel({ projectId }: Props) {
               {branchOptions.length === 0 && <option value="">No branches available</option>}
               {branchOptions.map((b) => (
                 <option key={b.branch_id} value={b.branch_id}>
-                  {b.name || b.branch_id} {b.is_champion ? "(champion)" : ""}
+                  {b.name || b.branch_id}
                 </option>
               ))}
             </select>

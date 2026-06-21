@@ -8,6 +8,7 @@ logical_hash.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -32,6 +33,11 @@ from cardre.store.plan_repo import PlanRepository
 from cardre.store.run_repo import RunRepository
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.project_repo import ProjectRepository
+
+
+def _governance_enabled() -> bool:
+    val = os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower()
+    return val in ("1", "true")
 
 # Read-time migration map for legacy node types → canonical
 _LEGACY_NODE_TYPE_METHOD: dict[str, tuple[str, str]] = {

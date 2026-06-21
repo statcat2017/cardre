@@ -7,7 +7,6 @@ from cardre.artifacts import (
 from cardre.errors import (
     ArtifactReadError,
     ArtifactWriteError,
-    CancellationError,
     CardreError,
     ContractViolationError,
     GraphValidationError,
@@ -69,7 +68,6 @@ __all__ = [
     "ApplyWoeMappingNode",
     "BuildSummaryReportNode",
     "CalculateWoeIvNode",
-    "CancellationError",
     "CardreError",
     "ContractViolationError",
     "CutoffAnalysisNode",

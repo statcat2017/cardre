@@ -16,6 +16,9 @@ class HealthResponse(BaseModel):
     cardre_version: str = "0.1.0"
     registry_accessible: bool = False
     registered_node_count: int = 0
+    launch_node_count: int = 0
+    deferred_node_count: int = 0
+    governance_enabled: bool = False
     checked_at: str = ""
 
 
@@ -593,6 +596,7 @@ class NodeTypeItem(BaseModel):
     node_type: str
     version: str
     category: str
+    tier: str = "available"
     description: str = ""
     model_family: str | None = None
     feature_strategies: list[str] = Field(default_factory=list)

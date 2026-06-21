@@ -8,6 +8,7 @@ or explicitly acknowledged as a gap.
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from pathlib import Path
 
@@ -32,6 +33,7 @@ def _setup_project_and_branch(client, tmp_path: Path) -> dict:
     project_id = proj_resp.json()["project_id"]
 
     store = ProjectStore(proj_path)
+    store.initialize()
     plan_id = store.create_plan(project_id, "test-plan")
     pv_id = store.create_plan_version(plan_id, [], "contract test")
 
@@ -48,6 +50,11 @@ def _setup_project_and_branch(client, tmp_path: Path) -> dict:
     return {"project_id": project_id, "plan_id": plan_id}
 
 
+@pytest.mark.governance
+@pytest.mark.skipif(
+    os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower() not in ("1", "true"),
+    reason="branch routes require CARDRE_GOVERNANCE=1",
+)
 class TestBranchListContract:
     """Verify BranchListItem fields are populated, not defaulted."""
 

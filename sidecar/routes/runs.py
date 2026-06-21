@@ -33,11 +33,33 @@ def _build_run_response(store: ProjectStore, run_id: str, executed_ids: list[str
 
 @router.post("", response_model=RunResponse, status_code=201)
 def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Execute synchronously (for tests)")):
+    from cardre.errors import GovernanceNotEnabled
+
     store = get_store_for_project(body.project_id)
 
     pv = store.get_plan_version(body.plan_version_id)
     if pv is None:
         raise HTTPException(status_code=404, detail={"code": "PLAN_VERSION_NOT_FOUND", "message": "Plan version not found"})
+
+    if body.run_scope == "branch":
+        try:
+            from cardre.store.project_store import _governance_enabled
+            if not _governance_enabled():
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "code": "GOVERNANCE_NOT_ENABLED",
+                        "message": "Branch execution requires CARDRE_GOVERNANCE=1. Set the environment variable to enable challenger governance.",
+                    },
+                )
+        except ImportError:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "GOVERNANCE_NOT_ENABLED",
+                    "message": "Branch execution requires CARDRE_GOVERNANCE=1.",
+                },
+            )
 
     # Synchronous execution path
     if sync:
@@ -131,13 +153,6 @@ def get_run_steps(run_id: str):
                 ],
             )
     raise HTTPException(status_code=404, detail={"code": "RUN_NOT_FOUND", "message": f"No run with ID {run_id}"})
-
-
-@router.post("/{run_id}/cancel")
-def cancel_run(run_id: str):
-    from cardre.cancellation import cancel_run as _cancel
-    _cancel(run_id)
-    return {"run_id": run_id, "status": "cancelling"}
 
 
 @router.get("/{run_id}/manifest")

@@ -1,9 +1,13 @@
 """Run lifecycle module — generic run mechanics behind the PlanExecutor seam.
 
 PlanExecutor remains the single execution seam.  This module owns generic
-run lifecycle: manifest construction, final status, cancellation token
-lifecycle, and cleanup.  It does not decide node semantics, role access,
+run lifecycle: manifest construction, final status, and guaranteed
+finalisation.  It does not decide node semantics, role access,
 leakage rules, or parent evidence resolution.
+
+Cancellation was removed in the launch-simplification pass: no bundled
+node polls the cancellation token during execution, so the mechanism
+was deferred until long-running nodes need it.
 """
 
 from __future__ import annotations
@@ -13,7 +17,6 @@ from typing import Any, Literal
 
 from cardre.artifacts import write_json_artifact
 from cardre.audit import RunStepRecord, JsonDict, utc_now_iso
-from cardre.cancellation import CancellationToken, register_token, remove_token
 from cardre.store import ProjectStore
 
 MANIFEST_VERSION = "1.0.0"
@@ -192,9 +195,9 @@ def finalise_run(
 class RunLifecycle:
     """Stateful wrapper around a single run's lifecycle.
 
-    Owns cancellation token registration/removal and run finalisation.
-    The caller (PlanExecutor) checks ``raise_if_cancelled()`` between
-    steps and calls ``finalise()`` in the finally block.
+    Owns run finalisation and manifest writing. The caller (PlanExecutor)
+    calls ``finalise()`` in a ``finally`` block or relies on the context
+    manager to guarantee finalisation.
 
     Can be used as a context manager to guarantee finalisation::
 
@@ -212,7 +215,6 @@ class RunLifecycle:
         store: ProjectStore,
         run_id: str,
         plan_version_id: str,
-        token: CancellationToken,
         execution_mode: str = "unknown",
         branch_id: str | None = None,
         target_step_id: str | None = None,
@@ -221,7 +223,6 @@ class RunLifecycle:
         self.store = store
         self.run_id = run_id
         self.plan_version_id = plan_version_id
-        self._token = token
         self._finalised = False
         self._execution_mode = execution_mode
         self._branch_id = branch_id
@@ -249,7 +250,6 @@ class RunLifecycle:
                 target_step_id=self._target_step_id,
                 in_scope_step_ids=self._in_scope_step_ids,
             )
-        remove_token(self.run_id)
         return None
 
     # ------------------------------------------------------------------
@@ -267,33 +267,19 @@ class RunLifecycle:
         target_step_id: str | None = None,
         in_scope_step_ids: list[str] | None = None,
     ) -> RunLifecycle:
-        """Create or accept a run and register its cancellation token.
+        """Create or accept a run.
 
         When *run_id* is provided, the run must already exist in
         ``running`` state.
         """
         if run_id is None:
             run_id = store.create_run(plan_version_id, branch_id=branch_id)
-        token = register_token(run_id)
         return cls(
             store=store, run_id=run_id, plan_version_id=plan_version_id,
-            token=token, execution_mode=execution_mode,
+            execution_mode=execution_mode,
             branch_id=branch_id, target_step_id=target_step_id,
             in_scope_step_ids=in_scope_step_ids,
         )
-
-    # ------------------------------------------------------------------
-    # Cancellation
-    # ------------------------------------------------------------------
-
-    @property
-    def token(self) -> CancellationToken | None:
-        return self._token
-
-    def raise_if_cancelled(self) -> None:
-        """Check cancellation before each step."""
-        if self._token is not None:
-            self._token.raise_if_cancelled()
 
     # ------------------------------------------------------------------
     # Finalisation
@@ -310,8 +296,7 @@ class RunLifecycle:
         target_step_id: str | None = None,
         in_scope_step_ids: list[str] | None = None,
     ) -> None:
-        """Finish the run exactly once, remove the cancellation token,
-        and write the run manifest.
+        """Finish the run exactly once and write the run manifest.
 
         ``_finalised`` is set only *after* ``finalise_run`` succeeds.
         If ``finalise_run`` raises, the run is marked ``failed`` directly

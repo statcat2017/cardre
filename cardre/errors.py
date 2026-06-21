@@ -33,7 +33,13 @@ class ContractViolationError(CardreError):
     pass
 
 
-class CancellationError(CardreError):
+class NodeNotAvailableForLaunch(CardreError):
+    """Raised when a deferred node (not in the launch tier) is instantiated."""
+    pass
+
+
+class GovernanceNotEnabled(CardreError):
+    """Raised when a governance-gated feature is accessed without CARDRE_GOVERNANCE=1."""
     pass
 
 
@@ -46,5 +52,6 @@ __all__ = [
     "ArtifactWriteError",
     "NodeExecutionError",
     "ContractViolationError",
-    "CancellationError",
+    "NodeNotAvailableForLaunch",
+    "GovernanceNotEnabled",
 ]

@@ -20,11 +20,23 @@ def get_health():
     try:
         reg = NodeRegistry.with_defaults()
         node_count = len(reg.list_types())
+        launch_count = len(reg.list_launch_nodes())
+        deferred_count = len(reg.list_deferred_nodes())
     except Exception:
         node_count = 0
+        launch_count = 0
+        deferred_count = 0
+    try:
+        from cardre.store.project_store import _governance_enabled
+        governance_enabled = _governance_enabled()
+    except Exception:
+        governance_enabled = False
     return HealthResponse(
         status="ok",
         registry_accessible=registry_accessible,
         registered_node_count=node_count,
+        launch_node_count=launch_count,
+        deferred_node_count=deferred_count,
+        governance_enabled=governance_enabled,
         checked_at=datetime.now(timezone.utc).isoformat(),
     )

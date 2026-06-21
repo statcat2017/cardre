@@ -65,14 +65,18 @@ app.include_router(projects.router)
 app.include_router(datasets.router)
 app.include_router(plans.router)
 app.include_router(runs.router)
-app.include_router(branches.router)
-app.include_router(comparisons.router)
-app.include_router(champion.router)
 app.include_router(exports.router)
 app.include_router(artifacts.router)
 app.include_router(reports.router)
 app.include_router(node_types.router)
 app.include_router(method_summary.router)
+
+# Governance features are gated behind CARDRE_GOVERNANCE=1
+import os
+if os.environ.get("CARDRE_GOVERNANCE", "0") in ("1", "true", "True"):
+    app.include_router(branches.router)
+    app.include_router(comparisons.router)
+    app.include_router(champion.router)
 
 
 def main() -> None:

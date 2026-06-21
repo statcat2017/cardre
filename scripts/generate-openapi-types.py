@@ -14,6 +14,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def main() -> None:
+    import os
+    os.environ["CARDRE_GOVERNANCE"] = "1"
+
     sys.path.insert(0, str(REPO_ROOT))
 
     try:

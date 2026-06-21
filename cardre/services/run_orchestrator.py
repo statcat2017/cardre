@@ -30,6 +30,16 @@ def execute_run(
     force: bool = False,
 ) -> str:
     """Execute a run synchronously. Returns the run_id."""
+    from cardre.errors import GovernanceNotEnabled
+
+    if run_scope == "branch":
+        from cardre.store.project_store import _governance_enabled
+        if not _governance_enabled():
+            raise GovernanceNotEnabled(
+                "Branch execution requires CARDRE_GOVERNANCE=1. "
+                "Set the environment variable to enable challenger governance."
+            )
+
     executor = PlanExecutor(NodeRegistry.with_defaults())
     if run_scope == "branch" and branch_id:
         result_id = executor.run_branch(store, plan_version_id, branch_id, run_id=run_id, force=force)

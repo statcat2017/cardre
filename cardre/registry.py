@@ -2,11 +2,25 @@
 
 Each node type defines a node_type identifier, version, category,
 input/output roles, params schema, and an executable run method.
+
+Node tiers:
+- launch: nodes that are executable at launch (canonical scorecard journey
+  plus decision-tree challenger). Instantiating a deferred node raises
+  NodeNotAvailableForLaunch.
+- deferred: nodes that exist as registered schemas for UI display but are
+  not executable at launch (boosting, ensembles, fairness, etc.).
 """
 
 from __future__ import annotations
 
+import os
+
 from cardre.audit import ExecutionContext, NodeOutput, NodeType
+
+
+def _is_launch_mode() -> bool:
+    val = os.environ.get("CARDRE_LAUNCH_MODE", "1").strip().lower()
+    return val in ("1", "true")
 
 
 class NodeRegistry:
@@ -41,27 +55,58 @@ class NodeRegistry:
 
     def instantiate(self, node_type: str) -> NodeType:
         cls = self.resolve(node_type)
+        if _is_launch_mode() and getattr(cls, "_deferred", False):
+            from cardre.errors import NodeNotAvailableForLaunch
+            raise NodeNotAvailableForLaunch(
+                f"Node {node_type!r} is not available in launch mode. "
+                f"It will be available in a future release."
+            )
         return cls()
 
     @classmethod
     def with_defaults(cls) -> NodeRegistry:
-        """Create a registry pre-loaded with proof nodes."""
+        """Create a registry pre-loaded with launch-tier nodes.
+
+        Deferred nodes are registered but guarded behind the
+        CARDRE_LAUNCH_MODE flag — they render in the UI via
+        their parameter schemas but raise NodeNotAvailableForLaunch
+        on instantiation when launch mode is active.
+        """
         reg = cls()
-        _register_proof_nodes(reg)
+        _register_launch_nodes(reg)
+        _register_deferred_nodes(reg)
         return reg
 
+    def list_launch_nodes(self) -> list[str]:
+        """Node types in the launch tier."""
+        return [nt for nt, cls in self._nodes.items()
+                if not getattr(cls, "_deferred", False)]
 
-def _register_proof_nodes(reg: NodeRegistry) -> None:
+    def list_deferred_nodes(self) -> list[str]:
+        """Node types in the deferred tier."""
+        return [nt for nt, cls in self._nodes.items()
+                if getattr(cls, "_deferred", False)]
+
+
+def _deferred(cls: type[NodeType]) -> type[NodeType]:
+    """Mark a node class as deferred (not executable at launch)."""
+    cls._deferred = True
+    return cls
+
+
+# ---------------------------------------------------------------------------
+# Launch-tier nodes
+# ---------------------------------------------------------------------------
+
+def _register_launch_nodes(reg: NodeRegistry) -> None:
     from cardre.nodes import (
         AutoBinningFitNode,
-        AlternativeDataManifestNode,
         BinningNode,
         ApplyExclusionsNode,
         ApplyModelNode,
         ApplyWoeMappingNode,
         BuildSummaryReportNode,
         CalculateWoeIvNode,
-        CatBoostClassifierNode,
         CutoffAnalysisNode,
         DecisionTreeNode,
         DefineModellingMetadataNode,
@@ -70,30 +115,14 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
         DummyApplyNode,
         DummyFitNode,
         ExplicitMissingOutlierTreatmentNode,
-        FairnessReportNode,
-        FeatureSelectionEmbeddedNode,
-        FeatureSelectionFilterNode,
-        FrozenScorecardBundleNode,
-        HyperparameterTuningNode,
-        VotingEnsembleNode,
-        WeightedEnsembleNode,
         FineClassingNode,
-        GradientBoostingClassifierNode,
+        FrozenScorecardBundleNode,
         ImportGermanCreditNode,
         ImportTabularDatasetNode,
-        LightGBMClassifierNode,
         LogisticRegressionNode,
         ManualBinningNode,
-        ModelExplainabilityNode,
-        ModelLimitationsNode,
         ProfileDatasetNode,
-        ProxyRiskReportNode,
-        RandomForestClassifierNode,
-        RejectInferenceAugmentationNode,
-        RejectInferenceNoneNode,
-        ResampleTrainingDataNode,
         ScoreScalingNode,
-        SmoteTrainingDataNode,
         SplitTrainTestOotNode,
         TechnicalManifestExportNode,
         ThresholdOptimizationNode,
@@ -102,7 +131,6 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
         VariableClusteringNode,
         VariableSelectionNode,
         WoeTransformTrainNode,
-        XGBoostClassifierNode,
     )
 
     for n in [
@@ -129,6 +157,46 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
         WoeTransformTrainNode,
         LogisticRegressionNode,
         DecisionTreeNode,
+        ScoreScalingNode,
+        FrozenScorecardBundleNode,
+        BuildSummaryReportNode,
+        ApplyWoeMappingNode,
+        ApplyModelNode,
+        ValidationMetricsNode,
+        ThresholdOptimizationNode,
+        CutoffAnalysisNode,
+    ]:
+        reg.register(n)
+
+
+# ---------------------------------------------------------------------------
+# Deferred-tier nodes (registered for schema display, not executable at launch)
+# ---------------------------------------------------------------------------
+
+def _register_deferred_nodes(reg: NodeRegistry) -> None:
+    from cardre.nodes import (
+        AlternativeDataManifestNode,
+        CatBoostClassifierNode,
+        FairnessReportNode,
+        FeatureSelectionEmbeddedNode,
+        FeatureSelectionFilterNode,
+        GradientBoostingClassifierNode,
+        HyperparameterTuningNode,
+        LightGBMClassifierNode,
+        ModelExplainabilityNode,
+        ModelLimitationsNode,
+        ProxyRiskReportNode,
+        RandomForestClassifierNode,
+        RejectInferenceAugmentationNode,
+        RejectInferenceNoneNode,
+        ResampleTrainingDataNode,
+        SmoteTrainingDataNode,
+        VotingEnsembleNode,
+        WeightedEnsembleNode,
+        XGBoostClassifierNode,
+    )
+
+    for n in [
         RandomForestClassifierNode,
         GradientBoostingClassifierNode,
         XGBoostClassifierNode,
@@ -139,22 +207,14 @@ def _register_proof_nodes(reg: NodeRegistry) -> None:
         HyperparameterTuningNode,
         ResampleTrainingDataNode,
         SmoteTrainingDataNode,
-        ScoreScalingNode,
-        FrozenScorecardBundleNode,
-        BuildSummaryReportNode,
-        ApplyWoeMappingNode,
-        ApplyModelNode,
-        ValidationMetricsNode,
-        ThresholdOptimizationNode,
         ModelExplainabilityNode,
         ModelLimitationsNode,
         FairnessReportNode,
         ProxyRiskReportNode,
         AlternativeDataManifestNode,
-        CutoffAnalysisNode,
         RejectInferenceNoneNode,
         RejectInferenceAugmentationNode,
         VotingEnsembleNode,
         WeightedEnsembleNode,
     ]:
-        reg.register(n)
+        reg.register(_deferred(n))
