@@ -14,6 +14,7 @@ interface RunProgressState {
   liveStepStatus: Record<string, string>;
   stepProgress: StepProgress | null;
   diagnostics: string[];
+  liveDiagnostic: string | null;
 }
 
 interface UseRunProgressReturn extends RunProgressState {
@@ -23,7 +24,6 @@ interface UseRunProgressReturn extends RunProgressState {
 
 export function useRunProgress(
   projectId: string,
-  scorecardPlanId: string | null,
   onRunComplete: () => void,
 ): UseRunProgressReturn {
   const queryClient = useQueryClient();
@@ -32,6 +32,7 @@ export function useRunProgress(
   const [carriedForwardSteps, setCarriedForwardSteps] = useState<Record<string, boolean>>({});
   const [liveStepStatus, setLiveStepStatus] = useState<Record<string, string>>({});
   const [diagnostics, setDiagnostics] = useState<string[]>([]);
+  const [liveDiagnostic, setLiveDiagnostic] = useState<string | null>(null);
   const [totalPlanSteps, setTotalPlanSteps] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
@@ -53,6 +54,7 @@ export function useRunProgress(
   const startRun = useCallback(async (planVersionId: string) => {
     setRunning(true);
     setError(null);
+    setLiveDiagnostic(null);
 
     try {
       const runResp = await api.runPlan({
@@ -89,7 +91,8 @@ export function useRunProgress(
           const stepStatuses = steps.steps.map(
             (s) => `${s.step_id}: ${s.status}${s.is_carried_forward ? " (carried forward)" : ""}`
           );
-          addDiagnostic(`steps: [${stepStatuses.join(", ")}]`);
+          // Replace live diagnostic on each poll instead of appending
+          setLiveDiagnostic(`steps: [${stepStatuses.join(", ")}]`);
 
           if (run.status !== "running") {
             if (pollRef.current !== null) {
@@ -100,6 +103,7 @@ export function useRunProgress(
             queryClient.invalidateQueries({ queryKey: ["projectRuns", projectId] });
             setRunning(false);
             setLiveStepStatus({});
+            setLiveDiagnostic(null);
             addDiagnostic(`Run ${run.status}`);
             onRunComplete();
           }
@@ -139,6 +143,7 @@ export function useRunProgress(
     liveStepStatus,
     stepProgress,
     diagnostics,
+    liveDiagnostic,
     startRun,
     addDiagnostic,
   };

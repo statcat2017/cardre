@@ -15,9 +15,9 @@ struct AppState {
 fn find_free_port() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to ephemeral port");
     let port = listener.local_addr().unwrap().port();
-    // Keep the listener until the sidecar starts to avoid TOCTOU races.
-    // Drop it just before spawning the sidecar so it can bind the same port.
-    // A better approach would pass the listener fd directly, but that
+    // Drop the listener immediately. This creates a brief TOCTOU window
+    // where another process could bind the port before the sidecar starts.
+    // A production fix would pass the listener fd directly, but that
     // requires platform-specific code.
     drop(listener);
     port

@@ -46,10 +46,10 @@ export function ProjectView({ projectId, onBack }: Props) {
     enabled: !!scorecardPlan?.plan_id,
   });
 
-  const runProgress = useRunProgress(projectId, scorecardPlan?.plan_id ?? null, () => {
+  const runProgress = useRunProgress(projectId, () => {
     refetchPlan();
   });
-  const { running, error, carriedForwardSteps, liveStepStatus, stepProgress, diagnostics, startRun, addDiagnostic } = runProgress;
+  const { running, error, carriedForwardSteps, liveStepStatus, stepProgress, diagnostics, liveDiagnostic, startRun, addDiagnostic } = runProgress;
 
   const handlePlanRefreshed = useCallback(
     (detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string }) => {
@@ -110,6 +110,7 @@ export function ProjectView({ projectId, onBack }: Props) {
 
   const diagnosticsMessages = [
     ...diagnostics,
+    ...(liveDiagnostic ? [`  └ ${liveDiagnostic}`] : []),
     error ? `[error] ${error}` : null,
   ].filter(Boolean) as string[];
 
