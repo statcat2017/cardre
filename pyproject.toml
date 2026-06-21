@@ -58,6 +58,5 @@ markers = [
     "regression: safety-rail / canary tests",
     "unit: unit tests",
     "integration: integration tests",
-    "cancellation: tests for the cancelled-run mechanism (removed at launch simplification)",
     "governance: tests requiring CARDRE_GOVERNANCE=1 (branch/comparison/champion routes and store tables)",
 ]

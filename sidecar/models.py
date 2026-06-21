@@ -596,6 +596,7 @@ class NodeTypeItem(BaseModel):
     node_type: str
     version: str
     category: str
+    tier: str = "available"
     description: str = ""
     model_family: str | None = None
     feature_strategies: list[str] = Field(default_factory=list)

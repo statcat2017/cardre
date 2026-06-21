@@ -11,6 +11,8 @@ failing (canary), at which point they should be updated.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from cardre.store import ProjectStore
@@ -164,7 +166,10 @@ class TestMethodSummarySchemaDrift:
         return p
 
     @pytest.mark.governance
-    @pytest.mark.skip(reason="governance not enabled at launch simplification")
+    @pytest.mark.skipif(
+        os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower() not in ("1", "true"),
+        reason="requires CARDRE_GOVERNANCE=1",
+    )
     def test_method_summary_endpoint_200s_with_expected_fields(self, client, tmp_path, sample_german_credit):
         proj_path = tmp_path / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Schema Drift Test"}).json()

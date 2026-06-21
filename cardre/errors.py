@@ -33,10 +33,6 @@ class ContractViolationError(CardreError):
     pass
 
 
-class CancellationError(CardreError):
-    pass
-
-
 class NodeNotAvailableForLaunch(CardreError):
     """Raised when a deferred node (not in the launch tier) is instantiated."""
     pass
@@ -56,7 +52,6 @@ __all__ = [
     "ArtifactWriteError",
     "NodeExecutionError",
     "ContractViolationError",
-    "CancellationError",
     "NodeNotAvailableForLaunch",
     "GovernanceNotEnabled",
 ]

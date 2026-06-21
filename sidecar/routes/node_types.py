@@ -155,11 +155,13 @@ def list_node_types() -> NodeTypeListResponse:
         if getattr(cls, "is_internal", False):
             continue
         meta = _MODEL_FAMILIES.get(node_type, {})
+        is_deferred = getattr(cls, "_deferred", False)
 
         items.append(NodeTypeItem(
             node_type=node_type,
             version=getattr(cls, "version", "1"),
             category=getattr(cls, "category", "unknown"),
+            tier="deferred" if is_deferred else "launch",
             description=meta.get("description", ""),
             model_family=meta.get("model_family"),
             feature_strategies=meta.get("feature_strategies", []),

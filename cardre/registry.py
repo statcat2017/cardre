@@ -18,12 +18,9 @@ import os
 from cardre.audit import ExecutionContext, NodeOutput, NodeType
 
 
-CARDRE_LAUNCH_MODE = os.environ.get("CARDRE_LAUNCH_MODE", "1").strip()
-_LAUNCH_MODE = CARDRE_LAUNCH_MODE in ("1", "true", "True")
-
-
 def _is_launch_mode() -> bool:
-    return _LAUNCH_MODE
+    val = os.environ.get("CARDRE_LAUNCH_MODE", "1").strip().lower()
+    return val in ("1", "true")
 
 
 class NodeRegistry:

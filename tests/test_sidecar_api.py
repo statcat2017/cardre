@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -1531,7 +1532,10 @@ class TestScorecardPathwayE2E:
 class TestPhase4BranchingFlow:
 
     @pytest.mark.governance
-    @pytest.mark.skip(reason="governance not enabled at launch simplification")
+    @pytest.mark.skipif(
+        os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower() not in ("1", "true"),
+        reason="requires CARDRE_GOVERNANCE=1",
+    )
     def test_full_branch_flow(self, client, tmp_dir, larger_german_credit):
         """Complete Phase 4 branch flow:
         create/import/run baseline
@@ -1877,14 +1881,55 @@ class TestPhase4BranchingFlow:
 
 
 # ======================================================================
+# Launch mode: governance gating & node-tier API
+# ======================================================================
+
+def test_branch_run_returns_403_when_governance_disabled(client, tmp_dir, sample_german_credit, monkeypatch):
+    """Branch run must return 403 when CARDRE_GOVERNANCE is not enabled."""
+    monkeypatch.delenv("CARDRE_GOVERNANCE", raising=False)
+    proj_path = tmp_dir / "gov-test.cardre"
+    proj = client.post("/projects", json={"path": str(proj_path), "name": "Gov Test"}).json()
+    pid = proj["project_id"]
+
+    client.post("/datasets/import", json={
+        "project_id": pid, "source_path": str(sample_german_credit),
+        "dataset_id": "uci-statlog-german-credit",
+    })
+
+    store = ProjectStore(proj_path)
+    plan_id = store.get_plans_for_project(pid)[0]["plan_id"]
+    latest_pv_id = store.get_latest_plan_version_id(plan_id)
+
+    resp = client.post("/runs?sync=true", json={
+        "project_id": pid, "plan_version_id": latest_pv_id,
+        "run_scope": "branch", "branch_id": "branch-1",
+    })
+    assert resp.status_code == 403, f"Expected 403, got {resp.status_code}"
+
+
+def test_node_types_list_includes_tier_field(client):
+    """GET /node-types must include tier field for every node type."""
+    resp = client.get("/node-types")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["count"] > 0
+    for item in data["node_types"]:
+        assert "tier" in item, f"Missing tier field in {item['node_type']}"
+        assert item["tier"] in ("launch", "deferred"), f"Unexpected tier value in {item['node_type']}: {item['tier']}"
+    launch = [n for n in data["node_types"] if n["tier"] == "launch"]
+    deferred = [n for n in data["node_types"] if n["tier"] == "deferred"]
+    assert len(launch) > 0
+    assert len(deferred) > 0
+
+
+# ======================================================================
 # Wave 2: Cancel + Manifest
 # ======================================================================
 
 class TestCancelAndManifest:
 
-    @pytest.mark.cancellation
-    @pytest.mark.skip(reason="cancellation removed at launch simplification")
-    def test_cancel_endpoint(self, client, tmp_dir, sample_german_credit):
+    def test_cancel_endpoint_returns_404(self, client, tmp_dir, sample_german_credit):
+        """Cancel endpoint was removed at launch simplification — verify 404."""
         proj_path = tmp_dir / "cancel-test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Cancel Test"}).json()
         pid = proj["project_id"]
@@ -1896,10 +1941,7 @@ class TestCancelAndManifest:
         run_id = store.create_run(latest_pv_id)
 
         resp = client.post(f"/runs/{run_id}/cancel")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["run_id"] == run_id
-        assert data["status"] == "cancelling"
+        assert resp.status_code == 404, f"Expected 404, got {resp.status_code}"
 
     def test_manifest_endpoint(self, client, tmp_dir, sample_german_credit):
         proj_path = tmp_dir / "manifest-test.cardre"

@@ -35,11 +35,9 @@ from cardre.store.branch_repo import BranchRepository
 from cardre.store.project_repo import ProjectRepository
 
 
-_CARDRE_GOVERNANCE = os.environ.get("CARDRE_GOVERNANCE", "0").strip()
-
-
 def _governance_enabled() -> bool:
-    return _CARDRE_GOVERNANCE in ("1", "true", "True")
+    val = os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower()
+    return val in ("1", "true")
 
 # Read-time migration map for legacy node types → canonical
 _LEGACY_NODE_TYPE_METHOD: dict[str, tuple[str, str]] = {

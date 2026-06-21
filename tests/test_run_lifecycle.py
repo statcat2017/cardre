@@ -1,12 +1,8 @@
 """Characterisation tests for the run lifecycle behaviour of PlanExecutor.
 
 These tests capture the current contract of run creation, status
-finalisation, manifest generation, cancellation cleanup, reuse
-labelling, and scope metadata before any lifecycle refactoring.
-
-Cancellation tests are marked ``@pytest.mark.cancellation`` and skipped
-by default — the cancellation mechanism was deferred at launch simplification.
-Run them with ``pytest -m cancellation`` to re-enable.
+finalisation, manifest generation, reuse labelling, and scope
+metadata before any lifecycle refactoring.
 """
 
 from __future__ import annotations
@@ -188,103 +184,6 @@ class TestFullPlanRunLifecycle:
         assert failing.status == "failed"
         assert len(failing.errors) > 0
         assert "Intentional failure" in failing.errors[0]["message"]
-
-    @pytest.mark.cancellation
-    @pytest.mark.skip(reason="cancellation removed at launch simplification")
-    def test_cancelled_run_records_cancelled_status(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        class CancellingNode(SimpleSourceNode):
-            node_type = "cardre.test.cancelling"
-            def run(self, context):
-                from cardre.cancellation import cancel_run
-                cancel_run(context.run_id)
-                return super().run(context)
-
-        steps = [
-            StepSpec(
-                step_id="step_a", node_type="cardre.test.cancelling",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="step_b", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=["step_a"], branch_label="", position=1,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(CancellingNode)
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run = store.get_run(run_id)
-        assert run["status"] == "cancelled", f"Expected cancelled, got {run['status']}"
-
-    @pytest.mark.cancellation
-    @pytest.mark.skip(reason="cancellation removed at launch simplification")
-    def test_cancelled_run_stops_mid_plan(self) -> None:
-        """Steps after the cancelling step must not execute."""
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        class CancellingNode(SimpleSourceNode):
-            node_type = "cardre.test.cancelling"
-            def run(self, context):
-                from cardre.cancellation import cancel_run
-                cancel_run(context.run_id)
-                return super().run(context)
-
-        steps = [
-            StepSpec(
-                step_id="step_a", node_type="cardre.test.cancelling",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="step_b", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=["step_a"], branch_label="", position=1,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(CancellingNode)
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run_steps = store.get_run_steps(run_id)
-        executed_step_ids = {rs.step_id for rs in run_steps}
-        assert "step_a" in executed_step_ids
-        assert "step_b" not in executed_step_ids
-
-    @pytest.mark.cancellation
-    @pytest.mark.skip(reason="cancellation removed at launch simplification")
-    def test_cancellation_token_cleaned_after_run(self) -> None:
-        """After a successful run, the token must be removed."""
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        pv_id, _ = self._one_step_plan(store, plan_id)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        assert get_token(run_id) is None, "Token should be removed after run"
 
 
 # ======================================================================

@@ -252,7 +252,7 @@ class ExecutorTests:
         error = fail_step[0].errors[0]
         assert "category" in error
         known_categories = {
-            "CancellationError", "GraphValidationError",
+            "GraphValidationError",
             "MissingInputArtifactError", "ParameterValidationError",
             "ArtifactReadError", "ArtifactWriteError",
             "NodeExecutionError", "ContractViolationError",
@@ -812,54 +812,6 @@ class Wave2Tests:
         assert first_fp == second_fp, \
             "fingerprints should be identical between forced runs"
 
-    @pytest.mark.cancellation
-    @pytest.mark.skip(reason="cancellation removed at launch simplification")
-    def test_cancellation_stops_mid_flight(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        class CancellingNode(NodeType):
-            node_type = "cardre.test.cancelling"
-            version = "1"
-            category = "transform"
-            input_roles: list[str] = []
-            output_roles: list[str] = ["artifact"]
-
-            def run(self, context: ExecutionContext) -> NodeOutput:
-                from cardre.cancellation import cancel_run
-                cancel_run(context.run_id)
-                return NodeOutput(artifacts=[], metrics={})
-
-        steps = [
-            StepSpec(
-                step_id="step_a", node_type="cardre.test.cancelling",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="step_b", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=["step_a"], branch_label="", position=1,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(CancellingNode)
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run = store.get_run(run_id)
-        assert run["status"] == "cancelled", f"Expected cancelled, got {run['status']}"
-
-        run_steps = store.get_run_steps(run_id)
-        executed_step_ids = {rs.step_id for rs in run_steps}
-        assert "step_a" in executed_step_ids
-        assert "step_b" not in executed_step_ids, "step_b should not execute after cancellation"
-
     def test_manifest_status_matches_run_status(self) -> None:
         store, tmp = make_store()
         project_id = store.create_project("test")
@@ -916,46 +868,6 @@ class Wave2Tests:
 
         with pytest.raises(GraphValidationError):
             executor.run_to_node(store, pv_id, "nonexistent_step")
-
-    @pytest.mark.cancellation
-    @pytest.mark.skipif(
-        not hasattr(ExecutionContext, "cancellation_token"),
-        reason="cancellation_token removed at launch simplification",
-    )
-    def test_cancellation_raised_from_inside_node(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        class TokenCheckingNode(NodeType):
-            node_type = "cardre.test.token_checking"
-            version = "1"
-            category = "transform"
-            input_roles: list[str] = []
-            output_roles: list[str] = ["artifact"]
-
-            def run(self, context: ExecutionContext) -> NodeOutput:
-                from cardre.cancellation import cancel_run
-                cancel_run(context.run_id)
-                context.cancellation_token.raise_if_cancelled()
-                return NodeOutput(artifacts=[], metrics={})
-
-        steps = [
-            StepSpec(
-                step_id="raise_step", node_type="cardre.test.token_checking",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(TokenCheckingNode)
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run = store.get_run(run_id)
-        assert run["status"] == "cancelled", f"Expected cancelled, got {run['status']}"
 
 
 # ======================================================================
@@ -1035,50 +947,6 @@ class Phase1LifecycleTests:
         assert manifest["execution_mode"] == "to_node", f"Expected to_node, got {manifest['execution_mode']}"
         assert manifest["target_step_id"] == "source"
         assert manifest["in_scope_step_ids"] == ["source"]
-
-    @pytest.mark.cancellation
-    @pytest.mark.skip(reason="cancellation mechanism removed at launch simplification")
-    def test_cancellation_before_reuse_writes_no_carried_forward(self) -> None:
-        """If a run is cancelled before any reuse action executes,
-        no carried-forward run steps should exist in the store."""
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        steps = [
-            StepSpec(
-                step_id="source", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
-
-        # First run to create reusable evidence
-        first_run_id = executor.run_plan_version(store, pv_id)
-
-        # Second run — cancel before any step executes
-        from cardre.cancellation import cancel_run
-        from cardre.run_lifecycle import RunLifecycle
-        from cardre.errors import CancellationError
-        try:
-            with RunLifecycle.start(store, pv_id, execution_mode="full") as lifecycle:
-                run_id = lifecycle.run_id
-                cancel_run(run_id)
-                lifecycle.raise_if_cancelled()
-        except CancellationError:
-            pass
-
-        run = store.get_run(run_id)
-        assert run["status"] in ("cancelled", "failed"), f"Expected cancelled/failed, got {run['status']}"
-
-        run_steps = store.get_run_steps(run_id)
-        carried = [rs for rs in run_steps if rs.is_carried_forward]
-        assert len(carried) == 0, f"Expected no carried-forward steps, got {len(carried)}"
 
     def test_replay_writes_manifest(self) -> None:
         """replay_from_step must write a run manifest with the correct

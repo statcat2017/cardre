@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from cardre.services import run_orchestrator
@@ -61,7 +63,10 @@ def test_execute_run_returns_created_run_id_for_sync_to_node(monkeypatch):
 
 
 @pytest.mark.governance
-@pytest.mark.skip(reason="governance not enabled at launch simplification")
+@pytest.mark.skipif(
+    os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower() not in ("1", "true"),
+    reason="requires CARDRE_GOVERNANCE=1",
+)
 def test_execute_run_returns_created_run_id_for_sync_branch(monkeypatch):
     _patch_executor(monkeypatch)
 
@@ -74,7 +79,10 @@ def test_execute_run_returns_created_run_id_for_sync_branch(monkeypatch):
 
 
 @pytest.mark.governance
-@pytest.mark.skip(reason="governance not enabled at launch simplification")
+@pytest.mark.skipif(
+    os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower() not in ("1", "true"),
+    reason="requires CARDRE_GOVERNANCE=1",
+)
 def test_execute_run_preserves_precreated_async_run_id_on_branch_short_circuit(monkeypatch):
     _patch_executor(monkeypatch)
     FakeExecutor.result_id = "existing-successful-run"
