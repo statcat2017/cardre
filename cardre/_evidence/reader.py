@@ -11,26 +11,45 @@ import polars as pl
 from cardre.audit import ArtifactRef, JsonDict
 from cardre._evidence.kinds import (
     EvidenceKind,
+    EvidenceSchemaError,
+    LegacyEvidenceCompatibilityError,
     EvidenceNotFoundError,
     AmbiguousEvidenceError,
     EvidenceParseError,
 )
 from cardre._evidence.models import (
+    ApplyModelEvidence,
+    ApplyWoeEvidence,
+    ArtifactEvidenceSummary,
     BinDefinition,
     CutoffAnalysis,
+    ComparisonArtifact,
+    ExclusionSummary,
+    ExplainabilityReport,
+    FairnessReport,
+    FeatureSelectionEvidence,
+    HyperparameterTuningEvidence,
     IvTable,
     ModellingMetadata,
     ModelArtifact,
     RejectInferenceResult,
     RejectPopulationConfig,
+    ProfileSummary,
     SampleDefinition,
     ScoreScaling,
     ScoredDataset,
+    ReportBundleEvidence,
+    ResamplingEvidence,
+    RunManifestEvidence,
     SelectionDefinition,
+    SplitSummary,
+    TechnicalManifestIndex,
     ValidationMetrics,
     VariableClusteringEvidence,
+    WoeTransformEvidence,
     WoeIvEvidence,
     WoeTable,
+    ProxyRiskReport,
 )
 from cardre._evidence.profiles import EVIDENCE_PROFILES
 from cardre.store import ProjectStore
@@ -62,9 +81,25 @@ class ArtifactEvidenceReader:
         """
         candidates = self._match(artifacts, kind)
         if not candidates:
-            raise EvidenceNotFoundError(kind)
+            profile = EVIDENCE_PROFILES.get(kind)
+            raise EvidenceNotFoundError(
+                kind,
+                candidate_artifact_ids=[a.artifact_id for a in artifacts],
+                expected_schema=profile.schema_version if profile else None,
+                expected_role=",".join(sorted(profile.expected_roles)) if profile else None,
+                expected_artifact_type=",".join(sorted(profile.expected_artifact_types)) if profile else None,
+                expected_media_type=",".join(sorted(profile.expected_media_types)) if profile else None,
+            )
         if len(candidates) > 1:
-            raise AmbiguousEvidenceError(kind, candidates)
+            profile = EVIDENCE_PROFILES.get(kind)
+            raise AmbiguousEvidenceError(
+                kind,
+                candidates,
+                expected_schema=profile.schema_version if profile else None,
+                expected_role=",".join(sorted(profile.expected_roles)) if profile else None,
+                expected_artifact_type=",".join(sorted(profile.expected_artifact_types)) if profile else None,
+                expected_media_type=",".join(sorted(profile.expected_media_types)) if profile else None,
+            )
         return self._parse(candidates[0], kind)
 
     def find_optional(self, artifacts: list[ArtifactRef], kind: EvidenceKind) -> Any | None:
@@ -73,6 +108,27 @@ class ArtifactEvidenceReader:
             return self.find(artifacts, kind)
         except EvidenceNotFoundError:
             return None
+
+    def find_model_artifact(self, artifacts: list[ArtifactRef]) -> ModelArtifact:
+        return self.find(artifacts, EvidenceKind.MODEL_ARTIFACT)
+
+    def find_bin_definition(self, artifacts: list[ArtifactRef]) -> BinDefinition:
+        return self.find(artifacts, EvidenceKind.BIN_DEFINITION)
+
+    def find_selection_definition(self, artifacts: list[ArtifactRef]) -> SelectionDefinition:
+        return self.find(artifacts, EvidenceKind.SELECTION_DEFINITION)
+
+    def find_woe_iv_evidence(self, artifacts: list[ArtifactRef]) -> WoeIvEvidence:
+        return self.find(artifacts, EvidenceKind.WOE_IV_EVIDENCE)
+
+    def find_score_scaling(self, artifacts: list[ArtifactRef]) -> ScoreScaling:
+        return self.find(artifacts, EvidenceKind.SCORE_SCALING)
+
+    def find_validation_evidence(self, artifacts: list[ArtifactRef]) -> ValidationMetrics:
+        return self.find(artifacts, EvidenceKind.VALIDATION_EVIDENCE)
+
+    def find_cutoff_analysis(self, artifacts: list[ArtifactRef]) -> CutoffAnalysis:
+        return self.find(artifacts, EvidenceKind.CUTOFF_ANALYSIS)
 
     # ------------------------------------------------------------------
     # Public: read by artifact ID
@@ -86,10 +142,27 @@ class ArtifactEvidenceReader:
         """
         art = self._store.get_artifact(artifact_id)
         if art is None:
-            raise EvidenceNotFoundError(kind)
+            profile = EVIDENCE_PROFILES.get(kind)
+            raise EvidenceNotFoundError(
+                kind,
+                artifact_id=artifact_id,
+                expected_schema=profile.schema_version if profile else None,
+                expected_role=",".join(sorted(profile.expected_roles)) if profile else None,
+                expected_artifact_type=",".join(sorted(profile.expected_artifact_types)) if profile else None,
+                expected_media_type=",".join(sorted(profile.expected_media_types)) if profile else None,
+            )
         matched = self._match([art], kind)
         if not matched:
-            raise EvidenceNotFoundError(kind)
+            profile = EVIDENCE_PROFILES.get(kind)
+            raise EvidenceNotFoundError(
+                kind,
+                artifact_id=artifact_id,
+                expected_schema=profile.schema_version if profile else None,
+                actual_schema=art.metadata.get("schema_version", ""),
+                expected_role=",".join(sorted(profile.expected_roles)) if profile else None,
+                expected_artifact_type=",".join(sorted(profile.expected_artifact_types)) if profile else None,
+                expected_media_type=",".join(sorted(profile.expected_media_types)) if profile else None,
+            )
         return self._parse(matched[0], kind)
 
     def read_optional(self, artifact_id: str, kind: EvidenceKind) -> Any | None:
@@ -98,6 +171,33 @@ class ArtifactEvidenceReader:
             return self.read(artifact_id, kind)
         except EvidenceNotFoundError:
             return None
+
+    def read_report_bundle(self, artifact_id: str) -> ReportBundleEvidence:
+        return self.read(artifact_id, EvidenceKind.REPORT_BUNDLE)
+
+    def read_run_manifest(self, artifact_id: str) -> RunManifestEvidence:
+        return self.read(artifact_id, EvidenceKind.RUN_MANIFEST)
+
+    def read_required_step_output(self, run_step: Any, kind: EvidenceKind) -> Any:
+        result = self.read_step_output_optional(run_step, kind)
+        if result is None:
+            raise EvidenceNotFoundError(
+                kind,
+                step_id=getattr(run_step, "step_id", None),
+                candidate_artifact_ids=list(getattr(run_step, "output_artifact_ids", []) or []),
+            )
+        return result
+
+    def read_optional_step_output(self, run_step: Any, kind: EvidenceKind) -> Any | None:
+        return self.read_step_output_optional(run_step, kind)
+
+    def read_all_step_outputs(self, run_step: Any, kind: EvidenceKind) -> list[Any]:
+        results: list[Any] = []
+        for aid in getattr(run_step, "output_artifact_ids", []):
+            value = self.read_optional(aid, kind)
+            if value is not None:
+                results.append(value)
+        return results
 
     def read_step_output_optional(
         self,
@@ -110,6 +210,46 @@ class ArtifactEvidenceReader:
             if result is not None:
                 return result
         return None
+
+    def summarise_artifact(self, artifact_id: str, kind: EvidenceKind | None = None) -> ArtifactEvidenceSummary:
+        art = self._store.get_artifact(artifact_id)
+        if art is None:
+            if kind is None:
+                raise ValueError(f"Artifact not found: {artifact_id}")
+            raise EvidenceNotFoundError(kind, artifact_id=artifact_id)
+
+        matched_kind = kind or self._kind_for_artifact(art)
+        source_artifact_id = ""
+        if matched_kind is not None:
+            typed = self.read_optional(artifact_id, matched_kind)
+            source_artifact_id = getattr(typed, "source_artifact_id", "") if typed is not None else ""
+
+        return ArtifactEvidenceSummary(
+            artifact_id=art.artifact_id,
+            role=art.role,
+            artifact_type=art.artifact_type,
+            media_type=art.media_type,
+            schema_version=art.metadata.get("schema_version", ""),
+            kind=matched_kind.value if matched_kind is not None else "",
+            source_artifact_id=source_artifact_id,
+        )
+
+    def summarise_step_outputs(self, run_step: Any, kind: EvidenceKind | None = None) -> list[ArtifactEvidenceSummary]:
+        summaries: list[ArtifactEvidenceSummary] = []
+        for aid in getattr(run_step, "output_artifact_ids", []):
+            if self._store.get_artifact(aid) is None:
+                continue
+            if kind is not None and self.read_optional(aid, kind) is None:
+                continue
+            summaries.append(self.summarise_artifact(aid, kind))
+        return summaries
+
+    def summarise_run_artifacts(self, run_id: str, kind: EvidenceKind | None = None) -> list[ArtifactEvidenceSummary]:
+        run_steps = self._store.get_run_steps(run_id)
+        summaries: list[ArtifactEvidenceSummary] = []
+        for rs in run_steps:
+            summaries.extend(self.summarise_step_outputs(rs, kind))
+        return summaries
 
     # ------------------------------------------------------------------
     # Internal: matching
@@ -156,6 +296,14 @@ class ArtifactEvidenceReader:
 
         # Last resort: return Phase 2 candidates even if ambiguous
         return candidates
+
+    def _kind_for_artifact(self, art: ArtifactRef) -> EvidenceKind | None:
+        schema_version = art.metadata.get("schema_version", "")
+        if schema_version:
+            for kind, profile in EVIDENCE_PROFILES.items():
+                if profile.schema_version and profile.schema_version == schema_version:
+                    return kind
+        return None
 
     def _candidate_passes_payload_check(self, art: ArtifactRef, profile: Any) -> bool:
         """Check that a candidate's payload matches the profile requirements."""
@@ -207,6 +355,50 @@ class ArtifactEvidenceReader:
                 and a.media_type == "application/vnd.apache.parquet"
                 and self._parquet_has_columns(a, {"iv", "variable"})
             ]
+        if kind == EvidenceKind.SPLIT_SUMMARY:
+            return self._match_by_payload_key(artifacts, {"strategy", "row_counts"})
+        if kind == EvidenceKind.PROFILE_SUMMARY:
+            return self._match_by_payload_key(artifacts, {"profiles"})
+        if kind == EvidenceKind.EXCLUSION_SUMMARY:
+            return self._match_by_payload_key(artifacts, {"rows_before", "rows_after", "rules"})
+        if kind == EvidenceKind.WOE_TRANSFORM_EVIDENCE:
+            return self._match_by_payload_key(artifacts, {"target_column", "transformed_variables"})
+        if kind == EvidenceKind.APPLY_WOE_EVIDENCE:
+            return self._match_by_payload_key(artifacts, {"roles", "policy"})
+        if kind == EvidenceKind.APPLY_MODEL_EVIDENCE:
+            return self._match_by_payload_key(artifacts, {"roles", "model_artifact_id"})
+        if kind == EvidenceKind.REPORT_BUNDLE:
+            return self._match_by_payload_key(artifacts, {"project_id", "run_id", "summary", "source"})
+        if kind == EvidenceKind.RUN_MANIFEST:
+            return [
+                a for a in artifacts
+                if a.artifact_type == "run_manifest"
+                and a.media_type == "application/json"
+                and self._match_by_payload_key([a], {"manifest_version", "run_id", "steps"})
+            ]
+        if kind == EvidenceKind.TECHNICAL_MANIFEST_INDEX:
+            return self._match_by_payload_key(artifacts, {"manifests"})
+        if kind == EvidenceKind.COMPARISON_ARTIFACT:
+            return [
+                a for a in artifacts
+                if a.artifact_type == "branch_comparison"
+                and a.media_type == "application/json"
+                and self._match_by_payload_key([a], {"comparison_type", "baseline_branch_id", "challenger_branch_id"})
+            ]
+        if kind == EvidenceKind.FEATURE_SELECTION_EVIDENCE:
+            return self._match_by_payload_key(artifacts, {"selected", "rejected"})
+        if kind == EvidenceKind.RESAMPLING_EVIDENCE:
+            return self._match_by_payload_key(artifacts, {"original", "resampled"})
+        if kind == EvidenceKind.HYPERPARAMETER_TUNING_EVIDENCE:
+            return self._match_by_payload_key(artifacts, {"best_params", "best_score"})
+        if kind == EvidenceKind.ENSEMBLE_MODEL_ARTIFACT:
+            return self._match_by_payload_key(artifacts, {"model_family", "model_payload"})
+        if kind == EvidenceKind.EXPLAINABILITY_REPORT:
+            return self._match_by_payload_key(artifacts, {"model_family", "limitations"})
+        if kind == EvidenceKind.FAIRNESS_REPORT:
+            return self._match_by_payload_key(artifacts, {"roles", "parity_summary"})
+        if kind == EvidenceKind.PROXY_RISK_REPORT:
+            return self._match_by_payload_key(artifacts, {"proxy_flags", "overall_risk"})
         return []
 
     def _match_by_payload_key(
@@ -249,15 +441,23 @@ class ArtifactEvidenceReader:
             return self._parse_bin_definition(path, art)
 
         if profile.expected_media_types == {"application/vnd.apache.parquet"}:
-            return self._parse_parquet(path, kind, profile)
-        return self._parse_json(path, kind, profile)
+            return self._parse_parquet(path, art, kind, profile)
+        return self._parse_json(path, art, kind, profile)
 
     def _parse_bin_definition(self, path: Path, art: ArtifactRef) -> BinDefinition:
         """Parse a BinDefinition JSON artifact, passing the artifact ID."""
         try:
             data: JsonDict = json.loads(path.read_text())
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise EvidenceParseError(f"Invalid JSON for bin_definition: {exc}") from exc
+            raise EvidenceParseError(
+                f"Invalid JSON for bin_definition: {exc}",
+                kind=EvidenceKind.BIN_DEFINITION,
+                artifact_id=art.artifact_id,
+                expected_schema=EVIDENCE_PROFILES[EvidenceKind.BIN_DEFINITION].schema_version,
+                expected_role=",".join(sorted(EVIDENCE_PROFILES[EvidenceKind.BIN_DEFINITION].expected_roles)),
+                expected_artifact_type=",".join(sorted(EVIDENCE_PROFILES[EvidenceKind.BIN_DEFINITION].expected_artifact_types)),
+                expected_media_type=",".join(sorted(EVIDENCE_PROFILES[EvidenceKind.BIN_DEFINITION].expected_media_types)),
+            ) from exc
         return BinDefinition.from_json(data, artifact_id=art.artifact_id)
 
     def _parse_woe_table(self, path: Path, art: ArtifactRef) -> WoeTable:
@@ -279,7 +479,7 @@ class ArtifactEvidenceReader:
 
         return WoeTable(mapping=mapping, columns=cols, dataframe=lf, source_artifact_id=art.artifact_id)
 
-    def _parse_json(self, path: Path, kind: EvidenceKind, profile: Any) -> Any:
+    def _parse_json(self, path: Path, art: ArtifactRef, kind: EvidenceKind, profile: Any) -> Any:
         """Parse a JSON artifact into typed evidence."""
         try:
             data: JsonDict = json.loads(path.read_text())
@@ -290,58 +490,111 @@ class ArtifactEvidenceReader:
             missing = profile.required_keys - set(data.keys())
             if missing:
                 raise EvidenceParseError(
-                    f"Evidence {kind.value} missing required keys: {missing}"
+                    f"Evidence {kind.value} missing required keys: {missing}",
+                    kind=kind,
+                    artifact_id=art.artifact_id,
+                    expected_schema=profile.schema_version,
+                    expected_role=",".join(sorted(profile.expected_roles)),
+                    expected_artifact_type=",".join(sorted(profile.expected_artifact_types)),
+                    expected_media_type=",".join(sorted(profile.expected_media_types)),
                 )
 
-        return self._to_typed(data, kind)
+        return self._to_typed(data, kind, artifact_id=art.artifact_id)
 
-    def _parse_parquet(self, path: Path, kind: EvidenceKind, profile: Any) -> Any:
+    def _parse_parquet(self, path: Path, art: ArtifactRef, kind: EvidenceKind, profile: Any) -> Any:
         """Parse a Parquet artifact into typed evidence."""
         try:
             lf = pl.scan_parquet(path)
         except Exception as exc:
-            raise EvidenceParseError(f"Invalid Parquet for {kind.value}: {exc}") from exc
+            raise EvidenceParseError(
+                f"Invalid Parquet for {kind.value}: {exc}",
+                kind=kind,
+                artifact_id=art.artifact_id,
+                expected_schema=profile.schema_version,
+                expected_role=",".join(sorted(profile.expected_roles)),
+                expected_artifact_type=",".join(sorted(profile.expected_artifact_types)),
+                expected_media_type=",".join(sorted(profile.expected_media_types)),
+            ) from exc
 
         if profile.required_columns:
             schema = lf.collect_schema()
             missing = profile.required_columns - set(schema.names())
             if missing:
                 raise EvidenceParseError(
-                    f"Evidence {kind.value} missing required columns: {missing}"
+                    f"Evidence {kind.value} missing required columns: {missing}",
+                    kind=kind,
+                    expected_schema=profile.schema_version,
+                    expected_role=",".join(sorted(profile.expected_roles)),
+                    expected_artifact_type=",".join(sorted(profile.expected_artifact_types)),
+                    expected_media_type=",".join(sorted(profile.expected_media_types)),
                 )
 
-        return self._to_typed(lf, kind)
+        return self._to_typed(lf, kind, artifact_id=art.artifact_id)
 
-    def _to_typed(self, data: Any, kind: EvidenceKind) -> Any:
+    def _to_typed(self, data: Any, kind: EvidenceKind, artifact_id: str = "") -> Any:
         """Convert raw data to typed evidence record."""
         if kind == EvidenceKind.MODELLING_METADATA:
-            return ModellingMetadata.from_json(data)
+            return ModellingMetadata.from_json(data, artifact_id=artifact_id)
         if kind == EvidenceKind.SAMPLE_DEFINITION:
-            return SampleDefinition.from_json(data)
+            return SampleDefinition.from_json(data, artifact_id=artifact_id)
         if kind == EvidenceKind.BIN_DEFINITION:
-            return BinDefinition.from_json(data)
+            return BinDefinition.from_json(data, artifact_id=artifact_id)
         if kind == EvidenceKind.SELECTION_DEFINITION:
-            return SelectionDefinition.from_json(data)
+            return SelectionDefinition.from_json(data, artifact_id=artifact_id)
         if kind == EvidenceKind.REJECT_POPULATION_CONFIG:
             return RejectPopulationConfig.from_json(data)
         if kind == EvidenceKind.REJECT_INFERENCE_RESULT:
             return RejectInferenceResult.from_json(data)
+        if kind == EvidenceKind.SPLIT_SUMMARY:
+            return SplitSummary.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.PROFILE_SUMMARY:
+            return ProfileSummary.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.EXCLUSION_SUMMARY:
+            return ExclusionSummary.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.WOE_TRANSFORM_EVIDENCE:
+            return WoeTransformEvidence.from_json(data, artifact_id=artifact_id)
         if kind == EvidenceKind.WOE_IV_EVIDENCE:
-            return WoeIvEvidence.from_json(data)
+            return WoeIvEvidence.from_json(data, artifact_id=artifact_id)
         if kind == EvidenceKind.MODEL_ARTIFACT:
-            return ModelArtifact.from_json(data)
+            return ModelArtifact.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.ENSEMBLE_MODEL_ARTIFACT:
+            return ModelArtifact.from_json(data, artifact_id=artifact_id)
         if kind == EvidenceKind.SCORE_SCALING:
-            return ScoreScaling.from_json(data)
+            return ScoreScaling.from_json(data, artifact_id=artifact_id)
         if kind in (EvidenceKind.VALIDATION_METRICS, EvidenceKind.VALIDATION_EVIDENCE):
-            return ValidationMetrics.from_json(data)
+            return ValidationMetrics.from_json(data, artifact_id=artifact_id)
         if kind == EvidenceKind.CUTOFF_ANALYSIS:
-            return CutoffAnalysis.from_json(data)
+            return CutoffAnalysis.from_json(data, artifact_id=artifact_id)
         if kind == EvidenceKind.WOE_TABLE:
-            return WoeTable(dataframe=data)
+            return WoeTable(dataframe=data, source_artifact_id=artifact_id)
         if kind == EvidenceKind.IV_TABLE:
-            return IvTable(dataframe=data)
+            return IvTable(dataframe=data, source_artifact_id=artifact_id)
         if kind == EvidenceKind.SCORED_DATASET:
             return ScoredDataset(dataframe=data)
         if kind == EvidenceKind.VARIABLE_CLUSTERING:
-            return VariableClusteringEvidence.from_json(data)
+            return VariableClusteringEvidence.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.APPLY_WOE_EVIDENCE:
+            return ApplyWoeEvidence.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.APPLY_MODEL_EVIDENCE:
+            return ApplyModelEvidence.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.REPORT_BUNDLE:
+            return ReportBundleEvidence.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.RUN_MANIFEST:
+            return RunManifestEvidence.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.TECHNICAL_MANIFEST_INDEX:
+            return TechnicalManifestIndex.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.COMPARISON_ARTIFACT:
+            return ComparisonArtifact.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.FEATURE_SELECTION_EVIDENCE:
+            return FeatureSelectionEvidence.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.RESAMPLING_EVIDENCE:
+            return ResamplingEvidence.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.HYPERPARAMETER_TUNING_EVIDENCE:
+            return HyperparameterTuningEvidence.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.EXPLAINABILITY_REPORT:
+            return ExplainabilityReport.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.FAIRNESS_REPORT:
+            return FairnessReport.from_json(data, artifact_id=artifact_id)
+        if kind == EvidenceKind.PROXY_RISK_REPORT:
+            return ProxyRiskReport.from_json(data, artifact_id=artifact_id)
         return data

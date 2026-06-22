@@ -1,0 +1,16 @@
+{
+  "schema_version": "cardre.split_summary.v1",
+  "strategy": "random_stratified",
+  "row_counts": {
+    "train": 70,
+    "test": 20,
+    "oot": 10
+  },
+  "target_rates": {
+    "train": {
+      "good": 50,
+      "bad": 20
+    }
+  },
+  "warnings": []
+}

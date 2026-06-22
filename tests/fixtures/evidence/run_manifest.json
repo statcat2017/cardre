@@ -1,0 +1,17 @@
+{
+  "manifest_version": "1.0.0",
+  "run_id": "run_1",
+  "plan_version_id": "plan_version_1",
+  "status": "succeeded",
+  "execution_mode": "branch",
+  "started_at": "2026-06-22T00:00:00Z",
+  "finished_at": "2026-06-22T00:05:00Z",
+  "branch_id": "branch_1",
+  "steps": [
+    {
+      "step_id": "step_1",
+      "status": "succeeded",
+      "output_artifact_ids": ["report_1"]
+    }
+  ]
+}

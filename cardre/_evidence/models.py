@@ -79,9 +79,10 @@ class SelectedVariable:
 class SelectionDefinition:
     selected: list[SelectedVariable]
     method: str = ""
+    source_artifact_id: str = ""
 
     @classmethod
-    def from_json(cls, data: JsonDict) -> SelectionDefinition:
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> SelectionDefinition:
         selected = [
             SelectedVariable(
                 variable=s.get("variable", ""),
@@ -90,7 +91,7 @@ class SelectionDefinition:
             )
             for s in data.get("selected", [])
         ]
-        return cls(selected=selected, method=data.get("method", ""))
+        return cls(selected=selected, method=data.get("method", ""), source_artifact_id=artifact_id)
 
     @property
     def selected_names(self) -> set[str]:
@@ -114,9 +115,10 @@ class ModellingMetadata:
     indeterminate_values: list[Any] = field(default_factory=list)
     extra: JsonDict = field(default_factory=dict)
     _raw: JsonDict = field(default_factory=dict, repr=False)
+    source_artifact_id: str = ""
 
     @classmethod
-    def from_json(cls, data: JsonDict) -> ModellingMetadata:
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> ModellingMetadata:
         return cls(
             target_column=data.get("target_column", ""),
             good_values=list(data.get("good_values", [])),
@@ -125,6 +127,7 @@ class ModellingMetadata:
             extra={k: v for k, v in data.items()
                    if k not in ("target_column", "good_values", "bad_values", "indeterminate_values")},
             _raw=data,
+            source_artifact_id=artifact_id,
         )
 
 
@@ -144,9 +147,10 @@ class SampleDefinition:
     sample_description: str = ""
     extra: JsonDict = field(default_factory=dict)
     _raw: JsonDict = field(default_factory=dict, repr=False)
+    source_artifact_id: str = ""
 
     @classmethod
-    def from_json(cls, data: JsonDict) -> SampleDefinition:
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> SampleDefinition:
         return cls(
             sample_method=data.get("sample_method", "full_population"),
             sample_domain=data.get("sample_domain", "ttd"),
@@ -164,10 +168,11 @@ class SampleDefinition:
                    if k not in ("sample_method", "sample_domain", "total_rows",
                                 "financed_rows", "non_financed_rows",
                                 "rejection_source", "rejection_column",
-                                "rejection_values", "approval_column",
-                                "approval_values", "weight_column",
-                                "sample_description")},
+                                 "rejection_values", "approval_column",
+                                 "approval_values", "weight_column",
+                                 "sample_description")},
             _raw=data,
+            source_artifact_id=artifact_id,
         )
 
 
@@ -290,9 +295,10 @@ class WoeIvEvidence:
     smoothing: WoeSmoothing = field(default_factory=WoeSmoothing)
     schema_version: str = ""
     _raw: JsonDict = field(default_factory=dict, repr=False)
+    source_artifact_id: str = ""
 
     @classmethod
-    def from_json(cls, data: JsonDict) -> WoeIvEvidence:
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> WoeIvEvidence:
         config = data.get("config", {})
         smoothing_config = config.get("smoothing", {})
         smoothing = WoeSmoothing(
@@ -338,6 +344,7 @@ class WoeIvEvidence:
             smoothing=smoothing,
             schema_version=data.get("schema_version", ""),
             _raw=data,
+            source_artifact_id=artifact_id,
         )
 
 
@@ -360,12 +367,20 @@ class ModelArtifact:
     training: JsonDict = field(default_factory=dict)
     warnings: list[JsonDict] = field(default_factory=list)
     _raw: JsonDict = field(default_factory=dict, repr=False)
+    source_artifact_id: str = ""
+    ensemble_type: str = ""
+    base_models: list[JsonDict] = field(default_factory=list)
+    weights: list[float] = field(default_factory=list)
+    voting: str = ""
+    threshold: float | None = None
+    estimator_reference: JsonDict = field(default_factory=dict)
 
     @classmethod
-    def from_json(cls, data: JsonDict) -> ModelArtifact:
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> ModelArtifact:
         coefficients: list[Coefficient] = []
         coefficients_dict: dict[str, float] = {}
         raw_coeffs = data.get("coefficients", [])
+        model_payload = data.get("model_payload", {}) if isinstance(data.get("model_payload", {}), dict) else {}
 
         if isinstance(raw_coeffs, dict):
             coefficients_dict = {
@@ -403,6 +418,13 @@ class ModelArtifact:
             training=data.get("training", {}),
             warnings=list(data.get("warnings", [])),
             _raw=data,
+            source_artifact_id=artifact_id,
+            ensemble_type=str(model_payload.get("ensemble_type", "")),
+            base_models=list(model_payload.get("base_models", [])),
+            weights=[float(v) for v in model_payload.get("weights", []) if isinstance(v, (int, float))],
+            voting=str(model_payload.get("voting", "")),
+            threshold=model_payload.get("threshold"),
+            estimator_reference=dict(data.get("estimator_reference", {})),
         )
 
     def as_legacy_dict(self) -> JsonDict:
@@ -427,9 +449,10 @@ class ScoreScaling:
     min_score: int = 0
     max_score: int = 0
     _raw: JsonDict = field(default_factory=dict, repr=False)
+    source_artifact_id: str = ""
 
     @classmethod
-    def from_json(cls, data: JsonDict) -> ScoreScaling:
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> ScoreScaling:
         raw_odds = data.get("base_odds", "50:1")
         base_odds = str(raw_odds) if not isinstance(raw_odds, str) else raw_odds
         return cls(
@@ -443,6 +466,7 @@ class ScoreScaling:
             min_score=data.get("min_score", 0),
             max_score=data.get("max_score", 0),
             _raw=data,
+            source_artifact_id=artifact_id,
         )
 
 
@@ -459,10 +483,14 @@ class RoleMetrics:
 class ValidationMetrics:
     metrics_by_role: dict[str, RoleMetrics] = field(default_factory=dict)
     psi: dict[str, float] = field(default_factory=dict)
+    target: JsonDict = field(default_factory=dict)
+    gates: list[JsonDict] = field(default_factory=list)
+    warnings: list[JsonDict] = field(default_factory=list)
     _raw: JsonDict = field(default_factory=dict, repr=False)
+    source_artifact_id: str = ""
 
     @classmethod
-    def from_json(cls, data: JsonDict) -> ValidationMetrics:
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> ValidationMetrics:
         metrics_by_role: dict[str, RoleMetrics] = {}
         raw_metrics = data.get("roles", data.get("metrics", {}))
         if not raw_metrics:
@@ -488,7 +516,15 @@ class ValidationMetrics:
         if isinstance(raw_psi, dict):
             psi = {k: float(v) for k, v in raw_psi.items() if isinstance(v, (int, float))}
 
-        return cls(metrics_by_role=metrics_by_role, psi=psi, _raw=data)
+        return cls(
+            metrics_by_role=metrics_by_role,
+            psi=psi,
+            target=dict(data.get("target", {})),
+            gates=list(data.get("gates", [])),
+            warnings=list(data.get("warnings", [])),
+            _raw=data,
+            source_artifact_id=artifact_id,
+        )
 
 
 @dataclass(frozen=True)
@@ -503,9 +539,10 @@ class CutoffRow:
 class CutoffAnalysis:
     cutoff_tables: dict[str, list[CutoffRow]] = field(default_factory=dict)
     _raw: JsonDict = field(default_factory=dict, repr=False)
+    source_artifact_id: str = ""
 
     @classmethod
-    def from_json(cls, data: JsonDict) -> CutoffAnalysis:
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> CutoffAnalysis:
         raw_tables = data.get("cutoff_tables", data.get("tables", {}))
         tables: dict[str, list[CutoffRow]] = {}
         for role, rows in raw_tables.items():
@@ -519,7 +556,7 @@ class CutoffAnalysis:
                     )
                     for r in rows
                 ]
-        return cls(cutoff_tables=tables, _raw=data)
+        return cls(cutoff_tables=tables, _raw=data, source_artifact_id=artifact_id)
 
 
 @dataclass(frozen=True)
@@ -577,9 +614,10 @@ class VariableClusteringEvidence:
     singleton_variables: list[str] = field(default_factory=list)
     warnings: list[dict[str, Any]] = field(default_factory=list)
     schema_version: str = ""
+    source_artifact_id: str = ""
 
     @classmethod
-    def from_json(cls, data: JsonDict) -> VariableClusteringEvidence:
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> VariableClusteringEvidence:
         from cardre._evidence.schemas import SCHEMA_VARIABLE_CLUSTERING_EVIDENCE
         raw_clusters = data.get("clusters", [])
         clusters = []
@@ -617,4 +655,422 @@ class VariableClusteringEvidence:
             singleton_variables=list(data.get("singleton_variables", [])),
             warnings=list(data.get("warnings", [])),
             schema_version=data.get("schema_version", SCHEMA_VARIABLE_CLUSTERING_EVIDENCE),
+            source_artifact_id=artifact_id,
+        )
+
+
+@dataclass(frozen=True)
+class ArtifactEvidenceSummary:
+    artifact_id: str
+    role: str
+    artifact_type: str
+    media_type: str
+    schema_version: str = ""
+    kind: str = ""
+    source_artifact_id: str = ""
+
+
+@dataclass(frozen=True)
+class SplitSummary:
+    strategy: str
+    row_counts: dict[str, int]
+    target_rates: dict[str, dict[str, int]] = field(default_factory=dict)
+    warnings: list[JsonDict] = field(default_factory=list)
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> SplitSummary:
+        return cls(
+            strategy=data.get("strategy", ""),
+            row_counts={k: int(v) for k, v in dict(data.get("row_counts", {})).items()},
+            target_rates={
+                str(role): {str(k): int(v) for k, v in dict(counts).items()}
+                for role, counts in dict(data.get("target_rates", {})).items()
+            },
+            warnings=list(data.get("warnings", [])),
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
+        )
+
+
+@dataclass(frozen=True)
+class ProfileSummary:
+    profiles: list[JsonDict]
+    warnings: list[JsonDict] = field(default_factory=list)
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> ProfileSummary:
+        profiles = data.get("profiles", data.get("columns", []))
+        if isinstance(profiles, dict):
+            profiles = list(profiles.values())
+        return cls(
+            profiles=list(profiles),
+            warnings=list(data.get("warnings", [])),
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
+        )
+
+
+@dataclass(frozen=True)
+class ExclusionSummary:
+    rows_before: int
+    rows_after: int
+    rows_excluded: int
+    rules: list[JsonDict] = field(default_factory=list)
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> ExclusionSummary:
+        return cls(
+            rows_before=int(data.get("rows_before", 0)),
+            rows_after=int(data.get("rows_after", 0)),
+            rows_excluded=int(data.get("rows_excluded", 0)),
+            rules=list(data.get("rules", [])),
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
+        )
+
+
+@dataclass(frozen=True)
+class WoeTransformEvidence:
+    target_column: str
+    transformed_variables: list[str]
+    selected_only: bool = False
+    row_count: int = 0
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> WoeTransformEvidence:
+        return cls(
+            target_column=data.get("target_column", ""),
+            transformed_variables=[str(v) for v in data.get("transformed_variables", [])],
+            selected_only=bool(data.get("selected_only", False)),
+            row_count=int(data.get("row_count", 0)),
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
+        )
+
+
+@dataclass(frozen=True)
+class ApplyWoeEvidence:
+    policy: JsonDict
+    roles: dict[str, JsonDict]
+    warnings: list[JsonDict] = field(default_factory=list)
+    bin_definition_artifact_id: str = ""
+    woe_table_artifact_id: str = ""
+    selection_artifact_id: str | None = None
+    frozen_bundle_artifact_id: str | None = None
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> ApplyWoeEvidence:
+        return cls(
+            policy=dict(data.get("policy", {})),
+            roles={str(k): dict(v) for k, v in dict(data.get("roles", {})).items()},
+            warnings=list(data.get("warnings", [])),
+            bin_definition_artifact_id=data.get("bin_definition_artifact_id", ""),
+            woe_table_artifact_id=data.get("woe_table_artifact_id", ""),
+            selection_artifact_id=data.get("selection_artifact_id"),
+            frozen_bundle_artifact_id=data.get("frozen_bundle_artifact_id"),
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
+        )
+
+
+@dataclass(frozen=True)
+class ApplyModelEvidence:
+    roles: dict[str, JsonDict]
+    model_artifact_id: str
+    warnings: list[JsonDict] = field(default_factory=list)
+    scorecard_artifact_id: str | None = None
+    frozen_bundle_artifact_id: str | None = None
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> ApplyModelEvidence:
+        return cls(
+            roles={str(k): dict(v) for k, v in dict(data.get("roles", {})).items()},
+            model_artifact_id=data.get("model_artifact_id", ""),
+            warnings=list(data.get("warnings", [])),
+            scorecard_artifact_id=data.get("scorecard_artifact_id"),
+            frozen_bundle_artifact_id=data.get("frozen_bundle_artifact_id"),
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
+        )
+
+
+@dataclass(frozen=True)
+class ReportBundleEvidence:
+    schema_version: str
+    project_id: str
+    run_id: str
+    target_branch_id: str = ""
+    report_mode: str = "branch"
+    generated_at: str = ""
+    generated_by: JsonDict = field(default_factory=dict)
+    source: JsonDict = field(default_factory=dict)
+    summary: JsonDict = field(default_factory=dict)
+    artifacts: list[JsonDict] = field(default_factory=list)
+    source_artifact_id: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> ReportBundleEvidence:
+        from cardre._evidence.schemas import SCHEMA_REPORT_BUNDLE
+        schema_version = data.get("schema_version", "")
+        if schema_version and schema_version != SCHEMA_REPORT_BUNDLE:
+            from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
+            raise EvidenceParseError(
+                f"Unexpected report bundle schema_version {schema_version!r}",
+                kind=EvidenceKind.REPORT_BUNDLE,
+                artifact_id=artifact_id,
+                expected_schema=SCHEMA_REPORT_BUNDLE,
+                actual_schema=schema_version,
+            )
+        return cls(
+            schema_version=schema_version or SCHEMA_REPORT_BUNDLE,
+            project_id=data.get("project_id", ""),
+            run_id=data.get("run_id", ""),
+            target_branch_id=data.get("target_branch_id", ""),
+            report_mode=data.get("report_mode", "branch"),
+            generated_at=data.get("generated_at", ""),
+            generated_by=dict(data.get("generated_by", {})),
+            source=dict(data.get("source", {})),
+            summary=dict(data.get("summary", {})),
+            artifacts=list(data.get("artifacts", [])),
+            source_artifact_id=artifact_id,
+        )
+
+
+@dataclass(frozen=True)
+class RunManifestEvidence:
+    manifest_version: str
+    run_id: str
+    plan_version_id: str
+    status: str
+    execution_mode: str
+    started_at: str = ""
+    finished_at: str = ""
+    branch_id: str | None = None
+    target_step_id: str | None = None
+    in_scope_step_ids: list[str] = field(default_factory=list)
+    steps: list[JsonDict] = field(default_factory=list)
+    source_artifact_id: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> RunManifestEvidence:
+        from cardre._evidence.schemas import SCHEMA_RUN_MANIFEST
+        manifest_version = data.get("schema_version", data.get("manifest_version", ""))
+        if not manifest_version:
+            manifest_version = SCHEMA_RUN_MANIFEST
+        return cls(
+            manifest_version=manifest_version,
+            run_id=data.get("run_id", ""),
+            plan_version_id=data.get("plan_version_id", ""),
+            status=data.get("status", ""),
+            execution_mode=data.get("execution_mode", ""),
+            started_at=data.get("started_at", ""),
+            finished_at=data.get("finished_at", ""),
+            branch_id=data.get("branch_id"),
+            target_step_id=data.get("target_step_id"),
+            in_scope_step_ids=list(data.get("in_scope_step_ids", [])),
+            steps=list(data.get("steps", [])),
+            source_artifact_id=artifact_id,
+        )
+
+
+@dataclass(frozen=True)
+class TechnicalManifestIndex:
+    manifests: list[JsonDict]
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> TechnicalManifestIndex:
+        return cls(
+            manifests=list(data.get("manifests", [])),
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
+        )
+
+
+@dataclass(frozen=True)
+class ComparisonArtifact:
+    comparison_type: str
+    baseline_branch_id: str
+    challenger_branch_id: str
+    woe_iv: JsonDict = field(default_factory=dict)
+    model: JsonDict = field(default_factory=dict)
+    validation: JsonDict = field(default_factory=dict)
+    cutoff: JsonDict = field(default_factory=dict)
+    warnings: list[JsonDict] = field(default_factory=list)
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> ComparisonArtifact:
+        return cls(
+            comparison_type=data.get("comparison_type", ""),
+            baseline_branch_id=data.get("baseline_branch_id", ""),
+            challenger_branch_id=data.get("challenger_branch_id", ""),
+            woe_iv=dict(data.get("woe_iv", {})),
+            model=dict(data.get("model", {})),
+            validation=dict(data.get("validation", {})),
+            cutoff=dict(data.get("cutoff", {})),
+            warnings=list(data.get("warnings", [])),
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
+        )
+
+
+@dataclass(frozen=True)
+class FeatureSelectionEvidence:
+    method: str
+    selected: list[SelectedVariable]
+    rejected: list[JsonDict] = field(default_factory=list)
+    selected_count: int = 0
+    rejected_count: int = 0
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> FeatureSelectionEvidence:
+        selected = data.get("selected", [])
+        if selected and isinstance(selected[0], str):
+            selected_vars = [SelectedVariable(variable=str(v)) for v in selected]
+        else:
+            selected_vars = [
+                SelectedVariable(
+                    variable=s.get("variable", ""),
+                    reason=s.get("reason", ""),
+                    extra={k: v for k, v in s.items() if k not in ("variable", "reason")},
+                )
+                for s in selected
+                if isinstance(s, dict)
+            ]
+        return cls(
+            method=data.get("method", ""),
+            selected=selected_vars,
+            rejected=list(data.get("rejected", [])),
+            selected_count=int(data.get("selected_count", len(selected_vars))),
+            rejected_count=int(data.get("rejected_count", len(data.get("rejected", [])))),
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
+        )
+
+
+@dataclass(frozen=True)
+class ResamplingEvidence:
+    strategy: str
+    original: JsonDict
+    resampled: JsonDict
+    synthetic_rows_added: int = 0
+    rows_dropped: int = 0
+    sampling_ratio: float | None = None
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> ResamplingEvidence:
+        return cls(
+            strategy=data.get("strategy", ""),
+            original=dict(data.get("original", {})),
+            resampled=dict(data.get("resampled", {})),
+            synthetic_rows_added=int(data.get("synthetic_rows_added", 0)),
+            rows_dropped=int(data.get("rows_dropped", 0)),
+            sampling_ratio=data.get("sampling_ratio"),
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
+        )
+
+
+@dataclass(frozen=True)
+class HyperparameterTuningEvidence:
+    estimator_type: str
+    search_method: str
+    best_params: JsonDict
+    best_score: float = 0.0
+    cv_results_shape: list[int] = field(default_factory=list)
+    feature_count: int = 0
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> HyperparameterTuningEvidence:
+        return cls(
+            estimator_type=data.get("estimator_type", ""),
+            search_method=data.get("search_method", ""),
+            best_params=dict(data.get("best_params", {})),
+            best_score=float(data.get("best_score", 0.0)),
+            cv_results_shape=list(data.get("cv_results_shape", [])),
+            feature_count=int(data.get("feature_count", 0)),
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
+        )
+
+
+@dataclass(frozen=True)
+class ExplainabilityReport:
+    model_family: str
+    limitations: list[str]
+    explanation_level: str = ""
+    native_importance_available: bool = False
+    global_importance_fields: list[str] = field(default_factory=list)
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> ExplainabilityReport:
+        return cls(
+            model_family=data.get("model_family", ""),
+            limitations=[str(v) for v in data.get("limitations", [])],
+            explanation_level=data.get("explanation_level", ""),
+            native_importance_available=bool(data.get("native_importance_available", False)),
+            global_importance_fields=[str(v) for v in data.get("global_importance_fields", [])],
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
+        )
+
+
+@dataclass(frozen=True)
+class FairnessReport:
+    roles: JsonDict
+    parity_summary: JsonDict
+    sensitive_columns: list[str] = field(default_factory=list)
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> FairnessReport:
+        return cls(
+            roles=dict(data.get("roles", {})),
+            parity_summary=dict(data.get("parity_summary", {})),
+            sensitive_columns=[str(v) for v in data.get("sensitive_columns", [])],
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
+        )
+
+
+@dataclass(frozen=True)
+class ProxyRiskReport:
+    proxy_flags: list[JsonDict]
+    overall_risk: str
+    sensitive_columns: list[str] = field(default_factory=list)
+    source_artifact_id: str = ""
+    schema_version: str = ""
+
+    @classmethod
+    def from_json(cls, data: JsonDict, artifact_id: str = "") -> ProxyRiskReport:
+        return cls(
+            proxy_flags=list(data.get("proxy_flags", [])),
+            overall_risk=data.get("overall_risk", ""),
+            sensitive_columns=[str(v) for v in data.get("sensitive_columns", [])],
+            source_artifact_id=artifact_id,
+            schema_version=data.get("schema_version", ""),
         )
