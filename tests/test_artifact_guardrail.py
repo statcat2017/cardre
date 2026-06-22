@@ -15,13 +15,6 @@ APPROVED_PATTERNS: set[str] = {
     "cardre/modeling/serialization.py",
 }
 
-ALLOWED_TEST_FILES: set[str] = {
-    "tests/test_artifact_serialization.py",
-    "tests/test_evidence_reader.py",
-    "tests/test_legacy_artifact_compatibility.py",
-}
-
-
 def _load_audit_module():
     script_path = REPO_ROOT / "scripts" / "audit_artifact_reads.py"
     spec = importlib.util.spec_from_file_location("audit_artifact_reads", script_path)

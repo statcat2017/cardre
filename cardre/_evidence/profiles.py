@@ -155,6 +155,7 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"model", "definition", "report"},
         schema_version=SCHEMA_MODEL_ARTIFACT,
         required_keys={"model_family"},
+        legacy_required_keys={"coefficients", "intercept"},
     ),
     EvidenceKind.ENSEMBLE_MODEL_ARTIFACT: _Profile(
         expected_roles={"model"},
@@ -167,6 +168,7 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"scorecard", "report"},
         schema_version=SCHEMA_SCORE_SCALING,
         required_keys={"factor", "offset"},
+        legacy_required_keys={"base_score", "base_odds", "points_to_double_odds"},
     ),
     EvidenceKind.VALIDATION_METRICS: _Profile(
         expected_roles={"report"},

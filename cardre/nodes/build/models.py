@@ -516,39 +516,24 @@ class BuildSummaryReportNode(NodeType):
         scorecard_art = next((a for a in context.input_artifacts if a.role == "scorecard"), None)
         if scorecard_art is None:
             raise ValueError("Build summary requires a scorecard artifact")
-        try:
-            scorecard = reader.read_optional(scorecard_art.artifact_id, EvidenceKind.SCORE_SCALING)
-        except EvidenceParseError:
-            scorecard = None
+        scorecard = reader.read_optional(scorecard_art.artifact_id, EvidenceKind.SCORE_SCALING)
         if scorecard is None:
-            raw_scorecard = json.loads(store.artifact_path(scorecard_art).read_text())  # cardre-allow-artifact-read: serialization-compatibility-test
-            scorecard = ScoreScaling.from_json(raw_scorecard, artifact_id=scorecard_art.artifact_id)
+            raise ValueError(f"Build summary requires scorecard artifact {scorecard_art.artifact_id!r} to be readable as SCORE_SCALING evidence")
 
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
         if model_art is None:
             raise ValueError("Build summary requires a model artifact")
-        try:
-            model = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-        except EvidenceParseError as exc:
-            model = None
+        model = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
         if model is None or not model.model_family:
-            model_raw = json.loads(store.artifact_path(model_art).read_text())  # cardre-allow-artifact-read: serialization-compatibility-test
-            model_features = list(model_raw.get("features", []))
-            model_intercept = float(model_raw.get("intercept", 0))
-            coefficients = model_raw.get("coefficients", {})
-            model_coeff_count = len(coefficients) if isinstance(coefficients, dict) else 0
-            model_converged = bool(model_raw.get("training", {}).get("converged", False))
-            model_row_count = model_raw.get("training", {}).get("row_count", 0)
-            model_warnings = list(model_raw.get("warnings", []))
-            model_target = model_raw.get("target_column", "")
-        else:
-            model_features = model.features
-            model_intercept = model.intercept
-            model_coeff_count = len(model.coefficients_dict)
-            model_converged = model.training.get("converged", False)
-            model_row_count = model.training.get("row_count", 0)
-            model_warnings = list(model.warnings)
-            model_target = model.target_column
+            raise ValueError(f"Build summary requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence")
+
+        model_features = model.features
+        model_intercept = model.intercept
+        model_coeff_count = len(model.coefficients_dict)
+        model_converged = model.training.get("converged", False)
+        model_row_count = model.training.get("row_count", 0)
+        model_warnings = list(model.warnings)
+        model_target = model.target_column
 
         woe_summaries: list[dict[str, Any]] = []
         iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
