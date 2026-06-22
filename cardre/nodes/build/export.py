@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from cardre.artifacts import write_json_artifact
@@ -36,7 +37,7 @@ class TechnicalManifestExportNode(NodeType):
                     continue
                 artifact = store.get_artifact(artifact_id)
                 if artifact is not None:
-                    matches[artifact_id] = (artifact, evidence)
+                    matches[artifact_id] = (evidence, artifact)
 
         if not matches:
             raise EvidenceNotFoundError(
@@ -47,7 +48,7 @@ class TechnicalManifestExportNode(NodeType):
         if len(matches) > 1:
             raise AmbiguousEvidenceError(
                 kinds[0],
-                [artifact for artifact, _ in matches.values()],
+                [artifact for _, artifact in matches.values()],
                 step_id=getattr(run_step, "step_id", None),
             )
         return next(iter(matches.values()))
@@ -66,6 +67,7 @@ class TechnicalManifestExportNode(NodeType):
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
+        reader = ArtifactEvidenceReader(store)
         run_id = context.run_id
         plan_version_id = context.plan_version_id
 
