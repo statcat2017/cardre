@@ -31,6 +31,7 @@ from cardre.evidence import (
     SCHEMA_SAMPLE_DEFINITION,
     SCHEMA_SCORE_SCALING,
     SCHEMA_SELECTION_DEFINITION,
+    SCHEMA_VALIDATION_EVIDENCE,
     SCHEMA_VALIDATION_METRICS,
     SCHEMA_WOE_IV_EVIDENCE,
     SCHEMA_WOE_TABLE,
@@ -132,6 +133,10 @@ class TestSchemaVersionMatching:
          {"factor": 1.0, "offset": 0.0, "base_score": 600, "base_odds": "50:1", "pdo": 20}),
         (EvidenceKind.VALIDATION_METRICS, SCHEMA_VALIDATION_METRICS,
          {"metrics": {"train": {"row_count": 100}}}),
+        (EvidenceKind.VALIDATION_METRICS, SCHEMA_VALIDATION_EVIDENCE,
+         {"roles": {"train": {"row_count": 100}}, "stability": {}, "gates": [], "warnings": []}),
+        (EvidenceKind.VALIDATION_EVIDENCE, SCHEMA_VALIDATION_EVIDENCE,
+         {"roles": {"train": {"row_count": 100}}, "stability": {}, "gates": [], "warnings": []}),
         (EvidenceKind.CUTOFF_ANALYSIS, SCHEMA_CUTOFF_ANALYSIS,
          {"cutoff_tables": {"train": [{"score_cutoff": 0.5}]}}),
         (EvidenceKind.WOE_IV_EVIDENCE, SCHEMA_WOE_IV_EVIDENCE,
@@ -384,4 +389,3 @@ class TestAmbiguous:
         reader = ArtifactEvidenceReader(store)
         with pytest.raises(AmbiguousEvidenceError):
             reader.find([art1, art2], EvidenceKind.WOE_TABLE)
-

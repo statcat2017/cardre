@@ -268,10 +268,13 @@ class ArtifactEvidenceReader:
             return []
 
         # Phase 1: schema_version exact match
-        if profile.schema_version:
+        schema_versions = {profile.schema_version} if profile.schema_version else set()
+        if profile.legacy_schema_versions:
+            schema_versions.update(profile.legacy_schema_versions)
+        if schema_versions:
             candidates = [
                 a for a in artifacts
-                if a.metadata.get("schema_version") == profile.schema_version
+                if a.metadata.get("schema_version") in schema_versions
             ]
             if candidates:
                 return candidates

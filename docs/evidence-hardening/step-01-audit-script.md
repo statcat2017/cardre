@@ -1,6 +1,6 @@
 # Step 01 — Audit Script
 
-Target PRs in this step: `scripts/audit_artifact_reads.py` (new) + CI hook.
+Target PRs in this step: `scripts/audit_artifact_reads.py` (new) + CI-ready reporting.
 
 ## Goal
 
@@ -70,7 +70,8 @@ column.
   JSON list, one object per match.
 - `--approved-modules <comma-list>` override (for testing).
 - Exit code 0 always (the script reports; CI jobs decide pass/fail
-  based on the JSON). Add `--fail-on production_violation` mode for CI.
+  based on the JSON). Add `--fail-on production_violation` mode for
+  the later guardrail step.
 
 ## Use `git ls-files`
 
@@ -81,8 +82,8 @@ so untracked scratch files do not pollute the audit.
 
 When a production violation is reported, include in the JSON object:
 `"suggested_reader": "Use ArtifactEvidenceReader.read(...) or find(...) instead of direct artifact_path I/O."`
-and link to `docs/architecture/artifact-evidence-access.md` (this file
-is authored in S10; just emit the relative path string).
+and link to `docs/architecture/artifact-evidence-access.md` (placeholder
+doc added now, expanded in S10; just emit the relative path string).
 
 Also include `invalid_suppression: true|false` and preserve the raw
 `suppression_reason` for auditability.
