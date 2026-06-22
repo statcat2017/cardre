@@ -20,7 +20,7 @@ from cardre.audit import (
     table_logical_hash,
 )
 from cardre.artifacts import write_json_artifact
-from cardre.evidence import EvidenceNotFoundError
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind, EvidenceNotFoundError
 from cardre.executor import PlanExecutor
 from cardre.nodes import (
     ApplyModelNode,
@@ -44,6 +44,7 @@ from tests.helpers import (
     _make_train_artifact,
     make_store,
 )
+from tests.helpers.evidence_assertions import assert_model_artifact, assert_score_scaling
 
 pytestmark = pytest.mark.integration
 
@@ -339,14 +340,15 @@ class LogisticRegressionTests:
         assert artifact.artifact_type == "model"
         assert artifact.role == "model"
 
-        model = json.loads(store.artifact_path(artifact).read_text())
-        assert "features" in model
-        assert "coefficients" in model
-        assert "intercept" in model
-        assert "class_mapping" in model
-        assert model["class_mapping"]["bad"] == "bad"
-        assert "training" in model
-        assert model["training"]["converged"]
+        reader = ArtifactEvidenceReader(store)
+        model = reader.read(artifact.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert_model_artifact(
+            model,
+            expected_kind="logistic_regression",
+            features=["x_woe"],
+        )
+        assert model._raw["class_mapping"]["bad"] == "bad"
+        assert model.training["converged"]
 
     def test_logistic_regression_needs_woe_columns(self) -> None:
         store, tmp = make_store()
@@ -729,11 +731,12 @@ class Phase2BEndToEndTests:
         assert ss_output.artifacts[0].artifact_type == "scorecard"
         assert bsr_output.artifacts[0].artifact_type == "report"
 
-        model = json.loads(store.artifact_path(lr_output.artifacts[0]).read_text())
-        scorecard = json.loads(store.artifact_path(ss_output.artifacts[0]).read_text())
-        assert "coefficients" in model
-        assert "attributes" in scorecard
-        assert len(scorecard["attributes"]) > 0
+        reader = ArtifactEvidenceReader(store)
+        model = reader.read(lr_output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        scorecard = reader.read(ss_output.artifacts[0].artifact_id, EvidenceKind.SCORE_SCALING)
+        assert_model_artifact(model, expected_kind="logistic_regression", features=["var1_woe"])
+        assert_score_scaling(scorecard, base_score=600, points_to_double_odds=20)
+        assert len(scorecard._raw["attributes"]) > 0
 
     def test_woe_transform_selects_only_selected_vars(self) -> None:
         store, tmp = make_store()

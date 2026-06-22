@@ -20,6 +20,7 @@ from cardre.audit import (
     relative_path,
     table_logical_hash,
 )
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.nodes import (
     FineClassingNode,
     ManualBinningNode,
@@ -27,6 +28,7 @@ from cardre.nodes import (
 from cardre.store import ProjectStore
 
 from tests.helpers import make_store
+from tests.helpers.evidence_assertions import assert_bin_definition
 
 
 # ======================================================================
@@ -103,9 +105,9 @@ class FineClassingTests(unittest.TestCase):
         self.assertEqual(len(output.artifacts), 1)
         artifact = output.artifacts[0]
         self.assertEqual(artifact.role, "definition")
-        payload = json.loads(store.artifact_path(artifact).read_text())
-        self.assertIn("variables", payload)
-        self.assertGreater(len(payload["variables"]), 0)
+        payload = ArtifactEvidenceReader(store).read(artifact.artifact_id, EvidenceKind.BIN_DEFINITION)
+        assert_bin_definition(payload)
+        self.assertGreater(len(payload.variables), 0)
 
     def test_numeric_bin_boundaries_non_overlapping(self) -> None:
         store, tmp = make_store()
@@ -159,8 +161,8 @@ class FineClassingTests(unittest.TestCase):
             validated_params=params, runtime_metadata={},
         )
         output = FineClassingNode().run(ctx)
-        payload = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        score_bins = [v for v in payload["variables"] if v["variable"] == "score"][0]["bins"]
+        payload = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.BIN_DEFINITION)
+        score_bins = [v for v in payload.variables if v.variable == "score"][0].bins
 
         non_missing = [b for b in score_bins if not b.get("is_missing_bin")]
         self.assertGreaterEqual(len(non_missing), 2, "expected at least 2 non-missing bins")
@@ -280,10 +282,10 @@ class ManualBinningTests(unittest.TestCase):
         node = ManualBinningNode()
         output = node.run(ctx)
 
-        payload = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        merged_vars = payload["variables"]
+        payload = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.BIN_DEFINITION)
+        merged_vars = payload.variables
         self.assertEqual(len(merged_vars), 1)
-        merged_bins = merged_vars[0]["bins"]
+        merged_bins = merged_vars[0].bins
         self.assertEqual(len(merged_bins), 2)
 
 
@@ -529,7 +531,7 @@ def test_high_cardinality_creates_other_bin() -> None:
     node = FineClassingNode()
     output = node.run(ctx)
 
-    payload = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-    cat_var = next(v for v in payload["variables"] if v["variable"] == "cat_var")
-    bin_labels = [b["label"] for b in cat_var["bins"]]
+    payload = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.BIN_DEFINITION)
+    cat_var = next(v for v in payload.variables if v.variable == "cat_var")
+    bin_labels = [b["label"] for b in cat_var.bins]
     assert "Other" in bin_labels, "High-cardinality categorical should create an 'Other' bin"

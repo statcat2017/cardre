@@ -27,6 +27,7 @@ from cardre.evidence import (
 )
 from cardre.nodes.build.freeze import FrozenScorecardBundleNode
 from tests.helpers import make_store
+from tests.helpers.evidence_assertions import assert_scorecard_bundle
 
 
 def _make_model_artifact(store, features, *, target_column="target", intercept=-0.5, coeffs=None):
@@ -207,18 +208,17 @@ class TestFrozenScorecardBundleHappyPath:
         assert artifact.artifact_type == "scorecard"
         assert artifact.role == "scorecard"
 
-        bundle = json.loads(store.artifact_path(artifact).read_text())
+        reader = ArtifactEvidenceReader(store)
+        bundle = reader.read(artifact.artifact_id, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
+        bundle["source_artifact_id"] = artifact.artifact_id
 
-        assert bundle["schema_version"] == "cardre.frozen_scorecard_bundle.v1"
-        assert bundle["bundle_type"] == "scorecard_application"
-        assert bundle["created_from"]["run_id"] == "r1"
-        assert bundle["created_from"]["step_id"] == "freeze"
-        assert bundle["created_from"]["canonical_step_id"] == "freeze"
-
-        assert bundle["target"]["target_column"] == "target"
-        assert bundle["target"]["good_values"] == ["good"]
-        assert bundle["target"]["bad_values"] == ["bad"]
-        assert bundle["target"]["event_convention"] == "bad"
+        assert_scorecard_bundle(
+            bundle,
+            schema_version="cardre.frozen_scorecard_bundle.v1",
+            bundle_type="scorecard_application",
+            created_from={"run_id": "r1", "plan_version_id": "pv1", "step_id": "freeze", "canonical_step_id": "freeze", "branch_id": ""},
+            target={"target_column": "target", "good_values": ["good"], "bad_values": ["bad"], "event_convention": "bad"},
+        )
 
         comps = bundle["components"]
         assert comps["bin_definition_logical_hash"] == bin_art.logical_hash
@@ -322,7 +322,9 @@ class TestFrozenScorecardBundleHappyPath:
         output = FrozenScorecardBundleNode().run(ctx)
 
         assert len(output.artifacts) == 1
-        bundle = json.loads(store.artifact_path(output.artifacts[0]).read_text())
+        bundle = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
+        bundle["source_artifact_id"] = output.artifacts[0].artifact_id
+        assert_scorecard_bundle(bundle, schema_version="cardre.frozen_scorecard_bundle.v1", bundle_type="scorecard_application")
         comps = bundle["components"]
         assert "selection_logical_hash" not in comps
         assert "selection_physical_hash" not in comps
@@ -382,7 +384,9 @@ class TestFrozenScorecardBundleHappyPath:
             validated_params=params, runtime_metadata={},
         )
         output = FrozenScorecardBundleNode().run(ctx)
-        bundle = json.loads(store.artifact_path(output.artifacts[0]).read_text())
+        bundle = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
+        bundle["source_artifact_id"] = output.artifacts[0].artifact_id
+        assert_scorecard_bundle(bundle, schema_version="cardre.frozen_scorecard_bundle.v1", bundle_type="scorecard_application")
         assert len(bundle["warnings"]) == 0
 
     def test_bundle_findable_via_evidence_reader(self):

@@ -10,6 +10,7 @@ import numpy as np
 import polars as pl
 
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.modeling.schema import validate_model_artifact
 from cardre.nodes.fairness import (
     AlternativeDataManifestNode,
@@ -248,14 +249,13 @@ class FairnessReportRunTests:
         ctx = make_ctx(store, [scored_art, def_art], "cardre.fairness_report",
                        params={"sensitive_columns": ["gender"], "cutoff": 0.5})
         out = FairnessReportNode().run(ctx)
-        report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
+        report = ArtifactEvidenceReader(store).read(out.artifacts[0].artifact_id, EvidenceKind.FAIRNESS_REPORT)
 
-        assert "roles" in report
-        assert "train" in report["roles"]
-        assert "group_metrics" in report["roles"]["train"]
-        assert "gender" in report["roles"]["train"]["group_metrics"]
+        assert "train" in report.roles
+        assert "group_metrics" in report.roles["train"]
+        assert "gender" in report.roles["train"]["group_metrics"]
 
-        gender_metrics = report["roles"]["train"]["group_metrics"]["gender"]
+        gender_metrics = report.roles["train"]["group_metrics"]["gender"]
         for group_val, metrics in gender_metrics.items():
             if isinstance(metrics, dict) and metrics.get("status") != "insufficient_evidence":
                 assert "approval_rate" in metrics
@@ -271,10 +271,9 @@ class FairnessReportRunTests:
         ctx = make_ctx(store, [scored_art, def_art], "cardre.fairness_report",
                        params={"sensitive_columns": ["gender", "age_group"], "cutoff": 0.5})
         out = FairnessReportNode().run(ctx)
-        report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
+        report = ArtifactEvidenceReader(store).read(out.artifacts[0].artifact_id, EvidenceKind.FAIRNESS_REPORT)
 
-        assert "parity_summary" in report
-        assert "gender" in report["parity_summary"]
+        assert "gender" in report.parity_summary
 
     def test_fairness_requires_typed_model_evidence(self) -> None:
         store, tmp = make_store()
@@ -329,9 +328,9 @@ class FairnessReportRunTests:
         ctx = make_ctx(store, [data_art, def_art], "cardre.fairness_report",
                        params={"sensitive_columns": ["gender"], "min_group_size": 30})
         out = FairnessReportNode().run(ctx)
-        report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
+        report = ArtifactEvidenceReader(store).read(out.artifacts[0].artifact_id, EvidenceKind.FAIRNESS_REPORT)
 
-        gender_metrics = report["roles"]["train"]["group_metrics"]["gender"]
+        gender_metrics = report.roles["train"]["group_metrics"]["gender"]
         f_metrics = gender_metrics.get("F", {})
         assert f_metrics.get("status") == "insufficient_evidence"
 
@@ -361,10 +360,10 @@ class ProxyRiskReportRunTests:
         ctx = make_ctx(store, [scored_art, model_art], "cardre.proxy_risk_report",
                        params={"sensitive_columns": ["gender"], "correlation_threshold": 0.3})
         out = ProxyRiskReportNode().run(ctx)
-        report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
+        report = ArtifactEvidenceReader(store).read(out.artifacts[0].artifact_id, EvidenceKind.PROXY_RISK_REPORT)
 
-        assert "proxy_flags" in report
-        assert "overall_risk" in report
+        assert report.proxy_flags
+        assert report.overall_risk
 
     def test_proxy_risk_detects_direct_sensitive_in_model(self) -> None:
         """If a sensitive column is in model features, it should be flagged."""
@@ -399,11 +398,11 @@ class ProxyRiskReportRunTests:
         ctx = make_ctx(store, [data_art, model_art], "cardre.proxy_risk_report",
                        params={"sensitive_columns": ["gender_num"], "correlation_threshold": 0.3})
         out = ProxyRiskReportNode().run(ctx)
-        report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
+        report = ArtifactEvidenceReader(store).read(out.artifacts[0].artifact_id, EvidenceKind.PROXY_RISK_REPORT)
 
         # gender_num is directly in model features → high risk
-        assert report["overall_risk"] == "high"
-        assert any(f["risk_level"] == "high" for f in report["proxy_flags"])
+        assert report.overall_risk == "high"
+        assert any(f["risk_level"] == "high" for f in report.proxy_flags)
 
 
 # ======================================================================
