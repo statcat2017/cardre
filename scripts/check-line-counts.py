@@ -29,6 +29,7 @@ ALLOWLIST: set[str] = {
     "tests/test_sidecar_api.py",
     "tests/test_executor.py",
     "tests/test_nodes.py",
+    "tests/test_reporting.py",
     # TypeScript/TSX (>600 lines)
     "frontend/src/components/ManualBinningEditor.tsx",
     # Auto-generated files

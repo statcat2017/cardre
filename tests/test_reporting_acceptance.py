@@ -22,6 +22,7 @@ from cardre.audit import (
 from cardre.evidence import SCHEMA_SCORE_SCALING
 from cardre.executor import PlanExecutor
 from cardre.nodes import BuildSummaryReportNode
+from cardre.nodes.build.export import TechnicalManifestExportNode
 from cardre.registry import NodeRegistry
 from cardre.reporting.collector import generate_report_bundle
 from cardre.reporting.readiness import check_report_readiness
@@ -305,6 +306,78 @@ class TestAcceptanceChampionReport:
         bundle2_data = bundle2.model_dump(mode="json")
         assert bundle_data["variables"] == bundle2_data["variables"]
         assert bundle_data["model"] == bundle2_data["model"]
+
+        manifest_ctx = ExecutionContext(
+            store=self.store,
+            run_id=run_id,
+            plan_version_id=self.pv_id,
+            step_spec=StepSpec(
+                step_id="manifest",
+                node_type="cardre.technical_manifest_export",
+                node_version="1",
+                category="transform",
+                params={},
+                params_hash=json_logical_hash({}),
+                parent_step_ids=[],
+                branch_label="",
+                position=99,
+            ),
+            parent_run_steps=self.store.get_run_steps(run_id),
+            input_artifacts=[],
+            validated_params={},
+            runtime_metadata={},
+        )
+        manifest_out = TechnicalManifestExportNode().run(manifest_ctx)
+        manifest_artifact = manifest_out.artifacts[0]
+        manifest = json.loads(self.store.artifact_path(manifest_artifact).read_text())
+
+        def _validation_roles(payload: dict) -> dict:
+            roles = payload.get("roles")
+            if isinstance(roles, dict):
+                return roles
+            metrics_by_role = payload.get("metrics_by_role")
+            if isinstance(metrics_by_role, dict):
+                return metrics_by_role
+            metrics = payload.get("metrics")
+            if isinstance(metrics, dict):
+                return metrics
+            return {}
+
+        def _cutoff_roles(payload: dict) -> dict:
+            tables = payload.get("cutoff_tables", payload.get("tables", {}))
+            if isinstance(tables, dict):
+                return tables
+            if isinstance(tables, list):
+                return {
+                    table.get("role", ""): table.get("rows", [])
+                    for table in tables
+                    if isinstance(table, dict)
+                }
+            return {}
+
+        assert [v.variable_name for v in bundle.variables] == [
+            item["variable"] for item in manifest["selected_variables"]
+        ]
+        assert bundle.model.intercept == manifest["model"]["intercept"]
+        bundle_scaling = bundle.score_scaling.model_dump(mode="json")
+        assert bundle_scaling["base_score"] == manifest["scorecard"]["base_score"]
+        assert str(bundle_scaling["base_odds"]) == str(manifest["scorecard"]["base_odds"])
+        assert bundle_scaling["pdo"] == manifest["scorecard"]["points_to_double_odds"]
+
+        bundle_validation = {m.role: m.model_dump(mode="json") for m in bundle.validation.metrics_by_role}
+        manifest_validation = _validation_roles(manifest["validation_metrics"])
+        for role_name, metrics in bundle_validation.items():
+            manifest_metrics = manifest_validation[role_name]
+            for field in ("row_count", "auc", "gini", "ks"):
+                assert manifest_metrics[field] == metrics[field]
+            if "bad_rate" in manifest_metrics:
+                assert manifest_metrics["bad_rate"] == metrics["bad_rate"]
+
+        bundle_cutoffs = {table.role: [row.model_dump(mode="json") for row in table.rows] for table in bundle.cutoffs.cutoff_tables}
+        manifest_cutoffs = _cutoff_roles(manifest["cutoff_analysis"])
+        assert set(bundle_cutoffs) == set(manifest_cutoffs)
+        for role_name, rows in bundle_cutoffs.items():
+            assert len(manifest_cutoffs[role_name]) == len(rows)
 
         # Verify no hardcoded step IDs in pathway
         for step in bundle_data.get("pathway", {}).get("steps", []):
