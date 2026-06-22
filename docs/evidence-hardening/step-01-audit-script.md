@@ -80,9 +80,12 @@ so untracked scratch files do not pollute the audit.
 ## Print the helper
 
 When a production violation is reported, include in the JSON object:
-`"suggested_reader": "reader.find(<artifacts>, EvidenceKind.<KIND>)"`
+`"suggested_reader": "Use ArtifactEvidenceReader.read(...) or find(...) instead of direct artifact_path I/O."`
 and link to `docs/architecture/artifact-evidence-access.md` (this file
 is authored in S10; just emit the relative path string).
+
+Also include `invalid_suppression: true|false` and preserve the raw
+`suppression_reason` for auditability.
 
 ## Acceptance criteria
 

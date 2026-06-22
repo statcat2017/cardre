@@ -47,6 +47,14 @@ def test_audit_artifact_reads_smoke_scan(tmp_path, monkeypatch):
     )
     _write(
         repo,
+        "cardre/alias_reader.py",
+        "import json\n"
+        "def read(store, art):\n"
+        "    path = store.artifact_path(art)\n"
+        "    return json.loads(path.read_text())\n",
+    )
+    _write(
+        repo,
         "cardre/_evidence/reader.py",
         "import polars as pl\n"
         "def read(store, art):\n"
@@ -54,9 +62,36 @@ def test_audit_artifact_reads_smoke_scan(tmp_path, monkeypatch):
     )
     _write(
         repo,
+        "cardre/artifacts.py",
+        "import json\n"
+        "def low_level(store, art):\n"
+        "    return json.loads(store.artifact_path(art).read_text())\n",
+    )
+    _write(
+        repo,
+        "cardre/modeling/serialization.py",
+        "def load(store, art):\n"
+        "    with open(store.artifact_path(art), 'rb') as handle:\n"
+        "        return handle.read()\n",
+    )
+    _write(
+        repo,
+        "cardre/custom_io.py",
+        "import json\n"
+        "def read(store, art):\n"
+        "    return json.loads(store.artifact_path(art).read_text())\n",
+    )
+    _write(
+        repo,
         "cardre/suppressed.py",
         "def read(store, art):\n"
         "    return open(store.artifact_path(art))  # cardre-allow-artifact-read: artifact-byte-download\n",
+    )
+    _write(
+        repo,
+        "cardre/invalid_suppression.py",
+        "def read(store, art):\n"
+        "    return open(store.artifact_path(art))  # cardre-allow-artifact-read: nope\n",
     )
     _write(
         repo,
@@ -89,8 +124,13 @@ def test_audit_artifact_reads_smoke_scan(tmp_path, monkeypatch):
         repo,
         "add",
         "cardre/prod_reader.py",
+        "cardre/alias_reader.py",
         "cardre/_evidence/reader.py",
+        "cardre/artifacts.py",
+        "cardre/modeling/serialization.py",
+        "cardre/custom_io.py",
         "cardre/suppressed.py",
+        "cardre/invalid_suppression.py",
         "tests/test_reader.py",
         "tests/test_docstring_scan.py",
         "docs/reference.py",
@@ -99,7 +139,7 @@ def test_audit_artifact_reads_smoke_scan(tmp_path, monkeypatch):
     module = _load_module()
     monkeypatch.setattr(module, "REPO_ROOT", repo)
 
-    assert module.classify_match("docs/reference.py", None) == "documentation_reference"
+    assert module.classify_match("docs/reference.py", None, module.DEFAULT_APPROVED_MODULES) == "documentation_reference"
 
     buffer = io.StringIO()
     with redirect_stdout(buffer):
@@ -120,11 +160,38 @@ def test_audit_artifact_reads_smoke_scan(tmp_path, monkeypatch):
     assert "pl_scan_parquet" in pattern_types
     assert "pl_read_parquet" in pattern_types
     assert "open_artifact_path" in pattern_types
+    assert "artifact_path_call" in pattern_types
 
-    prod_record = next(record for record in records if record["classification"] == "production_violation")
-    assert prod_record["reader_hint"]
-    assert prod_record["file"] == "cardre/prod_reader.py"
+    prod_record = next(
+        record
+        for record in records
+        if record["classification"] == "production_violation" and record["file"] == "cardre/prod_reader.py"
+    )
+    assert prod_record["suggested_reader"]
+    assert prod_record["doc_path"] == "docs/architecture/artifact-evidence-access.md"
     assert prod_record["line_number"] == 4
+
+    alias_record = next(record for record in records if record["file"] == "cardre/alias_reader.py")
+    assert alias_record["classification"] == "production_violation"
+    assert alias_record["pattern_type"] in {"artifact_path_call", "json_loads_read_text"}
+
+    approved_record = next(record for record in records if record["file"] == "cardre/artifacts.py")
+    assert approved_record["classification"] == "approved_low_level_io"
+
+    serialization_record = next(record for record in records if record["file"] == "cardre/modeling/serialization.py")
+    assert serialization_record["classification"] == "approved_low_level_io"
+
+    custom_override_buffer = io.StringIO()
+    with redirect_stdout(custom_override_buffer):
+        exit_code = module.main(["--json", "--approved-modules", "cardre/custom_io.py"])
+
+    assert exit_code == 0
+    custom_records = [json.loads(line) for line in custom_override_buffer.getvalue().splitlines() if line.strip()]
+    assert any(record["file"] == "cardre/custom_io.py" and record["classification"] == "approved_low_level_io" for record in custom_records)
+
+    invalid_record = next(record for record in records if record["file"] == "cardre/invalid_suppression.py")
+    assert invalid_record["invalid_suppression"] is True
+    assert invalid_record["classification"] == "production_violation"
 
     assert all(record["file"] != "docs/reference.py" for record in records)
     assert all(record["file"] != "cardre/untracked.py" for record in records)
