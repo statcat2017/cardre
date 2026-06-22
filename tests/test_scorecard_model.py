@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import math
+import sys
 from pathlib import Path
 
 import polars as pl
@@ -18,6 +19,8 @@ from cardre.audit import (
     relative_path,
     table_logical_hash,
 )
+from cardre.artifacts import write_json_artifact
+from cardre.evidence import EvidenceNotFoundError
 from cardre.executor import PlanExecutor
 from cardre.nodes import (
     ApplyModelNode,
@@ -52,6 +55,18 @@ def make_full_german_credit_download(tmp: Path) -> Path:
     p = tmp / "german_full.data"
     p.write_text("\n".join(lines))
     return p
+
+
+def _guard_json_loads_for_node(module_suffix: str):
+    original = json.loads
+
+    def _loads(*args, **kwargs):
+        caller = sys._getframe(1)
+        if caller.f_code.co_filename.endswith(module_suffix):
+            raise AssertionError("raw json read should not be used")
+        return original(*args, **kwargs)
+
+    return _loads
 
 
 # ======================================================================
@@ -239,19 +254,6 @@ class Phase2AEndToEndTests:
                 parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "define-metadata"],
                 branch_label="", position=13,
             ),
-            StepSpec(
-                step_id="technical-manifest-stub",
-                node_type="cardre.technical_manifest_export",
-                node_version="1", category="transform",
-                params={},
-                params_hash=json_logical_hash({}),
-                parent_step_ids=[
-                    "define-metadata", "sample-definition", "split",
-                    "explicit-missing-outlier-treatment", "binning",
-                    "variable-selection", "manual-binning", "final-woe-iv",
-                ],
-                branch_label="", position=14,
-            ),
         ]
 
         pv_id = store.create_plan_version(plan_id, steps)
@@ -274,7 +276,6 @@ class Phase2AEndToEndTests:
             "binning": "definition",
             "variable-selection": "definition",
             "manual-binning": "definition",
-            "technical-manifest-stub": "manifest",
         }
         for step_id, expected_type in artifact_types_by_step.items():
             rs = run_steps_by_id[step_id]
@@ -381,11 +382,12 @@ class LogisticRegressionTests:
 
 class ScoreScalingTests:
 
-    def test_score_scaling_produces_deterministic_points(self) -> None:
+    def test_score_scaling_produces_deterministic_points(self, monkeypatch) -> None:
         store, tmp = make_store()
         store.initialize()
 
         model = {
+            "model_family": "logistic_regression",
             "target_column": "target",
             "features": ["x_woe"],
             "intercept": -0.5,
@@ -395,7 +397,14 @@ class ScoreScalingTests:
             "training": {"row_count": 100, "converged": True, "iterations": 10, "params": {}},
             "warnings": [],
         }
-        model_art = _make_json_artifact(store, model, role="model", stem="model")
+        model_art = write_json_artifact(
+            store,
+            artifact_type="model",
+            role="model",
+            stem="model",
+            payload=model,
+            metadata={"schema_version": "cardre.model_artifact.v1"},
+        )
 
         bin_def = {
             "variables": [{
@@ -441,6 +450,10 @@ class ScoreScalingTests:
             input_artifacts=[model_art, bin_art, woe_art],
             validated_params=params, runtime_metadata={},
         )
+        monkeypatch.setattr(
+            "cardre.nodes.build.models.json.loads",
+            _guard_json_loads_for_node("cardre/nodes/build/models.py"),
+        )
         node = ScoreScalingNode()
         output = node.run(ctx)
 
@@ -471,9 +484,25 @@ class ScoreScalingTests:
     def test_score_scaling_validation(self) -> None:
         store, tmp = make_store()
         store.initialize()
-        model = {"features": [], "coefficients": {}, "intercept": 0}
-        model_art = _make_json_artifact(store, model, role="model", stem="model2")
+        model = {"model_family": "logistic_regression", "features": [], "coefficients": {}, "intercept": 0}
+        model_art = write_json_artifact(
+            store,
+            artifact_type="model",
+            role="model",
+            stem="model2",
+            payload=model,
+            metadata={"schema_version": "cardre.model_artifact.v1"},
+        )
         bin_art = _make_json_artifact(store, {"variables": [], "warnings": []}, stem="bins2")
+        woe_df = pl.DataFrame({
+            "variable": ["x"],
+            "bin_id": ["x_b1"],
+            "label": ["Low"],
+            "row_count": [1], "good_count": [1], "bad_count": [0],
+            "good_distribution": [1.0], "bad_distribution": [0.0],
+            "woe": [0.0], "iv_component": [0.0],
+        })
+        woe_art = _make_parquet_report(store, woe_df, stem="woe2")
 
         params = {
             "base_score": 600, "base_odds": 0,
@@ -488,12 +517,54 @@ class ScoreScalingTests:
         ctx = ExecutionContext(
             store=store, run_id="r1", plan_version_id="pv1",
             step_spec=spec, parent_run_steps=[],
-            input_artifacts=[model_art, bin_art],
+            input_artifacts=[model_art, bin_art, woe_art],
             validated_params=params, runtime_metadata={},
         )
         node = ScoreScalingNode()
         with pytest.raises(ValueError):
             node.run(ctx)
+
+    def test_score_scaling_missing_model_evidence_raises(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+
+        bin_def = {
+            "variables": [{
+                "variable": "x", "kind": "numeric",
+                "bins": [],
+            }],
+            "warnings": [],
+        }
+        bin_art = _make_json_artifact(store, bin_def, stem="bins-missing-model")
+
+        woe_df = pl.DataFrame({
+            "variable": ["x"],
+            "bin_id": ["x_b1"],
+            "label": ["Low"],
+            "row_count": [50], "good_count": [40], "bad_count": [10],
+            "good_distribution": [1.0], "bad_distribution": [1.0],
+            "woe": [0.3], "iv_component": [0.1],
+        })
+        woe_art = _make_parquet_report(store, woe_df, stem="woe-missing-model")
+
+        params = {
+            "base_score": 600, "base_odds": 50.0,
+            "points_to_double_odds": 20, "higher_score_is_lower_risk": True,
+        }
+        spec = StepSpec(
+            step_id="ss-missing-model", node_type="cardre.score_scaling",
+            node_version="1", category="fit",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[bin_art, woe_art],
+            validated_params=params, runtime_metadata={},
+        )
+        with pytest.raises(EvidenceNotFoundError):
+            ScoreScalingNode().run(ctx)
 
 
 # ======================================================================
@@ -503,7 +574,7 @@ class ScoreScalingTests:
 class Phase2BEndToEndTests:
     """Runs the full Phase 2A + 2B pathway through the executor."""
 
-    def test_full_phase2b_pathway(self) -> None:
+    def test_full_phase2b_pathway(self, monkeypatch) -> None:
         store, tmp = make_store()
         store.initialize()
 
@@ -614,6 +685,10 @@ class Phase2BEndToEndTests:
         model_art = lr_output.artifacts[0]
 
         # Score scaling
+        monkeypatch.setattr(
+            "cardre.nodes.build.models.json.loads",
+            _guard_json_loads_for_node("cardre/nodes/build/models.py"),
+        )
         ss_params = {
             "base_score": 600, "base_odds": 50.0,
             "points_to_double_odds": 20, "higher_score_is_lower_risk": True,

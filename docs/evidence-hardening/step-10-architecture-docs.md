@@ -1,6 +1,7 @@
 # Step 10 — Architecture Documentation
 
-File: `docs/architecture/artifact-evidence-access.md` (new).
+File: `docs/architecture/artifact-evidence-access.md` (placeholder exists now;
+expand it here).
 
 ## Pre-req: S9 complete (so doc references the final guardrail + CI).
 

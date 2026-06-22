@@ -47,6 +47,7 @@ class _Profile:
     expected_roles: set[str]
     expected_artifact_types: set[str]
     schema_version: str
+    legacy_schema_versions: set[str] | None = None
     expected_media_types: set[str] = field(default_factory=lambda: {"application/json"})
     required_keys: set[str] | None = None
     legacy_required_keys: set[str] | None = None
@@ -171,7 +172,9 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_roles={"report"},
         expected_artifact_types={"report"},
         schema_version=SCHEMA_VALIDATION_METRICS,
+        legacy_schema_versions={SCHEMA_VALIDATION_EVIDENCE},
         required_keys={"metrics"},
+        legacy_required_keys={"roles", "stability", "gates"},
     ),
     EvidenceKind.CUTOFF_ANALYSIS: _Profile(
         expected_roles={"report"},

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 
 import polars as pl
 import pytest
@@ -14,6 +15,7 @@ from cardre.audit import (
 )
 from cardre.evidence import (
     ArtifactEvidenceReader,
+    EvidenceNotFoundError,
     EvidenceKind,
     SCHEMA_BIN_DEFINITION,
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
@@ -100,6 +102,18 @@ def _make_scorecard_artifact(store, *, target_column="target", intercept=-0.5,
     )
 
 
+def _guard_json_loads_for_node(module_suffix: str):
+    original = json.loads
+
+    def _loads(*args, **kwargs):
+        caller = sys._getframe(1)
+        if caller.f_code.co_filename.endswith(module_suffix):
+            raise AssertionError("raw json read should not be used")
+        return original(*args, **kwargs)
+
+    return _loads
+
+
 # ======================================================================
 # Happy path
 # ======================================================================
@@ -107,7 +121,7 @@ def _make_scorecard_artifact(store, *, target_column="target", intercept=-0.5,
 
 class TestFrozenScorecardBundleHappyPath:
 
-    def test_emits_single_bundle_with_selection(self):
+    def test_emits_single_bundle_with_selection(self, monkeypatch):
         store, tmp = make_store()
         store.initialize()
 
@@ -181,6 +195,10 @@ class TestFrozenScorecardBundleHappyPath:
             step_spec=spec, parent_run_steps=[],
             input_artifacts=[meta_art, bin_art, woe_art, sel_art, model_art, scorecard_art],
             validated_params=params, runtime_metadata={},
+        )
+        monkeypatch.setattr(
+            "cardre.nodes.build.freeze.json.loads",
+            _guard_json_loads_for_node("cardre/nodes/build/freeze.py"),
         )
         output = FrozenScorecardBundleNode().run(ctx)
 
@@ -428,6 +446,51 @@ class TestFrozenScorecardBundleHappyPath:
 
 
 class TestFrozenScorecardBundleWarnings:
+
+    def test_missing_scorecard_evidence_raises(self):
+        store, tmp = make_store()
+        store.initialize()
+
+        meta_art = write_json_artifact(
+            store, artifact_type="definition", role="definition",
+            stem="meta",
+            payload={"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]},
+            metadata={"schema_version": SCHEMA_MODELLING_METADATA},
+        )
+        bin_art = write_json_artifact(
+            store, artifact_type="definition", role="definition",
+            stem="bin_def",
+            payload={"variables": [], "warnings": []},
+            metadata={"schema_version": SCHEMA_BIN_DEFINITION},
+        )
+        woe_df = pl.DataFrame({
+            "variable": ["x"], "bin_id": ["x_b1"], "label": ["x"],
+            "row_count": [1], "good_count": [1], "bad_count": [0],
+            "good_distribution": [1.0], "bad_distribution": [0.0],
+            "woe": [0.0], "iv_component": [0.0],
+        })
+        woe_art = write_parquet_artifact(
+            store, artifact_type="report", role="report",
+            stem="woe_table",
+            frame=woe_df,
+            metadata={"schema_version": SCHEMA_WOE_TABLE},
+        )
+        model_art = _make_model_artifact(store, ["x_woe"])
+
+        spec = StepSpec(
+            step_id="freeze", node_type="cardre.freeze_scorecard_bundle",
+            node_version="1", category="fit",
+            params={}, params_hash=json_logical_hash({}),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[meta_art, bin_art, woe_art, model_art],
+            validated_params={}, runtime_metadata={},
+        )
+        with pytest.raises(EvidenceNotFoundError):
+            FrozenScorecardBundleNode().run(ctx)
 
     def test_raises_on_target_mismatch(self):
         store, tmp = make_store()

@@ -6,7 +6,10 @@ import io
 import json
 import tempfile
 import unittest
+import sys
 from pathlib import Path
+from typing import Any
+from unittest.mock import patch
 
 import polars as pl
 
@@ -14,15 +17,18 @@ from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import (
     ArtifactRef,
     ExecutionContext,
+    RunStepRecord,
     StepSpec,
     json_logical_hash,
     physical_hash,
     relative_path,
     table_logical_hash,
+    utc_now_iso,
 )
 from cardre.executor import PlanExecutor
 from cardre.nodes import (
     ApplyExclusionsNode,
+    ApplyModelNode,
     DefineModellingMetadataNode,
     DevelopmentSampleDefinitionNode,
     DummyApplyNode,
@@ -30,10 +36,15 @@ from cardre.nodes import (
     ExplicitMissingOutlierTreatmentNode,
     ImportGermanCreditNode,
     ImportTabularDatasetNode,
+    LogisticRegressionNode,
     ProfileDatasetNode,
+    ScoreScalingNode,
     SplitTrainTestOotNode,
     TechnicalManifestExportNode,
+    CutoffAnalysisNode,
+    ValidationMetricsNode,
     ValidateBinaryTargetNode,
+    VariableSelectionNode,
 )
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
@@ -80,6 +91,47 @@ def make_full_german_credit_download(tmp: Path) -> Path:
     p = tmp / "german_full.data"
     p.write_text("\n".join(lines))
     return p
+
+
+def _guard_json_loads_for_node(module_suffix: str):
+    original = json.loads
+
+    def _loads(*args, **kwargs):
+        caller = sys._getframe(1)
+        if caller.f_code.co_filename.endswith(module_suffix):
+            raise AssertionError("raw json read should not be used")
+        return original(*args, **kwargs)
+
+    return _loads
+
+
+def _save_run_step(
+    store: ProjectStore,
+    *,
+    run_id: str,
+    plan_version_id: str,
+    step_id: str,
+    node_type: str,
+    input_artifacts: list[ArtifactRef],
+    output_artifacts: list[ArtifactRef],
+    execution_fingerprint: dict[str, Any] | None = None,
+) -> RunStepRecord:
+    rs = RunStepRecord(
+        run_step_id=f"{step_id}-rs",
+        run_id=run_id,
+        step_id=step_id,
+        plan_version_id=plan_version_id,
+        status="succeeded",
+        started_at=utc_now_iso(),
+        finished_at=utc_now_iso(),
+        input_artifact_ids=[a.artifact_id for a in input_artifacts],
+        output_artifact_ids=[a.artifact_id for a in output_artifacts],
+        execution_fingerprint=execution_fingerprint or {"node_type": node_type},
+        warnings=[],
+        errors=[],
+    )
+    store.save_run_step(rs)
+    return rs
 
 
 class GermanCreditImportTests(unittest.TestCase):
@@ -753,57 +805,367 @@ class ExplicitMissingOutlierTreatmentTests(unittest.TestCase):
 
 class TechnicalManifestTests(unittest.TestCase):
 
-    def test_manifest_stub_created(self) -> None:
+    def test_manifest_includes_real_evidence_outputs(self) -> None:
         store, tmp = make_store()
         project_id = store.create_project("test")
         plan_id = store.create_plan(project_id, "test-plan")
+        plan_version_id = store.create_plan_version(plan_id, [])
+        run_id = store.create_run(plan_version_id)
 
-        source = make_sample_german_credit_file(tmp)
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
+        iv_df = pl.DataFrame({
+            "variable": ["x_woe"],
+            "iv": [0.3],
+            "bin_count": [2],
+            "zero_cell_count": [0],
+            "warning_count": [0],
+        })
+        iv_art = write_parquet_artifact(
+            store,
+            artifact_type="report",
+            role="report",
+            stem="iv",
+            frame=iv_df,
+            metadata={},
+        )
+        clustering = {
+            "schema_version": "cardre.variable_clustering_evidence.v1",
+            "method": "correlation_threshold",
+            "input_representation": "raw_train",
+            "similarity_metric": "pearson",
+            "absolute_correlation": True,
+            "threshold": 0.7,
+            "missing_handling": "pairwise",
+            "candidate_limit": 50,
+            "representative_rule": "highest_iv",
+            "clusters": [],
+            "singleton_variables": ["x_woe"],
+            "warnings": [],
+        }
+        clust_art = write_json_artifact(
+            store,
+            artifact_type="report",
+            role="report",
+            stem="clustering",
+            payload=clustering,
+            metadata={},
+        )
+        sel_params = {
+            "min_iv": 0.02,
+            "max_variables": 15,
+            "cluster_representative_rule": "none",
+            "cluster_representative_overrides": [],
+        }
+        sel_ctx = ExecutionContext(
+            store=store,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            step_spec=StepSpec(
+                step_id="variable-selection",
+                node_type="cardre.variable_selection",
+                node_version="1",
+                category="selection",
+                params=sel_params,
+                params_hash=json_logical_hash(sel_params),
+                parent_step_ids=[],
+                branch_label="",
+                position=0,
             ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-        run_id = executor.run_plan_version(store, pv_id)
-
-        all_artifacts = store.list_artifacts()
-        import_artifact = all_artifacts[0]
-
-        params = {}
-        step_spec = StepSpec(
-            step_id="manifest", node_type="cardre.technical_manifest_export",
-            node_version="1", category="transform",
-            params=params,
-            params_hash=json_logical_hash(params),
-            parent_step_ids=[], branch_label="", position=0,
+            parent_run_steps=[],
+            input_artifacts=[iv_art, clust_art],
+            validated_params=sel_params,
+            runtime_metadata={},
         )
-        run_steps = store.get_run_steps(run_id)
-        ctx = ExecutionContext(
-            store=store, run_id=run_id, plan_version_id=pv_id,
-            step_spec=step_spec,
-            parent_run_steps=run_steps,
-            input_artifacts=[import_artifact],
-            validated_params=params, runtime_metadata={},
+        sel_out = VariableSelectionNode().run(sel_ctx)
+        _save_run_step(
+            store,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            step_id="variable-selection",
+            node_type="cardre.variable_selection",
+            input_artifacts=[iv_art, clust_art],
+            output_artifacts=sel_out.artifacts,
         )
-        node = TechnicalManifestExportNode()
-        output = node.run(ctx)
 
-        self.assertEqual(len(output.artifacts), 1)
-        artifact = output.artifacts[0]
+        train_df = pl.DataFrame({
+            "x_woe": [0.5, -0.3, 0.5, -0.3],
+            "target": ["bad", "good", "bad", "good"],
+        })
+        train_art = write_parquet_artifact(
+            store,
+            artifact_type="dataset",
+            role="train",
+            stem="train",
+            frame=train_df,
+            metadata={},
+        )
+        def_art = write_json_artifact(
+            store,
+            artifact_type="definition",
+            role="definition",
+            stem="definition",
+            payload={
+                "target_column": "target",
+                "good_values": ["good"],
+                "bad_values": ["bad"],
+            },
+            metadata={},
+        )
+        lr_params = {"C": 1.0, "max_iter": 1000, "solver": "lbfgs", "random_seed": 42}
+        lr_ctx = ExecutionContext(
+            store=store,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            step_spec=StepSpec(
+                step_id="logistic-regression",
+                node_type="cardre.logistic_regression",
+                node_version="1",
+                category="fit",
+                params=lr_params,
+                params_hash=json_logical_hash(lr_params),
+                parent_step_ids=[],
+                branch_label="",
+                position=1,
+            ),
+            parent_run_steps=[],
+            input_artifacts=[train_art, def_art],
+            validated_params=lr_params,
+            runtime_metadata={},
+        )
+        lr_out = LogisticRegressionNode().run(lr_ctx)
+        _save_run_step(
+            store,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            step_id="logistic-regression",
+            node_type="cardre.logistic_regression",
+            input_artifacts=[train_art, def_art],
+            output_artifacts=lr_out.artifacts,
+        )
+
+        model_art = lr_out.artifacts[0]
+        bin_def = {
+            "variables": [{
+                "variable": "x",
+                "kind": "numeric",
+                "bins": [
+                    {"bin_id": "x_b1", "label": "Low", "lower": 0, "upper": 10,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 50, "good_count": 40, "bad_count": 10},
+                    {"bin_id": "x_b2", "label": "High", "lower": 10, "upper": None,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 50, "good_count": 30, "bad_count": 20},
+                ],
+            }],
+            "warnings": [],
+        }
+        bin_art = write_json_artifact(
+            store,
+            artifact_type="definition",
+            role="definition",
+            stem="bins",
+            payload=bin_def,
+            metadata={},
+        )
+        woe_df = pl.DataFrame({
+            "variable": ["x", "x"],
+            "bin_id": ["x_b1", "x_b2"],
+            "label": ["Low", "High"],
+            "row_count": [50, 50], "good_count": [40, 30], "bad_count": [10, 20],
+            "good_distribution": [0.5, 0.5], "bad_distribution": [0.5, 0.5],
+            "woe": [0.3, -0.2], "iv_component": [0.1, 0.05],
+        })
+        woe_art = write_parquet_artifact(
+            store,
+            artifact_type="report",
+            role="report",
+            stem="woe",
+            frame=woe_df,
+            metadata={},
+        )
+        score_params = {
+            "base_score": 600,
+            "base_odds": 50.0,
+            "points_to_double_odds": 20,
+            "higher_score_is_lower_risk": True,
+        }
+        ss_ctx = ExecutionContext(
+            store=store,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            step_spec=StepSpec(
+                step_id="score-scaling",
+                node_type="cardre.score_scaling",
+                node_version="1",
+                category="fit",
+                params=score_params,
+                params_hash=json_logical_hash(score_params),
+                parent_step_ids=[],
+                branch_label="",
+                position=2,
+            ),
+            parent_run_steps=[],
+            input_artifacts=[model_art, bin_art, woe_art],
+            validated_params=score_params,
+            runtime_metadata={},
+        )
+        ss_out = ScoreScalingNode().run(ss_ctx)
+        _save_run_step(
+            store,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            step_id="score-scaling",
+            node_type="cardre.score_scaling",
+            input_artifacts=[model_art, bin_art, woe_art],
+            output_artifacts=ss_out.artifacts,
+        )
+
+        apply_ctx = ExecutionContext(
+            store=store,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            step_spec=StepSpec(
+                step_id="apply-model",
+                node_type="cardre.apply_model",
+                node_version="1",
+                category="apply",
+                params={},
+                params_hash=json_logical_hash({}),
+                parent_step_ids=[],
+                branch_label="",
+                position=3,
+            ),
+            parent_run_steps=[],
+            input_artifacts=[train_art, model_art],
+            validated_params={},
+            runtime_metadata={},
+        )
+        apply_out = ApplyModelNode().run(apply_ctx)
+        _save_run_step(
+            store,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            step_id="apply-model",
+            node_type="cardre.apply_model",
+            input_artifacts=[train_art, model_art],
+            output_artifacts=apply_out.artifacts,
+        )
+
+        scored_df = pl.read_parquet(store.artifact_path(apply_out.artifacts[0]))
+        scored_df = scored_df.with_columns(
+            pl.Series("score", (1.0 - scored_df["predicted_bad_probability"]) * 1000, dtype=pl.Float64)
+        )
+        scored_art = write_parquet_artifact(
+            store,
+            artifact_type="dataset",
+            role="train",
+            stem="scored",
+            frame=scored_df,
+            metadata={},
+        )
+
+        val_ctx = ExecutionContext(
+            store=store,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            step_spec=StepSpec(
+                step_id="validation-metrics",
+                node_type="cardre.validation_metrics",
+                node_version="1",
+                category="apply",
+                params={},
+                params_hash=json_logical_hash({}),
+                parent_step_ids=[],
+                branch_label="",
+                position=4,
+            ),
+            parent_run_steps=[],
+            input_artifacts=[scored_art, def_art],
+            validated_params={},
+            runtime_metadata={},
+        )
+        val_out = ValidationMetricsNode().run(val_ctx)
+        _save_run_step(
+            store,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            step_id="validation-metrics",
+            node_type="cardre.validation_metrics",
+            input_artifacts=[scored_art, def_art],
+            output_artifacts=val_out.artifacts,
+        )
+
+        cutoff_ctx = ExecutionContext(
+            store=store,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            step_spec=StepSpec(
+                step_id="cutoff-analysis",
+                node_type="cardre.cutoff_analysis",
+                node_version="1",
+                category="apply",
+                params={"band_count": 2},
+                params_hash=json_logical_hash({"band_count": 2}),
+                parent_step_ids=[],
+                branch_label="",
+                position=5,
+            ),
+            parent_run_steps=[],
+            input_artifacts=[scored_art, def_art],
+            validated_params={"band_count": 2},
+            runtime_metadata={},
+        )
+        cutoff_out = CutoffAnalysisNode().run(cutoff_ctx)
+        _save_run_step(
+            store,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            step_id="cutoff-analysis",
+            node_type="cardre.cutoff_analysis",
+            input_artifacts=[scored_art, def_art],
+            output_artifacts=cutoff_out.artifacts,
+        )
+
+        manifest_params: dict[str, Any] = {}
+        manifest_ctx = ExecutionContext(
+            store=store,
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            step_spec=StepSpec(
+                step_id="manifest",
+                node_type="cardre.technical_manifest_export",
+                node_version="1",
+                category="transform",
+                params=manifest_params,
+                params_hash=json_logical_hash(manifest_params),
+                parent_step_ids=[],
+                branch_label="",
+                position=6,
+            ),
+            parent_run_steps=store.get_run_steps(run_id),
+            input_artifacts=[],
+            validated_params=manifest_params,
+            runtime_metadata={},
+        )
+        with patch("cardre.nodes.build.export.json.loads", _guard_json_loads_for_node("cardre/nodes/build/export.py")):
+            manifest_out = TechnicalManifestExportNode().run(manifest_ctx)
+
+        self.assertEqual(len(manifest_out.artifacts), 1)
+        artifact = manifest_out.artifacts[0]
         self.assertEqual(artifact.role, "manifest")
         self.assertEqual(artifact.artifact_type, "manifest")
 
         payload = json.loads(store.artifact_path(artifact).read_text())
-        self.assertIn("run", payload)
-        self.assertIn("steps", payload)
-        self.assertIn("artifacts", payload)
+        self.assertIn("model", payload)
+        self.assertIn("scorecard", payload)
+        self.assertIn("selected_variables", payload)
+        self.assertIn("validation_metrics", payload)
+        self.assertIn("cutoff_analysis", payload)
+        self.assertTrue(payload["selected_variables"])
+        self.assertEqual(payload["model"]["model_family"], "logistic_regression")
+        self.assertIn("train", payload["validation_metrics"]["roles"])
+        self.assertIn("train", payload["cutoff_analysis"]["cutoff_tables"])
 
 
 class BlockerVerificationTests(unittest.TestCase):
