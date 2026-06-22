@@ -137,7 +137,7 @@ def get_artifact_preview(
     if artifact is None or store is None:
         raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id}"})
 
-    artifact_path = store.root / artifact.path
+    artifact_path = store.artifact_path(artifact)  # cardre-allow-artifact-read: artifact-byte-download
     reader = ArtifactEvidenceReader(store)
 
     if artifact.media_type == "application/json":

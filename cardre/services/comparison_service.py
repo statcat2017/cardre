@@ -84,6 +84,21 @@ def _materialize_evidence(value: Any) -> Any:
     return value
 
 
+def _validation_roles(payload: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    roles = payload.get("roles")
+    if isinstance(roles, dict):
+        return roles
+    metrics_by_role = payload.get("metrics_by_role")
+    if isinstance(metrics_by_role, dict):
+        return metrics_by_role
+    metrics = payload.get("metrics")
+    if isinstance(metrics, dict):
+        return metrics
+    return payload
+
+
 def _build_comparison_content(
     store: ProjectStore,
     plan_version_id_baseline: str,
@@ -253,9 +268,9 @@ def _build_comparison_content(
     if spec.get("include_validation"):
         vm_b = _find_typed_artifact(step_map_b, "validation-metrics", plan_version_id_baseline, None, (EvidenceKind.VALIDATION_METRICS, EvidenceKind.VALIDATION_EVIDENCE))
         vm_c = _find_typed_artifact(step_map_c, "validation-metrics", plan_version_id_challenger, branch_id_challenger, (EvidenceKind.VALIDATION_METRICS, EvidenceKind.VALIDATION_EVIDENCE))
+        vm_b_roles = _validation_roles(vm_b)
+        vm_c_roles = _validation_roles(vm_c)
         for role_name in ("train", "test", "oot"):
-            vm_b_roles = vm_b.get("roles", vm_b) if isinstance(vm_b, dict) else {}
-            vm_c_roles = vm_c.get("roles", vm_c) if isinstance(vm_c, dict) else {}
             b_role = vm_b_roles.get(role_name, {}) if isinstance(vm_b_roles, dict) else {}
             c_role = vm_c_roles.get(role_name, {}) if isinstance(vm_c_roles, dict) else {}
             role_data = {}
