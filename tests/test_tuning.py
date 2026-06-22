@@ -12,6 +12,7 @@ import polars as pl
 from cardre.artifacts import write_json_artifact
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
 from cardre.evidence import (
+    SCHEMA_FROZEN_SCORECARD_BUNDLE,
     SCHEMA_MODEL_ARTIFACT,
     SCHEMA_SCORE_SCALING,
 )
@@ -484,6 +485,66 @@ class HyperparameterTuningFitTests:
         )
 
         with pytest.raises(ValueError, match="ambiguous scorecard scaling evidence"):
+            ApplyModelNode().run(apply_ctx)
+
+    def test_frozen_bundle_without_standalone_scorecard_scaling_errors_explicitly(self) -> None:
+        store, tmp = make_store()
+        data_art, _, _ = make_numeric_dataset(store)
+
+        model_art = write_json_artifact(
+            store,
+            artifact_type="model",
+            role="model",
+            stem="model",
+            payload={
+                "model_family": "logistic_regression",
+                "features": ["feat_a", "feat_b", "feat_c"],
+                "coefficients": {"feat_a": 0.03, "feat_b": -0.02, "feat_c": 0.01},
+                "intercept": -1.0,
+                "target_column": "target",
+            },
+            metadata={"schema_version": SCHEMA_MODEL_ARTIFACT},
+        )
+        bundle_art = write_json_artifact(
+            store,
+            artifact_type="scorecard",
+            role="scorecard",
+            stem="frozen-bundle",
+            payload={
+                "schema_version": SCHEMA_FROZEN_SCORECARD_BUNDLE,
+                "model_artifact_id": model_art.artifact_id,
+                "scorecard_artifact_id": "scorecard-artifact-id",
+            },
+            metadata={
+                "schema_version": SCHEMA_FROZEN_SCORECARD_BUNDLE,
+                "model_artifact_id": model_art.artifact_id,
+                "scorecard_artifact_id": "scorecard-artifact-id",
+            },
+        )
+
+        step_spec = StepSpec(
+            step_id="frozen-bundle-only",
+            node_type="cardre.apply_model",
+            node_version="2",
+            category="apply",
+            params={},
+            params_hash=json_logical_hash({}),
+            parent_step_ids=[],
+            branch_label="",
+            position=0,
+        )
+        apply_ctx = ExecutionContext(
+            store=store,
+            run_id="test-run",
+            plan_version_id="test-pv",
+            step_spec=step_spec,
+            parent_run_steps=[],
+            input_artifacts=[data_art, model_art, bundle_art],
+            validated_params={},
+            runtime_metadata={},
+        )
+
+        with pytest.raises(ValueError, match="no scorecard scaling artifact was provided"):
             ApplyModelNode().run(apply_ctx)
 
     def test_output_metrics(self) -> None:

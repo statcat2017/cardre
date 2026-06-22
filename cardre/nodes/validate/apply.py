@@ -298,7 +298,11 @@ class ApplyModelNode(NodeType):
         if model_art is None:
             raise ValueError("apply_model requires a model artifact")
 
-        scorecard_candidates = [a for a in context.input_artifacts if a.role == "scorecard"]
+        scorecard_candidates = [
+            a for a in context.input_artifacts
+            if a.role == "scorecard"
+            and a.metadata.get("schema_version") != SCHEMA_FROZEN_SCORECARD_BUNDLE
+        ]
         scorecard_evidence = find_typed_evidence(scorecard_candidates, EvidenceKind.SCORE_SCALING, "scorecard scaling")
 
         # Detect frozen bundle
