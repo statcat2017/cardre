@@ -290,7 +290,7 @@ def _make_json_artifact(store, payload, role="definition", stem="test"):
     return art
 
 
-def _make_parquet_report(store, df, stem="test"):
+def _make_parquet_report(store, df, role="report", stem="test"):
     """Register a Parquet report artifact using the legacy artifact_id format."""
     buf = io.BytesIO()
     df.write_parquet(buf)
@@ -298,7 +298,7 @@ def _make_parquet_report(store, df, stem="test"):
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(buf.getvalue())
     art = ArtifactRef(
-        artifact_id=f"{stem}_1", artifact_type="report", role="report",
+        artifact_id=f"{stem}_1", artifact_type="report", role=role,
         path=relative_path(p, store.root),
         physical_hash=physical_hash(p),
         logical_hash=table_logical_hash(df),
