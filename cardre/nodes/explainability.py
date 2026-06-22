@@ -7,13 +7,12 @@ explainability report before it is champion-eligible.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import polars as pl
 
 from cardre.artifacts import write_json_artifact
-from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind, EvidenceParseError
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
@@ -149,14 +148,19 @@ class ModelExplainabilityNode(NodeType):
         if model_art is None:
             raise ValueError("model_explainability requires a model artifact")
 
-        model = json.loads(store.artifact_path(model_art).read_text())
-        model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-        if model_typed is not None:
-            model_family = model_typed.model_family
-            features = model_typed.features
-        else:
-            model_family = model.get("model_family", "unknown")
-            features = model.get("features", [])
+        try:
+            model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        except EvidenceParseError as exc:
+            raise ValueError(
+                f"model_explainability requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
+            ) from exc
+        if model_typed is None or not model_typed.model_family:
+            raise ValueError(
+                f"model_explainability requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
+            )
+        model = dict(getattr(model_typed, "_raw", {}))
+        model_family = model_typed.model_family
+        features = model_typed.features
         interpretability = model.get("interpretability", {})
         explanation_level = interpretability.get("explanation_level", "none")
 
@@ -304,15 +308,6 @@ class ModelExplainabilityNode(NodeType):
             target_col = model.get("target_column", "")
             if target_col not in df.columns:
                 return None
-
-            meta_art = None
-            for a in [data_art]:
-                try:
-                    meta = json.loads(store.artifact_path(a).read_text())
-                    if "target_column" in meta:
-                        break
-                except Exception:
-                    pass
 
             bad_values_set = set(model.get("bad_class_label", "").split()) or {"bad"}
             y_bin = df[target_col].cast(pl.String).is_in(bad_values_set).cast(pl.Int64).to_numpy()
@@ -591,14 +586,19 @@ class ModelLimitationsNode(NodeType):
         if model_art is None:
             raise ValueError("model_limitations requires a model artifact")
 
-        model = json.loads(store.artifact_path(model_art).read_text())
-        model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-        if model_typed is not None:
-            model_family = model_typed.model_family
-            features = model_typed.features
-        else:
-            model_family = model.get("model_family", "unknown")
-            features = model.get("features", [])
+        try:
+            model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        except EvidenceParseError as exc:
+            raise ValueError(
+                f"model_limitations requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
+            ) from exc
+        if model_typed is None or not model_typed.model_family:
+            raise ValueError(
+                f"model_limitations requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
+            )
+        model = dict(getattr(model_typed, "_raw", {}))
+        model_family = model_typed.model_family
+        features = model_typed.features
         interpretability = model.get("interpretability", {})
         explanation_level = interpretability.get("explanation_level", "none")
         model_limitations = interpretability.get("limitations", [])

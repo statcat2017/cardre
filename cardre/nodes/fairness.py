@@ -5,14 +5,13 @@ Phase 9 adds concrete governance gates for fairness and alternative-data usage.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import numpy as np
 import polars as pl
 
 from cardre.artifacts import write_json_artifact
-from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind, EvidenceParseError
 from cardre.audit import (
     ExecutionContext,
     NodeOutput,
@@ -88,6 +87,24 @@ class FairnessReportNode(NodeType):
             "cutoff": cutoff,
             "roles": {},
         }
+
+        model_features: list[str] = []
+        feature_importance: dict[str, float] = {}
+        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
+        if model_art:
+            try:
+                model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+            except EvidenceParseError as exc:
+                raise ValueError(
+                    f"fairness_report requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
+                ) from exc
+            if model_typed is None or not model_typed.model_family:
+                raise ValueError(
+                    f"fairness_report requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
+                )
+            model = dict(getattr(model_typed, "_raw", {}))
+            model_features = list(model_typed.features)
+            feature_importance = model.get("model_payload", {}).get("feature_importance", {})
 
         for data_art in data_arts:
             role = data_art.role
@@ -308,14 +325,19 @@ class ProxyRiskReportNode(NodeType):
         feature_importance: dict[str, float] = {}
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
         if model_art:
-            model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-            if model_typed is not None:
-                model_features = model_typed.features
             try:
-                model = json.loads(store.artifact_path(model_art).read_text())
-                feature_importance = model.get("model_payload", {}).get("feature_importance", {})
-            except Exception:
-                pass
+                model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+            except EvidenceParseError as exc:
+                raise ValueError(
+                    f"fairness_report requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
+                ) from exc
+            if model_typed is None or not model_typed.model_family:
+                raise ValueError(
+                    f"fairness_report requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
+                )
+            model = dict(getattr(model_typed, "_raw", {}))
+            model_features = model_typed.features
+            feature_importance = model.get("model_payload", {}).get("feature_importance", {})
 
         # Load training data
         if train_art:

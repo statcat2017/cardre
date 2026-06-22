@@ -18,8 +18,11 @@ from cardre.node_parameters import (
 from cardre.evidence import (
     ArtifactEvidenceReader,
     EvidenceKind,
+    EvidenceNotFoundError,
+    EvidenceParseError,
     SCHEMA_MODEL_ARTIFACT,
     SCHEMA_SCORE_SCALING,
+    ScoreScaling,
 )
 
 
@@ -393,7 +396,22 @@ class ScoreScalingNode(NodeType):
         params = context.validated_params
         reader = ArtifactEvidenceReader(store)
 
-        model = reader.find(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
+        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
+        if model_art is None:
+            raise EvidenceNotFoundError(
+                EvidenceKind.MODEL_ARTIFACT,
+                candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
+            )
+        try:
+            model = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        except EvidenceParseError as exc:
+            raise ValueError(
+                f"Score scaling requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
+            ) from exc
+        if model is None or not model.model_family:
+            raise ValueError(
+                f"Score scaling requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
+            )
 
         bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
         woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
@@ -495,8 +513,42 @@ class BuildSummaryReportNode(NodeType):
         store = context.store
         reader = ArtifactEvidenceReader(store)
 
-        scorecard = reader.find(context.input_artifacts, EvidenceKind.SCORE_SCALING)
-        model = reader.find(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
+        scorecard_art = next((a for a in context.input_artifacts if a.role == "scorecard"), None)
+        if scorecard_art is None:
+            raise ValueError("Build summary requires a scorecard artifact")
+        try:
+            scorecard = reader.read_optional(scorecard_art.artifact_id, EvidenceKind.SCORE_SCALING)
+        except EvidenceParseError:
+            scorecard = None
+        if scorecard is None:
+            raw_scorecard = json.loads(store.artifact_path(scorecard_art).read_text())
+            scorecard = ScoreScaling.from_json(raw_scorecard, artifact_id=scorecard_art.artifact_id)
+
+        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
+        if model_art is None:
+            raise ValueError("Build summary requires a model artifact")
+        try:
+            model = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        except EvidenceParseError as exc:
+            model = None
+        if model is None or not model.model_family:
+            model_raw = json.loads(store.artifact_path(model_art).read_text())
+            model_features = list(model_raw.get("features", []))
+            model_intercept = float(model_raw.get("intercept", 0))
+            coefficients = model_raw.get("coefficients", {})
+            model_coeff_count = len(coefficients) if isinstance(coefficients, dict) else 0
+            model_converged = bool(model_raw.get("training", {}).get("converged", False))
+            model_row_count = model_raw.get("training", {}).get("row_count", 0)
+            model_warnings = list(model_raw.get("warnings", []))
+            model_target = model_raw.get("target_column", "")
+        else:
+            model_features = model.features
+            model_intercept = model.intercept
+            model_coeff_count = len(model.coefficients_dict)
+            model_converged = model.training.get("converged", False)
+            model_row_count = model.training.get("row_count", 0)
+            model_warnings = list(model.warnings)
+            model_target = model.target_column
 
         woe_summaries: list[dict[str, Any]] = []
         iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
@@ -524,14 +576,6 @@ class BuildSummaryReportNode(NodeType):
             scorecard_base_odds = float(num) / float(den)
         else:
             scorecard_base_odds = float(scorecard_base_odds)
-
-        model_features = model.features
-        model_intercept = model.intercept
-        model_coeff_count = len(model.coefficients_dict)
-        model_converged = model.training.get("converged", False)
-        model_row_count = model.training.get("row_count", 0)
-        model_warnings = list(model.warnings)
-        model_target = model.target_column
 
         report = {
             "model_summary": {

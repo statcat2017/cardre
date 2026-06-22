@@ -6,7 +6,7 @@ and class-imbalance controls (resampling, SMOTE, cost-sensitive policy).
 
 from __future__ import annotations
 
-import json
+from dataclasses import asdict
 from typing import Any
 
 import numpy as np
@@ -20,6 +20,22 @@ from cardre.audit import (
     json_logical_hash,
 )
 from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
+
+
+def _typed_definition_payload(existing_typed: Any | None) -> dict[str, Any]:
+    if existing_typed is None:
+        return {}
+    raw = getattr(existing_typed, "_raw", None)
+    if isinstance(raw, dict) and raw:
+        return dict(raw)
+    if hasattr(existing_typed, "__dataclass_fields__"):
+        return asdict(existing_typed)
+    to_dict = getattr(existing_typed, "to_dict", None)
+    if callable(to_dict):
+        payload = to_dict()
+        if isinstance(payload, dict):
+            return dict(payload)
+    return {}
 
 
 # ======================================================================
@@ -256,7 +272,12 @@ class FeatureSelectionFilterNode(NodeType):
         def_art = next((a for a in context.input_artifacts if a.role == "definition"), None)
         if def_art:
             try:
-                existing = json.loads(store.artifact_path(def_art).read_text())
+                existing_typed = (
+                    reader.read_optional(def_art.artifact_id, EvidenceKind.FEATURE_SELECTION_EVIDENCE)
+                    or reader.read_optional(def_art.artifact_id, EvidenceKind.MODELLING_METADATA)
+                    or reader.read_optional(def_art.artifact_id, EvidenceKind.SELECTION_DEFINITION)
+                )
+                existing = _typed_definition_payload(existing_typed)
                 existing["selected"] = [s["variable"] for s in selected]
                 existing["selection_filter"] = selection
                 existing["selected_count"] = len(selected)
@@ -436,7 +457,12 @@ class FeatureSelectionEmbeddedNode(NodeType):
         # Merge with existing definition
         if def_art:
             try:
-                existing = json.loads(store.artifact_path(def_art).read_text())
+                existing_typed = (
+                    reader.read_optional(def_art.artifact_id, EvidenceKind.FEATURE_SELECTION_EVIDENCE)
+                    or reader.read_optional(def_art.artifact_id, EvidenceKind.MODELLING_METADATA)
+                    or reader.read_optional(def_art.artifact_id, EvidenceKind.SELECTION_DEFINITION)
+                )
+                existing = _typed_definition_payload(existing_typed)
                 existing["selected"] = [s["variable"] for s in selected]
                 existing["selection_embedded"] = selection
                 existing["selected_count"] = len(selected)
