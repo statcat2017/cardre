@@ -33,50 +33,33 @@ class FrozenScorecardBundleNode(NodeType):
         bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
         woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
         model = reader.find(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
-
-        scorecard_art = next(
-            a for a in context.input_artifacts
-            if a.role == "scorecard"
-            and a.metadata.get("schema_version") == SCHEMA_SCORE_SCALING
-        )
-        scorecard = json.loads(store.artifact_path(scorecard_art).read_text())
-
-        def _find_by_schema(artifacts, schema_version):
-            matches = [
-                a
-                for a in artifacts
-                if a.metadata.get("schema_version") == schema_version
-            ]
-            if len(matches) == 1:
-                return matches[0]
-            if not matches:
-                raise ValueError(
-                    f"Missing artifact with schema_version={schema_version}"
-                )
+        scorecard = reader.find(context.input_artifacts, EvidenceKind.SCORE_SCALING)
+        selection_candidates = [
+            a
+            for a in context.input_artifacts
+            if a.metadata.get("schema_version") == SCHEMA_SELECTION_DEFINITION
+        ]
+        if len(selection_candidates) > 1:
             raise ValueError(
-                f"Multiple artifacts with schema_version={schema_version}"
+                "Frozen scorecard bundle cannot be created: multiple selection definition artifacts found"
             )
+        selection_art = selection_candidates[0] if selection_candidates else None
+        selection_def = (
+            reader.read_optional(selection_art.artifact_id, EvidenceKind.SELECTION_DEFINITION)
+            if selection_art is not None
+            else None
+        )
 
-        bin_def_art = _find_by_schema(
-            context.input_artifacts, SCHEMA_BIN_DEFINITION
-        )
-        woe_table_art = _find_by_schema(
-            context.input_artifacts, SCHEMA_WOE_TABLE
-        )
-        model_art = _find_by_schema(
-            context.input_artifacts, SCHEMA_MODEL_ARTIFACT
-        )
-        model_raw = json.loads(store.artifact_path(model_art).read_text())
+        scorecard_art = store.get_artifact(scorecard.source_artifact_id)
+        model_art = store.get_artifact(model.source_artifact_id)
+        bin_def_art = store.get_artifact(bin_def.source_artifact_id)
+        woe_table_art = store.get_artifact(woe_table.source_artifact_id)
+        selection_art = store.get_artifact(selection_def.source_artifact_id) if selection_def is not None else None
+        if scorecard_art is None or model_art is None or bin_def_art is None or woe_table_art is None:
+            raise ValueError("Frozen scorecard bundle cannot be created: missing source artifact reference")
 
-        selection_art = next(
-            (
-                a
-                for a in context.input_artifacts
-                if a.metadata.get("schema_version")
-                == SCHEMA_SELECTION_DEFINITION
-            ),
-            None,
-        )
+        model_raw = model._raw
+        scorecard_raw = scorecard._raw
 
         created_from = {
             "run_id": context.run_id,
@@ -103,7 +86,7 @@ class FrozenScorecardBundleNode(NodeType):
             "scorecard_logical_hash": scorecard_art.logical_hash,
             "scorecard_physical_hash": scorecard_art.physical_hash,
         }
-        if selection_art is not None:
+        if selection_def is not None and selection_art is not None:
             components["selection_logical_hash"] = selection_art.logical_hash
             components["selection_physical_hash"] = selection_art.physical_hash
 
@@ -132,19 +115,28 @@ class FrozenScorecardBundleNode(NodeType):
             ),
         }
 
+        base_odds = scorecard_raw.get("base_odds", scorecard.base_odds)
+        if isinstance(base_odds, str) and ":" in base_odds:
+            num, den = base_odds.split(":", 1)
+            base_odds = float(num) / float(den)
+        else:
+            base_odds = float(base_odds)
+        higher_is_lower_risk = bool(scorecard_raw.get("higher_score_is_lower_risk", scorecard.score_direction == "higher_is_lower_risk"))
+        intercept = float(scorecard_raw.get("intercept", 0.0))
+        base_points = scorecard_raw.get("base_points")
+        if base_points is None:
+            direction = -1.0 if higher_is_lower_risk else 1.0
+            base_points = round(float(scorecard.offset) + direction * float(scorecard.factor) * intercept, 2)
+
         score_scaling = {
-            "base_score": scorecard.get("base_score", 600),
-            "base_odds": scorecard.get("base_odds", 50.0),
-            "points_to_double_odds": scorecard.get(
-                "points_to_double_odds", 20.0
-            ),
-            "higher_score_is_lower_risk": scorecard.get(
-                "higher_score_is_lower_risk", True
-            ),
-            "factor": scorecard.get("factor", 0.0),
-            "offset": scorecard.get("offset", 0.0),
-            "intercept": scorecard.get("intercept", 0.0),
-            "base_points": scorecard.get("base_points", 0.0),
+            "base_score": scorecard.base_score,
+            "base_odds": base_odds,
+            "points_to_double_odds": scorecard.pdo,
+            "higher_score_is_lower_risk": higher_is_lower_risk,
+            "factor": scorecard.factor,
+            "offset": scorecard.offset,
+            "intercept": intercept,
+            "base_points": base_points,
         }
 
         woe_mapped_vars = set(woe_table.mapping.keys())
@@ -162,10 +154,10 @@ class FrozenScorecardBundleNode(NodeType):
             raise ValueError(
                 f"Frozen scorecard bundle cannot be created: feature order hash "
                 f"({order_hash}) does not match computed hash ({expected_order_hash})"
-            )
+        )
 
         model_intercept = model.intercept
-        scorecard_intercept = scorecard.get("intercept")
+        scorecard_intercept = scorecard_raw.get("intercept")
         if scorecard_intercept is not None and abs(
             float(scorecard_intercept) - float(model_intercept)
         ) > 1e-6:
@@ -175,7 +167,7 @@ class FrozenScorecardBundleNode(NodeType):
             )
 
         model_target = model.target_column
-        scorecard_target = str(scorecard.get("target_column", ""))
+        scorecard_target = str(scorecard_raw.get("target_column", ""))
         if model_target and scorecard_target and model_target != scorecard_target:
             raise ValueError(
                 f"Frozen scorecard bundle cannot be created: model target "

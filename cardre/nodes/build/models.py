@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import math
-from pathlib import Path
 from typing import Any
 
 import polars as pl
@@ -17,14 +16,10 @@ from cardre.node_parameters import (
     ParameterDefinition,
 )
 from cardre.evidence import (
-    AmbiguousEvidenceError,
     ArtifactEvidenceReader,
     EvidenceKind,
-    EvidenceNotFoundError,
-    SCHEMA_BIN_DEFINITION,
     SCHEMA_MODEL_ARTIFACT,
     SCHEMA_SCORE_SCALING,
-    SCHEMA_WOE_TABLE,
 )
 
 
@@ -188,7 +183,7 @@ class LogisticRegressionNode(NodeType):
         if not bad_values:
             raise ValueError("Bad values must be defined for logistic regression")
 
-        df = pl.read_parquet(store.artifact_path(train_artifact))
+        df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
         woe_cols = [c for c in df.columns if c.endswith("_woe")]
         if not woe_cols:
             raise ValueError("No WOE-transformed columns found in training data")
@@ -398,25 +393,13 @@ class ScoreScalingNode(NodeType):
         params = context.validated_params
         reader = ArtifactEvidenceReader(store)
 
-        try:
-            model = reader.find(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
-            model_dict = model.as_legacy_dict()
-        except (EvidenceNotFoundError, AmbiguousEvidenceError):
-            model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
-            if model_art is None:
-                raise ValueError("Score scaling requires a model artifact")
-            model_dict = json.loads(store.artifact_path(model_art).read_text())
+        model = reader.find(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
 
         bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
-        woe_table = reader.find_optional(context.input_artifacts, EvidenceKind.WOE_TABLE)
-        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
 
         if not bin_def.variables:
             raise ValueError("Score scaling received an empty bin definition")
-        if woe_table is None:
-            raise ValueError(
-                "Score scaling requires exactly one WOE report artifact; found 0"
-            )
 
         base_score = float(params.get("base_score", 600))
         raw_odds = params.get("base_odds", 50.0)
@@ -435,8 +418,8 @@ class ScoreScalingNode(NodeType):
 
         factor = pdo / math.log(2)
         offset = base_score - factor * math.log(base_odds)
-        intercept = float(model_dict.get("intercept", 0))
-        coefficients = model_dict.get("coefficients", {})
+        intercept = float(model.intercept)
+        coefficients = model.coefficients_dict
 
         direction = -1.0 if higher_is_lower_risk else 1.0
         base_points = round(offset + direction * factor * intercept, 2)
@@ -480,7 +463,7 @@ class ScoreScalingNode(NodeType):
             "intercept": intercept,
             "base_points": base_points,
             "attributes": attributes,
-            "target_column": model_dict.get("target_column", ""),
+            "target_column": model.target_column,
         }
 
         scorecard["schema_version"] = SCHEMA_SCORE_SCALING
@@ -512,21 +495,8 @@ class BuildSummaryReportNode(NodeType):
         store = context.store
         reader = ArtifactEvidenceReader(store)
 
-        scorecard_artifact = next(
-            a for a in context.input_artifacts
-            if a.role == "scorecard"
-            and a.metadata.get("schema_version") == SCHEMA_SCORE_SCALING
-        )
-        scorecard = json.loads(store.artifact_path(scorecard_artifact).read_text())
-
-        try:
-            model = reader.find(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
-        except EvidenceNotFoundError:
-            model_artifact = next(a for a in context.input_artifacts if a.role == "model")
-            model = json.loads(store.artifact_path(model_artifact).read_text())
-            model_is_typed = False
-        else:
-            model_is_typed = True
+        scorecard = reader.find(context.input_artifacts, EvidenceKind.SCORE_SCALING)
+        model = reader.find(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
 
         woe_summaries: list[dict[str, Any]] = []
         iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
@@ -538,26 +508,30 @@ class BuildSummaryReportNode(NodeType):
                 "row_count": iv_df.height,
                 "columns": list(iv_df.columns),
             })
-        try:
-            woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
-            woe_df = woe_table.dataframe
-            if woe_df is not None:
-                woe_summaries.append({
-                    "artifact_id": woe_table.source_artifact_id,
-                    "type": "woe_table",
-                    "row_count": woe_df.collect().height,
-                    "columns": list(woe_table.columns),
-                })
-        except EvidenceNotFoundError:
-            pass
+        woe_table = reader.find_optional(context.input_artifacts, EvidenceKind.WOE_TABLE)
+        if woe_table is not None and woe_table.dataframe is not None:
+            woe_summaries.append({
+                "artifact_id": woe_table.source_artifact_id,
+                "type": "woe_table",
+                "row_count": woe_table.dataframe.collect().height,
+                "columns": list(woe_table.columns),
+            })
 
-        model_features = model.features if model_is_typed else model.get("features", [])
-        model_intercept = model.intercept if model_is_typed else model.get("intercept", 0)
-        model_coeff_count = len(model.coefficients_dict) if model_is_typed else len(model.get("coefficients", {}))
-        model_converged = model.training.get("converged", False) if model_is_typed else model.get("training", {}).get("converged", False)
-        model_row_count = model.training.get("row_count", 0) if model_is_typed else model.get("training", {}).get("row_count", 0)
-        model_warnings = list(model.warnings) if model_is_typed else model.get("warnings", [])
-        model_target = model.target_column if model_is_typed else model.get("target_column", "")
+        scorecard_raw = scorecard._raw
+        scorecard_base_odds = scorecard_raw.get("base_odds", scorecard.base_odds)
+        if isinstance(scorecard_base_odds, str) and ":" in scorecard_base_odds:
+            num, den = scorecard_base_odds.split(":", 1)
+            scorecard_base_odds = float(num) / float(den)
+        else:
+            scorecard_base_odds = float(scorecard_base_odds)
+
+        model_features = model.features
+        model_intercept = model.intercept
+        model_coeff_count = len(model.coefficients_dict)
+        model_converged = model.training.get("converged", False)
+        model_row_count = model.training.get("row_count", 0)
+        model_warnings = list(model.warnings)
+        model_target = model.target_column
 
         report = {
             "model_summary": {
@@ -569,11 +543,11 @@ class BuildSummaryReportNode(NodeType):
                 "row_count": model_row_count,
             },
             "scorecard_summary": {
-                "base_score": scorecard.get("base_score", 0),
-                "base_odds": scorecard.get("base_odds", 0),
-                "points_to_double_odds": scorecard.get("points_to_double_odds", 0),
-                "attribute_count": len(scorecard.get("attributes", [])),
-                "higher_score_is_lower_risk": scorecard.get("higher_score_is_lower_risk", True),
+                "base_score": scorecard.base_score,
+                "base_odds": scorecard_base_odds,
+                "points_to_double_odds": scorecard.pdo,
+                "attribute_count": len(scorecard_raw.get("attributes", [])),
+                "higher_score_is_lower_risk": bool(scorecard_raw.get("higher_score_is_lower_risk", scorecard.score_direction == "higher_is_lower_risk")),
             },
             "woe_iv_references": woe_summaries,
             "warnings": model_warnings,
@@ -603,7 +577,7 @@ class DummyFitNode(NodeType):
         input_artifact = context.input_artifacts[0]
         params = context.validated_params
 
-        df = pl.read_parquet(store.artifact_path(input_artifact))
+        df = pl.read_parquet(store.artifact_path(input_artifact))  # cardre-allow-artifact-read: dataset-frame-input
         dummy_def = {
             "model_type": "dummy",
             "version": self.version,

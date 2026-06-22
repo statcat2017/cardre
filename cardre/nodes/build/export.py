@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
-import polars as pl
-
 from cardre.artifacts import write_json_artifact
-from cardre.audit import ExecutionContext, NodeOutput, NodeType, json_logical_hash
-from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
+from cardre.audit import ExecutionContext, NodeOutput, NodeType
+from cardre.evidence import (
+    AmbiguousEvidenceError,
+    ArtifactEvidenceReader,
+    EvidenceKind,
+    EvidenceNotFoundError,
+)
 
 
 class TechnicalManifestExportNode(NodeType):
@@ -18,13 +19,56 @@ class TechnicalManifestExportNode(NodeType):
     input_roles: list[str] = ["definition", "report"]
     output_roles: list[str] = ["manifest"]
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
+    def _read_single_step_evidence(
+        self,
+        store: Any,
+        reader: ArtifactEvidenceReader,
+        run_step: Any,
+        kinds: tuple[EvidenceKind, ...],
+    ) -> tuple[Any, Any]:
+        matches: dict[str, tuple[Any, Any]] = {}
+        for kind in kinds:
+            for artifact_id in run_step.output_artifact_ids:
+                if artifact_id in matches:
+                    continue
+                evidence = reader.read_optional(artifact_id, kind)
+                if evidence is None:
+                    continue
+                artifact = store.get_artifact(artifact_id)
+                if artifact is not None:
+                    matches[artifact_id] = (artifact, evidence)
 
+        if not matches:
+            raise EvidenceNotFoundError(
+                kinds[0],
+                step_id=getattr(run_step, "step_id", None),
+                candidate_artifact_ids=list(getattr(run_step, "output_artifact_ids", []) or []),
+            )
+        if len(matches) > 1:
+            raise AmbiguousEvidenceError(
+                kinds[0],
+                [artifact for artifact, _ in matches.values()],
+                step_id=getattr(run_step, "step_id", None),
+            )
+        return next(iter(matches.values()))
+
+    def _evidence_payload(self, evidence: Any) -> dict[str, Any]:
+        raw = getattr(evidence, "_raw", None)
+        if isinstance(raw, dict):
+            return dict(raw)
+        if hasattr(evidence, "to_dict"):
+            return evidence.to_dict()
+        if hasattr(evidence, "as_legacy_dict"):
+            return evidence.as_legacy_dict()
+        if isinstance(evidence, dict):
+            return dict(evidence)
+        raise TypeError(f"Unsupported evidence payload type: {type(evidence)!r}")
+
+    def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         run_id = context.run_id
         plan_version_id = context.plan_version_id
 
-        run = store.get_run(run_id)
         plan_version = store.get_plan_version(plan_version_id)
         plan = None
         project = None
@@ -80,31 +124,91 @@ class TechnicalManifestExportNode(NodeType):
         scorecard_artifact_data: dict = {}
         validation_metrics_data: dict = {}
         cutoff_data: dict = {}
+        found_modelling_metadata = None
+        found_selection = None
+        found_model = None
+        found_scorecard = None
+        found_validation = None
+        found_cutoff = None
 
         for rs in all_run_steps:
             node_type = rs.execution_fingerprint.get("node_type", "")
-            for aid in rs.output_artifact_ids:
-                art = store.get_artifact(aid)
-                if art is None:
-                    continue
-                try:
-                    if node_type == "cardre.define_modelling_metadata":
-                        modelling_metadata = json.loads(store.artifact_path(art).read_text())
-                    elif node_type == "cardre.variable_selection":
-                        sel = json.loads(store.artifact_path(art).read_text())
-                        selected_variables = sel.get("selected", [])
-                    elif node_type == "cardre.logistic_regression" and art.artifact_type == "model":
-                        model_artifact_data = json.loads(store.artifact_path(art).read_text())
-                    elif node_type == "cardre.decision_tree_classifier" and art.artifact_type == "model":
-                        model_artifact_data = json.loads(store.artifact_path(art).read_text())
-                    elif node_type == "cardre.score_scaling" and art.artifact_type == "scorecard":
-                        scorecard_artifact_data = json.loads(store.artifact_path(art).read_text())
-                    elif node_type == "cardre.validation_metrics" and art.artifact_type == "report":
-                        validation_metrics_data = json.loads(store.artifact_path(art).read_text())
-                    elif node_type == "cardre.cutoff_analysis" and art.artifact_type == "report":
-                        cutoff_data = json.loads(store.artifact_path(art).read_text())
-                except (FileNotFoundError, json.JSONDecodeError):
-                    pass
+            if node_type == "cardre.define_modelling_metadata":
+                evidence, art = self._read_single_step_evidence(
+                    store, reader, rs, (EvidenceKind.MODELLING_METADATA,),
+                )
+                if found_modelling_metadata is not None and found_modelling_metadata.artifact_id != art.artifact_id:
+                    raise AmbiguousEvidenceError(
+                        EvidenceKind.MODELLING_METADATA,
+                        [found_modelling_metadata, art],
+                        step_id=rs.step_id,
+                    )
+                found_modelling_metadata = art
+                modelling_metadata = self._evidence_payload(evidence)
+            elif node_type == "cardre.variable_selection":
+                evidence, art = self._read_single_step_evidence(
+                    store, reader, rs, (EvidenceKind.SELECTION_DEFINITION,),
+                )
+                if found_selection is not None and found_selection.artifact_id != art.artifact_id:
+                    raise AmbiguousEvidenceError(
+                        EvidenceKind.SELECTION_DEFINITION,
+                        [found_selection, art],
+                        step_id=rs.step_id,
+                    )
+                found_selection = art
+                selection_data = self._evidence_payload(evidence)
+                selected_variables = list(selection_data.get("selected", []))
+            elif node_type in ("cardre.logistic_regression", "cardre.decision_tree_classifier"):
+                evidence, art = self._read_single_step_evidence(
+                    store, reader, rs, (EvidenceKind.MODEL_ARTIFACT,),
+                )
+                if found_model is not None and found_model.artifact_id != art.artifact_id:
+                    raise AmbiguousEvidenceError(
+                        EvidenceKind.MODEL_ARTIFACT,
+                        [found_model, art],
+                        step_id=rs.step_id,
+                    )
+                found_model = art
+                model_artifact_data = self._evidence_payload(evidence)
+            elif node_type == "cardre.score_scaling":
+                evidence, art = self._read_single_step_evidence(
+                    store, reader, rs, (EvidenceKind.SCORE_SCALING,),
+                )
+                if found_scorecard is not None and found_scorecard.artifact_id != art.artifact_id:
+                    raise AmbiguousEvidenceError(
+                        EvidenceKind.SCORE_SCALING,
+                        [found_scorecard, art],
+                        step_id=rs.step_id,
+                    )
+                found_scorecard = art
+                scorecard_artifact_data = self._evidence_payload(evidence)
+            elif node_type == "cardre.validation_metrics":
+                evidence, art = self._read_single_step_evidence(
+                    store,
+                    reader,
+                    rs,
+                    (EvidenceKind.VALIDATION_EVIDENCE, EvidenceKind.VALIDATION_METRICS),
+                )
+                if found_validation is not None and found_validation.artifact_id != art.artifact_id:
+                    raise AmbiguousEvidenceError(
+                        EvidenceKind.VALIDATION_EVIDENCE,
+                        [found_validation, art],
+                        step_id=rs.step_id,
+                    )
+                found_validation = art
+                validation_metrics_data = self._evidence_payload(evidence)
+            elif node_type == "cardre.cutoff_analysis":
+                evidence, art = self._read_single_step_evidence(
+                    store, reader, rs, (EvidenceKind.CUTOFF_ANALYSIS,),
+                )
+                if found_cutoff is not None and found_cutoff.artifact_id != art.artifact_id:
+                    raise AmbiguousEvidenceError(
+                        EvidenceKind.CUTOFF_ANALYSIS,
+                        [found_cutoff, art],
+                        step_id=rs.step_id,
+                    )
+                found_cutoff = art
+                cutoff_data = self._evidence_payload(evidence)
 
         manifest = {
             "project": {

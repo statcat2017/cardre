@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import polars as pl
@@ -134,17 +133,6 @@ class VariableSelectionNode(NodeType):
 
         return errors
 
-    def _parse_cluster_variables(self, variables: list) -> list[str]:
-        result: list[str] = []
-        for v in variables:
-            if isinstance(v, dict):
-                result.append(str(v.get("variable", "")))
-            elif hasattr(v, "variable"):
-                result.append(str(v.variable))
-            else:
-                result.append(str(v))
-        return result
-
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         reader = ArtifactEvidenceReader(store)
@@ -178,46 +166,20 @@ class VariableSelectionNode(NodeType):
         manual_includes = {v["variable"]: v["reason"] for v in manual_entries_raw}
         manual_excludes = {v["variable"]: v["reason"] for v in manual_excludes_raw}
 
-        iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
-        if iv_lf is not None:
-            iv_df = iv_lf.dataframe.collect()
-            iv_map: dict[str, float] = {}
-            for row in iv_df.iter_rows():
-                iv_map[str(row[0])] = float(row[1])
-        else:
-            iv_map = {}
+        iv_table = reader.find(context.input_artifacts, EvidenceKind.IV_TABLE)
+        iv_map: dict[str, float] = {}
+        iv_df = iv_table.dataframe.collect()
+        for row in iv_df.iter_rows():
+            iv_map[str(row[0])] = float(row[1])
 
+        clustering_evidence = reader.find_optional(context.input_artifacts, EvidenceKind.VARIABLE_CLUSTERING)
         clusters: list[dict[str, Any]] = []
-        singleton_variables: list[str] = []
-        clustering_evidence = None
-        try:
-            clustering_evidence = reader.find_optional(context.input_artifacts, EvidenceKind.VARIABLE_CLUSTERING)
-        except Exception:
-            clustering_evidence = None
-
         if clustering_evidence is not None:
             for cl in clustering_evidence.clusters:
                 clusters.append({
                     "cluster_id": cl.cluster_id,
-                    "variables": self._parse_cluster_variables(cl.variables),
+                    "variables": [str(member.variable) for member in cl.variables],
                 })
-            singleton_variables = list(clustering_evidence.singleton_variables)
-        else:
-            for a in context.input_artifacts:
-                if a.role == "report" and a.media_type == "application/json":
-                    try:
-                        data = json.loads(store.artifact_path(a).read_text())
-                        if "clusters" in data:
-                            raw_clusters = data["clusters"]
-                            for rc in raw_clusters:
-                                clusters.append({
-                                    "cluster_id": rc.get("cluster_id", ""),
-                                    "variables": self._parse_cluster_variables(rc.get("variables", [])),
-                                })
-                            singleton_variables = list(data.get("singleton_variables", []))
-                            break
-                    except (json.JSONDecodeError, FileNotFoundError):
-                        pass
 
         cluster_map: dict[str, str] = {}
         cluster_member_metrics: dict[tuple[str, str], dict[str, float | None]] = {}
