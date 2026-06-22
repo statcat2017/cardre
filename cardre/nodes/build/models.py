@@ -521,7 +521,7 @@ class BuildSummaryReportNode(NodeType):
         except EvidenceParseError:
             scorecard = None
         if scorecard is None:
-            raw_scorecard = json.loads(store.artifact_path(scorecard_art).read_text())
+            raw_scorecard = json.loads(store.artifact_path(scorecard_art).read_text())  # cardre-allow-artifact-read: serialization-compatibility-test
             scorecard = ScoreScaling.from_json(raw_scorecard, artifact_id=scorecard_art.artifact_id)
 
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
@@ -532,7 +532,7 @@ class BuildSummaryReportNode(NodeType):
         except EvidenceParseError as exc:
             model = None
         if model is None or not model.model_family:
-            model_raw = json.loads(store.artifact_path(model_art).read_text())
+            model_raw = json.loads(store.artifact_path(model_art).read_text())  # cardre-allow-artifact-read: serialization-compatibility-test
             model_features = list(model_raw.get("features", []))
             model_intercept = float(model_raw.get("intercept", 0))
             coefficients = model_raw.get("coefficients", {})

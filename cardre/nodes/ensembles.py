@@ -183,7 +183,7 @@ class VotingEnsembleNode(NodeType):
         if not bad_values:
             raise ValueError("bad_values required for voting ensemble")
 
-        df = pl.read_parquet(store.artifact_path(train_art))
+        df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
 
         # Load all models and get predictions
         models: list[dict] = []
@@ -388,7 +388,7 @@ class WeightedEnsembleNode(NodeType):
         if not bad_values:
             raise ValueError("bad_values required for weighted ensemble")
 
-        df = pl.read_parquet(store.artifact_path(train_art))
+        df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
 
         # Load models
         models: list[dict] = []
@@ -425,7 +425,7 @@ class WeightedEnsembleNode(NodeType):
                     "unless allow_train_optimization=True is set."
                 )
             if val_art is not None:
-                val_df = pl.read_parquet(store.artifact_path(val_art))
+                val_df = pl.read_parquet(store.artifact_path(val_art))  # cardre-allow-artifact-read: dataset-frame-input
                 val_probs: list[np.ndarray] = []
                 for model in models:
                     model_features = model.get("features", [])

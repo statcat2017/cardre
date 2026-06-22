@@ -286,7 +286,7 @@ class ImportTabularDatasetNode(NodeType):
 
         fmt = self._resolve_format(params, source_path)
         if fmt == "parquet":
-            df = pl.read_parquet(source_path)
+            df = pl.read_parquet(source_path)  # cardre-allow-artifact-read: dataset-frame-input
         else:
             delimiter = params.get("delimiter")
             if not delimiter:
@@ -361,8 +361,8 @@ class ProfileDatasetNode(NodeType):
         store = context.store
         input_artifact = context.input_artifacts[0]
 
-        path = store.artifact_path(input_artifact)
-        df = pl.read_parquet(path)
+        path = store.artifact_path(input_artifact)  # cardre-allow-artifact-read: dataset-frame-input
+        df = pl.read_parquet(path)  # cardre-allow-artifact-read: dataset-frame-input
 
         report = {
             "row_count": df.height,
@@ -488,7 +488,7 @@ class ValidateBinaryTargetNode(NodeType):
         params = context.validated_params
         target_col = params.get("target_column", "credit_risk_class")
 
-        df = pl.read_parquet(store.artifact_path(input_artifact))
+        df = pl.read_parquet(store.artifact_path(input_artifact))  # cardre-allow-artifact-read: dataset-frame-input
         values = df[target_col].unique().to_list()
         unique_values = sorted(str(v) for v in values)
 
@@ -619,7 +619,7 @@ class SplitTrainTestOotNode(NodeType):
         if abs(total - 1.0) > 0.001:
             raise ValueError(f"Split fractions sum to {total}, expected 1.0")
 
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
+        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
 
         if strategy == "preassigned_role_column":
             if not role_column or role_column not in df.columns:
@@ -750,7 +750,7 @@ class DefineModellingMetadataNode(NodeType):
         store = context.store
         params = context.validated_params
         dataset_artifact = context.input_artifacts[0]
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
+        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
 
         target_column = params.get("target_column", "")
         good_values = params.get("good_values", [])
@@ -825,7 +825,7 @@ class ApplyExclusionsNode(NodeType):
         dataset_artifact = next(a for a in context.input_artifacts if a.role in ("input", "train"))
         rules = params.get("rules", [])
 
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
+        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
         n_before = df.height
 
         rule_counts = []
@@ -947,7 +947,7 @@ class DevelopmentSampleDefinitionNode(NodeType):
         weight_column = params.get("weight_column")
 
         dataset_artifact = next(a for a in context.input_artifacts if a.role in ("input", "train"))
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
+        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
         total_rows = df.height
 
         if weight_column:
@@ -1005,7 +1005,7 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
 
         output_artifacts = []
         for input_art in context.input_artifacts:
-            df = pl.read_parquet(store.artifact_path(input_art))
+            df = pl.read_parquet(store.artifact_path(input_art))  # cardre-allow-artifact-read: dataset-frame-input
             affected = {"imputations": {}, "caps": {}, "floors": {}}
 
             for col_name, config in imputations.items():

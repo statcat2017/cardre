@@ -83,7 +83,7 @@ def _prepare_training_data(
     if not bad_values:
         raise ValueError("Bad values must be defined")
 
-    df = pl.read_parquet(store.artifact_path(train_artifact))
+    df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
 
     if target_column not in df.columns:
         raise ValueError(f"Target column '{target_column}' not found in training data")

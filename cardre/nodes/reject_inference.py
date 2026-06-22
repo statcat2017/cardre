@@ -65,7 +65,7 @@ class DefineRejectPopulationNode(NodeType):
         reader = ArtifactEvidenceReader(store)
 
         dataset_artifact = next(a for a in context.input_artifacts if a.role == "input")
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
+        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
         total_rows = df.height
 
         metadata = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
@@ -203,7 +203,7 @@ class RejectInferenceNoneNode(NodeType):
         reader = ArtifactEvidenceReader(store)
 
         dataset_artifact = next(a for a in context.input_artifacts if a.role == "input")
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
+        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
 
         config = reader.find(context.input_artifacts, EvidenceKind.REJECT_POPULATION_CONFIG)
 
@@ -316,7 +316,7 @@ class RejectInferenceAugmentationNode(NodeType):
         params = context.validated_params
 
         dataset_artifact = next(a for a in context.input_artifacts if a.role == "input")
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
+        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
 
         config = reader.find(context.input_artifacts, EvidenceKind.REJECT_POPULATION_CONFIG)
         metadata = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)

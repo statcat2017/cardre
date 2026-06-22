@@ -131,7 +131,7 @@ def apply_logistic(
     roles_evidence: dict[str, JsonDict] = {}
 
     for data_art in data_arts:
-        df = pl.read_parquet(store.artifact_path(data_art))
+        df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
         role = data_art.role
         missing = [f for f in features if f not in df.columns]
         if missing:
@@ -223,7 +223,7 @@ def apply_sklearn_estimator(
     roles_evidence: dict[str, JsonDict] = {}
 
     for data_art in data_arts:
-        df = pl.read_parquet(store.artifact_path(data_art))
+        df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
         role = data_art.role
         missing = [f for f in features if f not in df.columns]
         if missing:
@@ -313,7 +313,7 @@ def apply_ensemble(
     roles_evidence: dict[str, JsonDict] = {}
 
     for data_art in data_arts:
-        df = pl.read_parquet(store.artifact_path(data_art))
+        df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
         role = data_art.role
 
         all_probs = []

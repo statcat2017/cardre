@@ -106,7 +106,7 @@ def read_estimator_artifact(
         If hash verification fails or the artifact is from an untrusted
         source and trusted_only is True.
     """
-    art_path = store.artifact_path(artifact)
+    art_path = store.artifact_path(artifact)  # cardre-allow-artifact-read: low-level-evidence-parser
 
     if not art_path.exists():
         raise ValueError(

@@ -535,7 +535,7 @@ class VariableClusteringNode(NodeType):
         input_representation = params.get("input_representation", "raw_train")
 
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
-        df = pl.read_parquet(store.artifact_path(train_artifact))
+        df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
 
         iv_map: dict[str, float] = {}
         try:

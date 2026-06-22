@@ -112,7 +112,7 @@ class FeatureSelectionFilterNode(NodeType):
         if train_art is None:
             raise ValueError("feature_selection_filter requires a train artifact")
 
-        df = pl.read_parquet(store.artifact_path(train_art))
+        df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
 
         # Resolve target column from modelling metadata — fail closed if missing
         reader = ArtifactEvidenceReader(store)
@@ -362,7 +362,7 @@ class FeatureSelectionEmbeddedNode(NodeType):
         if train_art is None:
             raise ValueError("feature_selection_embedded requires a train artifact")
 
-        df = pl.read_parquet(store.artifact_path(train_art))
+        df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
 
         # Read target metadata from definition
         reader = ArtifactEvidenceReader(store)
@@ -563,7 +563,7 @@ class ResampleTrainingDataNode(NodeType):
         if not bad_values:
             raise ValueError("bad_values required for resampling")
 
-        df = pl.read_parquet(store.artifact_path(train_art))
+        df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
 
         if target_col not in df.columns:
             raise ValueError(f"Target column {target_col!r} not found")
@@ -731,7 +731,7 @@ class SmoteTrainingDataNode(NodeType):
         if not target_col or not bad_values:
             raise ValueError("Target column and bad_values required for SMOTE")
 
-        df = pl.read_parquet(store.artifact_path(train_art))
+        df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
 
         if target_col not in df.columns:
             raise ValueError(f"Target column {target_col!r} not found")

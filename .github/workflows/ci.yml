@@ -31,6 +31,25 @@ jobs:
       - name: Run tests
         run: python3 -m pytest tests/ -q --tb=short --cov-fail-under=75
 
+  artifact-read-guardrail:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: |
+          pip install -e ".[sidecar,test]"
+      - name: Audit artifact reads
+        run: make audit-artifact-reads
+      - name: Test evidence surfaces
+        run: make test-evidence
+      - name: Test launch core
+        run: make test-launch-core
+      - name: Guardrail test
+        run: python3 -m pytest tests/test_artifact_guardrail.py -v
+
   typecheck-frontend:
     runs-on: ubuntu-latest
     defaults:

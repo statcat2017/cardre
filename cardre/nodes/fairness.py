@@ -108,7 +108,7 @@ class FairnessReportNode(NodeType):
 
         for data_art in data_arts:
             role = data_art.role
-            df = pl.read_parquet(store.artifact_path(data_art))
+            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
             role_report: dict[str, Any] = {"row_count": df.height}
 
             if "predicted_bad_probability" not in df.columns:
@@ -342,7 +342,7 @@ class ProxyRiskReportNode(NodeType):
         # Load training data
         if train_art:
             try:
-                df = pl.read_parquet(store.artifact_path(train_art))
+                df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
             except Exception:
                 df = None
         else:
@@ -477,7 +477,7 @@ class AlternativeDataManifestNode(NodeType):
         df = None
         if train_art:
             try:
-                df = pl.read_parquet(store.artifact_path(train_art))
+                df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
             except Exception:
                 pass
 

@@ -245,7 +245,7 @@ class AutoBinningFitNode(NodeType):
         train_artifact = self._resolve_train_input(context)
         meta_def = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
 
-        df = pl.read_parquet(store.artifact_path(train_artifact))
+        df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
         target_column = meta_def.target_column
         good_values = set(str(v) for v in meta_def.good_values)
         bad_values = set(str(v) for v in meta_def.bad_values)
