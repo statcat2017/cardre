@@ -218,7 +218,7 @@ class ArtifactEvidenceReader:
                 raise ValueError(f"Artifact not found: {artifact_id}")
             raise EvidenceNotFoundError(kind, artifact_id=artifact_id)
 
-        matched_kind = kind or self._kind_for_artifact(art)
+        matched_kind = kind or self._infer_kind_for_artifact(art)
         source_artifact_id = ""
         if matched_kind is not None:
             typed = self.read_optional(artifact_id, matched_kind)
@@ -305,6 +305,15 @@ class ArtifactEvidenceReader:
                     return kind
         return None
 
+    def _infer_kind_for_artifact(self, art: ArtifactRef) -> EvidenceKind | None:
+        kind = self._kind_for_artifact(art)
+        if kind is not None:
+            return kind
+        for candidate in EVIDENCE_PROFILES:
+            if self._match([art], candidate):
+                return candidate
+        return None
+
     def _candidate_passes_payload_check(self, art: ArtifactRef, profile: Any) -> bool:
         """Check that a candidate's payload matches the profile requirements."""
         if profile.required_columns is not None:
@@ -317,7 +326,12 @@ class ArtifactEvidenceReader:
                 return False
             try:
                 data = json.loads(path.read_text())
-                return profile.required_keys.issubset(data.keys())
+                keys = set(data.keys())
+                if profile.required_keys.issubset(keys):
+                    return True
+                if profile.legacy_required_keys is not None:
+                    return profile.legacy_required_keys.issubset(keys)
+                return False
             except (json.JSONDecodeError, UnicodeDecodeError):
                 return False
         return True
@@ -358,7 +372,10 @@ class ArtifactEvidenceReader:
         if kind == EvidenceKind.SPLIT_SUMMARY:
             return self._match_by_payload_key(artifacts, {"strategy", "row_counts"})
         if kind == EvidenceKind.PROFILE_SUMMARY:
-            return self._match_by_payload_key(artifacts, {"profiles"})
+            return self._match_by_payload_key(artifacts, {"profiles"}) or self._match_by_payload_key(
+                artifacts,
+                {"row_count", "column_count", "columns", "dtypes"},
+            )
         if kind == EvidenceKind.EXCLUSION_SUMMARY:
             return self._match_by_payload_key(artifacts, {"rows_before", "rows_after", "rules"})
         if kind == EvidenceKind.WOE_TRANSFORM_EVIDENCE:
@@ -488,7 +505,7 @@ class ArtifactEvidenceReader:
 
         if profile.required_keys:
             missing = profile.required_keys - set(data.keys())
-            if missing:
+            if missing and not (profile.legacy_required_keys and profile.legacy_required_keys.issubset(set(data.keys()))):
                 raise EvidenceParseError(
                     f"Evidence {kind.value} missing required keys: {missing}",
                     kind=kind,

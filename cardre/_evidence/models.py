@@ -696,17 +696,34 @@ class SplitSummary:
 
 @dataclass(frozen=True)
 class ProfileSummary:
-    profiles: list[JsonDict]
+    row_count: int = 0
+    column_count: int = 0
+    columns: list[str] = field(default_factory=list)
+    dtypes: dict[str, str] = field(default_factory=dict)
+    null_counts: dict[str, int] = field(default_factory=dict)
+    numeric_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
+    profile_steps: list[JsonDict] = field(default_factory=list)
+    profiles: list[JsonDict] = field(default_factory=list)
     warnings: list[JsonDict] = field(default_factory=list)
     source_artifact_id: str = ""
     schema_version: str = ""
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ProfileSummary:
-        profiles = data.get("profiles", data.get("columns", []))
+        profiles = data.get("profiles", [])
         if isinstance(profiles, dict):
             profiles = list(profiles.values())
+        columns = data.get("columns", [])
+        if isinstance(columns, dict):
+            columns = list(columns.keys())
         return cls(
+            row_count=int(data.get("row_count", 0)),
+            column_count=int(data.get("column_count", 0)),
+            columns=[str(c) for c in columns],
+            dtypes={str(k): str(v) for k, v in dict(data.get("dtypes", {})).items()},
+            null_counts={str(k): int(v) for k, v in dict(data.get("null_counts", {})).items()},
+            numeric_stats={str(k): dict(v) for k, v in dict(data.get("numeric_stats", {})).items()},
+            profile_steps=list(data.get("profile_steps", [])),
             profiles=list(profiles),
             warnings=list(data.get("warnings", [])),
             source_artifact_id=artifact_id,

@@ -14,6 +14,7 @@ from cardre._evidence.models import (
     FairnessReport,
     FeatureSelectionEvidence,
     HyperparameterTuningEvidence,
+    ProfileSummary,
     ProxyRiskReport,
     ReportBundleEvidence,
     ResamplingEvidence,
@@ -91,6 +92,7 @@ def test_reader_returns_typed_launch_critical_models(store, monkeypatch) -> None
     reader = ArtifactEvidenceReader(store)
 
     split_art = _register_json_artifact(store, "split_summary.json", stem="split", role="report")
+    profile_art = _register_json_artifact(store, "profile_summary.json", stem="profile", role="report")
     exclusion_art = _register_json_artifact(store, "exclusion_summary.json", stem="exclusion", role="report")
     woe_transform_art = _register_json_artifact(store, "woe_transform_evidence.json", stem="woe-transform", role="report")
     apply_woe_art = _register_json_artifact(store, "apply_woe_evidence.json", stem="apply-woe", role="report")
@@ -115,6 +117,7 @@ def test_reader_returns_typed_launch_critical_models(store, monkeypatch) -> None
     )
 
     split = reader.find([split_art], EvidenceKind.SPLIT_SUMMARY)
+    profile = reader.find([profile_art], EvidenceKind.PROFILE_SUMMARY)
     exclusion = reader.find([exclusion_art], EvidenceKind.EXCLUSION_SUMMARY)
     woe_transform = reader.find([woe_transform_art], EvidenceKind.WOE_TRANSFORM_EVIDENCE)
     apply_woe = reader.find([apply_woe_art], EvidenceKind.APPLY_WOE_EVIDENCE)
@@ -126,6 +129,10 @@ def test_reader_returns_typed_launch_critical_models(store, monkeypatch) -> None
 
     assert isinstance(split, SplitSummary)
     assert split.row_counts["train"] == 70
+    assert isinstance(profile, ProfileSummary)
+    assert profile.row_count == 100
+    assert profile.column_count == 4
+    assert profile.columns == ["age", "income", "target", "segment"]
     assert isinstance(exclusion, ExclusionSummary)
     assert exclusion.rows_excluded == 8
     assert isinstance(woe_transform, WoeTransformEvidence)
@@ -151,6 +158,25 @@ def test_reader_returns_typed_launch_critical_models(store, monkeypatch) -> None
     summary = reader.summarise_artifact(report_bundle_art.artifact_id, EvidenceKind.REPORT_BUNDLE)
     assert summary.kind == "report_bundle"
     assert summary.source_artifact_id == report_bundle_art.artifact_id
+
+    legacy_profile_art = _register_inline_json_artifact(
+        store,
+        {
+            "row_count": 42,
+            "column_count": 3,
+            "columns": ["age", "income", "target"],
+            "dtypes": {"age": "Int64", "income": "Float64", "target": "Int64"},
+            "null_counts": {"age": 0, "income": 0, "target": 0},
+            "numeric_stats": {},
+            "profile_steps": [],
+        },
+        stem="legacy-profile",
+        role="report",
+        artifact_type="report",
+        schema_version="",
+    )
+    legacy_profile_summary = reader.summarise_artifact(legacy_profile_art.artifact_id)
+    assert legacy_profile_summary.kind == "profile_summary"
 
     step_summaries = reader.summarise_step_outputs(run_step, EvidenceKind.REPORT_BUNDLE)
     assert [s.artifact_id for s in step_summaries] == [report_bundle_art.artifact_id]

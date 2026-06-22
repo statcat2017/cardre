@@ -49,6 +49,7 @@ class _Profile:
     schema_version: str
     expected_media_types: set[str] = field(default_factory=lambda: {"application/json"})
     required_keys: set[str] | None = None
+    legacy_required_keys: set[str] | None = None
     exclude_key: str | None = None
     required_columns: set[str] | None = None
 
@@ -77,6 +78,7 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"report"},
         schema_version=SCHEMA_PROFILE_SUMMARY,
         required_keys={"profiles"},
+        legacy_required_keys={"row_count", "column_count", "columns", "dtypes"},
     ),
     EvidenceKind.EXCLUSION_SUMMARY: _Profile(
         expected_roles={"report"},
