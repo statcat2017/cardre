@@ -533,19 +533,20 @@ class ReportCollector:
             art = self.store.get_artifact(aid)
             if art and art.role in ("definition", "report") and "manual" in art.path.lower():
                 data = self.reader.read_optional(aid, EvidenceKind.BIN_DEFINITION)
-                if not data:
+                legacy = self.reader.read_optional(aid, EvidenceKind.MANUAL_BINNING_OVERRIDES)
+                if data is None and legacy is None:
                     continue
-                payload = data.to_dict() if hasattr(data, "to_dict") else dict(data)
                 interventions: list[dict[str, Any]] = []
-                for var in list(payload.get("variables", [])) + list(payload.get("rejected", [])):
-                    if isinstance(var, dict):
-                        interventions.extend(var.get("override_history", []) or [])
-                if not interventions:
-                    legacy = self.reader.read_optional(aid, EvidenceKind.MANUAL_BINNING_OVERRIDES)
-                    if legacy is not None:
-                        legacy_payload = legacy.to_dict() if hasattr(legacy, "to_dict") else getattr(legacy, "_raw", legacy)
-                        if isinstance(legacy_payload, dict):
-                            interventions.extend(legacy_payload.get("overrides", []) or [])
+                if data is not None:
+                    payload = data.to_dict() if hasattr(data, "to_dict") else getattr(data, "_raw", data)
+                    if isinstance(payload, dict):
+                        for var in list(payload.get("variables", [])) + list(payload.get("rejected", [])):
+                            if isinstance(var, dict):
+                                interventions.extend(var.get("override_history", []) or [])
+                if not interventions and legacy is not None:
+                    legacy_payload = legacy.to_dict() if hasattr(legacy, "to_dict") else getattr(legacy, "_raw", legacy)
+                    if isinstance(legacy_payload, dict):
+                        interventions.extend(legacy_payload.get("overrides", []) or [])
                 for i, ov in enumerate(interventions):
                     bundle.manual_interventions.append(ManualIntervention(
                         intervention_id=f"mi_{i:03d}",

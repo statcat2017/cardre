@@ -37,6 +37,7 @@ from cardre.reporting.schema import (
     ManualIntervention,
     ArtifactEntry,
 )
+from cardre.evidence import SCHEMA_MANUAL_BINNING_OVERRIDES
 from cardre.step_id import resolve_step_for_branch, ResolvedStepRef as ResolverRef
 from cardre.store import ProjectStore
 
@@ -771,6 +772,73 @@ class TestCollectorRegression:
         assert intervention.variable_name == "age"
         assert intervention.reason == "Merged adjacent bins"
         assert intervention.after_artifact == "Low-Mid"
+
+    def test_collector_reads_legacy_manual_overrides_only(self, store, project_and_plan):
+        project_id, plan_id = project_and_plan
+        pv_id = store.get_latest_plan_version_id(plan_id)
+        run_id = store.create_run(pv_id)
+        store.finish_run(run_id, "succeeded")
+
+        branch_id = store.create_branch(
+            project_id=project_id, plan_id=plan_id,
+            name="Branch", branch_type="model_challenger",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="Test.",
+        )
+        store.create_branch_step_map(
+            branch_id=branch_id, plan_version_id=pv_id,
+            canonical_step_id="manual-binning", step_id="manual-binning",
+            is_shared_upstream=False, is_branch_owned=True,
+        )
+
+        from cardre.artifacts import write_json_artifact
+
+        legacy_art = write_json_artifact(
+            store,
+            artifact_type="definition",
+            role="definition",
+            stem="manual-binning-legacy",
+            payload={
+                "schema_version": SCHEMA_MANUAL_BINNING_OVERRIDES,
+                "overrides": [
+                    {
+                        "type": "reject_variable",
+                        "variable": "income",
+                        "reason": "Legacy override",
+                        "before": "included",
+                        "after": "excluded",
+                    }
+                ],
+            },
+            metadata={"schema_version": SCHEMA_MANUAL_BINNING_OVERRIDES},
+        )
+
+        store.save_run_step(RunStepRecord(
+            run_step_id="rs_manual_legacy",
+            run_id=run_id,
+            step_id="manual-binning",
+            plan_version_id=pv_id,
+            status="succeeded",
+            started_at="2026-01-01T00:00:00Z",
+            finished_at="2026-01-01T01:00:00Z",
+            input_artifact_ids=[],
+            output_artifact_ids=[legacy_art.artifact_id],
+            execution_fingerprint={},
+            warnings=[],
+            errors=[],
+        ))
+
+        bundle = generate_report_bundle(
+            store=store, project_id=project_id, run_id=run_id,
+            target_branch_id=branch_id, report_mode="branch",
+        )
+        assert len(bundle.manual_interventions) == 1
+        intervention = bundle.manual_interventions[0]
+        assert intervention.type == "reject_variable"
+        assert intervention.variable_name == "income"
+        assert intervention.reason == "Legacy override"
+        assert intervention.before_artifact == "included"
+        assert intervention.after_artifact == "excluded"
 
     def test_collector_resolve_run_step_fallback(self):
         """_resolve_run_step tries with branch_id first, then without."""
