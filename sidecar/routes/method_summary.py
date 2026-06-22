@@ -10,15 +10,28 @@ metric resolution are not yet implemented.
 
 from __future__ import annotations
 
-import json
+from dataclasses import fields, is_dataclass
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.services.project_registry import get_store_for_project
 from sidecar.models import MethodSummaryResponse, ModelRankingItem, ModelRankingResponse
 
 router = APIRouter(tags=["method-summary"])
+
+
+def _materialize(value: Any) -> Any:
+    if is_dataclass(value):
+        return {field.name: _materialize(getattr(value, field.name)) for field in fields(value) if not field.name.startswith("_")}
+    if isinstance(value, dict):
+        return {key: _materialize(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_materialize(item) for item in value]
+    if isinstance(value, tuple):
+        return [_materialize(item) for item in value]
+    return value
 
 
 @router.get("/branches/{branch_id}/method-summary", response_model=MethodSummaryResponse)
@@ -32,6 +45,7 @@ def get_branch_method_summary(
     readiness resolution is not yet wired.
     """
     store = get_store_for_project(project_id)
+    reader = ArtifactEvidenceReader(store)
     endpoint_warnings: list[str] = []
 
     branch = store.get_branch(branch_id)
@@ -50,23 +64,20 @@ def get_branch_method_summary(
     # Query run-steps for this branch
     for artifact_ids in store.get_output_artifact_ids_for_branch(branch_id):
         for aid in artifact_ids:
-            art = store.get_artifact(aid)
-            if art is None:
+            model = reader.read_optional(aid, EvidenceKind.MODEL_ARTIFACT)
+            if model is None:
+                model = reader.read_optional(aid, EvidenceKind.ENSEMBLE_MODEL_ARTIFACT)
+            if model is None:
                 continue
-            if art.artifact_type == "model" and art.role == "model":
-                art_path = store.artifact_path(art)
-                try:
-                    model_data = json.loads(art_path.read_text())
-                except (json.JSONDecodeError, OSError):
-                    endpoint_warnings.append(f"Failed to read model artifact {aid}")
-                    continue
-                model_family = model_data.get("model_family")
-                feature_strategy = model_data.get("feature_strategy")
-                feature_count = len(model_data.get("features", []))
-                interpretability_level = model_data.get("interpretability", {}).get("explanation_level")
-                limitations = model_data.get("interpretability", {}).get("limitations", [])
-                model_found = True
-                break
+            model_data = _materialize(model)
+            raw_model = getattr(model, "_raw", {})
+            model_family = model_data.get("model_family")
+            feature_strategy = raw_model.get("feature_strategy")
+            feature_count = len(model_data.get("features", []))
+            interpretability_level = raw_model.get("interpretability", {}).get("explanation_level")
+            limitations = list(raw_model.get("interpretability", {}).get("limitations", []))
+            model_found = True
+            break
         if model_found:
             break
 
@@ -105,6 +116,7 @@ def get_model_ranking(
 ) -> ModelRankingResponse:
     """Rank branches by a selected metric from a comparison snapshot."""
     store = get_store_for_project(project_id)
+    reader = ArtifactEvidenceReader(store)
 
     # Read snapshot
     try:
@@ -113,17 +125,16 @@ def get_model_ranking(
             raise HTTPException(status_code=404, detail={"code": "SNAPSHOT_NOT_FOUND", "message": f"Snapshot not found: {snapshot_id!r}"})
 
         artifact_id = row["comparison_artifact_id"]
-        art = store.get_artifact(artifact_id)
-        if art is None:
+        snapshot = reader.read_optional(artifact_id, EvidenceKind.COMPARISON_ARTIFACT)
+        if snapshot is None:
             raise HTTPException(status_code=404, detail={"code": "SNAPSHOT_ARTIFACT_NOT_FOUND", "message": "Snapshot artifact not found"})
-
-        snapshot_data = json.loads(store.artifact_path(art).read_text())
+        snapshot_data = _materialize(snapshot)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail={"code": "SNAPSHOT_READ_ERROR", "message": str(e)})
 
-    comparison_id = snapshot_data.get("comparison_id", snapshot_id)
+    comparison_id = row.get("comparison_id", snapshot_id)
 
     # Extract branch info from model.branch_level and validation.roles
     model_branches = snapshot_data.get("model", {}).get("branch_level", {})

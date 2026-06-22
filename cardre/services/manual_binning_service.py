@@ -6,10 +6,10 @@ bloat the plan query/update service.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from cardre.audit import RunStepRecord, StepSpec
+from cardre.evidence import ArtifactEvidenceReader, EvidenceError, EvidenceKind
 from cardre.nodes import validate_manual_binning_overrides, apply_manual_binning_overrides
 from cardre.staleness import compute_staleness
 from cardre.store import ProjectStore
@@ -283,16 +283,12 @@ class ManualBinningService:
         if bin_artifact_id is None or vs_artifact_id is None:
             return (None, None, None, None), "Binning or variable-selection produced no output artifacts."
 
-        bin_artifact = self._store.get_artifact(bin_artifact_id)
-        vs_artifact = self._store.get_artifact(vs_artifact_id)
-        if bin_artifact is None or vs_artifact is None:
-            return (None, None, None, None), "Binning or variable-selection artifacts not found."
-
         try:
-            bin_def = json.loads(self._store.artifact_path(bin_artifact).read_text())
-            vs_def = json.loads(self._store.artifact_path(vs_artifact).read_text())
-            return (bin_def, vs_def, bin_artifact_id, vs_artifact_id), None
-        except (FileNotFoundError, json.JSONDecodeError):
+            reader = ArtifactEvidenceReader(self._store)
+            bin_def = reader.read(bin_artifact_id, EvidenceKind.BIN_DEFINITION)
+            vs_def = reader.read(vs_artifact_id, EvidenceKind.SELECTION_DEFINITION)
+            return (bin_def.to_dict(), vs_def.to_dict(), bin_artifact_id, vs_artifact_id), None
+        except EvidenceError:
             return (None, None, None, None), "Could not read binning or variable-selection artifact contents."
 
     def _find_mb_step_id_for_validation(

@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
+from dataclasses import fields, is_dataclass
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
 from cardre.services.artifact_service import (
-    build_json_summary_preview,
     build_parquet_preview,
     find_artifact,
 )
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from sidecar.models import (
     ArtifactResponse,
     ArtifactSummaryResponse,
@@ -20,6 +20,63 @@ from sidecar.models import (
 )
 
 router = APIRouter(prefix="/artifacts", tags=["artifacts"])
+
+
+def _shape_value(value: Any) -> dict[str, Any]:
+    if is_dataclass(value):
+        return {
+            "type": type(value).__name__,
+            "fields": {
+                field.name: _shape_value(getattr(value, field.name))
+                for field in fields(value)
+                if not field.name.startswith("_")
+            },
+        }
+    if isinstance(value, dict):
+        keys = list(value.keys())
+        return {
+            "type": "object",
+            "key_count": len(keys),
+            "keys": keys[:10],
+        }
+    if isinstance(value, list):
+        item_types = sorted({type(item).__name__ for item in value[:10]})
+        return {
+            "type": "array",
+            "item_count": len(value),
+            "item_types": item_types,
+        }
+    if isinstance(value, tuple):
+        item_types = sorted({type(item).__name__ for item in value[:10]})
+        return {
+            "type": "array",
+            "item_count": len(value),
+            "item_types": item_types,
+        }
+    if value is None:
+        return {"type": "null"}
+    return {"type": type(value).__name__}
+
+
+def _json_artifact_preview(reader: ArtifactEvidenceReader, artifact_id: str, kind_name: str | None) -> dict[str, Any]:
+    if kind_name:
+        try:
+            kind = EvidenceKind(kind_name)
+        except ValueError:
+            kind = None
+        else:
+            evidence = reader.read_optional(artifact_id, kind)
+            if evidence is not None:
+                shape = _shape_value(evidence)
+                return {
+                    "kind": kind.value,
+                    "fields": shape.get("fields", shape),
+                }
+
+    return {
+        "kind": kind_name or "unknown",
+        "note": "Preview unavailable for untyped JSON artifact",
+    }
 
 
 @router.get("/{artifact_id}", response_model=ArtifactResponse)
@@ -47,16 +104,15 @@ def get_artifact_summary(artifact_id: str):
     if artifact is None:
         raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id}"})
 
+    reader = ArtifactEvidenceReader(store)
+    evidence_summary = reader.summarise_artifact(artifact_id)
+
     row_count = artifact.metadata.get("row_count")
     column_count = artifact.metadata.get("column_count")
 
     summary_preview = None
     if artifact.media_type == "application/json":
-        try:
-            data = json.loads(store.artifact_path(artifact).read_bytes())
-        except Exception:
-            data = None
-        summary_preview = build_json_summary_preview(data)
+        summary_preview = _json_artifact_preview(reader, artifact_id, evidence_summary.kind)
 
     return ArtifactSummaryResponse(
         artifact_id=artifact.artifact_id,
@@ -81,39 +137,19 @@ def get_artifact_preview(
     if artifact is None or store is None:
         raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id}"})
 
-    artifact_path = store.artifact_path(artifact)
+    artifact_path = store.artifact_path(artifact)  # cardre-allow-artifact-read: artifact-byte-download
+    reader = ArtifactEvidenceReader(store)
 
     if artifact.media_type == "application/json":
-        try:
-            content = json.loads(artifact_path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
-            raise HTTPException(status_code=400, detail={"code": "PREVIEW_FAILED", "message": "Could not read JSON artifact"})
-
-        if isinstance(content, dict) and len(str(content)) < 100_000:
-            truncated = {k: content[k] for k in list(content.keys())[:limit]}
-            return ArtifactPreviewResponse(
-                artifact_id=artifact.artifact_id,
-                media_type=artifact.media_type,
-                json_content=truncated,
-                limit=limit,
-                offset=offset,
-            )
-        elif isinstance(content, list) and len(str(content)) < 100_000:
-            return ArtifactPreviewResponse(
-                artifact_id=artifact.artifact_id,
-                media_type=artifact.media_type,
-                rows=content[offset:offset + limit],
-                limit=limit,
-                offset=offset,
-            )
-        else:
-            return ArtifactPreviewResponse(
-                artifact_id=artifact.artifact_id,
-                media_type=artifact.media_type,
-                json_content={"note": "Large JSON — use summary endpoint", "top_keys": list(content.keys()) if isinstance(content, dict) else None},
-                limit=limit,
-                offset=offset,
-            )
+        evidence_summary = reader.summarise_artifact(artifact_id)
+        json_preview = _json_artifact_preview(reader, artifact_id, evidence_summary.kind)
+        return ArtifactPreviewResponse(
+            artifact_id=artifact.artifact_id,
+            media_type=artifact.media_type,
+            json_content=json_preview,
+            limit=limit,
+            offset=offset,
+        )
 
     if artifact.media_type == "application/vnd.apache.parquet":
         try:

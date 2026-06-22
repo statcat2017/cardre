@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import uuid
+from dataclasses import fields, is_dataclass
 from typing import Any
 
 from cardre.artifacts import write_json_artifact
 from cardre.audit import utc_now_iso
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.evidence_locator import latest_successful_run_step
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_COMPARISON,
@@ -70,17 +72,31 @@ def _check_branch_readiness(
     return missing
 
 
-def _read_artifact_json(store: ProjectStore, artifact_id: str) -> dict[str, Any] | None:
-    art = store.get_artifact(artifact_id)
-    if art is None:
-        return None
-    if art.media_type != "application/json":
-        return None
-    try:
-        path = store.artifact_path(art)
-        return json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError):
-        return None
+def _materialize_evidence(value: Any) -> Any:
+    if is_dataclass(value):
+        return {field.name: _materialize_evidence(getattr(value, field.name)) for field in fields(value) if not field.name.startswith("_")}
+    if isinstance(value, dict):
+        return {key: _materialize_evidence(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_materialize_evidence(item) for item in value]
+    if isinstance(value, tuple):
+        return [_materialize_evidence(item) for item in value]
+    return value
+
+
+def _validation_roles(payload: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    roles = payload.get("roles")
+    if isinstance(roles, dict):
+        return roles
+    metrics_by_role = payload.get("metrics_by_role")
+    if isinstance(metrics_by_role, dict):
+        return metrics_by_role
+    metrics = payload.get("metrics")
+    if isinstance(metrics, dict):
+        return metrics
+    return payload
 
 
 def _build_comparison_content(
@@ -109,27 +125,31 @@ def _build_comparison_content(
 
     step_map_b = store.get_branch_step_map(branch_id_baseline, plan_version_id_baseline)
     step_map_c = store.get_branch_step_map(branch_id_challenger, plan_version_id_challenger)
+    reader = ArtifactEvidenceReader(store)
 
-    def _find_artifact(step_map: list[dict], cs: str, pv_id: str, evidence_branch_id: str | None) -> dict[str, Any] | None:
-        """Find the JSON artifact for a canonical step, using evidence_branch_id
-        for branch-scoped lookup or None for full-plan (baseline) evidence."""
+    def _find_typed_artifact(
+        step_map: list[dict],
+        cs: str,
+        pv_id: str,
+        evidence_branch_id: str | None,
+        kinds: tuple[EvidenceKind, ...],
+    ) -> dict[str, Any] | None:
+        """Find the typed evidence for a canonical step."""
         for row in step_map:
             if row["canonical_step_id"] == cs:
                 rs = store.get_latest_successful_run_step_for_step(pv_id, row["step_id"], branch_id=evidence_branch_id)
                 if rs is None and evidence_branch_id is not None:
-                    # Fall back to full-plan evidence for challenger shared upstreams
                     rs = store.get_latest_successful_run_step_for_step(pv_id, row["step_id"], branch_id=None)
                 if rs and rs.output_artifact_ids:
                     for aid in rs.output_artifact_ids:
-                        art = store.get_artifact(aid)
-                        if art and art.media_type == "application/json":
-                            result = _read_artifact_json(store, aid)
-                            if result is not None:
-                                return result
+                        for kind in kinds:
+                            evidence = reader.read_optional(aid, kind)
+                            if evidence is not None:
+                                return _materialize_evidence(evidence)
         return None
 
-    woe_b = _find_artifact(step_map_b, "final-woe-iv", plan_version_id_baseline, None) if spec.get("include_woe_iv") else None
-    woe_c = _find_artifact(step_map_c, "final-woe-iv", plan_version_id_challenger, branch_id_challenger) if spec.get("include_woe_iv") else None
+    woe_b = _find_typed_artifact(step_map_b, "final-woe-iv", plan_version_id_baseline, None, (EvidenceKind.WOE_IV_EVIDENCE,)) if spec.get("include_woe_iv") else None
+    woe_c = _find_typed_artifact(step_map_c, "final-woe-iv", plan_version_id_challenger, branch_id_challenger, (EvidenceKind.WOE_IV_EVIDENCE,)) if spec.get("include_woe_iv") else None
     if woe_b and woe_c:
         b_vars = {}
         c_vars = {}
@@ -169,14 +189,14 @@ def _build_comparison_content(
             })
         content["woe_iv"]["variables"] = woe_vars
 
-    lr_b = _find_artifact(step_map_b, "model-fit", plan_version_id_baseline, None) if spec.get("include_model") else None
-    lr_c = _find_artifact(step_map_c, "model-fit", plan_version_id_challenger, branch_id_challenger) if spec.get("include_model") else None
+    lr_b = _find_typed_artifact(step_map_b, "model-fit", plan_version_id_baseline, None, (EvidenceKind.MODEL_ARTIFACT, EvidenceKind.ENSEMBLE_MODEL_ARTIFACT)) if spec.get("include_model") else None
+    lr_c = _find_typed_artifact(step_map_c, "model-fit", plan_version_id_challenger, branch_id_challenger, (EvidenceKind.MODEL_ARTIFACT, EvidenceKind.ENSEMBLE_MODEL_ARTIFACT)) if spec.get("include_model") else None
 
     # Fallback to legacy logistic-regression canonical step
     if lr_b is None and spec.get("include_model"):
-        lr_b = _find_artifact(step_map_b, "logistic-regression", plan_version_id_baseline, None)
+        lr_b = _find_typed_artifact(step_map_b, "logistic-regression", plan_version_id_baseline, None, (EvidenceKind.MODEL_ARTIFACT, EvidenceKind.ENSEMBLE_MODEL_ARTIFACT))
     if lr_c is None and spec.get("include_model"):
-        lr_c = _find_artifact(step_map_c, "logistic-regression", plan_version_id_challenger, branch_id_challenger)
+        lr_c = _find_typed_artifact(step_map_c, "logistic-regression", plan_version_id_challenger, branch_id_challenger, (EvidenceKind.MODEL_ARTIFACT, EvidenceKind.ENSEMBLE_MODEL_ARTIFACT))
 
     if lr_b and lr_c:
         b_family = lr_b.get("model_family", "logistic_regression")
@@ -246,11 +266,11 @@ def _build_comparison_content(
 
     # Validation metrics by role
     if spec.get("include_validation"):
-        vm_b = _find_artifact(step_map_b, "validation-metrics", plan_version_id_baseline, None)
-        vm_c = _find_artifact(step_map_c, "validation-metrics", plan_version_id_challenger, branch_id_challenger)
+        vm_b = _find_typed_artifact(step_map_b, "validation-metrics", plan_version_id_baseline, None, (EvidenceKind.VALIDATION_METRICS, EvidenceKind.VALIDATION_EVIDENCE))
+        vm_c = _find_typed_artifact(step_map_c, "validation-metrics", plan_version_id_challenger, branch_id_challenger, (EvidenceKind.VALIDATION_METRICS, EvidenceKind.VALIDATION_EVIDENCE))
+        vm_b_roles = _validation_roles(vm_b)
+        vm_c_roles = _validation_roles(vm_c)
         for role_name in ("train", "test", "oot"):
-            vm_b_roles = vm_b.get("roles", vm_b) if isinstance(vm_b, dict) else {}
-            vm_c_roles = vm_c.get("roles", vm_c) if isinstance(vm_c, dict) else {}
             b_role = vm_b_roles.get(role_name, {}) if isinstance(vm_b_roles, dict) else {}
             c_role = vm_c_roles.get(role_name, {}) if isinstance(vm_c_roles, dict) else {}
             role_data = {}
@@ -272,8 +292,8 @@ def _build_comparison_content(
 
     # Cutoff comparison
     if spec.get("include_cutoff"):
-        co_b = _find_artifact(step_map_b, "cutoff-analysis", plan_version_id_baseline, None)
-        co_c = _find_artifact(step_map_c, "cutoff-analysis", plan_version_id_challenger, branch_id_challenger)
+        co_b = _find_typed_artifact(step_map_b, "cutoff-analysis", plan_version_id_baseline, None, (EvidenceKind.CUTOFF_ANALYSIS,))
+        co_c = _find_typed_artifact(step_map_c, "cutoff-analysis", plan_version_id_challenger, branch_id_challenger, (EvidenceKind.CUTOFF_ANALYSIS,))
         for role_name in ("train", "test", "oot"):
             b_bands = []
             if isinstance(co_b, dict):

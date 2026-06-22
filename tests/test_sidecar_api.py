@@ -922,7 +922,7 @@ class TestProjectArtifacts:
         assert len(data["artifacts"]) > 0
 
     def test_json_artifact_summary(self, client, tmp_dir):
-        """P2#4: JSON artifact summary reads via store.artifact_path()."""
+        """P2#4: JSON artifact summary stays redacted for untyped JSON."""
         import json as jmod
 
         proj_path = tmp_dir / "test.cardre"
@@ -941,10 +941,17 @@ class TestProjectArtifacts:
         assert resp.status_code == 200
         data = resp.json()
         assert data["summary_preview"] is not None
-        assert data["summary_preview"]["score"] == 95
+        preview = data["summary_preview"]
+        if preview["kind"] == "unknown":
+            assert preview["note"]
+        else:
+            assert preview["fields"]["type"] == "object"
+            assert preview["fields"]["key_count"] == 3
+            assert preview["fields"]["keys"] == ["score", "rank", "details"]
+        assert '"95"' not in json.dumps(preview)
 
     def test_json_artifact_preview(self, client, tmp_dir):
-        """P2#4: JSON artifact preview reads via store.artifact_path()."""
+        """P2#4: JSON artifact preview stays redacted for untyped JSON."""
         import json as jmod
 
         proj_path = tmp_dir / "test.cardre"
@@ -964,6 +971,16 @@ class TestProjectArtifacts:
         data = resp.json()
         assert data["media_type"] == "application/json"
         assert data["json_content"] is not None
+        preview = data["json_content"]
+        if preview["kind"] == "unknown":
+            assert preview["note"]
+        else:
+            assert preview["fields"]["type"] == "object"
+            assert preview["fields"]["key_count"] == 3
+            assert preview["fields"]["keys"] == ["alpha", "beta", "gamma"]
+        assert '"1"' not in json.dumps(preview)
+        assert '"2"' not in json.dumps(preview)
+        assert '"3"' not in json.dumps(preview)
 
     def test_artifact_preview(self, client, tmp_dir, sample_german_credit):
         proj_path = tmp_dir / "test.cardre"
@@ -981,6 +998,51 @@ class TestProjectArtifacts:
         assert data["media_type"] == "application/vnd.apache.parquet"
         assert isinstance(data["columns"], list)
         assert isinstance(data["rows"], list)
+
+    def test_artifact_preview_uses_store_artifact_path(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from sidecar.routes import artifacts as artifacts_route
+
+        calls: list[str] = []
+
+        class FakeStore:
+            root = Path("/tmp/unused")
+
+            def artifact_path(self, artifact):
+                calls.append(artifact.artifact_id)
+                return Path("/tmp/explicit-preview.parquet")
+
+        fake_artifact = SimpleNamespace(
+            artifact_id="art-1",
+            artifact_type="report",
+            role="report",
+            path="artifacts/report.parquet",
+            physical_hash="physical",
+            logical_hash="logical",
+            media_type="application/vnd.apache.parquet",
+            created_at="2026-01-01T00:00:00+00:00",
+            metadata={"row_count": 2},
+        )
+
+        def fake_find_artifact(artifact_id):
+            assert artifact_id == "art-1"
+            return fake_artifact, FakeStore()
+
+        def fake_build_parquet_preview(artifact_path, offset, limit, total_rows):
+            assert artifact_path == Path("/tmp/explicit-preview.parquet")
+            assert offset == 0
+            assert limit == 5
+            assert total_rows == 2
+            return {"total_rows": 2, "columns": [], "rows": []}
+
+        monkeypatch.setattr(artifacts_route, "find_artifact", fake_find_artifact)
+        monkeypatch.setattr(artifacts_route, "build_parquet_preview", fake_build_parquet_preview)
+
+        resp = artifacts_route.get_artifact_preview("art-1", limit=5, offset=0)
+
+        assert resp.artifact_id == "art-1"
+        assert calls == ["art-1"]
 
 
 # ======================================================================
@@ -1996,4 +2058,3 @@ class TestCancelAndManifest:
             assert "node_type" in step
             assert "status" in step
             assert "execution_fingerprint" in step
-
