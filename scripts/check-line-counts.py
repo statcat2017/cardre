@@ -121,7 +121,7 @@ def main() -> None:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(2)
 
-    files_to_check = [f for f in files if f not in ALLOWLIST]
+    files_to_check = [f for f in files if f not in ALLOWLIST and (REPO_ROOT / f).exists()]
     counts = get_line_counts(files_to_check)
 
     violations: list[tuple[str, int, int]] = []

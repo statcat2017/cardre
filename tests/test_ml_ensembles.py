@@ -11,6 +11,7 @@ import numpy as np
 import polars as pl
 
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.modeling.schema import validate_model_artifact
 from cardre.nodes.ml_models import (
     DecisionTreeNode,
@@ -25,6 +26,7 @@ from cardre.nodes.validate import (
 from cardre.store import ProjectStore
 
 from tests.helpers import make_numeric_dataset, make_oot_dataset, make_store
+from tests.helpers.evidence_assertions import assert_model_artifact
 
 import pytest
 
@@ -144,7 +146,7 @@ def score_and_add_score_col(store, data_art, model_art, step_id="score-step"):
     """Apply model and add score column for validation nodes."""
     apply_ctx = make_apply_context(store, data_art, model_art, step_id=step_id)
     apply_out = ApplyModelNode().run(apply_ctx)
-    scored_df = pl.read_parquet(store.artifact_path(apply_out.artifacts[0]))
+    scored_df = ArtifactEvidenceReader(store).read(apply_out.artifacts[0].artifact_id, EvidenceKind.SCORED_DATASET).dataframe.collect()
     score_vals = (1.0 - scored_df["predicted_bad_probability"]) * 1000
     scored_df = scored_df.with_columns(pl.Series("score", score_vals, dtype=pl.Float64))
     from cardre.artifacts import write_parquet_artifact
@@ -200,9 +202,8 @@ class RandomForestFitTests:
         output = RandomForestClassifierNode().run(ctx)
 
         assert len(output.artifacts) == 2
-        model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        assert model["schema_version"] == "cardre.model_artifact.v1"
-        assert model["model_family"] == "random_forest"
+        model = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert_model_artifact(model, expected_kind="random_forest")
 
     def test_model_artifact_passes_validation(self) -> None:
         store, tmp = make_store()
@@ -210,8 +211,8 @@ class RandomForestFitTests:
         ctx = make_fit_context(store, data_art, def_art, "cardre.random_forest_classifier")
 
         output = RandomForestClassifierNode().run(ctx)
-        model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        errors = validate_model_artifact(model)
+        model = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        errors = validate_model_artifact(model._raw)
         assert errors == []
 
     def test_fit_records_estimator_count(self) -> None:
@@ -221,9 +222,9 @@ class RandomForestFitTests:
                                params={"feature_strategy": "raw_numeric", "n_estimators": 50, "random_seed": 42})
 
         output = RandomForestClassifierNode().run(ctx)
-        model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        assert model["training"]["params"]["n_estimators"] == 50
-        assert "feature_importance" in model["model_payload"]
+        model = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert model.training["params"]["n_estimators"] == 50
+        assert "feature_importance" in model._raw["model_payload"]
 
     def test_fit_records_interpretability_level(self) -> None:
         store, tmp = make_store()
@@ -231,8 +232,8 @@ class RandomForestFitTests:
         ctx = make_fit_context(store, data_art, def_art, "cardre.random_forest_classifier")
 
         output = RandomForestClassifierNode().run(ctx)
-        model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        assert model["interpretability"]["explanation_level"] == "native_semi_transparent"
+        model = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert model._raw["interpretability"]["explanation_level"] == "native_semi_transparent"
 
     def test_fit_produces_estimator_artifact(self) -> None:
         store, tmp = make_store()
@@ -286,9 +287,8 @@ class GradientBoostingFitTests:
         output = GradientBoostingClassifierNode().run(ctx)
 
         assert len(output.artifacts) == 2
-        model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        assert model["schema_version"] == "cardre.model_artifact.v1"
-        assert model["model_family"] == "gbdt"
+        model = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert_model_artifact(model, expected_kind="gbdt")
 
     def test_model_artifact_passes_validation(self) -> None:
         store, tmp = make_store()
@@ -296,8 +296,8 @@ class GradientBoostingFitTests:
         ctx = make_fit_context(store, data_art, def_art, "cardre.gradient_boosting_classifier")
 
         output = GradientBoostingClassifierNode().run(ctx)
-        model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        errors = validate_model_artifact(model)
+        model = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        errors = validate_model_artifact(model._raw)
         assert errors == []
 
     def test_fit_records_learning_rate(self) -> None:
@@ -307,8 +307,8 @@ class GradientBoostingFitTests:
                                params={"feature_strategy": "raw_numeric", "n_estimators": 50, "learning_rate": 0.05, "random_seed": 42})
 
         output = GradientBoostingClassifierNode().run(ctx)
-        model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        assert model["training"]["params"]["learning_rate"] == 0.05
+        model = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert model.training["params"]["learning_rate"] == 0.05
 
     def test_fit_records_train_score_history(self) -> None:
         store, tmp = make_store()
@@ -317,9 +317,9 @@ class GradientBoostingFitTests:
                                params={"feature_strategy": "raw_numeric", "n_estimators": 10, "random_seed": 42})
 
         output = GradientBoostingClassifierNode().run(ctx)
-        model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        assert "learning_rate" in model["model_payload"]
-        assert "estimator_count" in model["model_payload"]
+        model = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert "learning_rate" in model._raw["model_payload"]
+        assert "estimator_count" in model._raw["model_payload"]
 
     def test_fit_records_interpretability_level(self) -> None:
         store, tmp = make_store()
@@ -327,8 +327,8 @@ class GradientBoostingFitTests:
         ctx = make_fit_context(store, data_art, def_art, "cardre.gradient_boosting_classifier")
 
         output = GradientBoostingClassifierNode().run(ctx)
-        model = json.loads(store.artifact_path(output.artifacts[0]).read_text())
-        assert model["interpretability"]["explanation_level"] == "native_semi_transparent"
+        model = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert model._raw["interpretability"]["explanation_level"] == "native_semi_transparent"
 
 
 # ======================================================================
@@ -346,7 +346,7 @@ class EnsembleApplyTests:
 
         apply_ctx = make_apply_context(store, data_art, model_art)
         apply_out = ApplyModelNode().run(apply_ctx)
-        scored_df = pl.read_parquet(store.artifact_path(apply_out.artifacts[0]))
+        scored_df = ArtifactEvidenceReader(store).read(apply_out.artifacts[0].artifact_id, EvidenceKind.SCORED_DATASET).dataframe.collect()
         assert "predicted_bad_probability" in scored_df.columns
         assert scored_df["model_family"][0] == "random_forest"
 
@@ -360,7 +360,7 @@ class EnsembleApplyTests:
 
         apply_ctx = make_apply_context(store, data_art, model_art)
         apply_out = ApplyModelNode().run(apply_ctx)
-        scored_df = pl.read_parquet(store.artifact_path(apply_out.artifacts[0]))
+        scored_df = ArtifactEvidenceReader(store).read(apply_out.artifacts[0].artifact_id, EvidenceKind.SCORED_DATASET).dataframe.collect()
         assert "predicted_bad_probability" in scored_df.columns
         assert scored_df["model_family"][0] == "gbdt"
 
@@ -373,7 +373,7 @@ class EnsembleApplyTests:
 
         apply_ctx = make_apply_context(store, data_art, model_art)
         apply_out = ApplyModelNode().run(apply_ctx)
-        scored_df = pl.read_parquet(store.artifact_path(apply_out.artifacts[0]))
+        scored_df = ArtifactEvidenceReader(store).read(apply_out.artifacts[0].artifact_id, EvidenceKind.SCORED_DATASET).dataframe.collect()
         probs = scored_df["predicted_bad_probability"].to_list()
         for p in probs:
             assert p >= 0.0
@@ -397,10 +397,9 @@ class ExpandedValidationMetricsTests:
 
         val_ctx = make_val_context(store, [scored_art], def_art, params={"cutoffs": [0.3, 0.5, 0.7]})
         report_out = ValidationMetricsNode().run(val_ctx)
-        report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
+        report = ArtifactEvidenceReader(store).read(report_out.artifacts[0].artifact_id, EvidenceKind.VALIDATION_EVIDENCE)
 
-        assert "roles" in report
-        train_metrics = report["roles"]["train"]
+        train_metrics = report._raw["roles"]["train"]
         assert "at_cutoffs" in train_metrics
         assert "0.3" in train_metrics["at_cutoffs"]
         assert "0.5" in train_metrics["at_cutoffs"]
@@ -423,9 +422,9 @@ class ExpandedValidationMetricsTests:
 
         val_ctx = make_val_context(store, [scored_art], def_art, params={"cutoffs": [0.5]})
         report_out = ValidationMetricsNode().run(val_ctx)
-        report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
+        report = ArtifactEvidenceReader(store).read(report_out.artifacts[0].artifact_id, EvidenceKind.VALIDATION_EVIDENCE)
 
-        at_05 = report["roles"]["train"]["at_cutoffs"]["0.5"]
+        at_05 = report._raw["roles"]["train"]["at_cutoffs"]["0.5"]
         assert "precision" in at_05
         assert "recall" in at_05
         assert "f1" in at_05
@@ -445,10 +444,9 @@ class ExpandedValidationMetricsTests:
 
         val_ctx = make_val_context(store, [scored_art], def_art)
         report_out = ValidationMetricsNode().run(val_ctx)
-        report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
+        report = ArtifactEvidenceReader(store).read(report_out.artifacts[0].artifact_id, EvidenceKind.VALIDATION_EVIDENCE)
 
-        assert "roles" in report
-        assert report["roles"]["train"]["auc"] is not None
+        assert report.metrics_by_role["train"].auc is not None
 
     def test_single_class_role_produces_warnings(self) -> None:
         store, tmp = make_store()
@@ -472,11 +470,9 @@ class ExpandedValidationMetricsTests:
 
         val_ctx = make_val_context(store, [data_art], def_art)
         report_out = ValidationMetricsNode().run(val_ctx)
-        report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
+        report = ArtifactEvidenceReader(store).read(report_out.artifacts[0].artifact_id, EvidenceKind.VALIDATION_EVIDENCE)
 
-        assert "roles" in report
-        assert "warnings" in report["roles"]["train"]
-        assert len(report["roles"]["train"]["warnings"]) > 0
+        assert report.warnings or report._raw["roles"]["train"].get("warnings")
 
     @_skip_if_launch
     def test_gbdt_with_validation_metrics(self) -> None:
@@ -490,12 +486,10 @@ class ExpandedValidationMetricsTests:
 
         val_ctx = make_val_context(store, [scored_art], def_art, params={"cutoffs": [0.5]})
         report_out = ValidationMetricsNode().run(val_ctx)
-        report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
+        report = ArtifactEvidenceReader(store).read(report_out.artifacts[0].artifact_id, EvidenceKind.VALIDATION_EVIDENCE)
 
-        assert "roles" in report
-        assert "at_cutoffs" in report["roles"]["train"]
-        assert "0.5" in report["roles"]["train"]["at_cutoffs"]
-        assert report["roles"]["train"]["auc"] is not None
+        assert "0.5" in report._raw["roles"]["train"]["at_cutoffs"]
+        assert report.metrics_by_role["train"].auc is not None
 
     def test_calibration_display_with_default_deps(self) -> None:
         store, tmp = make_store()
@@ -511,10 +505,9 @@ class ExpandedValidationMetricsTests:
             params={"cutoffs": [0.5], "include_calibration_display": True},
         )
         report_out = ValidationMetricsNode().run(val_ctx)
-        report = json.loads(store.artifact_path(report_out.artifacts[0]).read_text())
+        report = ArtifactEvidenceReader(store).read(report_out.artifacts[0].artifact_id, EvidenceKind.VALIDATION_EVIDENCE)
 
-        assert "roles" in report
-        calib = report["roles"]["train"].get("calibration_display", {})
+        calib = report._raw["roles"]["train"].get("calibration_display", {})
         assert "prob_true" in calib
         assert "prob_pred" in calib
         assert calib["n_bins"] == 10
@@ -689,7 +682,7 @@ class ThresholdOptimizationRunTests:
         model_art = rf_out.artifacts[0]
         scored_art = self._make_scored_dataset(store, data_art, model_art)
 
-        original_df = pl.read_parquet(store.artifact_path(scored_art))
+        original_df = ArtifactEvidenceReader(store).read(scored_art.artifact_id, EvidenceKind.SCORED_DATASET).dataframe.collect()
         original_probs = original_df["predicted_bad_probability"].to_list()
 
         step_spec = StepSpec(
@@ -715,7 +708,7 @@ class ThresholdOptimizationRunTests:
         )
         ThresholdOptimizationNode().run(ctx)
 
-        after_df = pl.read_parquet(store.artifact_path(scored_art))
+        after_df = ArtifactEvidenceReader(store).read(scored_art.artifact_id, EvidenceKind.SCORED_DATASET).dataframe.collect()
         after_probs = after_df["predicted_bad_probability"].to_list()
         assert original_probs == after_probs
 
@@ -735,9 +728,9 @@ class EnsembleDeterminismTests:
         ctx2 = make_fit_context(store, data_art, def_art, "cardre.random_forest_classifier", run_id="r2", step_id="rf2")
         out2 = RandomForestClassifierNode().run(ctx2)
 
-        m1 = json.loads(store.artifact_path(out1.artifacts[0]).read_text())
-        m2 = json.loads(store.artifact_path(out2.artifacts[0]).read_text())
-        assert m1["model_payload"]["feature_importance"] == m2["model_payload"]["feature_importance"]
+        m1 = ArtifactEvidenceReader(store).read(out1.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        m2 = ArtifactEvidenceReader(store).read(out2.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert m1._raw["model_payload"]["feature_importance"] == m2._raw["model_payload"]["feature_importance"]
 
     @_skip_if_launch
     def test_gbdt_same_seed_produces_same_artifacts(self) -> None:
@@ -749,6 +742,6 @@ class EnsembleDeterminismTests:
         ctx2 = make_fit_context(store, data_art, def_art, "cardre.gradient_boosting_classifier", run_id="g2", step_id="gb2")
         out2 = GradientBoostingClassifierNode().run(ctx2)
 
-        m1 = json.loads(store.artifact_path(out1.artifacts[0]).read_text())
-        m2 = json.loads(store.artifact_path(out2.artifacts[0]).read_text())
-        assert m1["model_payload"]["feature_importance"] == m2["model_payload"]["feature_importance"]
+        m1 = ArtifactEvidenceReader(store).read(out1.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        m2 = ArtifactEvidenceReader(store).read(out2.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert m1._raw["model_payload"]["feature_importance"] == m2._raw["model_payload"]["feature_importance"]

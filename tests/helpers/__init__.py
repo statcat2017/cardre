@@ -84,7 +84,7 @@ def make_large_german_credit_csv(tmp: Path) -> Path:
         "existing_credits_at_bank", "job", "people_liable_maintenance",
         "telephone", "foreign_worker", "credit_risk_class",
     ]
-    lines = [",".join(columns)]
+    lines = [";".join(columns)]
     for i in range(50):
         parts_g = good.split()
         parts_g[0] = f"A{i % 11 + 11}"
@@ -230,6 +230,41 @@ def make_numeric_dataset(
     return data_art, def_art, df
 
 
+def make_oot_dataset(
+    store: ProjectStore,
+    df: pl.DataFrame | None = None,
+    seed: int = 99,
+) -> tuple:
+    """Create an out-of-time dataset artifact for tests."""
+    if df is None:
+        rng = np.random.RandomState(123)
+        df = pl.DataFrame({
+            "feat_a": rng.randn(50) * 10 + 50,
+            "feat_b": rng.randn(50) * 5 + 20,
+            "feat_c": rng.randn(50) * 2 + 10,
+            "target": ["bad" if i % 5 == 0 else "good" for i in range(50)],
+        })
+    else:
+        rng = np.random.RandomState(seed)
+        n_rows = df.height
+        feat_a = df["feat_a"].to_numpy() + rng.randn(n_rows) * 2
+        feat_b = df["feat_b"].to_numpy() + rng.randn(n_rows) * 1
+        feat_c = df["feat_c"].to_numpy() + rng.randn(n_rows) * 0.5
+        target = ["bad" if feat_a[i] > 55 and feat_b[i] > 22 else "good" for i in range(n_rows)]
+        df = pl.DataFrame({
+            "feat_a": feat_a,
+            "feat_b": feat_b,
+            "feat_c": feat_c,
+            "target": target,
+        })
+
+    art = write_parquet_artifact(
+        store, artifact_type="dataset", role="oot",
+        stem="synthetic-oot", frame=df, metadata={},
+    )
+    return art, df
+
+
 # ---------------------------------------------------------------------------
 # Artifact helpers (backward-compatible artifact_id / filename format)
 # ---------------------------------------------------------------------------
@@ -269,11 +304,11 @@ def _make_json_artifact(store, payload, role="definition", stem="test"):
     return art
 
 
-def _make_parquet_report(store, df, role="report", stem="report"):
+def _make_parquet_report(store, df, role="report", stem="test"):
     """Register a Parquet report artifact using the legacy artifact_id format."""
     buf = io.BytesIO()
     df.write_parquet(buf)
-    p = store.root / "datasets" / f"{stem}.parquet"
+    p = store.root / "reports" / f"{stem}.parquet"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(buf.getvalue())
     art = ArtifactRef(
@@ -285,25 +320,3 @@ def _make_parquet_report(store, df, role="report", stem="report"):
     )
     store.register_artifact(art)
     return art
-
-
-def make_oot_dataset(
-    store: ProjectStore,
-    df: pl.DataFrame,
-    seed: int = 99,
-) -> tuple:
-    """Create an OOT dataset by perturbing the original feature values."""
-    rng = np.random.RandomState(seed)
-    n_rows = df.height
-    feat_a = df["feat_a"].to_numpy() + rng.randn(n_rows) * 2
-    feat_b = df["feat_b"].to_numpy() + rng.randn(n_rows) * 1
-    feat_c = df["feat_c"].to_numpy() + rng.randn(n_rows) * 0.5
-    target = ["bad" if feat_a[i] > 55 and feat_b[i] > 22 else "good" for i in range(n_rows)]
-    oot_df = pl.DataFrame({
-        "feat_a": feat_a, "feat_b": feat_b, "feat_c": feat_c, "target": target,
-    })
-    oot_art = write_parquet_artifact(
-        store, artifact_type="dataset", role="oot",
-        stem="synthetic-oot", frame=oot_df, metadata={},
-    )
-    return oot_art, oot_df

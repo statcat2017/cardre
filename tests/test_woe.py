@@ -22,6 +22,8 @@ from cardre.audit import (
 )
 from cardre.evidence import (
     AmbiguousEvidenceError,
+    ArtifactEvidenceReader,
+    EvidenceKind,
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
     SCHEMA_SELECTION_DEFINITION,
     SCHEMA_WOE_APPLICATION_EVIDENCE,
@@ -40,6 +42,8 @@ from tests.helpers import (
     _make_train_artifact,
     make_store,
 )
+
+from tests.helpers.evidence_assertions import assert_woe_iv_evidence
 
 
 # ======================================================================
@@ -160,10 +164,8 @@ class CalculateWoeIvTests(unittest.TestCase):
         woe_df = pl.read_parquet(store.artifact_path(woe_art))
         iv_df = pl.read_parquet(store.artifact_path(iv_art))
 
-        evidence = json.loads(store.artifact_path(evidence_art).read_text())
-        self.assertEqual(evidence["schema_version"], "cardre.woe_iv_evidence.v1")
-        self.assertIn("variables", evidence)
-        self.assertIn("config", evidence)
+        evidence = ArtifactEvidenceReader(store).read(evidence_art.artifact_id, EvidenceKind.WOE_IV_EVIDENCE)
+        assert_woe_iv_evidence(evidence)
 
         self.assertIn("woe", woe_df.columns)
         self.assertIn("iv_component", woe_df.columns)
@@ -771,11 +773,10 @@ class ApplyWoeMappingEvidenceTests(unittest.TestCase):
         out = ApplyWoeMappingNode().run(ctx)
         evidence_arts = [a for a in out.artifacts if a.role == "report"]
         self.assertEqual(len(evidence_arts), 1)
-        evidence = json.loads(self.store.artifact_path(evidence_arts[0]).read_text())
-        self.assertEqual(evidence["schema_version"], SCHEMA_WOE_APPLICATION_EVIDENCE)
-        self.assertIn("roles", evidence)
-        self.assertIn("policy", evidence)
-        self.assertEqual(evidence["policy"]["woe_unmatched_policy"], "warn")
+        evidence = ArtifactEvidenceReader(self.store).read(evidence_arts[0].artifact_id, EvidenceKind.WOE_APPLICATION_EVIDENCE)
+        self.assertEqual(evidence.schema_version, SCHEMA_WOE_APPLICATION_EVIDENCE)
+        self.assertTrue(evidence.roles)
+        self.assertEqual(evidence.policy["woe_unmatched_policy"], "warn")
 
     def test_evidence_records_source_artifact_id(self):
         params = {}
@@ -788,8 +789,8 @@ class ApplyWoeMappingEvidenceTests(unittest.TestCase):
                                validated_params=params, runtime_metadata={})
         out = ApplyWoeMappingNode().run(ctx)
         evidence_arts = [a for a in out.artifacts if a.role == "report"]
-        evidence = json.loads(self.store.artifact_path(evidence_arts[0]).read_text())
-        role_entry = evidence["roles"].get("train")
+        evidence = ArtifactEvidenceReader(self.store).read(evidence_arts[0].artifact_id, EvidenceKind.WOE_APPLICATION_EVIDENCE)
+        role_entry = evidence.roles["train"]
         self.assertIsNotNone(role_entry)
         self.assertEqual(role_entry["source_artifact_id"], self.train_art.artifact_id)
         self.assertIn("output_artifact_id", role_entry)
@@ -811,9 +812,9 @@ class ApplyWoeMappingEvidenceTests(unittest.TestCase):
                                validated_params=params, runtime_metadata={})
         out = ApplyWoeMappingNode().run(ctx)
         evidence_arts = [a for a in out.artifacts if a.role == "report"]
-        evidence = json.loads(self.store.artifact_path(evidence_arts[0]).read_text())
-        self.assertIn("bin_definition_artifact_id", evidence)
-        self.assertIn("woe_table_artifact_id", evidence)
+        evidence = ArtifactEvidenceReader(self.store).read(evidence_arts[0].artifact_id, EvidenceKind.WOE_APPLICATION_EVIDENCE)
+        self.assertTrue(evidence.bin_definition_artifact_id)
+        self.assertTrue(evidence.woe_table_artifact_id)
 
     def test_bundle_driven_fail_policy(self):
         params = {}

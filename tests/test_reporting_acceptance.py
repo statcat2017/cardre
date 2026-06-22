@@ -20,6 +20,7 @@ from cardre.audit import (
     json_logical_hash,
 )
 from cardre.evidence import SCHEMA_SCORE_SCALING
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.executor import PlanExecutor
 from cardre.nodes import BuildSummaryReportNode
 from cardre.nodes.build.export import TechnicalManifestExportNode
@@ -293,9 +294,6 @@ class TestAcceptanceChampionReport:
         champ_file = export_dir / "champion_assignment.json"
         assert champ_file.exists()
 
-        # Verify bundle determinism
-        with open(report_bundle) as f:
-            bundle_data = json.loads(f.read())
         bundle2 = generate_report_bundle(
             store=self.store,
             project_id=self.project_id,
@@ -303,9 +301,13 @@ class TestAcceptanceChampionReport:
             target_branch_id=branch_id,
             report_mode="champion",
         )
+        bundle_data = bundle.model_dump(mode="json")
         bundle2_data = bundle2.model_dump(mode="json")
-        assert bundle_data["variables"] == bundle2_data["variables"]
-        assert bundle_data["model"] == bundle2_data["model"]
+        for payload in (bundle_data, bundle2_data):
+            payload.pop("generated_at", None)
+            payload.pop("generated_by", None)
+            payload.pop("reproducibility", None)
+        assert bundle_data == bundle2_data
 
         manifest_ctx = ExecutionContext(
             store=self.store,

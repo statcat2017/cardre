@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from cardre.audit import StepSpec, json_logical_hash
+from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.store import ProjectStore
 from sidecar.main import app
 
@@ -1841,20 +1842,20 @@ class TestPhase4BranchingFlow:
             art_path = artifact_resp.json()["path"]
             art_full_path = proj_path / art_path
             if art_full_path.exists():
-                comp_content = json.loads(art_full_path.read_text())
-                assert "woe_iv" in comp_content
-                assert "model" in comp_content
-                assert "validation" in comp_content
-                assert "cutoff" in comp_content
+                comp_content = ArtifactEvidenceReader(self.store).read(snap_data["comparison_artifact_id"], EvidenceKind.COMPARISON_ARTIFACT)
+                assert comp_content.woe_iv
+                assert comp_content.model
+                assert comp_content.validation
+                assert comp_content.cutoff
                 # Assert sections exist with baseline and challenger content
-                assert isinstance(comp_content["woe_iv"].get("variables"), list)
-                assert isinstance(comp_content["model"]["branch_level"], dict)
-                assert isinstance(comp_content["validation"]["roles"], dict)
-                assert isinstance(comp_content["cutoff"]["roles"], dict)
+                assert isinstance(comp_content.woe_iv.get("variables"), list)
+                assert isinstance(comp_content.model.get("branch_level"), dict)
+                assert isinstance(comp_content.validation.get("roles"), dict)
+                assert isinstance(comp_content.cutoff.get("roles"), dict)
                 # Baseline and challenger should have entries
-                assert "baseline" in comp_content["model"]["branch_level"] or comp_content["model"]["branch_level"] != {}
+                assert "baseline" in comp_content.model.get("branch_level", {}) or comp_content.model.get("branch_level") != {}
                 for role_name in ("train", "test", "oot"):
-                    role_data = comp_content["validation"]["roles"].get(role_name, {})
+                    role_data = comp_content.validation.get("roles", {}).get(role_name, {})
                     if role_data:
                         assert "baseline" in role_data or branch_id in role_data
 
