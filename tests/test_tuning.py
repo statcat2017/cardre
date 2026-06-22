@@ -9,7 +9,13 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
+from cardre.artifacts import write_json_artifact
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
+from cardre.evidence import (
+    SCHEMA_FROZEN_SCORECARD_BUNDLE,
+    SCHEMA_MODEL_ARTIFACT,
+    SCHEMA_SCORE_SCALING,
+)
 from cardre.nodes.tuning import HyperparameterTuningNode
 from cardre.nodes.validate.apply import ApplyModelNode
 from cardre.store import ProjectStore
@@ -322,6 +328,224 @@ class HyperparameterTuningFitTests:
 
         assert actual_probs.std() > 1e-6
         np.testing.assert_allclose(actual_probs, expected_probs, atol=1e-5)
+
+    def test_apply_model_uses_legacy_compatible_model_evidence(self) -> None:
+        store, tmp = make_store()
+        data_art, def_art, train_df = make_numeric_dataset(store)
+
+        model_art = write_json_artifact(
+            store,
+            artifact_type="model",
+            role="model",
+            stem="legacy-model",
+            payload={
+                "model_family": "logistic_regression",
+                "features": ["feat_a", "feat_b", "feat_c"],
+                "coefficients": {"feat_a": 0.03, "feat_b": -0.02, "feat_c": 0.01},
+                "intercept": -1.0,
+                "target_column": "target",
+            },
+            metadata={},
+        )
+
+        step_spec = StepSpec(
+            step_id="legacy-apply",
+            node_type="cardre.apply_model",
+            node_version="2",
+            category="apply",
+            params={},
+            params_hash=json_logical_hash({}),
+            parent_step_ids=[],
+            branch_label="",
+            position=0,
+        )
+        apply_ctx = ExecutionContext(
+            store=store,
+            run_id="test-run",
+            plan_version_id="test-pv",
+            step_spec=step_spec,
+            parent_run_steps=[],
+            input_artifacts=[data_art, model_art],
+            validated_params={},
+            runtime_metadata={},
+        )
+
+        apply_output = ApplyModelNode().run(apply_ctx)
+        scored_df = pl.read_parquet(store.artifact_path(apply_output.artifacts[0]))
+
+        assert scored_df.height == train_df.height
+        assert scored_df["predicted_bad_probability"].std() > 0
+
+    def test_missing_model_evidence_raises_clear_error(self) -> None:
+        store, tmp = make_store()
+        data_art, _, _ = make_numeric_dataset(store)
+
+        bad_model_art = write_json_artifact(
+            store,
+            artifact_type="model",
+            role="model",
+            stem="bad-model",
+            payload={
+                "features": ["feat_a", "feat_b", "feat_c"],
+                "coefficients": {"feat_a": 0.03, "feat_b": -0.02, "feat_c": 0.01},
+                "intercept": -1.0,
+                "target_column": "target",
+            },
+            metadata={},
+        )
+
+        step_spec = StepSpec(
+            step_id="missing-model",
+            node_type="cardre.apply_model",
+            node_version="2",
+            category="apply",
+            params={},
+            params_hash=json_logical_hash({}),
+            parent_step_ids=[],
+            branch_label="",
+            position=0,
+        )
+        apply_ctx = ExecutionContext(
+            store=store,
+            run_id="test-run",
+            plan_version_id="test-pv",
+            step_spec=step_spec,
+            parent_run_steps=[],
+            input_artifacts=[data_art, bad_model_art],
+            validated_params={},
+            runtime_metadata={},
+        )
+
+        with pytest.raises(ValueError, match="missing model evidence"):
+            ApplyModelNode().run(apply_ctx)
+
+    def test_ambiguous_score_scaling_evidence_raises_clear_error(self) -> None:
+        store, tmp = make_store()
+        data_art, _, _ = make_numeric_dataset(store)
+
+        model_art = write_json_artifact(
+            store,
+            artifact_type="model",
+            role="model",
+            stem="model",
+            payload={
+                "schema_version": SCHEMA_MODEL_ARTIFACT,
+                "model_family": "logistic_regression",
+                "features": ["feat_a", "feat_b", "feat_c"],
+                "coefficients": {"feat_a": 0.03, "feat_b": -0.02, "feat_c": 0.01},
+                "intercept": -1.0,
+                "target_column": "target",
+            },
+            metadata={"schema_version": SCHEMA_MODEL_ARTIFACT},
+        )
+        scorecard_payload = {
+            "factor": 28.8539,
+            "offset": 487.1229,
+            "base_score": 600,
+            "base_odds": "50:1",
+            "pdo": 20,
+        }
+        scorecard_art_1 = write_json_artifact(
+            store,
+            artifact_type="scorecard",
+            role="scorecard",
+            stem="scorecard-a",
+            payload=scorecard_payload,
+            metadata={"schema_version": SCHEMA_SCORE_SCALING},
+        )
+        scorecard_art_2 = write_json_artifact(
+            store,
+            artifact_type="scorecard",
+            role="scorecard",
+            stem="scorecard-b",
+            payload=scorecard_payload,
+            metadata={"schema_version": SCHEMA_SCORE_SCALING},
+        )
+
+        step_spec = StepSpec(
+            step_id="ambiguous-scorecard",
+            node_type="cardre.apply_model",
+            node_version="2",
+            category="apply",
+            params={},
+            params_hash=json_logical_hash({}),
+            parent_step_ids=[],
+            branch_label="",
+            position=0,
+        )
+        apply_ctx = ExecutionContext(
+            store=store,
+            run_id="test-run",
+            plan_version_id="test-pv",
+            step_spec=step_spec,
+            parent_run_steps=[],
+            input_artifacts=[data_art, model_art, scorecard_art_1, scorecard_art_2],
+            validated_params={},
+            runtime_metadata={},
+        )
+
+        with pytest.raises(ValueError, match="ambiguous scorecard scaling evidence"):
+            ApplyModelNode().run(apply_ctx)
+
+    def test_frozen_bundle_without_standalone_scorecard_scaling_errors_explicitly(self) -> None:
+        store, tmp = make_store()
+        data_art, _, _ = make_numeric_dataset(store)
+
+        model_art = write_json_artifact(
+            store,
+            artifact_type="model",
+            role="model",
+            stem="model",
+            payload={
+                "model_family": "logistic_regression",
+                "features": ["feat_a", "feat_b", "feat_c"],
+                "coefficients": {"feat_a": 0.03, "feat_b": -0.02, "feat_c": 0.01},
+                "intercept": -1.0,
+                "target_column": "target",
+            },
+            metadata={"schema_version": SCHEMA_MODEL_ARTIFACT},
+        )
+        bundle_art = write_json_artifact(
+            store,
+            artifact_type="scorecard",
+            role="scorecard",
+            stem="frozen-bundle",
+            payload={
+                "schema_version": SCHEMA_FROZEN_SCORECARD_BUNDLE,
+                "model_artifact_id": model_art.artifact_id,
+                "scorecard_artifact_id": "scorecard-artifact-id",
+            },
+            metadata={
+                "schema_version": SCHEMA_FROZEN_SCORECARD_BUNDLE,
+                "model_artifact_id": model_art.artifact_id,
+                "scorecard_artifact_id": "scorecard-artifact-id",
+            },
+        )
+
+        step_spec = StepSpec(
+            step_id="frozen-bundle-only",
+            node_type="cardre.apply_model",
+            node_version="2",
+            category="apply",
+            params={},
+            params_hash=json_logical_hash({}),
+            parent_step_ids=[],
+            branch_label="",
+            position=0,
+        )
+        apply_ctx = ExecutionContext(
+            store=store,
+            run_id="test-run",
+            plan_version_id="test-pv",
+            step_spec=step_spec,
+            parent_run_steps=[],
+            input_artifacts=[data_art, model_art, bundle_art],
+            validated_params={},
+            runtime_metadata={},
+        )
+
+        with pytest.raises(ValueError, match="no scorecard scaling artifact was provided"):
+            ApplyModelNode().run(apply_ctx)
 
     def test_output_metrics(self) -> None:
         store, tmp = make_store()

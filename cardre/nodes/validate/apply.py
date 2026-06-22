@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
 import polars as pl
@@ -18,10 +16,11 @@ from cardre.node_parameters import (
 from cardre.nodes._bin_mask import build_bin_condition
 from cardre.evidence import (
     ArtifactEvidenceReader,
+    AmbiguousEvidenceError,
     EvidenceKind,
+    EvidenceNotFoundError,
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
     SCHEMA_SCORE_APPLICATION_EVIDENCE,
-    SCHEMA_SCORE_SCALING,
     SCHEMA_SELECTION_DEFINITION,
     SCHEMA_WOE_APPLICATION_EVIDENCE,
 )
@@ -146,7 +145,7 @@ class ApplyWoeMappingNode(NodeType):
         unmatched_total = 0
 
         for data_art in data_arts:
-            df = pl.read_parquet(store.artifact_path(data_art))
+            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
             role = data_art.role
             fallback_counts: dict[str, int] = {}
             woe_columns_created: list[str] = []
@@ -265,16 +264,46 @@ class ApplyModelNode(NodeType):
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         reader = ArtifactEvidenceReader(store)
+        step_id = context.step_spec.step_id
+
+        def read_typed_evidence(artifact_id: str, kind: EvidenceKind, source: str) -> Any:
+            try:
+                return reader.read(artifact_id, kind)
+            except EvidenceNotFoundError as exc:
+                raise ValueError(
+                    f"apply_model step {step_id}: missing {source} evidence for artifact {artifact_id!r}"
+                ) from exc
+            except AmbiguousEvidenceError as exc:
+                raise ValueError(
+                    f"apply_model step {step_id}: ambiguous {source} evidence for artifact {artifact_id!r}"
+                ) from exc
+
+        def find_typed_evidence(candidates: list[ArtifactRef], kind: EvidenceKind, source: str) -> Any | None:
+            if not candidates:
+                return None
+            try:
+                return reader.find(candidates, kind)
+            except EvidenceNotFoundError as exc:
+                candidate_ids = [a.artifact_id for a in candidates]
+                raise ValueError(
+                    f"apply_model step {step_id}: missing {source} evidence in candidates {candidate_ids}"
+                ) from exc
+            except AmbiguousEvidenceError as exc:
+                candidate_ids = [a.artifact_id for a in candidates]
+                raise ValueError(
+                    f"apply_model step {step_id}: ambiguous {source} evidence in candidates {candidate_ids}"
+                ) from exc
 
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
-        scorecard_art = next(
-            (a for a in context.input_artifacts
-             if a.role == "scorecard"
-             and a.metadata.get("schema_version") == SCHEMA_SCORE_SCALING),
-            None,
-        )
         if model_art is None:
             raise ValueError("apply_model requires a model artifact")
+
+        scorecard_candidates = [
+            a for a in context.input_artifacts
+            if a.role == "scorecard"
+            and a.metadata.get("schema_version") != SCHEMA_FROZEN_SCORECARD_BUNDLE
+        ]
+        scorecard_evidence = find_typed_evidence(scorecard_candidates, EvidenceKind.SCORE_SCALING, "scorecard scaling")
 
         # Detect frozen bundle
         bundle_art = next(
@@ -291,30 +320,27 @@ class ApplyModelNode(NodeType):
                 )
             expected_scorecard_id = bundle_meta.get("scorecard_artifact_id")
             if expected_scorecard_id:
-                if scorecard_art is None:
+                if not scorecard_candidates:
                     raise ValueError(
                         f"Frozen bundle requires scorecard artifact "
                         f"{expected_scorecard_id}, but no scorecard scaling artifact was provided"
                     )
-                if expected_scorecard_id != scorecard_art.artifact_id:
+                if expected_scorecard_id != getattr(scorecard_evidence, "source_artifact_id", None):
                     raise ValueError(
                         f"Frozen bundle scorecard_artifact_id ({expected_scorecard_id}) "
-                        f"does not match input scorecard artifact ({scorecard_art.artifact_id})"
+                        f"does not match input scorecard artifact ({getattr(scorecard_evidence, 'source_artifact_id', None)})"
                     )
-
-        model = json.loads(store.artifact_path(model_art).read_text())
-        if "model_family" not in model:
-            typed_model = reader.find_optional(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
-            if typed_model is not None:
-                model.update(typed_model.as_legacy_dict())
+        typed_model = read_typed_evidence(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT, "model")
+        model: dict[str, Any] = dict(getattr(typed_model, "_raw", {}))
+        model.update(typed_model.as_legacy_dict())
 
         # Parse scorecard and ensemble base model artifacts here,
         # not in adapters — adapters receive parsed payloads only.
         scorecard_parsed: dict[str, Any] | None = None
-        if scorecard_art is not None:
-            scorecard_parsed = json.loads(store.artifact_path(scorecard_art).read_text())
+        if scorecard_evidence is not None:
+            scorecard_parsed = dict(getattr(scorecard_evidence, "_raw", {}))
 
-        scorecard_artifact_id: str | None = scorecard_art.artifact_id if scorecard_art else None
+        scorecard_artifact_id: str | None = getattr(scorecard_evidence, "source_artifact_id", None)
         bundle_artifact_id: str | None = bundle_art.artifact_id if bundle_art else None
 
         if model.get("model_family") in ("voting_ensemble", "weighted_ensemble"):
@@ -324,12 +350,14 @@ class ApplyModelNode(NodeType):
                 aid = bm.get("artifact_id", "")
                 if not aid:
                     continue
-                bm_art = store.get_artifact(aid)
-                if bm_art is not None:
-                    try:
-                        base_parsed.append(json.loads(store.artifact_path(bm_art).read_text()))
-                    except Exception:
-                        continue
+                typed_base_model = read_typed_evidence(
+                    aid,
+                    EvidenceKind.MODEL_ARTIFACT,
+                    "ensemble base model",
+                )
+                base_model: dict[str, Any] = dict(getattr(typed_base_model, "_raw", {}))
+                base_model.update(typed_base_model.as_legacy_dict())
+                base_parsed.append(base_model)
             model["_base_models_parsed"] = base_parsed
 
         return _apply_model_adapter(
@@ -365,7 +393,7 @@ class DummyApplyNode(NodeType):
 
         outputs = []
         for data_art in data_artifacts:
-            df = pl.read_parquet(store.artifact_path(data_art))
+            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
             pred = pl.DataFrame({
                 "dummy_prediction": [0.5] * df.height,
                 "row_id": list(range(df.height)),
