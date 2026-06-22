@@ -233,8 +233,9 @@ def make_numeric_dataset(
 def make_oot_dataset(
     store: ProjectStore,
     df: pl.DataFrame | None = None,
+    seed: int = 99,
 ) -> tuple:
-    """Create a simple out-of-time dataset artifact for tests."""
+    """Create an out-of-time dataset artifact for tests."""
     if df is None:
         rng = np.random.RandomState(123)
         df = pl.DataFrame({
@@ -242,6 +243,19 @@ def make_oot_dataset(
             "feat_b": rng.randn(50) * 5 + 20,
             "feat_c": rng.randn(50) * 2 + 10,
             "target": ["bad" if i % 5 == 0 else "good" for i in range(50)],
+        })
+    else:
+        rng = np.random.RandomState(seed)
+        n_rows = df.height
+        feat_a = df["feat_a"].to_numpy() + rng.randn(n_rows) * 2
+        feat_b = df["feat_b"].to_numpy() + rng.randn(n_rows) * 1
+        feat_c = df["feat_c"].to_numpy() + rng.randn(n_rows) * 0.5
+        target = ["bad" if feat_a[i] > 55 and feat_b[i] > 22 else "good" for i in range(n_rows)]
+        df = pl.DataFrame({
+            "feat_a": feat_a,
+            "feat_b": feat_b,
+            "feat_c": feat_c,
+            "target": target,
         })
 
     art = write_parquet_artifact(
