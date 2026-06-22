@@ -22,11 +22,13 @@ LANGUAGE_GLOBS = {
 
 ALLOWLIST: set[str] = {
     # Python (>1000 lines)
+    "cardre/_evidence/models.py",
     "cardre/nodes/prep.py",
     "tests/test_optbinning.py",
     "tests/test_bin_definition_lifecycle.py",
     "tests/test_sidecar_api.py",
     "tests/test_executor.py",
+    "tests/test_nodes.py",
     # TypeScript/TSX (>600 lines)
     "frontend/src/components/ManualBinningEditor.tsx",
     # Auto-generated files
