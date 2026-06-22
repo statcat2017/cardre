@@ -6,7 +6,6 @@ It must not become a second modelling execution path.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -20,7 +19,7 @@ from cardre.evidence import (
     SCHEMA_VARIABLE_CLUSTERING_EVIDENCE,
 )
 from cardre.reporting.limitation_codes import LimitationCode
-from cardre.step_id import resolve_run_step, resolve_required_steps
+from cardre.step_id import resolve_run_step, resolve_required_steps, resolve_step_for_branch
 from cardre.reporting.schema import (
     AffectedBinDetail,
     ArtifactEntry,
@@ -68,16 +67,6 @@ CARDRE_VERSION = "0.1.0"
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-
-def _get_artifact_json(store: ProjectStore, artifact_id: str) -> dict | None:
-    art = store.get_artifact(artifact_id)
-    if art is None:
-        return None
-    path = store.artifact_path(art)
-    if not path.exists():
-        return None
-    return json.loads(path.read_text())
 
 
 class ReportCollector:
@@ -149,6 +138,15 @@ class ReportCollector:
             canonical_step_ids=REQUIRED_STEPS_COLLECTOR,
             branch_step_map=step_map,
         )
+
+        # Modelling metadata (target column, value mapping)
+        modelling_ref = resolve_step_for_branch(
+            branch_id=self.target_branch_id,
+            canonical_step_id="define-metadata",
+            branch_step_map=step_map,
+        )
+        if modelling_ref:
+            self._collect_modelling_metadata(bundle, modelling_ref, plan_version_id)
 
         # Load plan steps for pathway info
         plan_steps = self.store.get_plan_version_steps(plan_version_id)
@@ -401,6 +399,9 @@ class ReportCollector:
 
         model_art = self.reader.read_step_output_optional(rs, EvidenceKind.MODEL_ARTIFACT)
         if model_art is not None:
+            target_column = model_art.target_column or str(getattr(model_art, "_raw", {}).get("target_column", ""))
+            if target_column and not bundle.summary.target_column:
+                bundle.summary.target_column = target_column
             features = [
                 ModelFeature(
                     variable_name=c.variable_name,
@@ -413,11 +414,26 @@ class ReportCollector:
             bundle.model = ModelInfo(
                 model_type="logistic_regression_scorecard",
                 branch_id=ref.resolved_branch_id,
-                target=model_art.target_column or bundle.summary.target_column or "",
+                target=target_column or bundle.summary.target_column or "",
                 features=features,
                 intercept=model_art.intercept,
                 fit_dataset_role="train",
             )
+
+    def _collect_modelling_metadata(
+        self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
+    ) -> None:
+        rs = self._resolve_run_step(ref, plan_version_id)
+        if rs is None:
+            return
+
+        meta = self.reader.read_step_output_optional(rs, EvidenceKind.MODELLING_METADATA)
+        if meta is None:
+            return
+
+        target_column = meta.target_column or str(getattr(meta, "_raw", {}).get("target_column", ""))
+        if target_column and not bundle.summary.target_column:
+            bundle.summary.target_column = target_column
 
     def _collect_score_scaling(
         self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
@@ -516,21 +532,33 @@ class ReportCollector:
         for aid in rs.output_artifact_ids:
             art = self.store.get_artifact(aid)
             if art and art.role in ("definition", "report") and "manual" in art.path.lower():
-                data = _get_artifact_json(self.store, aid)
-                if data and "overrides" in data:
-                    for i, ov in enumerate(data["overrides"]):
-                        bundle.manual_interventions.append(ManualIntervention(
-                            intervention_id=f"mi_{i:03d}",
-                            branch_id=ref.resolved_branch_id,
-                            canonical_step_id=ref.canonical_step_id,
-                            step_id=ref.step_id,
-                            type=ov.get("type", "unknown"),
-                            variable_name=ov.get("variable_name", ov.get("variable", "")),
-                            before_artifact=ov.get("before", ""),
-                            after_artifact=ov.get("after", ""),
-                            reason=ov.get("reason", ""),
-                            created_at=ov.get("created_at", ""),
-                        ))
+                data = self.reader.read_optional(aid, EvidenceKind.BIN_DEFINITION)
+                if not data:
+                    continue
+                payload = data.to_dict() if hasattr(data, "to_dict") else dict(data)
+                interventions: list[dict[str, Any]] = []
+                for var in list(payload.get("variables", [])) + list(payload.get("rejected", [])):
+                    if isinstance(var, dict):
+                        interventions.extend(var.get("override_history", []) or [])
+                if not interventions:
+                    legacy = self.reader.read_optional(aid, EvidenceKind.MANUAL_BINNING_OVERRIDES)
+                    if legacy is not None:
+                        legacy_payload = legacy.to_dict() if hasattr(legacy, "to_dict") else getattr(legacy, "_raw", legacy)
+                        if isinstance(legacy_payload, dict):
+                            interventions.extend(legacy_payload.get("overrides", []) or [])
+                for i, ov in enumerate(interventions):
+                    bundle.manual_interventions.append(ManualIntervention(
+                        intervention_id=f"mi_{i:03d}",
+                        branch_id=ref.resolved_branch_id,
+                        canonical_step_id=ref.canonical_step_id,
+                        step_id=ref.step_id,
+                        type=ov.get("user_action", ov.get("type", "unknown")),
+                        variable_name=ov.get("variable_name", ov.get("variable", "")),
+                        before_artifact=str(ov.get("before", "")),
+                        after_artifact=str(ov.get("after", "")),
+                        reason=ov.get("reason", ""),
+                        created_at=ov.get("created_at", ""),
+                    ))
 
     def _collect_redundancy_review(
         self, bundle: ReportBundle, plan_version_id: str,
