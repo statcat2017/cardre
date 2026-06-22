@@ -110,6 +110,50 @@ class ExplainabilityDecisionTreeTests:
         assert report["champion_gate"]["status"] == "warn"
         assert "limitation" in report["champion_gate"]["message"].lower()
 
+    def test_explainability_requires_typed_model_evidence(self) -> None:
+        store, tmp = make_store()
+        data_art, _, _ = make_numeric_dataset(store)
+        from cardre.artifacts import write_json_artifact
+
+        model_art = write_json_artifact(
+            store,
+            artifact_type="model",
+            role="model",
+            stem="bad-model",
+            payload={
+                "target_column": "target",
+                "features": ["feat_a", "feat_b"],
+                "intercept": -1.0,
+                "coefficients": {"feat_a": 0.4, "feat_b": -0.2},
+            },
+            metadata={"schema_version": "cardre.model_artifact.v1"},
+        )
+
+        step_spec = StepSpec(
+            step_id="explain-bad-model",
+            node_type="cardre.model_explainability",
+            node_version="1",
+            category="report",
+            params={},
+            params_hash=json_logical_hash({}),
+            parent_step_ids=[],
+            branch_label="",
+            position=0,
+        )
+        exp_ctx = ExecutionContext(
+            store=store,
+            run_id="test-run",
+            plan_version_id="test-pv",
+            step_spec=step_spec,
+            parent_run_steps=[],
+            input_artifacts=[model_art, data_art],
+            validated_params={},
+            runtime_metadata={},
+        )
+
+        with pytest.raises(ValueError, match="readable as MODEL_ARTIFACT evidence"):
+            ModelExplainabilityNode().run(exp_ctx)
+
 
 @_skip_if_launch
 class ExplainabilityGBDTTests:

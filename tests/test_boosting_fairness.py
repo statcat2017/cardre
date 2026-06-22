@@ -276,6 +276,34 @@ class FairnessReportRunTests:
         assert "parity_summary" in report
         assert "gender" in report["parity_summary"]
 
+    def test_fairness_requires_typed_model_evidence(self) -> None:
+        store, tmp = make_store()
+        data_art, def_art, _ = make_dataset_with_sensitive(store)
+        from cardre.artifacts import write_json_artifact
+
+        model_art = write_json_artifact(
+            store,
+            artifact_type="model",
+            role="model",
+            stem="bad-model",
+            payload={
+                "model_family": "",
+                "features": ["feat_a", "feat_b"],
+                "model_payload": {"feature_importance": {"feat_a": 0.6, "feat_b": 0.4}},
+            },
+            metadata={"schema_version": "cardre.model_artifact.v1"},
+        )
+
+        ctx = make_ctx(
+            store,
+            [data_art, model_art, def_art],
+            "cardre.fairness_report",
+            params={"sensitive_columns": ["gender"], "cutoff": 0.5},
+        )
+
+        with pytest.raises(ValueError, match="readable as MODEL_ARTIFACT evidence"):
+            FairnessReportNode().run(ctx)
+
     def test_small_groups_suppressed(self) -> None:
         store, tmp = make_store()
         rng = np.random.RandomState(42)
