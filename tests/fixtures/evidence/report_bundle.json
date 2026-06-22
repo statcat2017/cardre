@@ -1,0 +1,23 @@
+{
+  "schema_version": "cardre.report_bundle.v1",
+  "project_id": "project_1",
+  "run_id": "run_1",
+  "target_branch_id": "main",
+  "report_mode": "branch",
+  "generated_at": "2026-06-22T00:00:00Z",
+  "generated_by": {
+    "cardre_version": "0.1.0"
+  },
+  "source": {
+    "run_manifest_path": "cardre.sqlite",
+    "run_manifest_hash": "abc",
+    "pathway_hash": "def",
+    "artifact_root": "artifacts"
+  },
+  "summary": {
+    "model_name": "Example",
+    "target_column": "target",
+    "report_status": "complete"
+  },
+  "artifacts": []
+}

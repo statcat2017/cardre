@@ -1,0 +1,11 @@
+{
+  "schema_version": "cardre.hyperparameter_tuning_evidence.v1",
+  "estimator_type": "logistic_regression",
+  "search_method": "grid",
+  "best_params": {
+    "C": 1.0
+  },
+  "best_score": 0.91,
+  "cv_results_shape": [10, 5],
+  "feature_count": 12
+}

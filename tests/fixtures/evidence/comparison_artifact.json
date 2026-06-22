@@ -1,0 +1,24 @@
+{
+  "schema_version": "cardre.comparison_artifact.v1",
+  "comparison_type": "challenger_vs_baseline",
+  "baseline_branch_id": "baseline_1",
+  "challenger_branch_id": "challenger_1",
+  "woe_iv": {
+    "variables": []
+  },
+  "model": {
+    "variables": [],
+    "branch_level": {}
+  },
+  "validation": {
+    "roles": {
+      "train": {},
+      "test": {},
+      "oot": {}
+    }
+  },
+  "cutoff": {
+    "roles": {}
+  },
+  "warnings": []
+}

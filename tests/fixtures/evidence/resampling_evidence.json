@@ -1,0 +1,17 @@
+{
+  "schema_version": "cardre.resampling_evidence.v1",
+  "strategy": "combined",
+  "original": {
+    "total": 100,
+    "bad": 20,
+    "good": 80
+  },
+  "resampled": {
+    "total": 120,
+    "bad": 40,
+    "good": 80
+  },
+  "synthetic_rows_added": 20,
+  "rows_dropped": 0,
+  "sampling_ratio": 1.0
+}

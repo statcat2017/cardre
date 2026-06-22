@@ -1,0 +1,14 @@
+{
+  "schema_version": "cardre.exclusion_summary.v1",
+  "rows_before": 100,
+  "rows_after": 92,
+  "rows_excluded": 8,
+  "rules": [
+    {
+      "column": "age",
+      "operator": "<",
+      "value": 18,
+      "reason": "minor"
+    }
+  ]
+}
