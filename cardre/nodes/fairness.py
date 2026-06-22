@@ -5,7 +5,6 @@ Phase 9 adds concrete governance gates for fairness and alternative-data usage.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import numpy as np
@@ -309,13 +308,10 @@ class ProxyRiskReportNode(NodeType):
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
         if model_art:
             model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+            model = dict(getattr(model_typed, "_raw", {})) if model_typed is not None else {}
             if model_typed is not None:
                 model_features = model_typed.features
-            try:
-                model = json.loads(store.artifact_path(model_art).read_text())
-                feature_importance = model.get("model_payload", {}).get("feature_importance", {})
-            except Exception:
-                pass
+            feature_importance = model.get("model_payload", {}).get("feature_importance", {})
 
         # Load training data
         if train_art:

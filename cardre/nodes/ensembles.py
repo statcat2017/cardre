@@ -9,7 +9,6 @@ record full lineage for auditability.
 from __future__ import annotations
 
 import io
-import json
 import time
 from typing import Any
 
@@ -48,12 +47,14 @@ def _load_estimator(store, estimator_ref: dict):
     return joblib.load(io.BytesIO(estimator_bytes))
 
 
-def _load_model_artifact(store, artifact_id: str) -> dict:
+def _load_model_artifact(reader: ArtifactEvidenceReader, artifact_id: str) -> dict:
     """Load a model JSON artifact by ID."""
-    art = store.get_artifact(artifact_id)
-    if art is None:
-        raise ValueError(f"Model artifact {artifact_id!r} not found")
-    return json.loads(store.artifact_path(art).read_text())
+    typed = reader.read_optional(artifact_id, EvidenceKind.MODEL_ARTIFACT)
+    if typed is None:
+        raise ValueError(f"Model artifact {artifact_id!r} not found or not recognized as model evidence")
+    model = dict(getattr(typed, "_raw", {}))
+    model.update(typed.as_legacy_dict())
+    return model
 
 
 def _get_predictions(
@@ -188,7 +189,7 @@ class VotingEnsembleNode(NodeType):
         models: list[dict] = []
         model_refs: list[dict] = []
         for aid in model_artifact_ids:
-            model = _load_model_artifact(store, aid)
+            model = _load_model_artifact(reader, aid)
             models.append(model)
             model_refs.append({
                 "artifact_id": aid,
@@ -393,7 +394,7 @@ class WeightedEnsembleNode(NodeType):
         models: list[dict] = []
         model_refs: list[dict] = []
         for aid in model_artifact_ids:
-            model = _load_model_artifact(store, aid)
+            model = _load_model_artifact(reader, aid)
             models.append(model)
             model_refs.append({
                 "artifact_id": aid,

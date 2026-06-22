@@ -7,7 +7,6 @@ explainability report before it is champion-eligible.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import polars as pl
@@ -149,8 +148,8 @@ class ModelExplainabilityNode(NodeType):
         if model_art is None:
             raise ValueError("model_explainability requires a model artifact")
 
-        model = json.loads(store.artifact_path(model_art).read_text())
         model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        model = dict(getattr(model_typed, "_raw", {})) if model_typed is not None else {}
         if model_typed is not None:
             model_family = model_typed.model_family
             features = model_typed.features
@@ -304,15 +303,6 @@ class ModelExplainabilityNode(NodeType):
             target_col = model.get("target_column", "")
             if target_col not in df.columns:
                 return None
-
-            meta_art = None
-            for a in [data_art]:
-                try:
-                    meta = json.loads(store.artifact_path(a).read_text())
-                    if "target_column" in meta:
-                        break
-                except Exception:
-                    pass
 
             bad_values_set = set(model.get("bad_class_label", "").split()) or {"bad"}
             y_bin = df[target_col].cast(pl.String).is_in(bad_values_set).cast(pl.Int64).to_numpy()
@@ -591,8 +581,8 @@ class ModelLimitationsNode(NodeType):
         if model_art is None:
             raise ValueError("model_limitations requires a model artifact")
 
-        model = json.loads(store.artifact_path(model_art).read_text())
         model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        model = dict(getattr(model_typed, "_raw", {})) if model_typed is not None else {}
         if model_typed is not None:
             model_family = model_typed.model_family
             features = model_typed.features
