@@ -217,7 +217,7 @@ class ValidationMetricsNode(NodeType):
 
         for data_art in data_arts:
             role = data_art.role
-            df = pl.read_parquet(store.artifact_path(data_art))
+            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
             n = df.height
 
             if "predicted_bad_probability" not in df.columns:
@@ -576,7 +576,7 @@ class ThresholdOptimizationNode(NodeType):
 
         for data_art in data_arts:
             role = data_art.role
-            df = pl.read_parquet(store.artifact_path(data_art))
+            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
 
             if "predicted_bad_probability" not in df.columns:
                 report["roles"][role] = {"error": "Missing predicted_bad_probability"}
@@ -732,7 +732,7 @@ class CutoffAnalysisNode(NodeType):
 
         for data_art in data_arts:
             role = data_art.role
-            df = pl.read_parquet(store.artifact_path(data_art))
+            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
             if "score" not in df.columns or "predicted_bad_probability" not in df.columns:
                 continue
 

@@ -154,7 +154,7 @@ def export_branch_audit_pack(
                 "created_at": art.created_at,
             })
             # Copy non-row-level artifact files
-            src = store.artifact_path(art)
+            src = store.artifact_path(art)  # cardre-allow-artifact-read: artifact-byte-download
             if src.exists():
                 dst = export_dir / "artifacts" / f"{art.artifact_id}_{src.name}"
                 dst.parent.mkdir(parents=True, exist_ok=True)
@@ -173,7 +173,7 @@ def export_branch_audit_pack(
             for aid in rs_data.get("output_artifact_ids", []):
                 art = store.get_artifact(aid)
                 if art:
-                    src = store.artifact_path(art)
+                    src = store.artifact_path(art)  # cardre-allow-artifact-read: artifact-byte-download
                     if src.exists():
                         dst = export_dir / "manifest" / src.name
                         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -188,7 +188,7 @@ def export_branch_audit_pack(
             file_count += 1
             art = store.get_artifact(snap["comparison_artifact_id"])
             if art:
-                src = store.artifact_path(art)
+                src = store.artifact_path(art)  # cardre-allow-artifact-read: artifact-byte-download
                 if src.exists():
                     dst = export_dir / "comparison" / src.name
                     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -288,7 +288,7 @@ def _copy_report_artifacts(
         art = store.get_artifact(art_id)
         if art is None:
             continue
-        src = store.artifact_path(art)
+        src = store.artifact_path(art)  # cardre-allow-artifact-read: artifact-byte-download
         if not src.exists():
             continue
         rel = Path(art.path)

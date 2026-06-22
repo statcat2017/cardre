@@ -550,7 +550,7 @@ class PlanExecutor:
         artifacts: list[ArtifactRef],
     ) -> None:
         for artifact in artifacts:
-            path = store.artifact_path(artifact)
+            path = store.artifact_path(artifact)  # cardre-allow-artifact-read: low-level-evidence-parser
             if not path.exists():
                 raise ArtifactReadError(
                     f"Artifact {artifact.artifact_id!r} metadata points to missing file {artifact.path!r}"

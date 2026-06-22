@@ -1,87 +1,53 @@
-"""Guardrail: ban direct artifact file reads outside the evidence module.
-
-Direct ``json.loads(store.artifact_path(...).read_text())`` bypasses the
-typed ``ArtifactEvidenceReader`` and couples callers to file-layout details.
-This test scans the backend source tree for the pattern and only permits
-it in approved modules.
-"""
+"""Guardrail: ban direct artifact file reads outside the evidence module."""
 
 from __future__ import annotations
 
-import re
-import subprocess
+import importlib.util
+import sys
 from pathlib import Path
-
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Modules where direct artifact reads are approved.
 APPROVED_PATTERNS: set[str] = {
+    "cardre/artifacts.py",
     "cardre/evidence.py",
     "cardre/_evidence/",
+    "cardre/modeling/serialization.py",
 }
 
-# Existing violations that should be migrated to ArtifactEvidenceReader
-# over subsequent PRs. New violations will fail this test.
-_EXISTING_VIOLATORS: set[str] = {
-    "cardre/nodes/build/export.py",
-    "cardre/nodes/build/freeze.py",
-    "cardre/nodes/build/models.py",
-    "cardre/nodes/build/selection.py",
-    "cardre/nodes/ensembles.py",
-    "cardre/nodes/explainability.py",
-    "cardre/nodes/fairness.py",
-    "cardre/nodes/feature_selection.py",
-    "cardre/nodes/validate/apply.py",
-    "cardre/services/manual_binning_service.py",
-}
-
-DIRECT_READ_RE = re.compile(
-    r"json\.loads\s*\(.*artifact_path.*read_text|"
-    r"artifact_path\(.*\)\.read_text\(\)|"
-    r"path\.read_text\(\)  #.*artifact_path",
-)
+def _load_audit_module():
+    script_path = REPO_ROOT / "scripts" / "audit_artifact_reads.py"
+    spec = importlib.util.spec_from_file_location("audit_artifact_reads", script_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-def _source_files() -> list[Path]:
-    """Return all tracked Python source files under cardre/."""
-    result = subprocess.run(
-        ["git", "ls-files", "--", "cardre/*.py", "cardre/**/*.py"],
-        capture_output=True, text=True, cwd=REPO_ROOT,
+def test_no_direct_artifact_reads_in_production():
+    module = _load_audit_module()
+    matches = module.scan_repo(
+        REPO_ROOT,
+        include_production=True,
+        include_tests=False,
+        approved_modules=tuple(APPROVED_PATTERNS),
     )
-    return [REPO_ROOT / f for f in result.stdout.strip().splitlines() if f]
+    violations = [match for match in matches if match.classification == "production_violation"]
 
-
-def _has_direct_read(path: Path) -> bool:
-    """Check whether *path* contains a direct artifact read pattern."""
-    try:
-        text = path.read_text()
-    except (FileNotFoundError, UnicodeDecodeError):
-        return False
-    return bool(DIRECT_READ_RE.search(text))
-
-
-def test_no_new_direct_artifact_reads():
-    """New direct artifact file reads must live in an approved module.
-
-    Existing violations are documented in _EXISTING_VIOLATORS and will
-    be migrated over subsequent PRs. Any new violation fails the test.
-    """
-    new_violations: list[str] = []
-    for f in _source_files():
-        if not _has_direct_read(f):
-            continue
-        rel = f.relative_to(REPO_ROOT).as_posix()
-        if any(rel.startswith(a) for a in APPROVED_PATTERNS):
-            continue
-        if rel in _EXISTING_VIOLATORS:
-            continue
-        new_violations.append(rel)
-
-    assert not new_violations, (
-        "New direct artifact reads found outside approved modules. "
-        "Use ``ArtifactEvidenceReader`` instead or add the module to "
-        "APPROVED_PATTERNS or _EXISTING_VIOLATORS.\n"
-        + "\n".join(f"  {v}" for v in new_violations)
+    assert violations == [], (
+        "Production code must read artifacts via ArtifactEvidenceReader, not raw file reads.\n"
+        + "\n".join(f"  {m.file}:{m.line_number}: {m.pattern_type}" for m in violations)
     )
+
+
+def test_audit_script_classifies_test_reads():
+    module = _load_audit_module()
+    matches = module.scan_repo(
+        REPO_ROOT,
+        include_production=False,
+        include_tests=True,
+        approved_modules=tuple(APPROVED_PATTERNS),
+    )
+    assert matches
+    assert any(match.classification == "test_violation" for match in matches)

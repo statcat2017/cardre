@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Any
 
 from cardre.audit import JsonDict
@@ -381,6 +382,7 @@ class ModelArtifact:
         coefficients_dict: dict[str, float] = {}
         raw_coeffs = data.get("coefficients", [])
         model_payload = data.get("model_payload", {}) if isinstance(data.get("model_payload", {}), dict) else {}
+        model_family = str(data.get("model_family", "")).strip()
 
         if isinstance(raw_coeffs, dict):
             coefficients_dict = {
@@ -407,9 +409,11 @@ class ModelArtifact:
         features = data.get("features", [])
         if not features and coefficients_dict:
             features = list(coefficients_dict.keys())
+        if not model_family and (coefficients_dict or raw_coeffs):
+            model_family = "logistic_regression"
 
         return cls(
-            model_family=data.get("model_family", ""),
+            model_family=model_family,
             features=features,
             target_column=data.get("target_column", ""),
             intercept=float(data.get("intercept", 0)),
@@ -455,13 +459,32 @@ class ScoreScaling:
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ScoreScaling:
         raw_odds = data.get("base_odds", "50:1")
         base_odds = str(raw_odds) if not isinstance(raw_odds, str) else raw_odds
+        higher_score_is_lower_risk = data.get("higher_score_is_lower_risk")
+        pdo = data.get("pdo", data.get("points_to_double_odds", 20))
+        base_score = data.get("base_score", 600)
+        if "factor" in data and "offset" in data:
+            factor = float(data.get("factor", 0))
+            offset = float(data.get("offset", 0))
+        else:
+            factor = float(pdo) / math.log(2)
+            odds_ratio = base_odds
+            if isinstance(raw_odds, str) and ":" in raw_odds:
+                num, den = raw_odds.split(":", 1)
+                odds_ratio = float(num) / float(den)
+            else:
+                odds_ratio = float(raw_odds)
+            offset = float(base_score) - factor * math.log(odds_ratio)
         return cls(
-            base_score=data.get("base_score", 600),
+            base_score=base_score,
             base_odds=base_odds,
-            pdo=data.get("pdo", data.get("points_to_double_odds", 20)),
-            factor=float(data.get("factor", 0)),
-            offset=float(data.get("offset", 0)),
-            score_direction=data.get("score_direction", "higher_is_better"),
+            pdo=pdo,
+            factor=factor,
+            offset=offset,
+            score_direction=(
+                "higher_is_lower_risk"
+                if higher_score_is_lower_risk is True
+                else data.get("score_direction", "higher_is_better")
+            ),
             rounding=data.get("rounding", "nearest_integer"),
             min_score=data.get("min_score", 0),
             max_score=data.get("max_score", 0),

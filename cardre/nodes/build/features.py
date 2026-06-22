@@ -89,7 +89,7 @@ class CalculateWoeIvNode(NodeType):
         bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
         meta_def = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
 
-        df = pl.read_parquet(store.artifact_path(train_artifact))
+        df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
 
         target_column = meta_def.target_column
         good_values = set(str(v) for v in meta_def.good_values)
@@ -376,7 +376,7 @@ class WoeTransformTrainNode(NodeType):
             raise ValueError("WOE transform received an empty bin definition")
         target_column = meta.target_column if meta is not None else ""
 
-        df = pl.read_parquet(store.artifact_path(train_artifact))
+        df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
         woe_map = woe_table.mapping
 
         missing_woe_bins: list[str] = []

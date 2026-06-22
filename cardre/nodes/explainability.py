@@ -304,7 +304,7 @@ class ModelExplainabilityNode(NodeType):
             import joblib
             estimator = joblib.load(io.BytesIO(estimator_bytes))
 
-            df = pl.read_parquet(store.artifact_path(data_art))
+            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
             target_col = model.get("target_column", "")
             if target_col not in df.columns:
                 return None
@@ -405,7 +405,7 @@ class ModelExplainabilityNode(NodeType):
             import joblib
             estimator = joblib.load(io.BytesIO(estimator_bytes))
 
-            df = pl.read_parquet(store.artifact_path(data_art))
+            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
             X = df.select(features).to_numpy()
 
             feature_importance = model.get("model_payload", {}).get("feature_importance", {})
@@ -461,7 +461,7 @@ class ModelExplainabilityNode(NodeType):
 
             model_family = model.get("model_family", "")
 
-            df = pl.read_parquet(store.artifact_path(data_art))
+            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
             X = df.select(features).to_numpy()
 
             if model_family in ("random_forest", "gbdt", "decision_tree"):
@@ -716,7 +716,7 @@ class ModelLimitationsNode(NodeType):
             return issues
 
         try:
-            df = pl.read_parquet(store.artifact_path(train_art))
+            df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
         except Exception:
             return issues
 
