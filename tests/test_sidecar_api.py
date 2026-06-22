@@ -922,7 +922,7 @@ class TestProjectArtifacts:
         assert len(data["artifacts"]) > 0
 
     def test_json_artifact_summary(self, client, tmp_dir):
-        """P2#4: JSON artifact summary reads via store.artifact_path()."""
+        """P2#4: JSON artifact summary stays redacted for untyped JSON."""
         import json as jmod
 
         proj_path = tmp_dir / "test.cardre"
@@ -941,10 +941,17 @@ class TestProjectArtifacts:
         assert resp.status_code == 200
         data = resp.json()
         assert data["summary_preview"] is not None
-        assert data["summary_preview"]["score"] == 95
+        preview = data["summary_preview"]
+        if preview["kind"] == "unknown":
+            assert preview["note"]
+        else:
+            assert preview["fields"]["type"] == "object"
+            assert preview["fields"]["key_count"] == 3
+            assert preview["fields"]["keys"] == ["score", "rank", "details"]
+        assert '"95"' not in json.dumps(preview)
 
     def test_json_artifact_preview(self, client, tmp_dir):
-        """P2#4: JSON artifact preview reads via store.artifact_path()."""
+        """P2#4: JSON artifact preview stays redacted for untyped JSON."""
         import json as jmod
 
         proj_path = tmp_dir / "test.cardre"
@@ -964,6 +971,16 @@ class TestProjectArtifacts:
         data = resp.json()
         assert data["media_type"] == "application/json"
         assert data["json_content"] is not None
+        preview = data["json_content"]
+        if preview["kind"] == "unknown":
+            assert preview["note"]
+        else:
+            assert preview["fields"]["type"] == "object"
+            assert preview["fields"]["key_count"] == 3
+            assert preview["fields"]["keys"] == ["alpha", "beta", "gamma"]
+        assert '"1"' not in json.dumps(preview)
+        assert '"2"' not in json.dumps(preview)
+        assert '"3"' not in json.dumps(preview)
 
     def test_artifact_preview(self, client, tmp_dir, sample_german_credit):
         proj_path = tmp_dir / "test.cardre"
@@ -1996,4 +2013,3 @@ class TestCancelAndManifest:
             assert "node_type" in step
             assert "status" in step
             assert "execution_fingerprint" in step
-

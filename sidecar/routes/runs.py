@@ -2,16 +2,17 @@
 from __future__ import annotations
 
 import threading
-from pathlib import Path
+from dataclasses import asdict
 
 from fastapi import APIRouter, HTTPException, Query
 
 from cardre.executor import PlanExecutor
+from cardre.evidence import ArtifactEvidenceReader
 from cardre.registry import NodeRegistry
 from cardre.services.project_registry import get_store_for_project, load_registry, ProjectNotFoundError, ProjectPathMissingError
 from cardre.services.run_orchestrator import execute_run, dispatch_run_async
 from cardre.store import ProjectStore
-from sidecar.models import RunRequest, RunResponse, RunStepsResponse, RunStepItem, ArtifactResponse
+from sidecar.models import RunRequest, RunResponse, RunStepsResponse, RunStepItem
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -166,11 +167,10 @@ def get_run_manifest(run_id: str):
         run = store.get_run(run_id)
         if run is None:
             continue
+        reader = ArtifactEvidenceReader(store)
         for art in store.list_artifacts():
             if art.artifact_type == "run_manifest" and art.metadata.get("run_id") == run_id:
-                path = store.artifact_path(art)
-                if path.exists():
-                    import json
-                    return json.loads(path.read_text())
+                manifest = reader.read_run_manifest(art.artifact_id)
+                return asdict(manifest)
         raise HTTPException(status_code=404, detail={"code": "MANIFEST_NOT_FOUND", "message": f"No manifest for run {run_id}"})
     raise HTTPException(status_code=404, detail={"code": "RUN_NOT_FOUND", "message": f"No run with ID {run_id}"})

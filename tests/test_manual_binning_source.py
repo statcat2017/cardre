@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from cardre.audit import StepSpec
+from cardre.audit import RunStepRecord, StepSpec
+from cardre.evidence import BinDefinition, BinVariable, EvidenceKind, SelectionDefinition, SelectedVariable
+import cardre.services.manual_binning_service as manual_binning_service
 from cardre.services.step_topology import (
     BINNING_SOURCE_CANONICAL_IDS,
     AmbiguousBranchAncestorError,
@@ -170,3 +172,102 @@ class TestManualBinningSourceInfoConstruction:
             variable_selection_artifact_id="art_002",
         )
         assert info.binning_method == "fine_classing"
+
+
+class TestManualBinningServiceEvidenceReads:
+    def test_resolve_upstream_defs_uses_typed_evidence(self, monkeypatch):
+        reader_calls: list[tuple[str, EvidenceKind]] = []
+
+        class FakeStore:
+            def get_latest_successful_run_step_for_step(self, plan_version_id, step_id, branch_id=None):
+                return None
+
+            def get_latest_successful_run_id(self, plan_version_id):
+                return "run-1"
+
+            def get_latest_successful_run_id_for_plan(self, plan_id):
+                return "run-1"
+
+            def get_run_steps(self, run_id):
+                return [
+                    RunStepRecord(
+                        run_step_id="rs-bin",
+                        run_id=run_id,
+                        step_id="binning",
+                        plan_version_id="pv-1",
+                        status="succeeded",
+                        started_at="2024-01-01T00:00:00+00:00",
+                        finished_at="2024-01-01T00:00:01+00:00",
+                        input_artifact_ids=[],
+                        output_artifact_ids=["art-bin"],
+                        execution_fingerprint={},
+                        warnings=[],
+                        errors=[],
+                    ),
+                    RunStepRecord(
+                        run_step_id="rs-sel",
+                        run_id=run_id,
+                        step_id="variable-selection",
+                        plan_version_id="pv-1",
+                        status="succeeded",
+                        started_at="2024-01-01T00:00:00+00:00",
+                        finished_at="2024-01-01T00:00:01+00:00",
+                        input_artifact_ids=[],
+                        output_artifact_ids=["art-sel"],
+                        execution_fingerprint={},
+                        warnings=[],
+                        errors=[],
+                    ),
+                ]
+
+            def get_artifact(self, artifact_id):
+                raise AssertionError("service should not read artifacts directly")
+
+            def artifact_path(self, artifact):
+                raise AssertionError("service should not use artifact_path directly")
+
+        class FakeArtifactEvidenceReader:
+            def __init__(self, store):
+                self.store = store
+
+            def read(self, artifact_id, kind):
+                reader_calls.append((artifact_id, kind))
+                if artifact_id == "art-bin":
+                    assert kind is EvidenceKind.BIN_DEFINITION
+                    return BinDefinition(
+                        variables=[
+                            BinVariable(
+                                variable="income",
+                                dtype="float",
+                                kind="numeric",
+                                bins=[{"label": "low"}],
+                            )
+                        ],
+                        source_artifact_id=artifact_id,
+                    )
+                if artifact_id == "art-sel":
+                    assert kind is EvidenceKind.SELECTION_DEFINITION
+                    return SelectionDefinition(
+                        selected=[SelectedVariable(variable="income", reason="kept")],
+                        method="correlation",
+                        source_artifact_id=artifact_id,
+                    )
+                raise AssertionError(f"unexpected artifact read: {artifact_id}")
+
+        monkeypatch.setattr(manual_binning_service, "ArtifactEvidenceReader", FakeArtifactEvidenceReader)
+
+        service = manual_binning_service.ManualBinningService(FakeStore())
+        (bin_def, sel_def, bin_artifact_id, sel_artifact_id), err = service._resolve_upstream_defs(
+            plan_version_id="pv-1",
+            plan_id="plan-1",
+        )
+
+        assert err is None
+        assert bin_artifact_id == "art-bin"
+        assert sel_artifact_id == "art-sel"
+        assert bin_def == {"variables": [{"variable": "income", "dtype": "float", "kind": "numeric", "bins": [{"label": "low"}]}]}
+        assert sel_def == {"selected": [{"variable": "income", "reason": "kept"}], "method": "correlation"}
+        assert reader_calls == [
+            ("art-bin", EvidenceKind.BIN_DEFINITION),
+            ("art-sel", EvidenceKind.SELECTION_DEFINITION),
+        ]
