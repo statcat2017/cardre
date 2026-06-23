@@ -98,6 +98,33 @@ export function buildWorkflowGuidanceExportPhase(): WorkflowGuidance {
   };
 }
 
+export function buildWorkflowGuidanceManualBinningPhase(): WorkflowGuidance {
+  return {
+    phase: "build",
+    next_action: {
+      kind: "edit_bins",
+      label: "Edit bins",
+      description: "Review and edit manual binning for selected variables.",
+      run_scope: null,
+      step_id: "manual-binning",
+      action_target: "manual_binning:N_selected=12",
+    },
+    blockers: [],
+    step_guidance: {
+      "manual-binning": {
+        readiness: "needs_review",
+        primary_action: "Edit bins",
+        explanation: "Review the automated bins and mark review complete.",
+        evidence_kinds: ["bin_definition", "woe_iv_evidence"],
+        action_target: "manual_binning:N_selected=12",
+      },
+    },
+    report_readiness: null,
+    branch_id: BRANCH_ID,
+    run_id: null,
+  };
+}
+
 export function buildReportReadinessBlocked(stepId: string): ReportReadinessResponse {
   return {
     ready: false,
