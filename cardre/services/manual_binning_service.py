@@ -385,7 +385,8 @@ class ManualBinningService:
             params=params,
         )
 
-        # Write audit annotation
+        # Write audit annotation against the NEW plan version
+        annotation_plan_version_id = result.new_plan_version_id
         now = utc_now_iso()
         annotation_id = str(uuid.uuid4())
         with self._store.transaction() as conn:
@@ -394,12 +395,14 @@ class ManualBinningService:
                 "(annotation_id, step_id, plan_version_id, kind, actor, payload_json, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
-                    annotation_id, step_id, plan_version_id,
+                    annotation_id, step_id, annotation_plan_version_id,
                     "manual_binning_review", "user",
                     json.dumps({
                         "reviewed": reviewed,
                         "accept_automated": accept_automated,
                         "override_count": len(overrides) if overrides else 0,
+                        "base_plan_version_id": plan_version_id,
+                        "new_plan_version_id": annotation_plan_version_id,
                     }),
                     now,
                 ),
