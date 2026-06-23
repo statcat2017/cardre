@@ -239,7 +239,8 @@ export function ProjectView({ projectId, onBack }: Props) {
           {activeSection === "exports" && (
             <ExportPanel
               projectId={projectId}
-              targetBranchId={selectedBranchId ?? undefined}
+              targetBranchId={selectedBranchId}
+              onBranchSelect={setSelectedBranchId}
               onStepSelect={handleStepSelect}
             />
           )}

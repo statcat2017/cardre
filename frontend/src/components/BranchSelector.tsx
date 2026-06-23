@@ -1,54 +1,52 @@
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../api/client";
 import type { BranchListItem } from "../types";
 import { theme } from "../styles";
 
-interface Props {
-  projectId: string;
+interface BranchSelectorProps {
+  branches: BranchListItem[];
   selectedBranchId: string | null;
-  onBranchChange: (branchId: string) => void;
+  onSelect?: (branchId: string) => void;
+  disabled?: boolean;
 }
 
-export function BranchSelector({ projectId, selectedBranchId, onBranchChange }: Props) {
-  const { data: branchData } = useQuery({
-    queryKey: ["projectBranches", projectId],
-    queryFn: () => api.listBranches(projectId, { status: "active" }),
-    enabled: !!projectId,
-  });
+export function BranchSelector({ branches, selectedBranchId, onSelect, disabled }: BranchSelectorProps) {
+  const activeBranches = branches.filter((b) => b.status === "active");
+  const selectedBranch = activeBranches.find((b) => b.branch_id === selectedBranchId);
 
-  const branches: BranchListItem[] = branchData?.branches ?? [];
-
-  // Auto-select first branch if none selected
-  React.useEffect(() => {
-    if (!selectedBranchId && branches.length > 0) {
-      onBranchChange(branches[0].branch_id);
-    }
-  }, [branches, selectedBranchId, onBranchChange]);
-
-  if (branches.length === 0) return null;
+  if (!onSelect) {
+    return (
+      <div>
+        <label style={{ fontSize: 12, fontWeight: 600, color: theme.textSoft, display: "block", marginBottom: 4 }}>
+          Target branch
+        </label>
+        <div style={{ fontSize: 13, color: theme.muted, paddingTop: 6 }}>
+          {selectedBranchId && selectedBranch
+            ? selectedBranch.name || selectedBranch.branch_id
+            : "Select a branch."}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding: "8px 24px 0", display: "flex", alignItems: "center", gap: 8 }}>
-      <label style={{ fontSize: 11, color: theme.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-        Branch
+    <div>
+      <label style={{ fontSize: 12, fontWeight: 600, color: theme.textSoft, display: "block", marginBottom: 4 }}>
+        Target branch
       </label>
       <select
+        data-testid="branch-select"
         value={selectedBranchId ?? ""}
-        onChange={(e) => onBranchChange(e.target.value)}
+        onChange={(e) => onSelect(e.target.value)}
+        disabled={disabled}
         style={{
-          padding: "4px 8px",
-          borderRadius: 4,
-          border: `1px solid ${theme.border}`,
-          fontSize: 12,
-          backgroundColor: theme.surface,
-          color: theme.text,
-          cursor: "pointer",
+          padding: "6px 10px", borderRadius: 6, border: `1px solid ${theme.borderStrong}`,
+          fontSize: 13, backgroundColor: theme.surface, color: theme.text,
         }}
       >
-        {branches.map((b) => (
+        {activeBranches.length === 0 && <option value="">No branches available</option>}
+        {activeBranches.map((b) => (
           <option key={b.branch_id} value={b.branch_id}>
-            {b.name || b.branch_id.slice(0, 8)}
+            {b.name || b.branch_id}
           </option>
         ))}
       </select>
