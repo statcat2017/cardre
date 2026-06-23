@@ -9,14 +9,14 @@ export function useWorkflowGuidance(
   runId?: string | null,
 ) {
   return useQuery<WorkflowGuidance>({
-    queryKey: ["workflowGuidance", planId, branchId, runId],
+    queryKey: ["workflowGuidance", projectId, planId, branchId, runId],
     queryFn: () =>
       api.getWorkflowGuidance(planId!, {
         project_id: projectId!,
         ...(branchId ? { branch_id: branchId } : {}),
         ...(runId ? { run_id: runId } : {}),
       }),
-    enabled: !!planId && !!projectId,
+    enabled: !!planId && !!projectId && !!branchId,
     staleTime: 2000,
     retry: false,
   });

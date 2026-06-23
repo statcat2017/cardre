@@ -9,9 +9,10 @@ interface Props {
   stepProgress?: { completed: number; total: number } | null;
   guidance?: WorkflowGuidance | null;
   onAction: (guidance: WorkflowGuidance) => void;
+  onRun?: () => void;
 }
 
-export function TopBar({ project, planName, running, stepProgress, guidance, onAction }: Props) {
+export function TopBar({ project, planName, running, stepProgress, guidance, onAction, onRun }: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   const runLabel = running
@@ -22,11 +23,13 @@ export function TopBar({ project, planName, running, stepProgress, guidance, onA
       ? guidance.next_action.label
       : "Run Pathway";
 
-  const ctaDisabled = running || (!guidance && !running);
+  const ctaDisabled = running || (!guidance && !onRun);
 
   const handleCtaClick = () => {
     if (guidance) {
       onAction(guidance);
+    } else if (onRun) {
+      onRun();
     }
   };
 

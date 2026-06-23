@@ -129,8 +129,14 @@ export function ProjectView({ projectId, onBack }: Props) {
           break;
         case "run_pathway":
           if (scorecardPlan && planData) {
+            const scope = action.run_scope ?? "full_plan";
+            if (scope === "to_node" && !action.step_id) {
+              addDiagnostic("[warning] run_pathway with to_node scope but no step_id — falling back to full_plan");
+            }
             startRun(planData.latest_version_id, {
-              run_scope: action.run_scope ?? "full_plan",
+              run_scope: scope,
+              target_step_id: scope === "to_node" ? action.step_id ?? undefined : undefined,
+              branch_id: g.branch_id ?? undefined,
             });
           }
           break;
@@ -171,6 +177,7 @@ export function ProjectView({ projectId, onBack }: Props) {
         stepProgress={stepProgress}
         guidance={guidance}
         onAction={handleJourneyAction}
+        onRun={handleRun}
       />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
