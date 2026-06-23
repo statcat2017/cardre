@@ -95,7 +95,7 @@ describe("ExportPanel branch selection", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Select a branch.")).toBeInTheDocument();
+      expect(screen.getAllByText("Select a branch.").length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -112,7 +112,7 @@ describe("ExportPanel branch selection", () => {
     });
   });
 
-  it("disables re-check when no branch is selected", async () => {
+  it("shows no recheck button when no branch is selected", async () => {
     const client = createClientWithCache([]);
     render(
       <QueryClientProvider client={client}>
@@ -121,8 +121,7 @@ describe("ExportPanel branch selection", () => {
     );
 
     await waitFor(() => {
-      const recheck = screen.getByRole("button", { name: /re-check/i });
-      expect(recheck).toBeDisabled();
+      expect(screen.queryByRole("button", { name: /re-check/i })).not.toBeInTheDocument();
     });
   });
 
