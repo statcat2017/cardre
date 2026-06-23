@@ -11,7 +11,7 @@ from typing import Any
 
 from cardre.reporting.readiness import check_report_readiness
 from cardre.services.manual_binning_service import ManualBinningService
-from cardre.services.plan_service import PlanService
+from cardre.staleness import compute_staleness
 from cardre.step_id import resolve_required_steps
 from cardre.store import ProjectStore
 
@@ -158,7 +158,6 @@ class WorkflowGuidanceService:
 
     def __init__(self, store: ProjectStore) -> None:
         self._store = store
-        self._plan_service = PlanService(store)
         self._manual_binning_service = ManualBinningService(store)
 
     def build(
@@ -171,12 +170,29 @@ class WorkflowGuidanceService:
         """Build workflow guidance for the given plan/branch/run.
 
         At least one of branch_id or run_id is required.
-        Raises ``WorkflowGuidanceServiceError`` if neither is provided.
+        If both are supplied they must be consistent:
+        run.plan_version_id must equal branch.head_plan_version_id.
+        Raises ``WorkflowGuidanceServiceError`` on invalid keys.
         """
         if branch_id is None and run_id is None:
             raise WorkflowGuidanceServiceError(
                 "At least one of branch_id or run_id is required."
             )
+
+        # --- Fix 1: consistency check when both supplied ---
+        if branch_id is not None and run_id is not None:
+            run = self._store.get_run(run_id)
+            branch = self._store.get_branch(branch_id)
+            if run is None:
+                raise WorkflowGuidanceServiceError(f"Run {run_id!r} not found")
+            if branch is None:
+                raise WorkflowGuidanceServiceError(f"Branch {branch_id!r} not found")
+            if run["plan_version_id"] != branch["head_plan_version_id"]:
+                raise WorkflowGuidanceServiceError(
+                    "run_id and branch_id are inconsistent: "
+                    f"run's plan_version_id {run['plan_version_id']!r} "
+                    f"does not match branch head {branch['head_plan_version_id']!r}"
+                )
 
         # Resolve branch_id from run_id if needed
         if branch_id is None and run_id is not None:
@@ -188,39 +204,63 @@ class WorkflowGuidanceService:
                         branch_id = b["branch_id"]
                         break
 
-        # Resolve run_id from branch_id if needed
+        # --- Fix 2: only successful runs, no fallback to failed ---
         if run_id is None and branch_id is not None:
             branch = self._store.get_branch(branch_id)
             if branch is not None:
                 head_pv = branch.get("head_plan_version_id")
                 if head_pv:
                     runs = self._store.list_runs(head_pv)
-                    if runs:
-                        for r in runs:
-                            if r.get("status") == "succeeded":
-                                run_id = r["run_id"]
-                                break
-                        if run_id is None:
-                            run_id = runs[0]["run_id"]
+                    for r in runs:
+                        if r.get("status") == "succeeded":
+                            run_id = r["run_id"]
+                            break
+                    # No fallback — run_id stays None if no successful run
 
         # Get branch step map
         resolved_branch_id = branch_id or ""
         head_pv_id = _resolve_head_pv_id(self._store, plan_id, resolved_branch_id)
         step_map = self._store.get_branch_step_map(resolved_branch_id, head_pv_id) if resolved_branch_id else []
 
-        # Get plan steps with staleness (via PlanService)
-        step_statuses: list[Any] = []
-        try:
-            plan_resp = self._plan_service.get_plan_with_status(plan_id, project_id)
-            step_statuses = plan_resp.steps
-        except Exception:
-            step_statuses = []
+        # --- Fix 3: derive step status from branch+run context ---
+        # Get plan version steps directly from store
+        plan_steps = self._store.get_plan_version_steps(head_pv_id) if head_pv_id else []
 
-        # Build status lookup by canonical step ID
-        status_by_canonical: dict[str, Any] = {}
-        for ss in step_statuses:
-            cid = ss.canonical_step_id or ss.step_id
-            status_by_canonical[cid] = ss
+        # Compute staleness with branch context
+        staleness_map: dict[str, bool] = {}
+        if head_pv_id:
+            try:
+                staleness_map = compute_staleness(
+                    self._store, head_pv_id, branch_id=resolved_branch_id or None,
+                )
+            except Exception:
+                staleness_map = {}
+
+        # Build run step status lookup (keyed by step_id)
+        run_step_status: dict[str, str] = {}
+        if run_id:
+            try:
+                for rs in self._store.get_run_steps(run_id):
+                    run_step_status[rs.step_id] = rs.status
+            except Exception:
+                pass
+
+        # Resolve canonical step -> actual step_id through branch step map
+        resolved_canonical = resolve_required_steps(
+            branch_id=resolved_branch_id or "unknown",
+            canonical_step_ids=ALL_CANONICAL_IDS,
+            branch_step_map=step_map,
+        ) if resolved_branch_id else {}
+
+        # Build a status map keyed by canonical ID — from branch+run context
+        status_by_canonical: dict[str, Any] = _build_canonical_status_map(
+            plan_steps=plan_steps,
+            resolved_canonical=resolved_canonical,
+            step_map=step_map,
+            staleness_map=staleness_map,
+            run_step_status=run_step_status,
+            canonical_ids=ALL_CANONICAL_IDS,
+        )
 
         # Build step guidance for all canonical steps
         step_guidance: dict[str, dict[str, Any]] = {}
@@ -302,7 +342,7 @@ class WorkflowGuidanceService:
         plan_id: str,
         branch_id: str,
         step_map: list[dict[str, Any]],
-        status: Any | None,
+        status: dict[str, Any] | None,
     ) -> dict[str, Any]:
         readiness = "ready"
         explanation = STEP_EXPLANATIONS.get(canonical_id, "")
@@ -310,13 +350,13 @@ class WorkflowGuidanceService:
 
         if status is None:
             readiness = "needs_config"
-        elif getattr(status, "is_stale", False):
+        elif status.get("is_stale", False):
             readiness = "stale"
-        elif getattr(status, "status", "") == "succeeded":
+        elif status.get("status", "") == "succeeded":
             readiness = "complete"
-        elif getattr(status, "status", "") == "failed":
+        elif status.get("status", "") == "failed":
             readiness = "blocked"
-        elif getattr(status, "status", "") in ("not_run", ""):
+        elif status.get("status", "") in ("not_run", ""):
             readiness = "needs_config"
 
         # Check manual-binning readiness specifically
@@ -512,3 +552,64 @@ def _resolve_head_pv_id(store: ProjectStore, plan_id: str, branch_id: str) -> st
                 return head
     latest = store.get_latest_plan_version_id(plan_id)
     return latest or ""
+
+
+def _build_canonical_status_map(
+    plan_steps: list[Any],
+    resolved_canonical: dict[str, Any],
+    step_map: list[dict[str, Any]],
+    staleness_map: dict[str, bool],
+    run_step_status: dict[str, str],
+    canonical_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    """Build a canonical-step-keyed status dict from branch+run context.
+
+    Returns dict keyed by canonical_step_id with fields:
+    step_id, canonical_step_id, status, is_stale, params, node_type.
+    """
+    # Build lookup from plan steps by step_id
+    plan_by_step: dict[str, Any] = {}
+    for ps in plan_steps:
+        plan_by_step[ps.step_id] = ps
+
+    # For each canonical step, determine the actual step_id from
+    # the branch step map, then derive status from run + staleness.
+    result: dict[str, dict[str, Any]] = {}
+
+    # Also build a direct canonical->plan-step map for non-branched projects
+    canonical_to_plan: dict[str, Any] = {}
+    for ps in plan_steps:
+        cid = getattr(ps, "canonical_step_id", None) or ps.step_id
+        if cid not in canonical_to_plan:
+            canonical_to_plan[cid] = ps
+
+    for cid in canonical_ids:
+        actual_step_id = cid
+        resolved = resolved_canonical.get(cid)
+        if resolved is not None:
+            actual_step_id = getattr(resolved, "step_id", None) or cid
+        else:
+            # Fallback: try to find the canonical ID from direct plan steps
+            ps = canonical_to_plan.get(cid)
+            if ps is not None:
+                actual_step_id = ps.step_id
+
+        plan_step = plan_by_step.get(actual_step_id) or canonical_to_plan.get(cid)
+
+        is_stale = staleness_map.get(actual_step_id, False)
+        run_status = run_step_status.get(actual_step_id, "")
+
+        status = run_status
+        if not status:
+            status = getattr(plan_step, "status", "") if plan_step else "not_run"
+
+        result[cid] = {
+            "step_id": actual_step_id,
+            "canonical_step_id": cid,
+            "status": status,
+            "is_stale": is_stale,
+            "node_type": getattr(plan_step, "node_type", "") if plan_step else "",
+            "params": getattr(plan_step, "params", {}) if plan_step else {},
+        }
+
+    return result
