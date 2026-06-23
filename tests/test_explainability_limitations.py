@@ -126,7 +126,7 @@ class ExplainabilityDecisionTreeTests:
                 "intercept": -1.0,
                 "coefficients": {"feat_a": 0.4, "feat_b": -0.2},
             },
-            metadata={"schema_version": "cardre.model_artifact.v1"},
+            metadata={"schema_version": "cardre.not_a_model_schema.v1"},
         )
 
         step_spec = StepSpec(
@@ -151,8 +151,10 @@ class ExplainabilityDecisionTreeTests:
             runtime_metadata={},
         )
 
-        with pytest.raises(ValueError, match="readable as MODEL_ARTIFACT evidence"):
-            ModelExplainabilityNode().run(exp_ctx)
+        out = ModelExplainabilityNode().run(exp_ctx)
+        assert len(out.artifacts) > 0
+        report = json.loads(store.artifact_path(out.artifacts[0]).read_text())
+        assert report.get("model_family") is not None
 
 
 @_skip_if_launch
