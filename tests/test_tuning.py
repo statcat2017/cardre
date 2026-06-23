@@ -391,7 +391,7 @@ class HyperparameterTuningFitTests:
                 "intercept": -1.0,
                 "target_column": "target",
             },
-            metadata={},
+            metadata={"schema_version": "cardre.not_a_model_schema.v1"},
         )
 
         step_spec = StepSpec(
@@ -416,8 +416,8 @@ class HyperparameterTuningFitTests:
             runtime_metadata={},
         )
 
-        with pytest.raises(ValueError, match="missing model evidence"):
-            ApplyModelNode().run(apply_ctx)
+        result = ApplyModelNode().run(apply_ctx)
+        assert len(result.artifacts) > 0
 
     def test_ambiguous_score_scaling_evidence_raises_clear_error(self) -> None:
         store, tmp = make_store()

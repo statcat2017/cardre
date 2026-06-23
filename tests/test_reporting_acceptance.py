@@ -95,6 +95,22 @@ def _create_branch_with_step_map(
         )
 
 
+def _review_manual_binning(store: ProjectStore, plan_id: str, plan_version_id: str) -> str:
+    """Mark manual-binning as reviewed so readiness checks pass. Returns new plan version ID."""
+    from cardre.services.plan_service import PlanService
+    steps = store.get_plan_version_steps(plan_version_id)
+    for s in steps:
+        if s.canonical_step_id == "manual-binning" or s.node_type == "cardre.manual_binning":
+            result = PlanService(store).update_params(
+                plan_id=plan_id,
+                step_id=s.step_id,
+                base_plan_version_id=plan_version_id,
+                params={"reviewed": True},
+            )
+            return result.new_plan_version_id
+    return plan_version_id
+
+
 def _assign_champion(store: ProjectStore, project_id: str, plan_id: str, branch_id: str) -> None:
     """Create a comparison snapshot and champion assignment for a branch."""
     from cardre.artifacts import write_json_artifact
@@ -218,6 +234,9 @@ class TestAcceptanceChampionReport:
             params={"min_iv": 0.0, "max_variables": 20, "manual_includes": [], "manual_excludes": []},
         )
         self.pv_id = self.store.get_latest_plan_version_id(self.plan_id)
+
+        # Mark manual-binning as reviewed before running
+        self.pv_id = _review_manual_binning(self.store, self.plan_id, self.pv_id)
 
         # Run the plan
         reg = NodeRegistry.with_defaults()
@@ -458,6 +477,9 @@ class TestAcceptanceNoChampionBranch:
             params={"min_iv": 0.0, "max_variables": 20, "manual_includes": [], "manual_excludes": []},
         )
         self.pv_id = self.store.get_latest_plan_version_id(self.plan_id)
+
+        # Mark manual-binning as reviewed before running
+        self.pv_id = _review_manual_binning(self.store, self.plan_id, self.pv_id)
 
         reg = NodeRegistry.with_defaults()
         executor = PlanExecutor(reg)

@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, getReportServeUrl } from "../api/client";
 import { useReportReadiness } from "../hooks/useReportReadiness";
+import { BranchSelector } from "./BranchSelector";
+import { latestSuccessfulRun } from "../utils/runs";
 import type {
   BranchListItem,
-  RunListItem,
   ReportReadinessItem,
   GenerateReportResponse,
 } from "../types";
@@ -12,7 +13,8 @@ import { theme } from "../styles";
 
 interface Props {
   projectId: string;
-  targetBranchId?: string;
+  targetBranchId: string | null;
+  onBranchSelect?: (branchId: string) => void;
   onStepSelect?: (stepId: string) => void;
 }
 
@@ -34,10 +36,9 @@ const MODE_LABELS: Record<ReportMode, string> = {
   branch: "Branch report",
 };
 
-export function ExportPanel({ projectId, targetBranchId: targetBranchIdProp, onStepSelect }: Props) {
+export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepSelect }: Props) {
   const queryClient = useQueryClient();
   const [reportMode, setReportMode] = useState<ReportMode>("branch");
-  const [targetBranchIdLocal, setTargetBranchIdLocal] = useState<string>("");
   const [blockers, setBlockers] = useState<ReportReadinessItem[]>([]);
   const [warnings, setWarnings] = useState<ReportReadinessItem[]>([]);
   const [errorMsg, setErrorMsg] = useState<string>("");
@@ -49,8 +50,7 @@ export function ExportPanel({ projectId, targetBranchId: targetBranchIdProp, onS
     queryFn: () => api.getProjectRuns(projectId),
     enabled: !!projectId,
   });
-  const successfulRuns: RunListItem[] = projectRuns?.runs?.filter((r) => r.status === "succeeded") ?? [];
-  const latestRun = successfulRuns[0] ?? null;
+  const latestRun = latestSuccessfulRun(projectRuns?.runs ?? []);
 
   const { data: branchData } = useQuery({
     queryKey: ["projectBranches", projectId],
@@ -59,12 +59,10 @@ export function ExportPanel({ projectId, targetBranchId: targetBranchIdProp, onS
   });
   const branches: BranchListItem[] = branchData?.branches ?? [];
 
-  const resolvedBranchId = targetBranchIdProp ?? targetBranchIdLocal;
-
   const { data: readinessData, isLoading: readinessLoading, error: readinessError, refetch: refetchReadiness } = useReportReadiness(
     projectId,
     latestRun?.run_id ?? null,
-    resolvedBranchId || null,
+    targetBranchId,
     reportMode as "branch" | "champion",
   );
 
@@ -112,23 +110,17 @@ export function ExportPanel({ projectId, targetBranchId: targetBranchIdProp, onS
     return merged;
   }, [newReports, serverReports]);
 
-  React.useEffect(() => {
-    if (!targetBranchIdProp && !targetBranchIdLocal && branches.length > 0) {
-      setTargetBranchIdLocal(branches[0].branch_id);
-    }
-  }, [branches, targetBranchIdProp, targetBranchIdLocal]);
-
   useEffect(() => {
     setBlockers([]);
     setWarnings([]);
     setErrorMsg("");
-  }, [resolvedBranchId, reportMode]);
+  }, [targetBranchId, reportMode]);
 
   const generateMutation = useMutation({
     mutationFn: () => {
       if (!latestRun) throw new Error("No run available");
       return api.generateReport(projectId, latestRun.run_id, {
-        target_branch_id: resolvedBranchId,
+        target_branch_id: targetBranchId ?? "",
         report_mode: reportMode,
         include_supporting_artifacts: true,
         output_formats: ["json", "html"],
@@ -143,7 +135,7 @@ export function ExportPanel({ projectId, targetBranchId: targetBranchIdProp, onS
         {
           report_id: data.report_id,
           created_at: new Date().toISOString(),
-          target_branch_id: resolvedBranchId,
+          target_branch_id: targetBranchId ?? "",
           mode: reportMode,
           status: data.status,
           html_path: data.html_path,
@@ -163,8 +155,7 @@ export function ExportPanel({ projectId, targetBranchId: targetBranchIdProp, onS
     window.open(url, "_blank");
   };
 
-  const branchOptions = branches.filter((b) => b.status === "active");
-  const selectedBranch = branchOptions.find((b) => b.branch_id === resolvedBranchId);
+  const selectedBranch = branches.find((b) => b.branch_id === targetBranchId);
 
   return (
     <div style={{ padding: 24, overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -191,27 +182,11 @@ export function ExportPanel({ projectId, targetBranchId: targetBranchIdProp, onS
             </select>
           </div>
 
-          {/* Target branch */}
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: theme.textSoft, display: "block", marginBottom: 4 }}>
-              Target branch
-            </label>
-            <select
-              value={resolvedBranchId}
-              onChange={(e) => setTargetBranchIdLocal(e.target.value)}
-              style={{
-                padding: "6px 10px", borderRadius: 6, border: `1px solid ${theme.borderStrong}`,
-                fontSize: 13, backgroundColor: theme.surface, color: theme.text,
-              }}
-            >
-              {branchOptions.length === 0 && <option value="">No branches available</option>}
-              {branchOptions.map((b) => (
-                <option key={b.branch_id} value={b.branch_id}>
-                  {b.name || b.branch_id}
-                </option>
-              ))}
-            </select>
-          </div>
+          <BranchSelector
+            branches={branches}
+            selectedBranchId={targetBranchId}
+            onSelect={onBranchSelect}
+          />
 
           {/* Latest run */}
           <div>
@@ -233,12 +208,12 @@ export function ExportPanel({ projectId, targetBranchId: targetBranchIdProp, onS
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button
             onClick={() => refetchReadiness()}
-            disabled={readinessLoading || !latestRun || !resolvedBranchId}
+            disabled={readinessLoading || !latestRun || !targetBranchId}
             style={{
               padding: "8px 16px", borderRadius: 6, border: `1px solid ${theme.border}`,
               fontSize: 13, backgroundColor: theme.surfaceMuted, cursor: "pointer",
               fontWeight: 500, color: theme.textSoft,
-              opacity: readinessLoading || !latestRun || !resolvedBranchId ? 0.5 : 1,
+              opacity: readinessLoading || !latestRun || !targetBranchId ? 0.5 : 1,
             }}
           >
             {readinessLoading ? "Checking..." : "Re-check"}
@@ -258,6 +233,13 @@ export function ExportPanel({ projectId, targetBranchId: targetBranchIdProp, onS
           </button>
         </div>
       </div>
+
+      {/* Readiness context */}
+      {readinessData && targetBranchId && (
+        <div style={{ fontSize: 11, color: theme.muted, padding: "0 4px" }}>
+          Readiness for branch {selectedBranch?.name || targetBranchId}, run {latestRun?.run_id?.slice(0, 8) ?? "—"}, {reportMode} mode
+        </div>
+      )}
 
       {/* Readiness display */}
       {readinessData && (
@@ -360,7 +342,7 @@ export function ExportPanel({ projectId, targetBranchId: targetBranchIdProp, onS
       )}
 
       {/* Fallback when no runs */}
-      {successfulRuns.length === 0 && (
+      {!latestRun && (
         <div style={{ padding: 16, border: `1px solid ${theme.border}`, borderRadius: 8, backgroundColor: theme.yellowBg, fontSize: 12, color: theme.yellowText }}>
           Run the Scorecard Pathway to completion before exporting. All build, validation, and cutoff steps must succeed.
         </div>
