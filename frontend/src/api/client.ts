@@ -37,6 +37,7 @@ import type {
   RunStepsResponse,
   UpdateStepParamsBody,
   UpdateStepParamsResponse,
+  WorkflowGuidance,
 } from "../types";
 import type { components } from "./schema";
 
@@ -86,6 +87,15 @@ export const api = {
   getPlan: (id: string, projectId?: string) => {
     const qs = projectId ? `?project_id=${projectId}` : "";
     return fetchJson<PlanResponse>(`/plans/${id}${qs}`);
+  },
+
+  getWorkflowGuidance: (planId: string, params?: { project_id?: string; branch_id?: string; run_id?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.project_id) qs.set("project_id", params.project_id);
+    if (params?.branch_id) qs.set("branch_id", params.branch_id);
+    if (params?.run_id) qs.set("run_id", params.run_id);
+    const query = qs.toString();
+    return fetchJson<WorkflowGuidance>(`/plans/${planId}/workflow-guidance${query ? `?${query}` : ""}`);
   },
 
   updateStepParams: (planId: string, stepId: string, body: UpdateStepParamsBody) =>

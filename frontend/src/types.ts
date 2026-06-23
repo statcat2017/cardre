@@ -49,6 +49,11 @@ export type MethodSummaryResponse = S['MethodSummaryResponse'];
 export type ModelRankingResponse = S['ModelRankingResponse'];
 export type NodeTypeListResponse = S['NodeTypeListResponse'];
 export type NodeTypeSchemaResponse = S['NodeTypeSchemaResponse'];
+export type WorkflowGuidance = S['WorkflowGuidance'];
+export type WorkflowNextAction = S['WorkflowNextAction'];
+export type WorkflowBlocker = S['WorkflowBlocker'];
+export type WorkflowStepGuidance = S['WorkflowStepGuidance'];
+export type WorkflowReportReadiness = S['WorkflowReportReadiness'];
 
 // --- Request body types (aliased from schema request schemas) ---
 

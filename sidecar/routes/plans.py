@@ -13,15 +13,25 @@ from cardre.services.project_registry import load_registry
 from cardre.staleness import staleness_detail
 from cardre.store import ProjectStore
 from sidecar.dependencies import project_store_from_registry, resolve_registry_entry
+from cardre.services.workflow_guidance_service import (
+    WorkflowGuidanceService,
+    WorkflowGuidanceServiceError,
+)
 from sidecar.models import (
     ManualBinningEditorStateResponse,
     ManualBinningPreviewRequest,
     ManualBinningPreviewResponse,
     PlanResponse,
+    ReadinessItem,
     StalenessItem,
     StalenessResponse,
     UpdateStepParamsRequest,
     UpdateStepParamsResponse,
+    WorkflowBlocker,
+    WorkflowGuidance,
+    WorkflowNextAction,
+    WorkflowReportReadiness,
+    WorkflowStepGuidance,
 )
 
 router = APIRouter(prefix="/plans", tags=["plans"])
@@ -79,4 +89,76 @@ def get_staleness_detail(plan_id: str, plan_version_id: str, project_id: str, br
     detail_items = staleness_detail(store, plan_version_id, branch_id=branch_id)
     nodes = [StalenessItem(step_id=d.step_id, is_stale=d.is_stale, reason=d.reason) for d in detail_items]
     return StalenessResponse(plan_version_id=plan_version_id, branch_id=branch_id, nodes=nodes)
+
+
+@router.get("/{plan_id}/workflow-guidance", response_model=WorkflowGuidance)
+def get_workflow_guidance(
+    plan_id: str,
+    project_id: str | None = None,
+    branch_id: str | None = None,
+    run_id: str | None = None,
+):
+    from cardre.services.project_registry import load_registry
+
+    if project_id is None:
+        registry = load_registry()
+        for pid, entry in registry.items():
+            store = project_store_from_registry(pid)
+            if store.get_plan(plan_id) is not None:
+                project_id = pid
+                break
+
+    if project_id is None:
+        raise HTTPException(status_code=404, detail={"code": "PLAN_NOT_FOUND", "message": f"No plan with ID {plan_id}"})
+
+    store = project_store_from_registry(project_id)
+    service = WorkflowGuidanceService(store)
+
+    try:
+        result = service.build(
+            plan_id=plan_id,
+            project_id=project_id,
+            branch_id=branch_id,
+            run_id=run_id,
+        )
+    except WorkflowGuidanceServiceError as exc:
+        raise HTTPException(status_code=400, detail={"code": "GUIDANCE_FAILED", "message": str(exc)})
+
+    return WorkflowGuidance(
+        phase=result.phase,
+        next_action=WorkflowNextAction(
+            kind=result.next_action_kind,
+            label=result.next_action_label,
+            description=result.next_action_description,
+            run_scope=result.next_action_run_scope,
+            step_id=result.next_action_step_id,
+            action_target=result.next_action_target,
+        ),
+        blockers=[
+            WorkflowBlocker(code=b["code"], message=b["message"], step_id=b.get("step_id"), severity=b.get("severity", "blocker"))
+            for b in result.blockers
+        ],
+        step_guidance={
+            cid: WorkflowStepGuidance(
+                readiness=sg["readiness"],
+                primary_action=sg["primary_action"],
+                explanation=sg["explanation"],
+                evidence_kinds=sg["evidence_kinds"],
+                action_target=sg.get("action_target"),
+            )
+            for cid, sg in result.step_guidance.items()
+        },
+        report_readiness=(
+            WorkflowReportReadiness(
+                ready=result.report_readiness["ready"],
+                status=result.report_readiness["status"],
+                blockers=[ReadinessItem(**b) for b in result.report_readiness["blockers"]],
+                warnings=[ReadinessItem(**w) for w in result.report_readiness["warnings"]],
+            )
+            if result.report_readiness
+            else None
+        ),
+        branch_id=result.branch_id,
+        run_id=result.run_id,
+    )
 
