@@ -119,6 +119,13 @@ For previews and summaries:
 - Use `reader.summarise_step_outputs(run_step)`.
 - Use `reader.summarise_run_artifacts(run_id)`.
 
+The Phase 4 evidence routes at:
+- ``GET /runs/{run_id}/steps/{step_id}/evidence``
+- ``GET /runs/{run_id}/evidence``
+
+also use ``ArtifactEvidenceReader`` via ``_to_item``, routing summarised
+evidence to the frontend without exposing raw artifact paths.
+
 For byte streaming only, `store.artifact_path(art)` is acceptable with the
 `artifact-byte-download` suppression. Do not `json.loads` artifact bodies in a route.
 

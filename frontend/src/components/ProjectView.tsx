@@ -74,6 +74,7 @@ export function ProjectView({ projectId, onBack }: Props) {
     projectId,
     selectedBranchId,
   );
+  const runId = guidance?.run_id ?? null;
 
   const handlePlanRefreshed = useCallback(
     (detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string }) => {
@@ -271,6 +272,8 @@ export function ProjectView({ projectId, onBack }: Props) {
           currentParams={selectedStep?.params ?? {}}
           onPlanRefreshed={handlePlanRefreshed}
           onEditManualBinning={handleEditManualBinning}
+          guidance={guidance}
+          runId={runId}
         />
       </div>
 

@@ -714,6 +714,26 @@ class ModelRankingResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Evidence (Phase 4 — Guided Workflow)
+# ---------------------------------------------------------------------------
+
+class RunStepEvidenceItem(BaseModel):
+    artifact_id: str
+    artifact_type: str
+    role: str | None = None
+    media_type: str = ""
+    evidence_kind: str | None = None
+    summary: dict | None = None
+    logical_hash: str | None = None
+
+
+class RunStepEvidenceResponse(BaseModel):
+    run_id: str
+    step_id: str | None = None
+    items: list[RunStepEvidenceItem] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Workflow Guidance (Phase 1 — Guided Workflow)
 # ---------------------------------------------------------------------------
 

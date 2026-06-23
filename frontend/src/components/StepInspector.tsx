@@ -1,12 +1,24 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { StepStatus } from "../types";
-import { getStepDisplayMetadata } from "../config/stepDisplayMetadata";
-import { StatusBadge } from "./StatusBadge";
-import { SchemaDrivenParamsEditor } from "./params/SchemaDrivenParamsEditor";
-import type { UpdateStepParamsResponse } from "../types";
+import type { StepStatus, UpdateStepParamsResponse, WorkflowGuidance } from "../types";
+import { getStepDisplayMetadata, canonicalizeStepId } from "../config/stepDisplayMetadata";
 import { theme } from "../styles";
+import { NextActionTab } from "./inspector/NextActionTab";
+import { ConfigureTab } from "./inspector/ConfigureTab";
+import { EvidenceTab } from "./inspector/EvidenceTab";
+import { WarningsTab } from "./inspector/WarningsTab";
+import { RunHistoryTab } from "./inspector/RunHistoryTab";
+
+type InspectorTab = "next_action" | "configure" | "evidence" | "warnings" | "history";
+
+const TAB_LABELS: Record<InspectorTab, string> = {
+  next_action: "Next action",
+  configure: "Configure",
+  evidence: "Evidence",
+  warnings: "Warnings",
+  history: "Run history",
+};
 
 interface Props {
   step: StepStatus | null;
@@ -16,23 +28,29 @@ interface Props {
   currentParams: Record<string, unknown>;
   onPlanRefreshed: (detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string }) => void;
   onEditManualBinning: (stepId: string) => void;
+  guidance?: WorkflowGuidance | null;
+  runId?: string | null;
 }
 
 export function StepInspector({
-  step,
-  planId,
-  projectId,
-  basePlanVersionId,
-  currentParams,
-  onPlanRefreshed,
-  onEditManualBinning,
+  step, planId, projectId, basePlanVersionId, currentParams,
+  onPlanRefreshed, onEditManualBinning, guidance, runId = null,
 }: Props) {
-  const [showParams, setShowParams] = useState(false);
+  const [tab, setTab] = useState<InspectorTab>("next_action");
+
+  useEffect(() => {
+    setTab("next_action");
+  }, [step?.step_id]);
 
   const meta = step ? getStepDisplayMetadata(step.step_id) : null;
   const label = meta?.label ?? step?.step_id ?? "";
   const isManualBinning = step?.node_type === "cardre.manual_binning";
   const canEdit = !!planId && !!projectId && !!basePlanVersionId;
+  const canonicalId = step ? canonicalizeStepId(step.step_id) : null;
+  const guidanceForStep = canonicalId ? guidance?.step_guidance?.[canonicalId] : null;
+  const stepBlockers = step ? (guidance?.blockers ?? []).filter(
+    (b) => b.step_id && canonicalizeStepId(b.step_id) === canonicalId,
+  ) : [];
 
   const editorStateQuery = useQuery({
     queryKey: ["manualBinningEditorState", planId, projectId, step?.step_id],
@@ -48,12 +66,8 @@ export function StepInspector({
     return (
       <div
         style={{
-          width: 320,
-          borderLeft: `1px solid ${theme.border}`,
-          backgroundColor: theme.canvasSoft,
-          padding: 20,
-          flexShrink: 0,
-          overflowY: "auto",
+          width: 320, borderLeft: `1px solid ${theme.border}`, backgroundColor: theme.canvasSoft,
+          padding: 20, flexShrink: 0, overflowY: "auto",
         }}
       >
         <div style={{ color: theme.muted, fontSize: 13 }}>Select a step to inspect</div>
@@ -61,175 +75,87 @@ export function StepInspector({
     );
   }
 
-  const mbState = isManualBinning ? editorStateQuery.data : null;
-
   return (
     <div
       style={{
-        width: 320,
-        borderLeft: `1px solid ${theme.border}`,
-        backgroundColor: theme.canvasSoft,
-        padding: 20,
-        flexShrink: 0,
-        overflowY: "auto",
+        width: 320, borderLeft: `1px solid ${theme.border}`, backgroundColor: theme.canvasSoft,
+        flexShrink: 0, overflowY: "auto", display: "flex", flexDirection: "column",
       }}
     >
-      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 14, color: theme.text }}>{label}</h3>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <InspectorField label="Step ID" value={step.step_id} mono />
-        <InspectorField label="Node Type" value={step.node_type} mono />
-        <InspectorField label="Category" value={step.category} />
-        <InspectorField label="Backend Position" value={String(step.position)} />
-
-        <div style={{ marginTop: 4 }}>
-          <div style={{ fontSize: 11, color: theme.muted, marginBottom: 2 }}>Status</div>
-          <StatusBadge status={step.status} />
+      <div style={{ padding: "16px 16px 8px" }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0, color: theme.text }}>{label}</h3>
+        <div style={{ fontSize: 10, color: theme.muted, fontFamily: theme.fontMono, marginTop: 2 }}>
+          {step.step_id}
         </div>
-
-        {step.is_stale && (
-          <div
-            style={{
-              padding: "6px 8px",
-              backgroundColor: theme.yellowBg,
-              border: `1px solid ${theme.border}`,
-              borderRadius: 4,
-              fontSize: 11,
-              color: theme.yellowText,
-            }}
-          >
-            Stale - upstream has changed since last run
-          </div>
-        )}
-
-        {meta && (
-          <>
-            <InspectorField label="Section" value={meta.section} />
-            <div style={{ marginTop: 4 }}>
-              <div style={{ fontSize: 11, color: theme.muted, marginBottom: 2 }}>Description</div>
-              <div style={{ fontSize: 12, color: theme.textSoft }}>{meta.shortDescription}</div>
-            </div>
-          </>
-        )}
-
-        {/* Manual Binning Special Section */}
-        {isManualBinning && (
-          <div
-            style={{
-              marginTop: 8,
-              padding: 12,
-              border: `1px solid ${theme.border}`,
-              borderRadius: 8,
-              backgroundColor: theme.surface,
-            }}
-          >
-            <div style={{ fontSize: 12, fontWeight: 600, color: theme.text, marginBottom: 6 }}>
-              Manual Bin Editing
-            </div>
-            {editorStateQuery.isLoading && (
-              <div style={{ fontSize: 11, color: theme.muted }}>Loading editor state...</div>
-            )}
-            {editorStateQuery.isError && (
-              <div style={{ fontSize: 11, color: theme.redText }}>Error loading editor state</div>
-            )}
-            {mbState && !mbState.ready && (
-              <div
-                style={{
-                  padding: "6px 8px",
-                  backgroundColor: theme.yellowBg,
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: 4,
-                  fontSize: 11,
-                  color: theme.yellowText,
-                }}
-              >
-                <strong>Not Ready</strong>
-                <div style={{ marginTop: 4 }}>{mbState.blocked_reason}</div>
-                {mbState.required_steps && mbState.required_steps.length > 0 && (
-                  <div style={{ marginTop: 4, color: theme.yellowText }}>
-                    Need: {mbState.required_steps.join(", ")}
-                  </div>
-                )}
-              </div>
-            )}
-            {mbState?.ready && (
-              <>
-                <div style={{ fontSize: 11, color: theme.greenText, marginBottom: 6 }}>
-                  {mbState.selected_variables?.length || 0} variables selected, ready to edit.
-                </div>
-                <button
-                  onClick={() => onEditManualBinning(step.step_id)}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 4,
-                    border: `1px solid ${theme.text}`,
-                    backgroundColor: theme.surface,
-                    color: theme.text,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Edit Bins
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Params Editor Section */}
-        {canEdit && (
-          <div style={{ marginTop: 8 }}>
-            <button
-              onClick={() => setShowParams(!showParams)}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "6px 10px",
-                borderRadius: 4,
-                border: `1px solid ${theme.border}`,
-                backgroundColor: showParams ? theme.blueBg : theme.surface,
-                color: showParams ? theme.blueText : theme.textSoft,
-                fontSize: 12,
-                fontWeight: 500,
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              {showParams ? "- Hide Parameters" : "+ Configure Parameters"}
-            </button>
-            {showParams && (
-              <SchemaDrivenParamsEditor
-                key={`${step.step_id}:${step.node_type}`}
-                planId={planId!}
-                stepId={step.step_id}
-                projectId={projectId!}
-                currentParams={currentParams}
-                basePlanVersionId={basePlanVersionId!}
-                nodeType={step.node_type}
-                onSaved={onPlanRefreshed}
-              />
-            )}
-          </div>
-        )}
       </div>
-    </div>
-  );
-}
 
-function InspectorField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div>
-      <div style={{ fontSize: 11, color: theme.muted, marginBottom: 2 }}>{label}</div>
-      <div
-        style={{
-          fontSize: 12,
-          color: theme.text,
-          fontFamily: mono ? theme.fontMono : undefined,
-          wordBreak: "break-all",
-        }}
-      >
-        {value}
+      <div style={{ display: "flex", borderBottom: `1px solid ${theme.border}`, padding: "0 8px", gap: 0 }}>
+        {(Object.keys(TAB_LABELS) as InspectorTab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            style={{
+              flex: 1, padding: "6px 4px", border: "none", borderBottom: `2px solid ${tab === t ? theme.text : "transparent"}`,
+              backgroundColor: "transparent", color: tab === t ? theme.text : theme.muted,
+              fontSize: 10, fontWeight: tab === t ? 600 : 400, cursor: "pointer",
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}
+          >
+            {TAB_LABELS[t]}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ padding: 12, flex: 1, overflowY: "auto" }}>
+        {tab === "next_action" && (
+          <NextActionTab
+            guidanceForStep={guidanceForStep}
+            isManualBinning={isManualBinning}
+            onEditManualBinning={() => onEditManualBinning(step.step_id)}
+            manualBinningState={editorStateQuery.data as { ready: boolean; blocked_reason?: string; selected_variables?: string[] } | null ?? null}
+            loadingManualBinning={editorStateQuery.isLoading}
+          />
+        )}
+
+        {tab === "configure" && canEdit && (
+          <ConfigureTab
+            stepId={step.step_id}
+            nodeType={step.node_type}
+            planId={planId!}
+            projectId={projectId!}
+            basePlanVersionId={basePlanVersionId!}
+            currentParams={currentParams}
+            onPlanRefreshed={onPlanRefreshed}
+          />
+        )}
+        {tab === "configure" && !canEdit && (
+          <div style={{ fontSize: 12, color: theme.muted }}>Params editing is not available.</div>
+        )}
+
+        {tab === "evidence" && (
+          <EvidenceTab
+            runId={runId}
+            stepId={step.step_id}
+            projectId={projectId!}
+            tab={tab}
+          />
+        )}
+
+        {tab === "warnings" && (
+          <WarningsTab
+            blockers={stepBlockers}
+            stepFailed={step.status === "failed"}
+          />
+        )}
+
+        {tab === "history" && (
+          <RunHistoryTab
+            stepId={step.step_id}
+            projectId={projectId!}
+            runId={runId}
+            tab={tab}
+          />
+        )}
       </div>
     </div>
   );

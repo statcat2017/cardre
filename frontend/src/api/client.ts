@@ -34,6 +34,7 @@ import type {
   ReportReadinessResponse,
   RunBody,
   RunResponse,
+  RunStepEvidenceResponse,
   RunStepsResponse,
   UpdateStepParamsBody,
   UpdateStepParamsResponse,
@@ -245,6 +246,12 @@ export const api = {
     fetchJson<components["schemas"]["ReportMetadataResponse"][]>(
       `/projects/${projectId}/runs/${runId}/reports`,
     ),
+
+  getStepEvidence: (runId: string, stepId: string, projectId: string) =>
+    fetchJson<RunStepEvidenceResponse>(`/runs/${runId}/steps/${stepId}/evidence?project_id=${projectId}`),
+
+  getRunEvidence: (runId: string, projectId: string) =>
+    fetchJson<RunStepEvidenceResponse>(`/runs/${runId}/evidence?project_id=${projectId}`),
 };
 
 export function getReportServeUrl(projectId: string, htmlPath: string): string {
