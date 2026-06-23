@@ -1166,6 +1166,11 @@ export interface components {
              */
             name: string;
         };
+        /**
+         * EvidenceStatus
+         * @enum {string}
+         */
+        EvidenceStatus: "available" | "partial" | "stale" | "missing" | "unsupported";
         /** ExportAuditPackRequest */
         ExportAuditPackRequest: {
             /** Project Id */
@@ -2090,12 +2095,34 @@ export interface components {
             media_type: string;
             /** Evidence Kind */
             evidence_kind?: string | null;
+            /** Logical Hash */
+            logical_hash?: string | null;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
+            /** Staleness Reason */
+            staleness_reason?: string | null;
+            /** Canonical Step Id */
+            canonical_step_id?: string | null;
+            /** Source Step Id */
+            source_step_id?: string | null;
+            /** Source Branch Id */
+            source_branch_id?: string | null;
+            /** @default available */
+            status: components["schemas"]["EvidenceStatus"];
             /** Summary */
             summary?: {
                 [key: string]: unknown;
-            } | null;
-            /** Logical Hash */
-            logical_hash?: string | null;
+            };
+            /** Warnings */
+            warnings?: string[];
         };
         /** RunStepEvidenceResponse */
         RunStepEvidenceResponse: {
@@ -2105,6 +2132,20 @@ export interface components {
             step_id?: string | null;
             /** Items */
             items?: components["schemas"]["RunStepEvidenceItem"][];
+            /** @default available */
+            status: components["schemas"]["EvidenceStatus"];
+            /**
+             * Checked At
+             * @default
+             */
+            checked_at: string;
+            /**
+             * Target Branch Id
+             * @default
+             */
+            target_branch_id: string;
+            /** Canonical Step Id */
+            canonical_step_id?: string | null;
         };
         /** RunStepItem */
         RunStepItem: {

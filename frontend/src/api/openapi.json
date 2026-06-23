@@ -3407,6 +3407,17 @@
         ],
         "title": "CreateProjectRequest"
       },
+      "EvidenceStatus": {
+        "type": "string",
+        "enum": [
+          "available",
+          "partial",
+          "stale",
+          "missing",
+          "unsupported"
+        ],
+        "title": "EvidenceStatus"
+      },
       "ExportAuditPackRequest": {
         "properties": {
           "project_id": {
@@ -5400,18 +5411,6 @@
             ],
             "title": "Evidence Kind"
           },
-          "summary": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Summary"
-          },
           "logical_hash": {
             "anyOf": [
               {
@@ -5422,6 +5421,76 @@
               }
             ],
             "title": "Logical Hash"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "default": ""
+          },
+          "is_stale": {
+            "type": "boolean",
+            "title": "Is Stale",
+            "default": false
+          },
+          "staleness_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staleness Reason"
+          },
+          "canonical_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Step Id"
+          },
+          "source_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Step Id"
+          },
+          "source_branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Branch Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvidenceStatus",
+            "default": "available"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Summary"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
           }
         },
         "type": "object",
@@ -5454,6 +5523,31 @@
             },
             "type": "array",
             "title": "Items"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvidenceStatus",
+            "default": "available"
+          },
+          "checked_at": {
+            "type": "string",
+            "title": "Checked At",
+            "default": ""
+          },
+          "target_branch_id": {
+            "type": "string",
+            "title": "Target Branch Id",
+            "default": ""
+          },
+          "canonical_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Step Id"
           }
         },
         "type": "object",
