@@ -183,7 +183,70 @@ export function ManualBinningEditor({
           Back
         </button>
         <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: theme.text }}>Manual Bin Editing</h3>
-        {es.warnings && es.warnings.length > 0 && (
+      {/* Review Section */}
+      <div style={{ marginTop: 16, padding: 16, border: `1px solid ${theme.border}`, borderRadius: 8, backgroundColor: theme.surfaceMuted }}>
+        <h4 style={{ fontSize: 13, fontWeight: 600, margin: "0 0 8px 0", color: theme.text }}>Bin Review</h4>
+        <p style={{ fontSize: 11, color: theme.textSoft, margin: "0 0 12px 0" }}>
+          Confirm that you have reviewed the automated bins. This is a required governance step before the scorecard can be exported.
+        </p>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => {
+              clearMsg();
+              api.reviewManualBinning(planId, stepId, {
+                project_id: projectId,
+                plan_version_id: basePlanVersionId,
+                step_id: stepId,
+                reviewed: true,
+                accept_automated: false,
+                overrides: draftOverrides.length > 0 ? draftOverrides : undefined,
+              }).then(() => {
+                setSuccess("Manual binning review complete.");
+                queryClient.invalidateQueries({ queryKey: ["plan"] });
+                queryClient.invalidateQueries({ queryKey: ["manualBinningEditorState", planId, projectId] });
+                queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
+              }).catch((e: any) => {
+                setError(e.message || "Review failed");
+              });
+            }}
+            style={{
+              padding: "8px 16px", borderRadius: 4, border: "none",
+              backgroundColor: theme.text, color: "#fff", fontSize: 12,
+              fontWeight: 600, cursor: saveMutation.isPending ? "not-allowed" : "pointer",
+            }}
+          >
+            Mark bin review complete
+          </button>
+          <button
+            onClick={() => {
+              clearMsg();
+              api.reviewManualBinning(planId, stepId, {
+                project_id: projectId,
+                plan_version_id: basePlanVersionId,
+                step_id: stepId,
+                reviewed: false,
+                accept_automated: true,
+              }).then(() => {
+                setSuccess("Automated bins accepted.");
+                queryClient.invalidateQueries({ queryKey: ["plan"] });
+                queryClient.invalidateQueries({ queryKey: ["manualBinningEditorState", planId, projectId] });
+                queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
+              }).catch((e: any) => {
+                setError(e.message || "Accept failed");
+              });
+            }}
+            style={{
+              padding: "8px 16px", borderRadius: 4, border: `1px solid ${theme.border}`,
+              backgroundColor: theme.surface, color: theme.textSoft, fontSize: 12,
+              fontWeight: 500, cursor: saveMutation.isPending ? "not-allowed" : "pointer",
+            }}
+          >
+            Accept automated bins
+          </button>
+        </div>
+      </div>
+
+      {es.warnings && es.warnings.length > 0 && (
           <span style={{ fontSize: 11, color: theme.yellowText }}>
             {es.warnings.length} warning{es.warnings.length > 1 ? "s" : ""}
           </span>

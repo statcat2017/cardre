@@ -238,6 +238,21 @@ def check_report_readiness(
                     f"Target branch {target_branch_id!r} is not the champion.",
                 ))
 
+    # Check manual-binning review status
+    if plan_id:
+        manual_binning_step = None
+        for s in store.get_plan_version_steps(plan_version_id):
+            if s.canonical_step_id == "manual-binning" or s.node_type == "cardre.manual_binning":
+                manual_binning_step = s
+                break
+        if manual_binning_step is not None:
+            params = manual_binning_step.params
+            if not params.get("reviewed", False) and not params.get("accept_automated", False):
+                blockers.append(ReadinessBlocker(
+                    LimitationCode.MANUAL_BINNING_NOT_REVIEWED,
+                    "Manual binning has not been reviewed. Mark review complete or accept automated bins before generating the report.",
+                ))
+
     # Check OOT dataset role
     if not _check_oot_exists(store, run_id):
         warnings.append(ReadinessWarning(

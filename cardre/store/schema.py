@@ -157,6 +157,15 @@ CREATE TABLE IF NOT EXISTS branch_comparison_snapshots (
     created_reason TEXT,
     FOREIGN KEY(comparison_id) REFERENCES branch_comparisons(comparison_id)
 );
+CREATE TABLE IF NOT EXISTS step_annotations (
+    annotation_id TEXT PRIMARY KEY,
+    step_id TEXT NOT NULL,
+    plan_version_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS champion_assignments (
     champion_assignment_id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL,

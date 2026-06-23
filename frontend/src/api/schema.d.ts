@@ -246,6 +246,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/plans/{plan_id}/steps/{step_id}/manual-binning/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Manual Binning */
+        post: operations["review_manual_binning_plans__plan_id__steps__step_id__manual_binning_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/plans/{plan_id}/versions/{plan_version_id}/staleness": {
         parameters: {
             query?: never;
@@ -1401,6 +1418,43 @@ export interface components {
                 [key: string]: unknown;
             };
             diagnostics?: components["schemas"]["PreviewDiagnostics"] | null;
+        };
+        /** ManualBinningReviewRequest */
+        ManualBinningReviewRequest: {
+            /** Project Id */
+            project_id: string;
+            /** Plan Version Id */
+            plan_version_id: string;
+            /**
+             * Step Id
+             * @default manual-binning
+             */
+            step_id: string;
+            /**
+             * Reviewed
+             * @default false
+             */
+            reviewed: boolean;
+            /**
+             * Accept Automated
+             * @default false
+             */
+            accept_automated: boolean;
+            /** Overrides */
+            overrides?: {
+                [key: string]: unknown;
+            }[] | null;
+        };
+        /** ManualBinningReviewResponse */
+        ManualBinningReviewResponse: {
+            /** Plan Id */
+            plan_id: string;
+            /** New Plan Version Id */
+            new_plan_version_id: string;
+            /** Reviewed */
+            reviewed: boolean;
+            /** Accept Automated */
+            accept_automated: boolean;
         };
         /** ManualBinningSourceInfo */
         ManualBinningSourceInfo: {
@@ -2696,6 +2750,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ManualBinningPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_manual_binning_plans__plan_id__steps__step_id__manual_binning_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                step_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualBinningReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualBinningReviewResponse"];
                 };
             };
             /** @description Validation Error */

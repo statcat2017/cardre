@@ -32,6 +32,7 @@ export type ManualBinningEditorStateResponse = S['ManualBinningEditorStateRespon
 export type ManualBinningVariableSummary = S['ManualBinningVariableSummary'];
 export type PreviewDiagnostics = S['PreviewDiagnostics'];
 export type ManualBinningPreviewResponse = S['ManualBinningPreviewResponse'];
+export type ManualBinningReviewResponse = S['ManualBinningReviewResponse'];
 export type BranchStepItem = S['BranchStepItem'];
 export type BranchResponse = S['BranchResponse'];
 export type BranchListItem = S['BranchListItem'];

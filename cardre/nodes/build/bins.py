@@ -459,6 +459,20 @@ class ManualBinningNode(NodeType):
                                 "and optionally new_label (str)."
                             ),
                         ),
+                        ParameterDefinition(
+                            name="reviewed",
+                            label="Bin review complete",
+                            kind="bool",
+                            default=False,
+                            help_text="Set to true when manual bin review is complete.",
+                        ),
+                        ParameterDefinition(
+                            name="accept_automated",
+                            label="Accept automated bins",
+                            kind="bool",
+                            default=False,
+                            help_text="Set to true to accept automated bins without manual overrides (discards any overrides).",
+                        ),
                     ],
                 ),
             ],
@@ -484,6 +498,8 @@ class ManualBinningNode(NodeType):
                 errors.append(f"{prefix}: source_bin_ids must be a list")
             if action == "merge_bins" and len(source_bin_ids) < 2:
                 errors.append(f"{prefix}: merge_bins requires at least 2 source bins")
+        if params.get("reviewed") and params.get("accept_automated"):
+            errors.append("reviewed and accept_automated cannot both be true.")
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
