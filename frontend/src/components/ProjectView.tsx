@@ -10,10 +10,9 @@ import { DatasetImport } from "./DatasetImport";
 import { RunHistoryPanel } from "./RunHistoryPanel";
 import { ArtifactBrowser } from "./ArtifactBrowser";
 import { ManualBinningEditor } from "./ManualBinningEditor";
-import { BranchSelector } from "./BranchSelector";
 import { ExportPanel } from "./ExportPanel";
 import { useRunProgress } from "../hooks/useRunProgress";
-import type { PlanResponse, StepStatus, UpdateStepParamsResponse, BranchListItem } from "../types";
+import type { PlanResponse, StepStatus, UpdateStepParamsResponse } from "../types";
 import { theme } from "../styles";
 
 interface Props {
@@ -131,11 +130,6 @@ export function ProjectView({ projectId, onBack }: Props) {
         <LeftNav activeSection={activeSection} onSectionChange={setActiveSection} />
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", backgroundColor: theme.canvas }}>
-          <BranchSelector
-            projectId={projectId}
-            selectedBranchId={selectedBranchId}
-            onBranchChange={setSelectedBranchId}
-          />
           {/* Manual Binning Editor takes over center when editing */}
           {editingStepId && planId && basePlanVersionId && (
             <ManualBinningEditor

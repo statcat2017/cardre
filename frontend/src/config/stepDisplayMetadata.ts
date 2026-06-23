@@ -221,9 +221,5 @@ export function getStepsForSection(section: string): StepDisplayMetadata[] {
  * input unchanged.
  */
 export function canonicalizeStepId(stepId: string): string {
-  const idx = stepId.indexOf("__br_");
-  if (idx !== -1) {
-    return stepId.slice(0, idx);
-  }
-  return stepId;
+  return stepId.replace(/__br_[^_]+$/, "");
 }
