@@ -223,12 +223,15 @@ class ManualBinningService:
                                         woe = _extract_woe_by_bin(evidence, var)
                                         iv = _extract_iv(evidence, var)
                                         event_rate = _extract_event_rate_by_bin(evidence, var)
+                                        bin_data = result.source_bins_by_variable.get(var, {})
                                         summaries.append(ManualBinningVariableSummary(
                                             variable=var,
                                             iv=iv,
                                             woe_by_bin=woe,
                                             event_rate_by_bin=event_rate,
-                                            sparse_bin_warning=_check_sparse_bins(result.source_bins_by_variable.get(var, {})),
+                                            missing_count=_count_missing_bins(bin_data),
+                                            special_bin_count=_count_special_bins(bin_data),
+                                            sparse_bin_warning=_check_sparse_bins(bin_data),
                                             non_monotonic_warning=_check_non_monotonic(woe),
                                         ))
                                     result.variable_summaries = summaries
@@ -236,7 +239,21 @@ class ManualBinningService:
                         break
                     break
         except Exception:
-            pass
+            warnings.append({
+                "code": "VARIABLE_SUMMARY_UNAVAILABLE",
+                "message": "Variable summary could not be loaded — WOE/IV evidence may be missing or stale.",
+            })
+            result.warnings = warnings
+
+        # Add warning if selected variables exist but no summaries were built
+        if result.selected_variables and not result.variable_summaries:
+            no_summary_warning = {
+                "code": "VARIABLE_SUMMARY_UNAVAILABLE",
+                "message": "No final WOE/IV evidence found for selected variables. Variable summary table not available.",
+            }
+            if no_summary_warning not in warnings:
+                warnings.append(no_summary_warning)
+                result.warnings = warnings
 
         return result
 
@@ -395,3 +412,18 @@ class ManualBinningService:
                 if candidate is None:
                     candidate = s.step_id
         return candidate or canonical
+
+
+# ---------------------------------------------------------------------------
+# Pure helper functions for manual-binning variable summaries
+# ---------------------------------------------------------------------------
+
+
+def _count_missing_bins(bin_data: dict) -> int:
+    """Count bins flagged as missing in the source bin data."""
+    return sum(1 for b in bin_data.get("bins", []) if b.get("is_missing") or b.get("bin_type") == "missing")
+
+
+def _count_special_bins(bin_data: dict) -> int:
+    """Count bins flagged as special in the source bin data."""
+    return sum(1 for b in bin_data.get("bins", []) if b.get("is_special") or b.get("bin_type") == "special")
