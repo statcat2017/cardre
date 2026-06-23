@@ -217,6 +217,7 @@ export function ProjectView({ projectId, onBack }: Props) {
               onStepSelect={handleStepSelect}
               carriedForwardSteps={carriedForwardSteps}
               liveStepStatus={liveStepStatus}
+              guidance={guidance}
             />
           )}
 

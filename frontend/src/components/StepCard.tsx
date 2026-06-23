@@ -1,6 +1,6 @@
 import React from "react";
-import type { StepStatus } from "../types";
-import { getStepDisplayMetadata } from "../config/stepDisplayMetadata";
+import type { StepStatus, WorkflowStepGuidance, WorkflowBlocker } from "../types";
+import { getStepDisplayMetadata, canonicalizeStepId } from "../config/stepDisplayMetadata";
 import { StatusBadge } from "./StatusBadge";
 import { theme } from "../styles";
 
@@ -10,9 +10,11 @@ interface Props {
   onSelect: (stepId: string) => void;
   carriedForward?: boolean;
   liveStatus?: string | null;
+  guidanceForStep?: WorkflowStepGuidance | null;
+  blockers?: WorkflowBlocker[];
 }
 
-export function StepCard({ step, isSelected, onSelect, carriedForward, liveStatus }: Props) {
+export function StepCard({ step, isSelected, onSelect, carriedForward, liveStatus, guidanceForStep, blockers }: Props) {
   const meta = getStepDisplayMetadata(step.step_id);
   const label = meta?.label ?? step.step_id;
   const shortDesc = meta?.shortDescription ?? step.node_type;
@@ -31,20 +33,6 @@ export function StepCard({ step, isSelected, onSelect, carriedForward, liveStatu
         boxShadow: isSelected ? "0 2px 8px rgba(0,0,0,0.04)" : "none",
       }}
     >
-      {step.is_stale && (
-        <div
-          title="Stale"
-          style={{
-            position: "absolute",
-            top: 6,
-            right: 6,
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            backgroundColor: theme.yellowText,
-          }}
-        />
-      )}
       {carriedForward && (
         <span
           style={{
@@ -67,6 +55,33 @@ export function StepCard({ step, isSelected, onSelect, carriedForward, liveStatu
       )}
       <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, color: theme.text }}>{label}</div>
       <div style={{ fontSize: 12, color: theme.muted, marginBottom: 10, lineHeight: 1.45 }}>{shortDesc}</div>
+      {/* Readiness row from guidance */}
+      {guidanceForStep && (
+        <div style={{ marginBottom: 8, fontSize: 11, lineHeight: 1.5 }}>
+          {guidanceForStep.readiness === "stale" && (
+            <span style={{ color: theme.yellowText }}>▲ Stale — upstream has changed</span>
+          )}
+          {guidanceForStep.readiness === "needs_config" && (
+            <span style={{ color: theme.blueText }}>⚙ Configuration required</span>
+          )}
+          {guidanceForStep.readiness === "ready" && (
+            <span style={{ color: theme.greenText }}>✓ Ready to run</span>
+          )}
+          {guidanceForStep.readiness === "blocked" && (
+            <span style={{ color: theme.redText }}>
+              ⊘ Blocked{blockers && blockers.length > 0 ? ` — ${blockers[0].message}` : ""}
+            </span>
+          )}
+          {guidanceForStep.readiness === "complete" && (
+            <span style={{ color: theme.greenText }}>✓ Complete</span>
+          )}
+          {guidanceForStep.evidence_kinds && guidanceForStep.evidence_kinds.length > 0 && (
+            <span style={{ color: theme.muted, marginLeft: 8 }}>
+              {guidanceForStep.evidence_kinds.length} evidence item{guidanceForStep.evidence_kinds.length !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <StatusBadge status={liveStatus ?? step.status} />
         <span style={{ fontSize: 10, color: theme.mutedSoft, fontFamily: theme.fontMono }}>
