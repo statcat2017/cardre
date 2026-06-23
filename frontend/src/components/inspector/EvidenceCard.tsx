@@ -8,7 +8,7 @@ interface EvidenceCardProps {
 }
 
 const statusColors: Record<string, { bg: string; text: string }> = {
-  current: { bg: theme.greenBg, text: theme.greenText },
+  available: { bg: theme.greenBg, text: theme.greenText },
   stale: { bg: theme.yellowBg, text: theme.yellowText },
   partial: { bg: theme.yellowBg, text: theme.yellowText },
   missing: { bg: theme.redBg, text: theme.redText },

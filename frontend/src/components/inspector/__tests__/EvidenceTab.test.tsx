@@ -227,6 +227,7 @@ describe("EvidenceTab", () => {
     await waitFor(() => {
       expect(screen.getByText(/WOE\/IV Evidence/)).toBeInTheDocument();
     });
+    expect(screen.getByText("Current")).toBeInTheDocument();
   });
 
   it("renders warnings on evidence card", async () => {
