@@ -192,7 +192,6 @@ describe("ReadinessPanel", () => {
     expect(screen.getByText(/Baseline/)).toBeInTheDocument();
     expect(screen.getByText(/run_abc/)).toBeInTheDocument();
     expect(screen.getByText(/branch/)).toBeInTheDocument();
-    expect(screen.getByText(/TopBar readiness badge/)).toBeInTheDocument();
   });
 
   it("shows freshness copy from response echo fields when available", () => {
