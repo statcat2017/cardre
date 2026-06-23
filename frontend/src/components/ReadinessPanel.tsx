@@ -116,9 +116,6 @@ export function ReadinessPanel({
         {readinessData.checked_at && (
           <span> Last checked {readinessData.checked_at}.</span>
         )}
-        <div style={{ marginTop: 2, fontStyle: "italic" }}>
-          Export readiness is checked separately from the TopBar readiness badge.
-        </div>
       </div>
 
       {/* Result panel */}
