@@ -6,7 +6,7 @@ import { ExportPanel } from "../ExportPanel";
 
 function createClientWithCache(entries: Array<[Array<string | number>, unknown]>) {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry: false, staleTime: 300_000 } },
   });
   for (const [key, data] of entries) {
     client.setQueryData(key, data);

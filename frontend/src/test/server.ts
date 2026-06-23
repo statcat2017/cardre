@@ -1,8 +1,10 @@
 import { setupServer } from "msw/node";
 import { http, HttpResponse } from "msw";
 
+const BASE = "http://127.0.0.1:8752";
+
 export const server = setupServer(
-  http.get("/plans/:planId/workflow-guidance", () =>
+  http.get(`${BASE}/plans/:planId/workflow-guidance`, () =>
     HttpResponse.json({
       phase: "build",
       next_action: { kind: "configure_step", label: "Configure target", description: "Define the target column.", run_scope: null, step_id: "target-definition", action_target: null },
@@ -16,39 +18,40 @@ export const server = setupServer(
       run_id: null,
     })
   ),
-  http.get("/projects/:projectId", () =>
+  http.get(`${BASE}/projects/:projectId`, () =>
     HttpResponse.json({
       project_id: "prj1",
       path: "/tmp/test-project",
       name: "Test Project",
       plan_count: 1,
       run_count: 0,
+      created_at: "2026-01-01T00:00:00Z",
     })
   ),
-  http.get("/projects/:projectId/plans", () =>
+  http.get(`${BASE}/projects/:projectId/plans`, () =>
     HttpResponse.json({
       plans: [{ plan_id: "plan1", name: "Scorecard Pathway", is_default: true, project_id: "prj1" }],
     })
   ),
-  http.get("/projects/:projectId/branches", () =>
+  http.get(`${BASE}/projects/:projectId/branches`, () =>
     HttpResponse.json({
       branches: [{ branch_id: "br_default", name: "Baseline", branch_type: "baseline", status: "active", plan_id: "plan1", base_plan_version_id: "pv1", head_plan_version_id: "pv1" }],
     })
   ),
-  http.get("/plans/:planId", () =>
+  http.get(`${BASE}/plans/:planId`, () =>
     HttpResponse.json({
       plan_id: "plan1",
       project_id: "prj1",
       name: "Scorecard Pathway",
       latest_version_id: "pv1",
       steps: [
-        { step_id: "import", node_type: "cardre.import", category: "setup", status: "succeeded", is_stale: false, position: 0, params: {} },
-        { step_id: "target-definition", node_type: "cardre.target", category: "build", status: "not_run", is_stale: false, position: 1, params: {} },
-        { step_id: "manual-binning", node_type: "cardre.manual_binning", category: "build", status: "not_run", is_stale: false, position: 12, params: {} },
+        { step_id: "import", node_type: "cardre.import", category: "setup", status: "succeeded", is_stale: false, position: 0, params: {}, canonical_step_id: "import" },
+        { step_id: "target-definition", node_type: "cardre.target", category: "build", status: "not_run", is_stale: false, position: 1, params: {}, canonical_step_id: "target-definition" },
+        { step_id: "manual-binning", node_type: "cardre.manual_binning", category: "build", status: "not_run", is_stale: false, position: 12, params: {}, canonical_step_id: "manual-binning" },
       ],
     })
   ),
-  http.get("/projects/:projectId/runs", () =>
+  http.get(`${BASE}/projects/:projectId/runs`, () =>
     HttpResponse.json({ runs: [] })
   ),
 );

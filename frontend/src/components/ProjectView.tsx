@@ -111,6 +111,12 @@ export function ProjectView({ projectId, onBack }: Props) {
     }
   };
 
+  const handleGoToStep = useCallback((stepId: string) => {
+    setSelectedStepId(stepId);
+    setEditingStepId(null);
+    setActiveSection("pathway");
+  }, []);
+
   const handleEditManualBinning = (stepId: string) => {
     setEditingStepId(stepId);
     setActiveSection("pathway"); // Keep pathway visible in nav
@@ -241,7 +247,7 @@ export function ProjectView({ projectId, onBack }: Props) {
               projectId={projectId}
               targetBranchId={selectedBranchId}
               onBranchSelect={setSelectedBranchId}
-              onStepSelect={handleStepSelect}
+              onStepSelect={handleGoToStep}
             />
           )}
 
