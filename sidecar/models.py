@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -755,20 +756,40 @@ class ModelRankingResponse(BaseModel):
 # Evidence (Phase 4 — Guided Workflow)
 # ---------------------------------------------------------------------------
 
+class EvidenceStatus(StrEnum):
+    AVAILABLE = "available"
+    PARTIAL = "partial"
+    STALE = "stale"
+    MISSING = "missing"
+    UNSUPPORTED = "unsupported"
+
+
 class RunStepEvidenceItem(BaseModel):
     artifact_id: str
     artifact_type: str
     role: str | None = None
     media_type: str = ""
     evidence_kind: str | None = None
-    summary: dict | None = None
     logical_hash: str | None = None
+    created_at: str = ""
+    is_stale: bool = False
+    staleness_reason: str | None = None
+    canonical_step_id: str | None = None
+    source_step_id: str | None = None
+    source_branch_id: str | None = None
+    status: EvidenceStatus = EvidenceStatus.AVAILABLE
+    summary: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class RunStepEvidenceResponse(BaseModel):
     run_id: str
     step_id: str | None = None
     items: list[RunStepEvidenceItem] = Field(default_factory=list)
+    status: EvidenceStatus = EvidenceStatus.AVAILABLE
+    checked_at: str = ""
+    target_branch_id: str = ""
+    canonical_step_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
