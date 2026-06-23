@@ -11,8 +11,8 @@ import pytest
 
 from cardre.audit import RunStepRecord
 from cardre.reporting.collector import ReportCollector, generate_report_bundle
-from cardre.reporting.limitation_codes import LimitationCode
-from cardre.reporting.readiness import (
+from cardre.readiness import LimitationCode
+from cardre.readiness import (
     check_report_readiness,
     ReportReadinessResult,
     ReadinessBlocker,
