@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { TopBar } from "./TopBar";
@@ -13,7 +13,7 @@ import { ManualBinningEditor } from "./ManualBinningEditor";
 import { ExportPanel } from "./ExportPanel";
 import { useRunProgress } from "../hooks/useRunProgress";
 import { useWorkflowGuidance } from "../hooks/useWorkflowGuidance";
-import type { PlanResponse, StepStatus, UpdateStepParamsResponse, WorkflowGuidance } from "../types";
+import type { PlanResponse, StepStatus, UpdateStepParamsResponse, WorkflowGuidance, BranchListItem } from "../types";
 import { theme } from "../styles";
 
 interface Props {
@@ -55,6 +55,19 @@ export function ProjectView({ projectId, onBack }: Props) {
     queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
   });
   const { running, error, carriedForwardSteps, liveStepStatus, stepProgress, diagnostics, liveDiagnostic, startRun, addDiagnostic } = runProgress;
+
+  // Resolve default branch invisibly so guidance has a branch key
+  const { data: branchData } = useQuery({
+    queryKey: ["projectBranches", projectId],
+    queryFn: () => api.listBranches(projectId, { status: "active" }),
+    enabled: !!projectId,
+  });
+  useEffect(() => {
+    if (!selectedBranchId && branchData?.branches?.length) {
+      const baseline = branchData.branches.find((b: BranchListItem) => b.branch_type === "baseline");
+      setSelectedBranchId((baseline ?? branchData.branches[0]).branch_id);
+    }
+  }, [selectedBranchId, branchData]);
 
   const { data: guidance } = useWorkflowGuidance(
     planId,
