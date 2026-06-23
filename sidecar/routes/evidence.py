@@ -44,7 +44,16 @@ def _to_item(
     summary_obj = reader.summarise_artifact(artifact_id)
     evidence_kind = getattr(summary_obj, "kind", None) or ""
 
-    summary_dict, warnings_list = summarise(dataclasses.asdict(art), None)
+    parsed_payload = None
+    if evidence_kind:
+        try:
+            from cardre.evidence import EvidenceKind
+            ek = EvidenceKind(evidence_kind)
+            parsed_payload = reader.read_optional(artifact_id, ek)
+        except (ValueError, Exception):
+            pass
+
+    summary_dict, warnings_list = summarise(dataclasses.asdict(art), parsed_payload)
 
     is_stale = False
     staleness_reason: str | None = None

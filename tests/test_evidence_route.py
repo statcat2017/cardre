@@ -155,6 +155,80 @@ class TestToItem:
             assert isinstance(item.summary, dict)
             assert item.evidence_kind is not None
 
+    def test_summary_woe_iv_meaningful_values(self):
+        """Summary must contain non-default values from the artifact payload."""
+        import tempfile
+        import uuid
+        from pathlib import Path
+        from cardre.store import ProjectStore
+        from cardre.audit import StepSpec, utc_now_iso
+        from cardre.artifacts import write_json_artifact
+        from cardre.evidence import ArtifactEvidenceReader
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ProjectStore(Path(tmp))
+            store.initialize()
+            prj_id = store.create_project("Test Project")
+            plan_id = store.create_plan(prj_id, "Test Plan")
+            step = StepSpec(
+                "woe-step-2", "cardre.woe_iv", "", "build",
+                {}, "", [], "baseline", 1, canonical_step_id="final-woe-iv",
+            )
+            pv_id = store.create_plan_version(plan_id, steps=[step])
+
+            branch_id = str(uuid.uuid4())
+            store._connect().execute(
+                "INSERT INTO plan_branches (branch_id, plan_id, project_id, name, branch_type, "
+                "base_plan_version_id, head_plan_version_id, created_at, updated_at, created_reason) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (branch_id, plan_id, prj_id, "Branch", "baseline", pv_id, pv_id,
+                 utc_now_iso(), utc_now_iso(), "test"),
+            )
+            store._connect().commit()
+
+            run_id = store.create_run(plan_version_id=pv_id)
+            art_ref = write_json_artifact(
+                store, artifact_type="woe-iv-evidence", role="train",
+                stem="test-woe-meaningful",
+                payload={
+                    "variables": [
+                        {"variable_name": "income_band", "iv": 0.42, "status": "included",
+                         "bins": [{"bin_id": "b1"}]},
+                        {"variable_name": "age_band", "iv": 0.31, "status": "included",
+                         "bins": [{"bin_id": "b1"}]},
+                    ],
+                    "schema_version": "cardre.woe_iv_evidence.v1",
+                },
+                metadata={"schema_version": "cardre.woe_iv_evidence.v1"},
+            )
+            art_id = art_ref.artifact_id
+
+            rs_id = str(uuid.uuid4())
+            with store.transaction() as conn:
+                conn.execute(
+                    "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, "
+                    "status, output_artifact_ids_json, input_artifact_ids_json, execution_fingerprint_json, started_at, finished_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (rs_id, run_id, "woe-step-2", pv_id, "succeeded",
+                     f'["{art_id}"]', '[]', '{"params_hash":"","output_artifact_logical_hashes":[]}',
+                     utc_now_iso(), utc_now_iso()),
+                )
+            store.finish_run(run_id, status="succeeded")
+
+            reader = ArtifactEvidenceReader(store)
+            item = _to_item(store, reader, art_id, run_step_id="woe-step-2")
+            assert item.summary is not None
+            assert item.summary.get("selected_variable_count") == 2, (
+                f"Expected 2 variables, got {item.summary.get('selected_variable_count')}"
+            )
+            assert item.summary.get("iv_max") == 0.42, (
+                f"Expected iv_max=0.42, got {item.summary.get('iv_max')}"
+            )
+            top = item.summary.get("top_variables", [])
+            assert len(top) >= 1
+            assert top[0]["name"] == "income_band"
+            assert top[0]["iv"] == 0.42
+
 
 class TestDeriveStepStatus:
     """Tests for _derive_step_status() — response-level status aggregation."""
