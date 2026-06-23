@@ -150,4 +150,39 @@ describe("ExportPanel generate safety", () => {
       expect(btn).toBeDisabled();
     });
   });
+
+  it("shows generate error when generate endpoint fails", async () => {
+    server.use(
+      http.get(`${BASE}/projects/:projectId/branches`, () =>
+        HttpResponse.json({ branches })
+      ),
+      http.get(`${BASE}/projects/:projectId/runs`, () =>
+        HttpResponse.json({ runs: [run] })
+      ),
+      http.post(`${BASE}/projects/:projectId/runs/:runId/report-readiness`, () =>
+        HttpResponse.json({ ready: true, status: "ready", blockers: [], warnings: [] })
+      ),
+      http.get(`${BASE}/projects/:projectId/runs/:runId/reports`, () =>
+        HttpResponse.json([])
+      ),
+      http.post(`${BASE}/projects/:projectId/runs/:runId/reports`, () =>
+        HttpResponse.json({ detail: { code: "GENERATE_FAILED", message: "Bundle assembly failed" } }, { status: 500 })
+      ),
+    );
+
+    renderExportPanel("br_default");
+
+    await waitFor(() => {
+      const btn = screen.getByRole("button", { name: /generate audit pack/i });
+      expect(btn).toBeEnabled();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /generate audit pack/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Report generation failed/)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/Bundle assembly failed/)).toBeInTheDocument();
+  });
 });

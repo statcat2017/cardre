@@ -41,6 +41,7 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
   const [reportMode, setReportMode] = useState<ReportMode>("branch");
   const [newReports, setNewReports] = useState<GeneratedReport[]>([]);
   const [lastReport, setLastReport] = useState<GenerateReportResponse | null>(null);
+  const [generateErrorMsg, setGenerateErrorMsg] = useState<string>("");
 
   const { data: projectRuns } = useQuery({
     queryKey: ["projectRuns", projectId],
@@ -110,7 +111,9 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
 
   const generateMutation = useMutation({
     mutationFn: () => {
+      if (!generateSafetyOk) throw new Error("Report generation is not ready.");
       if (!latestRun) throw new Error("No run available");
+      if (!targetBranchId) throw new Error("No branch selected");
       return api.generateReport(projectId, latestRun.run_id, {
         target_branch_id: targetBranchId ?? "",
         report_mode: reportMode,
@@ -118,8 +121,11 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
         output_formats: ["json", "html"],
       });
     },
-    onMutate: () => {},
+    onMutate: () => {
+      setGenerateErrorMsg("");
+    },
     onSuccess: (data: GenerateReportResponse) => {
+      setGenerateErrorMsg("");
       setLastReport(data);
       setNewReports((prev) => [
         {
@@ -135,7 +141,9 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
         ...prev,
       ]);
     },
-    onError: (e: any) => {},
+    onError: (e: any) => {
+      setGenerateErrorMsg(e.detail?.message || e.message || "Report generation failed");
+    },
   });
 
   const handleOpenReport = (htmlPath: string) => {
@@ -206,6 +214,18 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
             {generateMutation.isPending ? "Generating..." : "Generate audit pack"}
           </button>
         </div>
+
+        {generateErrorMsg && (
+          <div
+            role="alert"
+            style={{
+              padding: 10, borderRadius: 6, backgroundColor: theme.redBg,
+              fontSize: 12, color: theme.redText, marginTop: 4,
+            }}
+          >
+            Report generation failed: {generateErrorMsg}
+          </div>
+        )}
       </div>
 
       {/* Readiness panel with states 1-7 */}
