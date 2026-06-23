@@ -144,6 +144,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{run_id}/steps/{step_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Step Evidence */
+        get: operations["get_step_evidence_runs__run_id__steps__step_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{run_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run Evidence */
+        get: operations["get_run_evidence_runs__run_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/plans/{plan_id}": {
         parameters: {
             query?: never;
@@ -1926,6 +1960,37 @@ export interface components {
             /** Executed Step Ids */
             executed_step_ids?: string[];
         };
+        /** RunStepEvidenceItem */
+        RunStepEvidenceItem: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Artifact Type */
+            artifact_type: string;
+            /** Role */
+            role?: string | null;
+            /**
+             * Media Type
+             * @default
+             */
+            media_type: string;
+            /** Evidence Kind */
+            evidence_kind?: string | null;
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            } | null;
+            /** Logical Hash */
+            logical_hash?: string | null;
+        };
+        /** RunStepEvidenceResponse */
+        RunStepEvidenceResponse: {
+            /** Run Id */
+            run_id: string;
+            /** Step Id */
+            step_id?: string | null;
+            /** Items */
+            items?: components["schemas"]["RunStepEvidenceItem"][];
+        };
         /** RunStepItem */
         RunStepItem: {
             /** Run Step Id */
@@ -2392,6 +2457,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtifactResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_step_evidence_runs__run_id__steps__step_id__evidence_get: {
+        parameters: {
+            query: {
+                /** @description Project ID for store lookup */
+                project_id: string;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+                step_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunStepEvidenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_evidence_runs__run_id__evidence_get: {
+        parameters: {
+            query: {
+                /** @description Project ID for store lookup */
+                project_id: string;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunStepEvidenceResponse"];
                 };
             };
             /** @description Validation Error */
