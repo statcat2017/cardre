@@ -9,7 +9,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
-from cardre.reporting.readiness import check_report_readiness
+from cardre.readiness import check_report_readiness
 from cardre.services.manual_binning_service import ManualBinningService
 from cardre.staleness import compute_staleness
 from cardre.step_id import resolve_required_steps
@@ -301,18 +301,7 @@ class WorkflowGuidanceService:
                     target_branch_id=branch_id,
                     report_mode="branch",
                 )
-                report_readiness = {
-                    "ready": result.ready,
-                    "status": result.status,
-                    "blockers": [
-                        {"code": b.code, "message": b.message, "step_id": None}
-                        for b in result.blockers
-                    ],
-                    "warnings": [
-                        {"code": w.code, "message": w.message, "step_id": None}
-                        for w in result.warnings
-                    ],
-                }
+                report_readiness = result.to_dict()
             except Exception:
                 report_readiness = None
 

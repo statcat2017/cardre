@@ -26,7 +26,7 @@ from cardre.nodes import BuildSummaryReportNode
 from cardre.nodes.build.export import TechnicalManifestExportNode
 from cardre.registry import NodeRegistry
 from cardre.reporting.collector import generate_report_bundle
-from cardre.reporting.readiness import check_report_readiness
+from cardre.readiness import check_report_readiness
 from cardre.services.export_service import export_branch_audit_pack
 from cardre.store import ProjectStore
 

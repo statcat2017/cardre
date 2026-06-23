@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from cardre.reporting.collector import generate_report_bundle
-from cardre.reporting.readiness import check_report_readiness, ReportReadinessResult
+from cardre.readiness import check_report_readiness, ReportReadinessResult
 from cardre.reporting.renderer_html import write_html_report
 from cardre.reporting.schema import ReportBundle
 from cardre.store import ProjectStore
