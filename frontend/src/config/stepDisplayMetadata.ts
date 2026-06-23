@@ -212,3 +212,14 @@ export function getStepsForSection(section: string): StepDisplayMetadata[] {
     .filter((m) => m.section === section)
     .sort((a, b) => a.displayOrder - b.displayOrder);
 }
+
+/** Strip branch-owned step-id suffix to recover the canonical ID.
+ *
+ * Branch-owned step IDs follow the pattern ``canonical_id__br_<branch_hash>``.
+ * This function strips the suffix so the base can be looked up in
+ * ``STEP_DISPLAY_METADATA``. If there is no ``__br_`` suffix, returns the
+ * input unchanged.
+ */
+export function canonicalizeStepId(stepId: string): string {
+  return stepId.replace(/__br_[^_]+$/, "");
+}

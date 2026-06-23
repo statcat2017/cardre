@@ -25,6 +25,7 @@ export function ProjectView({ projectId, onBack }: Props) {
   const [activeSection, setActiveSection] = useState("pathway");
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
 
   const { data: project, isLoading: projectLoading } = useQuery({
     queryKey: ["project", projectId],

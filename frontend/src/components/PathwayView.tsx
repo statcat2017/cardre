@@ -1,6 +1,6 @@
 import React from "react";
 import type { StepStatus } from "../types";
-import { STEP_DISPLAY_METADATA, SECTION_ORDER } from "../config/stepDisplayMetadata";
+import { STEP_DISPLAY_METADATA, SECTION_ORDER, canonicalizeStepId } from "../config/stepDisplayMetadata";
 import { StepCard } from "./StepCard";
 import { theme } from "../styles";
 
@@ -15,7 +15,8 @@ interface Props {
 export function PathwayView({ steps, selectedStepId, onStepSelect, carriedForwardSteps, liveStepStatus }: Props) {
   const stepsBySection: Record<string, StepStatus[]> = {};
   for (const step of steps) {
-    const meta = STEP_DISPLAY_METADATA[step.step_id];
+    const canonicalId = canonicalizeStepId(step.step_id);
+    const meta = canonicalId ? STEP_DISPLAY_METADATA[canonicalId] : undefined;
     const section = meta?.section ?? "Other";
     if (!stepsBySection[section]) stepsBySection[section] = [];
     stepsBySection[section].push(step);
