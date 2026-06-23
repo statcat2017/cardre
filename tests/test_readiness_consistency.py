@@ -18,15 +18,26 @@ def _init_store(tmp: str) -> ProjectStore:
     return store
 
 
-class TestCollectorReadinessConsistency:
-    """Collector blocker-level limitations must be a subset of readiness blockers.
+# Collector-readiness code equivalences: when the two producers use
+# different codes for the same underlying condition, this map records
+# the intended equivalence so tests assert the relationship explicitly
+# rather than silently diverging.
+_CODE_EQUIVALENCES: dict[str, set[str]] = {
+    # Collector blocks MISSING_WOE_IV_EVIDENCE_V1 when no run step
+    # exists for final-woe-iv.  Readiness reports the step couldn't
+    # be resolved to a successful run, which is a different code —
+    # both are blockers for the same missing-execution condition.
+    "MISSING_WOE_IV_EVIDENCE_V1": {"MISSING_REQUIRED_CANONICAL_STEP"},
+}
 
-    The collector and readiness check share some limitation codes but not all.
-    This test proves that when the collector emits a blocker-level code that
-    also exists in the readiness vocabulary, readiness agrees.  Collector-only
-    codes (e.g. MISSING_MODEL_COEFFICIENTS which checks coefficient detail)
-    are exempt from this assertion — they represent a different level of
-    granularity.
+
+class TestCollectorReadinessConsistency:
+    """Collector blocker-level limitations must be acknowledged by readiness.
+
+    For codes in the shared vocabulary, every collector blocker must also
+    be a readiness blocker (direct or via mapped equivalence).  Collector-
+    only codes that examine detail (e.g. MISSING_MODEL_COEFFICIENTS) are
+    exempt — they represent a different granularity.
     """
 
     def test_collector_target_branch_not_found_is_readiness_blocker(self):
@@ -46,8 +57,6 @@ class TestCollectorReadinessConsistency:
             run_id = store.create_run(pv_id)
             store.finish_run(run_id, status="succeeded")
 
-            # Non-existent branch — both collector and readiness should
-            # emit TARGET_BRANCH_NOT_FOUND as a blocker.
             bundle = generate_report_bundle(
                 store=store, project_id=prj_id, run_id=run_id,
                 target_branch_id="nonexistent", report_mode="branch",
@@ -64,7 +73,6 @@ class TestCollectorReadinessConsistency:
             )
             readiness_blocker_codes = {str(b.code) for b in result.blockers}
 
-            # Explicit assertion: expected blocker appears on both sides
             assert str(LimitationCode.TARGET_BRANCH_NOT_FOUND) in collector_blocker_codes, (
                 f"Collector did not emit TARGET_BRANCH_NOT_FOUND: "
                 f"collector_blocker_codes={collector_blocker_codes}"
@@ -74,21 +82,18 @@ class TestCollectorReadinessConsistency:
                 f"readiness_blocker_codes={readiness_blocker_codes}"
             )
 
-            # Subset: every collector blocker-level code must appear in readiness
             codes_only_in_collector = collector_blocker_codes - readiness_blocker_codes
             assert not codes_only_in_collector, (
                 f"Collector emitted blocker-level codes absent from readiness: "
                 f"{codes_only_in_collector}"
             )
 
-    def test_collector_woe_iv_missing_step_is_readiness_blocker(self):
-        """When final-woe-iv has no run step, both collector and readiness block.
+    def test_collector_woe_iv_missing_step_mapped_equivalence(self):
+        """When final-woe-iv has no run step, both block with different codes.
 
-        Collector emits MISSING_WOE_IV_EVIDENCE_V1 (blocker).
-        Readiness emits MISSING_REQUIRED_CANONICAL_STEP because no run step exists.
-        These are structurally different codes but both are blockers referenced
-        in the respective code sets.  This test documents that the codes differ
-        rather than silently passing.
+        The mapping in _CODE_EQUIVALENCES records the intended equivalence.
+        This test proves the mapping is current: the collector code maps to
+        an actual readiness blocker code.
         """
         import uuid
         from cardre.audit import StepSpec, utc_now_iso
@@ -123,7 +128,6 @@ class TestCollectorReadinessConsistency:
 
             run_id = store.create_run(plan_version_id=pv_id)
 
-            # Create run steps for everything EXCEPT final-woe-iv
             for step_id in ("model-fit", "score-scaling", "validation-metrics"):
                 rs_id = str(uuid.uuid4())
                 with store.transaction() as conn:
@@ -141,8 +145,6 @@ class TestCollectorReadinessConsistency:
                     )
             store.finish_run(run_id, status="succeeded")
 
-            # Collector should emit MISSING_WOE_IV_EVIDENCE_V1 as blocker
-            # (no run step for final-woe-iv → collector line 312)
             bundle = generate_report_bundle(
                 store=store, project_id=prj_id, run_id=run_id,
                 target_branch_id=branch_id, report_mode="branch",
@@ -153,9 +155,6 @@ class TestCollectorReadinessConsistency:
                 if lim.severity == "blocker"
             }
 
-            # Readiness should block (MISSING_REQUIRED_CANONICAL_STEP because
-            # no run step exists for final-woe-iv, or MISSING_WOE_IV_EVIDENCE_V1
-            # depending on resolution)
             result = check_report_readiness(
                 store=store, project_id=prj_id, run_id=run_id,
                 target_branch_id=branch_id, report_mode="branch",
@@ -166,6 +165,17 @@ class TestCollectorReadinessConsistency:
                 f"Collector did not emit MISSING_WOE_IV_EVIDENCE_V1: "
                 f"collector_blocker_codes={collector_blocker_codes}"
             )
-            assert len(readiness_blocker_codes) > 0, (
-                "Readiness did not block at all"
-            )
+
+            # Every collector blocker code must be covered by a direct
+            # readiness match or a mapped equivalence.
+            for coll_code in collector_blocker_codes:
+                if coll_code in readiness_blocker_codes:
+                    continue
+                equivalents = _CODE_EQUIVALENCES.get(coll_code, set())
+                if equivalents & readiness_blocker_codes:
+                    continue
+                pytest.fail(
+                    f"Collector blocker {coll_code} not found in readiness blockers "
+                    f"({readiness_blocker_codes}) and has no mapped equivalent "
+                    f"that appears there."
+                )
