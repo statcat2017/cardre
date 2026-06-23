@@ -9,6 +9,10 @@ function makeReady(overrides: Record<string, unknown> = {}) {
     status: "ready",
     blockers: [],
     warnings: [],
+    target_branch_id: "",
+    run_id: "run1",
+    report_mode: "branch",
+    checked_at: "2026-06-23T00:00:00Z",
     ...overrides,
   };
 }
@@ -170,20 +174,47 @@ describe("ReadinessPanel", () => {
     render(
       <ReadinessPanel
         targetBranchId="br1"
-        latestRunId="run_abc123"
+        latestRunId="run_abc123_extra"
         branchName="Baseline"
         reportMode="branch"
-        readinessData={makeReady()}
+        readinessData={makeReady({
+          run_id: "run_abc123",
+        })}
         readinessLoading={false}
         readinessIsFetching={false}
         readinessError={null}
         onRecheck={vi.fn()}
       />,
     );
+    // Freshness copy uses response fields (first 8 chars of run_id)
     expect(screen.getByText(/Baseline/)).toBeInTheDocument();
     expect(screen.getByText(/run_abc/)).toBeInTheDocument();
     expect(screen.getByText(/branch/)).toBeInTheDocument();
     expect(screen.getByText(/TopBar readiness badge/)).toBeInTheDocument();
+  });
+
+  it("shows freshness copy from response echo fields when available", () => {
+    render(
+      <ReadinessPanel
+        targetBranchId="br1"
+        latestRunId="run_old"
+        branchName="Old Name"
+        reportMode="champion"
+        readinessData={makeReady({
+          target_branch_id: "br_echoed_id",
+          run_id: "run_echoed_abc",
+          report_mode: "branch",
+        })}
+        readinessLoading={false}
+        readinessIsFetching={false}
+        readinessError={null}
+        onRecheck={vi.fn()}
+      />,
+    );
+    // Response echo fields take priority over props
+    expect(screen.getByText(/br_echoed/)).toBeInTheDocument();
+    expect(screen.getByText(/run_echo/)).toBeInTheDocument();
+    expect(screen.getByText(/branch/)).toBeInTheDocument();
   });
 
   it('recheck button shows "Checking…" when loading', () => {

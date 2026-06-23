@@ -110,6 +110,10 @@ export function buildReportReadinessBlocked(stepId: string): ReportReadinessResp
       },
     ],
     warnings: [],
+    target_branch_id: BRANCH_ID,
+    run_id: RUN_ID,
+    report_mode: "branch",
+    checked_at: "2026-06-23T00:00:00Z",
   };
 }
 
@@ -119,6 +123,10 @@ export function buildReportReadinessReady(): ReportReadinessResponse {
     status: "ready",
     blockers: [],
     warnings: [],
+    target_branch_id: BRANCH_ID,
+    run_id: RUN_ID,
+    report_mode: "branch",
+    checked_at: "2026-06-23T00:00:00Z",
   };
 }
 

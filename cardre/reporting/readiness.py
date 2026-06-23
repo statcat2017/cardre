@@ -6,6 +6,7 @@ branch mode (warns but does not block without champion assignment).
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from cardre.reporting.evidence_contract import (
@@ -76,27 +77,48 @@ class ReportReadinessResult:
     status: str
     blockers: list[ReadinessBlocker]
     warnings: list[ReadinessWarning]
+    target_branch_id: str | None = None
+    run_id: str | None = None
+    report_mode: str | None = None
+    checked_at: str | None = None
 
     def __init__(
         self,
         blockers: list[ReadinessBlocker] | None = None,
         warnings: list[ReadinessWarning] | None = None,
+        target_branch_id: str | None = None,
+        run_id: str | None = None,
+        report_mode: str | None = None,
+        checked_at: str | None = None,
     ) -> None:
         self.blockers = blockers or []
         self.warnings = warnings or []
         self.ready = len(self.blockers) == 0
+        self.target_branch_id = target_branch_id
+        self.run_id = run_id
+        self.report_mode = report_mode
+        self.checked_at = checked_at
         if self.ready:
             self.status = "ready_with_warnings" if self.warnings else "ready"
         else:
             self.status = "blocked"
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "ready": self.ready,
             "status": self.status,
             "blockers": [b.to_dict() for b in self.blockers],
             "warnings": [w.to_dict() for w in self.warnings],
         }
+        if self.target_branch_id is not None:
+            d["target_branch_id"] = self.target_branch_id
+        if self.run_id is not None:
+            d["run_id"] = self.run_id
+        if self.report_mode is not None:
+            d["report_mode"] = self.report_mode
+        if self.checked_at is not None:
+            d["checked_at"] = self.checked_at
+        return d
 
 
 def check_report_readiness(
@@ -117,7 +139,13 @@ def check_report_readiness(
             LimitationCode.TARGET_BRANCH_NOT_FOUND,
             f"Target branch {target_branch_id!r} not found.",
         ))
-        return ReportReadinessResult(blockers=blockers)
+        return ReportReadinessResult(
+            blockers=blockers,
+            target_branch_id=target_branch_id,
+            run_id=run_id,
+            report_mode=report_mode,
+            checked_at=datetime.now(timezone.utc).isoformat(),
+        )
 
     if branch.get("status") != "active":
         blockers.append(ReadinessBlocker(
@@ -132,7 +160,13 @@ def check_report_readiness(
             LimitationCode.MISSING_RUN_MANIFEST,
             f"Run {run_id!r} not found.",
         ))
-        return ReportReadinessResult(blockers=blockers)
+        return ReportReadinessResult(
+            blockers=blockers,
+            target_branch_id=target_branch_id,
+            run_id=run_id,
+            report_mode=report_mode,
+            checked_at=datetime.now(timezone.utc).isoformat(),
+        )
 
     plan_version_id = run["plan_version_id"]
     plan_id = store.get_plan_id_for_version(plan_version_id)
@@ -260,4 +294,11 @@ def check_report_readiness(
             "No OOT dataset role was present for this run.",
         ))
 
-    return ReportReadinessResult(blockers=blockers, warnings=warnings)
+    return ReportReadinessResult(
+        blockers=blockers,
+        warnings=warnings,
+        target_branch_id=target_branch_id,
+        run_id=run_id,
+        report_mode=report_mode,
+        checked_at=datetime.now(timezone.utc).isoformat(),
+    )

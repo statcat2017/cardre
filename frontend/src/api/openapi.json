@@ -5167,6 +5167,26 @@
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "target_branch_id": {
+            "type": "string",
+            "title": "Target Branch Id",
+            "default": ""
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "default": ""
+          },
+          "report_mode": {
+            "type": "string",
+            "title": "Report Mode",
+            "default": "branch"
+          },
+          "checked_at": {
+            "type": "string",
+            "title": "Checked At",
+            "default": ""
           }
         },
         "type": "object",

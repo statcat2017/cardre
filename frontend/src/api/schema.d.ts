@@ -1982,6 +1982,26 @@ export interface components {
             blockers?: components["schemas"]["ReadinessItem"][];
             /** Warnings */
             warnings?: components["schemas"]["ReadinessItem"][];
+            /**
+             * Target Branch Id
+             * @default
+             */
+            target_branch_id: string;
+            /**
+             * Run Id
+             * @default
+             */
+            run_id: string;
+            /**
+             * Report Mode
+             * @default branch
+             */
+            report_mode: string;
+            /**
+             * Checked At
+             * @default
+             */
+            checked_at: string;
         };
         /** RunListItem */
         RunListItem: {

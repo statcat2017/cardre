@@ -65,6 +65,10 @@ def get_report_readiness(project_id: str, run_id: str, req: ReportReadinessReque
         status=result.status,
         blockers=[ReadinessItem(code=b.code, message=b.message) for b in result.blockers],
         warnings=[ReadinessItem(code=w.code, message=w.message) for w in result.warnings],
+        target_branch_id=result.target_branch_id or "",
+        run_id=result.run_id or "",
+        report_mode=result.report_mode or "branch",
+        checked_at=result.checked_at or "",
     )
 
 

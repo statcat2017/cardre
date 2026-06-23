@@ -107,10 +107,15 @@ export function ReadinessPanel({
 
   return (
     <div>
-      {/* Freshness copy */}
+      {/* Freshness copy — prefer response echo fields */}
       <div style={{ fontSize: 11, color: theme.muted, padding: "0 4px 8px" }}>
-        Readiness checked for branch {branchName || targetBranchId} using run{" "}
-        {latestRunId.slice(0, 8)} &middot; {reportMode} mode.
+        Readiness checked for branch{" "}
+        {readinessData.target_branch_id || branchName || targetBranchId} using run{" "}
+        {(readinessData.run_id || latestRunId).slice(0, 8)} &middot;{" "}
+        {readinessData.report_mode || reportMode} mode.
+        {readinessData.checked_at && (
+          <span> Last checked {readinessData.checked_at}.</span>
+        )}
         <div style={{ marginTop: 2, fontStyle: "italic" }}>
           Export readiness is checked separately from the TopBar readiness badge.
         </div>
