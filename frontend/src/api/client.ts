@@ -19,6 +19,7 @@ import type {
   ManualBinningEditorStateResponse,
   ManualBinningPreviewBody,
   ManualBinningPreviewResponse,
+  ManualBinningReviewResponse,
   MethodSummaryResponse,
   MigrateResponse,
   ModelRankingResponse,
@@ -145,6 +146,12 @@ export const api = {
 
   previewManualBinning: (planId: string, body: ManualBinningPreviewBody, stepId = "manual-binning") =>
     fetchJson<ManualBinningPreviewResponse>(`/plans/${planId}/steps/${stepId}/manual-binning/preview`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  reviewManualBinning: (planId: string, stepId: string, body: { project_id: string; plan_version_id: string; step_id: string; reviewed: boolean; accept_automated: boolean; overrides?: Record<string, unknown>[] }) =>
+    fetchJson<ManualBinningReviewResponse>(`/plans/${planId}/steps/${stepId}/manual-binning/review`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

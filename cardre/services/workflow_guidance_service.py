@@ -381,6 +381,18 @@ class WorkflowGuidanceService:
             except Exception:
                 pass
 
+        if canonical_id == "manual-binning" and status:
+            params = status.get("params", {})
+            reviewed = params.get("reviewed", False)
+            accept_automated = params.get("accept_automated", False)
+
+            if reviewed or accept_automated:
+                readiness = "complete"
+                primary_action = "Reviewed"
+            elif readiness != "blocked":
+                readiness = "ready"
+                primary_action = "Mark bin review complete"
+
         if canonical_id == "manual-binning":
             try:
                 resolved = resolve_required_steps(

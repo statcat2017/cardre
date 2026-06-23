@@ -756,6 +756,67 @@
         }
       }
     },
+    "/plans/{plan_id}/steps/{step_id}/manual-binning/review": {
+      "post": {
+        "tags": [
+          "plans"
+        ],
+        "summary": "Review Manual Binning",
+        "operationId": "review_manual_binning_plans__plan_id__steps__step_id__manual_binning_review_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Step Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualBinningReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualBinningReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/plans/{plan_id}/versions/{plan_version_id}/staleness": {
       "get": {
         "tags": [
@@ -3810,6 +3871,82 @@
         },
         "type": "object",
         "title": "ManualBinningPreviewResponse"
+      },
+      "ManualBinningReviewRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "title": "Plan Version Id"
+          },
+          "step_id": {
+            "type": "string",
+            "title": "Step Id",
+            "default": "manual-binning"
+          },
+          "reviewed": {
+            "type": "boolean",
+            "title": "Reviewed",
+            "default": false
+          },
+          "accept_automated": {
+            "type": "boolean",
+            "title": "Accept Automated",
+            "default": false
+          },
+          "overrides": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overrides"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "plan_version_id"
+        ],
+        "title": "ManualBinningReviewRequest"
+      },
+      "ManualBinningReviewResponse": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "new_plan_version_id": {
+            "type": "string",
+            "title": "New Plan Version Id"
+          },
+          "reviewed": {
+            "type": "boolean",
+            "title": "Reviewed"
+          },
+          "accept_automated": {
+            "type": "boolean",
+            "title": "Accept Automated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "new_plan_version_id",
+          "reviewed",
+          "accept_automated"
+        ],
+        "title": "ManualBinningReviewResponse"
       },
       "ManualBinningSourceInfo": {
         "properties": {

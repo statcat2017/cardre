@@ -325,6 +325,26 @@ class ManualBinningPreviewResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Manual Binning Review (Phase 5B)
+# ---------------------------------------------------------------------------
+
+class ManualBinningReviewRequest(BaseModel):
+    project_id: str
+    plan_version_id: str
+    step_id: str = "manual-binning"
+    reviewed: bool = False
+    accept_automated: bool = False
+    overrides: list[dict] | None = None
+
+
+class ManualBinningReviewResponse(BaseModel):
+    plan_id: str
+    new_plan_version_id: str
+    reviewed: bool
+    accept_automated: bool
+
+
+# ---------------------------------------------------------------------------
 # Branches (Phase 4)
 # ---------------------------------------------------------------------------
 

@@ -6,9 +6,11 @@ bloat the plan query/update service.
 
 from __future__ import annotations
 
+import json
+import uuid
 from typing import Any
 
-from cardre.audit import RunStepRecord, StepSpec
+from cardre.audit import RunStepRecord, StepSpec, utc_now_iso
 from cardre.evidence import ArtifactEvidenceReader, EvidenceError, EvidenceKind
 from cardre._evidence.models import WoeIvEvidence
 from cardre.reporting.evidence_contract import find_evidence_for_canonical_step
@@ -349,6 +351,56 @@ class ManualBinningService:
         if errors:
             raise PlanValidationError(
                 "PARAMS_VALIDATION_FAILED", "; ".join(errors),
+            )
+
+    def save_with_review(
+        self,
+        plan_id: str,
+        plan_version_id: str,
+        step_id: str,
+        project_id: str,
+        reviewed: bool = False,
+        accept_automated: bool = False,
+        overrides: list[dict] | None = None,
+    ) -> None:
+        """Save a review/accept-automated decision for manual binning.
+
+        Writes the params through PlanService.update_params and records a
+        step annotation for auditability.
+        """
+        from cardre.services.plan_service import PlanService
+
+        params: dict[str, Any] = {"reviewed": reviewed, "accept_automated": accept_automated}
+        if overrides is not None:
+            params["overrides"] = overrides
+        elif accept_automated:
+            params["overrides"] = []
+
+        PlanService(self._store).update_params(
+            plan_id=plan_id,
+            step_id=step_id,
+            base_plan_version_id=plan_version_id,
+            params=params,
+        )
+
+        # Write audit annotation
+        now = utc_now_iso()
+        annotation_id = str(uuid.uuid4())
+        with self._store.transaction() as conn:
+            conn.execute(
+                "INSERT INTO step_annotations "
+                "(annotation_id, step_id, plan_version_id, kind, actor, payload_json, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    annotation_id, step_id, plan_version_id,
+                    "manual_binning_review", "user",
+                    json.dumps({
+                        "reviewed": reviewed,
+                        "accept_automated": accept_automated,
+                        "override_count": len(overrides) if overrides else 0,
+                    }),
+                    now,
+                ),
             )
 
     # ------------------------------------------------------------------

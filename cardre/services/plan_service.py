@@ -269,11 +269,49 @@ class PlanService:
             if is_stale and (not branch_id or any(s.branch_id == branch_id for s in new_steps if s.step_id == sid))
         ]
 
+        # Reset manual-binning reviewed flag if an upstream step changed
+        if branch_id and any(sid != step_id for sid in stale_ids):
+            for s in new_steps:
+                if s.canonical_step_id == "manual-binning" or s.node_type == "cardre.manual_binning":
+                    if s.params.get("reviewed") or s.params.get("accept_automated"):
+                        updated_params = dict(s.params)
+                        updated_params["reviewed"] = False
+                        updated_params["accept_automated"] = False
+                        new_steps = replace_step_params(new_steps, s.step_id, updated_params)
+                        # Re-create plan version with reset params
+                        new_pv_id = self._store.create_plan_version(
+                            plan_id=plan_id, steps=new_steps,
+                            description="Reset manual-binning review flag due to upstream change",
+                        )
+                        staleness = compute_staleness(
+                            self._store, new_pv_id,
+                            branch_id=branch_id,
+                        )
+                        stale_ids = [
+                            sid for sid, is_stale in staleness.items()
+                            if is_stale and (not branch_id or any(s.branch_id == branch_id for s in new_steps if s.step_id == sid))
+                        ]
+                    break
+
         return UpdateStepParamsResponse(
             plan_id=plan_id,
             new_plan_version_id=new_pv_id,
             changed_step_id=step_id,
             stale_step_ids=stale_ids,
         )
+
+    def _validate_manual_binning_review_params(
+        self, reviewed: bool, accept_automated: bool, overrides: list[dict] | None = None,
+    ) -> None:
+        if reviewed and accept_automated:
+            raise PlanValidationError(
+                "PARAMS_VALIDATION_FAILED",
+                "reviewed and accept_automated cannot both be true.",
+            )
+        if accept_automated and overrides:
+            raise PlanValidationError(
+                "PARAMS_VALIDATION_FAILED",
+                "accept_automated is incompatible with overrides. Set overrides to [] to accept automated bins.",
+            )
 
 

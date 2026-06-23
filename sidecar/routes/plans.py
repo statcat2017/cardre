@@ -21,6 +21,8 @@ from sidecar.models import (
     ManualBinningEditorStateResponse,
     ManualBinningPreviewRequest,
     ManualBinningPreviewResponse,
+    ManualBinningReviewRequest,
+    ManualBinningReviewResponse,
     PlanResponse,
     ReadinessItem,
     StalenessItem,
@@ -75,6 +77,36 @@ def preview_manual_binning_overrides(plan_id: str, step_id: str, req: ManualBinn
     store = ProjectStore(Path(entry["path"]))
     result = ManualBinningService(store).preview_overrides(plan_id, req.plan_version_id, req.overrides, step_id=step_id)
     return ManualBinningPreviewResponse(**dataclasses.asdict(result))
+
+
+@router.post("/{plan_id}/steps/{step_id}/manual-binning/review", response_model=ManualBinningReviewResponse)
+def review_manual_binning(plan_id: str, step_id: str, req: ManualBinningReviewRequest):
+    from cardre.services.manual_binning_service import ManualBinningService
+    from sidecar.dependencies import resolve_registry_entry
+    from cardre.store import ProjectStore
+    from pathlib import Path
+
+    entry = resolve_registry_entry(req.project_id)
+    store = ProjectStore(Path(entry["path"]))
+    PlanService(store)._validate_manual_binning_review_params(req.reviewed, req.accept_automated, req.overrides)
+
+    service = ManualBinningService(store)
+    service.save_with_review(
+        plan_id=plan_id,
+        plan_version_id=req.plan_version_id,
+        step_id=step_id,
+        project_id=req.project_id,
+        reviewed=req.reviewed,
+        accept_automated=req.accept_automated,
+        overrides=req.overrides,
+    )
+
+    return ManualBinningReviewResponse(
+        plan_id=plan_id,
+        new_plan_version_id="",
+        reviewed=req.reviewed,
+        accept_automated=req.accept_automated,
+    )
 
 
 @router.get("/{plan_id}/versions/{plan_version_id}/staleness", response_model=StalenessResponse)
