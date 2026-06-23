@@ -9,7 +9,10 @@ import {
   PROJECT_ID,
   BRANCH_ID,
   RUN_ID,
+  PLAN_ID,
   buildSucceededRun,
+  buildWorkflowGuidanceBuildPhase,
+  buildWorkflowGuidanceManualBinningPhase,
   buildWorkflowGuidanceExportPhase,
   buildReportReadinessBlocked,
   buildReportReadinessReady,
@@ -139,5 +142,42 @@ describe("Guided launch journey", () => {
     });
 
     expect(capturedGenerateUrl).toContain(`/runs/${RUN_ID}/reports`);
+  });
+
+  it("manual-binning review gate: CTA selects manual-binning step and switches to editing", async () => {
+    const guidance = buildWorkflowGuidanceManualBinningPhase();
+
+    server.use(
+      http.get(`http://127.0.0.1:8752/plans/:planId/workflow-guidance`, () =>
+        HttpResponse.json(guidance)
+      ),
+      http.get(`http://127.0.0.1:8752/plans/:planId/steps/:stepId/editor-state`, () =>
+        HttpResponse.json({ step_id: "manual-binning", method: "default", overrides: [], variables: [], selected_variable: null, source_info: null, variable_summaries: [], has_unsaved_changes: false, node_version: "1" })
+      ),
+    );
+
+    renderProjectView();
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Project")).toBeInTheDocument();
+    });
+
+    // CTA shows the manual-binning next action
+    await waitFor(() => {
+      expect(screen.getByText("Edit bins")).toBeInTheDocument();
+    });
+
+    // PathwayView is rendering (not in editing mode yet)
+    expect(screen.queryByTestId("manual-binning-editor")).not.toBeInTheDocument();
+
+    // Click CTA — triggers edit_bins journey action
+    await userEvent.click(screen.getByText("Edit bins"));
+
+    // After click, ProjectView sets editingStepId and switches to pathway.
+    // ManualBinningEditor should render (identified by testid or its heading).
+    await waitFor(() => {
+      // The editor renders for the manual-binning step
+      expect(screen.getByText(/Manual Binning/i)).toBeInTheDocument();
+    });
   });
 });
