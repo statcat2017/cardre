@@ -223,3 +223,52 @@ export function getStepsForSection(section: string): StepDisplayMetadata[] {
 export function canonicalizeStepId(stepId: string): string {
   return stepId.replace(/__br_[^_]+$/, "");
 }
+
+export interface SectionPhaseResult {
+  phase: "not_started" | "in_progress" | "complete" | "blocked";
+  complete: number;
+  stale: number;
+  blocked: number;
+  nextStep: string | null;
+  total: number;
+}
+
+/** Aggregate per-step readiness from guidance into a section summary. */
+export function sectionPhase(
+  steps: { step_id: string }[],
+  guidance: { step_guidance?: Record<string, { readiness: string; primary_action: string }> } | null | undefined,
+): SectionPhaseResult {
+  const counts = { complete: 0, stale: 0, blocked: 0, notStarted: 0, needsConfig: 0 };
+  let firstUnfinished: string | null = null;
+
+  for (const step of steps) {
+    const cid = canonicalizeStepId(step.step_id);
+    const sg = guidance?.step_guidance?.[cid];
+    const r = sg?.readiness ?? "";
+
+    if (r === "complete") counts.complete++;
+    else if (r === "stale") counts.stale++;
+    else if (r === "blocked") counts.blocked++;
+    else if (r === "needs_config") counts.needsConfig++;
+    else counts.notStarted++;
+
+    if (!firstUnfinished && r !== "complete" && r !== "") {
+      firstUnfinished = cid;
+    }
+  }
+
+  const total = steps.length;
+  let phase: SectionPhaseResult["phase"] = "not_started";
+  if (counts.blocked > 0) phase = "blocked";
+  else if (counts.stale > 0 || counts.needsConfig > 0) phase = "in_progress";
+  else if (counts.complete === total && total > 0) phase = "complete";
+
+  return {
+    phase,
+    complete: counts.complete,
+    stale: counts.stale,
+    blocked: counts.blocked,
+    nextStep: firstUnfinished,
+    total,
+  };
+}
