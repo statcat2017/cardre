@@ -11,42 +11,56 @@ interface Props {
 }
 
 export function RunHistoryTab({ stepId, projectId, runId, tab }: Props) {
-  const { data: runData } = useQuery({
-    queryKey: ["projectRuns", projectId],
-    queryFn: () => api.getProjectRuns(projectId),
-    enabled: tab === "history",
+  const { data: runStepsData, isLoading } = useQuery({
+    queryKey: ["runSteps", runId],
+    queryFn: () => api.getRunSteps(runId!),
+    enabled: !!runId && tab === "history",
+    retry: false,
   });
 
-  if (!runData?.runs?.length) {
-    return <div style={{ fontSize: 12, color: theme.muted, padding: 8 }}>No runs yet.</div>;
+  // For the current run, show all step records that include this step_id.
+  // If runId is not available, show nothing (no run yet).
+  if (!runId) {
+    return <div style={{ fontSize: 12, color: theme.muted, padding: 8 }}>No run yet — run the pathway to see step execution history.</div>;
   }
 
-  const relevantRuns = runData.runs.filter((r) => !runId || r.run_id === runId).slice(0, 5);
+  if (isLoading) {
+    return <div style={{ fontSize: 12, color: theme.muted, padding: 8 }}>Loading run history...</div>;
+  }
+
+  const stepsForThisStep = runStepsData?.steps?.filter((s) => s.step_id === stepId) ?? [];
+
+  if (stepsForThisStep.length === 0) {
+    return <div style={{ fontSize: 12, color: theme.muted, padding: 8 }}>This step was not executed in the current run.</div>;
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      {relevantRuns.map((r) => (
+      {stepsForThisStep.map((rs) => (
         <div
-          key={r.run_id}
+          key={rs.run_step_id || rs.step_id}
           style={{
             padding: 8, border: `1px solid ${theme.border}`, borderRadius: 4,
             backgroundColor: theme.surface, fontSize: 11,
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <code style={{ color: theme.text, fontFamily: theme.fontMono, fontSize: 10 }}>
-              {r.run_id.slice(0, 8)}…
-            </code>
+            <span style={{ fontWeight: 600, fontSize: 10, color: theme.text }}>
+              {rs.step_id}
+            </span>
             <span style={{
               fontWeight: 600, fontSize: 10,
-              color: r.status === "succeeded" ? theme.greenText : r.status === "failed" ? theme.redText : theme.yellowText,
+              color: rs.status === "succeeded" ? theme.greenText : rs.status === "failed" ? theme.redText : theme.yellowText,
             }}>
-              {r.status}
+              {rs.status}
             </span>
           </div>
-          {r.finished_at && (
+          {rs.is_carried_forward && (
+            <div style={{ color: theme.blueText, fontSize: 10, marginTop: 2 }}>Carried forward</div>
+          )}
+          {rs.finished_at && (
             <div style={{ color: theme.muted, fontSize: 10, marginTop: 2 }}>
-              {new Date(r.finished_at).toLocaleDateString()}
+              {new Date(rs.finished_at).toLocaleDateString()}
             </div>
           )}
         </div>

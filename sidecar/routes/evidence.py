@@ -12,13 +12,14 @@ from fastapi import APIRouter, HTTPException, Query
 
 from cardre.evidence import ArtifactEvidenceReader
 from cardre.services.project_registry import get_store_for_project
+from cardre.store import ProjectStore
 from sidecar.models import RunStepEvidenceItem, RunStepEvidenceResponse
 
 router = APIRouter(prefix="/runs", tags=["evidence"])
 
 
-def _to_item(reader: ArtifactEvidenceReader, artifact_id: str) -> RunStepEvidenceItem:
-    art = reader._store.get_artifact(artifact_id)
+def _to_item(store: ProjectStore, reader: ArtifactEvidenceReader, artifact_id: str) -> RunStepEvidenceItem:
+    art = store.get_artifact(artifact_id)
     summary = reader.summarise_artifact(artifact_id)
     return RunStepEvidenceItem(
         artifact_id=artifact_id,
@@ -42,7 +43,7 @@ def get_step_evidence(
 
     for rs in store.get_run_steps(run_id):
         if rs.step_id == step_id:
-            items = [_to_item(reader, aid) for aid in rs.output_artifact_ids]
+            items = [_to_item(store, reader, aid) for aid in rs.output_artifact_ids]
             return RunStepEvidenceResponse(run_id=run_id, step_id=step_id, items=items)
 
     raise HTTPException(
@@ -62,6 +63,6 @@ def get_run_evidence(
     items: list[RunStepEvidenceItem] = []
     for rs in store.get_run_steps(run_id):
         for aid in rs.output_artifact_ids:
-            items.append(_to_item(reader, aid))
+            items.append(_to_item(store, reader, aid))
 
     return RunStepEvidenceResponse(run_id=run_id, step_id=None, items=items)
