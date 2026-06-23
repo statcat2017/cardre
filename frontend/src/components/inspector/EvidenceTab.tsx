@@ -1,7 +1,8 @@
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../../api/client";
+import { useStepEvidence } from "../../hooks/useStepEvidence";
 import { theme } from "../../styles";
+import { EvidenceCard } from "./EvidenceCard";
+import type { RunStepEvidenceItem } from "../../types";
 
 interface Props {
   runId: string | null;
@@ -11,46 +12,103 @@ interface Props {
 }
 
 export function EvidenceTab({ runId, stepId, projectId, tab }: Props) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["stepEvidence", runId, stepId],
-    queryFn: () => api.getStepEvidence(runId!, stepId, projectId),
-    enabled: !!runId && tab === "evidence",
-    retry: false,
-  });
+  const { data, isLoading, isError, error } = useStepEvidence(
+    projectId,
+    runId,
+    tab === "evidence" ? stepId : null,
+  );
 
+  // 1. No run yet
   if (!runId) {
-    return <div style={{ fontSize: 12, color: theme.muted, padding: 8 }}>No run evidence yet — run the pathway to produce evidence.</div>;
+    return (
+      <div style={{ fontSize: 12, color: theme.muted, padding: 10 }}>
+        No run yet — evidence is produced when this step runs.
+      </div>
+    );
   }
 
+  // 2. Loading
   if (isLoading) {
-    return <div style={{ fontSize: 12, color: theme.muted, padding: 8 }}>Loading evidence...</div>;
+    return (
+      <div style={{ fontSize: 12, color: theme.muted, padding: 10 }}>
+        Loading evidence…
+      </div>
+    );
   }
 
-  if (!data || !data.items || data.items.length === 0) {
-    return <div style={{ fontSize: 12, color: theme.muted, padding: 8 }}>No evidence artifacts for this step.</div>;
+  // 3. Load failed
+  if (isError) {
+    return (
+      <div
+        style={{
+          padding: 12, border: `1px solid ${theme.border}`, borderRadius: 8,
+          backgroundColor: theme.redBg, fontSize: 13, color: theme.redText,
+        }}
+      >
+        <strong>Evidence could not be loaded.</strong>{" "}
+        {error instanceof Error ? error.message : "Unknown error"}
+      </div>
+    );
   }
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {data.items.map((item) => (
+  // 4. No evidence (response-level status is MISSING)
+  if (!data || (data.items ?? []).length === 0 || data.status === "missing") {
+    return (
+      <div style={{ fontSize: 12, color: theme.muted, padding: 10 }}>
+        No evidence found for this step.
+      </div>
+    );
+  }
+
+  // 5. Stale — all items stale
+  if (data.status === "stale") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <div
-          key={item.artifact_id}
           style={{
-            padding: 10, border: `1px solid ${theme.border}`, borderRadius: 6,
-            backgroundColor: theme.surfaceMuted, fontSize: 11,
+            padding: 10, fontSize: 12, color: theme.yellowText,
+            backgroundColor: theme.yellowBg, borderRadius: 6,
           }}
         >
-          <div style={{ fontWeight: 600, color: theme.text, marginBottom: 2 }}>
-            {item.evidence_kind || item.artifact_type}
-          </div>
-          <div style={{ color: theme.muted, fontFamily: theme.fontMono, fontSize: 10 }}>
-            {item.artifact_id.slice(0, 12)}…
-          </div>
-          {item.logical_hash && (
-            <div style={{ color: theme.muted, fontSize: 10 }}>hash: {item.logical_hash.slice(0, 12)}…</div>
-          )}
-          <div style={{ color: theme.mutedSoft, fontSize: 10 }}>{item.media_type}</div>
+          Current evidence is stale — upstream inputs have changed.
         </div>
+        {(data.items ?? []).map((item: RunStepEvidenceItem) => (
+          <EvidenceCard key={item.artifact_id} item={item} />
+        ))}
+      </div>
+    );
+  }
+
+  // 6. Partial
+  if (data.status === "partial") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div
+          style={{
+            padding: 10, fontSize: 12, color: theme.yellowText,
+            backgroundColor: theme.yellowBg, borderRadius: 6,
+          }}
+        >
+          Partial evidence — some expected artifacts are missing or unsupported.
+        </div>
+        {(data.items ?? []).map((item: RunStepEvidenceItem) => (
+          <EvidenceCard key={item.artifact_id} item={item} />
+        ))}
+      </div>
+    );
+  }
+
+  // 7. Available
+  const evidenceItems = data.items ?? [];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {evidenceItems.length > 1 && (
+        <div style={{ fontSize: 11, color: theme.muted, padding: "0 2px" }}>
+          {evidenceItems.length} evidence artifact{evidenceItems.length !== 1 ? "s" : ""}
+        </div>
+      )}
+      {evidenceItems.map((item: RunStepEvidenceItem) => (
+        <EvidenceCard key={item.artifact_id} item={item} />
       ))}
     </div>
   );
