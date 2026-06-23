@@ -37,6 +37,7 @@ WARNING_CODES = LimitationCode.warning_codes()
 class ReadinessBlocker:
     code: str
     message: str
+    step_id: str | None = None
 
     @staticmethod
     def _normalize(code: str) -> str:
@@ -45,17 +46,22 @@ class ReadinessBlocker:
         except ValueError:
             return code
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, step_id: str | None = None) -> None:
         self.code = self._normalize(code)
         self.message = message
+        self.step_id = step_id
 
     def to_dict(self) -> dict[str, str]:
-        return {"code": str(self.code), "message": self.message}
+        d: dict[str, str] = {"code": str(self.code), "message": self.message}
+        if self.step_id is not None:
+            d["step_id"] = self.step_id
+        return d
 
 
 class ReadinessWarning:
     code: str
     message: str
+    step_id: str | None = None
 
     @staticmethod
     def _normalize(code: str) -> str:
@@ -64,12 +70,16 @@ class ReadinessWarning:
         except ValueError:
             return code
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, step_id: str | None = None) -> None:
         self.code = self._normalize(code)
         self.message = message
+        self.step_id = step_id
 
     def to_dict(self) -> dict[str, str]:
-        return {"code": str(self.code), "message": self.message}
+        d: dict[str, str] = {"code": str(self.code), "message": self.message}
+        if self.step_id is not None:
+            d["step_id"] = self.step_id
+        return d
 
 
 class ReportReadinessResult:
