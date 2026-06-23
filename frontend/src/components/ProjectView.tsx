@@ -236,7 +236,13 @@ export function ProjectView({ projectId, onBack }: Props) {
 
           {activeSection === "artifacts" && <ArtifactBrowser projectId={projectId} />}
 
-          {activeSection === "exports" && <ExportPanel projectId={projectId} />}
+          {activeSection === "exports" && (
+            <ExportPanel
+              projectId={projectId}
+              targetBranchId={selectedBranchId ?? undefined}
+              onStepSelect={handleStepSelect}
+            />
+          )}
 
           {activeSection === "diagnostics" && (
             <div style={{ padding: 24, overflowY: "auto", flex: 1, backgroundColor: theme.canvas }}>
