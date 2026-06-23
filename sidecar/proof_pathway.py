@@ -111,7 +111,7 @@ SCORECARD_PATHWAY = PathwaySpec(
                             },
                             parent_step_ids=["initial-woe-iv", "variable-clustering"]),
             PathwayStepSpec("manual-binning", "cardre.manual_binning", category="refinement",
-                            params={"overrides": []},
+                            params={"overrides": [], "accept_automated": True},
                             parent_step_ids=["binning", "variable-selection"]),
             PathwayStepSpec("final-woe-iv", "cardre.calculate_woe_iv", category="selection",
                             params={
@@ -258,7 +258,7 @@ REJECT_INFERENCE_PATHWAY = PathwaySpec(
                             },
                             parent_step_ids=["initial-woe-iv", "variable-clustering"]),
             PathwayStepSpec("manual-binning", "cardre.manual_binning", category="refinement",
-                            params={"overrides": []},
+                            params={"overrides": [], "accept_automated": True},
                             parent_step_ids=["binning", "variable-selection"]),
             PathwayStepSpec("final-woe-iv", "cardre.calculate_woe_iv", category="selection",
                             params={
