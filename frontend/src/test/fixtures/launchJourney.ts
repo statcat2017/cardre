@@ -112,7 +112,7 @@ export function buildWorkflowGuidanceManualBinningPhase(): WorkflowGuidance {
     blockers: [],
     step_guidance: {
       "manual-binning": {
-        readiness: "needs_review",
+        readiness: "needs_config",
         primary_action: "Edit bins",
         explanation: "Review the automated bins and mark review complete.",
         evidence_kinds: ["bin_definition", "woe_iv_evidence"],
