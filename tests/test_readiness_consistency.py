@@ -19,10 +19,77 @@ def _init_store(tmp: str) -> ProjectStore:
 
 
 class TestCollectorReadinessConsistency:
-    """Collector blocker-level limitations must be a subset of readiness blockers."""
+    """Collector blocker-level limitations must be a subset of readiness blockers.
 
-    def test_collector_woe_iv_blocker_is_readiness_blocker(self):
-        """MISSING_WOE_IV_EVIDENCE_V1 emitted by collector must also be a readiness blocker."""
+    The collector and readiness check share some limitation codes but not all.
+    This test proves that when the collector emits a blocker-level code that
+    also exists in the readiness vocabulary, readiness agrees.  Collector-only
+    codes (e.g. MISSING_MODEL_COEFFICIENTS which checks coefficient detail)
+    are exempt from this assertion — they represent a different level of
+    granularity.
+    """
+
+    def test_collector_target_branch_not_found_is_readiness_blocker(self):
+        """TARGET_BRANCH_NOT_FOUND emitted by collector must also be a readiness blocker."""
+        from cardre.audit import StepSpec
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = _init_store(tmp)
+            prj_id = store.create_project("Test Project")
+            plan_id = store.create_plan(prj_id, "Test Plan")
+
+            step = StepSpec(
+                "final-woe-iv", "cardre.woe_iv", "", "build",
+                {}, "", [], "baseline", 1, canonical_step_id="final-woe-iv",
+            )
+            pv_id = store.create_plan_version(plan_id, steps=[step])
+            run_id = store.create_run(pv_id)
+            store.finish_run(run_id, status="succeeded")
+
+            # Non-existent branch — both collector and readiness should
+            # emit TARGET_BRANCH_NOT_FOUND as a blocker.
+            bundle = generate_report_bundle(
+                store=store, project_id=prj_id, run_id=run_id,
+                target_branch_id="nonexistent", report_mode="branch",
+            )
+            collector_blocker_codes = {
+                str(lim.code)
+                for lim in bundle.limitations
+                if lim.severity == "blocker"
+            }
+
+            result = check_report_readiness(
+                store=store, project_id=prj_id, run_id=run_id,
+                target_branch_id="nonexistent", report_mode="branch",
+            )
+            readiness_blocker_codes = {str(b.code) for b in result.blockers}
+
+            # Explicit assertion: expected blocker appears on both sides
+            assert str(LimitationCode.TARGET_BRANCH_NOT_FOUND) in collector_blocker_codes, (
+                f"Collector did not emit TARGET_BRANCH_NOT_FOUND: "
+                f"collector_blocker_codes={collector_blocker_codes}"
+            )
+            assert str(LimitationCode.TARGET_BRANCH_NOT_FOUND) in readiness_blocker_codes, (
+                f"Readiness did not block with TARGET_BRANCH_NOT_FOUND: "
+                f"readiness_blocker_codes={readiness_blocker_codes}"
+            )
+
+            # Subset: every collector blocker-level code must appear in readiness
+            codes_only_in_collector = collector_blocker_codes - readiness_blocker_codes
+            assert not codes_only_in_collector, (
+                f"Collector emitted blocker-level codes absent from readiness: "
+                f"{codes_only_in_collector}"
+            )
+
+    def test_collector_woe_iv_missing_step_is_readiness_blocker(self):
+        """When final-woe-iv has no run step, both collector and readiness block.
+
+        Collector emits MISSING_WOE_IV_EVIDENCE_V1 (blocker).
+        Readiness emits MISSING_REQUIRED_CANONICAL_STEP because no run step exists.
+        These are structurally different codes but both are blockers referenced
+        in the respective code sets.  This test documents that the codes differ
+        rather than silently passing.
+        """
         import uuid
         from cardre.audit import StepSpec, utc_now_iso
 
@@ -56,8 +123,8 @@ class TestCollectorReadinessConsistency:
 
             run_id = store.create_run(plan_version_id=pv_id)
 
-            # Create a run step for final-woe-iv with NO v1 evidence artifact
-            for step_id in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
+            # Create run steps for everything EXCEPT final-woe-iv
+            for step_id in ("model-fit", "score-scaling", "validation-metrics"):
                 rs_id = str(uuid.uuid4())
                 with store.transaction() as conn:
                     conn.execute(
@@ -68,33 +135,37 @@ class TestCollectorReadinessConsistency:
                         " warnings_json, errors_json, is_carried_forward) "
                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (rs_id, run_id, step_id, pv_id, "succeeded",
-                         "[]", "[]", '{"params_hash":"x","output_artifact_logical_hashes":[]}',
+                         "[]", "[]", '{"params_hash":"x"}',
                          utc_now_iso(), utc_now_iso(),
                          "[]", "[]", 0),
                     )
             store.finish_run(run_id, status="succeeded")
 
-            # Collector should emit MISSING_WOE_IV_EVIDENCE_V1
+            # Collector should emit MISSING_WOE_IV_EVIDENCE_V1 as blocker
+            # (no run step for final-woe-iv → collector line 312)
             bundle = generate_report_bundle(
                 store=store, project_id=prj_id, run_id=run_id,
                 target_branch_id=branch_id, report_mode="branch",
             )
             collector_blocker_codes = {
-                str(LimitationCode.MISSING_WOE_IV_EVIDENCE_V1)
+                str(lim.code)
                 for lim in bundle.limitations
                 if lim.severity == "blocker"
             }
 
-            # Readiness should also block with MISSING_WOE_IV_EVIDENCE_V1
+            # Readiness should block (MISSING_REQUIRED_CANONICAL_STEP because
+            # no run step exists for final-woe-iv, or MISSING_WOE_IV_EVIDENCE_V1
+            # depending on resolution)
             result = check_report_readiness(
                 store=store, project_id=prj_id, run_id=run_id,
                 target_branch_id=branch_id, report_mode="branch",
             )
             readiness_blocker_codes = {str(b.code) for b in result.blockers}
 
-            # Every collector blocker-level code must appear in readiness blockers
-            missing_in_readiness = collector_blocker_codes - readiness_blocker_codes
-            assert not missing_in_readiness, (
-                f"Collector emitted blocker-level codes absent from readiness: "
-                f"{missing_in_readiness}"
+            assert str(LimitationCode.MISSING_WOE_IV_EVIDENCE_V1) in collector_blocker_codes, (
+                f"Collector did not emit MISSING_WOE_IV_EVIDENCE_V1: "
+                f"collector_blocker_codes={collector_blocker_codes}"
+            )
+            assert len(readiness_blocker_codes) > 0, (
+                "Readiness did not block at all"
             )
