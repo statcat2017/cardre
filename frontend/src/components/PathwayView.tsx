@@ -43,8 +43,11 @@ export function PathwayView({ steps, selectedStepId, onStepSelect, carriedForwar
           >
             {section}
           </h3>
-          {(() => {
+          {guidance && (() => {
             const sr = sectionPhase(stepsBySection[section], guidance);
+            const nextLabel = sr.nextStep
+              ? (STEP_DISPLAY_METADATA[sr.nextStep]?.label ?? sr.nextStep)
+              : null;
             return (
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                 <span style={{
@@ -60,9 +63,9 @@ export function PathwayView({ steps, selectedStepId, onStepSelect, carriedForwar
                   {sr.stale > 0 ? ` · ${sr.stale} stale` : ""}
                   {sr.blocked > 0 ? ` · ${sr.blocked} blocked` : ""}
                 </span>
-                {sr.nextStep && (
+                {nextLabel && (
                   <span style={{ fontSize: 10, color: theme.blueText, marginLeft: "auto" }}>
-                    Next: {sr.nextStep}
+                    Next: {nextLabel}
                   </span>
                 )}
               </div>
@@ -78,6 +81,9 @@ export function PathwayView({ steps, selectedStepId, onStepSelect, carriedForwar
             {stepsBySection[section].map((step) => {
               const canonicalId = canonicalizeStepId(step.step_id);
               const sg = guidance?.step_guidance?.[canonicalId];
+              const stepBlockers = (guidance?.blockers ?? []).filter(
+                (b) => b.step_id && canonicalizeStepId(b.step_id) === canonicalId,
+              );
               return (
                 <StepCard
                   key={step.step_id}
@@ -87,7 +93,7 @@ export function PathwayView({ steps, selectedStepId, onStepSelect, carriedForwar
                   carriedForward={carriedForwardSteps?.[step.step_id]}
                   liveStatus={liveStepStatus?.[step.step_id]}
                   guidanceForStep={sg ?? null}
-                  blockers={guidance?.blockers ?? []}
+                  blockers={stepBlockers}
                 />
               );
             })}

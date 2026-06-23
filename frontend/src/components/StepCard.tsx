@@ -33,6 +33,21 @@ export function StepCard({ step, isSelected, onSelect, carriedForward, liveStatu
         boxShadow: isSelected ? "0 2px 8px rgba(0,0,0,0.04)" : "none",
       }}
     >
+      {/* Stale dot: guidance-driven readiness row preferred; fallback to legacy dot */}
+      {!guidanceForStep && step.is_stale && (
+        <div
+          title="Stale"
+          style={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            backgroundColor: theme.yellowText,
+          }}
+        />
+      )}
       {carriedForward && (
         <span
           style={{
