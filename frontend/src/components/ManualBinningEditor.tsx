@@ -193,7 +193,6 @@ export function ManualBinningEditor({
           <button
             onClick={() => {
               clearMsg();
-              saveMutation.mutate(draftOverrides);
               api.reviewManualBinning(planId, stepId, {
                 project_id: projectId,
                 plan_version_id: basePlanVersionId,
@@ -203,12 +202,13 @@ export function ManualBinningEditor({
                 overrides: draftOverrides.length > 0 ? draftOverrides : undefined,
               }).then(() => {
                 setSuccess("Manual binning review complete.");
+                queryClient.invalidateQueries({ queryKey: ["plan"] });
+                queryClient.invalidateQueries({ queryKey: ["manualBinningEditorState", planId, projectId] });
                 queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
               }).catch((e: any) => {
                 setError(e.message || "Review failed");
               });
             }}
-            disabled={saveMutation.isPending}
             style={{
               padding: "8px 16px", borderRadius: 4, border: "none",
               backgroundColor: theme.text, color: "#fff", fontSize: 12,
@@ -224,16 +224,17 @@ export function ManualBinningEditor({
                 project_id: projectId,
                 plan_version_id: basePlanVersionId,
                 step_id: stepId,
-                reviewed: true,
+                reviewed: false,
                 accept_automated: true,
               }).then(() => {
                 setSuccess("Automated bins accepted.");
+                queryClient.invalidateQueries({ queryKey: ["plan"] });
+                queryClient.invalidateQueries({ queryKey: ["manualBinningEditorState", planId, projectId] });
                 queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
               }).catch((e: any) => {
                 setError(e.message || "Accept failed");
               });
             }}
-            disabled={saveMutation.isPending}
             style={{
               padding: "8px 16px", borderRadius: 4, border: `1px solid ${theme.border}`,
               backgroundColor: theme.surface, color: theme.textSoft, fontSize: 12,

@@ -91,7 +91,7 @@ def review_manual_binning(plan_id: str, step_id: str, req: ManualBinningReviewRe
     PlanService(store)._validate_manual_binning_review_params(req.reviewed, req.accept_automated, req.overrides)
 
     service = ManualBinningService(store)
-    service.save_with_review(
+    svc_result = service.save_with_review(
         plan_id=plan_id,
         plan_version_id=req.plan_version_id,
         step_id=step_id,
@@ -103,7 +103,7 @@ def review_manual_binning(plan_id: str, step_id: str, req: ManualBinningReviewRe
 
     return ManualBinningReviewResponse(
         plan_id=plan_id,
-        new_plan_version_id="",
+        new_plan_version_id=svc_result.new_plan_version_id,
         reviewed=req.reviewed,
         accept_automated=req.accept_automated,
     )

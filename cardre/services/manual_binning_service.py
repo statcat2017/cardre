@@ -362,11 +362,13 @@ class ManualBinningService:
         reviewed: bool = False,
         accept_automated: bool = False,
         overrides: list[dict] | None = None,
-    ) -> None:
+    ) -> UpdateStepParamsResponse:
         """Save a review/accept-automated decision for manual binning.
 
         Writes the params through PlanService.update_params and records a
         step annotation for auditability.
+        Returns the UpdateStepParamsResponse so the caller gets the new
+        plan version ID.
         """
         from cardre.services.plan_service import PlanService
 
@@ -376,7 +378,7 @@ class ManualBinningService:
         elif accept_automated:
             params["overrides"] = []
 
-        PlanService(self._store).update_params(
+        result = PlanService(self._store).update_params(
             plan_id=plan_id,
             step_id=step_id,
             base_plan_version_id=plan_version_id,
@@ -402,6 +404,8 @@ class ManualBinningService:
                     now,
                 ),
             )
+
+        return result
 
     # ------------------------------------------------------------------
     # Internal helpers
