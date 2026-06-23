@@ -98,6 +98,12 @@ Produces `frontend/src-tauri/binaries/cardre-api-{target-triple}` for Tauri bund
 python3 -m pytest tests/ -q
 ```
 
+### Frontend
+
+```bash
+cd frontend && npm test
+```
+
 ### CI
 
 See `.github/workflows/ci.yml` — runs Python tests, frontend typecheck, and sidecar build on push/PR to `main`.
