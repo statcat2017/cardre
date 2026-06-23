@@ -196,7 +196,7 @@ def check_report_readiness(
         )
         if mb_ref is None:
             warnings.append(ReadinessWarning(
-                LimitationCode.MANUAL_BINNING_NOT_REVIEWED,
+                LimitationCode.NO_MANUAL_BINNING_STEP_ON_BRANCH,
                 "No manual-binning step found on this branch.",
             ))
         else:

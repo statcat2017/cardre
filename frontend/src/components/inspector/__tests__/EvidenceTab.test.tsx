@@ -149,7 +149,7 @@ describe("EvidenceTab", () => {
       />,
     );
     await waitFor(() => {
-      expect(screen.getByText(/evidence is stale/)).toBeInTheDocument();
+      expect(screen.getByText(/Evidence is stale/)).toBeInTheDocument();
     });
   });
 

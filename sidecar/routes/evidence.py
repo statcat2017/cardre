@@ -45,15 +45,21 @@ def _to_item(
     evidence_kind = getattr(summary_obj, "kind", None) or ""
 
     parsed_payload = None
+    parse_failed = False
     if evidence_kind:
         try:
             from cardre.evidence import EvidenceKind
             ek = EvidenceKind(evidence_kind)
             parsed_payload = reader.read_optional(artifact_id, ek)
         except (ValueError, Exception):
-            pass
+            parse_failed = True
 
     summary_dict, warnings_list = summarise(dataclasses.asdict(art), parsed_payload)
+
+    if parse_failed and evidence_kind:
+        warnings_list.append(
+            f"Evidence payload could not be parsed as {evidence_kind}."
+        )
 
     is_stale = False
     staleness_reason: str | None = None
@@ -103,6 +109,7 @@ def get_step_evidence(
     run_id: str,
     step_id: str,
     project_id: str = Query(..., description="Project ID for store lookup"),
+    target_branch_id: str = Query("", description="Optional branch context for display"),
 ):
     store = get_store_for_project(project_id)
     reader = ArtifactEvidenceReader(store)
@@ -134,7 +141,7 @@ def get_step_evidence(
                 items=items,
                 status=_derive_step_status(items),
                 checked_at=datetime.now(timezone.utc).isoformat(),
-                target_branch_id="",
+                target_branch_id=target_branch_id,
                 canonical_step_id=canonical_step_id,
             )
 
@@ -148,6 +155,7 @@ def get_step_evidence(
 def get_run_evidence(
     run_id: str,
     project_id: str = Query(..., description="Project ID for store lookup"),
+    target_branch_id: str = Query("", description="Optional branch context for display"),
 ):
     store = get_store_for_project(project_id)
     reader = ArtifactEvidenceReader(store)
@@ -176,6 +184,6 @@ def get_run_evidence(
         items=items,
         status=_derive_step_status(items),
         checked_at=datetime.now(timezone.utc).isoformat(),
-        target_branch_id="",
+        target_branch_id=target_branch_id,
         canonical_step_id=None,
     )
