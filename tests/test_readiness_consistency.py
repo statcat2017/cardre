@@ -179,3 +179,160 @@ class TestCollectorReadinessConsistency:
                     f"({readiness_blocker_codes}) and has no mapped equivalent "
                     f"that appears there."
                 )
+
+
+class TestManualBinningConsistency:
+    """Manual-binning readiness blocker aligns with branch-scoped step context."""
+
+    def test_manual_binning_blocker_carries_branch_step_id(self):
+        """MANUAL_BINNING_NOT_REVIEWED blocker includes the branch-owned step id."""
+        import uuid
+        from cardre.audit import StepSpec, utc_now_iso
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = _init_store(tmp)
+            prj_id = store.create_project("Test Project")
+            plan_id = store.create_plan(prj_id, "Test Plan")
+
+            mb_step = StepSpec(
+                "manual-binning__br",
+                "cardre.manual_binning", "", "build",
+                {"reviewed": False, "accept_automated": False},
+                "", [], "baseline", 1, canonical_step_id="manual-binning",
+            )
+            pv_id = store.create_plan_version(plan_id, steps=[mb_step])
+
+            branch_id = str(uuid.uuid4())
+            store._connect().execute(
+                "INSERT INTO plan_branches (branch_id, plan_id, project_id, name, branch_type, "
+                "base_plan_version_id, head_plan_version_id, created_at, updated_at, created_reason) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (branch_id, plan_id, prj_id, "Branch", "baseline", pv_id, pv_id,
+                 utc_now_iso(), utc_now_iso(), "test"),
+            )
+            store._connect().commit()
+
+            store.create_branch_step_map(
+                branch_id=branch_id, plan_version_id=pv_id,
+                canonical_step_id="manual-binning", step_id="manual-binning__br",
+                is_shared_upstream=False, is_branch_owned=True,
+            )
+            for cid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
+                store.create_branch_step_map(
+                    branch_id=branch_id, plan_version_id=pv_id,
+                    canonical_step_id=cid, step_id=cid,
+                    is_shared_upstream=False, is_branch_owned=True,
+                )
+
+            run_id = store.create_run(plan_version_id=pv_id)
+            for step_id in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
+                rs_id = str(uuid.uuid4())
+                with store.transaction() as conn:
+                    conn.execute(
+                        "INSERT INTO run_steps "
+                        "(run_step_id, run_id, step_id, plan_version_id, status, "
+                        " output_artifact_ids_json, input_artifact_ids_json, "
+                        " execution_fingerprint_json, started_at, finished_at, "
+                        " warnings_json, errors_json, is_carried_forward) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (rs_id, run_id, step_id, pv_id, "succeeded",
+                         "[]", "[]", '{"params_hash":"x"}',
+                         utc_now_iso(), utc_now_iso(),
+                         "[]", "[]", 0),
+                    )
+            store.finish_run(run_id, status="succeeded")
+
+            result = check_report_readiness(
+                store=store, project_id=prj_id, run_id=run_id,
+                target_branch_id=branch_id, report_mode="branch",
+            )
+            blocker = next(
+                (b for b in result.blockers if b.code == LimitationCode.MANUAL_BINNING_NOT_REVIEWED),
+                None,
+            )
+            assert blocker is not None, (
+                f"Expected MANUAL_BINNING_NOT_REVIEWED blocker, got {[b.code for b in result.blockers]}"
+            )
+            assert blocker.step_id == "manual-binning__br", (
+                f"Expected step_id 'manual-binning__br', got {blocker.step_id!r}"
+            )
+
+    def test_woe_iv_missing_artifact_readiness_and_warning_aligned(self):
+        """When WOE/IV run step exists but has no v1 artifact, readiness blocks
+        and the collector warns, not blocks — a documented divergence."""
+        import uuid
+        from cardre.audit import StepSpec, utc_now_iso
+        from cardre.reporting.collector import generate_report_bundle
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = _init_store(tmp)
+            prj_id = store.create_project("Test Project")
+            plan_id = store.create_plan(prj_id, "Test Plan")
+
+            step = StepSpec(
+                "final-woe-iv", "cardre.woe_iv", "", "build",
+                {}, "", [], "baseline", 1, canonical_step_id="final-woe-iv",
+            )
+            pv_id = store.create_plan_version(plan_id, steps=[step])
+
+            branch_id = str(uuid.uuid4())
+            store._connect().execute(
+                "INSERT INTO plan_branches (branch_id, plan_id, project_id, name, branch_type, "
+                "base_plan_version_id, head_plan_version_id, created_at, updated_at, created_reason) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (branch_id, plan_id, prj_id, "Branch", "baseline", pv_id, pv_id,
+                 utc_now_iso(), utc_now_iso(), "test"),
+            )
+            store._connect().commit()
+
+            for cid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
+                store.create_branch_step_map(
+                    branch_id=branch_id, plan_version_id=pv_id,
+                    canonical_step_id=cid, step_id=cid,
+                    is_shared_upstream=False, is_branch_owned=True,
+                )
+
+            run_id = store.create_run(plan_version_id=pv_id)
+            for sid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
+                rs_id = str(uuid.uuid4())
+                with store.transaction() as conn:
+                    conn.execute(
+                        "INSERT INTO run_steps "
+                        "(run_step_id, run_id, step_id, plan_version_id, status, "
+                        " output_artifact_ids_json, input_artifact_ids_json, "
+                        " execution_fingerprint_json, started_at, finished_at, "
+                        " warnings_json, errors_json, is_carried_forward) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (rs_id, run_id, sid, pv_id, "succeeded",
+                         "[]", "[]", '{"params_hash":"x"}',
+                         utc_now_iso(), utc_now_iso(),
+                         "[]", "[]", 0),
+                    )
+            store.finish_run(run_id, status="succeeded")
+
+            # Collector: run step exists but no v1 artifact → WARNING, not blocker
+            bundle = generate_report_bundle(
+                store=store, project_id=prj_id, run_id=run_id,
+                target_branch_id=branch_id, report_mode="branch",
+            )
+            collector_warning_codes = {
+                str(lim.code)
+                for lim in bundle.limitations
+                if lim.severity == "warning"
+            }
+            assert str(LimitationCode.LEGACY_WOE_SUMMARY_USED) in collector_warning_codes, (
+                f"Collector should warn LEGACY_WOE_SUMMARY_USED, got warnings "
+                f"{collector_warning_codes} and blockers "
+                f"{[str(l.code) for l in bundle.limitations if l.severity == 'blocker']}"
+            )
+
+            # Readiness: run step exists but no v1 → blocker MISSING_WOE_IV_EVIDENCE_V1
+            result = check_report_readiness(
+                store=store, project_id=prj_id, run_id=run_id,
+                target_branch_id=branch_id, report_mode="branch",
+            )
+            readiness_blocker_codes = {str(b.code) for b in result.blockers}
+            assert str(LimitationCode.MISSING_WOE_IV_EVIDENCE_V1) in readiness_blocker_codes, (
+                f"Readiness should block with MISSING_WOE_IV_EVIDENCE_V1, "
+                f"got blockers {readiness_blocker_codes}"
+            )

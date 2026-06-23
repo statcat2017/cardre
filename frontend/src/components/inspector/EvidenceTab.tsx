@@ -70,7 +70,7 @@ export function EvidenceTab({ runId, stepId, projectId, tab }: Props) {
             backgroundColor: theme.yellowBg, borderRadius: 6,
           }}
         >
-          Current evidence is stale — upstream inputs have changed.
+          Evidence is stale — upstream inputs have changed.
         </div>
         {(data.items ?? []).map((item: RunStepEvidenceItem) => (
           <EvidenceCard key={item.artifact_id} item={item} />

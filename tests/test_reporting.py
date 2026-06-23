@@ -698,8 +698,8 @@ class TestReadinessRegression:
             target_branch_id=branch_no_mb, report_mode="branch",
         )
         mb_warnings = {w.code for w in result_without.warnings
-                       if w.code == LimitationCode.MANUAL_BINNING_NOT_REVIEWED}
-        assert len(mb_warnings) == 1, f"Expected MANUAL_BINNING_NOT_REVIEWED warning, got {[w.code for w in result_without.warnings]}"
+                       if w.code == LimitationCode.NO_MANUAL_BINNING_STEP_ON_BRANCH}
+        assert len(mb_warnings) == 1, f"Expected NO_MANUAL_BINNING_STEP_ON_BRANCH warning, got {[w.code for w in result_without.warnings]}"
 
     def test_branch_specific_manual_binning_step_id(self, store, project_and_plan):
         """Blocker step_id points to the branch-owned step, not the generic step."""
