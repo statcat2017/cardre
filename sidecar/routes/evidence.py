@@ -8,6 +8,7 @@ read path.
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
@@ -26,8 +27,9 @@ def _to_item(
     store: ProjectStore,
     reader: ArtifactEvidenceReader,
     artifact_id: str,
+    run_step_id: str | None = None,
+    canonical_step_id: str | None = None,
     staleness_map: dict[str, bool] | None = None,
-    pv_steps: list | None = None,
     staleness_details: list | None = None,
 ) -> RunStepEvidenceItem:
     art = store.get_artifact(artifact_id)
@@ -41,28 +43,18 @@ def _to_item(
 
     summary_obj = reader.summarise_artifact(artifact_id)
     evidence_kind = getattr(summary_obj, "kind", None) or ""
-    parsed = reader.read_optional(artifact_id, None) if evidence_kind else None
 
-    summary_dict, warnings_list = summarise(dict(art), parsed)
+    summary_dict, warnings_list = summarise(dataclasses.asdict(art), None)
 
     is_stale = False
     staleness_reason: str | None = None
-    if staleness_map and staleness_details and evidence_kind:
-        for s in pv_steps or []:
-            if s.step_id in staleness_map and staleness_map[s.step_id]:
-                if s.canonical_step_id == evidence_kind:
-                    is_stale = True
-                    break
-        if is_stale:
+    if run_step_id and staleness_map is not None and staleness_details is not None:
+        if staleness_map.get(run_step_id):
+            is_stale = True
             for d in staleness_details:
-                if getattr(d, "is_stale", False) and getattr(d, "step_id", None) == s.step_id:
+                if getattr(d, "is_stale", False) and getattr(d, "step_id", None) == run_step_id:
                     staleness_reason = getattr(d, "reason", None) or None
                     break
-
-    source_step_id: str | None = None
-    canonical_step_id: str | None = evidence_kind or None
-    if summary_obj:
-        source_step_id = getattr(summary_obj, "source_artifact_id", None) or None
 
     status = EvidenceStatus.UNSUPPORTED if summary_dict.get("unsupported_kind") else (
         EvidenceStatus.STALE if is_stale else EvidenceStatus.AVAILABLE
@@ -79,12 +71,22 @@ def _to_item(
         is_stale=is_stale,
         staleness_reason=staleness_reason,
         canonical_step_id=canonical_step_id,
-        source_step_id=source_step_id,
+        source_step_id=run_step_id,
         source_branch_id=None,
         status=status,
         summary=summary_dict,
         warnings=warnings_list,
     )
+
+
+def _derive_step_status(items: list[RunStepEvidenceItem]) -> EvidenceStatus:
+    if not items:
+        return EvidenceStatus.MISSING
+    if any(i.status == EvidenceStatus.STALE for i in items):
+        return EvidenceStatus.STALE
+    if any(i.status in (EvidenceStatus.MISSING, EvidenceStatus.UNSUPPORTED) for i in items):
+        return EvidenceStatus.PARTIAL
+    return EvidenceStatus.AVAILABLE
 
 
 @router.get("/{run_id}/steps/{step_id}/evidence", response_model=RunStepEvidenceResponse)
@@ -99,36 +101,32 @@ def get_step_evidence(
     run = store.get_run(run_id)
     plan_version_id = run["plan_version_id"] if run else None
     pv_steps = store.get_plan_version_steps(plan_version_id) if plan_version_id else []
+    step_by_id = {s.step_id: s for s in pv_steps}
     staleness_details = staleness_detail(store, plan_version_id) if plan_version_id else []
     staleness_map: dict[str, bool] = {d.step_id: d.is_stale for d in staleness_details}
 
     for rs in store.get_run_steps(run_id):
         if rs.step_id == step_id:
+            pv_step = step_by_id.get(rs.step_id)
+            canonical_step_id = getattr(pv_step, "canonical_step_id", None) if pv_step else None
+
             items = [
                 _to_item(store, reader, aid,
-                         staleness_map=staleness_map, pv_steps=pv_steps,
+                         run_step_id=rs.step_id,
+                         canonical_step_id=canonical_step_id,
+                         staleness_map=staleness_map,
                          staleness_details=staleness_details)
                 for aid in rs.output_artifact_ids
             ]
-            step_status = EvidenceStatus.MISSING
-            if items:
-                if any(i.status == EvidenceStatus.STALE for i in items):
-                    step_status = EvidenceStatus.STALE
-                elif any(i.status == EvidenceStatus.MISSING for i in items):
-                    step_status = EvidenceStatus.PARTIAL
-                elif any(i.status == EvidenceStatus.UNSUPPORTED for i in items):
-                    step_status = EvidenceStatus.PARTIAL
-                else:
-                    step_status = EvidenceStatus.AVAILABLE
 
             return RunStepEvidenceResponse(
                 run_id=run_id,
                 step_id=step_id,
                 items=items,
-                status=step_status,
+                status=_derive_step_status(items),
                 checked_at=datetime.now(timezone.utc).isoformat(),
                 target_branch_id="",
-                canonical_step_id=None,
+                canonical_step_id=canonical_step_id,
             )
 
     raise HTTPException(
@@ -148,32 +146,26 @@ def get_run_evidence(
     run = store.get_run(run_id)
     plan_version_id = run["plan_version_id"] if run else None
     pv_steps = store.get_plan_version_steps(plan_version_id) if plan_version_id else []
+    step_by_id = {s.step_id: s for s in pv_steps}
     staleness_details = staleness_detail(store, plan_version_id) if plan_version_id else []
     staleness_map: dict[str, bool] = {d.step_id: d.is_stale for d in staleness_details}
 
     items: list[RunStepEvidenceItem] = []
     for rs in store.get_run_steps(run_id):
+        pv_step = step_by_id.get(rs.step_id)
+        canonical_step_id = getattr(pv_step, "canonical_step_id", None) if pv_step else None
         for aid in rs.output_artifact_ids:
             items.append(_to_item(store, reader, aid,
-                                  staleness_map=staleness_map, pv_steps=pv_steps,
+                                  run_step_id=rs.step_id,
+                                  canonical_step_id=canonical_step_id,
+                                  staleness_map=staleness_map,
                                   staleness_details=staleness_details))
-
-    step_status = EvidenceStatus.MISSING
-    if items:
-        if any(i.status == EvidenceStatus.STALE for i in items):
-            step_status = EvidenceStatus.STALE
-        elif any(i.status == EvidenceStatus.MISSING for i in items):
-            step_status = EvidenceStatus.PARTIAL
-        elif any(i.status == EvidenceStatus.UNSUPPORTED for i in items):
-            step_status = EvidenceStatus.PARTIAL
-        else:
-            step_status = EvidenceStatus.AVAILABLE
 
     return RunStepEvidenceResponse(
         run_id=run_id,
         step_id=None,
         items=items,
-        status=step_status,
+        status=_derive_step_status(items),
         checked_at=datetime.now(timezone.utc).isoformat(),
         target_branch_id="",
         canonical_step_id=None,
