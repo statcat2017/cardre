@@ -6,6 +6,7 @@ branch mode (warns but does not block without champion assignment).
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from cardre.readiness.dto import ReadinessBlocker, ReadinessWarning, ReportReadinessResult
@@ -14,7 +15,6 @@ from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_BRANCH,
     REQUIRED_STEPS_CHAMPION,
     canonical_alias_candidates,
-    find_evidence_for_canonical_step,
 )
 from cardre.step_id import resolve_run_step, resolve_required_steps
 from cardre.store import ProjectStore
@@ -52,7 +52,13 @@ def check_report_readiness(
             LimitationCode.TARGET_BRANCH_NOT_FOUND,
             f"Target branch {target_branch_id!r} not found.",
         ))
-        return ReportReadinessResult(blockers=blockers)
+        return ReportReadinessResult(
+            blockers=blockers,
+            target_branch_id=target_branch_id,
+            run_id=run_id,
+            report_mode=report_mode,
+            checked_at=datetime.now(timezone.utc).isoformat(),
+        )
 
     if branch.get("status") != "active":
         blockers.append(ReadinessBlocker(
@@ -67,7 +73,13 @@ def check_report_readiness(
             LimitationCode.MISSING_RUN_MANIFEST,
             f"Run {run_id!r} not found.",
         ))
-        return ReportReadinessResult(blockers=blockers)
+        return ReportReadinessResult(
+            blockers=blockers,
+            target_branch_id=target_branch_id,
+            run_id=run_id,
+            report_mode=report_mode,
+            checked_at=datetime.now(timezone.utc).isoformat(),
+        )
 
     plan_version_id = run["plan_version_id"]
     plan_id = store.get_plan_id_for_version(plan_version_id)
@@ -133,6 +145,7 @@ def check_report_readiness(
             blockers.append(ReadinessBlocker(
                 LimitationCode.MISSING_REQUIRED_CANONICAL_STEP,
                 f"No successful run step for {canonical_step_id} (step {ref.step_id}).",
+                step_id=ref.step_id,
             ))
             continue
 
@@ -149,6 +162,7 @@ def check_report_readiness(
                     LimitationCode.MISSING_WOE_IV_EVIDENCE_V1,
                     f"WOE/IV step {ref.step_id} has no cardre.woe_iv_evidence.v1 artifact. "
                     "Phase 5 requires the controlled evidence artifact.",
+                    step_id=ref.step_id,
                 ))
 
     # Champion mode checks
@@ -186,6 +200,7 @@ def check_report_readiness(
                 blockers.append(ReadinessBlocker(
                     LimitationCode.MANUAL_BINNING_NOT_REVIEWED,
                     "Manual binning has not been reviewed. Mark review complete or accept automated bins before generating the report.",
+                    step_id=manual_binning_step.step_id,
                 ))
 
     # Check OOT dataset role
@@ -195,4 +210,11 @@ def check_report_readiness(
             "No OOT dataset role was present for this run.",
         ))
 
-    return ReportReadinessResult(blockers=blockers, warnings=warnings)
+    return ReportReadinessResult(
+        blockers=blockers,
+        warnings=warnings,
+        target_branch_id=target_branch_id,
+        run_id=run_id,
+        report_mode=report_mode,
+        checked_at=datetime.now(timezone.utc).isoformat(),
+    )

@@ -6,4 +6,8 @@ directly. This shim will be removed after all import sites are migrated.
 """
 
 from cardre.readiness.check import check_report_readiness  # noqa: F401
-from cardre.readiness.dto import ReportReadinessResult  # noqa: F401
+from cardre.readiness.dto import (  # noqa: F401
+    ReadinessBlocker,
+    ReadinessWarning,
+    ReportReadinessResult,
+)
