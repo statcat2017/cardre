@@ -16,7 +16,7 @@ from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_CHAMPION,
     canonical_alias_candidates,
 )
-from cardre.step_id import resolve_run_step, resolve_required_steps
+from cardre.step_id import resolve_run_step, resolve_required_steps, resolve_step_for_branch
 from cardre.store import ProjectStore
 
 
@@ -187,21 +187,33 @@ def check_report_readiness(
                     f"Target branch {target_branch_id!r} is not the champion.",
                 ))
 
-    # Check manual-binning review status
+    # Check manual-binning review status (branch-scoped via step map)
     if plan_id:
-        manual_binning_step = None
-        for s in store.get_plan_version_steps(plan_version_id):
-            if s.canonical_step_id == "manual-binning" or s.node_type == "cardre.manual_binning":
-                manual_binning_step = s
-                break
-        if manual_binning_step is not None:
-            params = manual_binning_step.params
-            if not params.get("reviewed", False) and not params.get("accept_automated", False):
-                blockers.append(ReadinessBlocker(
-                    LimitationCode.MANUAL_BINNING_NOT_REVIEWED,
-                    "Manual binning has not been reviewed. Mark review complete or accept automated bins before generating the report.",
-                    step_id=manual_binning_step.step_id,
-                ))
+        mb_ref = resolve_step_for_branch(
+            branch_id=target_branch_id,
+            canonical_step_id="manual-binning",
+            branch_step_map=step_map,
+        )
+        if mb_ref is None:
+            warnings.append(ReadinessWarning(
+                LimitationCode.MANUAL_BINNING_NOT_REVIEWED,
+                "No manual-binning step found on this branch.",
+            ))
+        else:
+            mb_step = None
+            for s in store.get_plan_version_steps(plan_version_id):
+                if s.step_id == mb_ref.step_id:
+                    mb_step = s
+                    break
+            if mb_step is not None:
+                params = mb_step.params
+                if not params.get("reviewed", False) and not params.get("accept_automated", False):
+                    blockers.append(ReadinessBlocker(
+                        LimitationCode.MANUAL_BINNING_NOT_REVIEWED,
+                        "Manual binning has not been reviewed on this branch. "
+                        "Mark review complete or accept automated bins before generating the report.",
+                        step_id=mb_ref.step_id,
+                    ))
 
     # Check OOT dataset role
     if not _check_oot_exists(store, run_id):

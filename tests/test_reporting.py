@@ -641,6 +641,169 @@ class TestReadinessRegression:
         assert d["ready"] is False
         assert d["blockers"][0]["code"] == "NO_OOT"
 
+    def test_manual_binning_branch_scoped_blocker(self, store, project_and_plan):
+        """Branch with manual-binning step map entry gets blocker; branch without gets warning."""
+        project_id, plan_id = project_and_plan
+        from cardre.audit import StepSpec
+        mb_step = StepSpec(
+            "manual-binning__shared",
+            "cardre.manual_binning", "", "build", {"reviewed": False, "accept_automated": False},
+            "", [], "baseline", 1, canonical_step_id="manual-binning",
+        )
+        pv_id = store.create_plan_version(plan_id, steps=[mb_step])
+        run_id = store.create_run(pv_id)
+        store.finish_run(run_id, "succeeded")
+
+        branch_with_mb = store.create_branch(
+            project_id=project_id, plan_id=plan_id, name="With MB", branch_type="baseline",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="Test.",
+        )
+        store.create_branch_step_map(
+            branch_id=branch_with_mb, plan_version_id=pv_id,
+            canonical_step_id="manual-binning", step_id="manual-binning__shared",
+            is_shared_upstream=False, is_branch_owned=True,
+        )
+        for cid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
+            store.create_branch_step_map(
+                branch_id=branch_with_mb, plan_version_id=pv_id,
+                canonical_step_id=cid, step_id=cid,
+                is_shared_upstream=False, is_branch_owned=True,
+            )
+
+        branch_no_mb = store.create_branch(
+            project_id=project_id, plan_id=plan_id, name="No MB", branch_type="baseline",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="Test.",
+        )
+        for cid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
+            store.create_branch_step_map(
+                branch_id=branch_no_mb, plan_version_id=pv_id,
+                canonical_step_id=cid, step_id=cid,
+                is_shared_upstream=False, is_branch_owned=True,
+            )
+
+        # Branch with manual-binning → blocker
+        result_with = check_report_readiness(
+            store=store, project_id=project_id, run_id=run_id,
+            target_branch_id=branch_with_mb, report_mode="branch",
+        )
+        mb_codes = {b.code for b in result_with.blockers
+                    if b.code == LimitationCode.MANUAL_BINNING_NOT_REVIEWED}
+        assert len(mb_codes) == 1, f"Expected MANUAL_BINNING_NOT_REVIEWED blocker, got {[b.code for b in result_with.blockers]}"
+
+        # Branch without manual-binning → warning
+        result_without = check_report_readiness(
+            store=store, project_id=project_id, run_id=run_id,
+            target_branch_id=branch_no_mb, report_mode="branch",
+        )
+        mb_warnings = {w.code for w in result_without.warnings
+                       if w.code == LimitationCode.MANUAL_BINNING_NOT_REVIEWED}
+        assert len(mb_warnings) == 1, f"Expected MANUAL_BINNING_NOT_REVIEWED warning, got {[w.code for w in result_without.warnings]}"
+
+    def test_branch_specific_manual_binning_step_id(self, store, project_and_plan):
+        """Blocker step_id points to the branch-owned step, not the generic step."""
+        project_id, plan_id = project_and_plan
+        from cardre.audit import StepSpec
+        mb_step = StepSpec(
+            "manual-binning__br_custom",
+            "cardre.manual_binning", "", "build", {"reviewed": False, "accept_automated": False},
+            "", [], "baseline", 1, canonical_step_id="manual-binning",
+        )
+        pv_id = store.create_plan_version(plan_id, steps=[mb_step])
+        run_id = store.create_run(pv_id)
+        store.finish_run(run_id, "succeeded")
+
+        branch_id = store.create_branch(
+            project_id=project_id, plan_id=plan_id, name="Branch", branch_type="baseline",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="Test.",
+        )
+        store.create_branch_step_map(
+            branch_id=branch_id, plan_version_id=pv_id,
+            canonical_step_id="manual-binning", step_id="manual-binning__br_custom",
+            is_shared_upstream=False, is_branch_owned=True,
+        )
+        for cid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
+            store.create_branch_step_map(
+                branch_id=branch_id, plan_version_id=pv_id,
+                canonical_step_id=cid, step_id=cid,
+                is_shared_upstream=False, is_branch_owned=True,
+            )
+
+        result = check_report_readiness(
+            store=store, project_id=project_id, run_id=run_id,
+            target_branch_id=branch_id, report_mode="branch",
+        )
+        for b in result.blockers:
+            if b.code == LimitationCode.MANUAL_BINNING_NOT_REVIEWED:
+                assert b.step_id == "manual-binning__br_custom", (
+                    f"Expected step_id 'manual-binning__br_custom', got {b.step_id!r}"
+                )
+                return
+        pytest.fail("No MANUAL_BINNING_NOT_REVIEWED blocker found")
+
+
+
+    def test_response_includes_context_fields(self, store, project_and_plan):
+        """ReportReadinessResult carries target_branch_id, run_id, report_mode, checked_at."""
+        project_id, plan_id = project_and_plan
+        pv_id = store.get_latest_plan_version_id(plan_id)
+        run_id = store.create_run(pv_id)
+        store.finish_run(run_id, "succeeded")
+        branch_id = store.create_branch(
+            project_id=project_id, plan_id=plan_id, name="Branch", branch_type="baseline",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="Test.",
+        )
+        result = check_report_readiness(
+            store=store, project_id=project_id, run_id=run_id,
+            target_branch_id=branch_id, report_mode="branch",
+        )
+        assert result.target_branch_id == branch_id
+        assert result.run_id == run_id
+        assert result.report_mode == "branch"
+        assert result.checked_at is not None
+        # checked_at should be ISO-8601 parsable
+        from datetime import datetime
+        datetime.fromisoformat(result.checked_at)
+
+    def test_blocker_step_ids_populated_for_manual_binning(self, store, project_and_plan):
+        """MANUAL_BINNING_NOT_REVIEWED blocker carries step_id from resolved branch step."""
+        project_id, plan_id = project_and_plan
+        from cardre.audit import StepSpec
+        mb_step = StepSpec(
+            "manual-binning__step_id_check",
+            "cardre.manual_binning", "", "build", {"reviewed": False, "accept_automated": False},
+            "", [], "baseline", 1, canonical_step_id="manual-binning",
+        )
+        pv_id = store.create_plan_version(plan_id, steps=[mb_step])
+        run_id = store.create_run(pv_id)
+        store.finish_run(run_id, "succeeded")
+        branch_id = store.create_branch(
+            project_id=project_id, plan_id=plan_id, name="Branch", branch_type="baseline",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="Test.",
+        )
+        store.create_branch_step_map(
+            branch_id=branch_id, plan_version_id=pv_id,
+            canonical_step_id="manual-binning", step_id="manual-binning__step_id_check",
+            is_shared_upstream=False, is_branch_owned=True,
+        )
+        for cid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
+            store.create_branch_step_map(
+                branch_id=branch_id, plan_version_id=pv_id,
+                canonical_step_id=cid, step_id=cid,
+                is_shared_upstream=False, is_branch_owned=True,
+            )
+        result = check_report_readiness(
+            store=store, project_id=project_id, run_id=run_id,
+            target_branch_id=branch_id, report_mode="branch",
+        )
+        blocker = next((b for b in result.blockers if b.code == LimitationCode.MANUAL_BINNING_NOT_REVIEWED), None)
+        assert blocker is not None, "Expected MANUAL_BINNING_NOT_REVIEWED blocker"
+        assert blocker.step_id == "manual-binning__step_id_check"
+
 
 # =========================================================================
 # ReportCollector regression tests (synthetic store)

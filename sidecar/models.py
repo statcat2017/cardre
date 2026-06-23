@@ -572,9 +572,11 @@ class ReportReadinessResponse(BaseModel):
     status: str = ""
     blockers: list[ReadinessItem] = Field(default_factory=list)
     warnings: list[ReadinessItem] = Field(default_factory=list)
+    project_id: str = ""
     target_branch_id: str = ""
     run_id: str = ""
     report_mode: str = "branch"
+    plan_version_id: str = ""
     checked_at: str = ""
 
 

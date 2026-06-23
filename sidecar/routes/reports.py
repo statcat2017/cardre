@@ -60,6 +60,9 @@ def get_report_readiness(project_id: str, run_id: str, req: ReportReadinessReque
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={"code": "READINESS_FAILED", "message": str(exc)})
 
+    run = store.get_run(run_id)
+    plan_version_id = run["plan_version_id"] if run else ""
+
     return ReportReadinessResponse(
         ready=result.ready,
         status=result.status,
@@ -71,9 +74,11 @@ def get_report_readiness(project_id: str, run_id: str, req: ReportReadinessReque
             ReadinessItem(code=w.code, message=w.message, step_id=getattr(w, "step_id", None))
             for w in result.warnings
         ],
+        project_id=project_id,
         target_branch_id=result.target_branch_id or "",
         run_id=result.run_id or "",
         report_mode=result.report_mode or "branch",
+        plan_version_id=plan_version_id,
         checked_at=result.checked_at or "",
     )
 
