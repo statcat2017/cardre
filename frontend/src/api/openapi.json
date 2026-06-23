@@ -717,6 +717,96 @@
         }
       }
     },
+    "/plans/{plan_id}/workflow-guidance": {
+      "get": {
+        "tags": [
+          "plans"
+        ],
+        "summary": "Get Workflow Guidance",
+        "operationId": "get_workflow_guidance_plans__plan_id__workflow_guidance_get",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "branch_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowGuidance"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/runs": {
       "post": {
         "tags": [
@@ -4543,6 +4633,17 @@
           "message": {
             "type": "string",
             "title": "Message"
+          },
+          "step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Id"
           }
         },
         "type": "object",
@@ -5203,6 +5304,262 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WorkflowBlocker": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Id"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "blocker",
+              "warning"
+            ],
+            "title": "Severity",
+            "default": "blocker"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "WorkflowBlocker"
+      },
+      "WorkflowGuidance": {
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "setup",
+              "build",
+              "validate",
+              "report",
+              "ready"
+            ],
+            "title": "Phase"
+          },
+          "next_action": {
+            "$ref": "#/components/schemas/WorkflowNextAction"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowBlocker"
+            },
+            "type": "array",
+            "title": "Blockers"
+          },
+          "step_guidance": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/WorkflowStepGuidance"
+            },
+            "type": "object",
+            "title": "Step Guidance"
+          },
+          "report_readiness": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowReportReadiness"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phase",
+          "next_action"
+        ],
+        "title": "WorkflowGuidance"
+      },
+      "WorkflowNextAction": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "import_dataset",
+              "configure_step",
+              "run_pathway",
+              "review_evidence",
+              "edit_bins",
+              "resolve_blocker",
+              "export_report"
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "run_scope": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "full_plan",
+                  "branch",
+                  "to_node"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Scope"
+          },
+          "step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Id"
+          },
+          "action_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Target"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "label",
+          "description"
+        ],
+        "title": "WorkflowNextAction"
+      },
+      "WorkflowReportReadiness": {
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "title": "Ready",
+            "default": false
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": ""
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessItem"
+            },
+            "type": "array",
+            "title": "Blockers"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessItem"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "title": "WorkflowReportReadiness"
+      },
+      "WorkflowStepGuidance": {
+        "properties": {
+          "readiness": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "blocked",
+              "needs_config",
+              "stale",
+              "complete"
+            ],
+            "title": "Readiness"
+          },
+          "primary_action": {
+            "type": "string",
+            "title": "Primary Action"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "evidence_kinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Kinds"
+          },
+          "action_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Target"
+          }
+        },
+        "type": "object",
+        "required": [
+          "readiness",
+          "primary_action",
+          "explanation"
+        ],
+        "title": "WorkflowStepGuidance"
       }
     }
   }

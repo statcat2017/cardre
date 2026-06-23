@@ -532,6 +532,7 @@ class ReportReadinessRequest(BaseModel):
 class ReadinessItem(BaseModel):
     code: str
     message: str
+    step_id: str | None = None
 
 
 class ReportReadinessResponse(BaseModel):
@@ -710,3 +711,51 @@ class ModelRankingResponse(BaseModel):
     metric_name: str
     rankings: list[ModelRankingItem]
     total_branches: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Workflow Guidance (Phase 1 — Guided Workflow)
+# ---------------------------------------------------------------------------
+
+class WorkflowNextAction(BaseModel):
+    kind: Literal[
+        "import_dataset", "configure_step", "run_pathway",
+        "review_evidence", "edit_bins", "resolve_blocker", "export_report",
+    ]
+    label: str
+    description: str
+    run_scope: Literal["full_plan", "branch", "to_node"] | None = None
+    step_id: str | None = None
+    action_target: str | None = None
+
+
+class WorkflowBlocker(BaseModel):
+    code: str
+    message: str
+    step_id: str | None = None
+    severity: Literal["blocker", "warning"] = "blocker"
+
+
+class WorkflowStepGuidance(BaseModel):
+    readiness: Literal["ready", "blocked", "needs_config", "stale", "complete"]
+    primary_action: str
+    explanation: str
+    evidence_kinds: list[str] = Field(default_factory=list)
+    action_target: str | None = None
+
+
+class WorkflowReportReadiness(BaseModel):
+    ready: bool = False
+    status: str = ""
+    blockers: list[ReadinessItem] = Field(default_factory=list)
+    warnings: list[ReadinessItem] = Field(default_factory=list)
+
+
+class WorkflowGuidance(BaseModel):
+    phase: Literal["setup", "build", "validate", "report", "ready"]
+    next_action: WorkflowNextAction
+    blockers: list[WorkflowBlocker] = Field(default_factory=list)
+    step_guidance: dict[str, WorkflowStepGuidance] = Field(default_factory=dict)
+    report_readiness: WorkflowReportReadiness | None = None
+    branch_id: str | None = None
+    run_id: str | None = None

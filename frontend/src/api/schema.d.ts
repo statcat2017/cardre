@@ -229,6 +229,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/plans/{plan_id}/workflow-guidance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workflow Guidance */
+        get: operations["get_workflow_guidance_plans__plan_id__workflow_guidance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs": {
         parameters: {
             query?: never;
@@ -1742,6 +1759,8 @@ export interface components {
             code: string;
             /** Message */
             message: string;
+            /** Step Id */
+            step_id?: string | null;
         };
         /** RefreshComparisonResponse */
         RefreshComparisonResponse: {
@@ -2033,6 +2052,92 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WorkflowBlocker */
+        WorkflowBlocker: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Step Id */
+            step_id?: string | null;
+            /**
+             * Severity
+             * @default blocker
+             * @enum {string}
+             */
+            severity: "blocker" | "warning";
+        };
+        /** WorkflowGuidance */
+        WorkflowGuidance: {
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "setup" | "build" | "validate" | "report" | "ready";
+            next_action: components["schemas"]["WorkflowNextAction"];
+            /** Blockers */
+            blockers?: components["schemas"]["WorkflowBlocker"][];
+            /** Step Guidance */
+            step_guidance?: {
+                [key: string]: components["schemas"]["WorkflowStepGuidance"];
+            };
+            report_readiness?: components["schemas"]["WorkflowReportReadiness"] | null;
+            /** Branch Id */
+            branch_id?: string | null;
+            /** Run Id */
+            run_id?: string | null;
+        };
+        /** WorkflowNextAction */
+        WorkflowNextAction: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "import_dataset" | "configure_step" | "run_pathway" | "review_evidence" | "edit_bins" | "resolve_blocker" | "export_report";
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Run Scope */
+            run_scope?: ("full_plan" | "branch" | "to_node") | null;
+            /** Step Id */
+            step_id?: string | null;
+            /** Action Target */
+            action_target?: string | null;
+        };
+        /** WorkflowReportReadiness */
+        WorkflowReportReadiness: {
+            /**
+             * Ready
+             * @default false
+             */
+            ready: boolean;
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /** Blockers */
+            blockers?: components["schemas"]["ReadinessItem"][];
+            /** Warnings */
+            warnings?: components["schemas"]["ReadinessItem"][];
+        };
+        /** WorkflowStepGuidance */
+        WorkflowStepGuidance: {
+            /**
+             * Readiness
+             * @enum {string}
+             */
+            readiness: "ready" | "blocked" | "needs_config" | "stale" | "complete";
+            /** Primary Action */
+            primary_action: string;
+            /** Explanation */
+            explanation: string;
+            /** Evidence Kinds */
+            evidence_kinds?: string[];
+            /** Action Target */
+            action_target?: string | null;
         };
     };
     responses: never;
@@ -2461,6 +2566,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StalenessResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_guidance_plans__plan_id__workflow_guidance_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                branch_id?: string | null;
+                run_id?: string | null;
+            };
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowGuidance"];
                 };
             };
             /** @description Validation Error */
