@@ -107,14 +107,42 @@ SEAM_WATCHLIST: dict[str, dict[str, Any]] = {
 
 # ── Temporary line-count debt ────────────────────────────────────────
 
-LINE_COUNT_DEBT: dict[str, str] = {
-    "cardre/_evidence/models.py": "1116-line data-model file; candidate for domain-split",
-    "cardre/nodes/prep.py": "1073-line node module; candidate for node-family split",
-    "tests/test_sidecar_api.py": "2061-line API integration test; candidate for route-module split",
-    "tests/test_optbinning.py": "1444-line optbinning integration test; pending optbinning path cleanup",
-    "tests/test_bin_definition_lifecycle.py": "1216-line lifecycle test; candidate for scenario split",
-    "tests/test_nodes.py": "1205-line node integration test; candidate for node-family split",
-    "tests/test_reporting.py": "1055-line reporting test; candidate by template split",
+LINE_COUNT_DEBT: dict[str, dict[str, Any]] = {
+    "cardre/_evidence/models.py": {
+        "current_count": 1116,
+        "ceiling": 1300,
+        "reason": "data-model file; candidate for domain-split",
+    },
+    "cardre/nodes/prep.py": {
+        "current_count": 1073,
+        "ceiling": 1300,
+        "reason": "node module; candidate for node-family split",
+    },
+    "tests/test_sidecar_api.py": {
+        "current_count": 2061,
+        "ceiling": 2400,
+        "reason": "API integration test; candidate for route-module split",
+    },
+    "tests/test_optbinning.py": {
+        "current_count": 1444,
+        "ceiling": 1700,
+        "reason": "optbinning integration test; pending optbinning path cleanup",
+    },
+    "tests/test_bin_definition_lifecycle.py": {
+        "current_count": 1216,
+        "ceiling": 1400,
+        "reason": "lifecycle test; candidate for scenario split",
+    },
+    "tests/test_nodes.py": {
+        "current_count": 1205,
+        "ceiling": 1400,
+        "reason": "node integration test; candidate for node-family split",
+    },
+    "tests/test_reporting.py": {
+        "current_count": 1055,
+        "ceiling": 1300,
+        "reason": "reporting test; candidate by template split",
+    },
 }
 
 
@@ -189,10 +217,49 @@ def classify_file(filepath: str) -> str | None:
     return EXTENSION_THRESHOLDS.get(ext)
 
 
+# ── Existence / duplication health checks ────────────────────────────
+
+PolicyHealthIssues = list[str]
+
+
+def check_policy_health() -> PolicyHealthIssues:
+    """Verify all policy entries refer to real files without cross-bucket
+    duplication.  Returns a list of human-readable issue descriptions."""
+    issues: list[str] = []
+
+    for fpath in GENERATED_FILES:
+        if not (REPO_ROOT / fpath).is_file():
+            issues.append(f"GENERATED_FILES entry does not exist: {fpath}")
+
+    for fpath in SEAM_WATCHLIST:
+        if not (REPO_ROOT / fpath).is_file():
+            issues.append(f"SEAM_WATCHLIST entry does not exist: {fpath}")
+
+    for fpath in LINE_COUNT_DEBT:
+        if not (REPO_ROOT / fpath).is_file():
+            issues.append(f"LINE_COUNT_DEBT entry does not exist: {fpath}")
+
+    all_paths: dict[str, list[str]] = {}
+    for p in GENERATED_FILES:
+        all_paths.setdefault(p, []).append("GENERATED_FILES")
+    for p in SEAM_WATCHLIST:
+        all_paths.setdefault(p, []).append("SEAM_WATCHLIST")
+    for p in LINE_COUNT_DEBT:
+        all_paths.setdefault(p, []).append("LINE_COUNT_DEBT")
+
+    for fpath, buckets in all_paths.items():
+        if len(buckets) > 1:
+            issues.append(
+                f"{fpath} appears in multiple buckets: {', '.join(buckets)}"
+            )
+
+    return issues
+
+
 # ── Core policy check (testable without subprocess) ──────────────────
 
 CheckResult = tuple[
-    list[tuple[str, int, int, str]],  # violations
+    list[tuple[str, int, int, str]],  # violations: (filepath, count, limit, tag)
     list[tuple[str, int, int, str]],  # seam_warnings
     list[str],                        # stale_debts
 ]
@@ -214,8 +281,9 @@ def check_line_counts(
 
     Returns
     -------
-    violations : list of (filepath, count, effective_threshold, owner)
-        Hard failures.
+    violations : list of (filepath, count, limit, tag)
+        Hard failures.  *tag* is ``"seam:<owner>"``, ``"debt:<path>"``,
+        or ``""`` for ordinary over-threshold files.
     seam_warnings : list of (filepath, count, normal_threshold, owner)
         Seam files above the normal threshold but under the seam threshold.
     stale_debts : list of filepath
@@ -235,13 +303,17 @@ def check_line_counts(
         if seam_info is not None:
             seam_threshold = seam_info["threshold"]
             if count > seam_threshold:
-                violations.append((filepath, count, seam_threshold, seam_info["owner"]))
+                violations.append((filepath, count, seam_threshold, f"seam:{seam_info['owner']}"))
             elif count > normal_threshold:
                 seam_warnings.append((filepath, count, normal_threshold, seam_info["owner"]))
             continue
 
-        if filepath in LINE_COUNT_DEBT:
-            if count <= normal_threshold:
+        debt_info = LINE_COUNT_DEBT.get(filepath)
+        if debt_info is not None:
+            ceiling = debt_info["ceiling"]
+            if count > ceiling:
+                violations.append((filepath, count, ceiling, f"debt:{filepath}"))
+            elif count <= normal_threshold:
                 stale_debts.append(filepath)
             continue
 
@@ -249,6 +321,14 @@ def check_line_counts(
             violations.append((filepath, count, normal_threshold, ""))
 
     return violations, seam_warnings, stale_debts
+
+
+def filter_policy_files(files: list[str]) -> list[str]:
+    """Remove generated files and non-existent paths from a file list."""
+    return [
+        f for f in files
+        if f not in GENERATED_FILES and (REPO_ROOT / f).exists()
+    ]
 
 
 def main() -> None:
@@ -260,6 +340,8 @@ def main() -> None:
         "rust": args.threshold_rust,
     }
 
+    health_issues = check_policy_health()
+
     all_globs: list[str] = []
     for globs in LANGUAGE_GLOBS.values():
         all_globs.extend(globs)
@@ -270,24 +352,32 @@ def main() -> None:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(2)
 
-    files_to_check = [
-        f for f in files
-        if f not in GENERATED_FILES and (REPO_ROOT / f).exists()
-    ]
+    files_to_check = filter_policy_files(files)
     counts = get_line_counts(files_to_check)
 
     violations, seam_warnings, stale_debts = check_line_counts(counts, thresholds)
 
-    has_error = False
+    has_error = bool(health_issues)
+
+    if health_issues:
+        for issue in health_issues:
+            print(f"POLICY: {issue}")
 
     if violations:
         has_error = True
-        for filepath, count, effective_threshold, owner in violations:
-            if owner:
+        for filepath, count, effective_threshold, tag in violations:
+            if tag.startswith("seam:"):
+                owner = tag.removeprefix("seam:")
                 print(
                     f"FAIL: {filepath}: {count} lines "
                     f"(seam limit: {effective_threshold}) — "
                     f"owned by: {owner}"
+                )
+            elif tag.startswith("debt:"):
+                print(
+                    f"FAIL: {filepath}: {count} lines "
+                    f"(debt ceiling: {effective_threshold}) — "
+                    f"exceeded LINE_COUNT_DEBT ceiling; split or justify"
                 )
             else:
                 print(
@@ -317,6 +407,8 @@ def main() -> None:
             f"{len(seam_warnings)} seam warning(s), "
             f"{len(stale_debts)} stale exemption(s)"
         )
+        if health_issues:
+            summary += f", {len(health_issues)} policy health issue(s)"
         print(summary)
         sys.exit(1)
 
