@@ -96,6 +96,10 @@ Produces `frontend/src-tauri/binaries/cardre-api-{target-triple}` for Tauri bund
 
 ```bash
 python3 -m pytest tests/ -q
+
+### Frontend
+```
+cd frontend && npm test
 ```
 
 ### CI
