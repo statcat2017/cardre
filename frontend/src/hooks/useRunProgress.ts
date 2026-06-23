@@ -17,8 +17,14 @@ interface RunProgressState {
   liveDiagnostic: string | null;
 }
 
+interface RunOptions {
+  run_scope?: "full_plan" | "branch" | "to_node";
+  target_step_id?: string;
+  branch_id?: string;
+}
+
 interface UseRunProgressReturn extends RunProgressState {
-  startRun: (planVersionId: string) => Promise<void>;
+  startRun: (planVersionId: string, options?: RunOptions) => Promise<void>;
   addDiagnostic: (msg: string) => void;
 }
 
@@ -51,7 +57,7 @@ export function useRunProgress(
     setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
   }, []);
 
-  const startRun = useCallback(async (planVersionId: string) => {
+  const startRun = useCallback(async (planVersionId: string, options?: RunOptions) => {
     setRunning(true);
     setError(null);
     setLiveDiagnostic(null);
@@ -60,8 +66,10 @@ export function useRunProgress(
       const runResp = await api.runPlan({
         project_id: projectId,
         plan_version_id: planVersionId,
-        run_scope: "full_plan",
+        run_scope: options?.run_scope ?? "full_plan",
         force: false,
+        ...(options?.target_step_id ? { target_step_id: options.target_step_id } : {}),
+        ...(options?.branch_id ? { branch_id: options.branch_id } : {}),
       });
       const runId = runResp.run_id;
       addDiagnostic(`Run started (${runId.slice(0, 8)}…)`);
