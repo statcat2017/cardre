@@ -1983,6 +1983,11 @@ export interface components {
             /** Warnings */
             warnings?: components["schemas"]["ReadinessItem"][];
             /**
+             * Project Id
+             * @default
+             */
+            project_id: string;
+            /**
              * Target Branch Id
              * @default
              */
@@ -1997,6 +2002,11 @@ export interface components {
              * @default branch
              */
             report_mode: string;
+            /**
+             * Plan Version Id
+             * @default
+             */
+            plan_version_id: string;
             /**
              * Checked At
              * @default

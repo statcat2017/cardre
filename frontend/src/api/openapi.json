@@ -5168,6 +5168,11 @@
             "type": "array",
             "title": "Warnings"
           },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "default": ""
+          },
           "target_branch_id": {
             "type": "string",
             "title": "Target Branch Id",
@@ -5182,6 +5187,11 @@
             "type": "string",
             "title": "Report Mode",
             "default": "branch"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "title": "Plan Version Id",
+            "default": ""
           },
           "checked_at": {
             "type": "string",
