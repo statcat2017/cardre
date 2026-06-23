@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, getReportServeUrl } from "../api/client";
 import { useReportReadiness } from "../hooks/useReportReadiness";
 import { BranchSelector } from "./BranchSelector";
+import { ReadinessPanel } from "./ReadinessPanel";
 import { latestSuccessfulRun } from "../utils/runs";
 import type {
   BranchListItem,
-  ReportReadinessItem,
   GenerateReportResponse,
 } from "../types";
 import { theme } from "../styles";
@@ -39,11 +39,9 @@ const MODE_LABELS: Record<ReportMode, string> = {
 export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepSelect }: Props) {
   const queryClient = useQueryClient();
   const [reportMode, setReportMode] = useState<ReportMode>("branch");
-  const [blockers, setBlockers] = useState<ReportReadinessItem[]>([]);
-  const [warnings, setWarnings] = useState<ReportReadinessItem[]>([]);
-  const [errorMsg, setErrorMsg] = useState<string>("");
   const [newReports, setNewReports] = useState<GeneratedReport[]>([]);
   const [lastReport, setLastReport] = useState<GenerateReportResponse | null>(null);
+  const [generateErrorMsg, setGenerateErrorMsg] = useState<string>("");
 
   const { data: projectRuns } = useQuery({
     queryKey: ["projectRuns", projectId],
@@ -59,25 +57,18 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
   });
   const branches: BranchListItem[] = branchData?.branches ?? [];
 
-  const { data: readinessData, isLoading: readinessLoading, error: readinessError, refetch: refetchReadiness } = useReportReadiness(
+  const {
+    data: readinessData,
+    isLoading: readinessLoading,
+    isFetching: readinessIsFetching,
+    error: readinessError,
+    refetch: refetchReadiness,
+  } = useReportReadiness(
     projectId,
     latestRun?.run_id ?? null,
     targetBranchId,
     reportMode as "branch" | "champion",
   );
-
-  useEffect(() => {
-    if (readinessData) {
-      setBlockers(readinessData.blockers ?? []);
-      setWarnings(readinessData.warnings ?? []);
-    }
-  }, [readinessData]);
-
-  useEffect(() => {
-    if (readinessError) {
-      setErrorMsg((readinessError as any)?.message || "Readiness check failed");
-    }
-  }, [readinessError]);
 
   const { data: serverReports } = useQuery<GeneratedReport[]>({
     queryKey: ['reports', projectId, latestRun?.run_id],
@@ -110,15 +101,19 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
     return merged;
   }, [newReports, serverReports]);
 
-  useEffect(() => {
-    setBlockers([]);
-    setWarnings([]);
-    setErrorMsg("");
-  }, [targetBranchId, reportMode]);
+  const generateSafetyOk =
+    readinessData?.ready === true &&
+    !readinessLoading &&
+    !readinessIsFetching &&
+    !readinessError &&
+    latestRun !== null &&
+    targetBranchId !== null;
 
   const generateMutation = useMutation({
     mutationFn: () => {
+      if (!generateSafetyOk) throw new Error("Report generation is not ready.");
       if (!latestRun) throw new Error("No run available");
+      if (!targetBranchId) throw new Error("No branch selected");
       return api.generateReport(projectId, latestRun.run_id, {
         target_branch_id: targetBranchId ?? "",
         report_mode: reportMode,
@@ -127,9 +122,10 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
       });
     },
     onMutate: () => {
-      setErrorMsg("");
+      setGenerateErrorMsg("");
     },
     onSuccess: (data: GenerateReportResponse) => {
+      setGenerateErrorMsg("");
       setLastReport(data);
       setNewReports((prev) => [
         {
@@ -146,7 +142,7 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
       ]);
     },
     onError: (e: any) => {
-      setErrorMsg(e.detail?.message || e.message || "Report generation failed");
+      setGenerateErrorMsg(e.detail?.message || e.message || "Report generation failed");
     },
   });
 
@@ -164,7 +160,6 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
       {/* Configuration */}
       <div style={{ padding: 16, border: `1px solid ${theme.border}`, borderRadius: 8, backgroundColor: theme.surface }}>
         <div style={{ display: "flex", gap: 24, marginBottom: 12, flexWrap: "wrap" }}>
-          {/* Report mode */}
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: theme.textSoft, display: "block", marginBottom: 4 }}>
               Report mode
@@ -188,7 +183,6 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
             onSelect={onBranchSelect}
           />
 
-          {/* Latest run */}
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: theme.textSoft, marginBottom: 4 }}>Latest run</div>
             <div style={{ fontSize: 13, color: theme.muted, paddingTop: 6 }}>
@@ -205,88 +199,48 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
           </div>
         </div>
 
+        {/* Generate button */}
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button
-            onClick={() => refetchReadiness()}
-            disabled={readinessLoading || !latestRun || !targetBranchId}
-            style={{
-              padding: "8px 16px", borderRadius: 6, border: `1px solid ${theme.border}`,
-              fontSize: 13, backgroundColor: theme.surfaceMuted, cursor: "pointer",
-              fontWeight: 500, color: theme.textSoft,
-              opacity: readinessLoading || !latestRun || !targetBranchId ? 0.5 : 1,
-            }}
-          >
-            {readinessLoading ? "Checking..." : "Re-check"}
-          </button>
-
-          <button
             onClick={() => generateMutation.mutate()}
-            disabled={!readinessData?.ready}
+            disabled={!generateSafetyOk}
             style={{
               padding: "8px 16px", borderRadius: 6, border: "none",
-              fontSize: 13, backgroundColor: readinessData?.ready ? theme.text : theme.mutedSoft,
-              color: "#fff", cursor: readinessData?.ready ? "pointer" : "not-allowed",
+              fontSize: 13, backgroundColor: generateSafetyOk ? theme.text : theme.mutedSoft,
+              color: "#fff", cursor: generateSafetyOk ? "pointer" : "not-allowed",
               fontWeight: 600,
             }}
           >
             {generateMutation.isPending ? "Generating..." : "Generate audit pack"}
           </button>
         </div>
+
+        {generateErrorMsg && (
+          <div
+            role="alert"
+            style={{
+              padding: 10, borderRadius: 6, backgroundColor: theme.redBg,
+              fontSize: 12, color: theme.redText, marginTop: 4,
+            }}
+          >
+            Report generation failed: {generateErrorMsg}
+          </div>
+        )}
       </div>
 
-      {/* Readiness context */}
-      {readinessData && targetBranchId && (
-        <div style={{ fontSize: 11, color: theme.muted, padding: "0 4px" }}>
-          Readiness for branch {selectedBranch?.name || targetBranchId}, run {latestRun?.run_id?.slice(0, 8) ?? "—"}, {reportMode} mode
-        </div>
-      )}
-
-      {/* Readiness display */}
-      {readinessData && (
-        <div
-          style={{
-            padding: 16, border: `1px solid ${theme.border}`, borderRadius: 8,
-            backgroundColor: !readinessData.ready ? theme.redBg : readinessData.warnings?.length ? theme.yellowBg : theme.surfaceMuted,
-          }}
-        >
-          {blockers.map((b) => (
-            <div key={b.code} style={{ padding: "4px 0", fontSize: 13, color: theme.redText, display: "flex", alignItems: "center", gap: 8 }}>
-              <strong style={{ marginRight: 4 }}>Blocked</strong>
-              <strong>{b.code}:</strong> {b.message}
-              {b.step_id && onStepSelect && (
-                <button
-                  onClick={() => onStepSelect(b.step_id!)}
-                  style={{
-                    padding: "2px 8px", borderRadius: 4, border: `1px solid ${theme.border}`,
-                    backgroundColor: theme.surface, color: theme.textSoft, fontSize: 10,
-                    cursor: "pointer", marginLeft: "auto", whiteSpace: "nowrap",
-                  }}
-                >
-                  Go to step
-                </button>
-              )}
-            </div>
-          ))}
-          {warnings.map((w) => (
-            <div key={w.code} style={{ padding: "4px 0", fontSize: 13, color: theme.yellowText }}>
-              <strong style={{ marginRight: 8 }}>Warning</strong>
-              <strong>{w.code}:</strong> {w.message}
-            </div>
-          ))}
-          {blockers.length === 0 && warnings.length === 0 && (
-            <div style={{ fontSize: 13, color: theme.greenText }}>
-              <strong>Ready.</strong> All evidence available. Ready to generate.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Error state */}
-      {errorMsg && !readinessData && (
-        <div style={{ padding: 12, border: `1px solid ${theme.border}`, borderRadius: 8, backgroundColor: theme.redBg, fontSize: 13, color: theme.redText }}>
-          <strong>Error:</strong> {errorMsg}
-        </div>
-      )}
+      {/* Readiness panel with states 1-7 */}
+      <ReadinessPanel
+        targetBranchId={targetBranchId}
+        latestRunId={latestRun?.run_id ?? null}
+        branchName={selectedBranch?.name ?? null}
+        reportMode={reportMode}
+        readinessData={readinessData}
+        readinessLoading={readinessLoading}
+        readinessIsFetching={readinessIsFetching}
+        readinessError={readinessError}
+        onStepSelect={onStepSelect}
+        onRecheck={() => refetchReadiness()}
+      />
 
       {/* Generated report info */}
       {lastReport && (
