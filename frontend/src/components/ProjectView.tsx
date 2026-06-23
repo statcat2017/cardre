@@ -12,7 +12,8 @@ import { ArtifactBrowser } from "./ArtifactBrowser";
 import { ManualBinningEditor } from "./ManualBinningEditor";
 import { ExportPanel } from "./ExportPanel";
 import { useRunProgress } from "../hooks/useRunProgress";
-import type { PlanResponse, StepStatus, UpdateStepParamsResponse } from "../types";
+import { useWorkflowGuidance } from "../hooks/useWorkflowGuidance";
+import type { PlanResponse, StepStatus, UpdateStepParamsResponse, WorkflowGuidance } from "../types";
 import { theme } from "../styles";
 
 interface Props {
@@ -41,20 +42,30 @@ export function ProjectView({ projectId, onBack }: Props) {
   // Find the default scorecard plan
   const scorecardPlan = projectPlans?.plans?.find((p) => p.is_default);
 
+  const planId = scorecardPlan?.plan_id ?? null;
+
   const { data: planData, refetch: refetchPlan } = useQuery({
-    queryKey: ["plan", scorecardPlan?.plan_id],
-    queryFn: () => api.getPlan(scorecardPlan!.plan_id, projectId),
-    enabled: !!scorecardPlan?.plan_id,
+    queryKey: ["plan", planId],
+    queryFn: () => api.getPlan(planId!, projectId),
+    enabled: !!planId,
   });
 
   const runProgress = useRunProgress(projectId, () => {
     refetchPlan();
+    queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
   });
   const { running, error, carriedForwardSteps, liveStepStatus, stepProgress, diagnostics, liveDiagnostic, startRun, addDiagnostic } = runProgress;
+
+  const { data: guidance } = useWorkflowGuidance(
+    planId,
+    projectId,
+    selectedBranchId,
+  );
 
   const handlePlanRefreshed = useCallback(
     (detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string }) => {
       refetchPlan();
+      queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
       if ("latest_version_id" in detailOrResp && detailOrResp.latest_version_id) {
         addDiagnostic(`Plan refreshed to version ${(detailOrResp.latest_version_id as string).slice(0, 8)}…`);
       } else if ("new_plan_version_id" in detailOrResp) {
@@ -73,6 +84,7 @@ export function ProjectView({ projectId, onBack }: Props) {
   const handleImported = () => {
     queryClient.invalidateQueries({ queryKey: ["project", projectId] });
     queryClient.invalidateQueries({ queryKey: ["projectPlans", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
     addDiagnostic("Dataset imported — pathway import step configured");
   };
 
@@ -94,12 +106,47 @@ export function ProjectView({ projectId, onBack }: Props) {
     setEditingStepId(null);
   };
 
+  const handleJourneyAction = useCallback(
+    (g: WorkflowGuidance) => {
+      const action = g.next_action;
+      switch (action.kind) {
+        case "import_dataset":
+          setActiveSection("dataset");
+          break;
+        case "configure_step":
+        case "resolve_blocker":
+        case "review_evidence":
+          if (action.step_id) {
+            setSelectedStepId(action.step_id);
+            setActiveSection("pathway");
+          }
+          break;
+        case "edit_bins":
+          if (action.step_id) {
+            setEditingStepId(action.step_id);
+            setActiveSection("pathway");
+          }
+          break;
+        case "run_pathway":
+          if (scorecardPlan && planData) {
+            startRun(planData.latest_version_id, {
+              run_scope: action.run_scope ?? "full_plan",
+            });
+          }
+          break;
+        case "export_report":
+          setActiveSection("exports");
+          break;
+      }
+    },
+    [scorecardPlan, planData, startRun],
+  );
+
   const selectedStep: StepStatus | null =
     planData?.steps?.find((s: StepStatus) => s.step_id === selectedStepId) ?? null;
 
   const planName = planData?.name ?? null;
   const basePlanVersionId = planData?.latest_version_id ?? null;
-  const planId = scorecardPlan?.plan_id ?? null;
 
   if (projectLoading) {
     return <div style={{ padding: 24, backgroundColor: theme.canvas, color: theme.muted }}>Loading project...</div>;
@@ -121,9 +168,9 @@ export function ProjectView({ projectId, onBack }: Props) {
         project={project}
         planName={planName}
         running={running}
-        onRun={handleRun}
-        canRun={!!scorecardPlan && !running}
         stepProgress={stepProgress}
+        guidance={guidance}
+        onAction={handleJourneyAction}
       />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
