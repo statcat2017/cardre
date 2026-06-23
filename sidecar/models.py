@@ -281,6 +281,17 @@ class ManualBinningSourceInfo(BaseModel):
     variable_selection_artifact_id: str
 
 
+class ManualBinningVariableSummary(BaseModel):
+    variable: str
+    iv: float | None = None
+    woe_by_bin: dict[str, float] | None = None
+    event_rate_by_bin: dict[str, float] | None = None
+    missing_count: int | None = None
+    special_bin_count: int | None = None
+    sparse_bin_warning: bool = False
+    non_monotonic_warning: bool = False
+
+
 class ManualBinningEditorStateResponse(BaseModel):
     plan_id: str
     plan_version_id: str
@@ -293,6 +304,7 @@ class ManualBinningEditorStateResponse(BaseModel):
     source_bins_by_variable: dict[str, Any] = Field(default_factory=dict)
     current_overrides: list[dict[str, Any]] = Field(default_factory=list)
     warnings: list[dict[str, Any]] = Field(default_factory=list)
+    variable_summaries: list[ManualBinningVariableSummary] = Field(default_factory=list)
 
 
 class ManualBinningPreviewRequest(BaseModel):

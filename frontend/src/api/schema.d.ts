@@ -1375,6 +1375,8 @@ export interface components {
             warnings?: {
                 [key: string]: unknown;
             }[];
+            /** Variable Summaries */
+            variable_summaries?: components["schemas"]["ManualBinningVariableSummary"][];
         };
         /** ManualBinningPreviewRequest */
         ManualBinningPreviewRequest: {
@@ -1412,6 +1414,35 @@ export interface components {
             variable_selection_step_id: string;
             /** Variable Selection Artifact Id */
             variable_selection_artifact_id: string;
+        };
+        /** ManualBinningVariableSummary */
+        ManualBinningVariableSummary: {
+            /** Variable */
+            variable: string;
+            /** Iv */
+            iv?: number | null;
+            /** Woe By Bin */
+            woe_by_bin?: {
+                [key: string]: number;
+            } | null;
+            /** Event Rate By Bin */
+            event_rate_by_bin?: {
+                [key: string]: number;
+            } | null;
+            /** Missing Count */
+            missing_count?: number | null;
+            /** Special Bin Count */
+            special_bin_count?: number | null;
+            /**
+             * Sparse Bin Warning
+             * @default false
+             */
+            sparse_bin_warning: boolean;
+            /**
+             * Non Monotonic Warning
+             * @default false
+             */
+            non_monotonic_warning: boolean;
         };
         /** MethodOptionResponse */
         MethodOptionResponse: {

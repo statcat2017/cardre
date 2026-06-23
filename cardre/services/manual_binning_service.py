@@ -10,6 +10,8 @@ from typing import Any
 
 from cardre.audit import RunStepRecord, StepSpec
 from cardre.evidence import ArtifactEvidenceReader, EvidenceError, EvidenceKind
+from cardre._evidence.models import WoeIvEvidence
+from cardre.reporting.evidence_contract import find_evidence_for_canonical_step
 from cardre.nodes import validate_manual_binning_overrides, apply_manual_binning_overrides
 from cardre.staleness import compute_staleness
 from cardre.store import ProjectStore
@@ -17,6 +19,7 @@ from cardre.services.plan_dto import (
     ManualBinningEditorStateResponse,
     ManualBinningPreviewResponse,
     ManualBinningSourceInfo,
+    ManualBinningVariableSummary,
     PreviewDiagnostics,
 )
 from cardre.services.plan_service import PlanValidationError
@@ -24,6 +27,58 @@ from cardre.services.step_topology import (
     find_nearest_ancestor_by_canonical_step_id,
     find_nearest_binning_source,
 )
+
+
+# ------------------------------------------------------------------
+# Pure helper functions for WOE/IV evidence extraction
+# ------------------------------------------------------------------
+
+
+def _extract_woe_by_bin(evidence: WoeIvEvidence, var: str) -> dict[str, float] | None:
+    for v in evidence.variables:
+        if v.variable_name == var:
+            result: dict[str, float] = {}
+            for b in v.bins:
+                if b.woe is not None:
+                    result[b.bin_id] = b.woe
+            return result or None
+    return None
+
+
+def _extract_iv(evidence: WoeIvEvidence, var: str) -> float | None:
+    for v in evidence.variables:
+        if v.variable_name == var:
+            return v.iv
+    return None
+
+
+def _extract_event_rate_by_bin(evidence: WoeIvEvidence, var: str) -> dict[str, float] | None:
+    for v in evidence.variables:
+        if v.variable_name == var:
+            result: dict[str, float] = {}
+            for b in v.bins:
+                result[b.bin_id] = b.bad_rate
+            return result or None
+    return None
+
+
+def _check_sparse_bins(bin_data: dict) -> bool:
+    bins = bin_data.get("bins", [])
+    if not bins:
+        return False
+    total = sum(b.get("count", 0) for b in bins)
+    if total == 0:
+        return False
+    return any(b.get("count", 0) / total < 0.05 for b in bins)
+
+
+def _check_non_monotonic(woe_by_bin: dict[str, float] | None) -> bool:
+    if not woe_by_bin or len(woe_by_bin) < 3:
+        return False
+    values = list(woe_by_bin.values())
+    increasing = all(values[i] <= values[i + 1] for i in range(len(values) - 1))
+    decreasing = all(values[i] >= values[i + 1] for i in range(len(values) - 1))
+    return not (increasing or decreasing)
 
 
 class ManualBinningService:
@@ -139,7 +194,7 @@ class ManualBinningService:
         if not source_bins:
             warnings.append({"message": "No source bins found for selected variables."})
 
-        return ManualBinningEditorStateResponse(
+        result = ManualBinningEditorStateResponse(
             plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id, ready=True,
             source=ManualBinningSourceInfo(
                 binning_step_id=bin_actual_id, binning_artifact_id=bin_artifact_id,
@@ -149,6 +204,58 @@ class ManualBinningService:
             selected_variables=selected_vars, source_bins_by_variable=source_bins,
             current_overrides=current_overrides, warnings=warnings,
         )
+
+        try:
+            reader = ArtifactEvidenceReader(self._store)
+            for run in self._store.list_runs(latest_pv_id):
+                if run.get("status") == "succeeded":
+                    woe_evidence = find_evidence_for_canonical_step(
+                        self._store, latest_pv_id, "final-woe-iv", branch_id=branch_id,
+                    )
+                    if woe_evidence:
+                        for aid in woe_evidence.output_artifact_ids:
+                            art = self._store.get_artifact(aid)
+                            if art and art.metadata.get("schema_version") == "cardre.woe_iv_evidence.v1":
+                                evidence = reader.read(aid, EvidenceKind.WOE_IV_EVIDENCE)
+                                if evidence:
+                                    summaries = []
+                                    for var in result.selected_variables:
+                                        woe = _extract_woe_by_bin(evidence, var)
+                                        iv = _extract_iv(evidence, var)
+                                        event_rate = _extract_event_rate_by_bin(evidence, var)
+                                        bin_data = result.source_bins_by_variable.get(var, {})
+                                        summaries.append(ManualBinningVariableSummary(
+                                            variable=var,
+                                            iv=iv,
+                                            woe_by_bin=woe,
+                                            event_rate_by_bin=event_rate,
+                                            missing_count=_count_missing_bins(bin_data),
+                                            special_bin_count=_count_special_bins(bin_data),
+                                            sparse_bin_warning=_check_sparse_bins(bin_data),
+                                            non_monotonic_warning=_check_non_monotonic(woe),
+                                        ))
+                                    result.variable_summaries = summaries
+                                    break
+                        break
+                    break
+        except Exception:
+            warnings.append({
+                "code": "VARIABLE_SUMMARY_UNAVAILABLE",
+                "message": "Variable summary could not be loaded — WOE/IV evidence may be missing or stale.",
+            })
+            result.warnings = warnings
+
+        # Add warning if selected variables exist but no summaries were built
+        if result.selected_variables and not result.variable_summaries:
+            no_summary_warning = {
+                "code": "VARIABLE_SUMMARY_UNAVAILABLE",
+                "message": "No final WOE/IV evidence found for selected variables. Variable summary table not available.",
+            }
+            if no_summary_warning not in warnings:
+                warnings.append(no_summary_warning)
+                result.warnings = warnings
+
+        return result
 
     def preview_overrides(
         self,
@@ -305,3 +412,18 @@ class ManualBinningService:
                 if candidate is None:
                     candidate = s.step_id
         return candidate or canonical
+
+
+# ---------------------------------------------------------------------------
+# Pure helper functions for manual-binning variable summaries
+# ---------------------------------------------------------------------------
+
+
+def _count_missing_bins(bin_data: dict) -> int:
+    """Count bins flagged as missing in the source bin data."""
+    return sum(1 for b in bin_data.get("bins", []) if b.get("is_missing") or b.get("bin_type") == "missing")
+
+
+def _count_special_bins(bin_data: dict) -> int:
+    """Count bins flagged as special in the source bin data."""
+    return sum(1 for b in bin_data.get("bins", []) if b.get("is_special") or b.get("bin_type") == "special")

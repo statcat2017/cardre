@@ -347,6 +347,7 @@ class WorkflowGuidanceService:
         readiness = "ready"
         explanation = STEP_EXPLANATIONS.get(canonical_id, "")
         primary_action = STEP_PRIMARY_ACTIONS.get(canonical_id, "Configure")
+        action_target = None
 
         if status is None:
             readiness = "needs_config"
@@ -380,12 +381,31 @@ class WorkflowGuidanceService:
             except Exception:
                 pass
 
+        if canonical_id == "manual-binning":
+            try:
+                resolved = resolve_required_steps(
+                    branch_id=branch_id,
+                    canonical_step_ids=["manual-binning"],
+                    branch_step_map=step_map,
+                ) if branch_id else {}
+                ref = resolved.get("manual-binning") if isinstance(resolved, dict) else None
+                actual_step_id = ref.step_id if ref else "manual-binning"
+                state = self._manual_binning_service.get_editor_state(
+                    plan_id, step_id=actual_step_id,
+                )
+                if state.selected_variables:
+                    action_target = f"manual_binning:N_selected={len(state.selected_variables)}"
+                else:
+                    action_target = None
+            except Exception:
+                action_target = None
+
         return {
             "readiness": readiness,
             "primary_action": primary_action,
             "explanation": explanation,
             "evidence_kinds": STEP_EVIDENCE_KINDS.get(canonical_id, []),
-            "action_target": None,
+            "action_target": action_target,
         }
 
     def _derive_phase(

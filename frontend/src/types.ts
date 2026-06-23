@@ -29,6 +29,7 @@ export type ColumnInfo = S['ColumnInfo'];
 export type ArtifactPreviewResponse = S['ArtifactPreviewResponse'];
 export type ManualBinningSourceInfo = S['ManualBinningSourceInfo'];
 export type ManualBinningEditorStateResponse = S['ManualBinningEditorStateResponse'];
+export type ManualBinningVariableSummary = S['ManualBinningVariableSummary'];
 export type PreviewDiagnostics = S['PreviewDiagnostics'];
 export type ManualBinningPreviewResponse = S['ManualBinningPreviewResponse'];
 export type BranchStepItem = S['BranchStepItem'];

@@ -78,7 +78,7 @@ export function NextActionTab({ guidanceForStep, isManualBinning, onEditManualBi
           {manualBinningState?.ready && (
             <>
               <div style={{ fontSize: 11, color: theme.greenText, marginBottom: 6 }}>
-                {manualBinningState.selected_variables?.length || 0} variables selected, ready to edit.
+                {(manualBinningState?.selected_variables?.length || _parseNSelected(guidanceForStep?.action_target) || 0)} variables selected, ready to edit.
               </div>
               {onEditManualBinning && (
                 <button
@@ -98,4 +98,10 @@ export function NextActionTab({ guidanceForStep, isManualBinning, onEditManualBi
       )}
     </div>
   );
+}
+
+function _parseNSelected(actionTarget: string | null | undefined): number | null {
+  if (!actionTarget) return null;
+  const match = actionTarget.match(/N_selected=(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
 }
