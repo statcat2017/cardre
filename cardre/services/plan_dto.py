@@ -6,6 +6,7 @@ These mirror the Pydantic models in ``sidecar.models`` so that
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -55,6 +56,18 @@ class PreviewDiagnostics:
     warnings: list[str] = field(default_factory=list)
 
 
+@dataclasses.dataclass
+class ManualBinningVariableSummary:
+    variable: str
+    iv: float | None = None
+    woe_by_bin: dict[str, float] | None = None
+    event_rate_by_bin: dict[str, float] | None = None
+    missing_count: int | None = None
+    special_bin_count: int | None = None
+    sparse_bin_warning: bool = False
+    non_monotonic_warning: bool = False
+
+
 @dataclass
 class ManualBinningEditorStateResponse:
     plan_id: str
@@ -68,6 +81,7 @@ class ManualBinningEditorStateResponse:
     source_bins_by_variable: dict[str, Any] = field(default_factory=dict)
     current_overrides: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[dict[str, Any]] = field(default_factory=list)
+    variable_summaries: list[ManualBinningVariableSummary] = field(default_factory=list)
 
 
 @dataclass

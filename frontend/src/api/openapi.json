@@ -3743,6 +3743,13 @@
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "variable_summaries": {
+            "items": {
+              "$ref": "#/components/schemas/ManualBinningVariableSummary"
+            },
+            "type": "array",
+            "title": "Variable Summaries"
           }
         },
         "type": "object",
@@ -3836,6 +3843,90 @@
           "variable_selection_artifact_id"
         ],
         "title": "ManualBinningSourceInfo"
+      },
+      "ManualBinningVariableSummary": {
+        "properties": {
+          "variable": {
+            "type": "string",
+            "title": "Variable"
+          },
+          "iv": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iv"
+          },
+          "woe_by_bin": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Woe By Bin"
+          },
+          "event_rate_by_bin": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Rate By Bin"
+          },
+          "missing_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing Count"
+          },
+          "special_bin_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Special Bin Count"
+          },
+          "sparse_bin_warning": {
+            "type": "boolean",
+            "title": "Sparse Bin Warning",
+            "default": false
+          },
+          "non_monotonic_warning": {
+            "type": "boolean",
+            "title": "Non Monotonic Warning",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "variable"
+        ],
+        "title": "ManualBinningVariableSummary"
       },
       "MethodOptionResponse": {
         "properties": {

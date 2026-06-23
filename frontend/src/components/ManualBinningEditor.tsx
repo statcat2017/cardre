@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { ManualBinningEditorStateResponse, ManualBinningPreviewResponse } from "../types";
+import type { ManualBinningEditorStateResponse, ManualBinningPreviewResponse, ManualBinningVariableSummary } from "../types";
 import { backButtonStyle, linkButtonStyle, theme } from "../styles";
 import { useMessage } from "../hooks/useMessage";
 import { MessageBanner } from "./MessageBanner";
@@ -190,6 +190,45 @@ export function ManualBinningEditor({
         )}
       </div>
 
+      {/* Variable Summary Panel */}
+      {es.variable_summaries && es.variable_summaries.length > 0 && (
+        <div style={{ marginBottom: 16, border: `1px solid ${theme.border}`, borderRadius: 8, overflow: "hidden" }}>
+          <div style={{ padding: "8px 12px", backgroundColor: theme.surfaceMuted, borderBottom: `1px solid ${theme.border}`, fontSize: 11, fontWeight: 600, color: theme.text }}>
+            Variable Summary
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+              <thead>
+                <tr style={{ backgroundColor: theme.canvasSoft }}>
+                  <th style={thStyle}>Variable</th>
+                  <th style={thStyle}>IV</th>
+                  <th style={thStyle}>Missing</th>
+                  <th style={thStyle}>Special</th>
+                  <th style={thStyle}>Sparse</th>
+                  <th style={thStyle}>Non-mono</th>
+                </tr>
+              </thead>
+              <tbody>
+                {es.variable_summaries.map((vs: ManualBinningVariableSummary) => (
+                  <tr key={vs.variable} style={{ borderBottom: `1px solid ${theme.border}` }}>
+                    <td style={tdStyle}>{vs.variable}</td>
+                    <td style={tdStyle}>{vs.iv != null ? vs.iv.toFixed(4) : "—"}</td>
+                    <td style={tdStyle}>{vs.missing_count ?? "—"}</td>
+                    <td style={tdStyle}>{vs.special_bin_count ?? "—"}</td>
+                    <td style={{ ...tdStyle, color: vs.sparse_bin_warning ? theme.yellowText : theme.textSoft }}>
+                      {vs.sparse_bin_warning ? "⚠ Yes" : "No"}
+                    </td>
+                    <td style={{ ...tdStyle, color: vs.non_monotonic_warning ? theme.yellowText : theme.textSoft }}>
+                      {vs.non_monotonic_warning ? "⚠ Yes" : "No"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <SourceBinsChips
         selectedVars={selectedVars}
         sourceBins={sourceBins}
@@ -290,3 +329,20 @@ export function ManualBinningEditor({
     </div>
   );
 }
+
+const thStyle: React.CSSProperties = {
+  padding: "6px 10px",
+  textAlign: "left",
+  fontWeight: 600,
+  color: theme.muted,
+  fontSize: 10,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  borderBottom: `1px solid ${theme.border}`,
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: "6px 10px",
+  color: theme.textSoft,
+  fontSize: 11,
+};

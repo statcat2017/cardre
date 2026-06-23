@@ -10,6 +10,8 @@ from typing import Any
 
 from cardre.audit import RunStepRecord, StepSpec
 from cardre.evidence import ArtifactEvidenceReader, EvidenceError, EvidenceKind
+from cardre._evidence.models import WoeIvEvidence
+from cardre.reporting.evidence_contract import find_evidence_for_canonical_step
 from cardre.nodes import validate_manual_binning_overrides, apply_manual_binning_overrides
 from cardre.staleness import compute_staleness
 from cardre.store import ProjectStore
@@ -17,6 +19,7 @@ from cardre.services.plan_dto import (
     ManualBinningEditorStateResponse,
     ManualBinningPreviewResponse,
     ManualBinningSourceInfo,
+    ManualBinningVariableSummary,
     PreviewDiagnostics,
 )
 from cardre.services.plan_service import PlanValidationError
@@ -24,6 +27,58 @@ from cardre.services.step_topology import (
     find_nearest_ancestor_by_canonical_step_id,
     find_nearest_binning_source,
 )
+
+
+# ------------------------------------------------------------------
+# Pure helper functions for WOE/IV evidence extraction
+# ------------------------------------------------------------------
+
+
+def _extract_woe_by_bin(evidence: WoeIvEvidence, var: str) -> dict[str, float] | None:
+    for v in evidence.variables:
+        if v.variable_name == var:
+            result: dict[str, float] = {}
+            for b in v.bins:
+                if b.woe is not None:
+                    result[b.bin_id] = b.woe
+            return result or None
+    return None
+
+
+def _extract_iv(evidence: WoeIvEvidence, var: str) -> float | None:
+    for v in evidence.variables:
+        if v.variable_name == var:
+            return v.iv
+    return None
+
+
+def _extract_event_rate_by_bin(evidence: WoeIvEvidence, var: str) -> dict[str, float] | None:
+    for v in evidence.variables:
+        if v.variable_name == var:
+            result: dict[str, float] = {}
+            for b in v.bins:
+                result[b.bin_id] = b.bad_rate
+            return result or None
+    return None
+
+
+def _check_sparse_bins(bin_data: dict) -> bool:
+    bins = bin_data.get("bins", [])
+    if not bins:
+        return False
+    total = sum(b.get("count", 0) for b in bins)
+    if total == 0:
+        return False
+    return any(b.get("count", 0) / total < 0.05 for b in bins)
+
+
+def _check_non_monotonic(woe_by_bin: dict[str, float] | None) -> bool:
+    if not woe_by_bin or len(woe_by_bin) < 3:
+        return False
+    values = list(woe_by_bin.values())
+    increasing = all(values[i] <= values[i + 1] for i in range(len(values) - 1))
+    decreasing = all(values[i] >= values[i + 1] for i in range(len(values) - 1))
+    return not (increasing or decreasing)
 
 
 class ManualBinningService:
@@ -139,7 +194,7 @@ class ManualBinningService:
         if not source_bins:
             warnings.append({"message": "No source bins found for selected variables."})
 
-        return ManualBinningEditorStateResponse(
+        result = ManualBinningEditorStateResponse(
             plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id, ready=True,
             source=ManualBinningSourceInfo(
                 binning_step_id=bin_actual_id, binning_artifact_id=bin_artifact_id,
@@ -149,6 +204,41 @@ class ManualBinningService:
             selected_variables=selected_vars, source_bins_by_variable=source_bins,
             current_overrides=current_overrides, warnings=warnings,
         )
+
+        try:
+            reader = ArtifactEvidenceReader(self._store)
+            for run in self._store.list_runs(latest_pv_id):
+                if run.get("status") == "succeeded":
+                    woe_evidence = find_evidence_for_canonical_step(
+                        self._store, latest_pv_id, "final-woe-iv", branch_id=branch_id,
+                    )
+                    if woe_evidence:
+                        for aid in woe_evidence.output_artifact_ids:
+                            art = self._store.get_artifact(aid)
+                            if art and art.metadata.get("schema_version") == "cardre.woe_iv_evidence.v1":
+                                evidence = reader.read(aid, EvidenceKind.WOE_IV_EVIDENCE)
+                                if evidence:
+                                    summaries = []
+                                    for var in result.selected_variables:
+                                        woe = _extract_woe_by_bin(evidence, var)
+                                        iv = _extract_iv(evidence, var)
+                                        event_rate = _extract_event_rate_by_bin(evidence, var)
+                                        summaries.append(ManualBinningVariableSummary(
+                                            variable=var,
+                                            iv=iv,
+                                            woe_by_bin=woe,
+                                            event_rate_by_bin=event_rate,
+                                            sparse_bin_warning=_check_sparse_bins(result.source_bins_by_variable.get(var, {})),
+                                            non_monotonic_warning=_check_non_monotonic(woe),
+                                        ))
+                                    result.variable_summaries = summaries
+                                    break
+                        break
+                    break
+        except Exception:
+            pass
+
+        return result
 
     def preview_overrides(
         self,
