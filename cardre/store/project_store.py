@@ -15,19 +15,27 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from datetime import UTC, datetime
+
 from cardre.audit import (
     ArtifactRef,
     JsonDict,
     RunStepRecord,
     StepSpec,
     json_logical_hash,
+    parse_iso,
     physical_hash,
     relative_path,
     utc_now_iso,
 )
 
 
-from cardre.store.schema import SCHEMA_SQL, BRANCH_TABLES_SQL
+from cardre.store.schema import (
+    BRANCH_TABLES_SQL,
+    MIGRATIONS_SQL,
+    SCHEMA_SQL,
+    STORE_SCHEMA_VERSION,
+)
 from cardre.store.artifact_repo import ArtifactRepository
 from cardre.store.plan_repo import PlanRepository
 from cardre.store.run_repo import RunRepository
@@ -92,6 +100,18 @@ class ProjectStore:
         if "is_carried_forward" not in run_step_cols:
             conn.execute("ALTER TABLE run_steps ADD COLUMN is_carried_forward INTEGER NOT NULL DEFAULT 0")
 
+        # Add heartbeat_at to runs table if missing
+        run_cols = {r["name"] for r in conn.execute("PRAGMA table_info(runs)").fetchall()}
+        if "heartbeat_at" not in run_cols:
+            conn.execute("ALTER TABLE runs ADD COLUMN heartbeat_at TEXT")
+
+        # Stamp current schema version after successful migrations
+        self._ensure_store_meta()
+        conn.execute(
+            "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_version', ?)",
+            (str(STORE_SCHEMA_VERSION),),
+        )
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -102,7 +122,68 @@ class ProjectStore:
             (self.root / sub).mkdir(exist_ok=True)
         with self._connect() as conn:
             conn.executescript(SCHEMA_SQL)
+            conn.executescript(MIGRATIONS_SQL)
+        self._check_schema_version()
         self.run_migrations()
+        # recover_interrupted_runs not called automatically — it is a
+        # diagnostic / admin tool.  Calling it before worker dispatch is
+        # safe; calling it while runs are in-flight could mark a legitimate
+        # long-running run as interrupted despite the heartbeat guard.
+
+    def _ensure_store_meta(self) -> None:
+        conn = self._connect()
+        conn.executescript(MIGRATIONS_SQL)
+
+    def _check_schema_version(self) -> None:
+        from cardre.errors import SchemaVersionError
+        conn = self._connect()
+        self._ensure_store_meta()
+        row = conn.execute(
+            "SELECT value FROM store_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        if row is not None:
+            stored_version = int(row["value"])
+            if stored_version > STORE_SCHEMA_VERSION:
+                raise SchemaVersionError(
+                    f"Store schema version {stored_version} is newer than "
+                    f"app version {STORE_SCHEMA_VERSION}. "
+                    "Upgrade the app to open this project."
+                )
+
+    def recover_interrupted_runs(self, max_age_seconds: int = 86400) -> list[JsonDict]:
+        """Mark runs as interrupted if both ``started_at`` and ``heartbeat_at`` are stale.
+
+        A run is considered interrupted when:
+        - ``status`` is ``running``
+        - ``started_at`` is older than *max_age_seconds*
+        - **and** ``heartbeat_at`` is either NULL (no heartbeat ever sent) **or** older
+          than *max_age_seconds*
+
+        The two-condition check prevents marking a legitimate long-running run
+        (with an active heartbeat) as interrupted.  The default threshold is 24
+        hours so that only clearly-abandoned runs are auto-recovered.
+
+        Safe to call from ``initialize()`` because a run with a recent heartbeat
+        is never touched.  Also callable separately for on-demand cleanup.
+        """
+        now = utc_now_iso()
+        threshold = parse_iso(now).timestamp() - max_age_seconds
+        threshold_iso = (
+            datetime.fromtimestamp(threshold, tz=UTC)
+            .replace(microsecond=0)
+            .isoformat()
+        )
+        rows = self._connect().execute(
+            "SELECT * FROM runs WHERE status = 'running' AND started_at < ? "
+            "AND (heartbeat_at IS NULL OR heartbeat_at < ?)",
+            (threshold_iso, threshold_iso),
+        ).fetchall()
+        recovered: list[JsonDict] = []
+        for row in rows:
+            rd = dict(row)
+            self.finish_run(rd["run_id"], "interrupted")
+            recovered.append(rd)
+        return recovered
 
     def _connect(self) -> sqlite3.Connection:
         if self._db is not None:
@@ -119,10 +200,17 @@ class ProjectStore:
         self._db = conn
         return conn
 
+    VALID_TXN_MODES = frozenset({"DEFERRED", "IMMEDIATE", "EXCLUSIVE"})
+
     @contextmanager
-    def transaction(self) -> sqlite3.Connection:
+    def transaction(self, mode: str = "DEFERRED") -> sqlite3.Connection:
+        if mode not in self.VALID_TXN_MODES:
+            raise ValueError(
+                f"Invalid transaction mode {mode!r}; "
+                f"expected one of {sorted(self.VALID_TXN_MODES)}"
+            )
         conn = self._connect()
-        conn.execute("BEGIN")
+        conn.execute(f"BEGIN {mode}")
         try:
             yield conn
             conn.commit()
@@ -603,15 +691,50 @@ class ProjectStore:
     # Runs / Run Steps
     # ------------------------------------------------------------------
 
-    def create_run(self, plan_version_id: str, branch_id: str | None = None) -> str:
-        run_id = str(uuid.uuid4())
+    def create_run(self, plan_version_id: str, branch_id: str | None = None, force: bool = False) -> str:
+        from cardre.errors import ConcurrentRunError
+        # BEGIN IMMEDIATE acquires a write lock at transaction start, serialising
+        # concurrent connections so the SELECT check and INSERT are atomic.
+        with self.transaction(mode="IMMEDIATE") as conn:
+            if not force:
+                if branch_id:
+                    row = conn.execute(
+                        "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id = ? AND status = 'running'",
+                        (plan_version_id, branch_id),
+                    ).fetchone()
+                else:
+                    row = conn.execute(
+                        "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id IS NULL AND status = 'running'",
+                        (plan_version_id,),
+                    ).fetchone()
+                if row is not None:
+                    suffix = f" (branch {branch_id})" if branch_id else ""
+                    raise ConcurrentRunError(
+                        f"A run is already in progress for plan_version {plan_version_id}{suffix}. "
+                        "Use force=True to override."
+                    )
+            run_id = str(uuid.uuid4())
+            now = utc_now_iso()
+            heartbeat = now
+            conn.execute(
+                "INSERT INTO runs (run_id, plan_version_id, status, started_at, branch_id, heartbeat_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (run_id, plan_version_id, "running", now, branch_id, heartbeat),
+            )
+        return run_id
+
+    def run_heartbeat(self, run_id: str) -> None:
+        """Update the heartbeat timestamp for a running run.
+
+        Call periodically during long-running execution to prevent the
+        stale-run recovery from interrupting a legitimate run.
+        """
         now = utc_now_iso()
         with self.transaction() as conn:
             conn.execute(
-                "INSERT INTO runs (run_id, plan_version_id, status, started_at, branch_id) VALUES (?, ?, ?, ?, ?)",
-                (run_id, plan_version_id, "running", now, branch_id),
+                "UPDATE runs SET heartbeat_at = ? WHERE run_id = ? AND status = 'running'",
+                (now, run_id),
             )
-        return run_id
 
     def finish_run(self, run_id: str, status: str = "succeeded") -> None:
         now = utc_now_iso()

@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from cardre.errors import ConcurrentRunError
 from cardre.services import PlanValidationError
 from cardre.services.project_registry import ProjectNotFoundError, ProjectPathMissingError
 from sidecar.routes import artifacts, binning, branches, champion, comparisons, datasets, evidence, exports, health, method_summary, node_types, plans, projects, reports, runs
@@ -57,6 +58,11 @@ def project_not_found_handler(_request: Request, exc: ProjectNotFoundError) -> J
 @app.exception_handler(ProjectPathMissingError)
 def project_path_missing_handler(_request: Request, exc: ProjectPathMissingError) -> JSONResponse:
     return JSONResponse(status_code=410, content={"detail": {"code": "PROJECT_PATH_MISSING", "message": str(exc)}})
+
+
+@app.exception_handler(ConcurrentRunError)
+def concurrent_run_handler(_request: Request, exc: ConcurrentRunError) -> JSONResponse:
+    return JSONResponse(status_code=409, content={"detail": {"code": "CONCURRENT_RUN", "message": str(exc)}})
 
 
 app.include_router(health.router)

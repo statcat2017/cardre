@@ -86,7 +86,7 @@ class PlanExecutor:
 
         from cardre.run_lifecycle import RunLifecycle
         execution_mode = "force" if force else "full"
-        with RunLifecycle.start(store, plan_version_id, run_id=run_id, execution_mode=execution_mode) as lifecycle:
+        with RunLifecycle.start(store, plan_version_id, run_id=run_id, execution_mode=execution_mode, force=force) as lifecycle:
             run_id = lifecycle.run_id
 
             actions = [
@@ -124,6 +124,7 @@ class PlanExecutor:
         with RunLifecycle.start(
             store, plan_version_id, run_id=run_id,
             branch_id=branch_id, execution_mode=execution_mode,
+            force=force,
         ) as lifecycle:
             run_id = lifecycle.run_id
 
@@ -186,6 +187,7 @@ class PlanExecutor:
             execution_mode=execution_mode,
             target_step_id=target_step_id,
             in_scope_step_ids=sorted(closure),
+            force=force,
         ) as lifecycle:
             run_id = lifecycle.run_id
 

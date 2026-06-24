@@ -1,5 +1,9 @@
 """SQL schema and migration statements for the Cardre project store."""
 
+# Current app schema version — bump when making backwards-incompatible changes.
+# Stored in store_meta table; old apps will reject newer stores.
+STORE_SCHEMA_VERSION = 2
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS projects (
     project_id TEXT PRIMARY KEY,
@@ -186,4 +190,12 @@ CREATE TABLE IF NOT EXISTS champion_assignments (
     FOREIGN KEY(comparison_id) REFERENCES branch_comparisons(comparison_id),
     FOREIGN KEY(comparison_snapshot_id) REFERENCES branch_comparison_snapshots(comparison_snapshot_id)
 );
+"""
+
+MIGRATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS store_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+INSERT OR IGNORE INTO store_meta (key, value) VALUES ('schema_version', '1');
 """
