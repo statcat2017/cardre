@@ -279,6 +279,19 @@ class GenericImportTests(unittest.TestCase):
         with self.assertRaises(Exception):
             _run_import(csv_path, encoding="utf-8")
 
+    def test_latin1_encoding_imports_successfully(self) -> None:
+        """Positive test: Latin-1 file imports correctly when encoding='latin1'."""
+        import tempfile
+        import polars as pl
+        tmp = Path(tempfile.mkdtemp())
+        csv_path = tmp / "latin1.csv"
+        csv_path.write_bytes("a,b\n1,caf\xe9\n2,test\n".encode("latin-1"))
+        store, output = _run_import(csv_path, encoding="latin-1")
+        art = output.artifacts[0]
+        df = pl.read_parquet(store.artifact_path(art))
+        assert df.height == 2
+        assert df["b"][0] == "caf\xe9"
+
     def test_duplicate_column_names_silently_renamed(self) -> None:
         """Polars silently renames duplicate columns — documents risk #6.
 
