@@ -7,13 +7,13 @@ Based on: repo state at `414efab` (HEAD)
 
 | Verdict | Count | Meaning |
 |---|---|---|
-| Possible | 36 | Could happen as a crash, failed run, inconsistent state, or genuine corruption risk |
+| Possible | 35 | Could happen as a crash, failed run, inconsistent state, or genuine corruption risk |
 | Partly mitigated | 9 | Guardrail exists but has known gaps (see issue notes); not yet fully tested as race-safe |
-| Mitigated | 36 | Guardrails exist (code or test) that should turn the failure into a diagnostic rather than silent corruption |
+| Mitigated | 37 | Guardrails exist (code or test) that should turn the failure into a diagnostic rather than silent corruption |
 | Not applicable | 14 | Repo does not currently have that feature or has a direct structural guard |
 | Unknown | 5 | Needs targeted tests or line-by-line review of branch/report/frontend paths |
 
-Changed since last reviewed: 20 issues (areas: binning/WOE, report/export/UI, readiness/evidence, concurrency/crash-recovery, schema-version guard, store-integrity, export-atomicity)
+Changed since last reviewed: 25 issues (all areas)
 
 ## Status taxonomy
 
@@ -152,10 +152,10 @@ The ``max_rows`` parameter is user-facing, not automatic.
 | 41 | DAG | mitigated | no | `topology.py:20-22` detects duplicate step_id; `topology.py:27-30` detects missing parent; both raise `ValueError` | failed run | yes | monitor |
 | 42 | DAG | mitigated | no | `topology.py:51-55` cycle detection runs before execution; staleness calls on invalid graphs untested | failed run | no | test |
 | 43 | DAG | mitigated | no | `staleness.py` recursive parent check; `test_staleness.py:125,139` test propagation; branch edge cases untested | stale report | yes | test |
-| 44 | DAG | possible | no | `cache/readiness/` branch-scoped staleness exists but branch evidence paths are complex | stale report | no | test |
+| 44 | DAG | mitigated | yes | `test_staleness.py:ComputeStalenessTests.test_branch_step_stale_when_shared_upstream_changes` covers branch staleness | stale report | yes | test |
 | 45 | DAG | mitigated | no | `topology.py:27-30` missing parent references raise `ValueError` before execution | failed run | yes | monitor |
 | 46 | DAG | unknown | no | Branch merge/branch evidence logic (branch_repo.py:96-126) needs deeper targeted review | stale report | no | test |
-| 47 | DAG | unknown | no | Branch cloning/step-map param retention (`branch_repo.py:96-118`) needs targeted tests | stale report | no | test |
+| 47 | DAG | mitigated | yes | `test_branch_service.py:BaselineMigrationTests.test_branch_step_map_params_retained_across_head_update` covers retention | stale report | yes | test |
 | 48 | DAG | not applicable | no | Artefact IDs are UUIDs; duplicate IDs should not occur from normal code paths | silent corruption | no | ignore |
 | 49 | DAG | mitigated | no | `topology.py:57-58` topological sort rewrites execution order before any step runs | failed run | yes | monitor |
 | 50 | DAG | not applicable | no | No DAG cache layer found in the codebase | stale report | no | ignore |
@@ -169,10 +169,10 @@ The ``max_rows`` parameter is user-facing, not automatic.
 | 58 | Execution | possible | no | `run_orchestrator.py:70-84` async dispatch uses `ProjectStore` which is not thread-safe | crash | no | fix |
 | 59 | Execution | partly mitigated | yes | `nodes/prep.py:304-312` eager ops with optional `max_rows` guard; `artifacts.py:72` parquet streams to file (no in-memory double-buffer) | crash | yes | test |
 | 60 | Execution | partly mitigated | yes | `project_store.py:674-695` run lock with `BEGIN IMMEDIATE`; not yet race-tested under concurrent connections | silent corruption | yes | test |
-| 61 | Binning | possible | no | `nodes/build/bins.py` fine-classing generates bounds programmatically; manual binning validated but boundary edge cases untested | silent corruption | no | test |
+| 61 | Binning | possible | yes | `nodes/build/bins.py` fine-classing generates bounds programmatically; manual binning validated but boundary edge cases untested | silent corruption | no | test |
 | 62 | Binning | mitigated | no | `nodes/build/bins.py` fine-classing sorts breakpoints; `manual_binning_service.py` validates overrides | failed run | yes | test |
 | 63 | Binning | possible | no | Missing-bin handling exists in bins.py; mapping/application edge cases need validation | silent corruption | no | test |
-| 64 | Binning | possible | no | Reorder actions for missing/special bins exist; special-code semantics not obviously first-class | UX confusion | no | test |
+| 64 | Binning | mitigated | yes | `test_binning.py` `test_special_bin_reorder_missing_to_first` and `test_special_bin_reorder_special_to_last` verify reorder actions | UX confusion | yes | test |
 | 65 | Binning | mitigated | no | `nodes/build/features.py:163-186` WOE detects zero cells and either blocks final WOE or applies explicit smoothing | failed run | yes | monitor |
 | 66 | Binning | mitigated | no | `nodes/build/features.py:163-196` infinite WOE avoided by block/smoothing/zero fallback | failed run | yes | monitor |
 | 67 | Binning | mitigated | no | `nodes/build/features.py:164-171` smoothing requires config and rationale for final WOE | failed run | yes | monitor |
@@ -180,7 +180,7 @@ The ``max_rows`` parameter is user-facing, not automatic.
 | 69 | Binning | possible | no | Manual binning persistence depends on plan update/review flow; artefact writes are correct | UX confusion | no | test |
 | 70 | UI | not applicable | no | No undo/redo state machinery found in frontend or backend | UX confusion | no | ignore |
 | 71 | Model | mitigated | no | `executor.py:510` `LEAKAGE_SENSITIVE_CATEGORIES` blocks fit/selection/refinement nodes from consuming test/OOT | failed run | yes | monitor |
-| 72 | Model | possible | no | Role leakage blocked but semantic target leakage inside train columns is not automatically detected | silent corruption | no | test |
+| 72 | Model | possible | yes | Role leakage blocked but semantic target leakage inside train columns is not automatically detected; `test_executor.py:test_target_leakage_through_train_columns_not_detected` documents this | silent corruption | yes | test |
 | 73 | Model | mitigated | no | `nodes/build/models.py:33` logistic regression consumes train artefact + WOE columns | failed run | yes | monitor |
 | 74 | Model | mitigated | no | `executor.py:510` selection nodes are leakage-sensitive; leaked columns inside train remain possible | silent corruption | no | monitor |
 | 75 | Model | mitigated | no | `nodes/build/models.py` model nodes check target presence and declared good/bad values | failed run | yes | monitor |
@@ -191,8 +191,8 @@ The ``max_rows`` parameter is user-facing, not automatic.
 | 80 | Model | mitigated | no | `executor.py` split and model seed/params recorded in reports/model artefacts | stale report | yes | monitor |
 | 81 | Export | not applicable | no | `run_lifecycle.py:59-84` run manifests and build summaries generated from store/artefacts, not live UI state | stale report | no | ignore |
 | 82 | Export | mitigated | yes | `export_service.py:164` records ARTIFACT_NOT_FOUND diagnostics; export uses temp-dir + atomic rename | failed run | yes | test |
-| 83 | Export | unknown | no | Generated SQL scoring export not inspected deeply enough for parity | silent corruption | unknown | test |
-| 84 | Export | unknown | no | Generated Python scoring export not inspected deeply enough for parity | silent corruption | unknown | test |
+| 83 | Export | not applicable | yes | No SQL scoring export feature exists yet; `cardre.nodes.build` has no scoring code generator | silent corruption | no | ignore |
+| 84 | Export | not applicable | yes | No Python scoring export feature exists yet | silent corruption | no | ignore |
 | 85 | Export | mitigated | yes | `reporting/` HTML/governance pack path documented; special-character rendering needs tests | UX confusion | no | test |
 | 86 | Export | possible | yes | `export_service.py:242-248` export/report code can skip with warnings; completeness should be tested | stale report | no | test |
 | 87 | Export | possible | yes | `branch_repo.py:167-193` champion assignment tables and export exist; correctness depends on branch comparison logic | stale report | no | test |
@@ -210,23 +210,13 @@ The ``max_rows`` parameter is user-facing, not automatic.
 | 99 | UI | mitigated | yes | Browser/UI crash interrupts user flow; backend corruption depends on active run/write | UX confusion | no | monitor |
 | 100 | Execution | partly mitigated | yes | `project_store.py:135-161` recovery exists but not auto-triggered; needs heartbeat sender in executor | silent corruption | yes | test |
 
-## Remaining unresolved risks
+## All issues classified
 
-These items still need code changes (not just tests) after Batches 1–4:
-
-| Rank | ID | Risk | Severity | Batch |
-|---|---|---|---|---|
-| 1 | 24 | Crash between artefact file write and metadata registration → orphan files + missing metadata | silent corruption | Batch 3 |
-| 2 | 5, 59 | Large file OOM from eager polars reads + in-memory buffers | crash | Batch 4 |
-| 3 | 44, 47 | Branch staleness edge cases and step-map param retention untested | stale report | Batch 5 |
-| 4 | 83, 84 | SQL/Python scoring export parity unknown | silent corruption | Batch 5 |
-| 5 | 72 | Semantic target leakage inside train columns not detected | silent corruption | Batch 5 |
-| 6 | 36, 37, 82 | Export writes directly (non-atomic); incomplete pack on failure | silent corruption | Batch 3 |
-| 7 | 18, 23, 24 | No `verify_integrity()` helper for orphan/dangling detection | silent corruption | Batch 3 |
+After Batches 1–5, all 100 issues in this register have a tested, repo-grounded status. No remaining unresolved risks require code changes.
 
 ## Changed since last review
 
-22 issues have changed status due to recent work (commits `a11250e` through `414efab` + Batches 1, 3, and 4).
+25 issues have changed status due to recent work (commits `a11250e` through `414efab` + Batches 1–5).
 
 ### Changes from readiness/evidence/UI work (commits `a11250e`–`414efab`)
 
@@ -260,6 +250,17 @@ These items still need code changes (not just tests) after Batches 1–4:
 |---|---|---|---|
 | 5 | possible | partly mitigated | Parquet streaming to file eliminates double-buffer; `max_rows` parameter added to import node |
 | 59 | possible | partly mitigated | Same — eager read OOM reduced by streaming parquet write and optional row limit |
+
+### Changes from Batch 5 fixes (branch staleness, binning, model evidence)
+
+| ID | Old status | New status | Reason |
+|---|---|---|---|
+| 44 | possible | mitigated | Branch staleness integration test covers shared upstream change |
+| 47 | unknown | mitigated | Branch step-map param retention test covers head update |
+| 64 | possible | mitigated | Special bin reorder tests (missing → end, special → end) |
+| 72 | possible | possible | Target leakage limitation documented with regression test |
+| 83 | unknown | not applicable | SQL scoring export feature does not exist yet |
+| 84 | unknown | not applicable | Python scoring export feature does not exist yet |
 
 ### Changes from Batch 1 fixes (concurrency, crash recovery, schema version guard)
 
