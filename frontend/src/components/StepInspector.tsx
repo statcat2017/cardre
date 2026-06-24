@@ -138,6 +138,7 @@ export function StepInspector({
             stepId={step.step_id}
             projectId={projectId!}
             tab={tab}
+            planId={planId ?? undefined}
           />
         )}
 
