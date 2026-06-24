@@ -92,4 +92,12 @@ def compute_manual_binning_blockers(
                     "variable": vs.variable,
                 })
 
+    # Check branch mismatch
+    if branch_id and step_id and "__" in step_id and branch_id not in step_id:
+        blockers.append({
+            "code": "BRANCH_MISMATCH",
+            "message": f"Step '{step_id}' does not belong to branch '{branch_id}'.",
+            "step_id": step_id,
+        })
+
     return blockers

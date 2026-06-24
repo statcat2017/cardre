@@ -6,9 +6,10 @@ interface Props {
   variable: string | null;
   sourceBins: Record<string, any> | null;
   summary: ManualBinningVariableSummary | null | undefined;
+  onEdit?: (variable: string) => void;
 }
 
-export function ManualBinningBinTable({ variable, sourceBins, summary }: Props) {
+export function ManualBinningBinTable({ variable, sourceBins, summary, onEdit }: Props) {
   if (!variable || !sourceBins) {
     return (
       <div style={{ padding: 16, fontSize: 11, color: theme.muted, textAlign: "center" }}>
@@ -26,8 +27,20 @@ export function ManualBinningBinTable({ variable, sourceBins, summary }: Props) 
 
   return (
     <div style={{ marginTop: 16, border: `1px solid ${theme.border}`, borderRadius: 8, overflow: "hidden" }}>
-      <div style={{ padding: "8px 12px", backgroundColor: theme.surfaceMuted, borderBottom: `1px solid ${theme.border}`, fontSize: 11, fontWeight: 600, color: theme.text }}>
-        Bin Details — {variable}
+      <div style={{ padding: "8px 12px", backgroundColor: theme.surfaceMuted, borderBottom: `1px solid ${theme.border}`, fontSize: 11, fontWeight: 600, color: theme.text, display: "flex", alignItems: "center", gap: 8 }}>
+        <span>Bin Details — {variable}</span>
+        {onEdit && (
+          <button
+            onClick={() => onEdit(variable)}
+            style={{
+              marginLeft: "auto", padding: "2px 8px", borderRadius: 3,
+              border: `1px solid ${theme.border}`, backgroundColor: theme.surface,
+              fontSize: 10, fontWeight: 500, color: theme.textSoft, cursor: "pointer",
+            }}
+          >
+            Edit bins
+          </button>
+        )}
       </div>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>

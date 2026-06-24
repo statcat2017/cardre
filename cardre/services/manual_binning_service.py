@@ -412,26 +412,65 @@ class ManualBinningService:
         reviewed_by: str | None = None,
         reason_code: str | None = None,
         review_reason: str | None = None,
+        reopen: bool = False,
     ) -> UpdateStepParamsResponse:
-        """Save a review/accept-automated decision for manual binning.
+        """Save a review/accept-automated/reopen decision for manual binning.
 
-        Validates review params, writes the params through
-        PlanService.update_params, and records a step annotation for
-        auditability — atomically in the same transaction.
-        Returns the UpdateStepParamsResponse so the caller gets the new
-        plan version ID.
+        When ``reviewed=True``, validates the review-completion gate via
+        ``compute_manual_binning_blockers`` before committing.
+        When ``reopen=True``, flips ``reviewed=False`` and
+        ``accept_automated=False`` with a reason.
+
+        Writes the params through PlanService.update_params atomically
+        with the audit annotation.
         """
         from cardre.services.plan_service import PlanService, PlanValidationError
 
-        PlanService(self._store)._validate_manual_binning_review_params(
-            reviewed, accept_automated, overrides,
-            reason_code=reason_code, review_reason=review_reason,
-        )
+        if reopen:
+            if not reason_code or not review_reason:
+                raise PlanValidationError(
+                    "PARAMS_VALIDATION_FAILED",
+                    "reason_code and review_reason are required when reopening review.",
+                )
+            params: dict[str, Any] = {"reviewed": False, "accept_automated": False}
+            action = "reopen"
+        else:
+            PlanService(self._store)._validate_manual_binning_review_params(
+                reviewed, accept_automated, overrides,
+                reason_code=reason_code, review_reason=review_reason,
+            )
+            params = {"reviewed": reviewed, "accept_automated": accept_automated}
+            action = "review"
 
-        params: dict[str, Any] = {"reviewed": reviewed, "accept_automated": accept_automated}
+            if reviewed:
+                # Gate check: cannot complete while blockers exist
+                state = self.get_editor_state(plan_id, step_id=step_id)
+                if not state.ready:
+                    raise PlanValidationError(
+                        "REVIEW_COMPLETION_BLOCKED",
+                        "Cannot complete review while the editor is not ready. "
+                        f"Blocked: {state.blocked_reason}",
+                        status_code=409,
+                    )
+                blockers = compute_manual_binning_blockers(
+                    state.selected_variables,
+                    state.variable_summaries,
+                    state.current_overrides,
+                    branch_id=state.branch_id,
+                    step_id=step_id,
+                )
+                if blockers:
+                    messages = "; ".join(b["message"] for b in blockers)
+                    raise PlanValidationError(
+                        "REVIEW_COMPLETION_BLOCKED",
+                        f"Cannot complete review: {messages}",
+                        status_code=409,
+                        extra={"blocking_issues": blockers},
+                    )
+
         if overrides is not None:
             params["overrides"] = overrides
-        elif accept_automated:
+        elif accept_automated and not reopen:
             params["overrides"] = []
 
         # Build the annotation payload to write atomically with params
@@ -439,13 +478,14 @@ class ManualBinningService:
             "kind": "manual_binning_review",
             "actor": reviewed_by or "user",
             "payload": {
-                "reviewed": reviewed,
-                "accept_automated": accept_automated,
+                "reviewed": reviewed if not reopen else False,
+                "accept_automated": accept_automated if not reopen else False,
                 "override_count": len(overrides) if overrides else 0,
                 "base_plan_version_id": plan_version_id,
                 "reviewed_by": reviewed_by,
                 "reason_code": reason_code,
                 "review_reason": review_reason,
+                "action": action,
             },
         }
 
