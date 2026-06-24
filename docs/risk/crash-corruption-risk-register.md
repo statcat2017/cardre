@@ -7,8 +7,8 @@ Based on: repo state at `414efab` (HEAD)
 
 | Verdict | Count | Meaning |
 |---|---|---|
-| Possible | 38 | Could happen as a crash, failed run, inconsistent state, or genuine corruption risk |
-| Partly mitigated | 7 | Guardrail exists but has known gaps (see issue notes); not yet fully tested as race-safe |
+| Possible | 36 | Could happen as a crash, failed run, inconsistent state, or genuine corruption risk |
+| Partly mitigated | 9 | Guardrail exists but has known gaps (see issue notes); not yet fully tested as race-safe |
 | Mitigated | 36 | Guardrails exist (code or test) that should turn the failure into a diagnostic rather than silent corruption |
 | Not applicable | 14 | Repo does not currently have that feature or has a direct structural guard |
 | Unknown | 5 | Needs targeted tests or line-by-line review of branch/report/frontend paths |
@@ -90,6 +90,21 @@ directory (`.export_name.tmp.{uuid}`) and renames atomically on success.
 On exception the temp directory is removed.  The ``_populate_export`` helper
 was extracted so the write logic and temp-dir lifecycle are separated.
 
+### 6. Large-file memory safety (Batch 4)
+`artifacts.py:write_parquet_artifact` now streams to the temp file path
+directly instead of buffering the entire parquet in a ``BytesIO`` buffer.
+This cuts peak memory in half for large DataFrames.
+
+`nodes/prep.py:ImportTabularDatasetNode` gained a ``max_rows`` parameter
+(default ``None`` = no limit).  When set, only the first *N* rows are
+read from the source, reducing memory pressure for CSV and Parquet imports.
+A wide-dataset smoke test (1k columns × 50k rows) passes.
+
+**Remaining gaps**: ``ProfileDatasetNode`` still reads the full parquet and
+computes full-frame stats.  In-memory parquet write for JSON artefacts
+(``write_json_artifact``) is unchanged — JSON artefacts are small by nature.
+The ``max_rows`` parameter is user-facing, not automatic.
+
 ## Risk register
 
 | ID | Area | Current status | Changed since last review? | Evidence source | Failure mode | Test exists? | Recommended action |
@@ -98,7 +113,7 @@ was extracted so the write logic and temp-dir lifecycle are separated.
 | 2 | Import | possible | no | `nodes/prep.py:304-312` delegates CSV parsing to polars | failed run | no | test |
 | 3 | Import | possible | no | `nodes/prep.py:295` defaults to utf-8; sidecar import request doesn't expose encoding param | silent corruption | no | test |
 | 4 | Import | possible | no | `nodes/prep.py:311` `infer_schema_length=10000`; profile reads full parquet eagerly | crash | no | test |
-| 5 | Import | possible | no | `nodes/prep.py:289,304` eager read; `artifacts.py:73` in-memory parquet buffer | crash | no | fix |
+| 5 | Import | partly mitigated | yes | `nodes/prep.py:289,304` eager read with optional `max_rows`; `artifacts.py:73` parquet now streams to file | crash | yes | test |
 | 6 | Import | possible | no | `nodes/prep.py:304` polars behaviour on duplicate columns unknown | failed run | no | test |
 | 7 | Import | possible | no | `nodes/prep.py:304` empty column name may pass import but cause downstream problems | silent corruption | no | test |
 | 8 | Import | not applicable | no | `schema.py:29-42` plan_steps don't store columns as SQL identifiers | UX confusion | no | ignore |
@@ -152,7 +167,7 @@ was extracted so the write logic and temp-dir lifecycle are separated.
 | 56 | Execution | mitigated | no | `run_lifecycle.py:308-323` `finalise()` catches manifest write failure and marks run `failed` | failed run | yes | monitor |
 | 57 | Execution | mitigated | no | `executor.py:558-564` input physical hashes re-checked before node execution; `test_executor.py:276` tests | failed run | yes | monitor |
 | 58 | Execution | possible | no | `run_orchestrator.py:70-84` async dispatch uses `ProjectStore` which is not thread-safe | crash | no | fix |
-| 59 | Execution | possible | no | `nodes/prep.py:304-312` eager polars ops; `artifacts.py:73` in-memory parquet buffer can exhaust memory | crash | no | fix |
+| 59 | Execution | partly mitigated | yes | `nodes/prep.py:304-312` eager ops with optional `max_rows` guard; `artifacts.py:72` parquet streams to file (no in-memory double-buffer) | crash | yes | test |
 | 60 | Execution | partly mitigated | yes | `project_store.py:674-695` run lock with `BEGIN IMMEDIATE`; not yet race-tested under concurrent connections | silent corruption | yes | test |
 | 61 | Binning | possible | no | `nodes/build/bins.py` fine-classing generates bounds programmatically; manual binning validated but boundary edge cases untested | silent corruption | no | test |
 | 62 | Binning | mitigated | no | `nodes/build/bins.py` fine-classing sorts breakpoints; `manual_binning_service.py` validates overrides | failed run | yes | test |
@@ -197,7 +212,7 @@ was extracted so the write logic and temp-dir lifecycle are separated.
 
 ## Remaining unresolved risks
 
-These items still need code changes (not just tests) after the first batch of fixes:
+These items still need code changes (not just tests) after Batches 1–4:
 
 | Rank | ID | Risk | Severity | Batch |
 |---|---|---|---|---|
@@ -211,7 +226,7 @@ These items still need code changes (not just tests) after the first batch of fi
 
 ## Changed since last review
 
-20 issues have changed status due to recent work (commits `a11250e` through `414efab` + Batches 1 and 3).
+22 issues have changed status due to recent work (commits `a11250e` through `414efab` + Batches 1, 3, and 4).
 
 ### Changes from readiness/evidence/UI work (commits `a11250e`–`414efab`)
 
@@ -238,6 +253,13 @@ These items still need code changes (not just tests) after the first batch of fi
 | 37 | mitigated | mitigated | Export atomicity improved (same temp-dir pattern) |
 | 40 | not applicable | mitigated | `verify_integrity` provides diagnostic for orphan/dangling artefacts |
 | 82 | mitigated | mitigated | Export atomicity improved; evidence source updated |
+
+### Changes from Batch 4 fixes (large-file memory safety)
+
+| ID | Old status | New status | Reason |
+|---|---|---|---|
+| 5 | possible | partly mitigated | Parquet streaming to file eliminates double-buffer; `max_rows` parameter added to import node |
+| 59 | possible | partly mitigated | Same — eager read OOM reduced by streaming parquet write and optional row limit |
 
 ### Changes from Batch 1 fixes (concurrency, crash recovery, schema version guard)
 

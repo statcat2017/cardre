@@ -592,7 +592,7 @@ class PlanExecutor:
             input_artifact_ids=input_artifact_ids,
             output_artifact_ids=[a.artifact_id for a in output.artifacts],
             execution_fingerprint=output.execution_fingerprint,
-            warnings=[],
+            warnings=output.warnings or [],
             errors=errors,
         )
         store.save_run_step(rs)

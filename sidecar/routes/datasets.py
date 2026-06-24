@@ -42,6 +42,8 @@ def import_dataset(body: ImportDatasetRequest):
         params["has_header"] = False
     if body.schema_overrides:
         params["schema_overrides"] = dict(body.schema_overrides)
+    if body.max_rows is not None:
+        params["max_rows"] = body.max_rows
     import_step = StepSpec(
         step_id="import",
         node_type="cardre.import_dataset",
@@ -92,6 +94,8 @@ def import_dataset(body: ImportDatasetRequest):
         pathway_extra["has_header"] = False
     if body.schema_overrides:
         pathway_extra["schema_overrides"] = dict(body.schema_overrides)
+    if body.max_rows is not None:
+        pathway_extra["max_rows"] = body.max_rows
     update_plan_import_params(
         store, body.project_id, str(source.resolve()),
         extra_params=pathway_extra or None,

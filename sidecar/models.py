@@ -70,6 +70,7 @@ class ImportDatasetRequest(BaseModel):
     delimiter: str | None = None
     has_header: bool = True
     schema_overrides: dict[str, str] = {}
+    max_rows: int | None = None
 
 
 class ArtifactResponse(BaseModel):

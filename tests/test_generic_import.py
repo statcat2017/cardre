@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
 from cardre.nodes import ImportTabularDatasetNode
@@ -212,3 +213,94 @@ class GenericImportTests(unittest.TestCase):
             o1.artifacts[0].logical_hash,
             o2.artifacts[0].logical_hash,
         )
+
+    def test_max_rows_csv_imports_exactly_n_rows(self) -> None:
+        import tempfile
+        import polars as pl
+        s = make_synthetic_csv(tmp := Path(tempfile.mkdtemp()))
+        store, output = _run_import(s, max_rows=3)
+        art = output.artifacts[0]
+        self.assertEqual(art.metadata.get("row_count"), 3)
+        self.assertEqual(art.metadata.get("max_rows_applied"), 3)
+        df = pl.read_parquet(store.artifact_path(art))
+        self.assertEqual(df.height, 3)
+        # Warning should be present
+        self.assertIsNotNone(output.warnings)
+        self.assertTrue(any("SOURCE_ROW_LIMIT_APPLIED" in str(w) for w in output.warnings))
+
+    def test_max_rows_parquet_imports_exactly_n_rows(self) -> None:
+        import tempfile
+        import polars as pl
+        tmp = Path(tempfile.mkdtemp())
+        df = pl.DataFrame({"x": list(range(50))})
+        src = tmp / "test.parquet"
+        df.write_parquet(src)
+        store, output = _run_import(src, max_rows=3)
+        art = output.artifacts[0]
+        self.assertEqual(art.metadata.get("row_count"), 3)
+        df2 = pl.read_parquet(store.artifact_path(art))
+        self.assertEqual(df2.height, 3)
+
+    def test_max_rows_none_imports_all_rows(self) -> None:
+        import tempfile
+        s = make_synthetic_csv(tmp := Path(tempfile.mkdtemp()), rows=50)
+        store, output = _run_import(s)
+        art = output.artifacts[0]
+        self.assertEqual(art.metadata.get("row_count"), 50)
+
+    def test_max_rows_validation_rejects_invalid(self) -> None:
+        import tempfile
+        from cardre.nodes import ImportTabularDatasetNode
+        node = ImportTabularDatasetNode()
+        s = make_synthetic_csv(tmp := Path(tempfile.mkdtemp()))
+        for bad_val in [0, -1, "abc", 1.5]:
+            errors = node.validate_params({"source_path": str(s), "max_rows": bad_val})
+            self.assertTrue(any("max_rows" in e for e in errors),
+                            f"Expected max_rows error for {bad_val}")
+
+
+class WideDatasetSmokeTests(unittest.TestCase):
+    @pytest.mark.slow
+    def test_wide_dataset_does_not_oom(self) -> None:
+        """Smoke test: 1k columns × 50k rows should complete without OOM.
+
+        Marked slow — not run in CI by default.
+        """
+        import tempfile
+        from pathlib import Path
+        import polars as pl
+
+        tmp = Path(tempfile.mkdtemp())
+        csv_path = tmp / "wide.csv"
+        n_cols = 1000
+        n_rows = 50_000
+
+        header = ",".join(f"col_{i}" for i in range(n_cols))
+        row = ",".join("1" for _ in range(n_cols))
+        lines = [header] + [row] * n_rows
+        csv_path.write_text("\n".join(lines))
+
+        store, _ = make_store()
+        store.create_project("test")
+        node = ImportTabularDatasetNode()
+        from cardre.audit import StepSpec, ExecutionContext
+        params = {"source_path": str(csv_path), "max_rows": 10_000}
+        spec = StepSpec(
+            step_id="import-wide",
+            node_type="cardre.import_dataset",
+            node_version="1",
+            category="transform",
+            params=params,
+            params_hash="dummy",
+            parent_step_ids=[],
+            branch_label="",
+            position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="slow-test-run", plan_version_id="pv",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[], validated_params=params,
+            runtime_metadata={},
+        )
+        output = node.run(ctx)
+        self.assertEqual(len(output.artifacts), 1)

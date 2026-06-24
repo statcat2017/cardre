@@ -9,6 +9,7 @@ import polars as pl
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import (
     ExecutionContext,
+    JsonDict,
     NodeOutput,
     NodeType,
 )
@@ -244,6 +245,12 @@ class ImportTabularDatasetNode(NodeType):
                             default={},
                             help_text="Dict mapping column names to dtype strings, e.g. {'age': 'int', 'income': 'float'}",
                         ),
+                        ParameterDefinition(
+                            name="max_rows",
+                            label="Max Rows",
+                            kind="integer",
+                            help_text="Maximum rows to read (None = no limit). Useful for sampling large files.",
+                        ),
                     ],
                 ),
             ],
@@ -276,6 +283,10 @@ class ImportTabularDatasetNode(NodeType):
                             f"Unrecognised dtype {dtype_str!r} for column {col!r}; "
                             f"supported: {valid}"
                         )
+        max_rows = params.get("max_rows")
+        if max_rows is not None:
+            if not isinstance(max_rows, int) or max_rows < 1:
+                errors.append(f"max_rows must be a positive integer, got {max_rows!r}")
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
@@ -284,9 +295,10 @@ class ImportTabularDatasetNode(NodeType):
         if not source_path.exists() or not source_path.is_file():
             raise FileNotFoundError(f"Import source_path does not exist or is not a file: {source_path}")
 
+        max_rows: int | None = params.get("max_rows")
         fmt = self._resolve_format(params, source_path)
         if fmt == "parquet":
-            df = pl.read_parquet(source_path)  # cardre-allow-artifact-read: dataset-frame-input
+            df = pl.read_parquet(source_path, n_rows=max_rows)  # cardre-allow-artifact-read: dataset-frame-input
         else:
             delimiter = params.get("delimiter")
             if not delimiter:
@@ -309,12 +321,31 @@ class ImportTabularDatasetNode(NodeType):
                 null_values=null_values if null_values else None,
                 schema_overrides=schema_overrides or None,
                 infer_schema_length=10000,
+                n_rows=max_rows,
             )
 
         if df.is_empty():
             raise ValueError(f"Import produced zero rows from {source_path.name}")
 
         store = context.store
+        metadata: dict[str, Any] = {}
+        warnings: list[JsonDict] = []
+
+        if max_rows is not None:
+            metadata["max_rows_applied"] = max_rows
+            warnings.append({
+                "code": "SOURCE_ROW_LIMIT_APPLIED",
+                "message": f"Imported at most {max_rows} rows. The first {max_rows} rows may not "
+                           f"represent the full dataset distribution.",
+            })
+
+        art_metadata = {
+            "source_file": source_path.name,
+            "format": fmt,
+            "columns": list(df.columns),
+            "row_count": df.height,
+        }
+        art_metadata.update(metadata)
 
         artifact = write_parquet_artifact(
             store,
@@ -322,17 +353,13 @@ class ImportTabularDatasetNode(NodeType):
             role="input",
             stem="imported-dataset",
             frame=df,
-            metadata={
-                "source_file": source_path.name,
-                "format": fmt,
-                "columns": list(df.columns),
-                "row_count": df.height,
-            },
+            metadata=art_metadata,
         )
 
         return NodeOutput(
             artifacts=[artifact],
             metrics={"row_count": df.height, "column_count": df.width},
+            warnings=warnings or None,
         )
 
     @staticmethod

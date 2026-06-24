@@ -6,7 +6,6 @@ artifact registration boilerplate.
 
 from __future__ import annotations
 
-import io
 import json
 import sys
 import uuid
@@ -69,14 +68,17 @@ def write_parquet_artifact(
     directory: str = "datasets",
 ) -> ArtifactRef:
     logical = table_logical_hash(frame)
-    buf = io.BytesIO()
-    frame.write_parquet(buf, statistics=False, compression="zstd")
-    parquet_bytes = buf.getvalue()
     filename = f"{logical[:16]}-{stem}.parquet"
     stored_path = store.root / directory / filename
     stored_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = stored_path.with_name(f".{stored_path.name}.{uuid.uuid4().hex[:8]}.tmp")
-    temp_path.write_bytes(parquet_bytes)
+    # Stream directly to the temp file path — avoids buffering the entire
+    # parquet in memory, reducing peak memory for large DataFrames.
+    try:
+        frame.write_parquet(temp_path, statistics=False, compression="zstd")
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
     temp_path.replace(stored_path)
     phys = physical_hash(stored_path)
     artifact_meta = {
