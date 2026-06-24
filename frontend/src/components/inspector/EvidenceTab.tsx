@@ -2,6 +2,7 @@ import React from "react";
 import { useStepEvidence } from "../../hooks/useStepEvidence";
 import { theme } from "../../styles";
 import { EvidenceCard } from "./EvidenceCard";
+import { ManualBinningEvidenceCard } from "./ManualBinningEvidenceCard";
 import type { RunStepEvidenceItem } from "../../types";
 
 interface Props {
@@ -9,20 +10,30 @@ interface Props {
   stepId: string;
   projectId: string;
   tab: string;
+  planId?: string;
 }
 
-export function EvidenceTab({ runId, stepId, projectId, tab }: Props) {
+export function EvidenceTab({ runId, stepId, projectId, tab, planId }: Props) {
+  const isManualBinning = stepId.includes("manual-binning");
   const { data, isLoading, isError, error } = useStepEvidence(
     projectId,
     runId,
     tab === "evidence" ? stepId : null,
   );
 
+  // Manual-binning review card (shown above evidence items)
+  const mbCard = isManualBinning && planId ? (
+    <ManualBinningEvidenceCard projectId={projectId} planId={planId} stepId={stepId} />
+  ) : null;
+
   // 1. No run yet
   if (!runId) {
     return (
-      <div style={{ fontSize: 12, color: theme.muted, padding: 10 }}>
-        No run yet — evidence is produced when this step runs.
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {mbCard}
+        <div style={{ fontSize: 12, color: theme.muted, padding: 10 }}>
+          No run yet — evidence is produced when this step runs.
+        </div>
       </div>
     );
   }
@@ -39,14 +50,17 @@ export function EvidenceTab({ runId, stepId, projectId, tab }: Props) {
   // 3. Load failed
   if (isError) {
     return (
-      <div
-        style={{
-          padding: 12, border: `1px solid ${theme.border}`, borderRadius: 8,
-          backgroundColor: theme.redBg, fontSize: 13, color: theme.redText,
-        }}
-      >
-        <strong>Evidence could not be loaded.</strong>{" "}
-        {error instanceof Error ? error.message : "Unknown error"}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {mbCard}
+        <div
+          style={{
+            padding: 12, border: `1px solid ${theme.border}`, borderRadius: 8,
+            backgroundColor: theme.redBg, fontSize: 13, color: theme.redText,
+          }}
+        >
+          <strong>Evidence could not be loaded.</strong>{" "}
+          {error instanceof Error ? error.message : "Unknown error"}
+        </div>
       </div>
     );
   }
@@ -54,8 +68,11 @@ export function EvidenceTab({ runId, stepId, projectId, tab }: Props) {
   // 4. No evidence (response-level status is MISSING)
   if (!data || (data.items ?? []).length === 0 || data.status === "missing") {
     return (
-      <div style={{ fontSize: 12, color: theme.muted, padding: 10 }}>
-        No evidence found for this step.
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {mbCard}
+        <div style={{ fontSize: 12, color: theme.muted, padding: 10 }}>
+          No evidence found for this step.
+        </div>
       </div>
     );
   }
@@ -64,6 +81,7 @@ export function EvidenceTab({ runId, stepId, projectId, tab }: Props) {
   if (data.status === "stale") {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {mbCard}
         <div
           style={{
             padding: 10, fontSize: 12, color: theme.yellowText,
@@ -83,6 +101,7 @@ export function EvidenceTab({ runId, stepId, projectId, tab }: Props) {
   if (data.status === "partial") {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {mbCard}
         <div
           style={{
             padding: 10, fontSize: 12, color: theme.yellowText,
@@ -102,6 +121,7 @@ export function EvidenceTab({ runId, stepId, projectId, tab }: Props) {
   const evidenceItems = data.items ?? [];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {mbCard}
       {evidenceItems.length > 1 && (
         <div style={{ fontSize: 11, color: theme.muted, padding: "0 2px" }}>
           {evidenceItems.length} evidence artifact{evidenceItems.length !== 1 ? "s" : ""}

@@ -40,6 +40,7 @@ describe("EvidenceTab", () => {
         stepId="step1"
         projectId="prj1"
         tab="evidence"
+        planId="plan1"
       />,
     );
     expect(screen.getByText(/No run yet/)).toBeInTheDocument();
@@ -52,6 +53,7 @@ describe("EvidenceTab", () => {
         stepId="step1"
         projectId="prj1"
         tab="guidance"
+        planId="plan1"
       />,
     );
     await waitFor(() => {
@@ -72,6 +74,7 @@ describe("EvidenceTab", () => {
         stepId="step1"
         projectId="prj1"
         tab="evidence"
+        planId="plan1"
       />,
     );
     expect(screen.getByText(/Loading evidence/)).toBeInTheDocument();
@@ -89,6 +92,7 @@ describe("EvidenceTab", () => {
         stepId="step1"
         projectId="prj1"
         tab="evidence"
+        planId="plan1"
       />,
     );
     await waitFor(() => {
@@ -108,6 +112,7 @@ describe("EvidenceTab", () => {
         stepId="step1"
         projectId="prj1"
         tab="evidence"
+        planId="plan1"
       />,
     );
     await waitFor(() => {
@@ -146,6 +151,7 @@ describe("EvidenceTab", () => {
         stepId="step1"
         projectId="prj1"
         tab="evidence"
+        planId="plan1"
       />,
     );
     await waitFor(() => {
@@ -184,6 +190,7 @@ describe("EvidenceTab", () => {
         stepId="step1"
         projectId="prj1"
         tab="evidence"
+        planId="plan1"
       />,
     );
     await waitFor(() => {
@@ -222,6 +229,7 @@ describe("EvidenceTab", () => {
         stepId="step1"
         projectId="prj1"
         tab="evidence"
+        planId="plan1"
       />,
     );
     await waitFor(() => {
@@ -261,10 +269,31 @@ describe("EvidenceTab", () => {
         stepId="step1"
         projectId="prj1"
         tab="evidence"
+        planId="plan1"
       />,
     );
     await waitFor(() => {
       expect(screen.getByText(/PSI exceeds threshold/)).toBeInTheDocument();
+    });
+  });
+
+  it("renders manual-binning evidence card when stepId contains manual-binning", async () => {
+    server.use(
+      http.get(`${BASE}/plans/:planId/steps/:stepId/editor-state`, () =>
+        HttpResponse.json({ ready: true, review_status: "not_started", reviewed: false, accept_automated: false, variable_summaries: [], blocking_issues: [], selected_variables: [], source_bins_by_variable: {}, current_overrides: [], warnings: [], plan_id: "plan1", plan_version_id: "pv1", step_id: "manual-binning", project_id: "prj1" }),
+      ),
+    );
+    renderWithClient(
+      <EvidenceTab
+        runId="run1"
+        stepId="manual-binning"
+        projectId="prj1"
+        tab="evidence"
+        planId="plan1"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/Manual binning review/)).toBeInTheDocument();
     });
   });
 });
