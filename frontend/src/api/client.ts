@@ -150,7 +150,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  reviewManualBinning: (planId: string, stepId: string, body: { project_id: string; plan_version_id: string; step_id: string; reviewed: boolean; accept_automated: boolean; overrides?: Record<string, unknown>[] }) =>
+  reviewManualBinning: (planId: string, stepId: string, body: { project_id: string; plan_version_id: string; step_id: string; reviewed: boolean; accept_automated: boolean; overrides?: Record<string, unknown>[]; reason_code?: string; review_reason?: string; reviewed_by?: string }) =>
     fetchJson<ManualBinningReviewResponse>(`/plans/${planId}/steps/${stepId}/manual-binning/review`, {
       method: "POST",
       body: JSON.stringify(body),

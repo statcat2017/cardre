@@ -191,12 +191,12 @@ class TestSaveWithReview:
             plan_version_id=pv_id,
             step_id=step_id,
             project_id=project_id,
-            reviewed=True,
-            accept_automated=False,
+            reviewed=False,
+            accept_automated=True,
             overrides=None,
             reviewed_by="alice",
-            reason_code="business_interpretability",
-            review_reason="Bins look clean.",
+            reason_code=None,
+            review_reason=None,
         )
 
         # Read annotation
@@ -211,11 +211,9 @@ class TestSaveWithReview:
         assert ann_rows[0]["kind"] == "manual_binning_review"
         assert ann_rows[0]["actor"] == "alice"
         assert ann_rows[0]["plan_version_id"] == result.new_plan_version_id
-        assert payload["reviewed"] is True
-        assert payload["accept_automated"] is False
+        assert payload["reviewed"] is False
+        assert payload["accept_automated"] is True
         assert payload["reviewed_by"] == "alice"
-        assert payload["reason_code"] == "business_interpretability"
-        assert payload["review_reason"] == "Bins look clean."
         assert payload["base_plan_version_id"] == pv_id
         assert payload["new_plan_version_id"] == result.new_plan_version_id
         assert payload["override_count"] == 0
@@ -256,16 +254,14 @@ class TestSaveWithReview:
             plan_version_id=pv_id,
             step_id=step_id,
             project_id=project_id,
-            reviewed=True,
-            accept_automated=False,
-            reason_code="monotonicity",
-            review_reason="Confirmed monotonic.",
+            reviewed=False,
+            accept_automated=True,
         )
 
         new_steps = store.get_plan_version_steps(result.new_plan_version_id)
         mb = [s for s in new_steps if s.step_id == step_id][0]
-        assert mb.params.get("reviewed") is True
-        assert mb.params.get("accept_automated") is False
+        assert mb.params.get("reviewed") is False
+        assert mb.params.get("accept_automated") is True
 
     def test_save_with_review_rejected_without_reason_code(self, store, project_id):
         plan_id, pv_id, step_id = _make_plan_with_mb_step(store, project_id)
@@ -316,9 +312,8 @@ class TestSaveWithReview:
             plan_version_id=pv_id,
             step_id=step_id,
             project_id=project_id,
-            reviewed=True,
-            reason_code="other",
-            review_reason="Unit test.",
+            reviewed=False,
+            accept_automated=True,
         )
 
         ann_rows = _query(

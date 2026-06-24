@@ -5,6 +5,7 @@ import { ManualBinningVariableList } from "./ManualBinningVariableList";
 import { ManualBinningReviewPanel } from "./ManualBinningReviewPanel";
 import { ManualBinningReviewActions } from "./ManualBinningReviewActions";
 import { ManualBinningBinTable } from "./ManualBinningBinTable";
+import { ManualBinningEditDialog } from "./ManualBinningEditDialog";
 
 interface Props {
   planId: string;
@@ -25,6 +26,7 @@ export function ManualBinningEditor({
 }: Props) {
   const state = useManualBinningState(projectId, planId, stepId);
   const [selectedVar, setSelectedVar] = useState<string | null>(null);
+  const [editingVar, setEditingVar] = useState<string | null>(null);
   const [stepVersion, setStepVersion] = useState(basePlanVersionId);
 
   const es = state.data;
@@ -96,7 +98,20 @@ export function ManualBinningEditor({
               : null
           }
           summary={firstVar ? es.variable_summaries?.find((v) => v.variable === firstVar) : null}
+          onEdit={setEditingVar}
         />
+        {editingVar && (
+          <ManualBinningEditDialog
+            variable={editingVar}
+            state={es}
+            planId={planId}
+            basePlanVersionId={stepVersion}
+            stepId={stepId}
+            projectId={projectId}
+            onClose={() => setEditingVar(null)}
+            onSaved={() => setEditingVar(null)}
+          />
+        )}
         <ManualBinningReviewActions
           state={es}
           planId={planId}
