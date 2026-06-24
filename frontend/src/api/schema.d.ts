@@ -1399,6 +1399,42 @@ export interface components {
             }[];
             /** Variable Summaries */
             variable_summaries?: components["schemas"]["ManualBinningVariableSummary"][];
+            /**
+             * Project Id
+             * @default
+             */
+            project_id: string;
+            /** Branch Id */
+            branch_id?: string | null;
+            /** Run Id */
+            run_id?: string | null;
+            /**
+             * Review Status
+             * @default not_started
+             */
+            review_status: string;
+            /**
+             * Reviewed
+             * @default false
+             */
+            reviewed: boolean;
+            /**
+             * Accept Automated
+             * @default false
+             */
+            accept_automated: boolean;
+            /** Reviewed At */
+            reviewed_at?: string | null;
+            /** Reviewed By */
+            reviewed_by?: string | null;
+            /** Review Reason */
+            review_reason?: string | null;
+            /** Review Reason Code */
+            review_reason_code?: string | null;
+            /** Blocking Issues */
+            blocking_issues?: {
+                [key: string]: unknown;
+            }[];
         };
         /** ManualBinningPreviewRequest */
         ManualBinningPreviewRequest: {
@@ -1449,6 +1485,12 @@ export interface components {
             overrides?: {
                 [key: string]: unknown;
             }[] | null;
+            /** Reviewed By */
+            reviewed_by?: string | null;
+            /** Reason Code */
+            reason_code?: string | null;
+            /** Review Reason */
+            review_reason?: string | null;
         };
         /** ManualBinningReviewResponse */
         ManualBinningReviewResponse: {
@@ -1502,6 +1544,39 @@ export interface components {
              * @default false
              */
             non_monotonic_warning: boolean;
+            /** Variable Type */
+            variable_type?: string | null;
+            /** Bin Count */
+            bin_count?: number | null;
+            /** Missing Rate */
+            missing_rate?: number | null;
+            /** Special Rate */
+            special_rate?: number | null;
+            /**
+             * Zero Cell Warning Count
+             * @default 0
+             */
+            zero_cell_warning_count: number;
+            /**
+             * Sparse Bin Warning Count
+             * @default 0
+             */
+            sparse_bin_warning_count: number;
+            /**
+             * Monotonicity Status
+             * @default insufficient_bins
+             */
+            monotonicity_status: string;
+            /**
+             * Edited
+             * @default false
+             */
+            edited: boolean;
+            /**
+             * Review Required
+             * @default false
+             */
+            review_required: boolean;
         };
         /** MethodOptionResponse */
         MethodOptionResponse: {
@@ -2631,6 +2706,8 @@ export interface operations {
             query: {
                 /** @description Project ID for store lookup */
                 project_id: string;
+                /** @description Optional branch context for display */
+                target_branch_id?: string;
             };
             header?: never;
             path: {
@@ -2666,6 +2743,8 @@ export interface operations {
             query: {
                 /** @description Project ID for store lookup */
                 project_id: string;
+                /** @description Optional branch context for display */
+                target_branch_id?: string;
             };
             header?: never;
             path: {

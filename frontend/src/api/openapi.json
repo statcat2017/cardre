@@ -437,6 +437,18 @@
               "title": "Project Id"
             },
             "description": "Project ID for store lookup"
+          },
+          {
+            "name": "target_branch_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Optional branch context for display",
+              "default": "",
+              "title": "Target Branch Id"
+            },
+            "description": "Optional branch context for display"
           }
         ],
         "responses": {
@@ -490,6 +502,18 @@
               "title": "Project Id"
             },
             "description": "Project ID for store lookup"
+          },
+          {
+            "name": "target_branch_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Optional branch context for display",
+              "default": "",
+              "title": "Target Branch Id"
+            },
+            "description": "Optional branch context for display"
           }
         ],
         "responses": {
@@ -3822,6 +3846,100 @@
             },
             "type": "array",
             "title": "Variable Summaries"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "default": ""
+          },
+          "branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "review_status": {
+            "type": "string",
+            "title": "Review Status",
+            "default": "not_started"
+          },
+          "reviewed": {
+            "type": "boolean",
+            "title": "Reviewed",
+            "default": false
+          },
+          "accept_automated": {
+            "type": "boolean",
+            "title": "Accept Automated",
+            "default": false
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "review_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Reason"
+          },
+          "review_reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Reason Code"
+          },
+          "blocking_issues": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Blocking Issues"
           }
         },
         "type": "object",
@@ -3922,6 +4040,39 @@
               }
             ],
             "title": "Overrides"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "review_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Reason"
           }
         },
         "type": "object",
@@ -4067,6 +4218,75 @@
           "non_monotonic_warning": {
             "type": "boolean",
             "title": "Non Monotonic Warning",
+            "default": false
+          },
+          "variable_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variable Type"
+          },
+          "bin_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bin Count"
+          },
+          "missing_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing Rate"
+          },
+          "special_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Special Rate"
+          },
+          "zero_cell_warning_count": {
+            "type": "integer",
+            "title": "Zero Cell Warning Count",
+            "default": 0
+          },
+          "sparse_bin_warning_count": {
+            "type": "integer",
+            "title": "Sparse Bin Warning Count",
+            "default": 0
+          },
+          "monotonicity_status": {
+            "type": "string",
+            "title": "Monotonicity Status",
+            "default": "insufficient_bins"
+          },
+          "edited": {
+            "type": "boolean",
+            "title": "Edited",
+            "default": false
+          },
+          "review_required": {
+            "type": "boolean",
+            "title": "Review Required",
             "default": false
           }
         },

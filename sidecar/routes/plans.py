@@ -88,7 +88,10 @@ def review_manual_binning(plan_id: str, step_id: str, req: ManualBinningReviewRe
 
     entry = resolve_registry_entry(req.project_id)
     store = ProjectStore(Path(entry["path"]))
-    PlanService(store)._validate_manual_binning_review_params(req.reviewed, req.accept_automated, req.overrides)
+    PlanService(store)._validate_manual_binning_review_params(
+        req.reviewed, req.accept_automated, req.overrides,
+        reason_code=req.reason_code, review_reason=req.review_reason,
+    )
 
     service = ManualBinningService(store)
     svc_result = service.save_with_review(
@@ -99,6 +102,9 @@ def review_manual_binning(plan_id: str, step_id: str, req: ManualBinningReviewRe
         reviewed=req.reviewed,
         accept_automated=req.accept_automated,
         overrides=req.overrides,
+        reviewed_by=req.reviewed_by,
+        reason_code=req.reason_code,
+        review_reason=req.review_reason,
     )
 
     return ManualBinningReviewResponse(
