@@ -35,6 +35,7 @@ from cardre.reporting.schema import (
     ExecutionFingerprint,
     GeneratedBy,
     Limitation,
+    ManualBinningReviewState,
     ManualIntervention,
     MetricsByRole,
     ModelFeature,
@@ -525,6 +526,41 @@ class ReportCollector:
     def _collect_manual_interventions(
         self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
     ) -> None:
+        # Populate review state from step params + annotation
+        from cardre.step_id import resolve_step_for_branch
+
+        step_map = self.store.get_branch_step_map(self.target_branch_id, plan_version_id)
+        if step_map:
+            mb_ref = resolve_step_for_branch(
+                branch_id=self.target_branch_id,
+                canonical_step_id="manual-binning",
+                branch_step_map=step_map,
+            )
+            if mb_ref:
+                for s in self.store.get_plan_version_steps(plan_version_id):
+                    if s.step_id == mb_ref.step_id:
+                        params = s.params
+                        is_reviewed = params.get("reviewed", False)
+                        is_accepted = params.get("accept_automated", False)
+                        overrides = params.get("overrides", [])
+                        edited_vars = list({ov.get("variable", "") for ov in overrides if ov.get("variable")})
+                        reasons = list({ov.get("reason_code", "") for ov in overrides if ov.get("reason_code")})
+                        # Read audit metadata from the latest review annotation
+                        annotation = self._get_latest_review_annotation(
+                            mb_ref.step_id, plan_version_id,
+                        )
+                        bundle.manual_binning_review = ManualBinningReviewState(
+                            review_status="reviewed" if is_reviewed else ("accepted_automated" if is_accepted else "not_started"),
+                            accepted_automated=is_accepted,
+                            edited_variable_count=len(edited_vars),
+                            variables_edited=edited_vars,
+                            reasons=reasons,
+                            reviewed_at=annotation.get("created_at", "") if annotation else "",
+                            reviewed_by=annotation.get("reviewed_by", "") if annotation else "",
+                            review_reason=annotation.get("review_reason", "") if annotation else "",
+                        )
+                        break
+
         rs = self._resolve_run_step(ref, plan_version_id)
         if rs is None:
             return
@@ -679,6 +715,26 @@ class ReportCollector:
                         path=art.path,
                     ))
         return entries
+
+    def _get_latest_review_annotation(self, step_id: str, plan_version_id: str) -> dict | None:
+        """Read the most recent manual_binning_review annotation for a step."""
+        import json as _json
+
+        try:
+            with self.store.transaction() as conn:
+                rows = conn.execute(
+                    "SELECT payload_json, created_at FROM step_annotations "
+                    "WHERE step_id = ? AND plan_version_id = ? AND kind = ? "
+                    "ORDER BY created_at DESC LIMIT 1",
+                    (step_id, plan_version_id, "manual_binning_review"),
+                ).fetchall()
+            if not rows:
+                return None
+            payload = _json.loads(rows[0]["payload_json"])
+            payload["created_at"] = rows[0]["created_at"]
+            return payload
+        except Exception:
+            return None
 
     def _resolve_run_step(
         self, ref: ResolvedStepRef, plan_version_id: str,

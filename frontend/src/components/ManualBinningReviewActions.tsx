@@ -58,6 +58,7 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
       queryClient.invalidateQueries({ queryKey: ["manualBinningState", state.project_id, planId, stepId] });
       queryClient.invalidateQueries({ queryKey: ["manualBinningEditorState"] });
       queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
+      queryClient.invalidateQueries({ queryKey: ["reportReadiness"] });
       setShowReasonForm(false);
       setReasonCode("");
       setReviewReason("");
