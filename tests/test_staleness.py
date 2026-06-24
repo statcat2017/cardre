@@ -264,6 +264,60 @@ class ComputeStalenessTests:
         # Falls back to full-plan run — step should appear fresh
         assert staleness == {"a": False}
 
+    def test_branch_step_stale_when_shared_upstream_changes(self) -> None:
+        """A branch-owned step becomes stale when its shared upstream is re-run with new params."""
+        store, _ = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+
+        upstream = _make_step("import", params={"source": "data.csv"})
+        branch_step = _make_step("binning", parent_ids=["import"], params={"bins": 10})
+        steps = [upstream, branch_step]
+        pv_id = store.create_plan_version(plan_id, steps)
+
+        # Full-plan baseline run
+        run_id = store.create_run(pv_id)
+        rs_up = _make_rs("import", pv_id, run_id, upstream.params_hash)
+        rs_br = _make_rs("binning", pv_id, run_id, branch_step.params_hash,
+                         parent_output_hashes={"import": rs_up.execution_fingerprint["output_artifact_logical_hashes"]})
+        store.save_run_step(rs_up)
+        store.save_run_step(rs_br)
+        store.finish_run(run_id, "succeeded")
+
+        # Create branch that owns only the binning step
+        branch_id = store.create_branch(
+            project_id, plan_id, "challenger", "challenger",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="test",
+        )
+        store.create_branch_step_map(
+            branch_id=branch_id, plan_version_id=pv_id,
+            canonical_step_id="import", step_id="import",
+            is_shared_upstream=True, is_branch_owned=False,
+        )
+        store.create_branch_step_map(
+            branch_id=branch_id, plan_version_id=pv_id,
+            canonical_step_id="binning", step_id="binning",
+            is_shared_upstream=False, is_branch_owned=True,
+        )
+
+        # Branch run — captures evidence, step is fresh
+        branch_run_id = store.create_run(pv_id, branch_id=branch_id)
+        rs_br2 = _make_rs("binning", pv_id, branch_run_id, branch_step.params_hash,
+                          parent_output_hashes={"import": rs_up.execution_fingerprint["output_artifact_logical_hashes"]})
+        store.save_run_step(rs_br2)
+        store.finish_run(branch_run_id, "succeeded")
+
+        # Now change upstream params in a new plan version
+        upstream2 = _make_step("import", params={"source": "data2.csv"})
+        steps2 = [upstream2, branch_step]
+        pv2_id = store.create_plan_version(plan_id, steps2)
+
+        # Branch staleness should detect upstream change
+        staleness = compute_staleness(store, pv2_id, branch_id=branch_id)
+        assert staleness["import"] is True  # upstream changed
+        assert staleness["binning"] is True  # branch-owned step stale via parent
+
 
 class StalenessDetailTests:
     def test_staleness_detail_returns_reasons(self) -> None:

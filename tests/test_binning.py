@@ -535,3 +535,63 @@ def test_high_cardinality_creates_other_bin() -> None:
     cat_var = next(v for v in payload.variables if v.variable == "cat_var")
     bin_labels = [b["label"] for b in cat_var.bins]
     assert "Other" in bin_labels, "High-cardinality categorical should create an 'Other' bin"
+
+
+def test_special_bin_reorder_missing_to_last() -> None:
+    """reorder_missing_bin moves the missing bin to the end of the bin list."""
+    bin_def = {
+        "variables": [{
+            "variable": "x", "kind": "numeric",
+            "bins": [
+                {"bin_id": "b1", "label": "Low", "lower": 0, "upper": 10,
+                 "lower_inclusive": False, "upper_inclusive": True,
+                 "categories": None, "is_missing_bin": False,
+                 "row_count": 100, "good_count": 80, "bad_count": 20},
+                {"bin_id": "b_miss", "label": "Missing", "is_missing_bin": True,
+                 "row_count": 10, "good_count": 5, "bad_count": 5},
+                {"bin_id": "b2", "label": "High", "lower": 10, "upper": 20,
+                 "lower_inclusive": False, "upper_inclusive": True,
+                 "categories": None, "is_missing_bin": False,
+                 "row_count": 50, "good_count": 40, "bad_count": 10},
+            ],
+        }],
+        "warnings": [],
+    }
+    from cardre.nodes import apply_manual_binning_overrides
+    result = apply_manual_binning_overrides(bin_def, [
+        {"variable": "x", "action": "reorder_missing_bin",
+         "source_bin_ids": ["b_miss"], "reason": "Missing should be first"},
+    ])
+    var = result["variables"][0]
+    assert var["bins"][-1]["bin_id"] == "b_miss"
+    assert var["bins"][-1]["is_missing_bin"] is True
+    assert var["bins"][0]["bin_id"] == "b1"
+
+
+def test_special_bin_reorder_special_to_last() -> None:
+    """reorder_special_bin moves the special-value bin to the last position."""
+    bin_def = {
+        "variables": [{
+            "variable": "x", "kind": "categorical",
+            "bins": [
+                {"bin_id": "b1", "label": "Normal", "categories": ["a", "b"],
+                 "is_missing_bin": False, "is_special_bin": False,
+                 "row_count": 100, "good_count": 80, "bad_count": 20},
+                {"bin_id": "b_spec", "label": "Special", "categories": ["-999"],
+                 "is_missing_bin": False, "is_special_bin": True,
+                 "row_count": 5, "good_count": 3, "bad_count": 2},
+                {"bin_id": "b2", "label": "Other", "categories": ["c", "d"],
+                 "is_missing_bin": False, "is_special_bin": False,
+                 "row_count": 50, "good_count": 40, "bad_count": 10},
+            ],
+        }],
+        "warnings": [],
+    }
+    from cardre.nodes import apply_manual_binning_overrides
+    result = apply_manual_binning_overrides(bin_def, [
+        {"variable": "x", "action": "reorder_special_bin",
+         "source_bin_ids": ["b_spec"], "reason": "Special should be last"},
+    ])
+    var = result["variables"][0]
+    assert var["bins"][-1]["bin_id"] == "b_spec"
+    assert var["bins"][-1]["is_special_bin"] is True

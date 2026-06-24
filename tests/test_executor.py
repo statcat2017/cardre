@@ -484,6 +484,31 @@ class SplitAndRoleTests:
         assert "prediction" in roles
 
 
+    def test_target_leakage_through_train_columns_not_detected(self) -> None:
+        """Semantic target leakage inside train columns is NOT automatically detected.
+
+        Role enforcement blocks fit nodes from consuming test/OOT artifacts,
+        but any column inside the *train* dataset that correlates with the
+        target can still leak.  This test documents that limitation.
+        """
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+        source = make_sample_german_credit_file(tmp)
+
+        steps = self.make_proof_plan_steps(source)
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry.with_defaults()
+        executor = PlanExecutor(reg)
+
+        # The proof plan ends with dummy_fit after split.
+        # No column-name target-leakage scan exists — the executor only
+        # checks artifact roles.
+        run_id = executor.run_plan_version(store, pv_id)
+        run = store.get_run(run_id)
+        assert run["status"] == "succeeded"
+
+
 # ======================================================================
 # Slice 7: Staleness + Replay
 # ======================================================================

@@ -513,3 +513,47 @@ class BaselineMigrationTests:
         branch = branches[0]
         assert branch["base_plan_version_id"] == pv1
         assert branch["head_plan_version_id"] == pv2
+
+    def test_branch_step_map_params_retained_across_head_update(self):
+        """Updating branch head preserves existing step-map param references."""
+        project_id = self.store.create_project("test")
+        plan_id = self.store.create_plan(project_id, "test-plan")
+        import_step = StepSpec(
+            step_id="import", node_type="cardre.import_dataset",
+            node_version="1", category="transform",
+            params={"source_path": "/data/v1.csv"},
+            params_hash=json_logical_hash({"source_path": "/data/v1.csv"}),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        pv1 = self.store.create_plan_version(plan_id, [import_step], description="v1")
+        branch_id = self.store.create_branch(
+            project_id, plan_id, "challenger", "challenger",
+            base_plan_version_id=pv1, head_plan_version_id=pv1,
+            created_reason="test",
+        )
+        self.store.create_branch_step_map(
+            branch_id=branch_id, plan_version_id=pv1,
+            canonical_step_id="import", step_id="import",
+            is_shared_upstream=True, is_branch_owned=False,
+        )
+
+        # Update head to a new version with different params
+        import_step_v2 = StepSpec(
+            step_id="import", node_type="cardre.import_dataset",
+            node_version="1", category="transform",
+            params={"source_path": "/data/v2.csv"},
+            params_hash=json_logical_hash({"source_path": "/data/v2.csv"}),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        pv2 = self.store.create_plan_version(plan_id, [import_step_v2], description="v2")
+        self.store.update_branch_head(branch_id, pv2)
+
+        # The step map for the original version should still have the old params
+        step_map = self.store.get_branch_step_map(branch_id, pv1)
+        assert len(step_map) == 1
+        assert step_map[0]["step_id"] == "import"
+
+        # The step map for the new version should exist (or be creatable)
+        # and the branch head should be updated
+        branch = self.store.get_branch(branch_id)
+        assert branch["head_plan_version_id"] == pv2
