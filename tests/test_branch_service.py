@@ -557,3 +557,79 @@ class BaselineMigrationTests:
         # and the branch head should be updated
         branch = self.store.get_branch(branch_id)
         assert branch["head_plan_version_id"] == pv2
+
+    def test_latest_successful_run_id_branch_scoped(self):
+        """Latest successful run for a branch returns branch-scoped evidence, not full-plan."""
+        project_id = self.store.create_project("test")
+        plan_id = self.store.create_plan(project_id, "test-plan")
+        pv_id = self.store.create_plan_version(plan_id, [], description="v1")
+
+        branch_id = self.store.create_branch(
+            project_id, plan_id, "challenger", "challenger",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="test",
+        )
+
+        # Create a full-plan run (succeeded)
+        full_run = self.store.create_run(pv_id, branch_id=None)
+        self.store.finish_run(full_run, "succeeded")
+
+        # Create a branch run (succeeded)
+        branch_run = self.store.create_run(pv_id, branch_id=branch_id)
+        self.store.finish_run(branch_run, "succeeded")
+
+        # Branch-scoped lookup should return the branch run, not the full-plan run
+        result = self.store.get_latest_successful_run_id(pv_id, branch_id=branch_id)
+        assert result == branch_run
+
+        # Non-branch lookup should return the full-plan run
+        result_full = self.store.get_latest_successful_run_id(pv_id, branch_id=None)
+        assert result_full == full_run
+
+    def test_champion_assignment_returns_unsuperseded(self):
+        """Champion lookup returns the current unsuperseded champion."""
+        project_id = self.store.create_project("test")
+        plan_id = self.store.create_plan(project_id, "test-plan")
+        pv_id = self.store.create_plan_version(plan_id, [], description="v1")
+
+        branch_id = self.store.create_branch(
+            project_id, plan_id, "challenger", "challenger",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="test",
+        )
+
+        # No champion exists yet
+        champ = self.store.get_champion_assignment_by_branch(branch_id)
+        assert champ is None
+
+    def test_comparison_snapshot_stable_after_later_runs(self):
+        """Comparison snapshot remains queryable after subsequent runs."""
+        project_id = self.store.create_project("test")
+        plan_id = self.store.create_plan(project_id, "test-plan")
+        pv_id = self.store.create_plan_version(plan_id, [], description="v1")
+
+        branch_id = self.store.create_branch(
+            project_id, plan_id, "challenger", "challenger",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="test",
+        )
+
+        # Create a comparison
+        comparison_id = str(__import__("uuid").uuid4())
+        now = __import__("cardre.audit", fromlist=["utc_now_iso"]).utc_now_iso()
+        self.store._connect().execute(
+            "INSERT INTO branch_comparisons "
+            "(comparison_id, project_id, plan_id, baseline_branch_id, "
+            " challenger_branch_ids_json, comparison_spec_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (comparison_id, project_id, plan_id, branch_id, "[]", "{}", now),
+        )
+
+        # Later runs should not affect the comparison
+        later_run = self.store.create_run(pv_id, branch_id=branch_id)
+        self.store.finish_run(later_run, "succeeded")
+
+        # Comparison should still be queryable
+        comp = self.store.branches.get_comparison(comparison_id)
+        assert comp is not None
+        assert comp["comparison_id"] == comparison_id

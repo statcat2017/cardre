@@ -253,10 +253,73 @@ class GenericImportTests(unittest.TestCase):
         from cardre.nodes import ImportTabularDatasetNode
         node = ImportTabularDatasetNode()
         s = make_synthetic_csv(tmp := Path(tempfile.mkdtemp()))
-        for bad_val in [0, -1, "abc", 1.5]:
+        for bad_val in [0, -1, "abc", 1.5, True, False]:
             errors = node.validate_params({"source_path": str(s), "max_rows": bad_val})
             self.assertTrue(any("max_rows" in e for e in errors),
                             f"Expected max_rows error for {bad_val}")
+
+    def test_null_values_custom_markers_imported(self) -> None:
+        import tempfile
+        tmp = Path(tempfile.mkdtemp())
+        csv_path = tmp / "nulls.csv"
+        csv_path.write_text("a,b\n1,N/A\n2,3\nNULL,4\n")
+        store, output = _run_import(csv_path, null_values=["N/A", "NULL"])
+        art = output.artifacts[0]
+        df = pl.read_parquet(store.artifact_path(art))
+        # N/A in column b and NULL in column a should be null
+        assert df["a"].null_count() >= 1
+        assert df["b"].null_count() >= 1
+
+    def test_encoding_failure_raises_on_invalid_encoding(self) -> None:
+        import tempfile
+        tmp = Path(tempfile.mkdtemp())
+        # Write a file with non-UTF8 bytes
+        csv_path = tmp / "latin1.csv"
+        csv_path.write_bytes("a,b\n1,caf\xe9\n2,test\n".encode("latin-1"))
+        with self.assertRaises(Exception):
+            _run_import(csv_path, encoding="utf-8")
+
+    def test_latin1_encoding_imports_successfully(self) -> None:
+        """Positive test: Latin-1 file imports correctly when encoding='latin1'."""
+        import tempfile
+        import polars as pl
+        tmp = Path(tempfile.mkdtemp())
+        csv_path = tmp / "latin1.csv"
+        csv_path.write_bytes("a,b\n1,caf\xe9\n2,test\n".encode("latin-1"))
+        store, output = _run_import(csv_path, encoding="latin-1")
+        art = output.artifacts[0]
+        df = pl.read_parquet(store.artifact_path(art))
+        assert df.height == 2
+        assert df["b"][0] == "caf\xe9"
+
+    def test_duplicate_column_names_silently_renamed(self) -> None:
+        """Polars silently renames duplicate columns — documents risk #6.
+
+        The import does NOT raise; instead polars appends `_duplicated_N`.
+        This is a known silent-corruption risk.
+        """
+        import tempfile
+        tmp = Path(tempfile.mkdtemp())
+        csv_path = tmp / "dup_cols.csv"
+        csv_path.write_text("a,a\n1,2\n3,4\n")
+        store, output = _run_import(csv_path)
+        art = output.artifacts[0]
+        df = pl.read_parquet(store.artifact_path(art))
+        # Polars renames duplicates rather than raising
+        assert "a" in df.columns
+        assert any("duplicated" in c for c in df.columns)
+
+    def test_empty_column_name_imports_as_empty(self) -> None:
+        """Empty column names may pass import — documents risk #7."""
+        import tempfile
+        tmp = Path(tempfile.mkdtemp())
+        csv_path = tmp / "empty_col.csv"
+        csv_path.write_text(",b\n1,2\n3,4\n")
+        store, output = _run_import(csv_path)
+        art = output.artifacts[0]
+        df = pl.read_parquet(store.artifact_path(art))
+        # Empty column name is preserved by polars
+        assert "" in df.columns or any(c.strip() == "" for c in df.columns)
 
 
 class WideDatasetSmokeTests(unittest.TestCase):
@@ -304,3 +367,68 @@ class WideDatasetSmokeTests(unittest.TestCase):
         )
         output = node.run(ctx)
         self.assertEqual(len(output.artifacts), 1)
+
+
+class ProfileSamplingTests(unittest.TestCase):
+
+    def _make_dataset_artifact(self, store, n_rows=100):
+        """Create a parquet dataset artifact and return the ArtifactRef."""
+        import polars as pl
+        from cardre.artifacts import write_parquet_artifact
+        df = pl.DataFrame({"x": list(range(n_rows)), "y": [float(i) for i in range(n_rows)]})
+        return write_parquet_artifact(
+            store, artifact_type="dataset", role="input",
+            stem="test-dataset", frame=df,
+        )
+
+    def test_profile_max_rows_samples_first_n(self) -> None:
+        from cardre.nodes.prep import ProfileDatasetNode
+        from cardre.audit import StepSpec, ExecutionContext
+        store, _ = make_store()
+        store.create_project("test")
+        art = self._make_dataset_artifact(store, n_rows=100)
+
+        params = {"profile_max_rows": 10}
+        spec = StepSpec(
+            step_id="profile", node_type="cardre.profile_dataset",
+            node_version="1", category="transform",
+            params=params, params_hash="dummy",
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[art], validated_params=params,
+            runtime_metadata={},
+        )
+        node = ProfileDatasetNode()
+        output = node.run(ctx)
+        assert output.artifacts[0].metadata["profile_sampled"] is True
+        assert output.artifacts[0].metadata["profile_max_rows"] == 10
+        assert output.warnings is not None
+        assert any("PROFILE_SAMPLED" in str(w) for w in output.warnings)
+
+    def test_profile_no_sampling_reads_all(self) -> None:
+        from cardre.nodes.prep import ProfileDatasetNode
+        from cardre.audit import StepSpec, ExecutionContext
+        store, _ = make_store()
+        store.create_project("test")
+        art = self._make_dataset_artifact(store, n_rows=50)
+
+        params = {}
+        spec = StepSpec(
+            step_id="profile", node_type="cardre.profile_dataset",
+            node_version="1", category="transform",
+            params=params, params_hash="dummy",
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[art], validated_params=params,
+            runtime_metadata={},
+        )
+        node = ProfileDatasetNode()
+        output = node.run(ctx)
+        assert "profile_sampled" not in output.artifacts[0].metadata
+        assert output.warnings is None
