@@ -214,10 +214,48 @@ class GenericImportTests(unittest.TestCase):
             o2.artifacts[0].logical_hash,
         )
 
+    def test_max_rows_csv_imports_exactly_n_rows(self) -> None:
+        import tempfile
+        import polars as pl
+        s = make_synthetic_csv(tmp := Path(tempfile.mkdtemp()))
+        store, output = _run_import(s, max_rows=3)
+        art = output.artifacts[0]
+        self.assertEqual(art.metadata.get("row_count"), 3)
+        df = pl.read_parquet(store.artifact_path(art))
+        self.assertEqual(df.height, 3)
+
+    def test_max_rows_parquet_imports_exactly_n_rows(self) -> None:
+        import tempfile
+        import polars as pl
+        tmp = Path(tempfile.mkdtemp())
+        df = pl.DataFrame({"x": list(range(50))})
+        src = tmp / "test.parquet"
+        df.write_parquet(src)
+        store, output = _run_import(src, max_rows=3)
+        art = output.artifacts[0]
+        self.assertEqual(art.metadata.get("row_count"), 3)
+        df2 = pl.read_parquet(store.artifact_path(art))
+        self.assertEqual(df2.height, 3)
+
+    def test_max_rows_none_imports_all_rows(self) -> None:
+        import tempfile
+        s = make_synthetic_csv(tmp := Path(tempfile.mkdtemp()), rows=50)
+        store, output = _run_import(s)
+        art = output.artifacts[0]
+        self.assertEqual(art.metadata.get("row_count"), 50)
+
+    def test_max_rows_validation_rejects_invalid(self) -> None:
+        import tempfile
+        from cardre.nodes import ImportTabularDatasetNode
+        node = ImportTabularDatasetNode()
+        s = make_synthetic_csv(tmp := Path(tempfile.mkdtemp()))
+        for bad_val in [0, -1, "abc", 1.5]:
+            errors = node.validate_params({"source_path": str(s), "max_rows": bad_val})
+            self.assertTrue(any("max_rows" in e for e in errors),
+                            f"Expected max_rows error for {bad_val}")
 
 
 class WideDatasetSmokeTests(unittest.TestCase):
-
     @pytest.mark.slow
     def test_wide_dataset_does_not_oom(self) -> None:
         """Smoke test: 1k columns × 50k rows should complete without OOM.

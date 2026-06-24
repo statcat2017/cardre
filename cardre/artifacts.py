@@ -74,7 +74,11 @@ def write_parquet_artifact(
     temp_path = stored_path.with_name(f".{stored_path.name}.{uuid.uuid4().hex[:8]}.tmp")
     # Stream directly to the temp file path — avoids buffering the entire
     # parquet in memory, reducing peak memory for large DataFrames.
-    frame.write_parquet(temp_path, statistics=False, compression="zstd")
+    try:
+        frame.write_parquet(temp_path, statistics=False, compression="zstd")
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
     temp_path.replace(stored_path)
     phys = physical_hash(stored_path)
     artifact_meta = {

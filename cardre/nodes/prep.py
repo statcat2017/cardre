@@ -9,6 +9,7 @@ import polars as pl
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import (
     ExecutionContext,
+    JsonDict,
     NodeOutput,
     NodeType,
 )
@@ -282,6 +283,10 @@ class ImportTabularDatasetNode(NodeType):
                             f"Unrecognised dtype {dtype_str!r} for column {col!r}; "
                             f"supported: {valid}"
                         )
+        max_rows = params.get("max_rows")
+        if max_rows is not None:
+            if not isinstance(max_rows, int) or max_rows < 1:
+                errors.append(f"max_rows must be a positive integer, got {max_rows!r}")
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
@@ -323,6 +328,25 @@ class ImportTabularDatasetNode(NodeType):
             raise ValueError(f"Import produced zero rows from {source_path.name}")
 
         store = context.store
+        metadata: dict[str, Any] = {}
+        warnings: list[JsonDict] = []
+
+        if max_rows is not None and max_rows < df.height:
+            warnings.append({
+                "code": "SOURCE_TRUNCATED_BY_MAX_ROWS",
+                "message": f"Source truncated: max_rows={max_rows}, actual imported rows={df.height}. "
+                           f"The first {max_rows} rows may not represent the full dataset distribution.",
+            })
+            metadata["truncated_by_max_rows"] = max_rows
+            metadata["source_row_count_estimate"] = df.height
+
+        art_metadata = {
+            "source_file": source_path.name,
+            "format": fmt,
+            "columns": list(df.columns),
+            "row_count": df.height,
+        }
+        art_metadata.update(metadata)
 
         artifact = write_parquet_artifact(
             store,
@@ -330,17 +354,13 @@ class ImportTabularDatasetNode(NodeType):
             role="input",
             stem="imported-dataset",
             frame=df,
-            metadata={
-                "source_file": source_path.name,
-                "format": fmt,
-                "columns": list(df.columns),
-                "row_count": df.height,
-            },
+            metadata=art_metadata,
         )
 
         return NodeOutput(
             artifacts=[artifact],
             metrics={"row_count": df.height, "column_count": df.width},
+            warnings=warnings or None,
         )
 
     @staticmethod
