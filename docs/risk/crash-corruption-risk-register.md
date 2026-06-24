@@ -7,13 +7,13 @@ Based on: repo state at `414efab` (HEAD)
 
 | Verdict | Count | Meaning |
 |---|---|---|
-| Possible | 35 | Could happen as a crash, failed run, inconsistent state, or genuine corruption risk |
+| Possible | 33 | Could happen as a crash, failed run, inconsistent state, or genuine corruption risk |
 | Partly mitigated | 9 | Guardrail exists but has known gaps (see issue notes); not yet fully tested as race-safe |
-| Mitigated | 37 | Guardrails exist (code or test) that should turn the failure into a diagnostic rather than silent corruption |
+| Mitigated | 39 | Guardrails exist (code or test) that should turn the failure into a diagnostic rather than silent corruption |
 | Not applicable | 14 | Repo does not currently have that feature or has a direct structural guard |
 | Unknown | 5 | Needs targeted tests or line-by-line review of branch/report/frontend paths |
 
-Changed since last reviewed: 25 issues (all areas)
+Changed since last reviewed: 27 issues (all areas)
 
 ## Status taxonomy
 
@@ -33,15 +33,16 @@ Changed since last reviewed: 25 issues (all areas)
 
 ## Prioritised remediation (remaining)
 
-These are the highest-value items still needing code changes. Items 1–4 and 6 from the original top 10 are partly mitigated (see "What was fixed in this batch"); items 5 and 8 are mitigated.
+These items still need code changes or deeper testing after Batches 1–5:
 
-| # | Summary | Batch | Code change needed |
+| # | Summary | Area | Next step |
 |---|---|---|---|
-| 5, 59 | Large file OOM from eager read + in-memory buffers | Batch 4 | Memory guard or streaming |
-| 44, 47 | Branch staleness edge cases and step-map param retention untested | Batch 5 | Branch staleness integration test |
-| 83, 84 | SQL/Python scoring export parity unknown | Batch 5 | Generate-and-compare test |
-| 72 | Semantic target leakage inside train columns not detected | Batch 5 | Train-column-content scan |
-| 58 | Async dispatch uses ProjectStore which is not thread-safe | Batch 2 | Thread-local or connection-pool pattern |
+| 58 | Async dispatch uses ProjectStore which is not thread-safe | Execution | Thread-local or connection-pool pattern |
+| 46 | Branch merge/evidence logic needs deeper review | DAG | Targeted branch merge tests |
+| 47 | Branch step-map param retention across head update | DAG | Deeper retention test (current test covers old-map survival only) |
+| 72 | Semantic target leakage inside train columns | Model | Warning on suspicious predictor names + near-perfect target correlation |
+| 97 | Frontend stale UI display | UI | Stale-state UI test |
+| 98 | Step param updates backend schema validation | UI | Invalid-param rejection test |
 
 ## What was fixed in this batch
 
@@ -111,7 +112,7 @@ The ``max_rows`` parameter is user-facing, not automatic.
 |---|---|---|---|---|---|---|---|
 | 1 | Import | possible | no | `nodes/prep.py:304-312` reads full CSV eagerly via `pl.read_csv` | failed run | no | test |
 | 2 | Import | possible | no | `nodes/prep.py:304-312` delegates CSV parsing to polars | failed run | no | test |
-| 3 | Import | possible | no | `nodes/prep.py:295` defaults to utf-8; sidecar import request doesn't expose encoding param | silent corruption | no | test |
+| 3 | Import | mitigated | yes | `sidecar/models.py:ImportDatasetRequest.encoding` now exposed through API; `nodes/prep.py:295` reads it | silent corruption | yes | test |
 | 4 | Import | possible | no | `nodes/prep.py:311` `infer_schema_length=10000`; profile reads full parquet eagerly | crash | no | test |
 | 5 | Import | partly mitigated | yes | `nodes/prep.py:289,304` eager read with optional `max_rows`; `artifacts.py:73` parquet now streams to file | crash | yes | test |
 | 6 | Import | possible | no | `nodes/prep.py:304` polars behaviour on duplicate columns unknown | failed run | no | test |
@@ -122,7 +123,7 @@ The ``max_rows`` parameter is user-facing, not automatic.
 | 11 | Import | not applicable | no | No datetime parsing layer beyond polars inference | failed run | no | ignore |
 | 12 | Import | possible | no | `nodes/prep.py:311` `infer_schema_length=10000` can miss late type changes | silent corruption | no | test |
 | 13 | Import | mitigated | no | Schema overrides with wrong type would cause polars type error at read time | failed run | no | test |
-| 14 | Import | possible | no | `nodes/prep.py:296-297,308-309` node supports `null_values` but sidecar import request doesn't expose it | silent corruption | no | test |
+| 14 | Import | mitigated | yes | `sidecar/models.py:ImportDatasetRequest.null_values` now exposed through API; `nodes/prep.py:296-297,308-309` reads it | silent corruption | yes | test |
 | 15 | Import | possible | no | `nodes/prep.py:283-284` reads directly from source path; no pre-copy snapshot | silent corruption | no | monitor |
 | 16 | Import | possible | no | `nodes/prep.py:289` `pl.read_parquet` fails on corrupted file | failed run | no | test |
 | 17 | Import | not applicable | no | Artefacts are hash/path based with fresh UUIDs; name collision is not a control point | silent corruption | no | ignore |
@@ -172,7 +173,7 @@ The ``max_rows`` parameter is user-facing, not automatic.
 | 61 | Binning | possible | yes | `nodes/build/bins.py` fine-classing generates bounds programmatically; manual binning validated but boundary edge cases untested | silent corruption | no | test |
 | 62 | Binning | mitigated | no | `nodes/build/bins.py` fine-classing sorts breakpoints; `manual_binning_service.py` validates overrides | failed run | yes | test |
 | 63 | Binning | possible | no | Missing-bin handling exists in bins.py; mapping/application edge cases need validation | silent corruption | no | test |
-| 64 | Binning | mitigated | yes | `test_binning.py` `test_special_bin_reorder_missing_to_first` and `test_special_bin_reorder_special_to_last` verify reorder actions | UX confusion | yes | test |
+| 64 | Binning | mitigated | yes | `test_binning.py` `test_special_bin_reorder_missing_to_last` and `test_special_bin_reorder_special_to_last` verify reorder actions | UX confusion | yes | test |
 | 65 | Binning | mitigated | no | `nodes/build/features.py:163-186` WOE detects zero cells and either blocks final WOE or applies explicit smoothing | failed run | yes | monitor |
 | 66 | Binning | mitigated | no | `nodes/build/features.py:163-196` infinite WOE avoided by block/smoothing/zero fallback | failed run | yes | monitor |
 | 67 | Binning | mitigated | no | `nodes/build/features.py:164-171` smoothing requires config and rationale for final WOE | failed run | yes | monitor |
@@ -253,6 +254,13 @@ testing in specific areas (hash stability, branch merge, scoring code generation
 |---|---|---|---|
 | 5 | possible | partly mitigated | Parquet streaming to file eliminates double-buffer; `max_rows` parameter added to import node |
 | 59 | possible | partly mitigated | Same — eager read OOM reduced by streaming parquet write and optional row limit |
+
+### Changes from PR 130 (register cleanup + import hardening)
+
+| ID | Old status | New status | Reason |
+|---|---|---|---|
+| 3 | possible | mitigated | Encoding now exposed through `ImportDatasetRequest.encoding` and forwarded to import node |
+| 14 | possible | mitigated | Null values now exposed through `ImportDatasetRequest.null_values` and forwarded to import node |
 
 ### Changes from Batch 5 fixes (branch staleness, binning, model evidence)
 

@@ -71,6 +71,8 @@ class ImportDatasetRequest(BaseModel):
     has_header: bool = True
     schema_overrides: dict[str, str] = {}
     max_rows: int | None = None
+    encoding: str | None = None
+    null_values: list[str] | None = None
 
 
 class ArtifactResponse(BaseModel):

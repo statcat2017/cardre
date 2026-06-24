@@ -253,10 +253,60 @@ class GenericImportTests(unittest.TestCase):
         from cardre.nodes import ImportTabularDatasetNode
         node = ImportTabularDatasetNode()
         s = make_synthetic_csv(tmp := Path(tempfile.mkdtemp()))
-        for bad_val in [0, -1, "abc", 1.5]:
+        for bad_val in [0, -1, "abc", 1.5, True, False]:
             errors = node.validate_params({"source_path": str(s), "max_rows": bad_val})
             self.assertTrue(any("max_rows" in e for e in errors),
                             f"Expected max_rows error for {bad_val}")
+
+    def test_null_values_custom_markers_imported(self) -> None:
+        import tempfile
+        tmp = Path(tempfile.mkdtemp())
+        csv_path = tmp / "nulls.csv"
+        csv_path.write_text("a,b\n1,N/A\n2,3\nNULL,4\n")
+        store, output = _run_import(csv_path, null_values=["N/A", "NULL"])
+        art = output.artifacts[0]
+        df = pl.read_parquet(store.artifact_path(art))
+        # N/A in column b and NULL in column a should be null
+        assert df["a"].null_count() >= 1
+        assert df["b"].null_count() >= 1
+
+    def test_encoding_failure_raises_on_invalid_encoding(self) -> None:
+        import tempfile
+        tmp = Path(tempfile.mkdtemp())
+        # Write a file with non-UTF8 bytes
+        csv_path = tmp / "latin1.csv"
+        csv_path.write_bytes("a,b\n1,caf\xe9\n2,test\n".encode("latin-1"))
+        with self.assertRaises(Exception):
+            _run_import(csv_path, encoding="utf-8")
+
+    def test_duplicate_column_names_silently_renamed(self) -> None:
+        """Polars silently renames duplicate columns — documents risk #6.
+
+        The import does NOT raise; instead polars appends `_duplicated_N`.
+        This is a known silent-corruption risk.
+        """
+        import tempfile
+        tmp = Path(tempfile.mkdtemp())
+        csv_path = tmp / "dup_cols.csv"
+        csv_path.write_text("a,a\n1,2\n3,4\n")
+        store, output = _run_import(csv_path)
+        art = output.artifacts[0]
+        df = pl.read_parquet(store.artifact_path(art))
+        # Polars renames duplicates rather than raising
+        assert "a" in df.columns
+        assert any("duplicated" in c for c in df.columns)
+
+    def test_empty_column_name_imports_as_empty(self) -> None:
+        """Empty column names may pass import — documents risk #7."""
+        import tempfile
+        tmp = Path(tempfile.mkdtemp())
+        csv_path = tmp / "empty_col.csv"
+        csv_path.write_text(",b\n1,2\n3,4\n")
+        store, output = _run_import(csv_path)
+        art = output.artifacts[0]
+        df = pl.read_parquet(store.artifact_path(art))
+        # Empty column name is preserved by polars
+        assert "" in df.columns or any(c.strip() == "" for c in df.columns)
 
 
 class WideDatasetSmokeTests(unittest.TestCase):

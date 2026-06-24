@@ -44,6 +44,10 @@ def import_dataset(body: ImportDatasetRequest):
         params["schema_overrides"] = dict(body.schema_overrides)
     if body.max_rows is not None:
         params["max_rows"] = body.max_rows
+    if body.encoding is not None:
+        params["encoding"] = body.encoding
+    if body.null_values:
+        params["null_values"] = list(body.null_values)
     import_step = StepSpec(
         step_id="import",
         node_type="cardre.import_dataset",
@@ -96,6 +100,10 @@ def import_dataset(body: ImportDatasetRequest):
         pathway_extra["schema_overrides"] = dict(body.schema_overrides)
     if body.max_rows is not None:
         pathway_extra["max_rows"] = body.max_rows
+    if body.encoding is not None:
+        pathway_extra["encoding"] = body.encoding
+    if body.null_values:
+        pathway_extra["null_values"] = list(body.null_values)
     update_plan_import_params(
         store, body.project_id, str(source.resolve()),
         extra_params=pathway_extra or None,

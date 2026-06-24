@@ -285,7 +285,7 @@ class ImportTabularDatasetNode(NodeType):
                         )
         max_rows = params.get("max_rows")
         if max_rows is not None:
-            if not isinstance(max_rows, int) or max_rows < 1:
+            if isinstance(max_rows, bool) or not isinstance(max_rows, int) or max_rows < 1:
                 errors.append(f"max_rows must be a positive integer, got {max_rows!r}")
         return errors
 
