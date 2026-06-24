@@ -252,6 +252,7 @@ class PlanExecutor:
                 else:
                     if action.before_execute is not None:
                         action.before_execute()
+                    store.run_heartbeat(run_id)
                     rs = self._execute_step(
                         store, action.spec, plan_version_id, run_id,
                         outputs, records,
@@ -266,10 +267,12 @@ class PlanExecutor:
                 if action.before_execute is not None:
                     action.before_execute()
 
+                store.run_heartbeat(run_id)
                 rs = self._execute_step(
                     store, action.spec, plan_version_id, run_id,
                     outputs, records,
                 )
+                store.run_heartbeat(run_id)
                 records[action.spec.step_id] = rs
                 outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
                 if rs.status == STATUS_FAILED:

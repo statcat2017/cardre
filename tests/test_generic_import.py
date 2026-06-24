@@ -367,3 +367,68 @@ class WideDatasetSmokeTests(unittest.TestCase):
         )
         output = node.run(ctx)
         self.assertEqual(len(output.artifacts), 1)
+
+
+class ProfileSamplingTests(unittest.TestCase):
+
+    def _make_dataset_artifact(self, store, n_rows=100):
+        """Create a parquet dataset artifact and return the ArtifactRef."""
+        import polars as pl
+        from cardre.artifacts import write_parquet_artifact
+        df = pl.DataFrame({"x": list(range(n_rows)), "y": [float(i) for i in range(n_rows)]})
+        return write_parquet_artifact(
+            store, artifact_type="dataset", role="input",
+            stem="test-dataset", frame=df,
+        )
+
+    def test_profile_max_rows_samples_first_n(self) -> None:
+        from cardre.nodes.prep import ProfileDatasetNode
+        from cardre.audit import StepSpec, ExecutionContext
+        store, _ = make_store()
+        store.create_project("test")
+        art = self._make_dataset_artifact(store, n_rows=100)
+
+        params = {"profile_max_rows": 10}
+        spec = StepSpec(
+            step_id="profile", node_type="cardre.profile_dataset",
+            node_version="1", category="transform",
+            params=params, params_hash="dummy",
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[art], validated_params=params,
+            runtime_metadata={},
+        )
+        node = ProfileDatasetNode()
+        output = node.run(ctx)
+        assert output.artifacts[0].metadata["profile_sampled"] is True
+        assert output.artifacts[0].metadata["profile_max_rows"] == 10
+        assert output.warnings is not None
+        assert any("PROFILE_SAMPLED" in str(w) for w in output.warnings)
+
+    def test_profile_no_sampling_reads_all(self) -> None:
+        from cardre.nodes.prep import ProfileDatasetNode
+        from cardre.audit import StepSpec, ExecutionContext
+        store, _ = make_store()
+        store.create_project("test")
+        art = self._make_dataset_artifact(store, n_rows=50)
+
+        params = {}
+        spec = StepSpec(
+            step_id="profile", node_type="cardre.profile_dataset",
+            node_version="1", category="transform",
+            params=params, params_hash="dummy",
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[art], validated_params=params,
+            runtime_metadata={},
+        )
+        node = ProfileDatasetNode()
+        output = node.run(ctx)
+        assert "profile_sampled" not in output.artifacts[0].metadata
+        assert output.warnings is None

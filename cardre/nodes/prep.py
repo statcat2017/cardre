@@ -384,12 +384,53 @@ class ProfileDatasetNode(NodeType):
     input_roles: list[str] = ["input", "train", "test", "oot"]
     output_roles: list[str] = ["report"]
 
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema:
+        from cardre.node_parameters import (
+            MethodOption, NodeParameterSchema, ParameterDefinition,
+        )
+        return NodeParameterSchema(
+            node_type=cls.node_type,
+            node_version=cls.version,
+            title="Profile Dataset",
+            methods=[
+                MethodOption(
+                    id="default",
+                    label="Default",
+                    status="available",
+                    params=[
+                        ParameterDefinition(
+                            name="profile_max_rows",
+                            label="Profile Max Rows",
+                            kind="integer",
+                            help_text="Maximum rows to read for profiling (None = all rows). "
+                                      "Reduces memory for large datasets; statistics will be based on a sample.",
+                        ),
+                    ],
+                ),
+            ],
+        )
+
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         input_artifact = context.input_artifacts[0]
+        params = context.validated_params
+        profile_max_rows: int | None = params.get("profile_max_rows")
 
         path = store.artifact_path(input_artifact)  # cardre-allow-artifact-read: dataset-frame-input
-        df = pl.read_parquet(path)  # cardre-allow-artifact-read: dataset-frame-input
+        df = pl.read_parquet(path, n_rows=profile_max_rows)  # cardre-allow-artifact-read: dataset-frame-input
+
+        warnings: list[JsonDict] = []
+        metadata: dict[str, Any] = {"source_artifact_id": input_artifact.artifact_id}
+
+        if profile_max_rows is not None:
+            metadata["profile_sampled"] = True
+            metadata["profile_max_rows"] = profile_max_rows
+            warnings.append({
+                "code": "PROFILE_SAMPLED",
+                "message": f"Profile based on first {profile_max_rows} rows; "
+                           f"statistics may not represent the full dataset.",
+            })
 
         report = {
             "row_count": df.height,
@@ -407,12 +448,14 @@ class ProfileDatasetNode(NodeType):
             role="report",
             stem=f"profile-{context.step_spec.step_id}",
             payload=report,
-            metadata={"source_artifact_id": input_artifact.artifact_id},
+            metadata=metadata,
         )
 
         return NodeOutput(
             artifacts=[artifact],
-            metrics={"row_count": df.height})
+            metrics={"row_count": df.height},
+            warnings=warnings or None,
+        )
 
     def _numeric_stats(self, df: pl.DataFrame) -> dict[str, dict[str, float]]:
         numeric_cols = [c for c in df.columns if df.schema[c].is_numeric()]

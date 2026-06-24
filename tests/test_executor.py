@@ -1008,3 +1008,36 @@ class Phase1LifecycleTests:
         assert len(replay_manifests) == 1, "Expected exactly one manifest for replay run"
         assert replay_manifests[0]["status"] == "succeeded"
         assert replay_manifests[0]["execution_mode"] == "replay"
+
+
+class HeartbeatTests:
+    def test_run_with_fresh_heartbeat_not_recovered(self) -> None:
+        """A run with a recent heartbeat should not be marked interrupted."""
+        store, tmp = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+        source = make_sample_german_credit_file(tmp)
+
+        steps = [
+            StepSpec(
+                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
+                node_version="1", category="transform",
+                params={"source_path": str(source)},
+                params_hash=json_logical_hash({"source_path": str(source)}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+        reg = NodeRegistry.with_defaults()
+        executor = PlanExecutor(reg)
+
+        run_id = executor.run_plan_version(store, pv_id)
+        run = store.get_run(run_id)
+        assert run["status"] == "succeeded"
+
+        # The executor should have set heartbeat_at during execution
+        assert run.get("heartbeat_at") is not None
+
+        # Recovery with short threshold should not touch a recently-completed run
+        recovered = store.recover_interrupted_runs(max_age_seconds=1)
+        assert len(recovered) == 0
