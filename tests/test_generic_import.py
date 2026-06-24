@@ -221,8 +221,12 @@ class GenericImportTests(unittest.TestCase):
         store, output = _run_import(s, max_rows=3)
         art = output.artifacts[0]
         self.assertEqual(art.metadata.get("row_count"), 3)
+        self.assertEqual(art.metadata.get("max_rows_applied"), 3)
         df = pl.read_parquet(store.artifact_path(art))
         self.assertEqual(df.height, 3)
+        # Warning should be present
+        self.assertIsNotNone(output.warnings)
+        self.assertTrue(any("SOURCE_ROW_LIMIT_APPLIED" in str(w) for w in output.warnings))
 
     def test_max_rows_parquet_imports_exactly_n_rows(self) -> None:
         import tempfile

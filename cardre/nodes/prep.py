@@ -331,14 +331,13 @@ class ImportTabularDatasetNode(NodeType):
         metadata: dict[str, Any] = {}
         warnings: list[JsonDict] = []
 
-        if max_rows is not None and max_rows < df.height:
+        if max_rows is not None:
+            metadata["max_rows_applied"] = max_rows
             warnings.append({
-                "code": "SOURCE_TRUNCATED_BY_MAX_ROWS",
-                "message": f"Source truncated: max_rows={max_rows}, actual imported rows={df.height}. "
-                           f"The first {max_rows} rows may not represent the full dataset distribution.",
+                "code": "SOURCE_ROW_LIMIT_APPLIED",
+                "message": f"Imported at most {max_rows} rows. The first {max_rows} rows may not "
+                           f"represent the full dataset distribution.",
             })
-            metadata["truncated_by_max_rows"] = max_rows
-            metadata["source_row_count_estimate"] = df.height
 
         art_metadata = {
             "source_file": source_path.name,
