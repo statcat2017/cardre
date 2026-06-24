@@ -3,7 +3,21 @@ import { http, HttpResponse } from "msw";
 
 const BASE = "http://127.0.0.1:8752";
 
+import { buildManualBinningEditorState, buildReviewedEditorState, buildBlockedEditorState } from "./fixtures/manualBinning";
+
+const MB_STATES: Record<string, any> = {
+  default: buildManualBinningEditorState(),
+  reviewed: buildReviewedEditorState(),
+  blocked: buildBlockedEditorState(),
+};
+
 export const server = setupServer(
+  http.get(`${BASE}/plans/:planId/steps/:stepId/editor-state`, ({ request }) => {
+    const url = new URL(request.url);
+    const mbState = url.searchParams.get("mb_state") || "default";
+    const state = MB_STATES[mbState] || MB_STATES.default;
+    return HttpResponse.json(state);
+  }),
   http.get(`${BASE}/plans/:planId/workflow-guidance`, () =>
     HttpResponse.json({
       phase: "build",

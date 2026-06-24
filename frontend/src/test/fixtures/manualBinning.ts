@@ -1,0 +1,160 @@
+import type { ManualBinningEditorStateResponse } from "../../types";
+
+export const PROJECT_ID = "prj1";
+export const PLAN_ID = "plan1";
+
+export function buildManualBinningEditorState(
+  overrides?: Partial<ManualBinningEditorStateResponse>,
+): ManualBinningEditorStateResponse {
+  return {
+    plan_id: PLAN_ID,
+    plan_version_id: "pv1",
+    step_id: "manual-binning",
+    ready: true,
+    project_id: PROJECT_ID,
+    branch_id: "br_default",
+    run_id: "run1",
+    review_status: "not_started",
+    reviewed: false,
+    accept_automated: false,
+    reviewed_at: null,
+    reviewed_by: null,
+    review_reason: null,
+    review_reason_code: null,
+    blocking_issues: [],
+    selected_variables: ["income", "age", "loan_amount"],
+    source_bins_by_variable: {
+      income: {
+        variable: "income",
+        dtype: "float",
+        kind: "numeric",
+        bins: [
+          { bin_id: "b1", label: "0 - 30000", count: 200, good_count: 150, bad_count: 50, bad_rate: 0.25, woe: 0.2, iv_contrib: 0.01, min: 0, max: 30000 },
+          { bin_id: "b2", label: "30000 - 60000", count: 300, good_count: 240, bad_count: 60, bad_rate: 0.2, woe: 0.1, iv_contrib: 0.005, min: 30000, max: 60000 },
+          { bin_id: "b3", label: "60000 - 100000", count: 250, good_count: 210, bad_count: 40, bad_rate: 0.16, woe: -0.1, iv_contrib: 0.004, min: 60000, max: 100000 },
+          { bin_id: "b4", label: "100000+", count: 100, good_count: 90, bad_count: 10, bad_rate: 0.1, woe: -0.3, iv_contrib: 0.008, min: 100000, max: null },
+          { bin_id: "b5", label: "Missing", count: 50, good_count: 30, bad_count: 20, bad_rate: 0.4, woe: 0.5, iv_contrib: 0.02, is_missing: true },
+        ],
+      },
+      age: {
+        variable: "age",
+        dtype: "float",
+        kind: "numeric",
+        bins: [
+          { bin_id: "b1", label: "18 - 30", count: 180, good_count: 100, bad_count: 80, bad_rate: 0.44, woe: 0.3, iv_contrib: 0.02, min: 18, max: 30 },
+          { bin_id: "b2", label: "30 - 45", count: 350, good_count: 280, bad_count: 70, bad_rate: 0.2, woe: 0.05, iv_contrib: 0.001, min: 30, max: 45 },
+          { bin_id: "b3", label: "45 - 60", count: 250, good_count: 220, bad_count: 30, bad_rate: 0.12, woe: -0.2, iv_contrib: 0.01, min: 45, max: 60 },
+          { bin_id: "b4", label: "60+", count: 80, good_count: 50, bad_count: 30, bad_rate: 0.375, woe: 0.15, iv_contrib: 0.005, min: 60, max: null, is_special: true },
+        ],
+      },
+      loan_amount: {
+        variable: "loan_amount",
+        dtype: "float",
+        kind: "numeric",
+        bins: [
+          { bin_id: "b1", label: "0 - 10000", count: 150, good_count: 120, bad_count: 30, bad_rate: 0.2, woe: 0.1, iv_contrib: 0.003, min: 0, max: 10000 },
+          { bin_id: "b2", label: "10000 - 50000", count: 400, good_count: 320, bad_count: 80, bad_rate: 0.2, woe: 0.1, iv_contrib: 0.005, min: 10000, max: 50000 },
+          { bin_id: "b3", label: "50000+", count: 60, good_count: 55, bad_count: 5, bad_rate: 0.083, woe: -0.4, iv_contrib: 0.015, min: 50000, max: null },
+        ],
+      },
+    },
+    current_overrides: [
+      { variable: "age", action: "merge_bins", reason: "Merged sparse bins", reason_code: "sparse_bin", source_bin_ids: ["b2", "b3"] },
+    ],
+    warnings: [
+      { code: "SPARSE_BIN", message: "Variable 'loan_amount' has a sparse bin." },
+    ],
+    variable_summaries: [
+      {
+        variable: "income",
+        iv: 0.35,
+        woe_by_bin: { b1: 0.2, b2: 0.1, b3: -0.1, b4: -0.3, b5: 0.5 },
+        event_rate_by_bin: { b1: 0.25, b2: 0.2, b3: 0.16, b4: 0.1, b5: 0.4 },
+        missing_count: 1,
+        special_bin_count: 0,
+        sparse_bin_warning: false,
+        non_monotonic_warning: false,
+        variable_type: "numeric",
+        bin_count: 5,
+        missing_rate: 0.05,
+        special_rate: 0,
+        zero_cell_warning_count: 0,
+        sparse_bin_warning_count: 0,
+        monotonicity_status: "monotonic",
+        edited: false,
+        review_required: false,
+      },
+      {
+        variable: "age",
+        iv: 0.12,
+        woe_by_bin: { b1: 0.3, b2: 0.05, b3: -0.2, b4: 0.15 },
+        event_rate_by_bin: { b1: 0.44, b2: 0.2, b3: 0.12, b4: 0.375 },
+        missing_count: 0,
+        special_bin_count: 1,
+        sparse_bin_warning: false,
+        non_monotonic_warning: true,
+        variable_type: "numeric",
+        bin_count: 4,
+        missing_rate: 0,
+        special_rate: 0.1,
+        zero_cell_warning_count: 0,
+        sparse_bin_warning_count: 0,
+        monotonicity_status: "non_monotonic",
+        edited: true,
+        review_required: true,
+      },
+      {
+        variable: "loan_amount",
+        iv: 0.08,
+        woe_by_bin: { b1: 0.1, b2: 0.1, b3: -0.4 },
+        event_rate_by_bin: { b1: 0.2, b2: 0.2, b3: 0.083 },
+        missing_count: 0,
+        special_bin_count: 0,
+        sparse_bin_warning: true,
+        non_monotonic_warning: false,
+        variable_type: "numeric",
+        bin_count: 3,
+        missing_rate: 0,
+        special_rate: 0,
+        zero_cell_warning_count: 0,
+        sparse_bin_warning_count: 1,
+        monotonicity_status: "monotonic",
+        edited: false,
+        review_required: true,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+export function buildReviewedEditorState(): ManualBinningEditorStateResponse {
+  return buildManualBinningEditorState({
+    review_status: "reviewed",
+    reviewed: true,
+    reviewed_at: "2026-06-24T10:00:00Z",
+    reviewed_by: "alice",
+    review_reason: "All bins look clean.",
+    review_reason_code: "business_interpretability",
+    blocking_issues: [],
+  });
+}
+
+export function buildAcceptedEditorState(): ManualBinningEditorStateResponse {
+  return buildManualBinningEditorState({
+    review_status: "accepted_automated",
+    accept_automated: true,
+    reviewed_at: "2026-06-24T10:00:00Z",
+    reviewed_by: "alice",
+    review_reason: null,
+    review_reason_code: null,
+    blocking_issues: [],
+  });
+}
+
+export function buildBlockedEditorState(): ManualBinningEditorStateResponse {
+  return buildManualBinningEditorState({
+    blocking_issues: [
+      { code: "UNREVIEWED_REQUIRED_VARIABLE", message: "Variable 'age' requires review.", variable: "age" },
+    ],
+  });
+}
