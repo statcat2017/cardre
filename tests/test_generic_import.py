@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
 from cardre.nodes import ImportTabularDatasetNode
@@ -212,3 +213,52 @@ class GenericImportTests(unittest.TestCase):
             o1.artifacts[0].logical_hash,
             o2.artifacts[0].logical_hash,
         )
+
+
+
+class WideDatasetSmokeTests(unittest.TestCase):
+
+    @pytest.mark.slow
+    def test_wide_dataset_does_not_oom(self) -> None:
+        """Smoke test: 1k columns × 50k rows should complete without OOM.
+
+        Marked slow — not run in CI by default.
+        """
+        import tempfile
+        from pathlib import Path
+        import polars as pl
+
+        tmp = Path(tempfile.mkdtemp())
+        csv_path = tmp / "wide.csv"
+        n_cols = 1000
+        n_rows = 50_000
+
+        header = ",".join(f"col_{i}" for i in range(n_cols))
+        row = ",".join("1" for _ in range(n_cols))
+        lines = [header] + [row] * n_rows
+        csv_path.write_text("\n".join(lines))
+
+        store, _ = make_store()
+        store.create_project("test")
+        node = ImportTabularDatasetNode()
+        from cardre.audit import StepSpec, ExecutionContext
+        params = {"source_path": str(csv_path), "max_rows": 10_000}
+        spec = StepSpec(
+            step_id="import-wide",
+            node_type="cardre.import_dataset",
+            node_version="1",
+            category="transform",
+            params=params,
+            params_hash="dummy",
+            parent_step_ids=[],
+            branch_label="",
+            position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="slow-test-run", plan_version_id="pv",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[], validated_params=params,
+            runtime_metadata={},
+        )
+        output = node.run(ctx)
+        self.assertEqual(len(output.artifacts), 1)
