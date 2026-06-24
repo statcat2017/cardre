@@ -433,6 +433,12 @@ class ManualBinningNode(NodeType):
         "reject_variable", "reorder_missing_bin", "reorder_special_bin",
     }
 
+    REASON_CODES = frozenset({
+        "business_interpretability", "monotonicity", "sparse_bin",
+        "zero_cell", "missing_value_treatment", "special_value_treatment",
+        "regulatory_or_policy", "other",
+    })
+
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
         return NodeParameterSchema(
@@ -456,7 +462,8 @@ class ManualBinningNode(NodeType):
                                 "variable (str), action (one of merge_bins, group_categories, "
                                 "reject_variable, reorder_missing_bin, reorder_special_bin), "
                                 "reason (str), source_bin_ids (list[str]), "
-                                "and optionally new_label (str)."
+                                "and optionally new_label (str), reason_code (str) from: "
+                                + ", ".join(sorted(ManualBinningNode.REASON_CODES)) + "."
                             ),
                         ),
                         ParameterDefinition(
@@ -489,8 +496,11 @@ class ManualBinningNode(NodeType):
             variable = override.get("variable", "")
             action = override.get("action", "")
             reason = override.get("reason", "")
+            reason_code = override.get("reason_code")
             if not reason:
                 errors.append(f"{prefix}: override for '{variable}' requires a non-empty reason")
+            if reason_code is not None and reason_code not in self.REASON_CODES:
+                errors.append(f"{prefix}: unknown reason_code '{reason_code}'")
             if action not in self.VALID_ACTIONS:
                 errors.append(f"{prefix}: unsupported action '{action}'")
             source_bin_ids = override.get("source_bin_ids", [])

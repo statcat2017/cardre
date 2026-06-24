@@ -123,17 +123,45 @@ class PlanService:
             steps=step_items,
         )
 
+    def _insert_annotation(self, conn, step_id: str, plan_version_id: str, annotation: dict) -> None:
+        """Insert a step annotation in an existing transaction.
+
+        Ensures the payload always carries ``new_plan_version_id`` so the
+        audit record self-describes the transition.
+        """
+        import json as _json
+        import uuid as _uuid
+
+        now = utc_now_iso()
+        payload = dict(annotation.get("payload", {}))
+        payload.setdefault("new_plan_version_id", plan_version_id)
+        conn.execute(
+            "INSERT INTO step_annotations "
+            "(annotation_id, step_id, plan_version_id, kind, actor, payload_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                str(_uuid.uuid4()), step_id, plan_version_id,
+                annotation.get("kind", "manual_binning_review"),
+                annotation.get("actor", "user"),
+                _json.dumps(payload),
+                now,
+            ),
+        )
+
     def update_params(
         self,
         plan_id: str,
         step_id: str,
         base_plan_version_id: str,
         params: dict[str, Any],
+        annotation: dict | None = None,
     ) -> UpdateStepParamsResponse:
         """Validate params, create a new plan version, return stale steps.
 
         If the target step is branch-owned, updates the branch head
         and copies branch_step_map entries atomically.
+        When annotation is provided, the annotation insert and the plan
+        version creation share one transaction for atomicity.
         """
         plan = self._store.get_plan(plan_id)
         if plan is None:
@@ -254,11 +282,22 @@ class PlanService:
                             row["is_shared_upstream"], row["is_branch_owned"], now,
                         ),
                     )
+                if annotation:
+                    self._insert_annotation(conn, step_id, new_pv_id, annotation)
         else:
-            new_pv_id = self._store.create_plan_version(
-                plan_id=plan_id, steps=new_steps,
-                description=f"Updated params for {step_id}",
-            )
+            if annotation:
+                # Wrapped in a transaction for atomicity with annotation
+                with self._store.transaction() as conn:
+                    new_pv_id = self._store.create_plan_version_in_transaction(
+                        conn=conn, plan_id=plan_id, steps=new_steps,
+                        description=f"Updated params for {step_id}",
+                    )
+                    self._insert_annotation(conn, step_id, new_pv_id, annotation)
+            else:
+                new_pv_id = self._store.create_plan_version(
+                    plan_id=plan_id, steps=new_steps,
+                    description=f"Updated params for {step_id}",
+                )
 
         staleness = compute_staleness(
             self._store, new_pv_id,
@@ -301,7 +340,12 @@ class PlanService:
         )
 
     def _validate_manual_binning_review_params(
-        self, reviewed: bool, accept_automated: bool, overrides: list[dict] | None = None,
+        self,
+        reviewed: bool,
+        accept_automated: bool,
+        overrides: list[dict] | None = None,
+        reason_code: str | None = None,
+        review_reason: str | None = None,
     ) -> None:
         if reviewed and accept_automated:
             raise PlanValidationError(
@@ -313,5 +357,22 @@ class PlanService:
                 "PARAMS_VALIDATION_FAILED",
                 "accept_automated is incompatible with overrides. Set overrides to [] to accept automated bins.",
             )
+        if reviewed:
+            if not review_reason:
+                raise PlanValidationError(
+                    "PARAMS_VALIDATION_FAILED",
+                    "review_reason is required when reviewed=True.",
+                )
+            if not reason_code:
+                raise PlanValidationError(
+                    "PARAMS_VALIDATION_FAILED",
+                    "reason_code is required when reviewed=True.",
+                )
+            from cardre.nodes.build.bins import ManualBinningNode
+            if reason_code not in ManualBinningNode.REASON_CODES:
+                raise PlanValidationError(
+                    "PARAMS_VALIDATION_FAILED",
+                    f"reason_code must be one of: {', '.join(sorted(ManualBinningNode.REASON_CODES))}.",
+                )
 
 

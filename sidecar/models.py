@@ -291,6 +291,16 @@ class ManualBinningVariableSummary(BaseModel):
     special_bin_count: int | None = None
     sparse_bin_warning: bool = False
     non_monotonic_warning: bool = False
+    # Phase 1 — widened fields for governed review
+    variable_type: str | None = None
+    bin_count: int | None = None
+    missing_rate: float | None = None
+    special_rate: float | None = None
+    zero_cell_warning_count: int = 0
+    sparse_bin_warning_count: int = 0
+    monotonicity_status: str = "insufficient_bins"
+    edited: bool = False
+    review_required: bool = False
 
 
 class ManualBinningEditorStateResponse(BaseModel):
@@ -306,6 +316,18 @@ class ManualBinningEditorStateResponse(BaseModel):
     current_overrides: list[dict[str, Any]] = Field(default_factory=list)
     warnings: list[dict[str, Any]] = Field(default_factory=list)
     variable_summaries: list[ManualBinningVariableSummary] = Field(default_factory=list)
+    # Phase 1 — context and review state
+    project_id: str = ""
+    branch_id: str | None = None
+    run_id: str | None = None
+    review_status: str = "not_started"
+    reviewed: bool = False
+    accept_automated: bool = False
+    reviewed_at: str | None = None
+    reviewed_by: str | None = None
+    review_reason: str | None = None
+    review_reason_code: str | None = None
+    blocking_issues: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ManualBinningPreviewRequest(BaseModel):
@@ -336,6 +358,10 @@ class ManualBinningReviewRequest(BaseModel):
     reviewed: bool = False
     accept_automated: bool = False
     overrides: list[dict] | None = None
+    # Phase 1 — audit fields
+    reviewed_by: str | None = None
+    reason_code: str | None = None
+    review_reason: str | None = None
 
 
 class ManualBinningReviewResponse(BaseModel):

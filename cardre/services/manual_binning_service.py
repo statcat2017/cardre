@@ -13,6 +13,14 @@ from typing import Any
 from cardre.audit import RunStepRecord, StepSpec, utc_now_iso
 from cardre.evidence import ArtifactEvidenceReader, EvidenceError, EvidenceKind
 from cardre._evidence.models import WoeIvEvidence
+from cardre.engine.binning.diagnostics import (
+    MonotonicStatus,
+    check_sparse_bins_ratio,
+    check_sparse_bins_ratio_count,
+    check_zero_cell_bins,
+    monotonicity_status,
+)
+from cardre.readiness import compute_manual_binning_blockers
 from cardre.reporting.evidence_contract import find_evidence_for_canonical_step
 from cardre.nodes import validate_manual_binning_overrides, apply_manual_binning_overrides
 from cardre.staleness import compute_staleness
@@ -23,6 +31,7 @@ from cardre.services.plan_dto import (
     ManualBinningSourceInfo,
     ManualBinningVariableSummary,
     PreviewDiagnostics,
+    UpdateStepParamsResponse,
 )
 from cardre.services.plan_service import PlanValidationError
 from cardre.services.step_topology import (
@@ -62,25 +71,6 @@ def _extract_event_rate_by_bin(evidence: WoeIvEvidence, var: str) -> dict[str, f
                 result[b.bin_id] = b.bad_rate
             return result or None
     return None
-
-
-def _check_sparse_bins(bin_data: dict) -> bool:
-    bins = bin_data.get("bins", [])
-    if not bins:
-        return False
-    total = sum(b.get("count", 0) for b in bins)
-    if total == 0:
-        return False
-    return any(b.get("count", 0) / total < 0.05 for b in bins)
-
-
-def _check_non_monotonic(woe_by_bin: dict[str, float] | None) -> bool:
-    if not woe_by_bin or len(woe_by_bin) < 3:
-        return False
-    values = list(woe_by_bin.values())
-    increasing = all(values[i] <= values[i + 1] for i in range(len(values) - 1))
-    decreasing = all(values[i] >= values[i + 1] for i in range(len(values) - 1))
-    return not (increasing or decreasing)
 
 
 class ManualBinningService:
@@ -196,6 +186,20 @@ class ManualBinningService:
         if not source_bins:
             warnings.append({"message": "No source bins found for selected variables."})
 
+        # Compute review status from persisted params
+        reviewed = mb_spec.params.get("reviewed", False)
+        accept_automated = mb_spec.params.get("accept_automated", False)
+        if reviewed:
+            review_status = "reviewed"
+        elif accept_automated:
+            review_status = "accepted_automated"
+        else:
+            review_status = "not_started"
+
+        # Read latest review annotation for audit fields
+        review_annotation = _get_latest_review_annotation(self._store, step_id, latest_pv_id)
+
+        # Build the response with Phase 1 fields
         result = ManualBinningEditorStateResponse(
             plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id, ready=True,
             source=ManualBinningSourceInfo(
@@ -205,12 +209,30 @@ class ManualBinningService:
             ),
             selected_variables=selected_vars, source_bins_by_variable=source_bins,
             current_overrides=current_overrides, warnings=warnings,
+            project_id=plan.get("project_id", ""),
+            branch_id=branch_id,
+            reviewed=reviewed,
+            accept_automated=accept_automated,
+            review_status=review_status,
+            reviewed_at=review_annotation.get("created_at") if review_annotation else None,
+            reviewed_by=review_annotation.get("reviewed_by") if review_annotation else None,
+            review_reason=review_annotation.get("review_reason") if review_annotation else None,
+            review_reason_code=review_annotation.get("reason_code") if review_annotation else None,
         )
+
+        # Determine effective overrides per variable for the 'edited' flag
+        edited_vars: set[str] = set()
+        for ov in current_overrides:
+            v = ov.get("variable")
+            if v:
+                edited_vars.add(v)
 
         try:
             reader = ArtifactEvidenceReader(self._store)
+            run_id_found = None
             for run in self._store.list_runs(latest_pv_id):
                 if run.get("status") == "succeeded":
+                    run_id_found = run["run_id"]
                     woe_evidence = find_evidence_for_canonical_step(
                         self._store, latest_pv_id, "final-woe-iv", branch_id=branch_id,
                     )
@@ -226,17 +248,33 @@ class ManualBinningService:
                                         iv = _extract_iv(evidence, var)
                                         event_rate = _extract_event_rate_by_bin(evidence, var)
                                         bin_data = result.source_bins_by_variable.get(var, {})
+                                        bins_list = bin_data.get("bins", [])
+                                        total_count = sum(b.get("count", 0) for b in bins_list)
+                                        m_count = _count_missing_bins(bin_data)
+                                        s_count = _count_special_bins(bin_data)
+                                        m_status = monotonicity_status(woe)
                                         summaries.append(ManualBinningVariableSummary(
                                             variable=var,
                                             iv=iv,
                                             woe_by_bin=woe,
                                             event_rate_by_bin=event_rate,
-                                            missing_count=_count_missing_bins(bin_data),
-                                            special_bin_count=_count_special_bins(bin_data),
-                                            sparse_bin_warning=_check_sparse_bins(bin_data),
-                                            non_monotonic_warning=_check_non_monotonic(woe),
+                                            missing_count=m_count,
+                                            special_bin_count=s_count,
+                                            sparse_bin_warning=check_sparse_bins_ratio(bins_list),
+                                            non_monotonic_warning=m_status == MonotonicStatus.non_monotonic,
+                                            # Phase 1 widened fields
+                                            variable_type=bin_data.get("variable_type", bin_data.get("dtype")),
+                                            bin_count=len(bins_list),
+                                            missing_rate=(m_count / total_count) if total_count > 0 else None,
+                                            special_rate=(s_count / total_count) if total_count > 0 else None,
+                                            zero_cell_warning_count=check_zero_cell_bins(bins_list),
+                                            sparse_bin_warning_count=check_sparse_bins_ratio_count(bins_list),
+                                            monotonicity_status=m_status.value,
+                                            edited=var in edited_vars,
+                                            review_required=_variable_needs_review(var, bin_data, woe, current_overrides),
                                         ))
                                     result.variable_summaries = summaries
+                                    result.run_id = run_id_found
                                     break
                         break
                     break
@@ -256,6 +294,15 @@ class ManualBinningService:
             if no_summary_warning not in warnings:
                 warnings.append(no_summary_warning)
                 result.warnings = warnings
+
+        # Compute blocking issues for the review gate
+        result.blocking_issues = compute_manual_binning_blockers(
+            result.selected_variables,
+            result.variable_summaries,
+            result.current_overrides,
+            branch_id,
+            step_id,
+        )
 
         return result
 
@@ -362,15 +409,24 @@ class ManualBinningService:
         reviewed: bool = False,
         accept_automated: bool = False,
         overrides: list[dict] | None = None,
+        reviewed_by: str | None = None,
+        reason_code: str | None = None,
+        review_reason: str | None = None,
     ) -> UpdateStepParamsResponse:
         """Save a review/accept-automated decision for manual binning.
 
-        Writes the params through PlanService.update_params and records a
-        step annotation for auditability.
+        Validates review params, writes the params through
+        PlanService.update_params, and records a step annotation for
+        auditability — atomically in the same transaction.
         Returns the UpdateStepParamsResponse so the caller gets the new
         plan version ID.
         """
-        from cardre.services.plan_service import PlanService
+        from cardre.services.plan_service import PlanService, PlanValidationError
+
+        PlanService(self._store)._validate_manual_binning_review_params(
+            reviewed, accept_automated, overrides,
+            reason_code=reason_code, review_reason=review_reason,
+        )
 
         params: dict[str, Any] = {"reviewed": reviewed, "accept_automated": accept_automated}
         if overrides is not None:
@@ -378,35 +434,28 @@ class ManualBinningService:
         elif accept_automated:
             params["overrides"] = []
 
+        # Build the annotation payload to write atomically with params
+        annotation = {
+            "kind": "manual_binning_review",
+            "actor": reviewed_by or "user",
+            "payload": {
+                "reviewed": reviewed,
+                "accept_automated": accept_automated,
+                "override_count": len(overrides) if overrides else 0,
+                "base_plan_version_id": plan_version_id,
+                "reviewed_by": reviewed_by,
+                "reason_code": reason_code,
+                "review_reason": review_reason,
+            },
+        }
+
         result = PlanService(self._store).update_params(
             plan_id=plan_id,
             step_id=step_id,
             base_plan_version_id=plan_version_id,
             params=params,
+            annotation=annotation,
         )
-
-        # Write audit annotation against the NEW plan version
-        annotation_plan_version_id = result.new_plan_version_id
-        now = utc_now_iso()
-        annotation_id = str(uuid.uuid4())
-        with self._store.transaction() as conn:
-            conn.execute(
-                "INSERT INTO step_annotations "
-                "(annotation_id, step_id, plan_version_id, kind, actor, payload_json, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (
-                    annotation_id, step_id, annotation_plan_version_id,
-                    "manual_binning_review", "user",
-                    json.dumps({
-                        "reviewed": reviewed,
-                        "accept_automated": accept_automated,
-                        "override_count": len(overrides) if overrides else 0,
-                        "base_plan_version_id": plan_version_id,
-                        "new_plan_version_id": annotation_plan_version_id,
-                    }),
-                    now,
-                ),
-            )
 
         return result
 
@@ -486,3 +535,71 @@ def _count_missing_bins(bin_data: dict) -> int:
 def _count_special_bins(bin_data: dict) -> int:
     """Count bins flagged as special in the source bin data."""
     return sum(1 for b in bin_data.get("bins", []) if b.get("is_special") or b.get("bin_type") == "special")
+
+
+def _get_latest_review_annotation(store, step_id: str, plan_version_id: str) -> dict | None:
+    """Read the most recent manual_binning_review annotation for a step + plan version."""
+    try:
+        from cardre.store import ProjectStore
+        with store.transaction() as conn:
+            rows = conn.execute(
+                "SELECT payload_json, created_at FROM step_annotations "
+                "WHERE step_id = ? AND plan_version_id = ? AND kind = ? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (step_id, plan_version_id, "manual_binning_review"),
+            ).fetchall()
+        if not rows:
+            return None
+        payload = json.loads(rows[0]["payload_json"])
+        payload["created_at"] = rows[0]["created_at"]
+        return payload
+    except Exception:
+        return None
+
+
+def _variable_needs_review(
+    variable: str,
+    bin_data: dict,
+    woe_by_bin: dict[str, float] | None,
+    current_overrides: list[dict],
+) -> bool:
+    """Determine whether a variable still needs manual review.
+
+    A variable needs review when it has warnings (sparse, zero-cell,
+    non-monotonic) or unresolved missing/special handling, and those
+    warnings are not covered by a valid override with a matching reason
+    code.
+    """
+    bins_list = bin_data.get("bins", [])
+    has_sparse = check_sparse_bins_ratio(bins_list)
+    has_zero_cell = check_zero_cell_bins(bins_list) > 0
+    m_status = monotonicity_status(woe_by_bin)
+    has_non_monotonic = m_status == MonotonicStatus.non_monotonic
+    has_missing = _count_missing_bins(bin_data) > 0
+    has_special = _count_special_bins(bin_data) > 0
+
+    if not (has_sparse or has_zero_cell or has_non_monotonic or has_missing or has_special):
+        return False
+
+    # Check if overrides already cover this variable's warnings
+    var_overrides = [ov for ov in current_overrides if ov.get("variable") == variable]
+    if not var_overrides:
+        return True
+
+    override_reason_codes = {ov.get("reason_code") for ov in var_overrides if ov.get("reason_code")}
+
+    if has_sparse and "sparse_bin" not in override_reason_codes:
+        return True
+    if has_zero_cell and "zero_cell" not in override_reason_codes:
+        return True
+    if has_non_monotonic and "monotonicity" not in override_reason_codes:
+        return True
+    if has_missing and "missing_value_treatment" not in override_reason_codes:
+        return True
+    if has_special and "special_value_treatment" not in override_reason_codes:
+        return True
+
+    return False
+
+
+
