@@ -537,8 +537,8 @@ def test_high_cardinality_creates_other_bin() -> None:
     assert "Other" in bin_labels, "High-cardinality categorical should create an 'Other' bin"
 
 
-def test_special_bin_reorder_missing_to_first() -> None:
-    """reorder_missing_bin moves the missing bin to the first position."""
+def test_special_bin_reorder_missing_to_last() -> None:
+    """reorder_missing_bin moves the missing bin to the end of the bin list."""
     bin_def = {
         "variables": [{
             "variable": "x", "kind": "numeric",

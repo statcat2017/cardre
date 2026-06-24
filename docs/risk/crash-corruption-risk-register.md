@@ -155,7 +155,7 @@ The ``max_rows`` parameter is user-facing, not automatic.
 | 44 | DAG | mitigated | yes | `test_staleness.py:ComputeStalenessTests.test_branch_step_stale_when_shared_upstream_changes` covers branch staleness | stale report | yes | test |
 | 45 | DAG | mitigated | no | `topology.py:27-30` missing parent references raise `ValueError` before execution | failed run | yes | monitor |
 | 46 | DAG | unknown | no | Branch merge/branch evidence logic (branch_repo.py:96-126) needs deeper targeted review | stale report | no | test |
-| 47 | DAG | mitigated | yes | `test_branch_service.py:BaselineMigrationTests.test_branch_step_map_params_retained_across_head_update` covers retention | stale report | yes | test |
+| 47 | DAG | unknown | yes | Branch cloning/step-map param retention (`branch_repo.py:96-118`); test covers old-map survival but not full retention across head update | stale report | no | test |
 | 48 | DAG | not applicable | no | Artefact IDs are UUIDs; duplicate IDs should not occur from normal code paths | silent corruption | no | ignore |
 | 49 | DAG | mitigated | no | `topology.py:57-58` topological sort rewrites execution order before any step runs | failed run | yes | monitor |
 | 50 | DAG | not applicable | no | No DAG cache layer found in the codebase | stale report | no | ignore |
@@ -212,7 +212,10 @@ The ``max_rows`` parameter is user-facing, not automatic.
 
 ## All issues classified
 
-After Batches 1–5, all 100 issues in this register have a tested, repo-grounded status. No remaining unresolved risks require code changes.
+After Batches 1–5, all 100 issues have a repo-grounded classification backed by code, test, or explicit feature-gap notes.
+Several risks remain possible (35) or partly mitigated (9); this register now clearly distinguishes known product risks
+from unimplemented or structurally-inapplicable features. The unknown bucket (5) contains items needing deeper
+testing in specific areas (hash stability, branch merge, scoring code generation when it exists).
 
 ## Changed since last review
 
@@ -256,7 +259,7 @@ After Batches 1–5, all 100 issues in this register have a tested, repo-grounde
 | ID | Old status | New status | Reason |
 |---|---|---|---|
 | 44 | possible | mitigated | Branch staleness integration test covers shared upstream change |
-| 47 | unknown | mitigated | Branch step-map param retention test covers head update |
+| 47 | unknown | unknown | Step-map old-map survival verified; full param retention across head update still needs deeper test |
 | 64 | possible | mitigated | Special bin reorder tests (missing → end, special → end) |
 | 72 | possible | possible | Target leakage limitation documented with regression test |
 | 83 | unknown | not applicable | SQL scoring export feature does not exist yet |
