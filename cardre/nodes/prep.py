@@ -411,6 +411,14 @@ class ProfileDatasetNode(NodeType):
             ],
         )
 
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        profile_max_rows = params.get("profile_max_rows")
+        if profile_max_rows is not None:
+            if isinstance(profile_max_rows, bool) or not isinstance(profile_max_rows, int) or profile_max_rows < 1:
+                errors.append(f"profile_max_rows must be a positive integer, got {profile_max_rows!r}")
+        return errors
+
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         input_artifact = context.input_artifacts[0]

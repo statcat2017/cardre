@@ -7,9 +7,9 @@ Based on: repo state at `414efab` (HEAD)
 
 | Verdict | Count | Meaning |
 |---|---|---|
-| Possible | 31 | Could happen as a crash, failed run, inconsistent state, or genuine corruption risk |
-| Partly mitigated | 7 | Guardrail exists but has known gaps (see issue notes); not yet fully tested as race-safe |
-| Mitigated | 43 | Guardrails exist (code or test) that should turn the failure into a diagnostic rather than silent corruption |
+| Possible | 33 | Could happen as a crash, failed run, inconsistent state, or genuine corruption risk |
+| Partly mitigated | 9 | Guardrail exists but has known gaps (see issue notes); not yet fully tested as race-safe |
+| Mitigated | 39 | Guardrails exist (code or test) that should turn the failure into a diagnostic rather than silent corruption |
 | Not applicable | 14 | Repo does not currently have that feature or has a direct structural guard |
 | Unknown | 5 | Needs targeted tests or line-by-line review of branch/report/frontend paths |
 
@@ -113,7 +113,7 @@ The ``max_rows`` parameter is user-facing, not automatic.
 | 1 | Import | possible | no | `nodes/prep.py:304-312` reads full CSV eagerly via `pl.read_csv` | failed run | no | test |
 | 2 | Import | possible | no | `nodes/prep.py:304-312` delegates CSV parsing to polars | failed run | no | test |
 | 3 | Import | mitigated | yes | `sidecar/models.py:ImportDatasetRequest.encoding` now exposed through API; `nodes/prep.py:295` reads it | silent corruption | yes | test |
-| 4 | Import | mitigated | yes | `nodes/prep.py:392` ProfileDatasetNode supports `profile_max_rows` with sampling warning; test verifies `PROFILE_SAMPLED` metadata | crash | yes | test |
+| 4 | Import | partly mitigated | yes | `nodes/prep.py:392` ProfileDatasetNode supports optional `profile_max_rows` with sampling warning; default still reads full parquet | crash | yes | test |
 | 5 | Import | partly mitigated | yes | `nodes/prep.py:289,304` eager read with optional `max_rows`; `artifacts.py:73` parquet now streams to file | crash | yes | test |
 | 6 | Import | possible | no | `nodes/prep.py:304` polars behaviour on duplicate columns unknown | failed run | no | test |
 | 7 | Import | possible | no | `nodes/prep.py:304` empty column name may pass import but cause downstream problems | silent corruption | no | test |
@@ -129,7 +129,7 @@ The ``max_rows`` parameter is user-facing, not automatic.
 | 17 | Import | not applicable | no | Artefacts are hash/path based with fresh UUIDs; name collision is not a control point | silent corruption | no | ignore |
 | 18 | Store | mitigated | yes | `artifacts.py:43-45,78-80` temp-file replacement; `verify_integrity` detects orphan files and missing artefacts | crash | yes | test |
 | 19 | Import | unknown | no | `audit.py` hashing exists but hash-stability across serialisation modes needs tests | silent corruption | unknown | test |
-| 20 | Import | mitigated | yes | `nodes/prep.py:392` ProfileDatasetNode supports `profile_max_rows` for sampling; test covers sampled and unsampled paths | crash | yes | test |
+| 20 | Import | partly mitigated | yes | `nodes/prep.py:392` ProfileDatasetNode supports optional `profile_max_rows`; default still reads full parquet; no validation for invalid values | crash | yes | test |
 | 21 | Store | mitigated | no | `project_store.py` normal metadata writes use explicit transaction/rollback; DDL migrations more exposed | stale report | no | fix |
 | 22 | Execution | partly mitigated | yes | `project_store.py:674-695` `create_run` with `BEGIN IMMEDIATE`; not yet race-tested under concurrent connections | silent corruption | yes | test |
 | 23 | Store | mitigated | yes | `executor.py:554-557` detects missing file at read time; `verify_integrity` reports missing artifact files proactively | failed run | yes | test |
@@ -163,7 +163,7 @@ The ``max_rows`` parameter is user-facing, not automatic.
 | 51 | DAG | mitigated | no | `artifacts.py` same content/stem can resolve to same path while metadata gets separate UUIDs; benign | silent corruption | no | ignore |
 | 52 | Execution | mitigated | yes | Cancellation polling removed (`run_lifecycle.py:8-10`); `recover_interrupted_runs` handles stale running runs | stale report | yes | test |
 | 53 | Execution | not applicable | no | No retry logic found; `plan_service.py:181,219` has user-facing "refresh and retry" messages only | stale report | no | ignore |
-| 54 | Execution | mitigated | yes | `run_lifecycle.py:239-253` `__exit__` catches Python exceptions; `executor.py` sends heartbeats before/after each step; `recover_interrupted_runs` uses heartbeat guard | silent corruption | yes | test |
+| 54 | Execution | partly mitigated | yes | `run_lifecycle.py:239-253` `__exit__` catches Python exceptions; `executor.py` sends heartbeats before/after each step but not during long-running steps; `recover_interrupted_runs` uses heartbeat guard | silent corruption | yes | test |
 | 55 | Execution | mitigated | no | `executor.py` step exceptions are caught and recorded as failed run-steps with structured errors | failed run | yes | monitor |
 | 56 | Execution | mitigated | no | `run_lifecycle.py:308-323` `finalise()` catches manifest write failure and marks run `failed` | failed run | yes | monitor |
 | 57 | Execution | mitigated | no | `executor.py:558-564` input physical hashes re-checked before node execution; `test_executor.py:276` tests | failed run | yes | monitor |
@@ -209,7 +209,7 @@ The ``max_rows`` parameter is user-facing, not automatic.
 | 97 | UI | possible | yes | Frontend fetches API state; stale UI display plausible (not necessarily data corruption) | UX confusion | no | test |
 | 98 | UI | possible | yes | Step param updates send raw JSON body; backend schema validation needs targeted coverage | failed run | no | test |
 | 99 | UI | mitigated | yes | Browser/UI crash interrupts user flow; backend corruption depends on active run/write | UX confusion | no | monitor |
-| 100 | Execution | mitigated | yes | `executor.py` sends heartbeats before/after each step; `recover_interrupted_runs` uses heartbeat guard to avoid interrupting live runs | silent corruption | yes | test |
+| 100 | Execution | partly mitigated | yes | `executor.py` sends heartbeats before/after each step but not during long-running steps; `recover_interrupted_runs` uses heartbeat guard | silent corruption | yes | test |
 
 ## All issues classified
 
