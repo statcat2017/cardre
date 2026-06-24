@@ -1062,8 +1062,9 @@ class ProjectStore:
         - **orphan_artifact_files**: files under ``datasets/`` and ``artifacts/``
           that have no matching row in the ``artifacts`` table.
         - **dangling_run_step_refs**: artifact IDs referenced in
+          ``run_steps.input_artifact_ids_json`` or
           ``run_steps.output_artifact_ids_json`` that are absent from the
-          ``artifacts`` table.
+          ``artifacts`` table.  Each entry includes a ``direction`` field.
         - **stale_running_runs**: runs with ``status='running'`` where both
           ``started_at`` and ``heartbeat_at`` are older than
           *stale_run_max_age_seconds*.
@@ -1083,7 +1084,7 @@ class ProjectStore:
 
         # 2. Orphan artifact files
         known_paths = {
-            str(self.root / r["path"])
+            str((self.root / r["path"]).resolve())
             for r in conn.execute("SELECT path FROM artifacts").fetchall()
         }
         orphan_artifact_files: list[dict] = []
@@ -1101,22 +1102,24 @@ class ProjectStore:
                         "size": fpath.stat().st_size,
                     })
 
-        # 3. Dangling run-step refs
+        # 3. Dangling run-step refs (input and output artifact IDs)
         known_artifact_ids = {
             r["artifact_id"]
             for r in conn.execute("SELECT artifact_id FROM artifacts").fetchall()
         }
         dangling_run_step_refs: list[dict] = []
         for row in conn.execute(
-            "SELECT run_step_id, output_artifact_ids_json FROM run_steps"
+            "SELECT run_step_id, input_artifact_ids_json, output_artifact_ids_json "
+            "FROM run_steps"
         ).fetchall():
-            output_ids = json.loads(row["output_artifact_ids_json"])
-            for aid in output_ids:
-                if aid not in known_artifact_ids:
-                    dangling_run_step_refs.append({
-                        "run_step_id": row["run_step_id"],
-                        "artifact_id": aid,
-                    })
+            for direction, col in (("input", "input_artifact_ids_json"), ("output", "output_artifact_ids_json")):
+                for aid in json.loads(row[col]):
+                    if aid not in known_artifact_ids:
+                        dangling_run_step_refs.append({
+                            "run_step_id": row["run_step_id"],
+                            "artifact_id": aid,
+                            "direction": direction,
+                        })
 
         # 4. Stale running runs (same logic as recover_interrupted_runs)
         stale_running_runs: list[dict] = []

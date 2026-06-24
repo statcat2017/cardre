@@ -78,10 +78,22 @@ def export_branch_audit_pack(
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise
 
-    # Atomic rename: finalise the export
+    # Atomic finalisation: rename old export to backup, promote temp, restore on failure
+    backup_dir = None
     if export_dir.exists():
-        shutil.rmtree(export_dir)
-    shutil.move(str(tmp_dir), str(export_dir))
+        backup_dir = export_dir.parent / f".{export_dir.name}.backup.{uuid.uuid4().hex[:8]}"
+        shutil.move(str(export_dir), str(backup_dir))
+    try:
+        shutil.move(str(tmp_dir), str(export_dir))
+    except BaseException:
+        # Restore the previous export from backup
+        if backup_dir is not None:
+            shutil.rmtree(export_dir, ignore_errors=True)
+            shutil.move(str(backup_dir), str(export_dir))
+        raise
+    # Successful — discard the backup
+    if backup_dir is not None:
+        shutil.rmtree(backup_dir, ignore_errors=True)
 
     return {
         "export_path": str(export_dir),

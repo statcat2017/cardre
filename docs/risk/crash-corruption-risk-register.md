@@ -117,7 +117,7 @@ was extracted so the write logic and temp-dir lifecycle are separated.
 | 21 | Store | mitigated | no | `project_store.py` normal metadata writes use explicit transaction/rollback; DDL migrations more exposed | stale report | no | fix |
 | 22 | Execution | partly mitigated | yes | `project_store.py:674-695` `create_run` with `BEGIN IMMEDIATE`; not yet race-tested under concurrent connections | silent corruption | yes | test |
 | 23 | Store | mitigated | yes | `executor.py:554-557` detects missing file at read time; `verify_integrity` reports missing artifact files proactively | failed run | yes | test |
-| 24 | Store | mitigated | yes | `artifacts.py:45,80` temp write then register; `verify_integrity` detects orphan files in datasets/ and artifacts/ | silent corruption | yes | test |
+| 24 | Store | mitigated by diagnostic | yes | `artifacts.py:45,80` temp write then register; `verify_integrity` detects orphan files afterwards (diagnostic, not prevention) | silent corruption | yes | test |
 | 25 | Store | mitigated | no | `project_store.py:116` `PRAGMA foreign_keys=ON` protects relational FKs; run_steps JSON array refs not covered | silent corruption | no | monitor |
 | 26 | Store | possible | no | SQLite WAL (`project_store.py:115`) reduces but doesn't eliminate power-loss corruption risk | silent corruption | no | monitor |
 | 27 | Store | partly mitigated | yes | `project_store.py:103-109` version stamped after all migrations; stamping does not make individual DDL steps transactional | silent corruption | yes | test |

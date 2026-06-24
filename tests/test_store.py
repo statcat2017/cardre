@@ -704,6 +704,33 @@ class IntegrityTests(unittest.TestCase):
         self.assertGreaterEqual(len(report.stale_running_runs), 1)
         self.assertEqual(report.stale_running_runs[0]["run_id"], run_id)
 
+    def test_dangling_input_ref_is_reported(self) -> None:
+        store, tmp = make_store()
+        pid = store.create_project("test")
+        plan_id = store.create_plan(pid, "test-plan")
+        pv_id = store.create_plan_version(plan_id, [])
+        run_id = store.create_run(pv_id)
+        from cardre.audit import RunStepRecord, utc_now_iso
+        rs = RunStepRecord(
+            run_step_id="dangling-input-rs",
+            run_id=run_id,
+            step_id="import",
+            plan_version_id=pv_id,
+            status="succeeded",
+            started_at=utc_now_iso(),
+            finished_at=utc_now_iso(),
+            input_artifact_ids=["nonexistent-input-id"],
+            output_artifact_ids=[],
+            execution_fingerprint={},
+            warnings=[],
+            errors=[],
+        )
+        store.save_run_step(rs)
+        report = store.verify_integrity()
+        matching = [r for r in report.dangling_run_step_refs if r["artifact_id"] == "nonexistent-input-id"]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["direction"], "input")
+
 
 def _register_dummy_artifact(store: ProjectStore) -> ArtifactRef:
     """Create and register a small artifact, returning the ref."""
@@ -788,3 +815,47 @@ class ExportAtomicityTests(unittest.TestCase):
         for d in export_dir.iterdir():
             self.assertFalse(d.name.startswith("."), f"Temp dir left behind: {d}")
             self.assertFalse(d.name.endswith(".tmp"), f"Temp dir left behind: {d}")
+
+    def test_export_overwrite_preserves_old_on_failure(self) -> None:
+        store, tmp = make_store()
+        pid = store.create_project("test")
+        plan_id = store.create_plan(pid, "test-plan")
+        pv_id = store.create_plan_version(plan_id, [])
+        branch_id = store.create_branch(
+            project_id=pid, plan_id=plan_id,
+            name="Baseline", branch_type="baseline",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="test",
+        )
+
+        from cardre.services.export_service import export_branch_audit_pack
+        # First export succeeds
+        result1 = export_branch_audit_pack(
+            store=store, project_id=pid, plan_id=plan_id,
+            branch_id=branch_id,
+        )
+        export_path = Path(result1["export_path"])
+        self.assertTrue(export_path.exists())
+
+        # Second export with the same path fails because _write_json is patched
+        import cardre.services.export_service as svc
+        original = svc._write_json
+        def _failing_write(path, data):
+            raise IOError("simulated export failure")
+        svc._write_json = _failing_write
+        try:
+            with self.assertRaises(IOError):
+                export_branch_audit_pack(
+                    store=store, project_id=pid, plan_id=plan_id,
+                    branch_id=branch_id, export_path=str(export_path),
+                )
+        finally:
+            svc._write_json = original
+
+        # The first export should still be intact
+        self.assertTrue(export_path.exists())
+        self.assertTrue((export_path / "project.json").exists())
+        # Verify no backup dirs were left behind
+        for d in export_path.parent.iterdir():
+            self.assertFalse(d.name.startswith(".") and "backup" in d.name,
+                            f"Backup dir left behind: {d}")
