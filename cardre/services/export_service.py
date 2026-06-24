@@ -57,12 +57,74 @@ def export_branch_audit_pack(
         raise ValueError(f"PROJECT_NOT_FOUND: {project_id}")
 
     export_dir = Path(export_path) if export_path else store.root / "exports" / f"audit_{branch_id}_{uuid.uuid4().hex[:8]}"
-    export_dir.mkdir(parents=True, exist_ok=True)
     export_id = str(uuid.uuid4())
+
+    # Write to a temp directory so a partial export never leaves a visible pack.
+    # On success the temp dir is renamed atomically; on failure it is removed.
+    tmp_dir = export_dir.parent / f".{export_dir.name}.tmp.{uuid.uuid4().hex[:8]}"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
 
     diagnostics: list[dict[str, str]] = []
     warnings: list[str] = []
     file_count = 0
+
+    try:
+        file_count = _populate_export(
+            store, tmp_dir, project_id, plan_id, branch_id,
+            comparison_snapshot_id, include_row_level_data, include_report,
+            report_mode, diagnostics, warnings,
+        )
+    except BaseException:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
+
+    # Atomic finalisation: rename old export to backup, promote temp, restore on failure
+    backup_dir = None
+    if export_dir.exists():
+        backup_dir = export_dir.parent / f".{export_dir.name}.backup.{uuid.uuid4().hex[:8]}"
+        shutil.move(str(export_dir), str(backup_dir))
+    try:
+        shutil.move(str(tmp_dir), str(export_dir))
+    except BaseException:
+        # Restore the previous export from backup
+        if backup_dir is not None:
+            shutil.rmtree(export_dir, ignore_errors=True)
+            shutil.move(str(backup_dir), str(export_dir))
+        raise
+    # Successful — discard the backup
+    if backup_dir is not None:
+        shutil.rmtree(backup_dir, ignore_errors=True)
+
+    return {
+        "export_path": str(export_dir),
+        "export_id": export_id,
+        "file_count": file_count,
+        "warnings": warnings,
+        "diagnostics": diagnostics,
+    }
+
+
+def _populate_export(
+    store: ProjectStore,
+    export_dir: Path,
+    project_id: str,
+    plan_id: str,
+    branch_id: str,
+    comparison_snapshot_id: str | None,
+    include_row_level_data: bool,
+    include_report: bool,
+    report_mode: str,
+    diagnostics: list[dict[str, str]],
+    warnings: list[str],
+) -> int:
+    """Write all export files into *export_dir*.
+
+    Separated from the outer function so the caller can wrap it in a
+    temp-directory + atomic-rename pattern.
+    """
+    file_count = 0
+    branch = store.get_branch(branch_id)
+    project = store.get_project(project_id)
 
     # 1. Project metadata
     project_info = {
@@ -260,13 +322,7 @@ def export_branch_audit_pack(
     if not include_row_level_data:
         warnings.append("Row-level data excluded from export.")
 
-    return {
-        "export_path": str(export_dir),
-        "export_id": export_id,
-        "file_count": file_count,
-        "warnings": warnings,
-        "diagnostics": diagnostics,
-    }
+    return file_count
 
 
 def _write_json(path: Path, data: Any) -> None:

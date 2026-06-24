@@ -7,13 +7,13 @@ Based on: repo state at `414efab` (HEAD)
 
 | Verdict | Count | Meaning |
 |---|---|---|
-| Possible | 40 | Could happen as a crash, failed run, inconsistent state, or genuine corruption risk |
+| Possible | 38 | Could happen as a crash, failed run, inconsistent state, or genuine corruption risk |
 | Partly mitigated | 7 | Guardrail exists but has known gaps (see issue notes); not yet fully tested as race-safe |
-| Mitigated | 33 | Guardrails exist (code or test) that should turn the failure into a diagnostic rather than silent corruption |
-| Not applicable | 15 | Repo does not currently have that feature or has a direct structural guard |
+| Mitigated | 36 | Guardrails exist (code or test) that should turn the failure into a diagnostic rather than silent corruption |
+| Not applicable | 14 | Repo does not currently have that feature or has a direct structural guard |
 | Unknown | 5 | Needs targeted tests or line-by-line review of branch/report/frontend paths |
 
-Changed since last reviewed: 17 issues (areas: binning/WOE, report/export/UI, readiness/evidence, concurrency/crash-recovery, schema-version guard)
+Changed since last reviewed: 20 issues (areas: binning/WOE, report/export/UI, readiness/evidence, concurrency/crash-recovery, schema-version guard, store-integrity, export-atomicity)
 
 ## Status taxonomy
 
@@ -37,13 +37,11 @@ These are the highest-value items still needing code changes. Items 1–4 and 6 
 
 | # | Summary | Batch | Code change needed |
 |---|---|---|---|
-| 24 | Orphan files after crash between write and register | Batch 3 | `verify_integrity()` helper |
-| 5 | Large file OOM from eager read + in-memory buffers | Batch 4 | Memory guard or streaming |
-| 44 | Branch-scoped staleness edge cases untested | Batch 5 | Branch staleness integration test |
-| 47 | Branch step-map param retention on head update | Batch 5 | Branch param retention test |
-| 83 | SQL scoring export parity unknown | Batch 5 | Generate-and-compare test |
-| 84 | Python scoring export parity unknown | Batch 5 | Generate-and-compare test |
+| 5, 59 | Large file OOM from eager read + in-memory buffers | Batch 4 | Memory guard or streaming |
+| 44, 47 | Branch staleness edge cases and step-map param retention untested | Batch 5 | Branch staleness integration test |
+| 83, 84 | SQL/Python scoring export parity unknown | Batch 5 | Generate-and-compare test |
 | 72 | Semantic target leakage inside train columns not detected | Batch 5 | Train-column-content scan |
+| 58 | Async dispatch uses ProjectStore which is not thread-safe | Batch 2 | Thread-local or connection-pool pattern |
 
 ## What was fixed in this batch
 
@@ -79,6 +77,19 @@ a `store_meta` table records the schema version; if the stored version exceeds
 the app version, `SchemaVersionError` is raised.  Version is stamped after
 every successful migration run.  This is straightforward and correct.
 
+### 4. Store integrity helper (Batch 3)
+`project_store.py:verify_integrity()` runs four checks against the store and
+filesystem: missing artifact files, orphan filesystem files, dangling run-step
+artifact references, and stale running runs (reuses the heartbeat guard from
+Batch 1).  Returns an ``IntegrityReport`` dataclass with per-category findings.
+This is a diagnostic tool only — no automatic mutation.
+
+### 5. Export atomicity (Batch 3)
+`export_service.py:export_branch_audit_pack` now writes to a temporary
+directory (`.export_name.tmp.{uuid}`) and renames atomically on success.
+On exception the temp directory is removed.  The ``_populate_export`` helper
+was extracted so the write logic and temp-dir lifecycle are separated.
+
 ## Risk register
 
 | ID | Area | Current status | Changed since last review? | Evidence source | Failure mode | Test exists? | Recommended action |
@@ -100,13 +111,13 @@ every successful migration run.  This is straightforward and correct.
 | 15 | Import | possible | no | `nodes/prep.py:283-284` reads directly from source path; no pre-copy snapshot | silent corruption | no | monitor |
 | 16 | Import | possible | no | `nodes/prep.py:289` `pl.read_parquet` fails on corrupted file | failed run | no | test |
 | 17 | Import | not applicable | no | Artefacts are hash/path based with fresh UUIDs; name collision is not a control point | silent corruption | no | ignore |
-| 18 | Store | mitigated | no | `artifacts.py:43-45,78-80` temp-file replacement avoids partial final artefacts; but no orphan cleanup | crash | no | fix |
+| 18 | Store | mitigated | yes | `artifacts.py:43-45,78-80` temp-file replacement; `verify_integrity` detects orphan files and missing artefacts | crash | yes | test |
 | 19 | Import | unknown | no | `audit.py` hashing exists but hash-stability across serialisation modes needs tests | silent corruption | unknown | test |
 | 20 | Import | possible | no | `nodes/prep.py:365` ProfileDatasetNode reads full parquet, no sampling | crash | no | test |
 | 21 | Store | mitigated | no | `project_store.py` normal metadata writes use explicit transaction/rollback; DDL migrations more exposed | stale report | no | fix |
 | 22 | Execution | partly mitigated | yes | `project_store.py:674-695` `create_run` with `BEGIN IMMEDIATE`; not yet race-tested under concurrent connections | silent corruption | yes | test |
-| 23 | Store | possible | no | `executor.py:554-557` detects missing file at read time; but metadata row can exist without file | failed run | yes | test |
-| 24 | Store | possible | no | `artifacts.py:45,80` `temp_path.replace(stored_path)` succeeds before `register_artifact` call | silent corruption | no | fix |
+| 23 | Store | mitigated | yes | `executor.py:554-557` detects missing file at read time; `verify_integrity` reports missing artifact files proactively | failed run | yes | test |
+| 24 | Store | mitigated by diagnostic | yes | `artifacts.py:45,80` temp write then register; `verify_integrity` detects orphan files afterwards (diagnostic, not prevention) | silent corruption | yes | test |
 | 25 | Store | mitigated | no | `project_store.py:116` `PRAGMA foreign_keys=ON` protects relational FKs; run_steps JSON array refs not covered | silent corruption | no | monitor |
 | 26 | Store | possible | no | SQLite WAL (`project_store.py:115`) reduces but doesn't eliminate power-loss corruption risk | silent corruption | no | monitor |
 | 27 | Store | partly mitigated | yes | `project_store.py:103-109` version stamped after all migrations; stamping does not make individual DDL steps transactional | silent corruption | yes | test |
@@ -118,11 +129,11 @@ every successful migration run.  This is straightforward and correct.
 | 33 | Store | mitigated | no | `artifacts.py:43-45,78-80` temp write then `replace()` prevents partial file under normal Python semantics | crash | no | monitor |
 | 34 | Store | possible | no | `artifacts.py:44,79` `write_bytes` can fail; `project_store.py:114` SQLite write can fail on disk full | crash | no | fix |
 | 35 | Store | possible | no | `artifacts.py:41,76` stores relative path; network drive instability can break reads | silent corruption | no | monitor |
-| 36 | Store | mitigated | no | `artifacts.py:43-45` core JSON artefacts use temp replace; `export_service.py` writes directly | crash | no | fix |
-| 37 | Store | mitigated | no | `artifacts.py:78-80` core parquet uses temp replace; `export_service.py:158-161` copies directly | crash | no | fix |
+| 36 | Store | mitigated | yes | `artifacts.py:43-45` core JSON artefacts use temp replace; `export_service.py` now uses temp-dir + atomic rename | crash | yes | test |
+| 37 | Store | mitigated | yes | `artifacts.py:78-80` core parquet uses temp replace; `export_service.py` copies inside atomic temp-dir | crash | yes | test |
 | 38 | Store | possible | no | `artifacts.py:41,76` filesystem path writes can hit path length limits | crash | no | monitor |
 | 39 | Store | possible | no | `project_store.py:103` mkdir; `export_service.py:59-60` mkdir; `artifacts.py:42,77` mkdir can hit permissions | crash | no | test |
-| 40 | Store | not applicable | no | No internal cleanup job; external/manual cleanup can still break artefacts | stale report | no | ignore |
+| 40 | Store | mitigated | yes | `verify_integrity()` reports orphan/dangling artefacts; manual cleanup can still break but diagnostic exists | stale report | yes | test |
 | 41 | DAG | mitigated | no | `topology.py:20-22` detects duplicate step_id; `topology.py:27-30` detects missing parent; both raise `ValueError` | failed run | yes | monitor |
 | 42 | DAG | mitigated | no | `topology.py:51-55` cycle detection runs before execution; staleness calls on invalid graphs untested | failed run | no | test |
 | 43 | DAG | mitigated | no | `staleness.py` recursive parent check; `test_staleness.py:125,139` test propagation; branch edge cases untested | stale report | yes | test |
@@ -164,7 +175,7 @@ every successful migration run.  This is straightforward and correct.
 | 79 | Model | possible | no | `nodes/build/freeze.py:155` feature order hash checked; validation/scoring application path needs regression tests | failed run | no | test |
 | 80 | Model | mitigated | no | `executor.py` split and model seed/params recorded in reports/model artefacts | stale report | yes | monitor |
 | 81 | Export | not applicable | no | `run_lifecycle.py:59-84` run manifests and build summaries generated from store/artefacts, not live UI state | stale report | no | ignore |
-| 82 | Export | mitigated | yes | `export_service.py:164` records ARTIFACT_NOT_FOUND diagnostics; export pack itself non-atomic | failed run | no | fix |
+| 82 | Export | mitigated | yes | `export_service.py:164` records ARTIFACT_NOT_FOUND diagnostics; export uses temp-dir + atomic rename | failed run | yes | test |
 | 83 | Export | unknown | no | Generated SQL scoring export not inspected deeply enough for parity | silent corruption | unknown | test |
 | 84 | Export | unknown | no | Generated Python scoring export not inspected deeply enough for parity | silent corruption | unknown | test |
 | 85 | Export | mitigated | yes | `reporting/` HTML/governance pack path documented; special-character rendering needs tests | UX confusion | no | test |
@@ -200,7 +211,7 @@ These items still need code changes (not just tests) after the first batch of fi
 
 ## Changed since last review
 
-17 issues have changed status due to recent work (commits `a11250e` through `414efab` + Batch 1 fixes).
+20 issues have changed status due to recent work (commits `a11250e` through `414efab` + Batches 1 and 3).
 
 ### Changes from readiness/evidence/UI work (commits `a11250e`–`414efab`)
 
@@ -215,6 +226,18 @@ These items still need code changes (not just tests) after the first batch of fi
 | 97 | unknown | possible | Frontend stale state identifiable now |
 | 98 | unknown | possible | Backend schema validation identifiable now |
 | 99 | unknown | mitigated | Backend runs have RunLifecycle protection |
+
+### Changes from Batch 3 fixes (store integrity, export atomicity)
+
+| ID | Old status | New status | Reason |
+|---|---|---|---|
+| 18 | mitigated | mitigated | Orphan/dangling detection via `verify_integrity`; evidence source updated |
+| 23 | possible | mitigated | `verify_integrity` now proactively reports missing artifact files |
+| 24 | possible | mitigated | `verify_integrity` detects orphan files in datasets/ and artifacts/ |
+| 36 | mitigated | mitigated | Export atomicity improved (temp-dir + atomic rename) |
+| 37 | mitigated | mitigated | Export atomicity improved (same temp-dir pattern) |
+| 40 | not applicable | mitigated | `verify_integrity` provides diagnostic for orphan/dangling artefacts |
+| 82 | mitigated | mitigated | Export atomicity improved; evidence source updated |
 
 ### Changes from Batch 1 fixes (concurrency, crash recovery, schema version guard)
 

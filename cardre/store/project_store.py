@@ -12,6 +12,7 @@ import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -1048,6 +1049,121 @@ class ProjectStore:
             if row and row["max_len"] is not None and row["max_len"] > 100_000:
                 return False
         return True
+
+    def verify_integrity(
+        self,
+        stale_run_max_age_seconds: int = 86400,
+    ) -> IntegrityReport:
+        """Run integrity checks against the store and filesystem.
+
+        Returns an ``IntegrityReport`` with four categories:
+        - **missing_artifact_files**: artifact rows whose ``path`` does not exist
+          on the filesystem.
+        - **orphan_artifact_files**: files under ``datasets/`` and ``artifacts/``
+          that have no matching row in the ``artifacts`` table.
+        - **dangling_run_step_refs**: artifact IDs referenced in
+          ``run_steps.input_artifact_ids_json`` or
+          ``run_steps.output_artifact_ids_json`` that are absent from the
+          ``artifacts`` table.  Each entry includes a ``direction`` field.
+        - **stale_running_runs**: runs with ``status='running'`` where both
+          ``started_at`` and ``heartbeat_at`` are older than
+          *stale_run_max_age_seconds*.
+        """
+        conn = self._connect()
+
+        # 1. Missing artifact files
+        missing_artifact_files: list[dict] = []
+        for row in conn.execute("SELECT artifact_id, path, physical_hash FROM artifacts").fetchall():
+            full_path = self.root / row["path"]
+            if not full_path.exists():
+                missing_artifact_files.append({
+                    "artifact_id": row["artifact_id"],
+                    "path": row["path"],
+                    "physical_hash": row["physical_hash"],
+                })
+
+        # 2. Orphan artifact files
+        known_paths = {
+            str((self.root / r["path"]).resolve())
+            for r in conn.execute("SELECT path FROM artifacts").fetchall()
+        }
+        orphan_artifact_files: list[dict] = []
+        for subdir in ("datasets", "artifacts"):
+            target = self.root / subdir
+            if not target.is_dir():
+                continue
+            for fpath in sorted(target.rglob("*")):
+                if not fpath.is_file():
+                    continue
+                resolved = str(fpath.resolve())
+                if resolved not in known_paths:
+                    orphan_artifact_files.append({
+                        "path": str(fpath.relative_to(self.root)),
+                        "size": fpath.stat().st_size,
+                    })
+
+        # 3. Dangling run-step refs (input and output artifact IDs)
+        known_artifact_ids = {
+            r["artifact_id"]
+            for r in conn.execute("SELECT artifact_id FROM artifacts").fetchall()
+        }
+        dangling_run_step_refs: list[dict] = []
+        for row in conn.execute(
+            "SELECT run_step_id, input_artifact_ids_json, output_artifact_ids_json "
+            "FROM run_steps"
+        ).fetchall():
+            for direction, col in (("input", "input_artifact_ids_json"), ("output", "output_artifact_ids_json")):
+                for aid in json.loads(row[col]):
+                    if aid not in known_artifact_ids:
+                        dangling_run_step_refs.append({
+                            "run_step_id": row["run_step_id"],
+                            "artifact_id": aid,
+                            "direction": direction,
+                        })
+
+        # 4. Stale running runs (same logic as recover_interrupted_runs)
+        stale_running_runs: list[dict] = []
+        now = utc_now_iso()
+        threshold = parse_iso(now).timestamp() - stale_run_max_age_seconds
+        threshold_iso = (
+            datetime.fromtimestamp(threshold, tz=UTC)
+            .replace(microsecond=0)
+            .isoformat()
+        )
+        for row in conn.execute(
+            "SELECT run_id, plan_version_id, started_at, branch_id FROM runs "
+            "WHERE status = 'running' AND started_at < ? "
+            "AND (heartbeat_at IS NULL OR heartbeat_at < ?)",
+            (threshold_iso, threshold_iso),
+        ).fetchall():
+            stale_running_runs.append({
+                "run_id": row["run_id"],
+                "plan_version_id": row["plan_version_id"],
+                "started_at": row["started_at"],
+                "branch_id": row["branch_id"],
+            })
+
+        return IntegrityReport(
+            missing_artifact_files=missing_artifact_files,
+            orphan_artifact_files=orphan_artifact_files,
+            dangling_run_step_refs=dangling_run_step_refs,
+            stale_running_runs=stale_running_runs,
+        )
+
+
+# ------------------------------------------------------------------
+# Integrity report
+# ------------------------------------------------------------------
+
+
+@dataclass
+class IntegrityReport:
+    """Report of integrity checks run against a project store."""
+
+    missing_artifact_files: list[dict]  # artifact rows with missing files
+    orphan_artifact_files: list[dict]   # filesystem files with no artifact row
+    dangling_run_step_refs: list[dict]  # run_step artifact IDs absent from artifacts
+    stale_running_runs: list[dict]      # runs stuck in 'running' with stale heartbeat
 
 
 def hashlib_data(data: bytes) -> str:
