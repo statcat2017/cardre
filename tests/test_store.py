@@ -329,3 +329,298 @@ class BranchCrudTests(unittest.TestCase):
         )
         rows = self.store.get_branch_step_map(branch_id)
         self.assertGreaterEqual(len(rows), 1)
+
+
+# ======================================================================
+# Slice 4: Concurrent run prevention
+# ======================================================================
+
+class ConcurrentRunTests(unittest.TestCase):
+
+    def _setup_run(self, store):
+        pid = store.create_project("test")
+        plan_id = store.create_plan(pid, "test-plan")
+        pv_id = store.create_plan_version(plan_id, [])
+        return pid, plan_id, pv_id
+
+    def test_create_run_raises_when_run_in_progress(self) -> None:
+        store, tmp = make_store()
+        _, _, pv_id = self._setup_run(store)
+        r1 = store.create_run(pv_id)
+        self.assertIsNotNone(r1)
+        from cardre.errors import ConcurrentRunError
+        with self.assertRaises(ConcurrentRunError):
+            store.create_run(pv_id)
+
+    def test_create_run_force_bypasses_check(self) -> None:
+        store, tmp = make_store()
+        _, _, pv_id = self._setup_run(store)
+        r1 = store.create_run(pv_id)
+        self.assertIsNotNone(r1)
+        r2 = store.create_run(pv_id, force=True)
+        self.assertIsNotNone(r2)
+        self.assertNotEqual(r1, r2)
+
+    def test_finished_run_does_not_block(self) -> None:
+        store, tmp = make_store()
+        _, _, pv_id = self._setup_run(store)
+        r1 = store.create_run(pv_id)
+        store.finish_run(r1, "succeeded")
+        r2 = store.create_run(pv_id)
+        self.assertIsNotNone(r2)
+
+    def test_concurrent_check_scoped_by_plan_version(self) -> None:
+        store, tmp = make_store()
+        pid = store.create_project("test")
+        plan_id = store.create_plan(pid, "test-plan")
+        pv1_id = store.create_plan_version(plan_id, [])
+        pv2_id = store.create_plan_version(plan_id, [])
+        r1 = store.create_run(pv1_id)
+        self.assertIsNotNone(r1)
+        r2 = store.create_run(pv2_id)
+        self.assertIsNotNone(r2)
+
+    def test_concurrent_check_scoped_by_branch(self) -> None:
+        store, tmp = make_store()
+        _, _, pv_id = self._setup_run(store)
+        r_main = store.create_run(pv_id, branch_id=None)
+        self.assertIsNotNone(r_main)
+        r_branch = store.create_run(pv_id, branch_id="branch-1")
+        self.assertIsNotNone(r_branch)
+        r_branch2 = store.create_run(pv_id, branch_id="branch-2")
+        self.assertIsNotNone(r_branch2)
+        from cardre.errors import ConcurrentRunError
+        with self.assertRaises(ConcurrentRunError):
+            store.create_run(pv_id, branch_id="branch-1")
+
+
+# ======================================================================
+# Slice 5: Stale run recovery
+# ======================================================================
+
+class StaleRunRecoveryTests(unittest.TestCase):
+
+    def _setup_recovery_run(self, store):
+        pid = store.create_project("test")
+        plan_id = store.create_plan(pid, "test-plan")
+        pv_id = store.create_plan_version(plan_id, [])
+        return store.create_run(pv_id)
+
+    def test_recover_marks_old_running_as_interrupted(self) -> None:
+        store, tmp = make_store()
+        run_id = self._setup_recovery_run(store)
+        # Manually backdate the started_at AND heartbeat_at to be old
+        old_time = "2020-01-01T00:00:00"
+        store._connect().execute(
+            "UPDATE runs SET started_at = ?, heartbeat_at = ? WHERE run_id = ?",
+            (old_time, old_time, run_id),
+        )
+        recovered = store.recover_interrupted_runs(max_age_seconds=1)
+        self.assertEqual(len(recovered), 1)
+        self.assertEqual(recovered[0]["run_id"], run_id)
+        # Verify status changed
+        run = store.get_run(run_id)
+        self.assertEqual(run["status"], "interrupted")
+
+    def test_recent_running_unaffected(self) -> None:
+        store, tmp = make_store()
+        run_id = self._setup_recovery_run(store)
+        recovered = store.recover_interrupted_runs(max_age_seconds=86400)
+        self.assertEqual(len(recovered), 0)
+        run = store.get_run(run_id)
+        self.assertEqual(run["status"], "running")
+
+    def test_recover_runs_explicit_call(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from cardre.store import ProjectStore
+
+        tmp = Path(tempfile.mkdtemp())
+        store = ProjectStore(tmp / "test.cardre")
+        store.initialize()
+        pid = store.create_project("test")
+        plan_id = store.create_plan(pid, "test-plan")
+        pv_id = store.create_plan_version(plan_id, [])
+        run_id = store.create_run(pv_id)
+        old_time = "2021-06-01T00:00:00"
+        store._connect().execute(
+            "UPDATE runs SET started_at = ?, heartbeat_at = ? WHERE run_id = ?",
+            (old_time, old_time, run_id),
+        )
+        store._connect().commit()
+        store2 = ProjectStore(tmp / "test.cardre")
+        store2._connect()
+        recovered = store2.recover_interrupted_runs()
+        self.assertGreaterEqual(len(recovered), 1)
+        self.assertEqual(recovered[0]["run_id"], run_id)
+        run = store2.get_run(run_id)
+        self.assertEqual(run["status"], "interrupted")
+
+
+# ======================================================================
+# Slice 6: Heartbeat and recovery safety
+# ======================================================================
+
+class HeartbeatTests(unittest.TestCase):
+
+    def _setup_run(self, store):
+        pid = store.create_project("test")
+        plan_id = store.create_plan(pid, "test-plan")
+        pv_id = store.create_plan_version(plan_id, [])
+        return store.create_run(pv_id)
+
+    def test_heartbeat_updates_timestamp(self) -> None:
+        store, tmp = make_store()
+        run_id = self._setup_run(store)
+        # Manually set heartbeat to a known old value
+        old_time = "2020-01-01T00:00:00"
+        store._connect().execute(
+            "UPDATE runs SET heartbeat_at = ? WHERE run_id = ?",
+            (old_time, run_id),
+        )
+        store.run_heartbeat(run_id)
+        run = store.get_run(run_id)
+        self.assertGreater(run["heartbeat_at"], old_time)
+
+    def test_active_heartbeat_prevents_recovery(self) -> None:
+        store, tmp = make_store()
+        run_id = self._setup_run(store)
+        # Backdate started_at but keep a recent heartbeat
+        old_time = "2020-01-01T00:00:00"
+        store._connect().execute(
+            "UPDATE runs SET started_at = ? WHERE run_id = ?",
+            (old_time, run_id),
+        )
+        store.run_heartbeat(run_id)  # now heartbeat_at is recent
+        recovered = store.recover_interrupted_runs(max_age_seconds=1)
+        self.assertEqual(len(recovered), 0)
+        run = store.get_run(run_id)
+        self.assertEqual(run["status"], "running")
+
+    def test_old_heartbeat_allows_recovery(self) -> None:
+        store, tmp = make_store()
+        run_id = self._setup_run(store)
+        old_time = "2020-01-01T00:00:00"
+        store._connect().execute(
+            "UPDATE runs SET started_at = ?, heartbeat_at = ? WHERE run_id = ?",
+            (old_time, old_time, run_id),
+        )
+        recovered = store.recover_interrupted_runs(max_age_seconds=1)
+        self.assertEqual(len(recovered), 1)
+        run = store.get_run(run_id)
+        self.assertEqual(run["status"], "interrupted")
+
+
+# ======================================================================
+# Slice 7: Concurrent-connection race test for BEGIN IMMEDIATE
+# ======================================================================
+
+class ConcurrentConnectionTests(unittest.TestCase):
+    """Verify that two ProjectStore instances on the same path serialise
+    create_run correctly via BEGIN IMMEDIATE."""
+
+    def test_two_connections_serialise_create_run(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from cardre.store import ProjectStore
+
+        tmp = Path(tempfile.mkdtemp())
+        s1 = ProjectStore(tmp / "test.cardre")
+        s1.initialize()
+        pid = s1.create_project("test")
+        plan_id = s1.create_plan(pid, "test-plan")
+        pv_id = s1.create_plan_version(plan_id, [])
+
+        s2 = ProjectStore(tmp / "test.cardre")
+        s2._connect()  # open the same SQLite file
+
+        results: list[str] = []
+        errors: list[str] = []
+
+        def try_create(store, label):
+            from cardre.errors import ConcurrentRunError
+            try:
+                rid = store.create_run(pv_id)
+                results.append(f"{label}:{rid}")
+            except ConcurrentRunError:
+                errors.append(f"{label}:rejected")
+
+        import threading
+        t1 = threading.Thread(target=try_create, args=(s1, "s1"))
+        t2 = threading.Thread(target=try_create, args=(s2, "s2"))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        # Exactly one should succeed, the other should be rejected
+        self.assertEqual(len(results), 1)
+        self.assertEqual(len(errors), 1)
+
+    def test_two_connections_force_bypasses(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from cardre.store import ProjectStore
+
+        tmp = Path(tempfile.mkdtemp())
+        s1 = ProjectStore(tmp / "test.cardre")
+        s1.initialize()
+        pid = s1.create_project("test")
+        plan_id = s1.create_plan(pid, "test-plan")
+        pv_id = s1.create_plan_version(plan_id, [])
+
+        s2 = ProjectStore(tmp / "test.cardre")
+        s2._connect()
+
+        results: list[str] = []
+        errors: list[str] = []
+
+        def try_force(store, label):
+            from cardre.errors import ConcurrentRunError
+            try:
+                rid = store.create_run(pv_id, force=True)
+                results.append(f"{label}:{rid}")
+            except ConcurrentRunError:
+                errors.append(f"{label}:rejected")
+
+        import threading
+        t1 = threading.Thread(target=try_force, args=(s1, "s1"))
+        t2 = threading.Thread(target=try_force, args=(s2, "s2"))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        # Both should succeed (force bypasses check)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(len(errors), 0)
+        # Both should be distinct run IDs
+        self.assertNotEqual(results[0].split(":")[1], results[1].split(":")[1])
+
+
+# ======================================================================
+# Slice 8: Schema version guard
+# ======================================================================
+
+class SchemaVersionGuardTests(unittest.TestCase):
+
+    def test_new_store_gets_schema_version_stamped(self) -> None:
+        store, tmp = make_store()
+        row = store._connect().execute(
+            "SELECT value FROM store_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(int(row["value"]), 2)
+
+    def test_schema_version_accepts_compatible(self) -> None:
+        store, tmp = make_store()
+        store._check_schema_version()  # should not raise
+
+    def test_schema_version_rejects_newer(self) -> None:
+        store, tmp = make_store()
+        store._connect().execute(
+            "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_version', '99')"
+        )
+        from cardre.errors import SchemaVersionError
+        with self.assertRaises(SchemaVersionError):
+            store._check_schema_version()

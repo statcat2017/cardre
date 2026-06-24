@@ -43,6 +43,16 @@ class GovernanceNotEnabled(CardreError):
     pass
 
 
+class ConcurrentRunError(CardreError):
+    """Raised when a run is requested but one is already in progress for the same scope."""
+    pass
+
+
+class SchemaVersionError(CardreError):
+    """Raised when the store schema version is newer than the app supports."""
+    pass
+
+
 __all__ = [
     "CardreError",
     "GraphValidationError",
@@ -54,4 +64,6 @@ __all__ = [
     "ContractViolationError",
     "NodeNotAvailableForLaunch",
     "GovernanceNotEnabled",
+    "ConcurrentRunError",
+    "SchemaVersionError",
 ]

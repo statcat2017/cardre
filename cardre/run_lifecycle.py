@@ -266,14 +266,16 @@ class RunLifecycle:
         execution_mode: str = "unknown",
         target_step_id: str | None = None,
         in_scope_step_ids: list[str] | None = None,
+        force: bool = False,
     ) -> RunLifecycle:
         """Create or accept a run.
 
         When *run_id* is provided, the run must already exist in
         ``running`` state.
+        When *force* is True, the concurrent-run check is skipped.
         """
         if run_id is None:
-            run_id = store.create_run(plan_version_id, branch_id=branch_id)
+            run_id = store.create_run(plan_version_id, branch_id=branch_id, force=force)
         return cls(
             store=store, run_id=run_id, plan_version_id=plan_version_id,
             execution_mode=execution_mode,

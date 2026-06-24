@@ -308,6 +308,30 @@ class TestRuns:
         matching = [r for r in all_runs if r["run_id"] == data["run_id"]]
         assert len(matching) == 1, "Expected exactly one run record for the failed run"
 
+    def test_concurrent_run_returns_409(self, client, tmp_dir):
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+
+        store = ProjectStore(proj_path)
+        plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
+        pv_id = store.get_latest_plan_version_id(plan_id)
+
+        # Simulate an in-progress run by creating one directly
+        running_run_id = store.create_run(pv_id)
+        assert running_run_id is not None
+
+        # Second run on the same plan_version should be rejected
+        resp = client.post("/runs", json={
+            "project_id": proj["project_id"],
+            "plan_version_id": pv_id,
+        })
+        assert resp.status_code == 409
+        detail = resp.json().get("detail", {})
+        assert detail.get("code") == "CONCURRENT_RUN"
+
+        # Cleanup
+        store.finish_run(running_run_id, "failed")
+
     def test_get_run_steps(self, client, tmp_dir, sample_german_credit):
         proj_path = tmp_dir / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
