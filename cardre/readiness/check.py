@@ -214,6 +214,19 @@ def check_report_readiness(
                         "Mark review complete or accept automated bins before generating the report.",
                         step_id=mb_ref.step_id,
                     ))
+                else:
+                    # Warn if reviewed but overrides are missing reason_code
+                    overrides = params.get("overrides", [])
+                    if overrides and any(
+                        not ov.get("reason_code") or not ov.get("reason")
+                        for ov in overrides
+                    ):
+                        warnings.append(ReadinessWarning(
+                            LimitationCode.MANUAL_BINNING_REVIEWED_WITH_WARNINGS,
+                            "Manual binning review is complete but some overrides are missing "
+                            "a reason code or reason. Consider reopening review to address them.",
+                            step_id=mb_ref.step_id,
+                        ))
 
     # Check OOT dataset role
     if not _check_oot_exists(store, run_id):

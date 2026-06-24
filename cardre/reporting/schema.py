@@ -281,6 +281,22 @@ class ManualIntervention(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Manual-binning review state (Phase 4)
+# ---------------------------------------------------------------------------
+
+
+class ManualBinningReviewState(BaseModel):
+    review_status: str = "not_started"
+    accepted_automated: bool = False
+    edited_variable_count: int = 0
+    variables_edited: list[str] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+    reviewed_at: str = ""
+    reviewed_by: str = ""
+    review_reason: str = ""
+
+
+# ---------------------------------------------------------------------------
 # Redundancy / variable clustering
 # ---------------------------------------------------------------------------
 
@@ -410,6 +426,7 @@ class ReportBundle(BaseModel):
     validation: ValidationInfo = Field(default_factory=ValidationInfo)
     cutoffs: CutoffInfo = Field(default_factory=CutoffInfo)
     manual_interventions: list[ManualIntervention] = Field(default_factory=list)
+    manual_binning_review: ManualBinningReviewState = Field(default_factory=ManualBinningReviewState)
     redundancy_review: RedundancyReviewInfo = Field(default_factory=RedundancyReviewInfo)
     limitations: list[Limitation] = Field(default_factory=list)
     reproducibility: ReproducibilityInfo = Field(default_factory=ReproducibilityInfo)
