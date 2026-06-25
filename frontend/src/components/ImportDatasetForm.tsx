@@ -6,9 +6,21 @@ interface Props {
   projectId: string;
   onImported: () => void;
   onError?: (e: Error) => void;
+  headerContent?: React.ReactNode;
+  successContent?: React.ReactNode;
+  label?: string;
+  placeholder?: string;
 }
 
-export function ImportDatasetForm({ projectId, onImported, onError }: Props) {
+export function ImportDatasetForm({
+  projectId,
+  onImported,
+  onError,
+  headerContent,
+  successContent,
+  label = "Source File Path",
+  placeholder = "/path/to/applications.csv",
+}: Props) {
   const [importPath, setImportPath] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -46,15 +58,17 @@ export function ImportDatasetForm({ projectId, onImported, onError }: Props) {
           backgroundColor: theme.surface,
         }}
       >
+        {headerContent}
+
         <div style={{ marginBottom: 12 }}>
           <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: theme.textSoft }}>
-            Source File Path
+            {label}
           </label>
           <input
             type="text"
             value={importPath}
             onChange={(e) => setImportPath(e.target.value)}
-            placeholder="/path/to/applications.csv"
+            placeholder={placeholder}
             style={{
               width: "100%",
               padding: "10px 12px",
@@ -101,7 +115,7 @@ export function ImportDatasetForm({ projectId, onImported, onError }: Props) {
           {importMutation.isPending ? "Importing..." : "Import"}
         </button>
 
-        {importMutation.isSuccess && (
+        {importMutation.isSuccess && successContent && (
           <div
             style={{
               marginTop: 12,
@@ -113,8 +127,7 @@ export function ImportDatasetForm({ projectId, onImported, onError }: Props) {
               fontSize: 12,
             }}
           >
-            Dataset imported and registered. The Scorecard Pathway import step has been configured.
-            Run the pathway to create run evidence.
+            {successContent}
           </div>
         )}
       </div>

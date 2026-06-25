@@ -59,6 +59,7 @@ class XGBoostClassifierNode(BaseClassifierNode):
                             name="feature_strategy",
                             label="Feature strategy",
                             kind="enum",
+                            default="raw_numeric",
                             constraint=ParameterConstraint(
                                 enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
                             ),
@@ -201,6 +202,7 @@ class LightGBMClassifierNode(BaseClassifierNode):
                             name="feature_strategy",
                             label="Feature strategy",
                             kind="enum",
+                            default="raw_numeric",
                             constraint=ParameterConstraint(
                                 enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
                             ),
@@ -346,6 +348,7 @@ class CatBoostClassifierNode(BaseClassifierNode):
                             name="feature_strategy",
                             label="Feature strategy",
                             kind="enum",
+                            default="raw_numeric",
                             constraint=ParameterConstraint(
                                 enum_values=["raw_numeric", "encoded_raw", "woe_challenger"],
                             ),

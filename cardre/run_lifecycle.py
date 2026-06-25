@@ -107,9 +107,9 @@ def write_manifest(
     """Read current run state and write a manifest artifact.
 
     The manifest is built directly from store state (run record + run
-    steps), so *run_step_records* and *steps* are intentionally omitted
-    from the signature — they are carried by ``RunFinalisation`` for
-    future deterministic manifest construction, not used here yet.
+    steps).  ``RunFinalisation`` carries only the metadata needed for
+    finalisation (status, mode, scope); the manifest payload is
+    constructed from the store, not from the finalisation struct.
     """
     run_record = store.get_run(run_id)
     if run_record is None:

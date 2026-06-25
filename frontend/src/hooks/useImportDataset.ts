@@ -5,7 +5,7 @@ const DEFAULT_IMPORT_PAYLOAD = {
   dataset_id: "",
   format: "auto" as const,
   has_header: true,
-  schema_overrides: {} as Record<string, unknown>,
+  schema_overrides: {} as Record<string, string>,
 };
 
 export function useImportDataset(onSuccess?: () => void, onError?: (e: Error) => void) {

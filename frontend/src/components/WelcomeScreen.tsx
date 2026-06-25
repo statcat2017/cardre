@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { useImportDataset } from "../hooks/useImportDataset";
+import { ImportDatasetForm } from "./ImportDatasetForm";
 import { theme } from "../styles";
 
 interface Props {
@@ -11,7 +11,6 @@ interface Props {
 export function WelcomeScreen({ onProjectCreated }: Props) {
   const [projectPath, setProjectPath] = useState("");
   const [projectName, setProjectName] = useState("My Scorecard");
-  const [importPath, setImportPath] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<"create" | "import" | "ready">("create");
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -26,14 +25,6 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
     onError: (e: Error) => setError(e.message),
   });
 
-  const importMutation = useImportDataset(
-    () => {
-      setStep("ready");
-      setError(null);
-    },
-    (e) => setError(e.message),
-  );
-
   const handleCreate = () => {
     if (!projectPath.trim()) {
       setError("Please enter a project path");
@@ -44,18 +35,6 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
       return;
     }
     createMutation.mutate({ path: projectPath.trim(), name: projectName.trim() });
-  };
-
-  const handleImport = () => {
-    if (!importPath.trim()) {
-      setError("Please enter the path to a data file (CSV, TSV, or Parquet)");
-      return;
-    }
-    if (!projectId) return;
-    importMutation.mutate({
-      project_id: projectId,
-      source_path: importPath.trim(),
-    });
   };
 
   const handleOpenProject = () => {
@@ -197,76 +176,37 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
           </div>
         )}
 
-        {step === "import" && (
-          <div
-            style={{
-              padding: 32,
-              border: `1px solid ${theme.border}`,
-              borderRadius: 12,
-              backgroundColor: theme.surface,
+        {step === "import" && projectId && (
+          <ImportDatasetForm
+            projectId={projectId}
+            onImported={() => {
+              setStep("ready");
+              setError(null);
             }}
-          >
-            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 18, color: theme.text }}>
-              Import Dataset
-            </h2>
-            <div
-              style={{
-                padding: "12px 14px",
-                backgroundColor: theme.blueBg,
-                border: `1px solid ${theme.border}`,
-                borderRadius: 6,
-                fontSize: 12,
-                color: theme.blueText,
-                marginBottom: 16,
-                lineHeight: 1.5,
-              }}
-            >
-              <strong>How it works:</strong> Import runs in a hidden <code>__import__</code>{' '}
-              plan to preserve source-data evidence separately. After import, the{' '}
-              <strong>Scorecard Pathway</strong> consumes the imported artifact and records
-              its own modelling run evidence — the two plans remain independent
-              so you can always trace the original source data. Import evidence is
-              visible in the Artifacts browser.
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: theme.textSoft }}>
-                File Path
-              </label>
-              <input
-                type="text"
-                value={importPath}
-                onChange={(e) => setImportPath(e.target.value)}
-                placeholder="/path/to/applications.csv"
+            onError={(e) => setError(e.message)}
+            label="File Path"
+            headerContent={
+              <div
                 style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  border: `1px solid ${theme.borderStrong}`,
+                  padding: "12px 14px",
+                  backgroundColor: theme.blueBg,
+                  border: `1px solid ${theme.border}`,
                   borderRadius: 6,
-                  fontSize: 14,
-                  boxSizing: "border-box",
-                  color: theme.text,
-                  backgroundColor: theme.surface,
+                  fontSize: 12,
+                  color: theme.blueText,
+                  marginBottom: 16,
+                  lineHeight: 1.5,
                 }}
-              />
-            </div>
-            <button
-              onClick={handleImport}
-              disabled={importMutation.isPending}
-              style={{
-                width: "100%",
-                padding: "10px 16px",
-                borderRadius: 6,
-                border: "none",
-                backgroundColor: importMutation.isPending ? theme.mutedSoft : theme.text,
-                color: "#fff",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: importMutation.isPending ? "not-allowed" : "pointer",
-              }}
-            >
-              {importMutation.isPending ? "Importing..." : "Import"}
-            </button>
-          </div>
+              >
+                <strong>How it works:</strong> Import runs in a hidden <code>__import__</code>{" "}
+                plan to preserve source-data evidence separately. After import, the{" "}
+                <strong>Scorecard Pathway</strong> consumes the imported artifact and records
+                its own modelling run evidence — the two plans remain independent
+                so you can always trace the original source data. Import evidence is
+                visible in the Artifacts browser.
+              </div>
+            }
+          />
         )}
 
         {step === "ready" && (
