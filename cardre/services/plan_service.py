@@ -24,12 +24,17 @@ from cardre.services.plan_dto import (
 )
 
 
-class PlanValidationError(Exception):
+from cardre.errors import CardreError
+
+
+class PlanValidationError(CardreError):
     """Raised when plan-level business rules are violated.
 
     Routes catch this and convert it to ``HTTPException`` using the
     ``status_code``, ``code``, and ``message`` fields.
     """
+    code = "PLAN_VALIDATION_FAILED"
+    status_code = 422
 
     def __init__(
         self,
@@ -45,7 +50,7 @@ class PlanValidationError(Exception):
         if extra:
             detail.update(extra)
         self.detail = detail
-        super().__init__(message)
+        super().__init__(message, context=extra or {})
 
 
 class PlanService:

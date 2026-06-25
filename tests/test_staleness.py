@@ -7,6 +7,7 @@ import uuid
 import pytest
 
 from cardre.audit import RunStepRecord, StepSpec, json_logical_hash, replace_step_params, utc_now_iso
+from cardre.errors import GraphValidationError
 from cardre.staleness import compute_staleness, staleness_detail, step_is_stale, _find_spec
 from tests.helpers import make_store
 
@@ -84,7 +85,7 @@ class FindSpecTests:
         assert _find_spec("b", steps).step_id == "b"
 
     def test_raises_on_missing_step(self) -> None:
-        with pytest.raises(KeyError):
+        with pytest.raises(GraphValidationError):
             _find_spec("nonexistent", [_make_step("a")])
 
 

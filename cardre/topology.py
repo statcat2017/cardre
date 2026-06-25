@@ -7,26 +7,31 @@ validate plans without accessing private executor methods.
 from __future__ import annotations
 
 from cardre.audit import StepSpec
+from cardre.errors import GraphValidationError
 
 
 def validate_topology(steps: list[StepSpec]) -> None:
     """Validate plan step topology and reorder in topological order.
 
-    Raises ``ValueError`` on cycles or missing parent references.
+    Raises ``GraphValidationError`` on cycles or missing parent references.
     Mutates *steps* (sorts in place).
     """
     seen: set[str] = set()
     for step in steps:
         if step.step_id in seen:
-            raise ValueError(f"Duplicate step_id {step.step_id!r}")
+            raise GraphValidationError(
+                f"Duplicate step_id {step.step_id!r}",
+                context={"step_id": step.step_id},
+            )
         seen.add(step.step_id)
 
     step_ids = {s.step_id for s in steps}
     for step in steps:
         for pid in step.parent_step_ids:
             if pid not in step_ids:
-                raise ValueError(
-                    f"Step {step.step_id!r} references missing parent {pid!r}"
+                raise GraphValidationError(
+                    f"Step {step.step_id!r} references missing parent {pid!r}",
+                    context={"step_id": step.step_id, "parent_step_id": pid},
                 )
 
     parent_map: dict[str, set[str]] = {s.step_id: set(s.parent_step_ids) & step_ids for s in steps}
@@ -49,9 +54,10 @@ def validate_topology(steps: list[StepSpec]) -> None:
         queue.sort()
 
     if len(sorted_ids) != len(steps):
-        raise ValueError(
+        raise GraphValidationError(
             f"Cycle detected in plan steps: {len(steps)} steps, "
-            f"only {len(sorted_ids)} topologically sortable"
+            f"only {len(sorted_ids)} topologically sortable",
+            context={"step_count": len(steps), "sortable_count": len(sorted_ids)},
         )
 
     step_by_id = {s.step_id: s for s in steps}

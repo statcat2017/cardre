@@ -28,6 +28,10 @@
 
 ADRs are immutable decision records in [docs/adr/](adr/). They are historical records, not current implementation instructions.
 
+## Active Plans
+
+- [Error Handling Hardening](plans/error-handling-hardening-batch/README.md) — launch-blocker sprint to eliminate hidden failures across backend, sidecar, and frontend. Seven-batch delivery plan with per-batch LLM implementation prompts.
+
 ## Historical Plans
 
 Historical implementation plans, sprint prompts, and plan reviews remain under `docs/plans/`, `docs/evidence-hardening/`, and `docs/plan-reviews/`. These are historical design inputs, not current implementation instructions.
