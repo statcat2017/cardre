@@ -43,8 +43,6 @@ class XGBoostClassifierNode(BaseClassifierNode):
     output_roles: list[str] = ["model"]
     model_family = "xgboost"
 
-    VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
-
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
         return NodeParameterSchema(
@@ -101,41 +99,6 @@ class XGBoostClassifierNode(BaseClassifierNode):
                 ),
             ],
         )
-
-    def validate_params(self, params: dict[str, Any]) -> list[str]:
-        errors: list[str] = []
-        feature_strategy = params.get("feature_strategy", "")
-        if feature_strategy not in self.VALID_FEATURE_STRATEGIES:
-            errors.append(f"feature_strategy must be one of {sorted(self.VALID_FEATURE_STRATEGIES)}")
-
-        n_estimators = params.get("n_estimators", 100)
-        try:
-            if int(n_estimators) < 1:
-                errors.append("n_estimators must be >= 1")
-        except (ValueError, TypeError):
-            errors.append("n_estimators must be an integer")
-
-        max_depth = params.get("max_depth", 6)
-        try:
-            if int(max_depth) < 1:
-                errors.append("max_depth must be >= 1")
-        except (ValueError, TypeError):
-            errors.append("max_depth must be an integer")
-
-        learning_rate = params.get("learning_rate", 0.1)
-        try:
-            if float(learning_rate) <= 0:
-                errors.append("learning_rate must be > 0")
-        except (ValueError, TypeError):
-            errors.append("learning_rate must be a number")
-
-        random_seed = params.get("random_seed", 42)
-        try:
-            int(random_seed)
-        except (ValueError, TypeError):
-            errors.append("random_seed must be an integer")
-
-        return errors
 
     def _check_dependencies(self) -> None:
         _check_optional_dependency("xgboost", "xgboost")
@@ -222,8 +185,6 @@ class LightGBMClassifierNode(BaseClassifierNode):
     output_roles: list[str] = ["model"]
     model_family = "lightgbm"
 
-    VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
-
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
         return NodeParameterSchema(
@@ -280,42 +241,6 @@ class LightGBMClassifierNode(BaseClassifierNode):
                 ),
             ],
         )
-
-    def validate_params(self, params: dict[str, Any]) -> list[str]:
-        errors: list[str] = []
-        feature_strategy = params.get("feature_strategy", "")
-        if feature_strategy not in self.VALID_FEATURE_STRATEGIES:
-            errors.append(f"feature_strategy must be one of {sorted(self.VALID_FEATURE_STRATEGIES)}")
-
-        n_estimators = params.get("n_estimators", 100)
-        try:
-            if int(n_estimators) < 1:
-                errors.append("n_estimators must be >= 1")
-        except (ValueError, TypeError):
-            errors.append("n_estimators must be an integer")
-
-        max_depth = params.get("max_depth", -1)
-        if max_depth is not None:
-            try:
-                if int(max_depth) < -1:
-                    errors.append("max_depth must be >= -1")
-            except (ValueError, TypeError):
-                errors.append("max_depth must be an integer")
-
-        learning_rate = params.get("learning_rate", 0.1)
-        try:
-            if float(learning_rate) <= 0:
-                errors.append("learning_rate must be > 0")
-        except (ValueError, TypeError):
-            errors.append("learning_rate must be a number")
-
-        random_seed = params.get("random_seed", 42)
-        try:
-            int(random_seed)
-        except (ValueError, TypeError):
-            errors.append("random_seed must be an integer")
-
-        return errors
 
     def _check_dependencies(self) -> None:
         _check_optional_dependency("lightgbm", "lightgbm")
@@ -405,8 +330,6 @@ class CatBoostClassifierNode(BaseClassifierNode):
     output_roles: list[str] = ["model"]
     model_family = "catboost"
 
-    VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
-
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
         return NodeParameterSchema(
@@ -463,41 +386,6 @@ class CatBoostClassifierNode(BaseClassifierNode):
                 ),
             ],
         )
-
-    def validate_params(self, params: dict[str, Any]) -> list[str]:
-        errors: list[str] = []
-        feature_strategy = params.get("feature_strategy", "")
-        if feature_strategy not in self.VALID_FEATURE_STRATEGIES:
-            errors.append(f"feature_strategy must be one of {sorted(self.VALID_FEATURE_STRATEGIES)}")
-
-        iterations = params.get("iterations", 100)
-        try:
-            if int(iterations) < 1:
-                errors.append("iterations must be >= 1")
-        except (ValueError, TypeError):
-            errors.append("iterations must be an integer")
-
-        depth = params.get("depth", 6)
-        try:
-            if int(depth) < 1:
-                errors.append("depth must be >= 1")
-        except (ValueError, TypeError):
-            errors.append("depth must be an integer")
-
-        learning_rate = params.get("learning_rate", 0.1)
-        try:
-            if float(learning_rate) <= 0:
-                errors.append("learning_rate must be > 0")
-        except (ValueError, TypeError):
-            errors.append("learning_rate must be a number")
-
-        random_seed = params.get("random_seed", 42)
-        try:
-            int(random_seed)
-        except (ValueError, TypeError):
-            errors.append("random_seed must be an integer")
-
-        return errors
 
     def _check_dependencies(self) -> None:
         _check_optional_dependency("catboost", "catboost")

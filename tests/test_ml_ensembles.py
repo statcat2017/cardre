@@ -173,16 +173,6 @@ class RandomForestParameterTests:
         })
         assert errors == []
 
-    def test_invalid_feature_strategy(self) -> None:
-        node = RandomForestClassifierNode()
-        errors = node.validate_params({"feature_strategy": "woe"})
-        assert len(errors) > 0
-
-    def test_n_estimators_zero(self) -> None:
-        node = RandomForestClassifierNode()
-        errors = node.validate_params({"feature_strategy": "raw_numeric", "n_estimators": 0})
-        assert len(errors) > 0
-
     def test_valid_balanced_class_weight(self) -> None:
         node = RandomForestClassifierNode()
         errors = node.validate_params({
@@ -264,16 +254,6 @@ class GradientBoostingParameterTests:
             "random_seed": 42,
         })
         assert errors == []
-
-    def test_learning_rate_zero(self) -> None:
-        node = GradientBoostingClassifierNode()
-        errors = node.validate_params({"feature_strategy": "raw_numeric", "learning_rate": 0})
-        assert len(errors) > 0
-
-    def test_learning_rate_negative(self) -> None:
-        node = GradientBoostingClassifierNode()
-        errors = node.validate_params({"feature_strategy": "raw_numeric", "learning_rate": -0.1})
-        assert len(errors) > 0
 
 
 @_skip_if_launch

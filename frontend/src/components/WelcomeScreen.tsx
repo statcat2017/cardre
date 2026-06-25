@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { useImportDataset } from "../hooks/useImportDataset";
 import { theme } from "../styles";
 
 interface Props {
@@ -25,21 +26,13 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
     onError: (e: Error) => setError(e.message),
   });
 
-  const importMutation = useMutation({
-    mutationFn: (body: { project_id: string; source_path: string }) =>
-      api.importDataset({
-        ...body,
-        dataset_id: "",
-        format: "auto",
-        has_header: true,
-        schema_overrides: {},
-      }),
-    onSuccess: () => {
+  const importMutation = useImportDataset(
+    () => {
       setStep("ready");
       setError(null);
     },
-    onError: (e: Error) => setError(e.message),
-  });
+    (e) => setError(e.message),
+  );
 
   const handleCreate = () => {
     if (!projectPath.trim()) {

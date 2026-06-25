@@ -81,11 +81,6 @@ def preview_manual_binning_overrides(plan_id: str, step_id: str, req: ManualBinn
 
 @router.post("/{plan_id}/steps/{step_id}/manual-binning/review", response_model=ManualBinningReviewResponse)
 def review_manual_binning(plan_id: str, step_id: str, req: ManualBinningReviewRequest):
-    from cardre.services.manual_binning_service import ManualBinningService
-    from sidecar.dependencies import resolve_registry_entry
-    from cardre.store import ProjectStore
-    from pathlib import Path
-
     entry = resolve_registry_entry(req.project_id)
     store = ProjectStore(Path(entry["path"]))
     PlanService(store)._validate_manual_binning_review_params(

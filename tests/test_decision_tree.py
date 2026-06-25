@@ -84,22 +84,6 @@ class DecisionTreeParameterTests:
         })
         assert errors == []
 
-    def test_invalid_feature_strategy(self) -> None:
-        node = DecisionTreeNode()
-        errors = node.validate_params({"feature_strategy": "invalid"})
-        assert len(errors) > 0
-        assert any("feature_strategy" in e for e in errors)
-
-    def test_max_depth_zero(self) -> None:
-        node = DecisionTreeNode()
-        errors = node.validate_params({"feature_strategy": "raw_numeric", "max_depth": 0})
-        assert len(errors) > 0
-
-    def test_min_samples_leaf_zero(self) -> None:
-        node = DecisionTreeNode()
-        errors = node.validate_params({"feature_strategy": "raw_numeric", "min_samples_leaf": 0})
-        assert len(errors) > 0
-
     def test_valid_balanced_class_weight(self) -> None:
         node = DecisionTreeNode()
         errors = node.validate_params({

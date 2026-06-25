@@ -2,6 +2,14 @@
 
 These mirror the Pydantic models in ``sidecar.models`` so that
 ``cardre.services`` has no dependency on the FastAPI sidecar layer.
+
+This is an intentional boundary contract: the dataclasses here are the
+canonical service-layer return types. The Pydantic models in
+``sidecar.models`` are the API-layer serialisation types. The route
+layer converts between them via ``dataclasses.asdict()``.
+
+When adding a new response type, add it to both modules. Do not import
+``sidecar.models`` from ``cardre.services``.
 """
 
 from __future__ import annotations
