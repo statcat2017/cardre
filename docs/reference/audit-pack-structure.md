@@ -1,6 +1,6 @@
 # Audit Pack Structure
 
-The audit pack is an export format produced by the report generation service. It bundles all evidence required for model governance review. The audit pack and the report bundle are the same output — the report generation service produces both `report_bundle.json` (structured data) and `report.html` (rendered view), which together form the audit pack.
+The audit pack is an export format produced by the export service (`sidecar/routes/exports.py`). It bundles all evidence required for model governance review.
 
 ## Contents
 
@@ -15,7 +15,7 @@ The audit pack includes:
 
 ## Export Flow
 
-1. User selects report mode (`"champion"` or `"branch"`) and target branch in the frontend `ExportPanel.tsx`
+1. User selects report mode and target branch in the frontend `ExportPanel.tsx`
 2. Frontend checks readiness via the API
 3. Frontend calls `api.generateReport` with JSON and HTML output formats
 4. Backend generates the report bundle and writes it as artifacts

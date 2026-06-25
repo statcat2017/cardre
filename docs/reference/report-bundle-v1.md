@@ -6,57 +6,45 @@ The report bundle is a Pydantic model (`cardre/reporting/schema.py`) that repres
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `schema_version` | str | Schema version string |
-| `project_id` | str | Project identifier |
-| `run_id` | str | Source run identifier |
-| `target_branch_id` | str | Target branch for the report |
-| `report_mode` | str | Report mode (`"champion"` or `"branch"`) |
-| `generated_at` | datetime | Generation timestamp |
-| `generated_by` | `GeneratedBy` | Tool, version, timestamp |
-| `source` | `ReportSource` | Run, plan version, branch references |
-| `summary` | `ReportSummary` | Report metadata summary |
-| `dataset_roles` | list[`DatasetRole`] | Dataset role descriptions |
-| `pathway` | `PathwaySummary` | Step list and ordering |
-| `branches` | list[`BranchSummary`] | Branch information |
-| `champion` | `ChampionInfo` | Champion assignment (optional) |
-| `variables` | list[`VariableInfo`] | Variable-level information |
-| `model` | `ModelInfo` | Model features, training params, interpretability |
+| `report_summary` | `ReportSummary` | Metadata, generation info, source run/branch |
+| `pathway_summary` | `PathwaySummary` | Step list, branch info, champion info |
+| `dataset_info` | `DatasetTargetSummary` | Dataset roles, date ranges, target summary |
+| `model_info` | `ModelInfo` | Model features, training params, interpretability |
 | `score_scaling` | `ScoreScalingInfo` | Scorecard points, scaling params |
-| `validation` | `ValidationInfo` | Metrics by role, stability (PSI) |
-| `cutoffs` | list[`CutoffInfo`] | Cutoff analysis results |
-| `manual_interventions` | list[`ManualIntervention`] | Manual binning overrides |
-| `manual_binning_review` | `ManualBinningReviewState` | Review state for manual binning |
+| `validation_info` | `ValidationInfo` | Metrics by role, stability (PSI), cutoff analysis |
+| `manual_binning_review` | `ManualBinningReviewState` | Manual binning overrides, review state |
 | `redundancy_review` | `RedundancyReviewInfo` | Variable clustering, redundancy analysis |
-| `limitations` | list[`Limitation`] | Model limitations |
-| `reproducibility` | `ReproducibilityInfo` | Reproducibility metadata |
-| `artifacts` | list[`ArtifactEntry`] | Artifact index (field is `artifacts`, not `artefacts`) |
+| `artifacts` | `list[ArtifactEntry]` | Artifact index (note: field is `artifacts`, not `artefacts`) |
 
-## Canonical Step IDs
+## Sub-Sections
 
-Evidence is resolved by canonical step IDs defined in `cardre/reporting/evidence_contract.py`:
+### ReportSummary
+- `report_id`, `report_type`, `report_version`
+- `generated_by`: `GeneratedBy` (tool, version, timestamp)
+- `source`: `ReportSource` (run_id, plan_version_id, branch_id)
+- `reproducibility`: `ReproducibilityInfo`
 
-| Canonical ID | Description |
-|-------------|-------------|
-| `final-woe-iv` | Final WOE/IV evidence |
-| `model-fit` | Model fit evidence |
-| `score-scaling` | Score scaling evidence |
-| `validation-metrics` | Validation metrics evidence |
-| `cutoff-analysis` | Cutoff analysis evidence |
-| `manual-binning` | Manual binning evidence |
-| `variable-clustering` | Variable clustering evidence |
-| `technical-manifest-stub` | Technical manifest stub (comparison mode) |
+### PathwaySummary
+- `steps`: list of `PathwayStep` (step_id, node_type, status)
+- `branches`: list of `BranchSummary`
+- `champion`: optional `ChampionInfo`
 
-## Legacy Aliases
+### ModelInfo
+- `features`: list of `ModelFeature`
+- `training_params`: dict
+- `interpretability`: dict
+- `limitations`: list of `Limitation`
 
-| Legacy ID | Current ID |
-|-----------|------------|
-| `logistic-regression` | `model-fit` |
+### ValidationInfo
+- `metrics_by_role`: `MetricsByRole` (train, test, oot)
+- `stability`: `StabilityInfo` (PSI)
+- `cutoff`: `CutoffInfo` (selected cutoff, cutoff table)
 
-## Required Steps by Report Mode
+### ManualBinningReviewState
+- `overrides`: list of `ManualIntervention`
+- `review_status`: str
+- `reviewed_by`, `reviewed_at`, `review_reason`
 
-| Mode | Required Steps |
-|------|---------------|
-| Branch report | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics` |
-| Champion report | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics` |
-| Full collector | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis`, `manual-binning`, `variable-clustering` |
-| Comparison | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis`, `technical-manifest-stub` |
+### RedundancyReviewInfo
+- `clusters`: list of `RedundancyCluster`
+- `members`: list of `RedundancyClusterMember`

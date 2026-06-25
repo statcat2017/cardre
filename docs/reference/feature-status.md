@@ -15,3 +15,8 @@
 |----------|---------|-------------|
 | `CARDRE_LAUNCH_MODE` | `1` | When enabled, deferred nodes are visible as schemas but raise `NodeNotAvailableForLaunch` on instantiation. Set to `0` to enable all nodes. |
 | `CARDRE_GOVERNANCE` | `0` | When enabled, branch/comparison/champion routers are registered. Branch runs execute normally. When disabled, branch endpoints return 403 and governance routers are not registered. |
+
+
+## Node Tiers
+
+See `docs/reference/node-catalogue.md` for the full list of launch and deferred nodes.
