@@ -6281,6 +6281,46 @@
         ],
         "title": "WorkflowBlocker"
       },
+      "WorkflowDiagnostic": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "default": "blocker"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Context",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "WorkflowDiagnostic"
+      },
       "WorkflowGuidance": {
         "properties": {
           "phase": {
@@ -6342,6 +6382,18 @@
               }
             ],
             "title": "Run Id"
+          },
+          "degraded": {
+            "type": "boolean",
+            "title": "Degraded",
+            "default": false
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowDiagnostic"
+            },
+            "type": "array",
+            "title": "Diagnostics"
           }
         },
         "type": "object",

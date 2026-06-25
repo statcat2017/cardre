@@ -875,6 +875,14 @@ class WorkflowReportReadiness(BaseModel):
     warnings: list[ReadinessItem] = Field(default_factory=list)
 
 
+class WorkflowDiagnostic(BaseModel):
+    code: str
+    message: str
+    severity: str = "blocker"
+    source: str | None = None
+    context: dict[str, Any] = {}
+
+
 class WorkflowGuidance(BaseModel):
     phase: Literal["setup", "build", "validate", "report", "ready"]
     next_action: WorkflowNextAction
@@ -883,3 +891,5 @@ class WorkflowGuidance(BaseModel):
     report_readiness: WorkflowReportReadiness | None = None
     branch_id: str | None = None
     run_id: str | None = None
+    degraded: bool = False
+    diagnostics: list[WorkflowDiagnostic] = Field(default_factory=list)

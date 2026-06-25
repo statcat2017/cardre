@@ -30,6 +30,7 @@ from sidecar.models import (
     UpdateStepParamsRequest,
     UpdateStepParamsResponse,
     WorkflowBlocker,
+    WorkflowDiagnostic,
     WorkflowGuidance,
     WorkflowNextAction,
     WorkflowReportReadiness,
@@ -193,5 +194,16 @@ def get_workflow_guidance(
         ),
         branch_id=result.branch_id,
         run_id=result.run_id,
+        degraded=result.degraded,
+        diagnostics=[
+            WorkflowDiagnostic(
+                code=d.code,
+                message=d.message,
+                severity=d.severity,
+                source=d.source,
+                context=d.context,
+            )
+            for d in result.diagnostics
+        ],
     )
 

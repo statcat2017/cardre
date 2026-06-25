@@ -14,6 +14,7 @@ class Diagnostic:
     message: str
     source: str | None = None
     exception_type: str | None = None
+    severity: str = "error"
     context: dict[str, Any] = dataclasses.field(default_factory=dict)
 
 
