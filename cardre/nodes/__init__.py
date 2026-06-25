@@ -1,9 +1,16 @@
-"""Proof node implementations for Phase 1.
+"""Built-in node implementations for the Cardre scorecard engine.
 
-These are minimal implementations to exercise the executor, role enforcement,
-and artifact lifecycle. Phase 2+ will replace these with real scorecard nodes.
+This module re-exports all node classes from subpackages for backward
+compatibility.  Nodes are registered in ``cardre.registry.NodeRegistry``
+and divided into two tiers:
 
-Re-exports all node classes from subpackages for backward compatibility.
+- **Launch tier**: executable at launch (logistic regression, binning,
+  WOE/IV, score scaling, validation, cutoff, decision tree challenger).
+- **Deferred tier**: registered as schemas for UI display but not
+  executable unless ``CARDRE_LAUNCH_MODE=0`` (boosting, ensembles,
+  fairness, explainability, reject inference, feature selection, tuning).
+
+See ``docs/launch-mode.md`` and ``docs/reference/node-catalogue.md``.
 """
 
 from cardre.nodes.prep import (
