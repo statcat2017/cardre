@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { api } from "../../api/client";
+import { api, isApiError } from "../../api/client";
 import type { UpdateStepParamsResponse } from "../../types";
 import type { SafeConstraint, SafeDefinition, SafeMethod, SafeSchema } from "./paramsTypes";
 import { useMessage } from "../../hooks/useMessage";
@@ -249,17 +249,17 @@ export function SchemaDrivenParamsEditor({
       setSuccess(`Saved — new plan version ${resp.new_plan_version_id.slice(0, 8)}… created.`);
       onSaved(resp);
     },
-    onError: (err: any) => {
-      if (err?.status === 409 && err?.detail?.code === "STALE_VERSION") {
-        const latestId: string | undefined = err.detail?.latest_version_id;
+    onError: (err: unknown) => {
+      if (isApiError(err) && err.status === 409 && err.detail.code === "STALE_VERSION") {
+        const latestId: string | undefined = err.detail.context?.latest_version_id as string | undefined;
         setInfo(
           `Plan modified externally. Refreshing…${latestId ? ` (latest: ${latestId.slice(0, 8)}…)` : ""}`
         );
         onSaved(err.detail);
-      } else if (err?.status === 422) {
-        setError(err?.detail?.message || "Validation failed");
+      } else if (isApiError(err) && err.status === 422) {
+        setError(err.detail.message || "Validation failed");
       } else {
-        setError(err?.message || "Save failed");
+        setError(isApiError(err) ? err.detail.message : "Save failed");
       }
     },
   });

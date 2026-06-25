@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { api, type ApiError } from "../api/client";
 
 interface StepProgress {
   completed: number;
@@ -26,6 +26,7 @@ interface RunOptions {
 interface UseRunProgressReturn extends RunProgressState {
   startRun: (planVersionId: string, options?: RunOptions) => Promise<void>;
   addDiagnostic: (msg: string) => void;
+  lastPollError: ApiError | null;
 }
 
 export function useRunProgress(
@@ -40,6 +41,7 @@ export function useRunProgress(
   const [diagnostics, setDiagnostics] = useState<string[]>([]);
   const [liveDiagnostic, setLiveDiagnostic] = useState<string | null>(null);
   const [totalPlanSteps, setTotalPlanSteps] = useState(0);
+  const [lastPollError, setLastPollError] = useState<ApiError | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
@@ -90,6 +92,7 @@ export function useRunProgress(
             api.getRunSteps(runId),
           ]);
           consecutiveErrors = 0;
+          setLastPollError(null);
           const cfMap: Record<string, boolean> = {};
           const liveMap: Record<string, string> = {};
           steps.steps.forEach((s) => {
@@ -119,8 +122,9 @@ export function useRunProgress(
             addDiagnostic(`Run ${run.status}`);
             onRunComplete();
           }
-        } catch {
+        } catch (e: unknown) {
           consecutiveErrors++;
+          setLastPollError(e instanceof ApiError ? e : null);
           if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
             if (pollRef.current !== null) {
               clearInterval(pollRef.current);
@@ -158,5 +162,6 @@ export function useRunProgress(
     liveDiagnostic,
     startRun,
     addDiagnostic,
+    lastPollError,
   };
 }

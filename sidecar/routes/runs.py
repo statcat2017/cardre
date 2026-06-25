@@ -6,6 +6,7 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, HTTPException, Query
 
+from cardre.errors import CardreError
 from cardre.executor import PlanExecutor
 from cardre.evidence import ArtifactEvidenceReader
 from cardre.registry import NodeRegistry
@@ -111,10 +112,21 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
             )
             executed_ids = [rs.step_id for rs in store.get_run_steps(run_id)]
             return _build_run_response(store, run_id, executed_ids)
+        except CardreError as exc:
+            exc.context.setdefault("project_id", body.project_id)
+            exc.context.setdefault("plan_version_id", body.plan_version_id)
+            exc.context.setdefault("run_scope", body.run_scope or "full")
+            raise
         except ValueError as exc:
-            scope_label = body.run_scope or "full"
-            detail_code = f"{scope_label.upper()}_RUN_FAILED"
-            raise HTTPException(status_code=400, detail={"code": detail_code, "message": str(exc)})
+            msg = str(exc)
+            if ":" in msg:
+                code, message = msg.split(":", 1)
+                code = code.strip()
+                message = message.strip()
+            else:
+                code = "RUN_VALIDATION_FAILED"
+                message = msg
+            raise HTTPException(status_code=400, detail={"code": code, "message": message})
         except Exception:
             raise HTTPException(
                 status_code=500,
@@ -207,6 +219,9 @@ def get_run_steps(run_id: str):
 
 @router.get("/{run_id}/manifest")
 def get_run_manifest(run_id: str):
+    from json import JSONDecodeError
+    from cardre.evidence import EvidenceError
+
     registry = load_registry()
     for pid in registry:
         try:
@@ -219,7 +234,15 @@ def get_run_manifest(run_id: str):
         reader = ArtifactEvidenceReader(store)
         for art in store.list_artifacts():
             if art.artifact_type == "run_manifest" and art.metadata.get("run_id") == run_id:
-                manifest = reader.read_run_manifest(art.artifact_id)
+                try:
+                    manifest = reader.read_run_manifest(art.artifact_id)
+                except (EvidenceError, JSONDecodeError, OSError) as e:
+                    err = CardreError(
+                        "RUN_MANIFEST_UNREADABLE",
+                        context={"run_id": run_id, "artifact_id": art.artifact_id},
+                    )
+                    err.status_code = 500
+                    raise err from e
                 return asdict(manifest)
         raise HTTPException(status_code=404, detail={"code": "MANIFEST_NOT_FOUND", "message": f"No manifest for run {run_id}"})
     raise HTTPException(status_code=404, detail={"code": "RUN_NOT_FOUND", "message": f"No run with ID {run_id}"})
