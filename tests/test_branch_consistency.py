@@ -323,3 +323,176 @@ class TestRunToNodeBranchContext:
         )
 
         assert calls == [None], f"Expected branch_id=None, got {calls}"
+
+
+class TestAsyncToNodePreflight:
+    """Async to_node preflight returns existing run without creating placeholder."""
+
+    def test_is_to_node_current_returns_run_id_when_current(self, tmp_path):
+        """_is_to_node_current returns existing run id when all closure steps are non-stale."""
+        from sidecar.routes.runs import _is_to_node_current
+        store = _make_store(tmp_path)
+        pid = store.create_project("test")
+        plan_id = store.create_plan(pid, "test-plan")
+        steps = [_make_step("a")]
+        pv_id = store.create_plan_version(plan_id, steps)
+        run_id = store.create_run(pv_id)
+        # Save a run step so staleness can find evidence
+        from cardre.audit import RunStepRecord
+        rs = RunStepRecord(
+            run_step_id=str(uuid.uuid4()), run_id=run_id, step_id="a",
+            plan_version_id=pv_id, status="succeeded",
+            started_at=utc_now_iso(), finished_at=utc_now_iso(),
+            input_artifact_ids=[], output_artifact_ids=[],
+            execution_fingerprint={
+                "params_hash": steps[0].params_hash,
+                "node_type": "cardre.noop", "node_version": "1",
+                "parent_output_logical_hashes_by_step": {},
+            },
+            warnings=[], errors=[],
+        )
+        store.save_run_step(rs)
+        store.finish_run(run_id, "succeeded")
+
+        result = _is_to_node_current(store, pv_id, "a")
+        assert result == run_id, f"Expected {run_id}, got {result}"
+
+    def test_is_to_node_current_returns_none_when_stale(self, tmp_path):
+        """_is_to_node_current returns None when steps are stale."""
+        from sidecar.routes.runs import _is_to_node_current
+        store = _make_store(tmp_path)
+        pid = store.create_project("test")
+        plan_id = store.create_plan(pid, "test-plan")
+        steps = [_make_step("a")]
+        pv_id = store.create_plan_version(plan_id, steps)
+        # No run exists — step is stale
+        result = _is_to_node_current(store, pv_id, "a")
+        assert result is None
+
+    def test_is_to_node_current_returns_none_on_missing_target(self, tmp_path):
+        """_is_to_node_current returns None when target step doesn't exist."""
+        from sidecar.routes.runs import _is_to_node_current
+        store = _make_store(tmp_path)
+        pid = store.create_project("test")
+        plan_id = store.create_plan(pid, "test-plan")
+        pv_id = store.create_plan_version(plan_id, [_make_step("a")])
+        result = _is_to_node_current(store, pv_id, "nonexistent")
+        assert result is None
+
+    def test_is_to_node_current_with_branch_id(self, tmp_path):
+        """_is_to_node_current uses branch-scoped staleness and run lookup."""
+        from sidecar.routes.runs import _is_to_node_current
+        store = _make_store(tmp_path)
+        pid = store.create_project("test")
+        plan_id = store.create_plan(pid, "test-plan")
+        steps = [_make_step("a")]
+        pv_id = store.create_plan_version(plan_id, steps)
+
+        branch_id = store.create_branch(
+            project_id=pid, plan_id=plan_id, name="br", branch_type="challenger",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="test",
+        )
+        # Branch run exists with a run step
+        run_id = store.create_run(pv_id, branch_id=branch_id)
+        from cardre.audit import RunStepRecord
+        rs = RunStepRecord(
+            run_step_id=str(uuid.uuid4()), run_id=run_id, step_id="a",
+            plan_version_id=pv_id, status="succeeded",
+            started_at=utc_now_iso(), finished_at=utc_now_iso(),
+            input_artifact_ids=[], output_artifact_ids=[],
+            execution_fingerprint={
+                "params_hash": steps[0].params_hash,
+                "node_type": "cardre.noop", "node_version": "1",
+                "parent_output_logical_hashes_by_step": {},
+            },
+            warnings=[], errors=[],
+        )
+        store.save_run_step(rs)
+        store.finish_run(run_id, "succeeded")
+
+        result = _is_to_node_current(store, pv_id, "a", branch_id=branch_id)
+        assert result == run_id, f"Expected {run_id}, got {result}"
+
+
+class TestExecuteActionsBranchContext:
+    """_execute_actions passes branch_id to _reuse_run_step."""
+
+    def test_reuse_run_step_receives_branch_id(self, monkeypatch):
+        """_reuse_run_step is called with branch_id from _execute_actions."""
+        from cardre.executor import PlanExecutor
+        from cardre.registry import NodeRegistry
+        from cardre.audit import StepSpec, RunStepRecord
+
+        captured = []
+
+        class FakeStore:
+            def run_heartbeat(self, run_id):
+                pass
+            def save_run_step(self, rs):
+                pass
+
+        class TrackingExecutor(PlanExecutor):
+            def _reuse_run_step(self, store, spec, plan_version_id, run_id, step_outputs, run_step_records, evidence_source=None, branch_id=None):
+                captured.append(branch_id)
+                return RunStepRecord(
+                    run_step_id="rs-1", run_id=run_id, step_id=spec.step_id,
+                    plan_version_id=plan_version_id, status="succeeded",
+                    started_at="now", finished_at="now",
+                    input_artifact_ids=[], output_artifact_ids=[],
+                    execution_fingerprint={}, warnings=[], errors=[],
+                    is_carried_forward=True,
+                )
+
+        executor = TrackingExecutor(NodeRegistry.with_defaults())
+        spec = StepSpec(step_id="s1", node_type="cardre.noop", node_version="1", category="transform",
+                        params={}, params_hash="abc", parent_step_ids=[], branch_label="", position=0,
+                        canonical_step_id="s1", branch_id=None)
+        from cardre.executor import _StepAction
+        actions = [_StepAction(spec=spec, action="reuse")]
+
+        executor._execute_actions(
+            store=FakeStore(), actions=actions, plan_version_id="pv", run_id="run",
+            branch_id="br-1",
+        )
+
+        assert captured == ["br-1"], f"Expected branch_id='br-1', got {captured}"
+
+    def test_reuse_run_step_receives_none_when_no_branch(self, monkeypatch):
+        """_reuse_run_step receives None when _execute_actions has no branch_id."""
+        from cardre.executor import PlanExecutor
+        from cardre.registry import NodeRegistry
+        from cardre.audit import StepSpec, RunStepRecord
+
+        captured = []
+
+        class FakeStore:
+            def run_heartbeat(self, run_id):
+                pass
+            def save_run_step(self, rs):
+                pass
+
+        class TrackingExecutor(PlanExecutor):
+            def _reuse_run_step(self, store, spec, plan_version_id, run_id, step_outputs, run_step_records, evidence_source=None, branch_id=None):
+                captured.append(branch_id)
+                return RunStepRecord(
+                    run_step_id="rs-1", run_id=run_id, step_id=spec.step_id,
+                    plan_version_id=plan_version_id, status="succeeded",
+                    started_at="now", finished_at="now",
+                    input_artifact_ids=[], output_artifact_ids=[],
+                    execution_fingerprint={}, warnings=[], errors=[],
+                    is_carried_forward=True,
+                )
+
+        executor = TrackingExecutor(NodeRegistry.with_defaults())
+        spec = StepSpec(step_id="s1", node_type="cardre.noop", node_version="1", category="transform",
+                        params={}, params_hash="abc", parent_step_ids=[], branch_label="", position=0,
+                        canonical_step_id="s1", branch_id=None)
+        from cardre.executor import _StepAction
+        actions = [_StepAction(spec=spec, action="reuse")]
+
+        executor._execute_actions(
+            store=FakeStore(), actions=actions, plan_version_id="pv", run_id="run",
+        )
+
+        assert captured == [None], f"Expected branch_id=None, got {captured}"

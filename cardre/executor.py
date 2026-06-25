@@ -147,6 +147,7 @@ class PlanExecutor:
                 store, actions, plan_version_id, run_id,
                 step_outputs=ctx.step_outputs,
                 run_step_records=ctx.run_step_records,
+                branch_id=branch_id,
             )
             status = self._compute_final_status(has_failure, actions)
 
@@ -212,6 +213,7 @@ class PlanExecutor:
 
             has_failure, outputs, records = self._execute_actions(
                 store, actions, plan_version_id, run_id,
+                branch_id=branch_id,
             )
             status = self._compute_final_status(has_failure, actions)
 
@@ -219,6 +221,7 @@ class PlanExecutor:
                 status=status, execution_mode=execution_mode,
                 target_step_id=target_step_id,
                 in_scope_step_ids=sorted(closure),
+                branch_id=branch_id,
             )
         return run_id
 
@@ -234,6 +237,7 @@ class PlanExecutor:
         run_id: str,
         step_outputs: dict[str, list[ArtifactRef]] | None = None,
         run_step_records: dict[str, RunStepRecord] | None = None,
+        branch_id: str | None = None,
     ) -> tuple[bool, dict[str, list[ArtifactRef]], dict[str, RunStepRecord]]:
         """Execute a sequence of step actions.
 
@@ -251,7 +255,7 @@ class PlanExecutor:
                 continue
 
             if action.action == "reuse":
-                rs = self._reuse_run_step(store, action.spec, plan_version_id, run_id, outputs, records, evidence_source=action.evidence_source)
+                rs = self._reuse_run_step(store, action.spec, plan_version_id, run_id, outputs, records, evidence_source=action.evidence_source, branch_id=branch_id)
                 if rs is not None:
                     records[action.spec.step_id] = rs
                     outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)

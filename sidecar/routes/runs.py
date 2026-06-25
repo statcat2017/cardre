@@ -30,6 +30,28 @@ def _is_branch_current(store, plan_version_id, branch_id):
     return None
 
 
+def _is_to_node_current(store, plan_version_id, target_step_id, branch_id=None):
+    """Check if a to_node run would short-circuit (all closure steps non-stale)."""
+    try:
+        from cardre.staleness import compute_staleness
+        from cardre.step_graph import ancestor_closure
+        steps = store.get_plan_version_steps(plan_version_id)
+        step_by_id = {s.step_id: s for s in steps}
+        if target_step_id not in step_by_id:
+            return None
+        ancestors = ancestor_closure(target_step_id, steps)
+        closure = ancestors | {target_step_id}
+        closure_steps = [s for s in steps if s.step_id in closure]
+        staleness = compute_staleness(store, plan_version_id, branch_id=branch_id)
+        if all(not staleness.get(s.step_id, True) for s in closure_steps):
+            existing_run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=branch_id)
+            if existing_run_id is not None:
+                return existing_run_id
+    except Exception:
+        pass
+    return None
+
+
 def _build_run_response(store: ProjectStore, run_id: str, executed_ids: list[str] | None = None) -> RunResponse:
     run = store.get_run(run_id)
     steps = store.get_run_steps(run_id)
@@ -105,6 +127,12 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
     # Preflight: check if branch is already current (no stale steps)
     if body.run_scope == "branch" and body.branch_id:
         existing_run_id = _is_branch_current(store, body.plan_version_id, body.branch_id)
+        if existing_run_id is not None:
+            return _build_run_response(store, existing_run_id)
+
+    # Preflight: check if to_node closure is already current
+    if body.run_scope == "to_node" and body.target_step_id:
+        existing_run_id = _is_to_node_current(store, body.plan_version_id, body.target_step_id, branch_id=body.branch_id)
         if existing_run_id is not None:
             return _build_run_response(store, existing_run_id)
 
