@@ -114,7 +114,11 @@ def write_manifest(
     """
     run_record = store.get_run(run_id)
     if run_record is None:
-        raise RunLifecycleError("RUN_RECORD_MISSING")
+        raise RunLifecycleError(
+            "Run record missing during manifest write.",
+            code="RUN_RECORD_MISSING",
+            context={"run_id": run_id},
+        )
 
     run_steps = store.get_run_steps(run_id)
 
@@ -339,15 +343,16 @@ class RunLifecycle:
             ))
         except Exception:
             import traceback
+            tb = traceback.format_exc()
             self.store.append_run_diagnostic(self.run_id, {
                 "code": "RUN_FINALISATION_FAILED",
-                "message": f"finalise_run raised: {traceback.format_exc()}",
+                "message": "Run finalisation failed.",
                 "severity": "error",
                 "category": "lifecycle",
                 "run_id": self.run_id,
                 "plan_version_id": self.plan_version_id,
                 "branch_id": branch_id,
-                "traceback": traceback.format_exc(),
+                "traceback": tb,
                 "created_at": utc_now_iso(),
             })
             self.store.finish_run(self.run_id, "failed")
