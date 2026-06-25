@@ -9,6 +9,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
+from cardre.errors import CardreError, Diagnostic, Ok, Degraded, Fail, is_ok, is_degraded, is_fail
 from cardre.readiness import check_report_readiness
 from cardre.services.manual_binning_service import ManualBinningService
 from cardre.staleness import compute_staleness
@@ -147,6 +148,8 @@ class WorkflowGuidanceResult:
     report_readiness: dict[str, Any] | None
     branch_id: str | None
     run_id: str | None
+    degraded: bool = False
+    diagnostics: list[Diagnostic] = dataclasses.field(default_factory=list)
 
 
 class WorkflowGuidanceServiceError(Exception):
@@ -228,12 +231,20 @@ class WorkflowGuidanceService:
 
         # Compute staleness with branch context
         staleness_map: dict[str, bool] = {}
+        diagnostics: list[Diagnostic] = []
         if head_pv_id:
             try:
                 staleness_map = compute_staleness(
                     self._store, head_pv_id, branch_id=resolved_branch_id or None,
                 )
-            except Exception:
+            except CardreError as e:
+                diagnostics.append(Diagnostic(
+                    code="STALENESS_UNAVAILABLE",
+                    message="Could not compute staleness; pathway freshness is unknown.",
+                    source="workflow_guidance.compute_staleness",
+                    exception_type=e.__class__.__name__,
+                    context={"plan_version_id": head_pv_id, "branch_id": resolved_branch_id},
+                ))
                 staleness_map = {}
 
         # Build run step status lookup (keyed by step_id)
@@ -242,8 +253,10 @@ class WorkflowGuidanceService:
             try:
                 for rs in self._store.get_run_steps(run_id):
                     run_step_status[rs.step_id] = rs.status
-            except Exception:
-                pass
+            except Exception as e:
+                raise WorkflowGuidanceServiceError(
+                    f"Could not load run steps for run {run_id}: {e}"
+                )
 
         # Resolve canonical step -> actual step_id through branch step map
         resolved_canonical = resolve_required_steps(
@@ -272,26 +285,14 @@ class WorkflowGuidanceService:
                 branch_id=resolved_branch_id,
                 step_map=step_map,
                 status=status_by_canonical.get(cid),
+                diagnostics=diagnostics,
             )
             step_guidance[cid] = sg
 
-        # Derive phase
-        phase = self._derive_phase(
-            project_id=project_id,
-            step_guidance=step_guidance,
-            plan_id=plan_id,
-            run_id=run_id,
-            branch_id=resolved_branch_id,
-        )
-
-        # Collect blockers
-        blockers = self._collect_blockers(step_guidance)
-
-        # Derive next action
-        next_action = self._derive_next_action(phase, step_guidance, blockers)
-
-        # Report readiness (only when run_id resolved)
+        # Report readiness (only when run_id resolved) — computed once, used
+        # by both _derive_phase and the result.
         report_readiness = None
+        readiness_r: Ok | Degraded | Fail | None = None
         if run_id is not None and branch_id:
             try:
                 result = check_report_readiness(
@@ -302,8 +303,38 @@ class WorkflowGuidanceService:
                     report_mode="branch",
                 )
                 report_readiness = result.to_dict()
-            except Exception:
-                report_readiness = None
+                readiness_r = Ok(report_readiness)
+            except Exception as e:
+                diagnostics.append(Diagnostic(
+                    code="REPORT_READINESS_UNAVAILABLE",
+                    message="Could not check report readiness.",
+                    source="workflow_guidance.check_report_readiness",
+                    context={"run_id": run_id, "branch_id": branch_id},
+                ))
+                report_readiness = {"ready": False, "status": "unavailable", "blockers": [], "warnings": []}
+                readiness_r = Degraded(report_readiness, [Diagnostic(
+                    code="REPORT_READINESS_UNAVAILABLE",
+                    message="Could not check report readiness.",
+                    context={"run_id": run_id, "branch_id": branch_id},
+                )])
+
+        # Derive phase (uses readiness_r instead of calling check_report_readiness again)
+        phase = self._derive_phase(
+            project_id=project_id,
+            step_guidance=step_guidance,
+            plan_id=plan_id,
+            run_id=run_id,
+            branch_id=resolved_branch_id,
+            readiness_r=readiness_r,
+        )
+
+        # Collect blockers
+        blockers = self._collect_blockers(step_guidance)
+
+        # Derive next action
+        next_action = self._derive_next_action(phase, step_guidance, blockers, diagnostics)
+
+        degraded = len(diagnostics) > 0
 
         return WorkflowGuidanceResult(
             phase=phase,
@@ -318,6 +349,8 @@ class WorkflowGuidanceService:
             report_readiness=report_readiness,
             branch_id=resolved_branch_id or None,
             run_id=run_id,
+            degraded=degraded,
+            diagnostics=diagnostics,
         )
 
     # ------------------------------------------------------------------
@@ -332,11 +365,13 @@ class WorkflowGuidanceService:
         branch_id: str,
         step_map: list[dict[str, Any]],
         status: dict[str, Any] | None,
+        diagnostics: list[Diagnostic] | None = None,
     ) -> dict[str, Any]:
         readiness = "ready"
         explanation = STEP_EXPLANATIONS.get(canonical_id, "")
         primary_action = STEP_PRIMARY_ACTIONS.get(canonical_id, "Configure")
         action_target = None
+        diags = diagnostics or []
 
         if status is None:
             readiness = "needs_config"
@@ -367,8 +402,15 @@ class WorkflowGuidanceService:
                     readiness = "blocked"
                     explanation = state.blocked_reason or explanation
                     primary_action = "Resolve manual-binning blockers"
-            except Exception:
-                pass
+            except Exception as e:
+                readiness = "blocked"
+                explanation = "Manual-binning state could not be loaded."
+                primary_action = "Resolve manual-binning blockers"
+                diags.append(Diagnostic(
+                    code="MANUAL_BINNING_STATE_UNAVAILABLE",
+                    message=f"Could not load manual-binning editor state: {e}",
+                    context={"step_id": actual_step_id, "plan_id": plan_id, "branch_id": branch_id},
+                ))
 
         if canonical_id == "manual-binning" and status:
             params = status.get("params", {})
@@ -398,8 +440,14 @@ class WorkflowGuidanceService:
                     action_target = f"manual_binning:N_selected={len(state.selected_variables)}"
                 else:
                     action_target = None
-            except Exception:
+            except Exception as e:
                 action_target = None
+                diags.append(Diagnostic(
+                    code="ACTION_TARGET_UNAVAILABLE",
+                    message=f"Could not compute selected-variable count: {e}",
+                    severity="warning",
+                    context={"step_id": canonical_id},
+                ))
 
         return {
             "readiness": readiness,
@@ -416,6 +464,7 @@ class WorkflowGuidanceService:
         plan_id: str | None,
         run_id: str | None,
         branch_id: str | None,
+        readiness_r: Ok | Degraded | Fail | None = None,
     ) -> str:
         # Check if any dataset has been imported (has train role)
         has_train = False
@@ -444,19 +493,14 @@ class WorkflowGuidanceService:
         if run_id is None or branch_id is None:
             return "build"
 
-        try:
-            result = check_report_readiness(
-                store=self._store,
-                project_id=project_id,
-                run_id=run_id,
-                target_branch_id=branch_id,
-                report_mode="branch",
-            )
-            if not result.ready:
-                return "report"
-            return "ready"
-        except Exception:
-            return "validate"
+        # Use the already-computed readiness result (no second call)
+        if readiness_r is None or is_fail(readiness_r):
+            return "report"
+        if is_degraded(readiness_r):
+            return "report"
+        if not readiness_r.value.get("ready", False):
+            return "report"
+        return "ready"
 
     def _collect_blockers(
         self, step_guidance: dict[str, dict[str, Any]]
@@ -478,6 +522,7 @@ class WorkflowGuidanceService:
         phase: str,
         step_guidance: dict[str, dict[str, Any]],
         blockers: list[dict[str, Any]],
+        diagnostics: list[Diagnostic] | None = None,
     ) -> dict[str, Any]:
         if phase == "setup":
             return {
@@ -550,6 +595,17 @@ class WorkflowGuidanceService:
                 "run_scope": None,
                 "step_id": None,
                 "action_target": "exports",
+            }
+
+        # If degraded diagnostics exist, suggest resolving them
+        if diagnostics:
+            return {
+                "kind": "resolve_diagnostics",
+                "label": "Resolve diagnostics",
+                "description": "Some checks could not be completed. Review diagnostics before continuing.",
+                "run_scope": None,
+                "step_id": None,
+                "action_target": "diagnostics",
             }
 
         # Fallback

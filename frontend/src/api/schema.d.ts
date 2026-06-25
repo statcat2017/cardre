@@ -2401,6 +2401,27 @@ export interface components {
              */
             severity: "blocker" | "warning";
         };
+        /** WorkflowDiagnostic */
+        WorkflowDiagnostic: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /**
+             * Severity
+             * @default blocker
+             */
+            severity: string;
+            /** Source */
+            source?: string | null;
+            /**
+             * Context
+             * @default {}
+             */
+            context: {
+                [key: string]: unknown;
+            };
+        };
         /** WorkflowGuidance */
         WorkflowGuidance: {
             /**
@@ -2420,6 +2441,13 @@ export interface components {
             branch_id?: string | null;
             /** Run Id */
             run_id?: string | null;
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
+            /** Diagnostics */
+            diagnostics?: components["schemas"]["WorkflowDiagnostic"][];
         };
         /** WorkflowNextAction */
         WorkflowNextAction: {
