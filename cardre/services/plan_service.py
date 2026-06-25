@@ -209,7 +209,7 @@ class PlanService:
         # Supersede any champion assignment for this branch since the
         # evidence it was based on may have changed.
         from cardre.services.champion_service import supersede_champion_for_branch
-        supersede_champion_for_branch(self._store, branch_id, new_pv_id)
+        supersede_champion_for_branch(self._store, branch_id, new_pv_id, conn=conn)
         return new_pv_id
 
     def update_params(
@@ -318,26 +318,25 @@ class PlanService:
 
         new_steps = replace_step_params(steps, step_id, new_params)
 
-        # Compute staleness BEFORE creating the version so we can detect
-        # upstream changes and reset manual-binning flags in one shot.
-        staleness = compute_staleness(
-            self._store, latest_pv_id,
-            branch_id=branch_id,
-        )
-        stale_ids = [
-            sid for sid, is_stale in staleness.items()
-            if is_stale and (not branch_id or any(s.branch_id == branch_id for s in new_steps if s.step_id == sid))
-        ]
-
-        # Reset manual-binning reviewed flag if an upstream step changed
-        if branch_id and any(sid != step_id for sid in stale_ids):
+        # Reset manual-binning reviewed flag if the changed step is
+        # upstream of the manual-binning step.  We cannot use
+        # compute_staleness(store, latest_pv_id) here because that
+        # reads the OLD persisted steps — if the branch was current
+        # before this edit, staleness against the old version will
+        # not detect the downstream impact of the new params.
+        # Instead, use descendant_closure on new_steps to find
+        # whether manual-binning is downstream of step_id.
+        if branch_id:
+            from cardre.step_graph import descendant_closure
+            affected = descendant_closure(step_id, new_steps)
             for s in new_steps:
-                if s.canonical_step_id == "manual-binning" or s.node_type == "cardre.manual_binning":
-                    if s.params.get("reviewed") or s.params.get("accept_automated"):
-                        updated_params = dict(s.params)
-                        updated_params["reviewed"] = False
-                        updated_params["accept_automated"] = False
-                        new_steps = replace_step_params(new_steps, s.step_id, updated_params)
+                if (s.canonical_step_id == "manual-binning" or s.node_type == "cardre.manual_binning"):
+                    if s.step_id in affected:
+                        if s.params.get("reviewed") or s.params.get("accept_automated"):
+                            updated_params = dict(s.params)
+                            updated_params["reviewed"] = False
+                            updated_params["accept_automated"] = False
+                            new_steps = replace_step_params(new_steps, s.step_id, updated_params)
                     break
 
         if branch_id and branch is not None:

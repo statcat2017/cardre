@@ -181,9 +181,9 @@ class PlanExecutor:
         # Short-circuit when nothing to run
         if not force:
             from cardre.staleness import compute_staleness
-            staleness = compute_staleness(store, plan_version_id)
+            staleness = compute_staleness(store, plan_version_id, branch_id=branch_id)
             if all(not staleness.get(s.step_id, True) for s in closure_steps):
-                existing_run_id = store.get_latest_successful_run_id(plan_version_id)
+                existing_run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=branch_id)
                 if existing_run_id is not None:
                     return existing_run_id
 
@@ -194,6 +194,7 @@ class PlanExecutor:
             execution_mode=execution_mode,
             target_step_id=target_step_id,
             in_scope_step_ids=sorted(closure),
+            branch_id=branch_id,
             force=force,
         ) as lifecycle:
             run_id = lifecycle.run_id

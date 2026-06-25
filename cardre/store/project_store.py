@@ -675,7 +675,7 @@ class ProjectStore:
             # Supersede any champion assignment for this branch since the
             # evidence it was based on may have changed.
             from cardre.services.champion_service import supersede_champion_for_branch
-            supersede_champion_for_branch(self, branch_id, new_pv_id)
+            supersede_champion_for_branch(self, branch_id, new_pv_id, conn=conn)
             return new_pv_id
 
     def update_branch_head(

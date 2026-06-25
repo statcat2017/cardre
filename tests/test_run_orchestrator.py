@@ -26,7 +26,7 @@ class FakeExecutor:
         self.calls.append(("full_plan", run_id))
         return self.result_id
 
-    def run_to_node(self, store, plan_version_id, target_step_id, run_id=None, force=False):
+    def run_to_node(self, store, plan_version_id, target_step_id, run_id=None, force=False, branch_id=None):
         self.calls.append(("to_node", run_id))
         return self.result_id
 
