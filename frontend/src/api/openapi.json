@@ -6414,6 +6414,7 @@
               "review_evidence",
               "edit_bins",
               "resolve_blocker",
+              "resolve_diagnostics",
               "export_report"
             ],
             "title": "Kind"

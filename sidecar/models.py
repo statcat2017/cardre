@@ -844,7 +844,8 @@ class RunStepEvidenceResponse(BaseModel):
 class WorkflowNextAction(BaseModel):
     kind: Literal[
         "import_dataset", "configure_step", "run_pathway",
-        "review_evidence", "edit_bins", "resolve_blocker", "export_report",
+        "review_evidence", "edit_bins", "resolve_blocker",
+        "resolve_diagnostics", "export_report",
     ]
     label: str
     description: str

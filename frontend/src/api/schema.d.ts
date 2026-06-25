@@ -2455,7 +2455,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "import_dataset" | "configure_step" | "run_pathway" | "review_evidence" | "edit_bins" | "resolve_blocker" | "export_report";
+            kind: "import_dataset" | "configure_step" | "run_pathway" | "review_evidence" | "edit_bins" | "resolve_blocker" | "resolve_diagnostics" | "export_report";
             /** Label */
             label: string;
             /** Description */

@@ -163,9 +163,12 @@ export function ProjectView({ projectId, onBack }: Props) {
         case "export_report":
           setActiveSection("exports");
           break;
+        case "resolve_diagnostics":
+          setActiveSection("diagnostics");
+          break;
       }
     },
-    [scorecardPlan, planData, startRun],
+    [scorecardPlan, planData, startRun, addDiagnostic],
   );
 
   const selectedStep: StepStatus | null =
