@@ -464,7 +464,7 @@ class TestBuildSummaryReportContract(NodeContractTestBase):
 
 class TestDecisionTreeContract(NodeContractTestBase):
     node_cls = DecisionTreeNode
-    bad_params: dict[str, Any] = {"feature_strategy": "invalid"}
+    bad_params: dict[str, Any] = {"class_weight": "invalid"}
     expected_output_roles = {"model"}
     expected_category = "fit"
 
@@ -474,7 +474,7 @@ class TestDecisionTreeContract(NodeContractTestBase):
 
 class TestRandomForestClassifierContract(NodeContractTestBase):
     node_cls = RandomForestClassifierNode
-    bad_params: dict[str, Any] = {"feature_strategy": "invalid"}
+    bad_params: dict[str, Any] = {"class_weight": "invalid"}
     expected_output_roles = {"model"}
     expected_category = "fit"
 
@@ -484,7 +484,7 @@ class TestRandomForestClassifierContract(NodeContractTestBase):
 
 class TestGradientBoostingClassifierContract(NodeContractTestBase):
     node_cls = GradientBoostingClassifierNode
-    bad_params: dict[str, Any] = {"feature_strategy": "invalid"}
+    bad_params = None
     expected_output_roles = {"model"}
     expected_category = "fit"
 
@@ -498,7 +498,7 @@ class TestGradientBoostingClassifierContract(NodeContractTestBase):
 
 class TestXGBoostClassifierContract(NodeContractTestBase):
     node_cls = XGBoostClassifierNode
-    bad_params: dict[str, Any] = {"feature_strategy": "invalid"}
+    bad_params = None
     expected_output_roles = {"model"}
     expected_category = "fit"
 
@@ -508,7 +508,7 @@ class TestXGBoostClassifierContract(NodeContractTestBase):
 
 class TestLightGBMClassifierContract(NodeContractTestBase):
     node_cls = LightGBMClassifierNode
-    bad_params: dict[str, Any] = {"feature_strategy": "invalid"}
+    bad_params = None
     expected_output_roles = {"model"}
     expected_category = "fit"
 
@@ -518,7 +518,7 @@ class TestLightGBMClassifierContract(NodeContractTestBase):
 
 class TestCatBoostClassifierContract(NodeContractTestBase):
     node_cls = CatBoostClassifierNode
-    bad_params: dict[str, Any] = {"feature_strategy": "invalid"}
+    bad_params = None
     expected_output_roles = {"model"}
     expected_category = "fit"
 

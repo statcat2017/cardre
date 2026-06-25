@@ -1361,6 +1361,12 @@ export interface components {
             schema_overrides: {
                 [key: string]: string;
             };
+            /** Max Rows */
+            max_rows?: number | null;
+            /** Encoding */
+            encoding?: string | null;
+            /** Null Values */
+            null_values?: string[] | null;
         };
         /** ManualBinningEditorStateResponse */
         ManualBinningEditorStateResponse: {

@@ -3755,6 +3755,42 @@
             "type": "object",
             "title": "Schema Overrides",
             "default": {}
+          },
+          "max_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Rows"
+          },
+          "encoding": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encoding"
+          },
+          "null_values": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Null Values"
           }
         },
         "type": "object",

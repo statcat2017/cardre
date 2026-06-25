@@ -52,7 +52,6 @@ STATUS_QUEUED = "queued"
 STATUS_RUNNING = "running"
 STATUS_SUCCEEDED = "succeeded"
 STATUS_FAILED = "failed"
-STATUS_CANCELLED = "cancelled"
 
 
 @dataclass
@@ -95,13 +94,12 @@ class PlanExecutor:
             ]
 
             has_failure, outputs, records = self._execute_actions(
-                store, actions, plan_version_id, run_id, lifecycle,
+                store, actions, plan_version_id, run_id,
             )
-            status = self._compute_final_status(has_failure, actions, force)
+            status = self._compute_final_status(has_failure, actions)
 
             lifecycle.finalise(
                 status=status, execution_mode=execution_mode,
-                run_step_records=records, steps=steps,
             )
         return run_id
 
@@ -146,15 +144,14 @@ class PlanExecutor:
                     ))
 
             has_failure, outputs, records = self._execute_actions(
-                store, actions, plan_version_id, run_id, lifecycle,
+                store, actions, plan_version_id, run_id,
                 step_outputs=ctx.step_outputs,
                 run_step_records=ctx.run_step_records,
             )
-            status = self._compute_final_status(has_failure, actions, force)
+            status = self._compute_final_status(has_failure, actions)
 
             lifecycle.finalise(
                 status=status, execution_mode=execution_mode,
-                run_step_records=records, steps=ctx.steps,
                 branch_id=branch_id,
             )
         return run_id
@@ -203,13 +200,12 @@ class PlanExecutor:
                     actions.append(_StepAction(spec=spec, action="execute"))
 
             has_failure, outputs, records = self._execute_actions(
-                store, actions, plan_version_id, run_id, lifecycle,
+                store, actions, plan_version_id, run_id,
             )
-            status = self._compute_final_status(has_failure, actions, force)
+            status = self._compute_final_status(has_failure, actions)
 
             lifecycle.finalise(
                 status=status, execution_mode=execution_mode,
-                run_step_records=records, steps=closure_steps,
                 target_step_id=target_step_id,
                 in_scope_step_ids=sorted(closure),
             )
@@ -225,13 +221,12 @@ class PlanExecutor:
         actions: list[_StepAction],
         plan_version_id: str,
         run_id: str,
-        lifecycle: Any,
         step_outputs: dict[str, list[ArtifactRef]] | None = None,
         run_step_records: dict[str, RunStepRecord] | None = None,
-    ) -> tuple[bool, bool, dict[str, list[ArtifactRef]], dict[str, RunStepRecord]]:
+    ) -> tuple[bool, dict[str, list[ArtifactRef]], dict[str, RunStepRecord]]:
         """Execute a sequence of step actions.
 
-        Returns ``(has_failure, was_cancelled, step_outputs, rs_records)``.
+        Returns ``(has_failure, step_outputs, rs_records)``.
         """
         outputs: dict[str, list[ArtifactRef]] = step_outputs or {}
         records: dict[str, RunStepRecord] = run_step_records or {}
@@ -284,7 +279,6 @@ class PlanExecutor:
     def _compute_final_status(
         has_failure: bool,
         actions: list[_StepAction],
-        force: bool,
     ) -> str:
         if has_failure:
             return STATUS_FAILED
@@ -392,11 +386,6 @@ class PlanExecutor:
                 "traceback": tb,
                 "category": category,
             }
-
-            try:
-                node = self.registry.instantiate(spec.node_type)
-            except BaseException:
-                node = None
 
             recorded_input_ids = [a.artifact_id for a in input_artifacts]
 
@@ -660,13 +649,12 @@ class PlanExecutor:
                     actions.append(_StepAction(spec=spec, action="execute"))
 
             has_failure, outputs, records = self._execute_actions(
-                store, actions, new_plan_version_id, run_id, lifecycle,
+                store, actions, new_plan_version_id, run_id,
             )
 
-            status = self._compute_final_status(has_failure, actions, force=False)
+            status = self._compute_final_status(has_failure, actions)
             lifecycle.finalise(
                 status=status, execution_mode="replay",
-                run_step_records=records, steps=new_steps,
             )
         return run_id
 

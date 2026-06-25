@@ -118,6 +118,11 @@ LINE_COUNT_DEBT: dict[str, dict[str, Any]] = {
         "ceiling": 1300,
         "reason": "node module; candidate for node-family split",
     },
+    "tests/test_executor.py": {
+        "current_count": 1043,
+        "ceiling": 1200,
+        "reason": "executor integration test; candidate for scenario split",
+    },
     "tests/test_sidecar_api.py": {
         "current_count": 2061,
         "ceiling": 2400,

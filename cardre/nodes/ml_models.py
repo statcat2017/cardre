@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from sklearn.tree import DecisionTreeClassifier, export_text
+from sklearn.tree import DecisionTreeClassifier
 
 from cardre.node_parameters import (
     MethodOption, NodeParameterSchema, ParameterConstraint, ParameterDefinition,
@@ -142,43 +142,13 @@ class DecisionTreeNode(BaseClassifierNode):
             default_method="default",
         )
 
-    VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
-
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
-
-        feature_strategy = params.get("feature_strategy", "")
-        if feature_strategy not in self.VALID_FEATURE_STRATEGIES:
-            errors.append(
-                f"feature_strategy must be one of {sorted(self.VALID_FEATURE_STRATEGIES)}, "
-                f"got {feature_strategy!r}"
-            )
-
-        max_depth = params.get("max_depth")
-        if max_depth is not None:
-            try:
-                if int(max_depth) < 1:
-                    errors.append("max_depth must be >= 1")
-            except (ValueError, TypeError):
-                errors.append("max_depth must be an integer")
-
-        min_samples_leaf = params.get("min_samples_leaf", 1)
-        try:
-            if int(min_samples_leaf) < 1:
-                errors.append("min_samples_leaf must be >= 1")
-        except (ValueError, TypeError):
-            errors.append("min_samples_leaf must be an integer")
 
         class_weight = params.get("class_weight")
         if class_weight is not None and class_weight != "balanced":
             if not isinstance(class_weight, dict):
                 errors.append("class_weight must be 'balanced', a dict, or null")
-
-        random_seed = params.get("random_seed", 42)
-        try:
-            int(random_seed)
-        except (ValueError, TypeError):
-            errors.append("random_seed must be an integer")
 
         return errors
 
@@ -341,50 +311,13 @@ class RandomForestClassifierNode(BaseClassifierNode):
             default_method="default",
         )
 
-    VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
-
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
-
-        feature_strategy = params.get("feature_strategy", "")
-        if feature_strategy not in self.VALID_FEATURE_STRATEGIES:
-            errors.append(
-                f"feature_strategy must be one of {sorted(self.VALID_FEATURE_STRATEGIES)}, "
-                f"got {feature_strategy!r}"
-            )
-
-        max_depth = params.get("max_depth")
-        if max_depth is not None:
-            try:
-                if int(max_depth) < 1:
-                    errors.append("max_depth must be >= 1")
-            except (ValueError, TypeError):
-                errors.append("max_depth must be an integer")
-
-        n_estimators = params.get("n_estimators", 100)
-        try:
-            if int(n_estimators) < 1:
-                errors.append("n_estimators must be >= 1")
-        except (ValueError, TypeError):
-            errors.append("n_estimators must be an integer")
-
-        min_samples_leaf = params.get("min_samples_leaf", 1)
-        try:
-            if int(min_samples_leaf) < 1:
-                errors.append("min_samples_leaf must be >= 1")
-        except (ValueError, TypeError):
-            errors.append("min_samples_leaf must be an integer")
 
         class_weight = params.get("class_weight")
         if class_weight is not None and class_weight != "balanced":
             if not isinstance(class_weight, dict):
                 errors.append("class_weight must be 'balanced', a dict, or null")
-
-        random_seed = params.get("random_seed", 42)
-        try:
-            int(random_seed)
-        except (ValueError, TypeError):
-            errors.append("random_seed must be an integer")
 
         return errors
 
@@ -543,54 +476,6 @@ class GradientBoostingClassifierNode(BaseClassifierNode):
             ],
             default_method="default",
         )
-
-    VALID_FEATURE_STRATEGIES = {"raw_numeric", "encoded_raw", "woe_challenger"}
-
-    def validate_params(self, params: dict[str, Any]) -> list[str]:
-        errors: list[str] = []
-
-        feature_strategy = params.get("feature_strategy", "")
-        if feature_strategy not in self.VALID_FEATURE_STRATEGIES:
-            errors.append(
-                f"feature_strategy must be one of {sorted(self.VALID_FEATURE_STRATEGIES)}, "
-                f"got {feature_strategy!r}"
-            )
-
-        n_estimators = params.get("n_estimators", 100)
-        try:
-            if int(n_estimators) < 1:
-                errors.append("n_estimators must be >= 1")
-        except (ValueError, TypeError):
-            errors.append("n_estimators must be an integer")
-
-        max_depth = params.get("max_depth", 3)
-        try:
-            if int(max_depth) < 1:
-                errors.append("max_depth must be >= 1")
-        except (ValueError, TypeError):
-            errors.append("max_depth must be an integer")
-
-        learning_rate = params.get("learning_rate", 0.1)
-        try:
-            if float(learning_rate) <= 0:
-                errors.append("learning_rate must be > 0")
-        except (ValueError, TypeError):
-            errors.append("learning_rate must be a number")
-
-        min_samples_leaf = params.get("min_samples_leaf", 1)
-        try:
-            if int(min_samples_leaf) < 1:
-                errors.append("min_samples_leaf must be >= 1")
-        except (ValueError, TypeError):
-            errors.append("min_samples_leaf must be an integer")
-
-        random_seed = params.get("random_seed", 42)
-        try:
-            int(random_seed)
-        except (ValueError, TypeError):
-            errors.append("random_seed must be an integer")
-
-        return errors
 
     def _get_estimator_class(self):
         from sklearn.ensemble import GradientBoostingClassifier

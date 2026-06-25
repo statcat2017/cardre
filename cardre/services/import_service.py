@@ -3,9 +3,30 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from cardre.audit import replace_step_params
 from cardre.store import ProjectStore
+
+
+def import_params_from_request(body: Any, source_path: str) -> dict[str, object]:
+    """Build canonical import params dict from an import request body."""
+    params: dict[str, object] = {"source_path": str(Path(source_path).resolve())}
+    if body.format and body.format != "auto":
+        params["format"] = body.format
+    if body.delimiter is not None:
+        params["delimiter"] = body.delimiter
+    if not body.has_header:
+        params["has_header"] = False
+    if body.schema_overrides:
+        params["schema_overrides"] = dict(body.schema_overrides)
+    if body.max_rows is not None:
+        params["max_rows"] = body.max_rows
+    if body.encoding is not None:
+        params["encoding"] = body.encoding
+    if body.null_values:
+        params["null_values"] = list(body.null_values)
+    return params
 
 
 def get_or_create_import_plan(store: ProjectStore, project_id: str) -> str:

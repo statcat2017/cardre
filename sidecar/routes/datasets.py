@@ -12,9 +12,8 @@ from fastapi import APIRouter, HTTPException
 from cardre.audit import StepSpec, json_logical_hash
 from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
-from cardre.store import ProjectStore
 from cardre.services.project_registry import get_store_for_project
-from cardre.services.import_service import update_plan_import_params, get_or_create_import_plan
+from cardre.services.import_service import update_plan_import_params, get_or_create_import_plan, import_params_from_request
 from sidecar.models import ArtifactResponse, ImportDatasetRequest
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -33,21 +32,7 @@ def import_dataset(body: ImportDatasetRequest):
     # Use a dedicated hidden import plan
     import_plan_id = get_or_create_import_plan(store, body.project_id)
 
-    params = {"source_path": str(source.resolve())}
-    if body.format and body.format != "auto":
-        params["format"] = body.format
-    if body.delimiter is not None:
-        params["delimiter"] = body.delimiter
-    if not body.has_header:
-        params["has_header"] = False
-    if body.schema_overrides:
-        params["schema_overrides"] = dict(body.schema_overrides)
-    if body.max_rows is not None:
-        params["max_rows"] = body.max_rows
-    if body.encoding is not None:
-        params["encoding"] = body.encoding
-    if body.null_values:
-        params["null_values"] = list(body.null_values)
+    params = import_params_from_request(body, str(source.resolve()))
     import_step = StepSpec(
         step_id="import",
         node_type="cardre.import_dataset",
@@ -89,21 +74,8 @@ def import_dataset(body: ImportDatasetRequest):
 
     # Forward the same import params to the pathway's import step
     # so the pathway re-import uses the same format/delimiter/header/schema settings.
-    pathway_extra: dict[str, object] = {}
-    if body.format and body.format != "auto":
-        pathway_extra["format"] = body.format
-    if body.delimiter is not None:
-        pathway_extra["delimiter"] = body.delimiter
-    if not body.has_header:
-        pathway_extra["has_header"] = False
-    if body.schema_overrides:
-        pathway_extra["schema_overrides"] = dict(body.schema_overrides)
-    if body.max_rows is not None:
-        pathway_extra["max_rows"] = body.max_rows
-    if body.encoding is not None:
-        pathway_extra["encoding"] = body.encoding
-    if body.null_values:
-        pathway_extra["null_values"] = list(body.null_values)
+    pathway_extra = import_params_from_request(body, str(source.resolve()))
+    pathway_extra.pop("source_path", None)
     update_plan_import_params(
         store, body.project_id, str(source.resolve()),
         extra_params=pathway_extra or None,

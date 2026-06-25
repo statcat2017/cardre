@@ -183,12 +183,6 @@ class XGBoostParameterTests:
         })
         assert errors == []
 
-    def test_invalid_feature_strategy(self) -> None:
-        from cardre.nodes.boosting import XGBoostClassifierNode
-        node = XGBoostClassifierNode()
-        errors = node.validate_params({"feature_strategy": "invalid"})
-        assert len(errors) > 0
-
 
 @pytest.mark.optional_boosting
 class LightGBMParameterTests:

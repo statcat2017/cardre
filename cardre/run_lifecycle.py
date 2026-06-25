@@ -13,7 +13,7 @@ was deferred until long-running nodes need it.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 from cardre.artifacts import write_json_artifact
 from cardre.audit import RunStepRecord, JsonDict, utc_now_iso
@@ -107,9 +107,9 @@ def write_manifest(
     """Read current run state and write a manifest artifact.
 
     The manifest is built directly from store state (run record + run
-    steps), so *run_step_records* and *steps* are intentionally omitted
-    from the signature — they are carried by ``RunFinalisation`` for
-    future deterministic manifest construction, not used here yet.
+    steps).  ``RunFinalisation`` carries only the metadata needed for
+    finalisation (status, mode, scope); the manifest payload is
+    constructed from the store, not from the finalisation struct.
     """
     run_record = store.get_run(run_id)
     if run_record is None:
@@ -153,8 +153,6 @@ class RunFinalisation:
     status: str
     execution_mode: str
     finished_at: str
-    run_step_records: dict[str, RunStepRecord]
-    steps: list[Any]
 
     # Per-mode metadata
     branch_id: str | None = None
@@ -291,8 +289,6 @@ class RunLifecycle:
         self,
         status: str,
         execution_mode: str,
-        run_step_records: dict[str, RunStepRecord] | None = None,
-        steps: list[Any] | None = None,
         *,
         branch_id: str | None = None,
         target_step_id: str | None = None,
@@ -314,8 +310,6 @@ class RunLifecycle:
                 status=status,
                 execution_mode=execution_mode,
                 finished_at=now,
-                run_step_records=run_step_records or {},
-                steps=steps or [],
                 branch_id=branch_id,
                 target_step_id=target_step_id,
                 in_scope_step_ids=in_scope_step_ids,
@@ -326,76 +320,3 @@ class RunLifecycle:
         self._finalised = True
 
 
-# ---------------------------------------------------------------------------
-# RunScope — what to run, without execution semantics
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class RunScope:
-    """Describes which steps belong in a run and how they should be handled.
-
-    This is a *planning* structure — it captures the mode decision
-    (full / branch / to-node) and the set of steps in scope, but does
-    not carry execution semantics (role enforcement, leakage rules, etc.).
-    Those remain in ``PlanExecutor``.
-    """
-    mode: Literal["full", "branch", "to_node"]
-    plan_version_id: str
-    steps: list[Any]             # all steps in the plan version
-    in_scope_step_ids: frozenset[str]
-    force: bool = False
-    branch_id: str | None = None
-    target_step_id: str | None = None
-
-    @classmethod
-    def full_plan(
-        cls,
-        store: ProjectStore,
-        plan_version_id: str,
-        force: bool = False,
-    ) -> RunScope:
-        steps = store.get_plan_version_steps(plan_version_id)
-        return cls(
-            mode="full", plan_version_id=plan_version_id, steps=steps,
-            in_scope_step_ids=frozenset(s.step_id for s in steps), force=force,
-        )
-
-    @classmethod
-    def to_node(
-        cls,
-        store: ProjectStore,
-        plan_version_id: str,
-        target_step_id: str,
-        force: bool = False,
-    ) -> RunScope:
-        steps = store.get_plan_version_steps(plan_version_id)
-        from cardre.step_graph import ancestor_closure
-        ancestors = ancestor_closure(target_step_id, steps)
-        closure = ancestors | {target_step_id}
-        closure_steps = [s for s in steps if s.step_id in closure]
-        return cls(
-            mode="to_node", plan_version_id=plan_version_id, steps=closure_steps,
-            in_scope_step_ids=frozenset(closure), force=force,
-            target_step_id=target_step_id,
-        )
-
-    @classmethod
-    def branch(
-        cls,
-        store: ProjectStore,
-        plan_version_id: str,
-        branch_id: str,
-        force: bool = False,
-    ) -> RunScope:
-        steps = store.get_plan_version_steps(plan_version_id)
-        branch = store.get_branch(branch_id)
-        if branch is None:
-            raise ValueError(f"Branch {branch_id} not found")
-        step_map = store.get_branch_step_map(branch_id, plan_version_id)
-        owned = {r["step_id"] for r in step_map if r.get("is_branch_owned")}
-        return cls(
-            mode="branch", plan_version_id=plan_version_id, steps=steps,
-            in_scope_step_ids=frozenset(owned), force=force,
-            branch_id=branch_id,
-        )
