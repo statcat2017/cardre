@@ -34,4 +34,6 @@ The `RunLifecycle` class (`cardre/run_lifecycle.py`) owns generic run mechanics:
 
 ## Staleness Detection
 
-Staleness is computed by `cardre/staleness.py`. A step is stale if its latest run does not reference the latest upstream run steps. This is a computed property, not a stored status, so it can be recomputed on the fly as plan versions change. The staleness check compares `logical_hash` values of upstream step outputs.
+Staleness is computed by `cardre/staleness.py`. A step is stale if its latest run does not reference the latest upstream run steps. This is a computed property, not a stored status, so it can be recomputed on the fly as plan versions change.
+
+The staleness check compares `logical_hash` values of upstream step outputs. If an upstream step was re-run with different parameters, all downstream steps become stale regardless of their stored status.

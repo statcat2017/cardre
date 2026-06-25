@@ -46,9 +46,18 @@ The boundary: once score scaling produces the finalized scorecard, the validate 
 ### Node Categories
 
 - **Fit nodes** (build stream only): consume `train`, produce definition artifacts (bin maps, WOE maps, model, scorecard). Examples: auto fine classing, WOE transform, logistic regression, score scaling.
-- **Refinement nodes** (build stream only): consume a definition artifact and produce a refined definition. Manual bin editing is the canonical example.
-- **Selection nodes** (build stream only): consume metrics/rankings and filter which variables proceed downstream. Variable clustering and variable selection are canonical examples.
+- **Refinement nodes** (build stream only): consume a definition artifact and produce a refined definition. Manual bin editing is the canonical example — it takes auto bin definitions and produces overridden bin definitions for selected variables only.
+- **Selection nodes** (build stream only): consume metrics/rankings and filter which variables proceed downstream. Variable clustering/correlation grouping and variable selection are canonical examples.
 - **Apply nodes** (validate stream only): consume definitions from build stream + test/oot data, produce predictions and metrics. Examples: apply WOE mapping, apply model, calculate validation metrics.
+
+## Missing Value Handling
+
+Two distinct concepts:
+
+- **Imputation**: pre-binning data transform. Replaces missing values with a statistical value (mean, median, mode) so the variable can participate in binning normally. Lives in the data preparation phase.
+- **Separate bin**: binning-time strategy. Missing values (or specific codes) are isolated into their own bin with their own WOE calculation. Treated as a distinct risk category at scoring time.
+
+These are two different node types: `impute_missing` (data transform) and the `missing_policy` property on `fine_classing` (binning strategy). A variable may use neither, one, or both.
 
 ## Step Status: Stored vs Computed
 
@@ -78,8 +87,8 @@ The boundary: once score scaling produces the finalized scorecard, the validate 
 
 ## WOE/IV Evaluation vs WOE Transform
 
-- **`calculate_woe_iv`**: a diagnostic/selection node. Consumes bin definitions + train data. Computes WOE and IV per variable. Output is a metrics/report artifact (IV ranking table), not a dataset transformation.
-- **`woe_transform`**: a transformative node. Consumes bin definitions + data (train or test/oot). Applies bin definitions to produce a WOE-transformed dataset.
+- **`calculate_woe_iv`**: a diagnostic/selection node. Consumes bin definitions + train data. Computes WOE and IV per variable. Output is a metrics/report artifact (IV ranking table), not a dataset transformation. Used between fine classing and variable selection to rank variable strength.
+- **`woe_transform`**: a transformative node. Consumes bin definitions + data (train or test/oot). Applies bin definitions to produce a WOE-transformed dataset. In the build stream, applies refined bin definitions to train for LR input. In the validate stream, applies the same definitions to test/oot.
 
 ## Train/Test/OOT Split
 
@@ -89,6 +98,7 @@ The boundary: once score scaling produces the finalized scorecard, the validate 
 - Fitting nodes consume `train`. Apply/transform nodes consume `test` and `oot`.
 - The executor enforces role-based access: a fitting node cannot read test/OOT targets during fitting.
 - Artifact roles are immutable once set by the split step.
+
 
 ## Licensing
 

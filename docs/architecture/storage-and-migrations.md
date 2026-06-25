@@ -19,9 +19,19 @@ All metadata is stored in a single SQLite database per project. The store is imp
 - **Parquet artifacts**: all tabular data — imported datasets, transformed datasets, metric tables, IV rankings, prediction tables.
 - **JSON artifacts**: small non-tabular reports, configuration blobs, definition artifacts (bin maps, model parameters, scorecard specs).
 
+This keeps SQLite lean, queryable, and easy to backup while Parquet handles columnar data efficiently.
+
 ## Schema
 
-The database schema is defined in `cardre/store/schema.py` and includes tables for projects, plans, plan versions, plan steps, runs, run steps, artifacts, artifact references, branches, branch step maps, comparisons, comparison snapshots, champions, and champion assignments. Branch-related tables are created separately via `BRANCH_TABLES_SQL` and are only present when governance features are enabled.
+The database schema is defined in `cardre/store/schema.py` and includes tables for:
+- Projects, plans, plan versions, plan steps
+- Runs, run steps
+- Artifacts, artifact references
+- Branches, branch step maps
+- Comparisons, comparison snapshots
+- Champions, champion assignments
+
+Branch-related tables are created separately via `BRANCH_TABLES_SQL` and are only present when governance features are enabled.
 
 ## Migrations
 
