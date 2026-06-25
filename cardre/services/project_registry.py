@@ -34,12 +34,19 @@ def update_registry(updater):
         save_registry(registry)
 
 
-class ProjectNotFoundError(KeyError):
+from cardre.errors import CardreError
+
+
+class ProjectNotFoundError(CardreError):
     """Raised when a project ID is not found in the registry."""
+    code = "PROJECT_NOT_FOUND"
+    status_code = 404
 
 
-class ProjectPathMissingError(Exception):
+class ProjectPathMissingError(CardreError):
     """Raised when the project entry exists but the cardre.sqlite path is missing."""
+    code = "PROJECT_PATH_MISSING"
+    status_code = 410
 
 
 def load_registry() -> dict:

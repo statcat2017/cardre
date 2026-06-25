@@ -7,16 +7,20 @@ Usage:
 from __future__ import annotations
 
 import sys
-import time
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
-from cardre.errors import ConcurrentRunError
-from cardre.services import PlanValidationError
-from cardre.services.project_registry import ProjectNotFoundError, ProjectPathMissingError
+from cardre.errors import CardreError
+from sidecar.error_handling import (
+    RequestContextMiddleware,
+    cardre_error_handler,
+    http_exception_handler,
+    request_validation_error_handler,
+    generic_exception_handler,
+)
 from sidecar.routes import artifacts, binning, branches, champion, comparisons, datasets, evidence, exports, health, method_summary, node_types, plans, projects, reports, runs
 
 app = FastAPI(title="cardre-api", version="0.1.0")
@@ -35,35 +39,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(RequestContextMiddleware)
 
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    start = time.perf_counter()
-    response = await call_next(request)
-    elapsed = time.perf_counter() - start
-    print(f"[sidecar] {request.method} {request.url.path} {response.status_code} ({elapsed:.3f}s)", flush=True)
-    return response
-
-
-@app.exception_handler(PlanValidationError)
-def plan_validation_error_handler(_request: Request, exc: PlanValidationError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-
-
-@app.exception_handler(ProjectNotFoundError)
-def project_not_found_handler(_request: Request, exc: ProjectNotFoundError) -> JSONResponse:
-    return JSONResponse(status_code=404, content={"detail": {"code": "PROJECT_NOT_FOUND", "message": str(exc)}})
-
-
-@app.exception_handler(ProjectPathMissingError)
-def project_path_missing_handler(_request: Request, exc: ProjectPathMissingError) -> JSONResponse:
-    return JSONResponse(status_code=410, content={"detail": {"code": "PROJECT_PATH_MISSING", "message": str(exc)}})
-
-
-@app.exception_handler(ConcurrentRunError)
-def concurrent_run_handler(_request: Request, exc: ConcurrentRunError) -> JSONResponse:
-    return JSONResponse(status_code=409, content={"detail": {"code": "CONCURRENT_RUN", "message": str(exc)}})
-
+app.add_exception_handler(CardreError, cardre_error_handler)
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, request_validation_error_handler)
+app.add_exception_handler(Exception, generic_exception_handler)
 
 app.include_router(health.router)
 app.include_router(binning.router)

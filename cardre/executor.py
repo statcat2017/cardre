@@ -386,6 +386,8 @@ class PlanExecutor:
                 (ArtifactWriteError, "ArtifactWriteError"),
                 (NodeExecutionError, "NodeExecutionError"),
                 (ContractViolationError, "ContractViolationError"),
+                (RoleAccessError, "RoleAccessError"),
+                (LeakageProtectionError, "LeakageProtectionError"),
                 (CardreError, "CardreError"),
             )
             category = "InternalExecutionError"
@@ -520,7 +522,7 @@ class PlanExecutor:
             return
         for a in artifacts:
             if a.role in ("test", "oot") and a.artifact_type == "dataset":
-                raise RoleAccessError(
+                raise LeakageProtectionError(
                     f"Node {node.node_type!r} (category={node.category!r}) "
                     f"cannot consume {a.role!r} dataset artifact. "
                     f"Leakage-sensitive nodes must not consume test or OOT "
@@ -741,9 +743,17 @@ class PlanExecutor:
         return copied_rs
 
 
-class RoleAccessError(ValueError):
+class RoleAccessError(CardreError):
     """Raised when a node attempts to consume an artifact with an
     unacceptable role for its category."""
+    code = "ROLE_ACCESS_ERROR"
+    status_code = 400
+
+
+class LeakageProtectionError(CardreError):
+    """Raised when a leakage-sensitive node attempts to consume test or OOT data."""
+    code = "LEAKAGE_PROTECTION_ERROR"
+    status_code = 400
 
 
 def _output_logical_hashes(rs: RunStepRecord) -> list[str]:

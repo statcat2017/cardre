@@ -132,6 +132,20 @@ class RunRequest(BaseModel):
         return self
 
 
+class RunDiagnostic(BaseModel):
+    code: str
+    message: str
+    severity: str = "error"
+    category: str | None = None
+    exception_type: str | None = None
+    run_id: str
+    plan_version_id: str | None = None
+    branch_id: str | None = None
+    step_id: str | None = None
+    traceback: str | None = None
+    created_at: str
+
+
 class RunResponse(BaseModel):
     run_id: str
     plan_version_id: str
@@ -141,6 +155,8 @@ class RunResponse(BaseModel):
     step_count: int = 0
     branch_id: str | None = None
     executed_step_ids: list[str] = Field(default_factory=list)
+    diagnostics: list[RunDiagnostic] = Field(default_factory=list)
+    latest_error: RunDiagnostic | None = None
 
 
 class RunStepItem(BaseModel):

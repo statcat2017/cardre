@@ -37,7 +37,7 @@ class ProjectStoreTests(unittest.TestCase):
         store, tmp = make_store()
         tables = [
             "projects", "plans", "plan_versions", "plan_steps",
-            "runs", "run_steps", "artifacts", "warnings", "errors",
+            "runs", "run_steps", "artifacts",
         ]
         conn = store._connect()
         existing = {

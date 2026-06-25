@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from cardre.audit import RunStepRecord, StepSpec
 from cardre.evidence_locator import collect_run_steps_for_plan_version
+from cardre.errors import GraphValidationError
 from cardre.store import ProjectStore
 
 
@@ -129,7 +130,10 @@ def _find_spec(step_id: str, steps: list[StepSpec]) -> StepSpec:
     for s in steps:
         if s.step_id == step_id:
             return s
-    raise KeyError(step_id)
+    raise GraphValidationError(
+        f"Missing parent step {step_id!r} referenced by staleness walk",
+        context={"missing_step_id": step_id, "known_step_ids": [s.step_id for s in steps]},
+    )
 
 
 def _staleness_reason(

@@ -84,21 +84,6 @@ CREATE TABLE IF NOT EXISTS artifacts (
     metadata_json TEXT NOT NULL DEFAULT '{}'
 );
 
-CREATE TABLE IF NOT EXISTS warnings (
-    warning_id TEXT PRIMARY KEY,
-    run_step_id TEXT,
-    code TEXT NOT NULL,
-    message TEXT NOT NULL,
-    metadata_json TEXT NOT NULL DEFAULT '{}'
-);
-
-CREATE TABLE IF NOT EXISTS errors (
-    error_id TEXT PRIMARY KEY,
-    run_step_id TEXT,
-    code TEXT NOT NULL,
-    message TEXT NOT NULL,
-    metadata_json TEXT NOT NULL DEFAULT '{}'
-);
 """
 
 BRANCH_TABLES_SQL = """

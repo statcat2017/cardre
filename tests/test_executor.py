@@ -256,10 +256,11 @@ class ExecutorTests:
             "MissingInputArtifactError", "ParameterValidationError",
             "ArtifactReadError", "ArtifactWriteError",
             "NodeExecutionError", "ContractViolationError",
+            "RoleAccessError", "LeakageProtectionError",
             "CardreError", "InternalExecutionError",
         }
         assert error["category"] in known_categories
-        assert error["category"] == "InternalExecutionError"
+        assert error["category"] == "RoleAccessError"
 
     def test_missing_artifact_file_fails_validation(self) -> None:
         store, tmp = make_store()
