@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from cardre.audit import StepSpec, json_logical_hash, utc_now_iso
 from cardre.store import ProjectStore
 from cardre.services.workflow_guidance_service import (
     WorkflowGuidanceService,
@@ -256,3 +257,70 @@ def test_step_readiness_from_branch_context():
         # The branch-owned step should appear in the run step map (non-empty step_guidance
         # shows it was resolved from the branch_step_map, not the generic plan)
         assert len(mb_guidance.get("evidence_kinds", [])) > 0, "manual-binning evidence_kinds"
+
+
+def test_degraded_diagnostics_when_staleness_fails(monkeypatch):
+    """When compute_staleness raises, guidance is degraded with STALENESS_UNAVAILABLE."""
+    from cardre.errors import GraphValidationError
+    from cardre.staleness import compute_staleness
+
+    def _raise_staleness(*args, **kwargs):
+        raise GraphValidationError("Staleness failed")
+
+    monkeypatch.setattr("cardre.services.workflow_guidance_service.compute_staleness", _raise_staleness)
+
+    tmp = tempfile.mkdtemp()
+    store = _init_store(tmp)
+    prj_id = store.create_project("test")
+    plan_id = store.create_plan(prj_id, "test-plan")
+
+    # Create a plan version with a step, run it, and produce a train artifact
+    # so the phase advances past "setup"
+    import polars as pl
+    from cardre.audit import RunStepRecord
+    df = pl.DataFrame({"x": [1.0, 2.0], "y": [0, 1]})
+    from cardre.artifacts import write_parquet_artifact
+    train_art = write_parquet_artifact(store, artifact_type="dataset", role="train",
+                                        stem="test-train", frame=df, metadata={})
+
+    steps = [
+        StepSpec(
+            step_id="import", node_type="cardre.import_fixture_uci_german_credit",
+            node_version="1", category="transform",
+            params={"source_path": "/tmp/test.csv"},
+            params_hash=json_logical_hash({"source_path": "/tmp/test.csv"}),
+            parent_step_ids=[], branch_label="", position=0,
+        ),
+    ]
+    pv_id = store.create_plan_version(plan_id, steps)
+    run_id = store.create_run(pv_id)
+    # Create a run step that references the train artifact
+    rs = RunStepRecord(
+        run_step_id="rs-1", run_id=run_id, step_id="import",
+        plan_version_id=pv_id, status="succeeded",
+        started_at=utc_now_iso(), finished_at=utc_now_iso(),
+        input_artifact_ids=[], output_artifact_ids=[train_art.artifact_id],
+        execution_fingerprint={"node_type": "cardre.import_fixture_uci_german_credit",
+                                "node_version": "1", "params_hash": "h",
+                                "parent_output_logical_hashes_by_step": {},
+                                "output_artifact_logical_hashes": ["h1"]},
+        warnings=[], errors=[],
+    )
+    store.save_run_step(rs)
+    store.finish_run(run_id, status="succeeded")
+
+    svc = WorkflowGuidanceService(store)
+    result = svc.build(
+        plan_id=plan_id, project_id=prj_id,
+        run_id=run_id,
+    )
+
+    assert result.degraded is True, "Expected degraded=True when staleness fails"
+    assert len(result.diagnostics) > 0, "Expected at least one diagnostic"
+    codes = [d.code for d in result.diagnostics]
+    assert "STALENESS_UNAVAILABLE" in codes, (
+        f"Expected STALENESS_UNAVAILABLE diagnostic, got {codes}"
+    )
+    assert result.next_action_kind == "resolve_diagnostics", (
+        f"Expected resolve_diagnostics action, got {result.next_action_kind}"
+    )

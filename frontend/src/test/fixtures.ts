@@ -22,4 +22,6 @@ export const mockSetupGuidance: WorkflowGuidance = {
   report_readiness: null,
   branch_id: null,
   run_id: null,
+  degraded: false,
+  diagnostics: [],
 };

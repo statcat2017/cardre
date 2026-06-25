@@ -545,6 +545,18 @@ class WorkflowGuidanceService:
                 "action_target": None,
             }
 
+        # If degraded diagnostics exist, suggest resolving them before
+        # any generic run/export action.
+        if diagnostics:
+            return {
+                "kind": "resolve_diagnostics",
+                "label": "Resolve diagnostics",
+                "description": "Some checks could not be completed. Review diagnostics before continuing.",
+                "run_scope": None,
+                "step_id": None,
+                "action_target": "diagnostics",
+            }
+
         # Find first non-complete step
         for cid in ALL_CANONICAL_IDS:
             sg = step_guidance.get(cid, {})
