@@ -18,6 +18,13 @@ jobs:
       - name: Check line counts
         run: python3 scripts/check-line-counts.py
 
+  check_doc_references:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check doc references
+        run: python3 scripts/check_doc_references.py
+
   test-python:
     runs-on: ubuntu-latest
     steps:
