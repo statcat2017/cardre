@@ -239,7 +239,8 @@ class ComputeStalenessTests:
         steps3 = [a3, b3]
         pv3_id = store.create_plan_version(plan_id, steps3)
         staleness = compute_staleness(store, pv3_id)
-        assert staleness["a"] == True   # no run exists for pv3
+        # Cross-plan fallback finds pv2's 'a' (params x=99) which matches pv3's 'a' (x=99)
+        assert staleness["a"] == False
         assert staleness["b"] == True
 
     def test_branch_id_fallback(self) -> None:

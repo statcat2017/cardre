@@ -6,10 +6,11 @@ export function useManualBinningState(
   projectId: string,
   planId: string,
   stepId: string,
+  planVersionId?: string,
   enabled = true,
 ) {
   return useQuery<ManualBinningEditorStateResponse>({
-    queryKey: ["manualBinningState", projectId, planId, stepId],
+    queryKey: ["manualBinningState", projectId, planId, stepId, planVersionId],
     queryFn: () =>
       api.getManualBinningEditorState(planId, projectId, stepId),
     enabled: enabled && !!planId && !!projectId && !!stepId,

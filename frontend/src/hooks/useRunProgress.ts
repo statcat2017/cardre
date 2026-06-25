@@ -61,6 +61,9 @@ export function useRunProgress(
     setRunning(true);
     setError(null);
     setLiveDiagnostic(null);
+    setCarriedForwardSteps({});
+    setLiveStepStatus({});
+    setTotalPlanSteps(0);
 
     try {
       const runResp = await api.runPlan({
@@ -110,6 +113,7 @@ export function useRunProgress(
             queryClient.invalidateQueries({ queryKey: ["project", projectId] });
             queryClient.invalidateQueries({ queryKey: ["projectRuns", projectId] });
             setRunning(false);
+            setCarriedForwardSteps({});
             setLiveStepStatus({});
             setLiveDiagnostic(null);
             addDiagnostic(`Run ${run.status}`);

@@ -41,10 +41,15 @@ class RunRepository:
 
     def finish(self, run_id: str, status: str = "succeeded") -> None:
         now = utc_now_iso()
-        self._db().execute(
-            "UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ?",
+        cursor = self._db().execute(
+            "UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ? AND status = 'running'",
             (status, now, run_id),
         )
+        if cursor.rowcount == 0:
+            import logging
+            logging.getLogger(__name__).warning(
+                "run_repo.finish: no running run found for %s (status=%s)", run_id, status,
+            )
 
     def get(self, run_id: str) -> dict[str, Any] | None:
         row = self._db().execute(
@@ -99,7 +104,7 @@ class RunRepository:
 
     def get_steps(self, run_id: str) -> list[RunStepRecord]:
         rows = self._db().execute(
-            "SELECT * FROM run_steps WHERE run_id = ? ORDER BY started_at",
+            "SELECT * FROM run_steps WHERE run_id = ? ORDER BY started_at, run_step_id",
             (run_id,),
         ).fetchall()
         return [self._store._row_to_run_step(r) for r in rows]

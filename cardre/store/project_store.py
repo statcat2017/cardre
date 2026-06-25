@@ -106,6 +106,12 @@ class ProjectStore:
         if "heartbeat_at" not in run_cols:
             conn.execute("ALTER TABLE runs ADD COLUMN heartbeat_at TEXT")
 
+        # Add UNIQUE index on (plan_id, version_number) for existing stores (schema v3)
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_versions_plan_version "
+            "ON plan_versions(plan_id, version_number)"
+        )
+
         # Stamp current schema version after successful migrations
         self._ensure_store_meta()
         conn.execute(
@@ -474,7 +480,7 @@ class ProjectStore:
         steps: list[StepSpec],
         description: str = "",
     ) -> str:
-        with self.transaction() as conn:
+        with self.transaction(mode="IMMEDIATE") as conn:
             return self._insert_plan_version_and_steps(conn, plan_id, steps, description)
 
     def create_plan_version_in_transaction(
@@ -630,11 +636,60 @@ class ProjectStore:
         rows = self._connect().execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
+    def create_branch_plan_version(
+        self,
+        branch_id: str,
+        plan_id: str,
+        steps: list[StepSpec],
+        description: str,
+        latest_pv_id: str,
+    ) -> str:
+        """Create a new plan version, update branch head, and copy
+        branch_step_map atomically.
+
+        Callers that need to also insert an annotation in the same
+        transaction should use PlanService._create_branch_version_atomic
+        instead.
+        """
+        with self.transaction() as conn:
+            new_pv_id = self._insert_plan_version_and_steps(conn, plan_id, steps, description)
+            now = utc_now_iso()
+            conn.execute(
+                "UPDATE plan_branches SET head_plan_version_id = ?, updated_at = ? WHERE branch_id = ?",
+                (new_pv_id, now, branch_id),
+            )
+            existing_map = self.get_branch_step_map(branch_id, latest_pv_id)
+            for row in existing_map:
+                conn.execute(
+                    "INSERT INTO branch_step_map "
+                    "(branch_step_map_id, branch_id, plan_version_id, canonical_step_id, step_id, "
+                    " source_branch_id, source_step_id, is_shared_upstream, is_branch_owned, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        str(uuid.uuid4()),
+                        branch_id, new_pv_id, row["canonical_step_id"], row["step_id"],
+                        row.get("source_branch_id"), row.get("source_step_id"),
+                        row["is_shared_upstream"], row["is_branch_owned"], now,
+                    ),
+                )
+            # Supersede any champion assignment for this branch since the
+            # evidence it was based on may have changed.
+            from cardre.services.champion_service import supersede_champion_for_branch
+            supersede_champion_for_branch(self, branch_id, new_pv_id)
+            return new_pv_id
+
     def update_branch_head(
         self,
         branch_id: str,
         head_plan_version_id: str,
     ) -> None:
+        """Update the branch head plan version.
+
+        WARNING: This does NOT copy branch_step_map entries for the new
+        head version.  Callers must ensure step-map consistency separately
+        (e.g. by using create_branch_plan_version or
+        PlanService._create_branch_version_atomic).
+        """
         now = utc_now_iso()
         with self.transaction() as conn:
             conn.execute(
@@ -740,10 +795,15 @@ class ProjectStore:
     def finish_run(self, run_id: str, status: str = "succeeded") -> None:
         now = utc_now_iso()
         with self.transaction() as conn:
-            conn.execute(
-                "UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ?",
+            cursor = conn.execute(
+                "UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ? AND status = 'running'",
                 (status, now, run_id),
             )
+            if cursor.rowcount == 0:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "finish_run: no running run found for %s (status=%s)", run_id, status,
+                )
 
     def get_run(self, run_id: str) -> JsonDict | None:
         row = self._connect().execute(
@@ -779,7 +839,7 @@ class ProjectStore:
 
     def get_run_steps(self, run_id: str) -> list[RunStepRecord]:
         rows = self._connect().execute(
-            "SELECT * FROM run_steps WHERE run_id = ? ORDER BY started_at",
+            "SELECT * FROM run_steps WHERE run_id = ? ORDER BY started_at, run_step_id",
             (run_id,),
         ).fetchall()
         return [self._row_to_run_step(r) for r in rows]
@@ -810,13 +870,13 @@ class ProjectStore:
         if branch_id:
             row = self._connect().execute(
                 "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id = ? AND status = 'succeeded' "
-                "ORDER BY started_at DESC LIMIT 1",
+                "ORDER BY started_at DESC, run_id DESC LIMIT 1",
                 (plan_version_id, branch_id),
             ).fetchone()
         else:
             row = self._connect().execute(
                 "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id IS NULL AND status = 'succeeded' "
-                "ORDER BY started_at DESC LIMIT 1",
+                "ORDER BY started_at DESC, run_id DESC LIMIT 1",
                 (plan_version_id,),
             ).fetchone()
         return None if row is None else row["run_id"]
@@ -827,7 +887,7 @@ class ProjectStore:
             "SELECT r.run_id FROM runs r "
             "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
             "WHERE pv.plan_id = ? AND r.status = 'succeeded' AND r.branch_id IS NULL "
-            "ORDER BY r.started_at DESC LIMIT 1",
+            "ORDER BY r.started_at DESC, r.run_id DESC LIMIT 1",
             (plan_id,),
         ).fetchone()
         return None if row is None else row["run_id"]
@@ -853,7 +913,8 @@ class ProjectStore:
                 "JOIN runs r ON rs.run_id = r.run_id "
                 "WHERE rs.plan_version_id = ? AND rs.step_id = ? "
                 "AND r.branch_id = ? AND rs.status = 'succeeded' "
-                "ORDER BY rs.started_at DESC LIMIT 1",
+                "AND r.status = 'succeeded' "
+                "ORDER BY rs.started_at DESC, rs.run_step_id DESC LIMIT 1",
                 (plan_version_id, step_id, branch_id),
             ).fetchone()
         else:
@@ -862,7 +923,8 @@ class ProjectStore:
                 "JOIN runs r ON rs.run_id = r.run_id "
                 "WHERE rs.plan_version_id = ? AND rs.step_id = ? "
                 "AND r.branch_id IS NULL AND rs.status = 'succeeded' "
-                "ORDER BY rs.started_at DESC LIMIT 1",
+                "AND r.status = 'succeeded' "
+                "ORDER BY rs.started_at DESC, rs.run_step_id DESC LIMIT 1",
                 (plan_version_id, step_id),
             ).fetchone()
         if row is None:
@@ -882,7 +944,8 @@ class ProjectStore:
                 "JOIN plan_versions pv ON rs.plan_version_id = pv.plan_version_id "
                 "WHERE pv.plan_id = ? AND rs.step_id = ? "
                 "AND r.branch_id = ? AND rs.status = 'succeeded' "
-                "ORDER BY rs.started_at DESC LIMIT 1",
+                "AND r.status = 'succeeded' "
+                "ORDER BY rs.started_at DESC, rs.run_step_id DESC LIMIT 1",
                 (plan_id, step_id, branch_id),
             ).fetchone()
         else:
@@ -892,7 +955,8 @@ class ProjectStore:
                 "JOIN plan_versions pv ON rs.plan_version_id = pv.plan_version_id "
                 "WHERE pv.plan_id = ? AND rs.step_id = ? "
                 "AND r.branch_id IS NULL AND rs.status = 'succeeded' "
-                "ORDER BY rs.started_at DESC LIMIT 1",
+                "AND r.status = 'succeeded' "
+                "ORDER BY rs.started_at DESC, rs.run_step_id DESC LIMIT 1",
                 (plan_id, step_id),
             ).fetchone()
         if row is None:
@@ -909,12 +973,12 @@ class ProjectStore:
     def list_runs(self, plan_version_id: str | None = None) -> list[JsonDict]:
         if plan_version_id is not None:
             rows = self._connect().execute(
-                "SELECT * FROM runs WHERE plan_version_id = ? ORDER BY started_at DESC",
+                "SELECT * FROM runs WHERE plan_version_id = ? ORDER BY started_at DESC, run_id DESC",
                 (plan_version_id,),
             ).fetchall()
         else:
             rows = self._connect().execute(
-                "SELECT * FROM runs ORDER BY started_at DESC"
+                "SELECT * FROM runs ORDER BY started_at DESC, run_id DESC"
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -926,7 +990,7 @@ class ProjectStore:
             "LEFT JOIN (SELECT run_id, COUNT(*) AS step_count FROM run_steps GROUP BY run_id) rs "
             "  ON r.run_id = rs.run_id "
             "WHERE p.project_id = ? "
-            "ORDER BY r.started_at DESC",
+            "ORDER BY r.started_at DESC, r.run_id DESC",
             (project_id,),
         ).fetchall()
         return [dict(r) for r in rows]
@@ -999,7 +1063,7 @@ class ProjectStore:
             "SELECT r.run_id FROM runs r "
             "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
             "WHERE pv.plan_id = ? AND r.status = 'succeeded' "
-            "ORDER BY r.started_at DESC LIMIT 1",
+            "ORDER BY r.started_at DESC, r.run_id DESC LIMIT 1",
             (plan_id,),
         ).fetchone()
         return None if row is None else row["run_id"]

@@ -30,6 +30,10 @@ class StepStatusItem:
     params: dict[str, Any] = field(default_factory=dict)
     canonical_step_id: str = ""
     branch_id: str | None = None
+    status_source: str = "current_version"
+    source_run_id: str | None = None
+    source_plan_version_id: str | None = None
+    is_carried_forward: bool = False
 
 
 @dataclass

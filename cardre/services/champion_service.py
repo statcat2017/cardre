@@ -114,6 +114,33 @@ def assign_champion(
     }
 
 
+def supersede_champion_for_branch(
+    store: ProjectStore,
+    branch_id: str,
+    new_plan_version_id: str,
+) -> None:
+    """Supersede any active champion assignment for a branch whose head
+    has advanced to *new_plan_version_id*.
+
+    When a branch head advances, its previous champion assignment (if any)
+    is no longer valid because the evidence it was based on may have
+    changed.  This function marks the old assignment as superseded so the
+    branch must be re-evaluated before it can be champion again.
+    """
+    assignment = store.get_champion_assignment_by_branch(branch_id)
+    if assignment is None:
+        return
+    if assignment["selected_plan_version_id"] == new_plan_version_id:
+        return
+    now = utc_now_iso()
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE champion_assignments SET superseded_at = ? "
+            "WHERE champion_assignment_id = ? AND superseded_at IS NULL",
+            (now, assignment["champion_assignment_id"]),
+        )
+
+
 def get_champion(
     store: ProjectStore,
     plan_id: str,

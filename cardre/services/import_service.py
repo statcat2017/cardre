@@ -49,7 +49,37 @@ def update_single_plan_import_params(
     if extra_params:
         params.update(extra_params)
     new_steps = replace_step_params(steps, "import", params)
-    store.create_plan_version(plan_id, new_steps, description="Import configured")
+    # Look up the baseline branch for this plan; if one exists, use the
+    # atomic branch-version helper so the branch head and step map stay
+    # consistent.
+    baseline_branch = _find_baseline_branch(store, plan_id)
+    if baseline_branch is not None:
+        store.create_branch_plan_version(
+            branch_id=baseline_branch["branch_id"],
+            plan_id=plan_id,
+            steps=new_steps,
+            description="Import configured",
+            latest_pv_id=latest_pv_id,
+        )
+    else:
+        store.create_plan_version(plan_id, new_steps, description="Import configured")
+
+
+def _find_baseline_branch(store: ProjectStore, plan_id: str) -> dict | None:
+    """Return the first active baseline branch for a plan, or None."""
+    from cardre.store.branch_repo import BranchRepository
+    repo = BranchRepository(store)
+    # We need the project_id to list branches; get it from the plan
+    plan = store.get_plan(plan_id)
+    if plan is None:
+        return None
+    branches = repo.list(
+        project_id=plan["project_id"],
+        plan_id=plan_id,
+        branch_type="baseline",
+        status="active",
+    )
+    return branches[0] if branches else None
 
 
 def update_plan_import_params(

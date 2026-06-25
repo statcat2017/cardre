@@ -9,12 +9,25 @@ from fastapi import APIRouter, HTTPException, Query
 from cardre.executor import PlanExecutor
 from cardre.evidence import ArtifactEvidenceReader
 from cardre.registry import NodeRegistry
+from cardre.services.branch_evidence import BranchEvidenceResolver
 from cardre.services.project_registry import get_store_for_project, load_registry, ProjectNotFoundError, ProjectPathMissingError
 from cardre.services.run_orchestrator import execute_run, dispatch_run_async
 from cardre.store import ProjectStore
 from sidecar.models import RunRequest, RunResponse, RunStepsResponse, RunStepItem
 
 router = APIRouter(prefix="/runs", tags=["runs"])
+
+
+def _is_branch_current(store, plan_version_id, branch_id):
+    """Check if a branch run would short-circuit (no stale steps, existing successful run)."""
+    try:
+        resolver = BranchEvidenceResolver(PlanExecutor(NodeRegistry.with_defaults()))
+        ctx = resolver.prepare_branch_run(store, branch_id, plan_version_id, force=False)
+        if ctx.short_circuit_run_id is not None:
+            return ctx.short_circuit_run_id
+    except (ValueError, Exception):
+        pass
+    return None
 
 
 def _build_run_response(store: ProjectStore, run_id: str, executed_ids: list[str] | None = None) -> RunResponse:
@@ -81,12 +94,20 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
             detail_code = f"{scope_label.upper()}_RUN_FAILED"
             raise HTTPException(status_code=400, detail={"code": detail_code, "message": str(exc)})
         except Exception:
-            run_id = store.create_run(body.plan_version_id)
-            store.finish_run(run_id, "failed")
-            return _build_run_response(store, run_id)
+            raise HTTPException(
+                status_code=500,
+                detail={"code": "RUN_EXECUTION_FAILED", "message": "Run execution failed unexpectedly."},
+            )
 
     # Async (default): create run immediately, execute in background
     branch_kw = {"branch_id": body.branch_id} if body.branch_id else {}
+
+    # Preflight: check if branch is already current (no stale steps)
+    if body.run_scope == "branch" and body.branch_id:
+        existing_run_id = _is_branch_current(store, body.plan_version_id, body.branch_id)
+        if existing_run_id is not None:
+            return _build_run_response(store, existing_run_id)
+
     run_id = store.create_run(body.plan_version_id, **branch_kw)
     project_path = str(store.root)
     try:

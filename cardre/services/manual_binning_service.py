@@ -512,7 +512,7 @@ class ManualBinningService:
         """Return (bin_def, vs_def, bin_artifact_id, vs_artifact_id) on success
         or ((None, None, None, None), error_msg) on failure."""
         def _find_run_step(sid: str) -> RunStepRecord | None:
-            if branch_id and "__" in sid:
+            if branch_id:
                 rs = self._store.get_latest_successful_run_step_for_step(
                     plan_version_id, sid, branch_id=branch_id,
                 )

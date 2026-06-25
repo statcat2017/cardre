@@ -2,7 +2,7 @@
 
 # Current app schema version — bump when making backwards-incompatible changes.
 # Stored in store_meta table; old apps will reject newer stores.
-STORE_SCHEMA_VERSION = 2
+STORE_SCHEMA_VERSION = 3
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS plan_versions (
     version_number INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
-    metadata_json TEXT NOT NULL DEFAULT '{}'
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(plan_id, version_number)
 );
 
 CREATE TABLE IF NOT EXISTS plan_steps (

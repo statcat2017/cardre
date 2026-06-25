@@ -274,6 +274,14 @@ class RunLifecycle:
         """
         if run_id is None:
             run_id = store.create_run(plan_version_id, branch_id=branch_id, force=force)
+        else:
+            existing_run = store.get_run(run_id)
+            if existing_run is None:
+                raise ValueError(f"Run {run_id} not found")
+            if existing_run.get("status") != "running":
+                raise ValueError(f"Run {run_id} is not in 'running' state (status={existing_run.get('status')})")
+            if existing_run.get("plan_version_id") != plan_version_id:
+                raise ValueError(f"Run {run_id} belongs to plan version {existing_run.get('plan_version_id')}, expected {plan_version_id}")
         return cls(
             store=store, run_id=run_id, plan_version_id=plan_version_id,
             execution_mode=execution_mode,
