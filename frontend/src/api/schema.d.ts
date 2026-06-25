@@ -2099,6 +2099,34 @@ export interface components {
              */
             checked_at: string;
         };
+        /** RunDiagnostic */
+        RunDiagnostic: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /**
+             * Severity
+             * @default error
+             */
+            severity: string;
+            /** Category */
+            category?: string | null;
+            /** Exception Type */
+            exception_type?: string | null;
+            /** Run Id */
+            run_id: string;
+            /** Plan Version Id */
+            plan_version_id?: string | null;
+            /** Branch Id */
+            branch_id?: string | null;
+            /** Step Id */
+            step_id?: string | null;
+            /** Traceback */
+            traceback?: string | null;
+            /** Created At */
+            created_at: string;
+        };
         /** RunListItem */
         RunListItem: {
             /** Run Id */
@@ -2160,6 +2188,9 @@ export interface components {
             branch_id?: string | null;
             /** Executed Step Ids */
             executed_step_ids?: string[];
+            /** Diagnostics */
+            diagnostics?: components["schemas"]["RunDiagnostic"][];
+            latest_error?: components["schemas"]["RunDiagnostic"] | null;
         };
         /** RunStepEvidenceItem */
         RunStepEvidenceItem: {

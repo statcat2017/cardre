@@ -34,13 +34,13 @@ class PlanValidationError(CardreError):
     ``status_code``, ``code``, and ``message`` fields.
     """
     code = "PLAN_VALIDATION_FAILED"
-    status_code = 422
+    status_code = 400
 
     def __init__(
         self,
         code: str,
         message: str,
-        status_code: int = 422,
+        status_code: int = 400,
         extra: dict | None = None,
     ):
         self.code = code

@@ -764,7 +764,7 @@ class TestStepParamsUpdate:
             "project_id": pid, "base_plan_version_id": orig_pv_id,
             "params": {"max_bins": 1},
         })
-        assert resp.status_code == 422
+        assert resp.status_code == 400
         detail = resp.json()["detail"]
         assert detail["code"] == "PARAMS_VALIDATION_FAILED"
 
@@ -1460,8 +1460,8 @@ class TestScorecardPathwayE2E:
                 ],
             },
         })
-        assert bad_override_resp.status_code == 422, (
-            f"Expected 422 for invalid bin ID, got {bad_override_resp.status_code}: {bad_override_resp.json()}"
+        assert bad_override_resp.status_code == 400, (
+            f"Expected 400 for invalid bin ID, got {bad_override_resp.status_code}: {bad_override_resp.json()}"
         )
 
         # 7. Manual-binning save for non-selected variable is rejected (#9/#13)
@@ -1474,8 +1474,8 @@ class TestScorecardPathwayE2E:
                               "reason": "test merge"}],
             },
         })
-        assert unselected_resp.status_code == 422, (
-            f"Expected 422 for non-selected variable, "
+        assert unselected_resp.status_code == 400, (
+            f"Expected 400 for non-selected variable, "
             f"got {unselected_resp.status_code}: {unselected_resp.json()}"
         )
         assert "not selected by variable-selection" in unselected_resp.json()["detail"]["message"]
@@ -1526,8 +1526,8 @@ class TestScorecardPathwayE2E:
                               "reason": "test"}],
             },
         })
-        assert resp.status_code == 422, (
-            f"Expected 422 without any successful run, got {resp.status_code}: {resp.json()}"
+        assert resp.status_code == 400, (
+            f"Expected 400 without any successful run, got {resp.status_code}: {resp.json()}"
         )
         assert "Run binning" in resp.json()["detail"]["message"]
 

@@ -124,7 +124,7 @@ class TestResult:
         assert is_fail(r)
         with pytest.raises(CardreError) as exc_info:
             unwrap_or_raise(r)
-        assert exc_info.value.code == "CARDRE_ERROR"
+        assert exc_info.value.code == "X"
         assert exc_info.value.message == "y"
 
     def test_fail_degrade_returns_default(self):

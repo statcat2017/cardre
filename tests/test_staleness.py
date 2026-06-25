@@ -266,6 +266,30 @@ class ComputeStalenessTests:
         # Falls back to full-plan run — step should appear fresh
         assert staleness == {"a": False}
 
+    def test_cross_plan_fallback_when_current_version_has_no_runs(self) -> None:
+        """A step in a new plan version with no runs should be fresh if an
+        earlier version ran the same step with identical params, node type,
+        and node version."""
+        store, _ = make_store()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+
+        a = _make_step("a", params={"x": 1})
+        pv1_id = store.create_plan_version(plan_id, [a])
+        run1_id = store.create_run(pv1_id)
+        ra = _make_rs("a", pv1_id, run1_id, a.params_hash)
+        store.save_run_step(ra)
+        store.finish_run(run1_id, "succeeded")
+
+        # New plan version with same step, no runs
+        a2 = _make_step("a", params={"x": 1})
+        pv2_id = store.create_plan_version(plan_id, [a2])
+
+        staleness = compute_staleness(store, pv2_id)
+        assert staleness == {"a": False}, (
+            f"Expected step 'a' to be fresh via cross-plan fallback, got {staleness}"
+        )
+
     def test_branch_step_stale_when_shared_upstream_changes(self) -> None:
         """A branch-owned step becomes stale when its shared upstream is re-run with new params."""
         store, _ = make_store()

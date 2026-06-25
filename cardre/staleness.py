@@ -41,8 +41,6 @@ def compute_staleness(
             plan_id = pv.get("plan_id")
 
     rs_by_step = collect_run_steps_for_plan_version(store, plan_version_id, branch_id=branch_id)
-    if not rs_by_step:
-        return {s.step_id: True for s in steps}
 
     stale: dict[str, bool] = {}
     for spec in steps:
