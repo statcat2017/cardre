@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { api, isApiError } from "../api/client";
 import type { UpdateStepParamsResponse } from "../types";
 import { useMessage } from "../hooks/useMessage";
 import { MessageBanner } from "./MessageBanner";
@@ -44,17 +44,17 @@ export function ParamsEditor({
       setSuccess(`Saved — new plan version ${resp.new_plan_version_id.slice(0, 8)}… created.`);
       onSaved(resp);
     },
-    onError: (err: any) => {
-      if (err?.status === 409 && err?.detail?.code === STALE_VERSION_CODE) {
-        const latestId: string | undefined = err.detail?.latest_version_id;
+    onError: (err: unknown) => {
+      if (isApiError(err) && err.status === 409 && err.detail.code === STALE_VERSION_CODE) {
+        const latestId: string | undefined = err.detail.context?.latest_version_id as string | undefined;
         setInfo(
           `Plan was modified externally. Refreshing…${latestId ? ` (latest: ${latestId.slice(0, 8)}…)` : ""}`
         );
         onSaved(err.detail);
-      } else if (err?.status === 422) {
-        setError(err?.detail?.message || "Validation failed");
+      } else if (isApiError(err) && err.status === 422) {
+        setError(err.detail.message || "Validation failed");
       } else {
-        setError(err?.message || "Save failed");
+        setError(isApiError(err) ? err.detail.message : "Save failed");
       }
     },
   });

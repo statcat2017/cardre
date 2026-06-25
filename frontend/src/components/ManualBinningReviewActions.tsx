@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { api, isApiError } from "../api/client";
 import type { ManualBinningEditorStateResponse } from "../types";
 import { theme } from "../styles";
 import { useMessage } from "../hooks/useMessage";
@@ -65,12 +65,12 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
       if (resp.new_plan_version_id) {
         onPlanRefreshed({ latest_version_id: resp.new_plan_version_id });
       }
-    } catch (e: any) {
-      if (e?.status === 409 && e?.detail?.code === "STALE_VERSION") {
+    } catch (e: unknown) {
+      if (isApiError(e) && e.status === 409 && e.detail.code === "STALE_VERSION") {
         setInfo("Plan was modified externally. Refreshing…");
         onPlanRefreshed(e.detail);
       } else {
-        setError(e?.message || (acceptAutomated ? "Accept failed" : "Review failed"));
+        setError(isApiError(e) ? e.detail.message : (acceptAutomated ? "Accept failed" : "Review failed"));
       }
     } finally {
       setReviewing(false);

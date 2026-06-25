@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
+from cardre.errors import CardreError
 from cardre.services.project_registry import get_store_for_project, ProjectNotFoundError
 from cardre.services.report_generation_service import ReportGenerationError, ReportGenerationService
 
@@ -127,7 +128,15 @@ def generate_report(project_id: str, run_id: str, req: GenerateReportRequest):
         "export_path": result["export_path"],
         "status": readiness.status,
     }
-    _save_metadata(store.root, report_id, meta)
+    try:
+        _save_metadata(store.root, report_id, meta)
+    except OSError as e:
+        err = CardreError(
+            "REPORT_METADATA_WRITE_FAILED",
+            context={"report_id": report_id, "project_id": project_id, "run_id": run_id},
+        )
+        err.status_code = 500
+        raise err from e
 
     return GenerateReportResponse(
         report_id=report_id,

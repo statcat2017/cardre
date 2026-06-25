@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { api, isApiError } from "../api/client";
 import type { ManualBinningEditorStateResponse } from "../types";
 import { theme } from "../styles";
 import { useMessage } from "../hooks/useMessage";
@@ -99,11 +99,11 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
       queryClient.invalidateQueries({ queryKey: ["manualBinningEditorState"] });
       onSaved(data?.new_plan_version_id);
     },
-    onError: (err: any) => {
-      if (err?.status === 409 && err?.detail?.code === "STALE_VERSION") {
+    onError: (err: unknown) => {
+      if (isApiError(err) && err.status === 409 && err.detail.code === "STALE_VERSION") {
         onPlanRefreshed?.(err.detail);
       } else {
-        setError(err?.message || "Save failed");
+        setError(isApiError(err) ? err.detail.message : "Save failed");
       }
     },
   });
@@ -130,11 +130,11 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
       queryClient.invalidateQueries({ queryKey: ["manualBinningEditorState"] });
       onSaved(data?.new_plan_version_id);
     },
-    onError: (err: any) => {
-      if (err?.status === 409 && err?.detail?.code === "STALE_VERSION") {
+    onError: (err: unknown) => {
+      if (isApiError(err) && err.status === 409 && err.detail.code === "STALE_VERSION") {
         onPlanRefreshed?.(err.detail);
       } else {
-        setError(err?.message || "Revert failed");
+        setError(isApiError(err) ? err.detail.message : "Revert failed");
       }
     },
   });
