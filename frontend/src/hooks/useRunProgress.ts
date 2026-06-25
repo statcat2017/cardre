@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, type ApiError } from "../api/client";
+import { api, isApiError, type ApiError } from "../api/client";
 
 interface StepProgress {
   completed: number;
@@ -124,7 +124,7 @@ export function useRunProgress(
           }
         } catch (e: unknown) {
           consecutiveErrors++;
-          setLastPollError(e instanceof ApiError ? e : null);
+          setLastPollError(isApiError(e) ? e : null);
           if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
             if (pollRef.current !== null) {
               clearInterval(pollRef.current);

@@ -68,7 +68,7 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
     } catch (e: unknown) {
       if (isApiError(e) && e.status === 409 && e.detail.code === "STALE_VERSION") {
         setInfo("Plan was modified externally. Refreshing…");
-        onPlanRefreshed(e.detail);
+        onPlanRefreshed({ latest_version_id: e.detail.context?.latest_version_id as string | undefined });
       } else {
         setError(isApiError(e) ? e.detail.message : (acceptAutomated ? "Accept failed" : "Review failed"));
       }

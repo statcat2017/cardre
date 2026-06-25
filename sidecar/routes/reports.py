@@ -32,10 +32,7 @@ def _metadata_path(project_root: Path, report_id: str) -> Path:
 def _save_metadata(project_root: Path, report_id: str, meta: dict) -> None:
     path = _metadata_path(project_root, report_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        path.write_text(json.dumps(meta, indent=2, sort_keys=True))
-    except OSError:
-        pass
+    path.write_text(json.dumps(meta, indent=2, sort_keys=True))
 
 
 def _load_metadata(project_root: Path, report_id: str) -> dict | None:
@@ -131,12 +128,12 @@ def generate_report(project_id: str, run_id: str, req: GenerateReportRequest):
     try:
         _save_metadata(store.root, report_id, meta)
     except OSError as e:
-        err = CardreError(
-            "REPORT_METADATA_WRITE_FAILED",
+        raise CardreError(
+            "Report metadata could not be written.",
+            code="REPORT_METADATA_WRITE_FAILED",
             context={"report_id": report_id, "project_id": project_id, "run_id": run_id},
-        )
-        err.status_code = 500
-        raise err from e
+            severity="error",
+        ) from e
 
     return GenerateReportResponse(
         report_id=report_id,

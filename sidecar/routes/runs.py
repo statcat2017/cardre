@@ -237,12 +237,12 @@ def get_run_manifest(run_id: str):
                 try:
                     manifest = reader.read_run_manifest(art.artifact_id)
                 except (EvidenceError, JSONDecodeError, OSError) as e:
-                    err = CardreError(
-                        "RUN_MANIFEST_UNREADABLE",
+                    raise CardreError(
+                        "Run manifest could not be read.",
+                        code="RUN_MANIFEST_UNREADABLE",
                         context={"run_id": run_id, "artifact_id": art.artifact_id},
-                    )
-                    err.status_code = 500
-                    raise err from e
+                        severity="error",
+                    ) from e
                 return asdict(manifest)
         raise HTTPException(status_code=404, detail={"code": "MANIFEST_NOT_FOUND", "message": f"No manifest for run {run_id}"})
     raise HTTPException(status_code=404, detail={"code": "RUN_NOT_FOUND", "message": f"No run with ID {run_id}"})

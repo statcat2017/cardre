@@ -101,7 +101,7 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
     },
     onError: (err: unknown) => {
       if (isApiError(err) && err.status === 409 && err.detail.code === "STALE_VERSION") {
-        onPlanRefreshed?.(err.detail);
+        onPlanRefreshed?.({ latest_version_id: err.detail.context?.latest_version_id as string | undefined });
       } else {
         setError(isApiError(err) ? err.detail.message : "Save failed");
       }
@@ -132,7 +132,7 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
     },
     onError: (err: unknown) => {
       if (isApiError(err) && err.status === 409 && err.detail.code === "STALE_VERSION") {
-        onPlanRefreshed?.(err.detail);
+        onPlanRefreshed?.({ latest_version_id: err.detail.context?.latest_version_id as string | undefined });
       } else {
         setError(isApiError(err) ? err.detail.message : "Revert failed");
       }
