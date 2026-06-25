@@ -45,7 +45,7 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
     clearMsg();
     setReviewing(true);
     try {
-      await api.reviewManualBinning(planId, stepId, {
+      const resp = await api.reviewManualBinning(planId, stepId, {
         project_id: state.project_id || "",
         plan_version_id: basePlanVersionId,
         step_id: stepId,
@@ -62,6 +62,9 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
       setShowReasonForm(false);
       setReasonCode("");
       setReviewReason("");
+      if (resp.new_plan_version_id) {
+        onPlanRefreshed({ latest_version_id: resp.new_plan_version_id });
+      }
     } catch (e: any) {
       if (e?.status === 409 && e?.detail?.code === "STALE_VERSION") {
         setInfo("Plan was modified externally. Refreshing…");

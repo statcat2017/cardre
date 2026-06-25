@@ -147,6 +147,7 @@ class PlanExecutor:
                 store, actions, plan_version_id, run_id,
                 step_outputs=ctx.step_outputs,
                 run_step_records=ctx.run_step_records,
+                branch_id=branch_id,
             )
             status = self._compute_final_status(has_failure, actions)
 
@@ -163,6 +164,7 @@ class PlanExecutor:
         target_step_id: str,
         run_id: str | None = None,
         force: bool = False,
+        branch_id: str | None = None,
     ) -> str:
         steps = store.get_plan_version_steps(plan_version_id)
         self._validate_topology(steps)
@@ -177,6 +179,15 @@ class PlanExecutor:
         closure = ancestors | {target_step_id}
         closure_steps = [s for s in steps if s.step_id in closure]
 
+        # Short-circuit when nothing to run
+        if not force:
+            from cardre.staleness import compute_staleness
+            staleness = compute_staleness(store, plan_version_id, branch_id=branch_id)
+            if all(not staleness.get(s.step_id, True) for s in closure_steps):
+                existing_run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=branch_id)
+                if existing_run_id is not None:
+                    return existing_run_id
+
         from cardre.run_lifecycle import RunLifecycle
         execution_mode = "force" if force else "to_node"
         with RunLifecycle.start(
@@ -184,12 +195,13 @@ class PlanExecutor:
             execution_mode=execution_mode,
             target_step_id=target_step_id,
             in_scope_step_ids=sorted(closure),
+            branch_id=branch_id,
             force=force,
         ) as lifecycle:
             run_id = lifecycle.run_id
 
             from cardre.staleness import compute_staleness
-            staleness = compute_staleness(store, plan_version_id)
+            staleness = compute_staleness(store, plan_version_id, branch_id=branch_id)
 
             # Planning is pure: reuse is recorded as action metadata, not written to store.
             actions: list[_StepAction] = []
@@ -201,6 +213,7 @@ class PlanExecutor:
 
             has_failure, outputs, records = self._execute_actions(
                 store, actions, plan_version_id, run_id,
+                branch_id=branch_id,
             )
             status = self._compute_final_status(has_failure, actions)
 
@@ -208,6 +221,7 @@ class PlanExecutor:
                 status=status, execution_mode=execution_mode,
                 target_step_id=target_step_id,
                 in_scope_step_ids=sorted(closure),
+                branch_id=branch_id,
             )
         return run_id
 
@@ -223,6 +237,7 @@ class PlanExecutor:
         run_id: str,
         step_outputs: dict[str, list[ArtifactRef]] | None = None,
         run_step_records: dict[str, RunStepRecord] | None = None,
+        branch_id: str | None = None,
     ) -> tuple[bool, dict[str, list[ArtifactRef]], dict[str, RunStepRecord]]:
         """Execute a sequence of step actions.
 
@@ -240,7 +255,7 @@ class PlanExecutor:
                 continue
 
             if action.action == "reuse":
-                rs = self._reuse_run_step(store, action.spec, plan_version_id, run_id, outputs, records, evidence_source=action.evidence_source)
+                rs = self._reuse_run_step(store, action.spec, plan_version_id, run_id, outputs, records, evidence_source=action.evidence_source, branch_id=branch_id)
                 if rs is not None:
                     records[action.spec.step_id] = rs
                     outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
@@ -602,6 +617,7 @@ class PlanExecutor:
         changed_step_id: str,
         new_params: dict[str, Any],
         description: str = "Replay from changed step",
+        branch_id: str | None = None,
     ) -> str:
         previous_steps = store.get_plan_version_steps(previous_plan_version_id)
         previous_plan = store.get_plan_version(previous_plan_version_id)
@@ -622,11 +638,20 @@ class PlanExecutor:
 
         new_steps = replace_step_params(previous_steps, changed_step_id, new_params)
 
-        new_plan_version_id = store.create_plan_version(
-            plan_id=plan_id,
-            steps=new_steps,
-            description=description,
-        )
+        if branch_id:
+            new_plan_version_id = store.create_branch_plan_version(
+                branch_id=branch_id,
+                plan_id=plan_id,
+                steps=new_steps,
+                description=description,
+                latest_pv_id=previous_plan_version_id,
+            )
+        else:
+            new_plan_version_id = store.create_plan_version(
+                plan_id=plan_id,
+                steps=new_steps,
+                description=description,
+            )
 
         from cardre.run_lifecycle import RunLifecycle
         with RunLifecycle.start(store, new_plan_version_id, execution_mode="replay") as lifecycle:
@@ -671,6 +696,7 @@ class PlanExecutor:
         step_outputs: dict[str, list[ArtifactRef]],
         run_step_records: dict[str, RunStepRecord],
         evidence_source: RunStepRecord | None = None,
+        branch_id: str | None = None,
     ) -> RunStepRecord | None:
         """Carry forward a prior run step into the current run.
 
@@ -680,7 +706,7 @@ class PlanExecutor:
         """
         prev_rs = evidence_source
         if prev_rs is None:
-            latest_run_id = store.get_latest_successful_run_id(plan_version_id)
+            latest_run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=branch_id)
             if latest_run_id is None:
                 return None
             prev_steps = store.get_run_steps(latest_run_id)
@@ -691,14 +717,19 @@ class PlanExecutor:
         copied_fp = dict(prev_rs.execution_fingerprint)
         copied_fp["cardre_step_carried_forward"] = True
         copied_fp["carried_forward_from_run_step_id"] = prev_rs.run_step_id
+        copied_fp["carried_forward_from_plan_version_id"] = prev_rs.plan_version_id
+        copied_fp["carried_forward_from_run_id"] = prev_rs.run_id
+        copied_fp["carried_forward_original_started_at"] = prev_rs.started_at
+        copied_fp["carried_forward_original_finished_at"] = prev_rs.finished_at
+        now = utc_now_iso()
         copied_rs = RunStepRecord(
             run_step_id=str(uuid.uuid4()),
             run_id=run_id,
             step_id=prev_rs.step_id,
             plan_version_id=plan_version_id,
             status=prev_rs.status,
-            started_at=prev_rs.started_at,
-            finished_at=prev_rs.finished_at,
+            started_at=now,
+            finished_at=now,
             input_artifact_ids=prev_rs.input_artifact_ids,
             output_artifact_ids=prev_rs.output_artifact_ids,
             execution_fingerprint=copied_fp,

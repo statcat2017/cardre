@@ -31,6 +31,7 @@ def _to_item(
     canonical_step_id: str | None = None,
     staleness_map: dict[str, bool] | None = None,
     staleness_details: list | None = None,
+    source_branch_id: str | None = None,
 ) -> RunStepEvidenceItem:
     art = store.get_artifact(artifact_id)
     if art is None:
@@ -87,7 +88,7 @@ def _to_item(
         staleness_reason=staleness_reason,
         canonical_step_id=canonical_step_id,
         source_step_id=run_step_id,
-        source_branch_id=None,
+        source_branch_id=source_branch_id,
         status=status,
         summary=summary_dict,
         warnings=warnings_list,
@@ -118,7 +119,10 @@ def get_step_evidence(
     plan_version_id = run["plan_version_id"] if run else None
     pv_steps = store.get_plan_version_steps(plan_version_id) if plan_version_id else []
     step_by_id = {s.step_id: s for s in pv_steps}
-    staleness_details = staleness_detail(store, plan_version_id) if plan_version_id else []
+    branch_id_for_staleness = target_branch_id or None
+    if run:
+        branch_id_for_staleness = branch_id_for_staleness or run.get("branch_id")
+    staleness_details = staleness_detail(store, plan_version_id, branch_id=branch_id_for_staleness) if plan_version_id else []
     staleness_map: dict[str, bool] = {d.step_id: d.is_stale for d in staleness_details}
 
     for rs in store.get_run_steps(run_id):
@@ -131,7 +135,8 @@ def get_step_evidence(
                          run_step_id=rs.step_id,
                          canonical_step_id=canonical_step_id,
                          staleness_map=staleness_map,
-                         staleness_details=staleness_details)
+                         staleness_details=staleness_details,
+                         source_branch_id=run.get("branch_id"))
                 for aid in rs.output_artifact_ids
             ]
 
@@ -164,7 +169,10 @@ def get_run_evidence(
     plan_version_id = run["plan_version_id"] if run else None
     pv_steps = store.get_plan_version_steps(plan_version_id) if plan_version_id else []
     step_by_id = {s.step_id: s for s in pv_steps}
-    staleness_details = staleness_detail(store, plan_version_id) if plan_version_id else []
+    branch_id_for_staleness = target_branch_id or None
+    if run:
+        branch_id_for_staleness = branch_id_for_staleness or run.get("branch_id")
+    staleness_details = staleness_detail(store, plan_version_id, branch_id=branch_id_for_staleness) if plan_version_id else []
     staleness_map: dict[str, bool] = {d.step_id: d.is_stale for d in staleness_details}
 
     items: list[RunStepEvidenceItem] = []
@@ -176,7 +184,8 @@ def get_run_evidence(
                                   run_step_id=rs.step_id,
                                   canonical_step_id=canonical_step_id,
                                   staleness_map=staleness_map,
-                                  staleness_details=staleness_details))
+                                  staleness_details=staleness_details,
+                                  source_branch_id=run.get("branch_id")))
 
     return RunStepEvidenceResponse(
         run_id=run_id,

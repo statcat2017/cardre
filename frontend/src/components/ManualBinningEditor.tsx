@@ -24,10 +24,10 @@ export function ManualBinningEditor({
   onBack,
   onPlanRefreshed,
 }: Props) {
-  const state = useManualBinningState(projectId, planId, stepId);
+  const [stepVersion, setStepVersion] = useState(basePlanVersionId);
+  const state = useManualBinningState(projectId, planId, stepId, stepVersion);
   const [selectedVar, setSelectedVar] = useState<string | null>(null);
   const [editingVar, setEditingVar] = useState<string | null>(null);
-  const [stepVersion, setStepVersion] = useState(basePlanVersionId);
 
   const es = state.data;
   const firstVar = selectedVar ?? es?.selected_variables?.[0] ?? null;
@@ -109,7 +109,14 @@ export function ManualBinningEditor({
             stepId={stepId}
             projectId={projectId}
             onClose={() => setEditingVar(null)}
-            onSaved={() => setEditingVar(null)}
+            onSaved={(newPlanVersionId) => {
+              setEditingVar(null);
+              if (newPlanVersionId) setStepVersion(newPlanVersionId);
+            }}
+            onPlanRefreshed={(detail) => {
+              if (detail.latest_version_id) setStepVersion(detail.latest_version_id);
+              onPlanRefreshed(detail);
+            }}
           />
         )}
         <ManualBinningReviewActions

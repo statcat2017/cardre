@@ -14,7 +14,8 @@ interface Props {
   stepId: string;
   projectId: string;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (newPlanVersionId?: string) => void;
+  onPlanRefreshed?: (detail: { latest_version_id?: string }) => void;
 }
 
 const REASON_CODES = [
@@ -46,7 +47,7 @@ const DIALOG_STYLE: React.CSSProperties = {
   padding: 20, minWidth: 400, maxWidth: 500, boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
 };
 
-export function ManualBinningEditDialog({ variable, state, planId, basePlanVersionId, stepId, projectId, onClose, onSaved }: Props) {
+export function ManualBinningEditDialog({ variable, state, planId, basePlanVersionId, stepId, projectId, onClose, onSaved, onPlanRefreshed }: Props) {
   const queryClient = useQueryClient();
   const { msg, msgType, clearMsg, setError, setSuccess } = useMessage();
 
@@ -91,15 +92,19 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
           ],
         },
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       setSuccess("Override saved.");
       queryClient.invalidateQueries({ queryKey: ["plan"] });
       queryClient.invalidateQueries({ queryKey: ["manualBinningState", projectId, planId, stepId] });
       queryClient.invalidateQueries({ queryKey: ["manualBinningEditorState"] });
-      onSaved();
+      onSaved(data?.new_plan_version_id);
     },
     onError: (err: any) => {
-      setError(err?.message || "Save failed");
+      if (err?.status === 409 && err?.detail?.code === "STALE_VERSION") {
+        onPlanRefreshed?.(err.detail);
+      } else {
+        setError(err?.message || "Save failed");
+      }
     },
   });
 
@@ -118,15 +123,19 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
         review_reason: rt,
       });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setSuccess("Reverted to automated bins.");
       queryClient.invalidateQueries({ queryKey: ["plan"] });
       queryClient.invalidateQueries({ queryKey: ["manualBinningState", projectId, planId, stepId] });
       queryClient.invalidateQueries({ queryKey: ["manualBinningEditorState"] });
-      onSaved();
+      onSaved(data?.new_plan_version_id);
     },
     onError: (err: any) => {
-      setError(err?.message || "Revert failed");
+      if (err?.status === 409 && err?.detail?.code === "STALE_VERSION") {
+        onPlanRefreshed?.(err.detail);
+      } else {
+        setError(err?.message || "Revert failed");
+      }
     },
   });
 

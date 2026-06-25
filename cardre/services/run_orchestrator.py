@@ -48,7 +48,7 @@ def execute_run(
             return run_id
         return result_id
     if run_scope == "to_node" and target_step_id:
-        result_id = executor.run_to_node(store, plan_version_id, target_step_id, run_id=run_id, force=force)
+        result_id = executor.run_to_node(store, plan_version_id, target_step_id, run_id=run_id, force=force, branch_id=branch_id)
     else:
         result_id = executor.run_plan_version(store, plan_version_id, run_id=run_id, force=force)
     if run_id is not None and result_id != run_id:

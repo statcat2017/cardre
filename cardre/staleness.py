@@ -24,6 +24,7 @@ def compute_staleness(
     store: ProjectStore,
     plan_version_id: str,
     branch_id: str | None = None,
+    plan_id: str | None = None,
 ) -> dict[str, bool]:
     """Return {step_id: is_stale} for each step in the plan version.
 
@@ -33,13 +34,18 @@ def compute_staleness(
     """
     steps = store.get_plan_version_steps(plan_version_id)
 
+    if plan_id is None:
+        pv = store.get_plan_version(plan_version_id)
+        if pv is not None:
+            plan_id = pv.get("plan_id")
+
     rs_by_step = collect_run_steps_for_plan_version(store, plan_version_id, branch_id=branch_id)
     if not rs_by_step:
         return {s.step_id: True for s in steps}
 
     stale: dict[str, bool] = {}
     for spec in steps:
-        is_stale = step_is_stale(spec, steps, rs_by_step, stale)
+        is_stale = step_is_stale(spec, steps, rs_by_step, stale, store=store, plan_id=plan_id, branch_id=branch_id)
         stale[spec.step_id] = is_stale
     return stale
 
@@ -49,14 +55,28 @@ def step_is_stale(
     all_steps: list[StepSpec],
     rs_by_step: dict[str, RunStepRecord],
     stale_cache: dict[str, bool],
+    store: ProjectStore | None = None,
+    plan_id: str | None = None,
+    branch_id: str | None = None,
 ) -> bool:
     if spec.step_id in stale_cache:
         return stale_cache[spec.step_id]
 
     rs = rs_by_step.get(spec.step_id)
     if rs is None:
-        stale_cache[spec.step_id] = True
-        return True
+        if store is not None and plan_id is not None:
+            fallback_rs = store.get_latest_successful_run_step_for_step_across_plan(
+                plan_id, spec.step_id, branch_id=branch_id,
+            )
+            if fallback_rs is not None:
+                fp = fallback_rs.execution_fingerprint
+                if (fp.get("params_hash", "") == spec.params_hash
+                        and fp.get("node_type", "") == spec.node_type
+                        and fp.get("node_version", "") == spec.node_version):
+                    rs = fallback_rs
+        if rs is None:
+            stale_cache[spec.step_id] = True
+            return True
 
     fp = rs.execution_fingerprint
 
@@ -73,14 +93,25 @@ def step_is_stale(
     )
 
     for pid in spec.parent_step_ids:
-        if step_is_stale(_find_spec(pid, all_steps), all_steps, rs_by_step, stale_cache):
+        if step_is_stale(_find_spec(pid, all_steps), all_steps, rs_by_step, stale_cache, store=store, plan_id=plan_id, branch_id=branch_id):
             stale_cache[spec.step_id] = True
             return True
 
         parent_rs = rs_by_step.get(pid)
         if parent_rs is None:
-            stale_cache[spec.step_id] = True
-            return True
+            if store is not None and plan_id is not None:
+                fallback_parent = store.get_latest_successful_run_step_for_step_across_plan(
+                    plan_id, pid, branch_id=branch_id,
+                )
+                if fallback_parent is not None:
+                    fp_parent = fallback_parent.execution_fingerprint
+                    if (fp_parent.get("params_hash", "") == _find_spec(pid, all_steps).params_hash
+                            and fp_parent.get("node_type", "") == _find_spec(pid, all_steps).node_type
+                            and fp_parent.get("node_version", "") == _find_spec(pid, all_steps).node_version):
+                        parent_rs = fallback_parent
+            if parent_rs is None:
+                stale_cache[spec.step_id] = True
+                return True
 
         stored_parent_outputs = parent_output_by_step.get(pid, [])
         current_parent_outputs = parent_rs.execution_fingerprint.get(

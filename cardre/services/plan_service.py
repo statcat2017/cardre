@@ -7,6 +7,7 @@ and catch ``PlanValidationError`` to map to HTTP responses.
 
 from __future__ import annotations
 
+import sqlite3
 import uuid
 from typing import Any
 
@@ -76,11 +77,11 @@ class PlanService:
         steps = self._store.get_plan_version_steps(latest_pv_id)
         staleness = compute_staleness(self._store, latest_pv_id)
 
-        # Run steps from the current version's most recent run
+        # Run steps from the current version's most recent run (any status)
         run_steps_map: dict[str, Any] = {}
         all_runs = self._store.list_runs(latest_pv_id)
-        if all_runs:
-            latest_run_id = all_runs[0]["run_id"]
+        latest_run_id: str | None = all_runs[0]["run_id"] if all_runs else None
+        if latest_run_id:
             for rs in self._store.get_run_steps(latest_run_id):
                 run_steps_map[rs.step_id] = rs
 
@@ -101,6 +102,18 @@ class PlanService:
             if rs is None and not is_stale:
                 rs = fallback_run_steps_map.get(s.step_id)
             status = rs.status if rs else "not_run"
+            if rs and rs.run_id == latest_run_id:
+                status_source = "current_version"
+                source_run_id = latest_run_id
+                source_plan_version_id = latest_pv_id
+            elif rs:
+                status_source = "prior_version"
+                source_run_id = rs.run_id
+                source_plan_version_id = rs.plan_version_id
+            else:
+                status_source = "current_version"
+                source_run_id = None
+                source_plan_version_id = None
             step_items.append(
                 StepStatusItem(
                     step_id=s.step_id,
@@ -112,6 +125,10 @@ class PlanService:
                     params=s.params,
                     canonical_step_id=s.canonical_step_id,
                     branch_id=s.branch_id,
+                    status_source=status_source,
+                    source_run_id=source_run_id,
+                    source_plan_version_id=source_plan_version_id,
+                    is_carried_forward=rs.is_carried_forward if rs else False,
                 )
             )
 
@@ -147,6 +164,53 @@ class PlanService:
                 now,
             ),
         )
+
+    def _create_branch_version_atomic(
+        self,
+        conn: sqlite3.Connection,
+        branch_id: str,
+        plan_id: str,
+        steps: list[StepSpec],
+        description: str,
+        latest_pv_id: str,
+        step_id: str | None = None,
+        annotation: dict | None = None,
+    ) -> str:
+        """Create a new plan version, update branch head, copy branch_step_map,
+        and optionally insert an annotation — all in one transaction.
+
+        The caller provides an open connection (from an outer transaction).
+        """
+        new_pv_id = self._store.create_plan_version_in_transaction(
+            conn=conn, plan_id=plan_id, steps=steps,
+            description=description,
+        )
+        now = utc_now_iso()
+        conn.execute(
+            "UPDATE plan_branches SET head_plan_version_id = ?, updated_at = ? WHERE branch_id = ?",
+            (new_pv_id, now, branch_id),
+        )
+        existing_map = self._store.get_branch_step_map(branch_id, latest_pv_id)
+        for row in existing_map:
+            conn.execute(
+                "INSERT INTO branch_step_map "
+                "(branch_step_map_id, branch_id, plan_version_id, canonical_step_id, step_id, "
+                " source_branch_id, source_step_id, is_shared_upstream, is_branch_owned, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    str(uuid.uuid4()),
+                    branch_id, new_pv_id, row["canonical_step_id"], row["step_id"],
+                    row.get("source_branch_id"), row.get("source_step_id"),
+                    row["is_shared_upstream"], row["is_branch_owned"], now,
+                ),
+            )
+        if annotation and step_id:
+            self._insert_annotation(conn, step_id, new_pv_id, annotation)
+        # Supersede any champion assignment for this branch since the
+        # evidence it was based on may have changed.
+        from cardre.services.champion_service import supersede_champion_for_branch
+        supersede_champion_for_branch(self._store, branch_id, new_pv_id, conn=conn)
+        return new_pv_id
 
     def update_params(
         self,
@@ -253,40 +317,47 @@ class PlanService:
                 )
 
         new_steps = replace_step_params(steps, step_id, new_params)
-        now = utc_now_iso()
+
+        # Reset manual-binning reviewed flag if the changed step is
+        # upstream of the manual-binning step.  We cannot use
+        # compute_staleness(store, latest_pv_id) here because that
+        # reads the OLD persisted steps — if the branch was current
+        # before this edit, staleness against the old version will
+        # not detect the downstream impact of the new params.
+        # Instead, use descendant_closure on new_steps to find
+        # whether manual-binning is downstream of step_id.
+        if branch_id:
+            from cardre.step_graph import descendant_closure
+            affected = descendant_closure(step_id, new_steps)
+            for s in new_steps:
+                if (s.canonical_step_id == "manual-binning" or s.node_type == "cardre.manual_binning"):
+                    if s.step_id in affected:
+                        if s.params.get("reviewed") or s.params.get("accept_automated"):
+                            updated_params = dict(s.params)
+                            updated_params["reviewed"] = False
+                            updated_params["accept_automated"] = False
+                            new_steps = replace_step_params(new_steps, s.step_id, updated_params)
+                    break
 
         if branch_id and branch is not None:
-            # Branch-owned: create plan version inside branch's transaction
             with self._store.transaction() as conn:
-                new_pv_id = self._store.create_plan_version_in_transaction(
-                    conn=conn, plan_id=plan_id, steps=new_steps,
+                new_pv_id = self._create_branch_version_atomic(
+                    conn=conn,
+                    branch_id=branch_id,
+                    plan_id=plan_id,
+                    steps=new_steps,
                     description=f"Updated params for {step_id} (branch {branch_id})",
+                    latest_pv_id=latest_pv_id,
+                    step_id=step_id,
+                    annotation=annotation,
                 )
-                # Update branch head
-                conn.execute(
-                    "UPDATE plan_branches SET head_plan_version_id = ?, updated_at = ? WHERE branch_id = ?",
-                    (new_pv_id, now, branch_id),
-                )
-                # Copy branch_step_map for new plan version
-                existing_map = self._store.get_branch_step_map(branch_id, latest_pv_id)
-                for row in existing_map:
-                    conn.execute(
-                        "INSERT INTO branch_step_map "
-                        "(branch_step_map_id, branch_id, plan_version_id, canonical_step_id, step_id, "
-                        " source_branch_id, source_step_id, is_shared_upstream, is_branch_owned, created_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (
-                            str(uuid.uuid4()),
-                            branch_id, new_pv_id, row["canonical_step_id"], row["step_id"],
-                            row.get("source_branch_id"), row.get("source_step_id"),
-                            row["is_shared_upstream"], row["is_branch_owned"], now,
-                        ),
-                    )
-                if annotation:
-                    self._insert_annotation(conn, step_id, new_pv_id, annotation)
         else:
+            # NOTE: If the plan has a baseline branch, this non-branch path
+            # should also go through _create_branch_version_atomic to keep
+            # the branch head and branch_step_map consistent.  Requires a
+            # product decision on whether non-branch edits should advance
+            # the baseline branch head.
             if annotation:
-                # Wrapped in a transaction for atomicity with annotation
                 with self._store.transaction() as conn:
                     new_pv_id = self._store.create_plan_version_in_transaction(
                         conn=conn, plan_id=plan_id, steps=new_steps,
@@ -299,6 +370,7 @@ class PlanService:
                     description=f"Updated params for {step_id}",
                 )
 
+        # Recompute staleness against the new version
         staleness = compute_staleness(
             self._store, new_pv_id,
             branch_id=branch_id,
@@ -307,30 +379,6 @@ class PlanService:
             sid for sid, is_stale in staleness.items()
             if is_stale and (not branch_id or any(s.branch_id == branch_id for s in new_steps if s.step_id == sid))
         ]
-
-        # Reset manual-binning reviewed flag if an upstream step changed
-        if branch_id and any(sid != step_id for sid in stale_ids):
-            for s in new_steps:
-                if s.canonical_step_id == "manual-binning" or s.node_type == "cardre.manual_binning":
-                    if s.params.get("reviewed") or s.params.get("accept_automated"):
-                        updated_params = dict(s.params)
-                        updated_params["reviewed"] = False
-                        updated_params["accept_automated"] = False
-                        new_steps = replace_step_params(new_steps, s.step_id, updated_params)
-                        # Re-create plan version with reset params
-                        new_pv_id = self._store.create_plan_version(
-                            plan_id=plan_id, steps=new_steps,
-                            description="Reset manual-binning review flag due to upstream change",
-                        )
-                        staleness = compute_staleness(
-                            self._store, new_pv_id,
-                            branch_id=branch_id,
-                        )
-                        stale_ids = [
-                            sid for sid, is_stale in staleness.items()
-                            if is_stale and (not branch_id or any(s.branch_id == branch_id for s in new_steps if s.step_id == sid))
-                        ]
-                    break
 
         return UpdateStepParamsResponse(
             plan_id=plan_id,
