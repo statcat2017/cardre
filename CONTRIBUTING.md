@@ -35,7 +35,7 @@ Before submitting a PR, run:
 ```bash
 python3 -m pytest tests/ -q
 python3 scripts/check-line-counts.py
-python3 scripts/check-doc-references.py
+python3 scripts/check_doc_references.py
 cd frontend && npx tsc --noEmit
 ```
 
