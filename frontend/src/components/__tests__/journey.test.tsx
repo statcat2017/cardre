@@ -42,6 +42,8 @@ describe("Journey acceptance", () => {
           report_readiness: null,
           branch_id: "br_default",
           run_id: null,
+          degraded: false,
+          diagnostics: [],
         }}
         onAction={() => {}}
       />,

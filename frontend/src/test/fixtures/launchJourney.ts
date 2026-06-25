@@ -76,6 +76,8 @@ export function buildWorkflowGuidanceBuildPhase(): WorkflowGuidance {
     report_readiness: null,
     branch_id: BRANCH_ID,
     run_id: null,
+    degraded: false,
+    diagnostics: [],
   };
 }
 
@@ -95,6 +97,8 @@ export function buildWorkflowGuidanceExportPhase(): WorkflowGuidance {
     report_readiness: null,
     branch_id: BRANCH_ID,
     run_id: RUN_ID,
+    degraded: false,
+    diagnostics: [],
   };
 }
 
@@ -122,6 +126,8 @@ export function buildWorkflowGuidanceManualBinningPhase(): WorkflowGuidance {
     report_readiness: null,
     branch_id: BRANCH_ID,
     run_id: null,
+    degraded: false,
+    diagnostics: [],
   };
 }
 
