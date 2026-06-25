@@ -47,24 +47,87 @@ export function getBaseUrl(): string {
   return (window as unknown as Record<string, string>).__API_URL__ || "http://127.0.0.1:8752";
 }
 
-class ApiError extends Error {
-  status: number;
-  detail: { code: string; message: string };
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly detail: {
+    code: string;
+    message: string;
+    context?: Record<string, unknown>;
+    diagnostics?: Array<{ code: string; message: string }>;
+    request_id?: string;
+    error_id?: string;
+  };
+  readonly requestId?: string;
+  readonly rawBodyPreview?: string;
 
-  constructor(status: number, body: { detail?: { code: string; message: string } }) {
-    super(body.detail?.message || `HTTP ${status}`);
+  constructor(
+    status: number,
+    detail: ApiError["detail"],
+    opts?: { requestId?: string; rawBodyPreview?: string },
+  ) {
+    super(detail.message || `HTTP ${status}`);
     this.status = status;
-    this.detail = body.detail || { code: "UNKNOWN", message: `HTTP ${status}` };
+    this.code = detail.code;
+    this.detail = detail;
+    this.requestId = opts?.requestId;
+    this.rawBodyPreview = opts?.rawBodyPreview;
   }
 }
 
+export function isApiError(e: unknown): e is ApiError {
+  return e instanceof ApiError;
+}
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${getBaseUrl()}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
-  if (!res.ok) throw new ApiError(res.status, await res.json());
-  return res.json();
+  const url = `${getBaseUrl()}${path}`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+  } catch (e) {
+    throw new ApiError(0, {
+      code: "SIDECAR_UNREACHABLE",
+      message: "Could not reach the Cardre sidecar.",
+    }, { rawBodyPreview: String(e) });
+  }
+  const text = await res.text();
+  const requestId = res.headers.get("X-Cardre-Request-Id") ?? undefined;
+  if (!res.ok) {
+    if (text.length === 0) {
+      throw new ApiError(res.status, {
+        code: "EMPTY_ERROR_RESPONSE",
+        message: `HTTP ${res.status} with empty body.`,
+      }, { requestId, rawBodyPreview: "" });
+    }
+    let detail: ApiError["detail"] | undefined;
+    try {
+      const parsed = JSON.parse(text);
+      detail = parsed?.detail;
+    } catch {
+      /* not JSON */
+    }
+    if (!detail || typeof detail.code !== "string" || typeof detail.message !== "string") {
+      const preview = text.slice(0, 500);
+      const code = text.trimStart().startsWith("<") ? "HTML_ERROR_RESPONSE" : "NON_JSON_ERROR_RESPONSE";
+      throw new ApiError(res.status, {
+        code,
+        message: `HTTP ${res.status} returned a non-JSON body.`,
+      }, { requestId, rawBodyPreview: preview });
+    }
+    throw new ApiError(res.status, detail, { requestId });
+  }
+  if (text.length === 0) return undefined as unknown as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiError(res.status, {
+      code: "MALFORMED_JSON_RESPONSE",
+      message: "OK response was not valid JSON.",
+    }, { requestId, rawBodyPreview: text.slice(0, 500) });
+  }
 }
 
 export const api = {

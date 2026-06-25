@@ -112,10 +112,6 @@ class ProjectStore:
             "ON plan_versions(plan_id, version_number)"
         )
 
-        # Drop unused errors and warnings tables (schema v4)
-        conn.execute("DROP TABLE IF EXISTS errors")
-        conn.execute("DROP TABLE IF EXISTS warnings")
-
         # Stamp current schema version after successful migrations
         self._ensure_store_meta()
         conn.execute(

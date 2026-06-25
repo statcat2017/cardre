@@ -2,7 +2,7 @@
 
 # Current app schema version — bump when making backwards-incompatible changes.
 # Stored in store_meta table; old apps will reject newer stores.
-STORE_SCHEMA_VERSION = 4
+STORE_SCHEMA_VERSION = 3
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS projects (
