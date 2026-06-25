@@ -30,7 +30,7 @@ See `docs/launch-mode.md` for details.
 
 ### Current State
 
-The engine supports the full scorecard build pathway: import, profiling, binning, WOE/IV, variable selection, logistic regression, score scaling, validation, cutoff analysis, and reporting. ML challenger nodes (decision tree — launch tier; random forest, gradient boosting, XGBoost, LightGBM, CatBoost — deferred tier) are available. Governance features (branching, champion/challenger comparison) are gated behind `CARDRE_GOVERNANCE=1`.
+The engine supports the full scorecard build pathway: import, profiling, binning, WOE/IV, variable selection, logistic regression, score scaling, validation, cutoff analysis, and reporting. ML challenger nodes (decision tree, random forest, gradient boosting, XGBoost, LightGBM, CatBoost) are available as deferred-tier nodes. Governance features (branching, champion/challenger comparison) are gated behind `CARDRE_GOVERNANCE=1`.
 
 ## Documentation
 

@@ -14,6 +14,8 @@
 - [Node Registry](architecture/node-registry.md) — launch/deferred tiers, registration, instantiation
 - [Artifact & Evidence Access](architecture/artifact-evidence-access.md) — read paths, forbidden patterns, evidence kinds
 - [Reporting](architecture/reporting.md) — report bundle schema, collector, readiness, renderer, generation service
+- [Manual Binning](architecture/manual-binning.md) — editor state, preview, review workflow
+- [Workflow Guidance](architecture/workflow-guidance.md) — next-step recommendations, blocked-reason detection
 
 ## Reference
 
@@ -26,12 +28,8 @@
 
 ## Architecture Decision Records
 
-ADRs are immutable decision records in [docs/adr/](adr/). They are historical records, not current implementation instructions.
-
-## Active Plans
-
-- [Error Handling Hardening](plans/error-handling-hardening-batch/README.md) — launch-blocker sprint to eliminate hidden failures across backend, sidecar, and frontend. Seven-batch delivery plan with per-batch LLM implementation prompts.
+See [docs/adr/README.md](adr/README.md) for indexed ADRs with status.
 
 ## Historical Plans
 
-Historical implementation plans, sprint prompts, and plan reviews remain under `docs/plans/`, `docs/evidence-hardening/`, and `docs/plan-reviews/`. These are historical design inputs, not current implementation instructions.
+Archived implementation plans, sprint prompts, and plan reviews are in [docs/archive/](archive/). These are historical design inputs, not current implementation instructions.

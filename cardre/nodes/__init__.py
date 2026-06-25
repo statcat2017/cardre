@@ -10,7 +10,7 @@ and divided into two tiers:
   executable unless ``CARDRE_LAUNCH_MODE=0`` (boosting, ensembles,
   fairness, explainability, reject inference, feature selection, tuning).
 
-See ``docs/launch-mode.md`` for details on node tiers.
+See ``docs/launch-mode.md`` and ``docs/reference/node-catalogue.md``.
 """
 
 from cardre.nodes.prep import (
