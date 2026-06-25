@@ -47,7 +47,7 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev
 
 **Fix**: Ensure the package is installed in editable mode:
 ```bash
-pip install -e ".[sidecar,test]"
+pip install -e ".[sidecar,dev,test]"
 ```
 
 **Symptom**: Frontend tests fail.

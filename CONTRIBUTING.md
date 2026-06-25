@@ -11,7 +11,7 @@
 ### Install
 
 ```bash
-pip install -e ".[sidecar,test]"
+pip install -e ".[sidecar,dev,test]"
 cd frontend && npm install
 ```
 
@@ -35,7 +35,6 @@ Before submitting a PR, run:
 ```bash
 python3 -m pytest tests/ -q
 python3 scripts/check-line-counts.py
-python3 scripts/check_doc_references.py
 cd frontend && npx tsc --noEmit
 ```
 
@@ -45,7 +44,7 @@ cd frontend && npx tsc --noEmit
 2. Make your changes.
 3. Run tests and lint checks.
 4. Push your branch and open a PR.
-5. Ensure CI passes (Python tests, frontend typecheck, sidecar build, doc references).
+5. Ensure CI passes (Python tests, frontend typecheck, sidecar build).
 
 ## Documentation
 
