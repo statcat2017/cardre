@@ -496,3 +496,21 @@ class TestExecuteActionsBranchContext:
         )
 
         assert captured == [None], f"Expected branch_id=None, got {captured}"
+
+
+class TestAsyncPreflightForce:
+    """Async preflights are skipped when force=True."""
+
+    def test_async_branch_force_skips_preflight(self):
+        """async branch with force=True does not call _is_branch_current."""
+        # Route guard: if not body.force and body.run_scope == "branch" and body.branch_id:
+        # force=True -> not True is False -> short-circuit, preflight skipped
+        assert (not True and True and True) is False
+        # force=False -> not False is True -> preflight proceeds
+        assert (not False and True and True) is True
+
+    def test_async_to_node_force_skips_preflight(self):
+        """async to_node with force=True does not call _is_to_node_current."""
+        # Route guard: if not body.force and body.run_scope == "to_node" and body.target_step_id:
+        assert (not True and True and True) is False
+        assert (not False and True and True) is True

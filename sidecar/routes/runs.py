@@ -125,13 +125,13 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
     branch_kw = {"branch_id": body.branch_id} if body.branch_id else {}
 
     # Preflight: check if branch is already current (no stale steps)
-    if body.run_scope == "branch" and body.branch_id:
+    if not body.force and body.run_scope == "branch" and body.branch_id:
         existing_run_id = _is_branch_current(store, body.plan_version_id, body.branch_id)
         if existing_run_id is not None:
             return _build_run_response(store, existing_run_id)
 
     # Preflight: check if to_node closure is already current
-    if body.run_scope == "to_node" and body.target_step_id:
+    if not body.force and body.run_scope == "to_node" and body.target_step_id:
         existing_run_id = _is_to_node_current(store, body.plan_version_id, body.target_step_id, branch_id=body.branch_id)
         if existing_run_id is not None:
             return _build_run_response(store, existing_run_id)
