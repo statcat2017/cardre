@@ -34,12 +34,15 @@ class CardreError(Exception):
         self,
         message: str | None = None,
         *,
+        code: str | None = None,
         context: dict[str, Any] | None = None,
         recoverable: bool | None = None,
         severity: str | None = None,
         diagnostics: list[Diagnostic] | None = None,
     ) -> None:
         super().__init__(message or self.code)
+        if code is not None:
+            self.code = code
         self.message = message or self.code
         self.context = context or {}
         if recoverable is not None:
@@ -197,6 +200,7 @@ def unwrap_or_raise(r: Result[T]) -> T:
     d = r.diagnostics[0]
     raise CardreError(
         d.message,
+        code=d.code,
         context=d.context,
         diagnostics=r.diagnostics,
     )

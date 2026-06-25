@@ -174,7 +174,7 @@ def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         status_code=500,
         diagnostics=[{
             "code": "INTERNAL_ERROR",
-            "message": f"{type(exc).__name__}: {exc}",
+            "message": f"Unhandled {type(exc).__name__}.",
             "exception_type": type(exc).__name__,
         }],
         request_id=rid,

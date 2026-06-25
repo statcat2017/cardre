@@ -5469,6 +5469,105 @@
         "type": "object",
         "title": "ReportReadinessResponse"
       },
+      "RunDiagnostic": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "default": "error"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "exception_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exception Type"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "plan_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Version Id"
+          },
+          "branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Id"
+          },
+          "step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Id"
+          },
+          "traceback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Traceback"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "run_id",
+          "created_at"
+        ],
+        "title": "RunDiagnostic"
+      },
       "RunListItem": {
         "properties": {
           "run_id": {
@@ -5619,6 +5718,23 @@
             },
             "type": "array",
             "title": "Executed Step Ids"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/RunDiagnostic"
+            },
+            "type": "array",
+            "title": "Diagnostics"
+          },
+          "latest_error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunDiagnostic"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
