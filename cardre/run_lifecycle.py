@@ -17,6 +17,7 @@ from typing import Any
 
 from cardre.artifacts import write_json_artifact
 from cardre.audit import RunStepRecord, JsonDict, utc_now_iso
+from cardre.errors import RunLifecycleError
 from cardre.store import ProjectStore
 
 MANIFEST_VERSION = "1.0.0"
@@ -113,7 +114,7 @@ def write_manifest(
     """
     run_record = store.get_run(run_id)
     if run_record is None:
-        return
+        raise RunLifecycleError("RUN_RECORD_MISSING")
 
     run_steps = store.get_run_steps(run_id)
 
@@ -241,6 +242,20 @@ class RunLifecycle:
         exc_tb: object,
     ) -> bool | None:
         if not self._finalised:
+            if exc_val is not None:
+                import traceback
+                self.store.append_run_diagnostic(self.run_id, {
+                    "code": "RUN_BODY_EXCEPTION",
+                    "message": f"{type(exc_val).__name__}: {exc_val}",
+                    "severity": "error",
+                    "category": "lifecycle",
+                    "exception_type": type(exc_val).__name__,
+                    "run_id": self.run_id,
+                    "plan_version_id": self.plan_version_id,
+                    "branch_id": self._branch_id,
+                    "traceback": "".join(traceback.format_exception(type(exc_val), exc_val, exc_tb)),
+                    "created_at": utc_now_iso(),
+                })
             self.finalise(
                 status="failed",
                 execution_mode=self._execution_mode,
@@ -323,6 +338,18 @@ class RunLifecycle:
                 in_scope_step_ids=in_scope_step_ids,
             ))
         except Exception:
+            import traceback
+            self.store.append_run_diagnostic(self.run_id, {
+                "code": "RUN_FINALISATION_FAILED",
+                "message": f"finalise_run raised: {traceback.format_exc()}",
+                "severity": "error",
+                "category": "lifecycle",
+                "run_id": self.run_id,
+                "plan_version_id": self.plan_version_id,
+                "branch_id": branch_id,
+                "traceback": traceback.format_exc(),
+                "created_at": utc_now_iso(),
+            })
             self.store.finish_run(self.run_id, "failed")
             raise
         self._finalised = True

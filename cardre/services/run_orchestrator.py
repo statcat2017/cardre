@@ -6,6 +6,7 @@ import threading
 from pathlib import Path
 from typing import Literal
 
+from cardre.audit import utc_now_iso
 from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
@@ -16,8 +17,9 @@ def _fail_run_if_running(store: ProjectStore, run_id: str) -> None:
         run = store.get_run(run_id)
         if run and run.get("status") == "running":
             store.finish_run(run_id, "failed")
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception("_fail_run_if_running failed for run %s: %s", run_id, e)
 
 
 def execute_run(
@@ -44,6 +46,16 @@ def execute_run(
     if run_scope == "branch" and branch_id:
         result_id = executor.run_branch(store, plan_version_id, branch_id, run_id=run_id, force=force)
         if run_id is not None and result_id != run_id:
+            store.append_run_diagnostic(run_id, {
+                "code": "RUN_SHORT_CIRCUITED",
+                "message": f"Run {run_id} short-circuited because branch has no stale steps (existing run {result_id})",
+                "severity": "info",
+                "category": "lifecycle",
+                "run_id": run_id,
+                "plan_version_id": plan_version_id,
+                "branch_id": branch_id,
+                "created_at": utc_now_iso(),
+            })
             store.finish_run(run_id, "cancelled")
             return run_id
         return result_id
@@ -52,6 +64,16 @@ def execute_run(
     else:
         result_id = executor.run_plan_version(store, plan_version_id, run_id=run_id, force=force)
     if run_id is not None and result_id != run_id:
+        store.append_run_diagnostic(run_id, {
+            "code": "RUN_SHORT_CIRCUITED",
+            "message": f"Run {run_id} short-circuited (existing run {result_id})",
+            "severity": "info",
+            "category": "lifecycle",
+            "run_id": run_id,
+            "plan_version_id": plan_version_id,
+            "branch_id": branch_id,
+            "created_at": utc_now_iso(),
+        })
         store.finish_run(run_id, "cancelled")
         return run_id
     return result_id
@@ -78,7 +100,25 @@ def dispatch_run_async(
             target_step_id=target_step_id,
             force=force,
         )
-    except BaseException:
+    except Exception:
         import traceback
-        print(f"[sidecar] dispatch_run_async({run_id}) failed: {traceback.format_exc()}", flush=True)
+        import sys
+        import logging
+        tb = traceback.format_exc()
+        exc_type, exc_value, _ = sys.exc_info()
+        logger = logging.getLogger(__name__)
+        logger.error("dispatch_run_async(%s) failed: %s", run_id, tb)
+        diag = {
+            "code": "RUN_DISPATCH_FAILED",
+            "message": f"{exc_type.__name__ if exc_type else 'Exception'}: {exc_value}",
+            "severity": "error",
+            "category": "execution",
+            "exception_type": exc_type.__name__ if exc_type else "Exception",
+            "run_id": run_id,
+            "plan_version_id": plan_version_id,
+            "branch_id": branch_id,
+            "traceback": tb,
+            "created_at": utc_now_iso(),
+        }
+        store.append_run_diagnostic(run_id, diag)
         _fail_run_if_running(store, run_id)

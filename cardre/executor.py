@@ -415,17 +415,44 @@ class PlanExecutor:
                 ),
             )
 
-            rs = self._record_run_step(
-                store=store,
-                run_id=run_id,
-                spec=spec,
-                plan_version_id=plan_version_id,
-                output=output,
-                input_artifact_ids=recorded_input_ids,
-                parent_run_steps=parent_run_steps,
-                status=STATUS_FAILED,
-                errors=[error_entry],
-            )
+            try:
+                rs = self._record_run_step(
+                    store=store,
+                    run_id=run_id,
+                    spec=spec,
+                    plan_version_id=plan_version_id,
+                    output=output,
+                    input_artifact_ids=recorded_input_ids,
+                    parent_run_steps=parent_run_steps,
+                    status=STATUS_FAILED,
+                    errors=[error_entry],
+                )
+            except Exception as rec_exc:
+                import logging
+                logging.getLogger(__name__).exception(
+                    "_record_run_step failed for step %s in run %s", spec.step_id, run_id
+                )
+                rs = RunStepRecord(
+                    run_step_id=str(uuid.uuid4()),
+                    run_id=run_id,
+                    step_id=spec.step_id,
+                    plan_version_id=plan_version_id,
+                    status=STATUS_FAILED,
+                    started_at=utc_now_iso(),
+                    finished_at=utc_now_iso(),
+                    input_artifact_ids=recorded_input_ids,
+                    output_artifact_ids=[],
+                    execution_fingerprint=output.execution_fingerprint,
+                    warnings=[],
+                    errors=[
+                        error_entry,
+                        {
+                            "code": "STEP_RECORDING_FAILED",
+                            "message": f"Recording step result failed: {rec_exc}",
+                            "category": "InternalExecutionError",
+                        },
+                    ],
+                )
             return rs
 
     def _resolve_inputs(

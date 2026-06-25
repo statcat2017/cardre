@@ -14,7 +14,7 @@ from cardre.services.branch_evidence import BranchEvidenceResolver
 from cardre.services.project_registry import get_store_for_project, load_registry, ProjectNotFoundError, ProjectPathMissingError
 from cardre.services.run_orchestrator import execute_run, dispatch_run_async
 from cardre.store import ProjectStore
-from sidecar.models import RunRequest, RunResponse, RunStepsResponse, RunStepItem
+from sidecar.models import RunDiagnostic, RunRequest, RunResponse, RunStepsResponse, RunStepItem
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -56,6 +56,11 @@ def _is_to_node_current(store, plan_version_id, target_step_id, branch_id=None):
 def _build_run_response(store: ProjectStore, run_id: str, executed_ids: list[str] | None = None) -> RunResponse:
     run = store.get_run(run_id)
     steps = store.get_run_steps(run_id)
+    diags = store.get_run_diagnostics(run_id)
+    latest_error = None
+    for d in diags:
+        if d.get("severity") == "error":
+            latest_error = d
     return RunResponse(
         run_id=run["run_id"],
         plan_version_id=run["plan_version_id"],
@@ -65,6 +70,8 @@ def _build_run_response(store: ProjectStore, run_id: str, executed_ids: list[str
         step_count=len(steps),
         branch_id=run.get("branch_id"),
         executed_step_ids=executed_ids or [],
+        diagnostics=[RunDiagnostic(**d) for d in diags],
+        latest_error=RunDiagnostic(**latest_error) if latest_error else None,
     )
 
 

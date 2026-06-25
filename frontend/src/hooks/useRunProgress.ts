@@ -27,6 +27,7 @@ interface UseRunProgressReturn extends RunProgressState {
   startRun: (planVersionId: string, options?: RunOptions) => Promise<void>;
   addDiagnostic: (msg: string) => void;
   lastPollError: ApiError | null;
+  lastRunError: string | null;
 }
 
 export function useRunProgress(
@@ -42,6 +43,7 @@ export function useRunProgress(
   const [liveDiagnostic, setLiveDiagnostic] = useState<string | null>(null);
   const [totalPlanSteps, setTotalPlanSteps] = useState(0);
   const [lastPollError, setLastPollError] = useState<ApiError | null>(null);
+  const [lastRunError, setLastRunError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
@@ -120,6 +122,20 @@ export function useRunProgress(
             setLiveStepStatus({});
             setLiveDiagnostic(null);
             addDiagnostic(`Run ${run.status}`);
+            if (run.status === "failed") {
+              if (run.latest_error) {
+                const errMsg = `${run.latest_error.code}: ${run.latest_error.message}`;
+                setLastRunError(errMsg);
+                addDiagnostic(errMsg);
+              }
+              const firstStepError = steps.steps.find((s) => (s.errors ?? []).length > 0);
+              if (firstStepError && (firstStepError.errors ?? []).length > 0) {
+                const stepErr = firstStepError.errors![0];
+                const stepErrMsg = `Step ${firstStepError.step_id}: ${stepErr.code || "ERROR"}: ${stepErr.message || stepErr.traceback || ""}`;
+                setLastRunError((prev) => prev ? `${prev}\n${stepErrMsg}` : stepErrMsg);
+                addDiagnostic(stepErrMsg);
+              }
+            }
             onRunComplete();
           }
         } catch (e: unknown) {
@@ -163,5 +179,6 @@ export function useRunProgress(
     startRun,
     addDiagnostic,
     lastPollError,
+    lastRunError,
   };
 }

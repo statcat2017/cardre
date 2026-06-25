@@ -189,8 +189,53 @@ class ProjectStore:
         for row in rows:
             rd = dict(row)
             self.finish_run(rd["run_id"], "interrupted")
+            self.append_run_diagnostic(rd["run_id"], {
+                "code": "RUN_INTERRUPTED_RECOVERY",
+                "message": f"Run {rd['run_id']} was in 'running' state with stale heartbeat; marked as interrupted during startup recovery.",
+                "severity": "warning",
+                "category": "lifecycle",
+                "run_id": rd["run_id"],
+                "plan_version_id": rd.get("plan_version_id"),
+                "branch_id": rd.get("branch_id"),
+                "created_at": utc_now_iso(),
+            })
             recovered.append(rd)
         return recovered
+
+    def append_run_diagnostic(self, run_id: str, diagnostic: dict) -> None:
+        try:
+            with self.transaction() as conn:
+                row = conn.execute(
+                    "SELECT metadata_json FROM runs WHERE run_id = ?", (run_id,)
+                ).fetchone()
+                if row is None:
+                    import logging
+                    logging.getLogger(__name__).warning("append_run_diagnostic: run %s not found", run_id)
+                    return
+                import json
+                meta = json.loads(row["metadata_json"] or "{}")
+                diags = meta.get("diagnostics", [])
+                diags.append(diagnostic)
+                meta["diagnostics"] = diags
+                if diagnostic.get("severity") == "error":
+                    meta["latest_error"] = diagnostic
+                conn.execute(
+                    "UPDATE runs SET metadata_json = ? WHERE run_id = ?",
+                    (json.dumps(meta, sort_keys=True), run_id),
+                )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("append_run_diagnostic failed for run %s: %s", run_id, e)
+
+    def get_run_diagnostics(self, run_id: str) -> list[dict]:
+        row = self._connect().execute(
+            "SELECT metadata_json FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        if row is None:
+            return []
+        import json
+        meta = json.loads(row["metadata_json"] or "{}")
+        return meta.get("diagnostics", [])
 
     def _connect(self) -> sqlite3.Connection:
         if self._db is not None:
