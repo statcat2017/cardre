@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone, timedelta
 
 import pytest
 
@@ -13,9 +14,6 @@ from tests.helpers import make_store
 
 
 pytestmark = pytest.mark.unit
-
-
-NOW = utc_now_iso()
 
 
 def _make_step(
@@ -49,15 +47,17 @@ def _make_rs(
     node_version: str = "1",
     parent_output_hashes: dict[str, list[str]] | None = None,
     output_hashes: list[str] | None = None,
+    now: str | None = None,
 ) -> RunStepRecord:
+    now = now or utc_now_iso()
     return RunStepRecord(
         run_step_id=str(uuid.uuid4()),
         run_id=run_id,
         step_id=step_id,
         plan_version_id=plan_version_id,
         status="succeeded",
-        started_at=NOW,
-        finished_at=NOW,
+        started_at=now,
+        finished_at=now,
         input_artifact_ids=[],
         output_artifact_ids=[],
         execution_fingerprint={
@@ -215,8 +215,9 @@ class ComputeStalenessTests:
         steps = [a, b]
         pv_id = store.create_plan_version(plan_id, steps)
         run_id = store.create_run(pv_id)
-        ra = _make_rs("a", pv_id, run_id, a.params_hash)
-        rb = _make_rs("b", pv_id, run_id, b.params_hash, parent_output_hashes={"a": ra.execution_fingerprint["output_artifact_logical_hashes"]})
+        t0 = datetime.now(timezone.utc).isoformat()
+        ra = _make_rs("a", pv_id, run_id, a.params_hash, now=t0)
+        rb = _make_rs("b", pv_id, run_id, b.params_hash, parent_output_hashes={"a": ra.execution_fingerprint["output_artifact_logical_hashes"]}, now=t0)
         store.save_run_step(ra)
         store.save_run_step(rb)
         store.finish_run(run_id, "succeeded")
@@ -226,10 +227,11 @@ class ComputeStalenessTests:
         b2 = _make_step("b", parent_ids=["a"])
         steps2 = [a2, b2]
         pv2_id = store.create_plan_version(plan_id, steps2)
-        # Run the new version
+        # Run the new version with a later timestamp
         run2_id = store.create_run(pv2_id)
-        ra2 = _make_rs("a", pv2_id, run2_id, a2.params_hash)
-        rb2 = _make_rs("b", pv2_id, run2_id, b2.params_hash, parent_output_hashes={"a": ra2.execution_fingerprint["output_artifact_logical_hashes"]})
+        t1 = (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat()
+        ra2 = _make_rs("a", pv2_id, run2_id, a2.params_hash, now=t1)
+        rb2 = _make_rs("b", pv2_id, run2_id, b2.params_hash, parent_output_hashes={"a": ra2.execution_fingerprint["output_artifact_logical_hashes"]}, now=t1)
         store.save_run_step(ra2)
         store.save_run_step(rb2)
         store.finish_run(run2_id, "succeeded")
