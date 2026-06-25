@@ -7,6 +7,7 @@ instantiating a full executor + registry.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from cardre.audit import RunStepRecord, StepSpec
 from cardre.evidence_locator import collect_run_steps_for_plan_version
@@ -40,7 +41,17 @@ def compute_staleness(
         if pv is not None:
             plan_id = pv.get("plan_id")
 
-    rs_by_step = collect_run_steps_for_plan_version(store, plan_version_id, branch_id=branch_id)
+    # Collect run steps for this exact plan version only.
+    # Cross-plan fallback is handled inside step_is_stale with proper
+    # params_hash / node_type / node_version matching.
+    rs_by_step: dict[str, Any] = {}
+    run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=branch_id)
+    if run_id is None and branch_id is not None:
+        # Branch has no runs; fall back to full-plan run for the same version
+        run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=None)
+    if run_id is not None:
+        for rs in store.get_run_steps(run_id):
+            rs_by_step[rs.step_id] = rs
 
     stale: dict[str, bool] = {}
     for spec in steps:
