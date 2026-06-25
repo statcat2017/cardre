@@ -30,4 +30,4 @@ ADRs are immutable decision records in [docs/adr/](adr/). They are historical re
 
 ## Historical Plans
 
-Archived implementation plans, sprint prompts, and plan reviews are in [docs/archive/](archive/). These are historical design inputs, not current implementation instructions.
+Historical implementation plans, sprint prompts, and plan reviews remain under `docs/plans/`, `docs/evidence-hardening/`, and `docs/plan-reviews/`. These are historical design inputs, not current implementation instructions.

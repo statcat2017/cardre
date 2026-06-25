@@ -7,8 +7,7 @@ Scans markdown files for:
 
 Fails if any referenced path does not exist in the repo.
 
-This catches stale references like `cardre/store.py`, `cardre/pipeline.py`,
-or `cardre/services/report_service.py` that survive doc rewrites.
+Relative Markdown links are resolved against the source file's directory.
 """
 
 from __future__ import annotations
@@ -47,25 +46,6 @@ KNOWN_EXCEPTIONS: set[str] = {
     # Generated files that may not exist at check time
     "frontend/src/api/openapi.json",
     "frontend/src/api/schema.d.ts",
-    # Intentional references to future or external paths
-    "docs/README.md",
-    "docs/architecture/domain-model.md",
-    "docs/architecture/storage-and-migrations.md",
-    "docs/architecture/execution-and-staleness.md",
-    "docs/architecture/node-registry.md",
-    "docs/architecture/reporting.md",
-    "docs/architecture/manual-binning.md",
-    "docs/architecture/workflow-guidance.md",
-    "docs/reference/feature-status.md",
-    "docs/reference/node-catalogue.md",
-    "docs/reference/report-bundle-v1.md",
-    "docs/reference/evidence-kinds.md",
-    "docs/reference/api-contract.md",
-    "docs/reference/audit-pack-structure.md",
-    "docs/adr/README.md",
-    "docs/troubleshooting.md",
-    "CONTRIBUTING.md",
-    "SECURITY.md",
     # Pre-existing stale refs in current docs (will be fixed by this PR)
     "cardre/_evidence/reader.py::_to_typed",
     "frontend/src-tauri/binaries/cardre-api-{target-triple}",
@@ -126,12 +106,21 @@ def find_markdown_files() -> list[Path]:
     return [REPO_ROOT / line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
-def is_repo_path(ref: str) -> bool:
-    """Check if a reference looks like a repo file path."""
-    return any(
-        ref.startswith(prefix)
-        for prefix in ("cardre/", "sidecar/", "frontend/", "tests/", "scripts/", "docs/", ".github/")
-    )
+def resolve_link_target(source_file: Path, target: str) -> str | None:
+    """Resolve a Markdown link target to a repo-relative path.
+
+    Returns None if the target is an external URL or not a file path.
+    """
+    if target.startswith("http://") or target.startswith("https://"):
+        return None
+    if target.startswith("#"):
+        return None
+    # Resolve relative to the source file's parent directory
+    resolved = (source_file.parent / target).resolve()
+    try:
+        return str(resolved.relative_to(REPO_ROOT))
+    except ValueError:
+        return None
 
 
 def check_doc_references() -> int:
@@ -162,21 +151,20 @@ def check_doc_references() -> int:
             line_num = text[:match.start()].count("\n") + 1
             errors.append((rel_path, line_num, ref, "backtick"))
 
-        # Check Markdown link targets
+        # Check Markdown link targets (resolved relative to source file)
         for match in MARKDOWN_LINK_PATTERN.finditer(text):
             target = match.group(2).split("#")[0].split("?")[0]  # strip anchor and query
-            if not target or target.startswith("http://") or target.startswith("https://"):
+            resolved = resolve_link_target(md_file, target)
+            if resolved is None:
                 continue
-            if not is_repo_path(target):
+            if resolved in KNOWN_EXCEPTIONS:
                 continue
-            if target in KNOWN_EXCEPTIONS:
+            if resolved in tracked:
                 continue
-            if target in tracked:
-                continue
-            if (REPO_ROOT / target).is_dir() or (REPO_ROOT / target).is_file():
+            if (REPO_ROOT / resolved).is_dir() or (REPO_ROOT / resolved).is_file():
                 continue
             line_num = text[:match.start()].count("\n") + 1
-            errors.append((rel_path, line_num, target, "markdown link"))
+            errors.append((rel_path, line_num, resolved, "markdown link"))
 
     if errors:
         for filepath, line_num, ref, kind in errors:

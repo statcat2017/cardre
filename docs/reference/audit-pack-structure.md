@@ -1,6 +1,6 @@
 # Audit Pack Structure
 
-The audit pack is an export format produced by the export service (`sidecar/routes/exports.py`). It bundles all evidence required for model governance review.
+The audit pack is an export format produced by the report generation service. It bundles all evidence required for model governance review. The audit pack and the report bundle are the same output — the report generation service produces both `report_bundle.json` (structured data) and `report.html` (rendered view), which together form the audit pack.
 
 ## Contents
 
