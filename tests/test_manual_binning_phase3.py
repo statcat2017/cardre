@@ -123,6 +123,9 @@ class FakeStore:
     def get_run_steps(self, run_id):
         return []
 
+    def get_latest_successful_run_step_for_step_across_plan(self, plan_id, step_id, branch_id=None):
+        return None
+
 
 def test_gate_rejects_unreviewed_required_variable(monkeypatch):
     store = FakeStore()
