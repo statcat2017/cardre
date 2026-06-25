@@ -1,62 +1,40 @@
 # Cardre
 
-Cardre is being rebuilt as an open-source, auditable credit scorecard builder.
+Cardre is an open-source, auditable credit scorecard builder. A scorecard is not just a final model — it is an input dataset plus a traceable build pathway: profiling, binning, WOE/IV, model fitting, score scaling, validation, and export. Every step is reproducible and explainable.
 
-The core idea is that a scorecard is not just a final model. It is an input
-dataset plus a traceable build pathway: profiling, cleaning, binning, WOE/IV,
-coarse classing, model fitting, score scaling, validation, and export. Every
-step should be reproducible and explainable.
+## Quick Start
 
-## Design Goals
-
-- Store the original input data as a content-addressed snapshot.
-- Represent the model build as a branching tree of steps.
-- Record every step's parameters, parent step ids, input artifacts, output
-  artifacts, metrics, timestamps, and code version.
-- Allow a user to go back to any node, change a parameter, and replay only that
-  node's downstream branch.
-- Preserve old runs instead of mutating history, so auditability is never lost.
-- Keep scorecard logic separate from the GUI.
-
-## Branching Pathway
-
-The pathway is a tree/DAG rather than a single linear script. Multiple child
-steps can share the same parent, allowing side-by-side options such as:
-
-```text
-input data
-  -> profile
-      -> automatic binning
-          -> scorecard A
-      -> manual binning
-          -> scorecard B
+```bash
+pip install -e ".[sidecar]"
+cardre-api &
+cd frontend && npm install && npm run dev
 ```
 
-If the manual binning parameters change, Cardre keeps the original profile and
-automatic-binning branch, then regenerates only the manual-binning branch and
-its descendants. This is intended to feel like PowerBI's transform-data flow,
-but with model-building audit records.
+## Architecture
 
-## Current Scaffold
+- **`cardre/`** — pure-Python scorecard engine (no GUI dependency)
+- **`sidecar/`** — FastAPI local API server (bundled as sidecar binary)
+- **`frontend/`** — React + TypeScript UI (Vite)
+- **`frontend/src-tauri/`** — Tauri v2 Rust desktop shell
 
-The new active code lives under `cardre/`:
+### Node Tiers
 
-- `cardre/store.py` stores datasets and artifacts by hash.
-- `cardre/audit.py` defines JSON-serialisable artifact and step records.
-- `cardre/pipeline.py` defines branching plans, runs, and replay semantics.
+Cardre uses two environment variables to control feature availability:
 
-The older prototype files at the repo root are retained temporarily as reference
-material while the project is rebuilt around the new architecture.
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `CARDRE_LAUNCH_MODE` | `1` | When enabled, deferred nodes (boosting, ensembles, fairness, etc.) are visible as schemas but not executable. Set to `0` to enable all nodes. |
+| `CARDRE_GOVERNANCE` | `0` | When enabled, branch/comparison/champion workflows are available. Set to `1` for enterprise governance features. |
 
-## Near-Term Roadmap
+See `docs/launch-mode.md` for details.
 
-1. Add pure data profiling and target validation steps.
-2. Add fine-classing and WOE/IV steps as pipeline nodes.
-3. Add branch comparison for competing binning/model choices.
-4. Add a Streamlit GUI that edits pathway nodes and replays branches.
-5. Add exportable audit packs for model governance.
+### Current State
 
-See `docs/plans/cardre-application-plan.md` for the end-to-end application plan.
+The engine supports the full scorecard build pathway: import, profiling, binning, WOE/IV, variable selection, logistic regression, score scaling, validation, cutoff analysis, and reporting. ML challenger nodes (decision tree — launch tier; random forest, gradient boosting, XGBoost, LightGBM, CatBoost — deferred tier) are available. Governance features (branching, champion/challenger comparison) are gated behind `CARDRE_GOVERNANCE=1`.
+
+## Documentation
+
+See `docs/README.md` for the full documentation index.
 
 ## Development
 
@@ -78,11 +56,6 @@ cd frontend && npm install
 - macOS: Xcode CLI tools
 - Windows: WebView2 (included in Windows 10+)
 
-Make sure the sidecar API is on your PATH first:
-```bash
-pip install -e ".[sidecar]"   # installs cardre-api console script on PATH
-```
-
 ### Build Sidecar Binary
 
 ```bash
@@ -96,21 +69,9 @@ Produces `frontend/src-tauri/binaries/cardre-api-{target-triple}` for Tauri bund
 
 ```bash
 python3 -m pytest tests/ -q
-```
-
-### Frontend
-
-```bash
 cd frontend && npm test
 ```
 
 ### CI
 
 See `.github/workflows/ci.yml` — runs Python tests, frontend typecheck, and sidecar build on push/PR to `main`.
-
-## Architecture
-
-- **`cardre/`** — pure-Python scorecard engine (no GUI dependency)
-- **`sidecar/`** — FastAPI local API server (bundled as sidecar binary)
-- **`frontend/`** — React + TypeScript UI (Vite)
-- **`frontend/src-tauri/`** — Tauri v2 Rust desktop shell
