@@ -255,7 +255,7 @@ export function SchemaDrivenParamsEditor({
         setInfo(
           `Plan modified externally. Refreshing…${latestId ? ` (latest: ${latestId.slice(0, 8)}…)` : ""}`
         );
-        onSaved(err.detail);
+        onSaved({ latest_version_id: latestId });
       } else if (isApiError(err) && err.status === 422) {
         setError(err.detail.message || "Validation failed");
       } else {
