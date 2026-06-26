@@ -15,6 +15,5 @@ export function useManualBinningState(
       api.getManualBinningEditorState(planId, projectId, stepId),
     enabled: enabled && !!planId && !!projectId && !!stepId,
     staleTime: 2000,
-    retry: false,
   });
 }

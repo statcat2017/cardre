@@ -2,10 +2,19 @@ import React, { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { ProjectView } from "./components/ProjectView";
+import { isApiError } from "./api/client";
 import { theme } from "./styles";
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, staleTime: 2000 } },
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error) => {
+        if (isApiError(error) && error.status >= 500) return failureCount < 1;
+        return false;
+      },
+      staleTime: 2000,
+    },
+  },
 });
 
 function AppContent() {

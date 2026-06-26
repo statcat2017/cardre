@@ -15,7 +15,6 @@ export function RunHistoryTab({ stepId, projectId, runId, tab }: Props) {
     queryKey: ["runSteps", runId],
     queryFn: () => api.getRunSteps(runId!),
     enabled: !!runId && tab === "history",
-    retry: false,
   });
 
   // For the current run, show all step records that include this step_id.

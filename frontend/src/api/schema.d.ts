@@ -2208,6 +2208,13 @@ export interface components {
             /** Diagnostics */
             diagnostics?: components["schemas"]["RunDiagnostic"][];
             latest_error?: components["schemas"]["RunDiagnostic"] | null;
+            /** Heartbeat At */
+            heartbeat_at?: string | null;
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
         };
         /** RunStepEvidenceItem */
         RunStepEvidenceItem: {

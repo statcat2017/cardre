@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import threading
 from dataclasses import asdict
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
 
+from cardre.audit import utc_now_iso
 from cardre.errors import CardreError
 from cardre.executor import PlanExecutor
 from cardre.evidence import ArtifactEvidenceReader
@@ -17,6 +19,41 @@ from cardre.store import ProjectStore
 from sidecar.models import RunDiagnostic, RunRequest, RunResponse, RunStepsResponse, RunStepItem
 
 router = APIRouter(prefix="/runs", tags=["runs"])
+
+STALE_HEARTBEAT_SECONDS = int(__import__("os").environ.get("CARDRE_STALE_HEARTBEAT_SECONDS", "300"))
+
+
+def _is_stale(run: dict) -> bool:
+    if run.get("status") != "running":
+        return False
+    hb = run.get("heartbeat_at")
+    if hb is None:
+        return True
+    try:
+        hb_ts = datetime.fromisoformat(hb).replace(tzinfo=timezone.utc).timestamp()
+        now_ts = datetime.now(timezone.utc).timestamp()
+        return (now_ts - hb_ts) > STALE_HEARTBEAT_SECONDS
+    except (ValueError, TypeError):
+        return True
+
+
+def _maybe_recover_stale_run(store: ProjectStore, run: dict) -> None:
+    """Recover a stale run before creating a new one to unblock concurrent-run checks.
+
+    Only called from POST /runs, never from GET /runs/{id}, to avoid
+    marking a legitimate long-running step as interrupted.
+    """
+    if _is_stale(run):
+        store.finish_run(run["run_id"], "interrupted")
+        store.append_run_diagnostic(run["run_id"], {
+            "code": "RUN_RECOVERED_STALE",
+            "message": f"Run {run['run_id']} was stuck in 'running' with stale heartbeat — recovered as interrupted.",
+            "severity": "error",
+            "category": "lifecycle",
+            "run_id": run["run_id"],
+            "plan_version_id": run.get("plan_version_id", ""),
+            "created_at": utc_now_iso(),
+        })
 
 
 def _is_branch_current(store, plan_version_id, branch_id):
@@ -82,6 +119,8 @@ def _build_run_response(store: ProjectStore, run_id: str, executed_ids: list[str
         executed_step_ids=executed_ids or [],
         diagnostics=[RunDiagnostic(**d) for d in diags],
         latest_error=RunDiagnostic(**latest_error) if latest_error else None,
+        heartbeat_at=run.get("heartbeat_at"),
+        is_stale=_is_stale(run),
     )
 
 
@@ -170,6 +209,11 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
         existing_run_id = _is_to_node_current(store, body.plan_version_id, body.target_step_id, branch_id=body.branch_id)
         if existing_run_id is not None:
             return _build_run_response(store, existing_run_id)
+
+    # Recover any stale running runs for this plan_version before creating a new one
+    for existing_run in store.list_runs(plan_version_id=body.plan_version_id):
+        if existing_run.get("status") == "running":
+            _maybe_recover_stale_run(store, existing_run)
 
     run_id = store.create_run(body.plan_version_id, **branch_kw)
     project_path = str(store.root)
