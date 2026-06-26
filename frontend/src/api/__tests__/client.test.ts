@@ -116,16 +116,14 @@ describe("fetchJson malformed response", () => {
 
 describe("fetchJson response-body timeout", () => {
   it("throws REQUEST_TIMEOUT when headers arrive but body never resolves", async () => {
-    vi.useFakeTimers();
-    let textReject: ((e: Error) => void) | null = null;
+    vi.useRealTimers();
     vi.spyOn(global, "fetch").mockImplementation((_url, init) => {
       const signal = (init as RequestInit)?.signal;
       return Promise.resolve({
         ok: true,
         status: 200,
         headers: new Map() as unknown as Headers,
-        text: () => new Promise<never>((_resolve, reject) => {
-          textReject = reject;
+        text: () => new Promise<string>((resolve, reject) => {
           if (signal?.aborted) {
             reject(new DOMException("The operation was aborted", "AbortError"));
             return;
@@ -136,15 +134,8 @@ describe("fetchJson response-body timeout", () => {
         }),
       } as unknown as Response);
     });
-    const promise = fetchJson("/health", { timeoutMs: 100 });
-    await vi.advanceTimersByTimeAsync(200);
+    const promise = fetchJson("/health", { timeoutMs: 50 });
     await expect(promise).rejects.toMatchObject({ code: "REQUEST_TIMEOUT" });
-    // Settle the text() promise to avoid unhandled rejection
-    if (textReject) {
-      try { textReject(new Error("settled")); } catch { /* ok */ }
-    }
-    await vi.advanceTimersByTimeAsync(0);
-    vi.useRealTimers();
   });
 });
 
