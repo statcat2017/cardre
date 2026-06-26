@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (Windows matrix deferred — see amendment below)
 
 ## Context
 
@@ -116,3 +116,22 @@ launches it. This means:
   argument, health endpoint shape). If `sidecar/main.py` changes its CLI,
   the smoke test breaks. This is desirable — it makes the contract
   load-bearing in CI rather than implicit.
+
+## Amendment: Windows Matrix Deferred
+
+The initial implementation included a `windows-latest` matrix leg for
+`check-tauri`. This was removed because `tauri-build` validates `externalBin`
+entries at compile time, and no Windows-compatible sidecar binary exists in
+CI. A dummy text file did not resolve the issue — `cargo check` still failed
+on Windows runners for reasons that could not be diagnosed without access
+to the full compiler diagnostics.
+
+The Windows matrix leg will be re-added in a follow-up PR that either:
+1. Builds a Windows PyInstaller sidecar in a separate job and downloads it
+   in the Windows `check-tauri` leg, or
+2. Splits the Windows job into a pure Rust compile check that avoids
+   `externalBin` validation (e.g. via a cargo feature flag that disables
+   the `tauri::generate_context!()` macro's sidecar resolution).
+
+Until then, `check-tauri` runs on `ubuntu-latest` only, and the required
+status check list in ADR 0009 reflects this.

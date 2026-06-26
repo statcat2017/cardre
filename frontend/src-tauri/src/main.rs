@@ -32,16 +32,23 @@ fn find_free_port() -> u16 {
 }
 
 fn wait_for_health(port: u16, max_retries: u32) -> Result<(), String> {
-    let url = format!("http://127.0.0.1:{}/health", port);
+    let url = format!("http://127.0.0.1:{port}/health");
     for _ in 0..max_retries {
-        if let Ok(resp) = reqwest::blocking::get(&url) {
-            if let Ok(body) = resp.json::<serde_json::Value>() {
+        let healthy = reqwest::blocking::get(&url)
+            .ok()
+            .and_then(|resp| resp.json::<serde_json::Value>().ok())
+            .and_then(|body| {
                 if body.get("status").and_then(|v| v.as_str()) == Some("ok") {
-                    return Ok(());
+                    Some(())
+                } else {
+                    None
                 }
-            }
-            // Responded but not healthy yet — retry
+            })
+            .is_some();
+        if healthy {
+            return Ok(());
         }
+        // Responded but not healthy yet — retry
         thread::sleep(Duration::from_millis(500));
     }
     Err(format!(
@@ -55,6 +62,16 @@ fn kill_child(child: &mut Child) {
     let _ = child.wait();
 }
 
+fn spawn_line_reader<T: BufRead + Send + 'static>(stream: T, prefix: &str) {
+    let reader = BufReader::new(stream);
+    let prefix = prefix.to_string();
+    thread::spawn(move || {
+        for l in reader.lines().map_while(Result::ok) {
+            eprintln!("{prefix}{l}");
+        }
+    });
+}
+
 fn main() {
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -65,9 +82,9 @@ fn main() {
     .expect("Error setting Ctrl-C handler");
 
     let port = find_free_port();
-    eprintln!("Reserved port: {}", port);
+    eprintln!("Reserved port: {port}");
 
-    let api_url = format!("http://127.0.0.1:{}", port);
+    let api_url = format!("http://127.0.0.1:{port}");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -103,33 +120,19 @@ fn main() {
                     c
                 }
                 Err(e) => {
-                    eprintln!("FATAL: Could not start cardre-api: {}", e);
+                    eprintln!("FATAL: Could not start cardre-api: {e}");
                     std::process::exit(1);
                 }
             };
 
             // Capture stdout
             if let Some(stdout) = child.stdout.take() {
-                let reader = BufReader::new(stdout);
-                thread::spawn(move || {
-                    for line in reader.lines() {
-                        if let Ok(l) = line {
-                            eprintln!("[sidecar] {}", l);
-                        }
-                    }
-                });
+                spawn_line_reader(stdout, "[sidecar] ");
             }
 
             // Capture stderr
             if let Some(stderr) = child.stderr.take() {
-                let reader = BufReader::new(stderr);
-                thread::spawn(move || {
-                    for line in reader.lines() {
-                        if let Ok(l) = line {
-                            eprintln!("[sidecar:err] {}", l);
-                        }
-                    }
-                });
+                spawn_line_reader(stderr, "[sidecar:err] ");
             }
 
             // Store child handle for lifecycle management
@@ -140,9 +143,9 @@ fn main() {
             // Wait for health before declaring setup complete.
             // The Child handle remains in AppState for cleanup.
             match wait_for_health(port, 30) {
-                Ok(()) => eprintln!("Sidecar is healthy on port {}", port),
+                Ok(()) => eprintln!("Sidecar is healthy on port {port}"),
                 Err(e) => {
-                    eprintln!("FATAL: {}", e);
+                    eprintln!("FATAL: {e}");
                     if let Ok(mut guard) = app.state::<AppState>().sidecar_child.lock() {
                         if let Some(ref mut c) = *guard {
                             kill_child(c);
@@ -153,7 +156,7 @@ fn main() {
             }
 
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.eval(&format!("window.__API_URL__ = '{}'", api_url));
+                let _ = window.eval(&format!("window.__API_URL__ = '{api_url}'"));
             }
             Ok(())
         })

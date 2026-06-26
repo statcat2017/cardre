@@ -86,18 +86,17 @@ typecheck-frontend ───┤
 test-python ───────────┼──> (merge gate via branch-protection required checks)
 build-sidecar ────────┤
 check-api-contracts ──┘
-check-tauri (needs build-sidecar, matrix: ubuntu-latest + windows-latest)
+check-tauri (needs build-sidecar, ubuntu-latest only)
 test-frontend (needs typecheck-frontend)
 smoke-test-sidecar (needs build-sidecar)
 ```
 
-Eight jobs, down from nine. Maximum serial depth: two (build-sidecar →
+Seven jobs, down from nine. Maximum serial depth: two (build-sidecar →
 check-tauri or smoke-test-sidecar), down from three.
 
 ### Required status checks
 
-Branch protection on `main` must require the following checks (including
-matrix expansion):
+Branch protection on `main` must require the following checks:
 
 - `lint`
 - `typecheck-frontend`
@@ -106,8 +105,9 @@ matrix expansion):
 - `build-sidecar`
 - `check-api-contracts`
 - `smoke-test-sidecar`
-- `check-tauri (ubuntu-latest)`
-- `check-tauri (windows-latest)`
+- `check-tauri`
+
+Windows verification is deferred to a future PR (see ADR 0011).
 
 ## Consequences
 
@@ -117,11 +117,11 @@ matrix expansion):
 - **Easier:** fewer jobs to reason about; the graph matches the actual data
   dependencies.
 - **Harder:** branch protection on `main` must be configured with the correct
-  set of required status checks (nine check names including matrix expansion).
-  This is a one-time GitHub settings change, documented in the PR description.
+  set of required status checks (eight check names). This is a one-time
+  GitHub settings change, documented in the PR description.
 - **Risk:** if branch protection is misconfigured, a failing `test-python`
   could merge alongside a green `build-sidecar`. Mitigated by requiring all
-  nine required checks (including matrix expansion) before merge.
+  eight required checks before merge.
 - **Risk:** folding `audit-artifact-reads` into `test-python` means an audit
   failure now fails the whole test job rather than a dedicated job. The
   failure message is still attributable via the step name. Acceptable
