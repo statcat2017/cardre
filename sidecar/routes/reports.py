@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from pathlib import Path
 
@@ -10,7 +11,9 @@ from fastapi.responses import HTMLResponse
 
 from cardre.errors import CardreError
 from cardre.services.project_registry import get_store_for_project, ProjectNotFoundError
-from cardre.services.report_generation_service import ReportGenerationError, ReportGenerationService
+from cardre.services.report_generation_service import ReportGenerationService
+
+logger = logging.getLogger(__name__)
 
 from cardre.store import ProjectStore
 from sidecar.models import (
@@ -37,12 +40,24 @@ def _save_metadata(project_root: Path, report_id: str, meta: dict) -> None:
 
 def _load_metadata(project_root: Path, report_id: str) -> dict | None:
     path = _metadata_path(project_root, report_id)
-    if path.exists():
-        try:
-            return json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError):
-            return None
-    return None
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError as e:
+        raise CardreError(
+            "Report metadata file is corrupt and cannot be parsed.",
+            code="REPORT_METADATA_UNREADABLE",
+            context={"report_id": report_id, "path": str(path)},
+            severity="error",
+        ) from e
+    except OSError as e:
+        raise CardreError(
+            "Report metadata file could not be read.",
+            code="REPORT_METADATA_UNREADABLE",
+            context={"report_id": report_id, "path": str(path)},
+            severity="error",
+        ) from e
 
 @router.post("/projects/{project_id}/runs/{run_id}/report-readiness", response_model=ReportReadinessResponse)
 def get_report_readiness(project_id: str, run_id: str, req: ReportReadinessRequest):
@@ -90,19 +105,13 @@ def generate_report(project_id: str, run_id: str, req: GenerateReportRequest):
     report_id = str(uuid.uuid4())
     output_dir = store.root / "exports" / f"report_{report_id[:8]}"
 
-    try:
-        result = svc.generate_report(
-            project_id=project_id,
-            run_id=run_id,
-            target_branch_id=req.target_branch_id,
-            report_mode=req.report_mode,
-            output_dir=output_dir,
-        )
-    except ReportGenerationError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "REPORT_BLOCKED", "message": f"Report generation blocked: {exc.blockers}"},
-        )
+    result = svc.generate_report(
+        project_id=project_id,
+        run_id=run_id,
+        target_branch_id=req.target_branch_id,
+        report_mode=req.report_mode,
+        output_dir=output_dir,
+    )
 
     readiness = result["readiness"]
     bundle = result["bundle"]
@@ -158,7 +167,11 @@ def list_run_reports(project_id: str, run_id: str):
         if not report_dir.is_dir() or not report_dir.name.startswith("report_"):
             continue
         rid = report_dir.name.removeprefix("report_")
-        meta = _load_metadata(store.root, rid)
+        try:
+            meta = _load_metadata(store.root, rid)
+        except CardreError:
+            logger.warning("Skipping corrupt or unreadable metadata for report %s", rid)
+            continue
         if meta is None or meta.get("run_id") != run_id:
             continue
         reports.append(ReportMetadataResponse(

@@ -16,18 +16,22 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from cardre.errors import CardreError
+from cardre.readiness import check_report_readiness, ReadinessBlocker, ReportReadinessResult
 from cardre.reporting.collector import generate_report_bundle
-from cardre.readiness import check_report_readiness, ReportReadinessResult
 from cardre.reporting.renderer_html import write_html_report
 from cardre.reporting.schema import ReportBundle
 from cardre.store import ProjectStore
 
 
-class ReportGenerationError(Exception):
+class ReportGenerationError(CardreError):
     """Raised when report generation is blocked by readiness checks."""
-    def __init__(self, message: str, blockers: list[str]) -> None:
+    code = "REPORT_BLOCKED"
+    status_code = 400
+
+    def __init__(self, message: str, blockers: list[ReadinessBlocker]) -> None:
         self.blockers = blockers
-        super().__init__(message)
+        super().__init__(message, code=self.code)
 
 
 class ReportGenerationService:
@@ -89,7 +93,7 @@ class ReportGenerationService:
         if not readiness.ready:
             raise ReportGenerationError(
                 "Report generation blocked by readiness checks.",
-                blockers=[str(b.code) for b in readiness.blockers],
+                blockers=readiness.blockers,
             )
 
         bundle = generate_report_bundle(
@@ -145,20 +149,20 @@ class ReportGenerationService:
         )
 
         # Convert absolute paths to relative (for API responses)
-        try:
-            bundle_rel = str(Path(result["bundle_path"]).relative_to(self.store.root))
-        except ValueError:
-            bundle_rel = result["bundle_path"]
+        def _rel_or_raise(path_str: str, label: str) -> str:
+            try:
+                return str(Path(path_str).relative_to(self.store.root))
+            except ValueError:
+                raise CardreError(
+                    f"Report {label} path is outside the project directory.",
+                    code="REPORT_PATH_OUTSIDE_PROJECT",
+                    context={"path": path_str, "project_root": str(self.store.root)},
+                    severity="error",
+                )
 
-        try:
-            html_rel = str(Path(result["html_path"]).relative_to(self.store.root))
-        except ValueError:
-            html_rel = result["html_path"]
-
-        try:
-            export_rel = str(Path(result["report_dir"]).relative_to(self.store.root))
-        except ValueError:
-            export_rel = result["report_dir"]
+        bundle_rel = _rel_or_raise(result["bundle_path"], "bundle")
+        html_rel = _rel_or_raise(result["html_path"], "HTML")
+        export_rel = _rel_or_raise(result["report_dir"], "export")
 
         return {
             "readiness": result["readiness"],
