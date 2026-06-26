@@ -363,6 +363,85 @@ class TestRuns:
         # Cleanup
         store.finish_run(running_run_id, "failed")
 
+    def test_stale_run_not_recovered_by_get(self, client, tmp_dir):
+        """GET /runs/{id} must NOT recover a stale running run."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+
+        store = ProjectStore(proj_path)
+        plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
+        pv_id = store.get_latest_plan_version_id(plan_id)
+
+        # Create a running run with an old heartbeat
+        run_id = store.create_run(pv_id)
+        old_ts = "2020-01-01T00:00:00"
+        store._connect().execute(
+            "UPDATE runs SET heartbeat_at = ? WHERE run_id = ?",
+            (old_ts, run_id),
+        )
+        store._connect().commit()
+
+        # GET must return it as "running" — not recovered
+        resp = client.get(f"/runs/{run_id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "running", (
+            f"GET /runs/{run_id} should return status=running, got {data['status']}"
+        )
+        assert data["is_stale"] is True, "stale run should be flagged is_stale"
+
+        # Verify the run is still running in the store (not interrupted)
+        run = store.get_run(run_id)
+        assert run["status"] == "running", "GET must not change run status"
+
+        # Cleanup
+        store.finish_run(run_id, "failed")
+
+    def test_stale_run_recovered_before_create_run(self, client, tmp_dir):
+        """POST /runs must recover a stale running run before creating a new one."""
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+
+        store = ProjectStore(proj_path)
+        plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
+        pv_id = store.get_latest_plan_version_id(plan_id)
+
+        # Create a running run with an old heartbeat
+        stale_run_id = store.create_run(pv_id)
+        old_ts = "2020-01-01T00:00:00"
+        store._connect().execute(
+            "UPDATE runs SET heartbeat_at = ? WHERE run_id = ?",
+            (old_ts, stale_run_id),
+        )
+        store._connect().commit()
+
+        # POST /runs should recover the stale run and create a new one (no 409)
+        resp = client.post("/runs", json={
+            "project_id": proj["project_id"],
+            "plan_version_id": pv_id,
+        })
+        assert resp.status_code == 201, (
+            f"Expected 201 after stale recovery, got {resp.status_code}: {resp.text[:200]}"
+        )
+        data = resp.json()
+        assert data["run_id"] != stale_run_id, "must create a new run ID"
+
+        # The stale run should now be interrupted
+        stale = store.get_run(stale_run_id)
+        assert stale["status"] == "interrupted", (
+            f"Stale run should be interrupted, got {stale['status']}"
+        )
+
+        # Verify a diagnostic was appended
+        diags = store.get_run_diagnostics(stale_run_id)
+        codes = [d.get("code") for d in diags]
+        assert "RUN_RECOVERED_STALE" in codes, (
+            "Stale recovery should append RUN_RECOVERED_STALE diagnostic"
+        )
+
+        # Cleanup
+        store.finish_run(data["run_id"], "failed")
+
     def test_get_run_steps(self, client, tmp_dir, sample_german_credit):
         proj_path = tmp_dir / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
