@@ -16,7 +16,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from cardre.errors import CardreError
+from cardre.errors import CardreError, Diagnostic
 from cardre.readiness import check_report_readiness, ReadinessBlocker, ReportReadinessResult
 from cardre.reporting.collector import generate_report_bundle
 from cardre.reporting.renderer_html import write_html_report
@@ -31,7 +31,21 @@ class ReportGenerationError(CardreError):
 
     def __init__(self, message: str, blockers: list[ReadinessBlocker]) -> None:
         self.blockers = blockers
-        super().__init__(message, code=self.code)
+        blocker_dicts = [b.to_dict() for b in blockers]
+        super().__init__(
+            message,
+            code=self.code,
+            context={"blockers": blocker_dicts},
+            diagnostics=[
+                Diagnostic(
+                    code=str(b.code),
+                    message=b.message,
+                    source="report_readiness",
+                    context={"step_id": b.step_id} if b.step_id else {},
+                )
+                for b in blockers
+            ],
+        )
 
 
 class ReportGenerationService:
