@@ -295,22 +295,25 @@ class PlanService:
         # Validate params against schema (method + parameter) framework
         try:
             node = self._registry.instantiate(target_step.node_type)
-            schema = node.parameter_schema()
-            new_params = merge_defaults(schema, new_params)
-            schema_errors = validate_against_schema(schema, new_params)
-            if schema_errors:
-                raise PlanValidationError(
-                    "PARAMS_VALIDATION_FAILED",
-                    "; ".join(schema_errors),
-                )
-            custom_errors = node.validate_params(new_params)
-            if custom_errors:
-                raise PlanValidationError(
-                    "PARAMS_VALIDATION_FAILED",
-                    "; ".join(custom_errors),
-                )
         except KeyError:
-            pass
+            raise PlanValidationError(
+                "NODE_TYPE_NOT_REGISTERED",
+                f"Node type '{target_step.node_type}' is not registered.",
+            )
+        schema = node.parameter_schema()
+        new_params = merge_defaults(schema, new_params)
+        schema_errors = validate_against_schema(schema, new_params)
+        if schema_errors:
+            raise PlanValidationError(
+                "PARAMS_VALIDATION_FAILED",
+                "; ".join(schema_errors),
+            )
+        custom_errors = node.validate_params(new_params)
+        if custom_errors:
+            raise PlanValidationError(
+                "PARAMS_VALIDATION_FAILED",
+                "; ".join(custom_errors),
+            )
 
         # Manual-binning: validate by canonical step ID or node type
         if target_step.canonical_step_id == "manual-binning" or target_step.node_type == "cardre.manual_binning":

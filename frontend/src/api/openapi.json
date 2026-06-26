@@ -3976,6 +3976,22 @@
             },
             "type": "array",
             "title": "Blocking Issues"
+          },
+          "blocked_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Code"
+          },
+          "context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
@@ -5041,6 +5057,14 @@
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "structured": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Structured"
           }
         },
         "type": "object",

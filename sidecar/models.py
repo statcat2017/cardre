@@ -347,6 +347,8 @@ class ManualBinningEditorStateResponse(BaseModel):
     review_reason: str | None = None
     review_reason_code: str | None = None
     blocking_issues: list[dict[str, Any]] = Field(default_factory=list)
+    blocked_code: str | None = None
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 class ManualBinningPreviewRequest(BaseModel):
@@ -358,6 +360,7 @@ class ManualBinningPreviewRequest(BaseModel):
 class PreviewDiagnostics(BaseModel):
     override_count: int = 0
     warnings: list[str] = Field(default_factory=list)
+    structured: list[dict] = Field(default_factory=list)
 
 
 class ManualBinningPreviewResponse(BaseModel):

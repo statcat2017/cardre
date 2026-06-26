@@ -5,6 +5,7 @@ import type { UpdateStepParamsResponse } from "../../types";
 import { useMessage } from "../../hooks/useMessage";
 import { MessageBanner } from "../MessageBanner";
 import { theme } from "../../styles";
+import { renderApiError } from "../../utils/errors";
 
 interface Props {
   planId: string;
@@ -50,9 +51,11 @@ export function RawJsonParamsFallback({
         );
         onSaved({ latest_version_id: latestId });
       } else if (isApiError(err) && err.status === 422) {
-        setError(err.detail.message || "Validation failed");
+        const rendered = renderApiError(err);
+        setError(rendered ? rendered.message : "Validation failed");
       } else {
-        setError(isApiError(err) ? err.detail.message : "Save failed");
+        const rendered = renderApiError(err);
+        setError(rendered ? rendered.message : "Save failed");
       }
     },
   });

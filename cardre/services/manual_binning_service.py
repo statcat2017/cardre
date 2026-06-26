@@ -38,6 +38,7 @@ from cardre.services.step_topology import (
     find_nearest_ancestor_by_canonical_step_id,
     find_nearest_binning_source,
 )
+from cardre.errors import Diagnostic, Ok, Fail, Degraded, Result
 
 
 # ------------------------------------------------------------------
@@ -96,6 +97,7 @@ class ManualBinningService:
             return ManualBinningEditorStateResponse(
                 plan_id=plan_id, plan_version_id="", step_id=step_id,
                 ready=False, blocked_reason=f"No plan with ID {plan_id}",
+                blocked_code="PLAN_NOT_FOUND",
             )
 
         latest_pv_id = self._store.get_latest_plan_version_id(plan_id)
@@ -103,6 +105,7 @@ class ManualBinningService:
             return ManualBinningEditorStateResponse(
                 plan_id=plan_id, plan_version_id="", step_id=step_id,
                 ready=False, blocked_reason="Plan has no versions.",
+                blocked_code="PLAN_NOT_FOUND",
             )
 
         steps = self._store.get_plan_version_steps(latest_pv_id)
@@ -117,12 +120,14 @@ class ManualBinningService:
             return ManualBinningEditorStateResponse(
                 plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
                 ready=False, blocked_reason="Manual binning step not found in this plan.",
+                blocked_code="PLAN_NOT_FOUND",
             )
 
         if mb_spec.canonical_step_id != "manual-binning":
             return ManualBinningEditorStateResponse(
                 plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
                 ready=False, blocked_reason=f"Step {step_id} is not a manual-binning step.",
+                blocked_code="PLAN_NOT_FOUND",
             )
 
         branch_id = mb_spec.branch_id
@@ -142,6 +147,7 @@ class ManualBinningService:
                 plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
                 ready=False, blocked_reason="Binning step is not an ancestor of this manual-binning step.",
                 required_steps=["binning"],
+                blocked_code="PLAN_NOT_FOUND",
             )
 
         staleness = compute_staleness(self._store, latest_pv_id, branch_id=branch_id)
@@ -158,16 +164,21 @@ class ManualBinningService:
                 plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
                 ready=False, blocked_reason=f"Upstream steps stale: {', '.join(blocked)}. Run the pathway to refresh.",
                 required_steps=blocked,
+                blocked_code="PLAN_NOT_FOUND",
             )
 
-        (bin_def, vs_def, bin_artifact_id, vs_artifact_id), err = self._resolve_upstream_defs(
+        upstream_result = self._resolve_upstream_defs(
             latest_pv_id, plan_id, bin_step_id=bin_actual_id, vs_step_id=vs_actual_id, branch_id=branch_id,
         )
-        if err is not None:
+        if isinstance(upstream_result, Fail):
+            d = upstream_result.diagnostics[0]
             return ManualBinningEditorStateResponse(
                 plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
-                ready=False, blocked_reason=err, required_steps=["binning", "variable-selection"],
+                ready=False, blocked_reason=d.message, required_steps=["binning", "variable-selection"],
+                blocked_code="MANUAL_BINNING_UPSTREAM_EVIDENCE_UNREADABLE",
+                context=d.context,
             )
+        bin_def, vs_def, bin_artifact_id, vs_artifact_id = upstream_result.value
 
         selected_vars = [s["variable"] for s in vs_def.get("selected", [])] if vs_def else []
 
@@ -197,7 +208,11 @@ class ManualBinningService:
             review_status = "not_started"
 
         # Read latest review annotation for audit fields
-        review_annotation = _get_latest_review_annotation(self._store, step_id, latest_pv_id)
+        review_annotation_result = _get_latest_review_annotation(self._store, step_id, latest_pv_id)
+        review_annotation = review_annotation_result.value if isinstance(review_annotation_result, (Ok, Degraded)) else None
+        if isinstance(review_annotation_result, Degraded):
+            for d in review_annotation_result.diagnostics:
+                warnings.append({"code": d.code, "message": d.message, "context": d.context})
 
         # Build the response with Phase 1 fields
         result = ManualBinningEditorStateResponse(
@@ -278,10 +293,16 @@ class ManualBinningService:
                                     break
                         break
                     break
-        except Exception:
+        except Exception as exc:
             warnings.append({
                 "code": "VARIABLE_SUMMARY_UNAVAILABLE",
                 "message": "Variable summary could not be loaded — WOE/IV evidence may be missing or stale.",
+                "context": {
+                    "step_id": step_id,
+                    "plan_version_id": latest_pv_id,
+                    "branch_id": branch_id,
+                    "exception_type": type(exc).__name__,
+                },
             })
             result.warnings = warnings
 
@@ -331,7 +352,10 @@ class ManualBinningService:
 
         if mb_spec is None or mb_spec.canonical_step_id != "manual-binning":
             return ManualBinningPreviewResponse(
-                valid=False, diagnostics=PreviewDiagnostics(override_count=0, warnings=[f"Step {step_id} not found or not manual-binning."]),
+                valid=False, diagnostics=PreviewDiagnostics(
+                    override_count=0, warnings=[f"Step {step_id} not found or not manual-binning."],
+                    structured=[{"code": "STEP_NOT_FOUND", "message": f"Step {step_id} not found or not manual-binning.", "step_id": step_id, "artifact_id": ""}],
+                ),
             )
 
         branch_id = mb_spec.branch_id
@@ -346,21 +370,28 @@ class ManualBinningService:
         bin_step_id = bin_spec.step_id if bin_spec else "binning"
         vs_step_id = vs_spec.step_id if vs_spec else "variable-selection"
 
-        result, err = self._resolve_upstream_defs(
+        upstream_result = self._resolve_upstream_defs(
             plan_version_id, plan_id, bin_step_id=bin_step_id, vs_step_id=vs_step_id, branch_id=branch_id,
         )
-        if err is not None:
+        if isinstance(upstream_result, Fail):
+            d = upstream_result.diagnostics[0]
             return ManualBinningPreviewResponse(
-                valid=False, diagnostics=PreviewDiagnostics(override_count=0, warnings=[err]),
+                valid=False, diagnostics=PreviewDiagnostics(
+                    override_count=0, warnings=[d.message],
+                    structured=[{"code": d.code, "message": d.message, "step_id": bin_step_id, "artifact_id": ""}],
+                ),
             )
 
-        bin_def, vs_def, _, _ = result
+        bin_def, vs_def, _, _ = upstream_result.value
         selected_vars = {s["variable"] for s in vs_def.get("selected", [])}
 
         validation_warnings = validate_manual_binning_overrides(bin_def, overrides, selected_vars)
         if validation_warnings:
             return ManualBinningPreviewResponse(
-                valid=False, diagnostics=PreviewDiagnostics(override_count=len(overrides), warnings=validation_warnings),
+                valid=False, diagnostics=PreviewDiagnostics(
+                    override_count=len(overrides), warnings=validation_warnings,
+                    structured=[{"code": "OVERRIDE_VALIDATION_FAILED", "message": w, "step_id": step_id, "artifact_id": ""} for w in validation_warnings],
+                ),
             )
 
         refined = apply_manual_binning_overrides(bin_def, overrides, selected_vars)
@@ -387,12 +418,13 @@ class ManualBinningService:
         bin_step_id = self._find_mb_step_id_for_validation(plan_version_id, step_id, "binning", branch_id)
         vs_step_id = self._find_mb_step_id_for_validation(plan_version_id, step_id, "variable-selection", branch_id)
 
-        (bin_def, vs_def, _, _), err = self._resolve_upstream_defs(
+        upstream_result = self._resolve_upstream_defs(
             plan_version_id, plan_id, bin_step_id=bin_step_id, vs_step_id=vs_step_id, branch_id=branch_id,
         )
-        if err is not None:
-            raise PlanValidationError("PARAMS_VALIDATION_FAILED", err)
+        if isinstance(upstream_result, Fail):
+            raise PlanValidationError("PARAMS_VALIDATION_FAILED", upstream_result.diagnostics[0].message)
 
+        bin_def, vs_def, _, _ = upstream_result.value
         selected_vars = {s["variable"] for s in vs_def.get("selected", [])} if vs_def else set()
         errors = validate_manual_binning_overrides(bin_def, overrides, selected_vars)
         if errors:
@@ -508,9 +540,9 @@ class ManualBinningService:
         bin_step_id: str = "binning",
         vs_step_id: str = "variable-selection",
         branch_id: str | None = None,
-    ) -> tuple:
-        """Return (bin_def, vs_def, bin_artifact_id, vs_artifact_id) on success
-        or ((None, None, None, None), error_msg) on failure."""
+    ) -> Result[tuple]:
+        """Return Ok((bin_def, vs_def, bin_artifact_id, vs_artifact_id)) on success
+        or Fail with diagnostics on failure."""
         def _find_run_step(sid: str) -> RunStepRecord | None:
             if branch_id:
                 rs = self._store.get_latest_successful_run_step_for_step(
@@ -531,20 +563,32 @@ class ManualBinningService:
         bin_rs = _find_run_step(bin_step_id)
         vs_rs = _find_run_step(vs_step_id)
         if bin_rs is None or vs_rs is None:
-            return (None, None, None, None), "Run binning and variable-selection before editing manual bins."
+            return Fail([Diagnostic(
+                code="MANUAL_BINNING_UPSTREAM_EVIDENCE_UNREADABLE",
+                message="Run binning and variable-selection before editing manual bins.",
+                context={"bin_step_id": bin_step_id, "vs_step_id": vs_step_id},
+            )])
 
         bin_artifact_id = bin_rs.output_artifact_ids[0] if bin_rs.output_artifact_ids else None
         vs_artifact_id = vs_rs.output_artifact_ids[0] if vs_rs.output_artifact_ids else None
         if bin_artifact_id is None or vs_artifact_id is None:
-            return (None, None, None, None), "Binning or variable-selection produced no output artifacts."
+            return Fail([Diagnostic(
+                code="MANUAL_BINNING_UPSTREAM_EVIDENCE_UNREADABLE",
+                message="Binning or variable-selection produced no output artifacts.",
+                context={"bin_artifact_id": bin_artifact_id, "vs_artifact_id": vs_artifact_id},
+            )])
 
         try:
             reader = ArtifactEvidenceReader(self._store)
             bin_def = reader.read(bin_artifact_id, EvidenceKind.BIN_DEFINITION)
             vs_def = reader.read(vs_artifact_id, EvidenceKind.SELECTION_DEFINITION)
-            return (bin_def.to_dict(), vs_def.to_dict(), bin_artifact_id, vs_artifact_id), None
+            return Ok((bin_def.to_dict(), vs_def.to_dict(), bin_artifact_id, vs_artifact_id))
         except EvidenceError:
-            return (None, None, None, None), "Could not read binning or variable-selection artifact contents."
+            return Fail([Diagnostic(
+                code="MANUAL_BINNING_UPSTREAM_EVIDENCE_UNREADABLE",
+                message="Could not read binning or variable-selection artifact contents.",
+                context={"bin_artifact_id": bin_artifact_id, "vs_artifact_id": vs_artifact_id, "step_id": bin_step_id},
+            )])
 
     def _find_mb_step_id_for_validation(
         self, plan_version_id: str, step_id: str, canonical: str, branch_id: str | None,
@@ -577,8 +621,9 @@ def _count_special_bins(bin_data: dict) -> int:
     return sum(1 for b in bin_data.get("bins", []) if b.get("is_special") or b.get("bin_type") == "special")
 
 
-def _get_latest_review_annotation(store, step_id: str, plan_version_id: str) -> dict | None:
-    """Read the most recent manual_binning_review annotation for a step + plan version."""
+def _get_latest_review_annotation(store, step_id: str, plan_version_id: str) -> Result[dict | None]:
+    """Read the most recent manual_binning_review annotation for a step + plan version.
+    Returns Ok(dict | None) on success, Degraded(None, ...) on error."""
     try:
         from cardre.store import ProjectStore
         with store.transaction() as conn:
@@ -589,12 +634,17 @@ def _get_latest_review_annotation(store, step_id: str, plan_version_id: str) -> 
                 (step_id, plan_version_id, "manual_binning_review"),
             ).fetchall()
         if not rows:
-            return None
+            return Ok(None)
         payload = json.loads(rows[0]["payload_json"])
         payload["created_at"] = rows[0]["created_at"]
-        return payload
-    except Exception:
-        return None
+        return Ok(payload)
+    except Exception as exc:
+        return Degraded(None, [Diagnostic(
+            code="REVIEW_ANNOTATION_UNREADABLE",
+            message="Could not read review annotation.",
+            exception_type=type(exc).__name__,
+            context={"step_id": step_id, "plan_version_id": plan_version_id},
+        )])
 
 
 def _variable_needs_review(

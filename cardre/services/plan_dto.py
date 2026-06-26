@@ -66,6 +66,7 @@ class ManualBinningSourceInfo:
 class PreviewDiagnostics:
     override_count: int = 0
     warnings: list[str] = field(default_factory=list)
+    structured: list[dict] = field(default_factory=list)
 
 
 @dataclasses.dataclass
@@ -116,6 +117,8 @@ class ManualBinningEditorStateResponse:
     review_reason: str | None = None
     review_reason_code: str | None = None
     blocking_issues: list[dict[str, Any]] = field(default_factory=list)
+    blocked_code: str | None = None
+    context: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

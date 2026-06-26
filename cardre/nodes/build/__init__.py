@@ -4,7 +4,7 @@ from cardre.nodes.build.bins import FineClassingNode, ManualBinningNode, validat
 from cardre.nodes.build.features import CalculateWoeIvNode, WoeTransformTrainNode
 from cardre.nodes.build.clustering import VariableClusteringNode
 from cardre.nodes.build.selection import VariableSelectionNode
-from cardre.nodes.build.models import LogisticRegressionNode, ScoreScalingNode, BuildSummaryReportNode, DummyFitNode
+from cardre.nodes.build.models import LogisticRegressionNode, ScoreScalingNode, BuildSummaryReportNode, DummyFitNode, NoopNode
 from cardre.nodes.build.export import TechnicalManifestExportNode
 from cardre.nodes.build.freeze import FrozenScorecardBundleNode
 

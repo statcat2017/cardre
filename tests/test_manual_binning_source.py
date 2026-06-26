@@ -257,12 +257,14 @@ class TestManualBinningServiceEvidenceReads:
         monkeypatch.setattr(manual_binning_service, "ArtifactEvidenceReader", FakeArtifactEvidenceReader)
 
         service = manual_binning_service.ManualBinningService(FakeStore())
-        (bin_def, sel_def, bin_artifact_id, sel_artifact_id), err = service._resolve_upstream_defs(
+        result = service._resolve_upstream_defs(
             plan_version_id="pv-1",
             plan_id="plan-1",
         )
 
-        assert err is None
+        from cardre.errors import Ok, Fail
+        assert isinstance(result, Ok), f"Expected Ok, got {result}"
+        bin_def, sel_def, bin_artifact_id, sel_artifact_id = result.value
         assert bin_artifact_id == "art-bin"
         assert sel_artifact_id == "art-sel"
         assert bin_def == {"variables": [{"variable": "income", "dtype": "float", "kind": "numeric", "bins": [{"label": "low"}]}]}

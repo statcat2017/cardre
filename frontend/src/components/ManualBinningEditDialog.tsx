@@ -5,6 +5,7 @@ import type { ManualBinningEditorStateResponse } from "../types";
 import { theme } from "../styles";
 import { useMessage } from "../hooks/useMessage";
 import { MessageBanner } from "./MessageBanner";
+import { renderApiError } from "../utils/errors";
 
 interface Props {
   variable: string;
@@ -103,7 +104,8 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
       if (isApiError(err) && err.status === 409 && err.detail.code === "STALE_VERSION") {
         onPlanRefreshed?.({ latest_version_id: err.detail.context?.latest_version_id as string | undefined });
       } else {
-        setError(isApiError(err) ? err.detail.message : "Save failed");
+        const rendered = renderApiError(err);
+        setError(rendered ? rendered.message : "Save failed");
       }
     },
   });
@@ -134,7 +136,8 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
       if (isApiError(err) && err.status === 409 && err.detail.code === "STALE_VERSION") {
         onPlanRefreshed?.({ latest_version_id: err.detail.context?.latest_version_id as string | undefined });
       } else {
-        setError(isApiError(err) ? err.detail.message : "Revert failed");
+        const rendered = renderApiError(err);
+        setError(rendered ? rendered.message : "Revert failed");
       }
     },
   });

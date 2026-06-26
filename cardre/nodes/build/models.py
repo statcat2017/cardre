@@ -627,3 +627,14 @@ class DummyFitNode(NodeType):
         return NodeOutput(
             artifacts=[artifact],
             metrics={"row_count": df.height})
+
+
+class NoopNode(NodeType):
+    node_type = "cardre.noop"
+    version = "1"
+    category = "transform"
+    input_roles: list[str] = []
+    output_roles: list[str] = []
+
+    def run(self, context: ExecutionContext) -> NodeOutput:
+        return NodeOutput(artifacts=[], metrics={})

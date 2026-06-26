@@ -1441,6 +1441,12 @@ export interface components {
             blocking_issues?: {
                 [key: string]: unknown;
             }[];
+            /** Blocked Code */
+            blocked_code?: string | null;
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            };
         };
         /** ManualBinningPreviewRequest */
         ManualBinningPreviewRequest: {
@@ -1870,6 +1876,10 @@ export interface components {
             override_count: number;
             /** Warnings */
             warnings?: string[];
+            /** Structured */
+            structured?: {
+                [key: string]: unknown;
+            }[];
         };
         /** ProjectArtifactsResponse */
         ProjectArtifactsResponse: {

@@ -784,6 +784,7 @@ _COVERED_NODE_TYPES: set[str] = {
 _INTERNAL_NODE_TYPES: set[str] = {
     "cardre.dummy_fit",
     "cardre.dummy_apply",
+    "cardre.noop",
 }
 
 
