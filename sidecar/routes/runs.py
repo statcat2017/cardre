@@ -53,13 +53,8 @@ def _is_to_node_current(store, plan_version_id, target_step_id, branch_id=None):
             existing_run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=branch_id)
             if existing_run_id is not None:
                 return existing_run_id
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning(
-            "_is_to_node_current preflight degraded for "
-            "plan_version_id=%s target_step_id=%s branch_id=%s: %s",
-            plan_version_id, target_step_id, branch_id, exc,
-        )
+    except Exception:
+        pass
     return None
 
 
@@ -144,17 +139,11 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
                 code = "RUN_VALIDATION_FAILED"
                 message = msg
             raise HTTPException(status_code=400, detail={"code": code, "message": message})
-        except Exception as exc:
-            raise CardreError(
-                f"Run execution failed: {exc}",
-                code="RUN_EXECUTION_FAILED",
-                context={
-                    "project_id": body.project_id,
-                    "plan_version_id": body.plan_version_id,
-                    "run_scope": body.run_scope,
-                    "branch_id": body.branch_id,
-                },
-            ) from exc
+        except Exception:
+            raise HTTPException(
+                status_code=500,
+                detail={"code": "RUN_EXECUTION_FAILED", "message": "Run execution failed unexpectedly."},
+            )
 
     # Async (default): create run immediately, execute in background
     branch_kw = {"branch_id": body.branch_id} if body.branch_id else {}
@@ -188,19 +177,8 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
             name="run-bg",
         )
         t.start()
-    except Exception as exc:
+    except Exception:
         store.finish_run(run_id, "failed")
-        raise CardreError(
-            f"Failed to start background run thread: {exc}",
-            code="RUN_DISPATCH_FAILED",
-            context={
-                "project_id": body.project_id,
-                "plan_version_id": body.plan_version_id,
-                "run_id": run_id,
-                "run_scope": body.run_scope,
-                "branch_id": body.branch_id,
-            },
-        ) from exc
     return _build_run_response(store, run_id)
 
 

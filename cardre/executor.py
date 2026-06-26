@@ -437,20 +437,8 @@ class PlanExecutor:
                         category = cat
                         break
 
-            _CODE_MAP: dict[str, str] = {
-                "GraphValidationError": "GRAPH_VALIDATION_ERROR",
-                "MissingInputArtifactError": "MISSING_INPUT_ARTIFACT",
-                "ParameterValidationError": "PARAMETER_VALIDATION_ERROR",
-                "ArtifactReadError": "ARTIFACT_READ_ERROR",
-                "ArtifactWriteError": "ARTIFACT_WRITE_ERROR",
-                "NodeExecutionError": "NODE_EXECUTION_ERROR",
-                "ContractViolationError": "CONTRACT_VIOLATION_ERROR",
-                "RoleAccessError": "ROLE_ACCESS_ERROR",
-                "LeakageProtectionError": "LEAKAGE_PROTECTION_ERROR",
-                "CardreError": "CARDRE_ERROR",
-            }
             error_entry = {
-                "code": _CODE_MAP.get(category, "STEP_FAILED"),
+                "code": "STEP_FAILED",
                 "message": f"{exc_type.__name__ if exc_type else 'Unknown'}: {exc_value}",
                 "traceback": tb,
                 "category": category,

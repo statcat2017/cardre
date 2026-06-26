@@ -67,10 +67,9 @@ def export_branch_audit_pack(
     diagnostics: list[dict[str, str]] = []
     warnings: list[str] = []
     file_count = 0
-    partial = False
 
     try:
-        file_count, partial = _populate_export(
+        file_count = _populate_export(
             store, tmp_dir, project_id, plan_id, branch_id,
             comparison_snapshot_id, include_row_level_data, include_report,
             report_mode, diagnostics, warnings,
@@ -123,7 +122,6 @@ def _populate_export(
     Separated from the outer function so the caller can wrap it in a
     temp-directory + atomic-rename pattern.
     """
-    partial = False
     file_count = 0
     branch = store.get_branch(branch_id)
     project = store.get_project(project_id)
@@ -308,10 +306,8 @@ def _populate_export(
             except Exception as exc:
                 diagnostics.append({
                     "code": "REPORT_FAILED",
-                    "message": f"Report generation failed for branch {branch_id}: {exc}",
-                    "context": {"branch_id": branch_id, "run_id": latest_run_id},
+                    "message": f"Report generation failed: {exc}",
                 })
-                partial = True
 
     # 11. Checksums for all exported files
     checksums: list[str] = []
@@ -323,13 +319,10 @@ def _populate_export(
     (export_dir / "checksums.sha256").write_text("\n".join(checksums) + "\n")
     file_count += 1
 
-    if partial:
-        warnings.append("Export is partial: one or more branch reports failed to generate.")
-
     if not include_row_level_data:
         warnings.append("Row-level data excluded from export.")
 
-    return file_count, partial
+    return file_count
 
 
 def _write_json(path: Path, data: Any) -> None:

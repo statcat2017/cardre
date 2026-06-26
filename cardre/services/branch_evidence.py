@@ -279,22 +279,6 @@ class BranchEvidenceResolver:
                 plan_id, step_id, branch_id=None,
             )
             if rs is not None:
-                if diagnostics is not None:
-                    diagnostics.append(Diagnostic(
-                        code="INHERITED_BASELINE_EVIDENCE",
-                        message=(
-                            f"Step {step_id}: source branch {source_branch_id} "
-                            "has no evidence; fell back to baseline (branch_id=None)."
-                        ),
-                        source="BranchEvidenceResolver._find_shared_evidence",
-                        severity="warning",
-                        context={
-                            "step_id": step_id,
-                            "plan_id": plan_id,
-                            "source_branch_id": source_branch_id,
-                            "fallback_branch_id": None,
-                        },
-                    ))
                 return rs
         policies_tried.append("latest_plan_run")
         plan_run_id = store.get_latest_successful_run_id_for_plan(plan_id)

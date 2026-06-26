@@ -28,16 +28,6 @@ _CODE_EQUIVALENCES: dict[str, set[str]] = {
     # be resolved to a successful run, which is a different code —
     # both are blockers for the same missing-execution condition.
     "MISSING_WOE_IV_EVIDENCE_V1": {"MISSING_REQUIRED_CANONICAL_STEP"},
-    # Collector blocks MISSING_SCORE_SCALING when score-scaling step
-    # has no successful run or produced no SCORE_SCALING evidence.
-    # Readiness reports the step couldn't be resolved.
-    "MISSING_SCORE_SCALING": {"MISSING_REQUIRED_CANONICAL_STEP"},
-    # Collector blocks MISSING_MODEL_COEFFICIENTS when model step
-    # has no successful run or produced no MODEL_ARTIFACT evidence.
-    "MISSING_MODEL_COEFFICIENTS": {"MISSING_REQUIRED_CANONICAL_STEP"},
-    # Collector blocks MISSING_TRAIN_VALIDATION_METRICS when validation
-    # step has no successful run or produced no validation evidence.
-    "MISSING_TRAIN_VALIDATION_METRICS": {"MISSING_REQUIRED_CANONICAL_STEP"},
 }
 
 
