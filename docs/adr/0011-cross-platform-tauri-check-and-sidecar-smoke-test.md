@@ -41,77 +41,45 @@ launches it. This means:
 
 ## Decision
 
-1. **Add a Windows matrix dimension to `check-tauri`.**
-   ```yaml
-   strategy:
-     fail-fast: false
-     matrix:
-       os: [ubuntu-latest, windows-latest]
-   runs-on: ${{ matrix.os }}
-   ```
-   The Linux step installs system deps (`libwebkit2gtk-4.1-dev` etc.) via
-   `apt-get`; gate that step with `if: matrix.os == 'ubuntu-latest'`.
-   Windows runners have the MSVC toolchain pre-installed; no extra system
-   deps are required for `cargo check` (Tauri's Windows backend uses
-   WebView2, which is pre-installed on GitHub-hosted Windows runners).
-
-   macOS is deliberately excluded from the initial matrix. It is the slowest
-   and most expensive runner, and the macOS-specific surface (WebKit on
-   macOS, `dylib` sidecar naming) is small. Add `macos-latest` in a later
-   iteration if a regression justifies it.
-
-2. **Add a new `smoke-test-sidecar` job** that actually launches the packed
+1. **Add a `smoke-test-sidecar` job** that actually launches the packed
    binary and asserts the health endpoint comes up. The job:
    - `needs: [build-sidecar]` (downloads the artifact).
-   - Runs on `ubuntu-latest` (the smoke test validates the packing, not the
-     Rust shell — Windows smoke is covered by the matrix above).
+   - Runs on `ubuntu-latest`.
    - Downloads the `cardre-api-sidecar` artifact into a known directory.
-   - Spawns the binary in the background:
-     `./cardre-api-<arch>-linux --port 18000 &` (or equivalent, depending on
-     the sidecar's CLI contract — confirm against `sidecar/main.py`).
-   - Polls `http://127.0.0.1:18000/health` with `httpx` or `curl` until it
-     returns `{"status": "ok"}`, with a 30-second timeout.
+   - Spawns the binary in the background with a port argument.
+   - Polls `http://127.0.0.1:18000/health` until it returns
+     `{"status": "ok"}`, with a 30-second timeout.
    - Tears down the child process on success or failure.
    - Exits non-zero if health never comes up.
+   - Selects the Linux binary explicitly via glob pattern to avoid
+     accidentally executing a non-Linux artifact.
 
-3. **Do not run the full `api`/`e2e` pytest markers against the packed binary
-   in CI yet.** The smoke test covers the highest-risk gap (PyInstaller
+2. **Do not run the full `api`/`e2e` pytest markers against the packed
+   binary in CI yet.** The smoke test covers the highest-risk gap (PyInstaller
    packing breaks imports). Running the full API suite against the packed
    binary is a larger lift (requires a conftest fixture that points httpx
    at the spawned process, port management, teardown on failure). Defer to a
    later iteration if the smoke test surfaces packing issues that warrant
    deeper coverage.
 
-4. **`build-sidecar` stays Linux-only for now.** PyInstaller cross-compilation
+3. **`build-sidecar` stays Linux-only for now.** PyInstaller cross-compilation
    is not supported; a Windows sidecar build requires a Windows runner and a
-   separate PyInstaller spec. The Windows `cargo check` in the matrix
-   validates the Rust shell compiles on Windows; the sidecar binary it
-   downloads is the Linux build, which `cargo check` does not execute
-   (Tauri's `generate_context!` resolves the sidecar binary at runtime, not
-   at compile time). A Windows sidecar build is a separate decision and is
-   out of scope for this ADR.
+   separate PyInstaller spec. A Windows sidecar build is a separate decision
+   and is out of scope for this ADR.
+
+4. **Windows `check-tauri` is deferred.** The initial plan was to add a
+   `windows-latest` matrix leg, but `tauri-build` validates `externalBin`
+   entries at compile time and no Windows-compatible sidecar binary exists
+   in CI. See the amendment below for details.
 
 ## Consequences
 
-- **Easier:** Windows-only regressions in the Rust shell (path handling,
-  `.exe` suffix, `which::which` behaviour) are caught before merge.
 - **Easier:** PyInstaller packing regressions (missing hidden imports, data
   files not bundled) are caught before merge by the smoke test, rather than
   after a release.
-- **Harder:** CI runner-minute cost roughly doubles for `check-tauri` (two
-  OSes). Windows runners bill at 1× rate on free tiers but are slower in
-  wall-clock. Mitigated by `fail-fast: false` only affecting the matrix,
-  not the whole workflow.
 - **Harder:** the smoke test introduces a new flake vector — port conflicts
-  on shared CI runners, AV scanning the PyInstaller binary on Windows. The
-  smoke test runs on Linux only initially, which avoids the Windows AV
-  issue. Port conflicts are mitigated by binding to an ephemeral port or a
-  fixed high port (18000) unlikely to collide.
-- **Risk:** the matrix downloads the Linux sidecar artifact on Windows
-  runners, where it cannot actually execute. This is fine for `cargo check`
-  (which does not run the binary) but means the Windows job does not verify
-  the Windows sidecar launch path. Acceptable for now — the gap is
-  documented and a Windows sidecar build is a follow-up decision.
+  on shared CI runners. Mitigated by using a fixed high port (18000)
+  unlikely to collide.
 - **Risk:** the smoke test couples CI to the sidecar's CLI contract (port
   argument, health endpoint shape). If `sidecar/main.py` changes its CLI,
   the smoke test breaks. This is desirable — it makes the contract

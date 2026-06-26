@@ -91,7 +91,7 @@ test-frontend (needs typecheck-frontend)
 smoke-test-sidecar (needs build-sidecar)
 ```
 
-Seven jobs, down from nine. Maximum serial depth: two (build-sidecar →
+Eight jobs, down from nine. Maximum serial depth: two (build-sidecar →
 check-tauri or smoke-test-sidecar), down from three.
 
 ### Required status checks

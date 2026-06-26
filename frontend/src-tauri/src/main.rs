@@ -6,7 +6,7 @@
     clippy::let_with_underscore_drop
 )]
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -62,7 +62,7 @@ fn kill_child(child: &mut Child) {
     let _ = child.wait();
 }
 
-fn spawn_line_reader<T: BufRead + Send + 'static>(stream: T, prefix: &str) {
+fn spawn_line_reader<T: Read + Send + 'static>(stream: T, prefix: &str) {
     let reader = BufReader::new(stream);
     let prefix = prefix.to_string();
     thread::spawn(move || {
