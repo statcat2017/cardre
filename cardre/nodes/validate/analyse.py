@@ -116,7 +116,15 @@ class ValidationMetricsNode(NodeType):
 
     def _derive_y_bin(
         self, df: pl.DataFrame, target_col: str, good: set[str], bad: set[str],
-    ) -> tuple[np.ndarray | None, list[dict]]:
+    ) -> tuple[np.ndarray | None, np.ndarray | None, list[dict]]:
+        """Derive the binary target array for known good/bad rows only.
+
+        Returns ``(y_bin, known_mask, warnings)`` where *y_bin* contains only
+        rows whose target value is declared as good (0) or bad (1), and
+        *known_mask* is a boolean numpy array (length ``df.height``) that
+        callers can use to filter probability/score arrays to the same rows.
+        Returns ``(None, None, warnings)`` when metrics are unavailable.
+        """
         warnings: list[dict] = []
         if not target_col or target_col not in df.columns:
             warnings.append({
@@ -124,21 +132,21 @@ class ValidationMetricsNode(NodeType):
                 "message": f"Target column {target_col!r} not found; "
                            "all metrics except row count are unavailable.",
             })
-            return None, warnings
+            return None, None, warnings
         if not good and not bad:
             warnings.append({
                 "code": "MISSING_TARGET_METADATA",
                 "message": "No good_values/bad_values in definition artifact; "
                            "all metrics except row count are unavailable.",
             })
-            return None, warnings
+            return None, None, warnings
 
         good_list = list(good)
         bad_list = list(bad)
         all_known = good | bad
         target_str = df[target_col].cast(pl.String)
-        is_known = target_str.is_in(all_known)
-        unknown_count = int((~is_known).sum())
+        known_mask = target_str.is_in(all_known).to_numpy()
+        unknown_count = int((~known_mask).sum())
         if unknown_count > 0:
             warnings.append({
                 "code": "UNKNOWN_TARGET_VALUES",
@@ -147,30 +155,24 @@ class ValidationMetricsNode(NodeType):
                            f"These rows are excluded from metric computation.",
             })
 
-        known_mask = is_known.to_numpy()
-        y_bin = (df.with_columns(
+        y_bin_full = df.with_columns(
             pl.when(target_str.is_in(bad_list))
             .then(pl.lit(1))
             .when(target_str.is_in(good_list))
             .then(pl.lit(0))
-            .otherwise(pl.lit(None, dtype=pl.Int64))
+            .otherwise(pl.lit(None))
             .alias("_y_binary")
-        )["_y_binary"].to_numpy())
-        valid = y_bin is not None
-        if valid:
-            valid_mask = y_bin != np.array(None) if y_bin.dtype == object else np.ones_like(y_bin, dtype=bool)
-            y_bin_clean = y_bin[valid_mask].astype(np.int64) if valid_mask.any() else np.array([], dtype=np.int64)
-        else:
-            y_bin_clean = np.array([], dtype=np.int64)
-        n_bad = int(y_bin_clean.sum()) if len(y_bin_clean) > 0 else 0
-        n_good = int(len(y_bin_clean) - n_bad) if len(y_bin_clean) > 0 else 0
+        )["_y_binary"].drop_nulls().to_numpy().astype(np.int64)
+
+        n_bad = int(y_bin_full.sum()) if len(y_bin_full) > 0 else 0
+        n_good = int(len(y_bin_full) - n_bad) if len(y_bin_full) > 0 else 0
         if n_bad == 0 and n_good == 0:
             warnings.append({
                 "code": "NO_KNOWN_TARGET_VALUES",
                 "message": f"Target column {target_col!r} has no rows with declared good or bad values; "
                            "all metrics are unavailable.",
             })
-            return None, warnings
+            return None, None, warnings
         if n_bad == 0:
             warnings.append({
                 "code": "SINGLE_CLASS_ONLY_GOOD",
@@ -183,7 +185,7 @@ class ValidationMetricsNode(NodeType):
                 "message": f"Target column {target_col!r} has no good-class rows; "
                            "AUC and discrimination metrics are undefined.",
             })
-        return y_bin_clean, warnings
+        return y_bin_full, known_mask, warnings
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
@@ -264,11 +266,10 @@ class ValidationMetricsNode(NodeType):
                     })
                 continue
 
-            y_bin, warnings = self._derive_y_bin(df, target_col, good, bad)
-            y_prob = df["predicted_bad_probability"].to_numpy()
+            y_bin, known_mask, warnings = self._derive_y_bin(df, target_col, good, bad)
+            y_prob_all = df["predicted_bad_probability"].to_numpy()
             has_score = "score" in df.columns
-            scores_series = df["score"] if has_score else df["predicted_bad_probability"]
-            scores = scores_series.to_numpy()
+            scores_series_all = df["score"] if has_score else df["predicted_bad_probability"]
 
             if y_bin is None:
                 roles_metrics[role] = {
@@ -283,8 +284,20 @@ class ValidationMetricsNode(NodeType):
                     })
                 continue
 
-            n_bad = sum(y_bin)
-            n_good = n - n_bad
+            # Filter probability, scores, and KS dataframe to known rows only
+            # so that y_bin, y_prob, and scores are aligned.
+            y_prob = y_prob_all[known_mask]
+            scores = scores_series_all.to_numpy()[known_mask]
+            scores_series = pl.Series(scores)
+
+            n_bad = int(sum(y_bin))
+            n_good = int(len(y_bin) - n_bad)
+
+            # Known-rows dataframe for KS and calibration (excludes unknown targets)
+            all_known_list = list(good | bad)
+            df_known = df.filter(
+                pl.col(target_col).cast(pl.String).is_in(all_known_list)
+            )
 
             auc_val = None
             gini_val = None
@@ -299,7 +312,7 @@ class ValidationMetricsNode(NodeType):
                 gini_val = round(2 * auc_val - 1, 6)
 
                 ks_sort_col = "score" if has_score else "predicted_bad_probability"
-                ks_df = df.with_columns(
+                ks_df = df_known.with_columns(
                     pl.when(pl.col(target_col).cast(pl.String).is_in(bad_list))
                     .then(pl.lit(1)).otherwise(pl.lit(0)).alias("_y_binary")
                 ).sort(ks_sort_col).with_columns(
@@ -314,7 +327,7 @@ class ValidationMetricsNode(NodeType):
                     ks_val = round(float(ks_max), 6)
                     ks_at = float(ks_df.filter(pl.col("ks_val") == ks_max).select("ks_at").item())
 
-                calib = self._calibration(df, target_col, bad_list, 10)
+                calib = self._calibration(df_known, target_col, bad_list, 10)
                 score_dist = self._score_distribution(scores)
                 if include_calibration_display:
                     prob_true, prob_pred = calibration_curve(
