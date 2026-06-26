@@ -10,6 +10,7 @@ import uuid
 from typing import Any
 
 from cardre.audit import StepSpec, utc_now_iso
+from cardre.errors import BranchValidationError
 from cardre.step_graph import descendant_closure
 from cardre.store import ProjectStore
 
@@ -55,54 +56,82 @@ class BranchService:
         # --- Validation ---
 
         if branch_point_step_id not in ALLOWED_BRANCH_POINTS:
-            raise ValueError(
-                f"BRANCH_POINT_NOT_ALLOWED: Branching from step "
-                f"{branch_point_step_id} is not supported in Phase 4."
+            raise BranchValidationError(
+                "BRANCH_POINT_NOT_ALLOWED",
+                message=f"Branching from step {branch_point_step_id} is not supported in Phase 4.",
+                context={"branch_point_step_id": branch_point_step_id},
             )
 
         expected_type = ALLOWED_BRANCH_POINTS[branch_point_step_id]
         if branch_type != expected_type:
-            raise ValueError(
-                f"BRANCH_TYPE_MISMATCH: Branch point {branch_point_step_id} "
-                f"requires branch_type {expected_type}, got {branch_type}."
+            raise BranchValidationError(
+                "BRANCH_TYPE_MISMATCH",
+                message=f"Branch point {branch_point_step_id} requires branch_type {expected_type}, got {branch_type}.",
+                context={"branch_point_step_id": branch_point_step_id, "expected_type": expected_type, "got_type": branch_type},
             )
 
         if not name:
-            raise ValueError("BRANCH_NAME_REQUIRED: Branch name must not be empty.")
+            raise BranchValidationError(
+                "BRANCH_NAME_REQUIRED",
+                message="Branch name must not be empty.",
+                context={"plan_id": plan_id},
+            )
 
         if not created_reason:
-            raise ValueError("BRANCH_REASON_REQUIRED: Branch creation requires a non-empty reason.")
+            raise BranchValidationError(
+                "BRANCH_REASON_REQUIRED",
+                message="Branch creation requires a non-empty reason.",
+                context={"plan_id": plan_id, "name": name},
+            )
 
         if branch_type == "segment_challenger":
             if not segment_filter_spec:
-                raise ValueError(
-                    "SEGMENT_FILTER_REQUIRED: Segment challenger branches "
-                    "require a non-empty segment_filter_spec."
+                raise BranchValidationError(
+                    "SEGMENT_FILTER_REQUIRED",
+                    message="Segment challenger branches require a non-empty segment_filter_spec.",
+                    context={"branch_type": branch_type},
                 )
             _validate_segment_filter_rules(segment_filter_spec)
 
         # Validate plan belongs to project
         plan = self._store.get_plan(plan_id)
         if plan is None:
-            raise ValueError(f"PLAN_NOT_FOUND: No plan with ID {plan_id}")
+            raise BranchValidationError(
+                "PLAN_NOT_FOUND",
+                message=f"No plan with ID {plan_id}",
+                context={"plan_id": plan_id},
+            )
         if plan.get("project_id") != project_id:
-            raise ValueError(f"PLAN_PROJECT_MISMATCH: Plan {plan_id} does not belong to project {project_id}")
+            raise BranchValidationError(
+                "PLAN_PROJECT_MISMATCH",
+                message=f"Plan {plan_id} does not belong to project {project_id}",
+                context={"plan_id": plan_id, "project_id": project_id},
+            )
 
         # Load base branch
         base_branch = self._store.get_branch(base_branch_id) if base_branch_id else None
         if base_branch_id and base_branch is None:
-            raise ValueError(f"BASE_BRANCH_NOT_FOUND: No branch with ID {base_branch_id}")
+            raise BranchValidationError(
+                "BASE_BRANCH_NOT_FOUND",
+                message=f"No branch with ID {base_branch_id}",
+                context={"base_branch_id": base_branch_id},
+            )
 
         head_pv_id = base_branch["head_plan_version_id"] if base_branch else base_plan_version_id
 
         if base_plan_version_id and head_pv_id != base_plan_version_id:
-            raise ValueError(
-                "STALE_BASE_VERSION: base_plan_version_id does not match "
-                "the base branch's head_plan_version_id."
+            raise BranchValidationError(
+                "STALE_BASE_VERSION",
+                message="base_plan_version_id does not match the base branch's head_plan_version_id.",
+                context={"base_plan_version_id": base_plan_version_id, "head_pv_id": head_pv_id},
             )
 
         if base_branch and base_branch.get("status") != "active":
-            raise ValueError(f"BASE_BRANCH_INACTIVE: Base branch {base_branch_id} is not active.")
+            raise BranchValidationError(
+                "BASE_BRANCH_INACTIVE",
+                message=f"Base branch {base_branch_id} is not active.",
+                context={"base_branch_id": base_branch_id, "status": base_branch.get("status")},
+            )
 
         steps = self._store.get_plan_version_steps(head_pv_id)
 
@@ -112,9 +141,10 @@ class BranchService:
                 bp_step = s
                 break
         if bp_step is None:
-            raise ValueError(
-                f"BRANCH_POINT_NOT_IN_PLAN: Step {branch_point_step_id} "
-                f"not found in plan version {head_pv_id}."
+            raise BranchValidationError(
+                "BRANCH_POINT_NOT_IN_PLAN",
+                message=f"Step {branch_point_step_id} not found in plan version {head_pv_id}.",
+                context={"branch_point_step_id": branch_point_step_id, "head_pv_id": head_pv_id},
             )
 
         if branch_type == "reject_inference_challenger":
@@ -123,17 +153,19 @@ class BranchService:
                 None,
             )
             if sample_def_step is None:
-                raise ValueError(
-                    "REJECT_INFERENCE_CHALLENGER_MISSING_SAMPLE_DEF: "
-                    "No sample-definition step found in plan. "
-                    "A reject inference challenger requires a sample-definition step."
+                raise BranchValidationError(
+                    "REJECT_INFERENCE_CHALLENGER_MISSING_SAMPLE_DEF",
+                    message="No sample-definition step found in plan. "
+                    "A reject inference challenger requires a sample-definition step.",
+                    context={"plan_id": plan_id},
                 )
             sample_domain = sample_def_step.params.get("sample_domain", "ttd")
             if sample_domain != "ttd":
-                raise ValueError(
-                    f"REJECT_INFERENCE_CHALLENGER_REQUIRES_TTD: "
-                    f"sample_domain must be 'ttd', got {sample_domain!r}. "
-                    "Cannot add reject inference to an OTB sample."
+                raise BranchValidationError(
+                    "REJECT_INFERENCE_CHALLENGER_REQUIRES_TTD",
+                    message=f"sample_domain must be 'ttd', got {sample_domain!r}. "
+                    "Cannot add reject inference to an OTB sample.",
+                    context={"sample_domain": sample_domain},
                 )
 
         # --- Generate branch ID and step IDs ---
@@ -258,7 +290,10 @@ def _validate_segment_filter_rules(spec: dict) -> None:
     """Validate segment filter rules match the ApplyExclusions operator contract."""
     rules = spec.get("rules", [])
     if not rules:
-        raise ValueError("SEGMENT_FILTER_RULES_REQUIRED: Segment filter must have at least one rule.")
+        raise BranchValidationError(
+            "SEGMENT_FILTER_RULES_REQUIRED",
+            message="Segment filter must have at least one rule.",
+        )
 
     for rule in rules:
         column = rule.get("column", "")
@@ -267,21 +302,32 @@ def _validate_segment_filter_rules(spec: dict) -> None:
         value = rule.get("value")
 
         if not column:
-            raise ValueError("SEGMENT_FILTER_INVALID: Rule must specify a non-empty 'column'.")
+            raise BranchValidationError(
+                "SEGMENT_FILTER_INVALID",
+                message="Rule must specify a non-empty 'column'.",
+                context={"column": column},
+            )
         if not operator:
-            raise ValueError("SEGMENT_FILTER_INVALID: Rule must specify an 'operator'.")
+            raise BranchValidationError(
+                "SEGMENT_FILTER_INVALID",
+                message="Rule must specify an 'operator'.",
+                context={"column": column},
+            )
         if operator not in SUPPORTED_FILTER_OPERATORS:
-            raise ValueError(
-                f"SEGMENT_FILTER_UNSUPPORTED_OPERATOR: '{operator}' is not supported. "
-                f"Allowed: {sorted(SUPPORTED_FILTER_OPERATORS)}"
+            raise BranchValidationError(
+                "SEGMENT_FILTER_UNSUPPORTED_OPERATOR",
+                message=f"'{operator}' is not supported. Allowed: {sorted(SUPPORTED_FILTER_OPERATORS)}",
+                context={"operator": operator, "column": column},
             )
         if not reason:
-            raise ValueError(
-                f"SEGMENT_FILTER_REASON_REQUIRED: Rule for column '{column}' "
-                f"requires a non-empty 'reason'."
+            raise BranchValidationError(
+                "SEGMENT_FILTER_REASON_REQUIRED",
+                message=f"Rule for column '{column}' requires a non-empty 'reason'.",
+                context={"column": column},
             )
         if operator not in ("is_null", "is_not_null") and value is None:
-            raise ValueError(
-                f"SEGMENT_FILTER_VALUE_REQUIRED: Rule for column '{column}' "
-                f"with operator '{operator}' requires a 'value'."
+            raise BranchValidationError(
+                "SEGMENT_FILTER_VALUE_REQUIRED",
+                message=f"Rule for column '{column}' with operator '{operator}' requires a 'value'.",
+                context={"column": column, "operator": operator},
             )

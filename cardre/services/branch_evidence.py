@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from cardre.audit import ArtifactRef, RunStepRecord, StepSpec
+from cardre.errors import BranchEvidenceError, Diagnostic
 from cardre.evidence_locator import resolve_output_artifacts
 from cardre.staleness import compute_staleness, step_is_stale
 from cardre.store import ProjectStore
@@ -37,6 +38,7 @@ class BranchRunContext:
     run_step_records: dict[str, RunStepRecord] = field(default_factory=dict)
     short_circuit_run_id: str | None = None
     source_by_step: dict[str, str | None] = field(default_factory=dict)
+    diagnostics: list[Diagnostic] = field(default_factory=list)
 
 
 class BranchEvidenceResolver:
@@ -73,14 +75,26 @@ class BranchEvidenceResolver:
         # 1. Branch validation
         branch = store.get_branch(branch_id)
         if branch is None:
-            raise ValueError(f"Branch {branch_id} not found")
+            raise BranchEvidenceError(
+                "BRANCH_NOT_FOUND",
+                message=f"Branch {branch_id} not found",
+                context={"branch_id": branch_id},
+                status_code=404,
+            )
         if branch.get("status") != "active":
-            raise ValueError(f"Branch {branch_id} is not active")
+            raise BranchEvidenceError(
+                "BRANCH_INACTIVE",
+                message=f"Branch {branch_id} is not active",
+                context={"branch_id": branch_id, "status": branch.get("status")},
+                status_code=400,
+            )
 
         if branch["head_plan_version_id"] != plan_version_id:
-            raise ValueError(
-                f"BRANCH_VERSION_MISMATCH: Branch head is {branch['head_plan_version_id']}, "
-                f"requested {plan_version_id}"
+            raise BranchEvidenceError(
+                "BRANCH_VERSION_MISMATCH",
+                message=f"Branch head is {branch['head_plan_version_id']}, requested {plan_version_id}",
+                context={"branch_id": branch_id, "head_pv_id": branch["head_plan_version_id"], "requested_pv_id": plan_version_id},
+                status_code=409,
             )
 
         # 2. Step map and classification
@@ -112,11 +126,13 @@ class BranchEvidenceResolver:
         # Pre-collect shared evidence into a map for staleness checking
         # (avoids re-querying per-step and per-parent).
         shared_evidence_map: dict[str, RunStepRecord] = {}
+        lookup_diagnostics: list[Diagnostic] = []
         for sid in shared_upstream_step_ids:
             sb = source_by_step.get(sid)
             rs = self._find_shared_evidence(
                 store, branch["plan_id"], plan_version_id, sid,
                 source_branch_id=sb,
+                diagnostics=lookup_diagnostics,
             )
             if rs is not None:
                 shared_evidence_map[sid] = rs
@@ -130,10 +146,11 @@ class BranchEvidenceResolver:
                 stale_shared.append(sid)
 
         if stale_shared:
-            raise ValueError(
-                f"SHARED_UPSTREAM_STALE: Cannot run branch {branch_id} because "
-                f"shared upstream steps {stale_shared} are stale. "
-                "Run the shared pathway first."
+            raise BranchEvidenceError(
+                "SHARED_UPSTREAM_STALE",
+                message=f"Cannot run branch {branch_id} because shared upstream steps {stale_shared} are stale. Run the shared pathway first.",
+                context={"branch_id": branch_id, "stale_shared_steps": stale_shared},
+                status_code=409,
             )
 
         # 6. Identify stale branch-owned steps
@@ -158,9 +175,11 @@ class BranchEvidenceResolver:
                     source_by_step=source_by_step,
                     short_circuit_run_id=existing_run_id,
                 )
-            raise ValueError(
-                f"BRANCH_NO_OP_FAILED: All branch-owned steps are current "
-                f"but no prior successful branch run exists for branch {branch_id}."
+            raise BranchEvidenceError(
+                "BRANCH_NO_OP_FAILED",
+                message=f"All branch-owned steps are current but no prior successful branch run exists for branch {branch_id}.",
+                context={"branch_id": branch_id},
+                status_code=409,
             )
 
         # 8. Seed step_outputs and run_step_records from latest evidence
@@ -195,6 +214,7 @@ class BranchEvidenceResolver:
             stale_branch_step_ids=stale_branch_step_ids,
             step_outputs=step_outputs,
             run_step_records=run_step_records,
+            diagnostics=lookup_diagnostics,
         )
 
     def resolve_parent_evidence(
@@ -213,6 +233,7 @@ class BranchEvidenceResolver:
                 rs = self._find_shared_evidence(
                     store, ctx.branch["plan_id"], ctx.plan_version_id, pid,
                     source_branch_id=sb,
+                    diagnostics=ctx.diagnostics,
                 )
                 if rs is not None:
                     ctx.run_step_records[pid] = rs
@@ -237,27 +258,46 @@ class BranchEvidenceResolver:
         plan_version_id: str,
         step_id: str,
         source_branch_id: str | None = None,
+        diagnostics: list[Diagnostic] | None = None,
     ) -> RunStepRecord | None:
         """Look up successful evidence for a shared upstream step.
 
         Searches across all plan versions so inherited parent-branch
         evidence (produced under the parent's plan version) is found.
         """
+        policies_tried: list[str] = []
         lookup_branch = source_branch_id or None
+        policies_tried.append(f"branch_id={lookup_branch!r}")
         rs = store.get_latest_successful_run_step_for_step_across_plan(
             plan_id, step_id, branch_id=lookup_branch,
         )
         if rs is not None:
             return rs
         if lookup_branch is not None:
+            policies_tried.append("branch_id=None")
             rs = store.get_latest_successful_run_step_for_step_across_plan(
                 plan_id, step_id, branch_id=None,
             )
             if rs is not None:
                 return rs
+        policies_tried.append("latest_plan_run")
         plan_run_id = store.get_latest_successful_run_id_for_plan(plan_id)
         if plan_run_id is not None:
             for prs in store.get_run_steps(plan_run_id):
                 if prs.step_id == step_id and prs.status == STATUS_SUCCEEDED:
                     return prs
+        if diagnostics is not None:
+            diagnostics.append(Diagnostic(
+                code="REUSE_EVIDENCE_NOT_FOUND",
+                message=f"No shared evidence found for step {step_id} in plan {plan_id}",
+                source="BranchEvidenceResolver._find_shared_evidence",
+                severity="warning",
+                context={
+                    "step_id": step_id,
+                    "plan_id": plan_id,
+                    "plan_version_id": plan_version_id,
+                    "source_branch_id": source_branch_id,
+                    "policies_tried": policies_tried,
+                },
+            ))
         return None

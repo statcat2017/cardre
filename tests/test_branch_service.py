@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from cardre.audit import StepSpec, json_logical_hash
+from cardre.errors import BranchValidationError
 from cardre.services import migrate_project_to_branch_model
 from cardre.services.branch_service import (
     BranchService,
@@ -104,7 +105,7 @@ class TestDescendantClosure:
 # =========================================================================
 
 class TestValidateSegmentFilterRules:
-    @pytest.mark.parametrize("rules,expected_error", [
+    @pytest.mark.parametrize("rules,expected_code", [
         ({"rules": []}, "SEGMENT_FILTER_RULES_REQUIRED"),
         ({"rules": [{"operator": "==", "value": "x", "reason": "test"}]}, "SEGMENT_FILTER_INVALID"),
         ({"rules": [{"column": "age", "value": "x", "reason": "test"}]}, "SEGMENT_FILTER_INVALID"),
@@ -112,9 +113,10 @@ class TestValidateSegmentFilterRules:
         ({"rules": [{"column": "age", "operator": "==", "value": "x", "reason": ""}]}, "SEGMENT_FILTER_REASON_REQUIRED"),
         ({"rules": [{"column": "age", "operator": ">", "reason": "test"}]}, "SEGMENT_FILTER_VALUE_REQUIRED"),
     ])
-    def test_rejects_invalid_rules(self, rules, expected_error):
-        with pytest.raises(ValueError, match=expected_error):
+    def test_rejects_invalid_rules(self, rules, expected_code):
+        with pytest.raises(BranchValidationError) as exc_info:
             _validate_segment_filter_rules(rules)
+        assert exc_info.value.code == expected_code
 
     @pytest.mark.parametrize("rules", [
         {"rules": [{"column": "age", "operator": ">", "value": 18, "reason": "Adult population"}]},
@@ -234,7 +236,7 @@ class TestBranchServiceCreateBranch:
         project_id, plan_id = project_and_plan
         pv_id = store.get_latest_plan_version_id(plan_id)
         svc = BranchService(store)
-        with pytest.raises(ValueError, match="BRANCH_POINT_NOT_ALLOWED"):
+        with pytest.raises(BranchValidationError) as exc_info:
             svc.create_branch(
                 project_id=project_id,
                 plan_id=plan_id,
@@ -244,6 +246,7 @@ class TestBranchServiceCreateBranch:
                 base_plan_version_id=pv_id,
                 created_reason="Should fail.",
             )
+        assert exc_info.value.code == "BRANCH_POINT_NOT_ALLOWED"
 
     def test_create_branch_raises_on_type_mismatch(self, store, project_and_plan):
         project_id, plan_id = project_and_plan
@@ -261,7 +264,7 @@ class TestBranchServiceCreateBranch:
         wrong_type = "segment_challenger" if expected_type != "segment_challenger" else "model_challenger"
 
         svc = BranchService(store)
-        with pytest.raises(ValueError, match="BRANCH_TYPE_MISMATCH"):
+        with pytest.raises(BranchValidationError) as exc_info:
             svc.create_branch(
                 project_id=project_id,
                 plan_id=plan_id,
@@ -271,12 +274,13 @@ class TestBranchServiceCreateBranch:
                 base_plan_version_id=pv_id,
                 created_reason="Should fail.",
             )
+        assert exc_info.value.code == "BRANCH_TYPE_MISMATCH"
 
     def test_create_branch_raises_on_empty_name(self, store, project_and_plan):
         project_id, plan_id = project_and_plan
         pv_id = store.get_latest_plan_version_id(plan_id)
         svc = BranchService(store)
-        with pytest.raises(ValueError, match="BRANCH_NAME_REQUIRED"):
+        with pytest.raises(BranchValidationError) as exc_info:
             svc.create_branch(
                 project_id=project_id,
                 plan_id=plan_id,
@@ -286,12 +290,13 @@ class TestBranchServiceCreateBranch:
                 base_plan_version_id=pv_id,
                 created_reason="Should fail.",
             )
+        assert exc_info.value.code == "BRANCH_NAME_REQUIRED"
 
     def test_create_branch_raises_on_empty_reason(self, store, project_and_plan):
         project_id, plan_id = project_and_plan
         pv_id = store.get_latest_plan_version_id(plan_id)
         svc = BranchService(store)
-        with pytest.raises(ValueError, match="BRANCH_REASON_REQUIRED"):
+        with pytest.raises(BranchValidationError) as exc_info:
             svc.create_branch(
                 project_id=project_id,
                 plan_id=plan_id,
@@ -301,12 +306,13 @@ class TestBranchServiceCreateBranch:
                 base_plan_version_id=pv_id,
                 created_reason="",
             )
+        assert exc_info.value.code == "BRANCH_REASON_REQUIRED"
 
     def test_create_branch_raises_on_segment_filter_missing(self, store, project_and_plan):
         project_id, plan_id = project_and_plan
         pv_id = store.get_latest_plan_version_id(plan_id)
         svc = BranchService(store)
-        with pytest.raises(ValueError, match="SEGMENT_FILTER_REQUIRED"):
+        with pytest.raises(BranchValidationError) as exc_info:
             svc.create_branch(
                 project_id=project_id,
                 plan_id=plan_id,
@@ -317,11 +323,12 @@ class TestBranchServiceCreateBranch:
                 created_reason="Should fail.",
                 segment_filter_spec=None,
             )
+        assert exc_info.value.code == "SEGMENT_FILTER_REQUIRED"
 
     def test_create_branch_raises_on_plan_not_found(self, store, project_and_plan):
         project_id, _ = project_and_plan
         svc = BranchService(store)
-        with pytest.raises(ValueError, match="PLAN_NOT_FOUND"):
+        with pytest.raises(BranchValidationError) as exc_info:
             svc.create_branch(
                 project_id=project_id,
                 plan_id="nonexistent-plan-id",
@@ -331,6 +338,7 @@ class TestBranchServiceCreateBranch:
                 base_plan_version_id="pv-nonexistent",
                 created_reason="Should fail.",
             )
+        assert exc_info.value.code == "PLAN_NOT_FOUND"
 
     def test_create_branch_raises_on_plan_project_mismatch(self, store, project_and_plan):
         project_id, plan_id = project_and_plan
@@ -340,7 +348,7 @@ class TestBranchServiceCreateBranch:
         pv_id = store.create_plan_version(other_plan_id, [])
 
         svc = BranchService(store)
-        with pytest.raises(ValueError, match="PLAN_PROJECT_MISMATCH"):
+        with pytest.raises(BranchValidationError) as exc_info:
             svc.create_branch(
                 project_id=project_id,
                 plan_id=other_plan_id,
@@ -350,6 +358,7 @@ class TestBranchServiceCreateBranch:
                 base_plan_version_id=pv_id,
                 created_reason="Should fail.",
             )
+        assert exc_info.value.code == "PLAN_PROJECT_MISMATCH"
 
 
 # ======================================================================

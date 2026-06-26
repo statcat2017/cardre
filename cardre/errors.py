@@ -152,8 +152,11 @@ class BranchEvidenceError(CardreError):
         message: str | None = None,
         *,
         context: dict[str, Any] | None = None,
+        status_code: int | None = None,
     ) -> None:
         self.code = code
+        if status_code is not None:
+            self.status_code = status_code
         super().__init__(message or code, context=context)
 
 

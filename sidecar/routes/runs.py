@@ -26,7 +26,12 @@ def _is_branch_current(store, plan_version_id, branch_id):
         ctx = resolver.prepare_branch_run(store, branch_id, plan_version_id, force=False)
         if ctx.short_circuit_run_id is not None:
             return ctx.short_circuit_run_id
-    except (ValueError, Exception):
+    except CardreError as exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            "_is_branch_current: %s (code=%s, branch_id=%s)", exc.message, exc.code, branch_id,
+        )
+    except Exception:
         pass
     return None
 

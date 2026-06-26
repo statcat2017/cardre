@@ -33,6 +33,7 @@ from cardre.errors import (
     ArtifactWriteError,
     CardreError,
     ContractViolationError,
+    Diagnostic,
     GraphValidationError,
     MissingInputArtifactError,
     NodeExecutionError,
@@ -111,10 +112,24 @@ class PlanExecutor:
         run_id: str | None = None,
         force: bool = False,
     ) -> str:
+        from cardre.errors import BranchEvidenceError
         from cardre.run_lifecycle import RunLifecycle
         from cardre.services.branch_evidence import BranchEvidenceResolver
         resolver = BranchEvidenceResolver(self)
-        ctx = resolver.prepare_branch_run(store, branch_id, plan_version_id, force=force)
+        try:
+            ctx = resolver.prepare_branch_run(store, branch_id, plan_version_id, force=force)
+        except BranchEvidenceError:
+            if run_id is not None:
+                store.append_run_diagnostic(run_id, {
+                    "code": "BRANCH_PREPARATION_FAILED",
+                    "message": "Branch preparation failed before run lifecycle started.",
+                    "severity": "error",
+                    "category": "execution",
+                    "run_id": run_id,
+                    "plan_version_id": plan_version_id,
+                    "branch_id": branch_id,
+                })
+            raise
         if not force and ctx.short_circuit_run_id is not None:
             return ctx.short_circuit_run_id
 
@@ -260,6 +275,16 @@ class PlanExecutor:
                     records[action.spec.step_id] = rs
                     outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
                 else:
+                    store.append_run_diagnostic(run_id, {
+                        "code": "REUSE_EVIDENCE_NOT_FOUND",
+                        "message": f"No prior evidence to reuse for step {action.spec.step_id}, falling back to execute.",
+                        "severity": "warning",
+                        "category": "execution",
+                        "run_id": run_id,
+                        "plan_version_id": plan_version_id,
+                        "step_id": action.spec.step_id,
+                        "branch_id": branch_id,
+                    })
                     if action.before_execute is not None:
                         action.before_execute()
                     store.run_heartbeat(run_id)
