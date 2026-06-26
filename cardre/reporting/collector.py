@@ -420,6 +420,11 @@ class ReportCollector:
                 intercept=model_art.intercept,
                 fit_dataset_role="train",
             )
+        else:
+            self.limitations.append(Limitation(
+                severity="blocker", code=LimitationCode.MISSING_MODEL_COEFFICIENTS,
+                message=f"Model step {ref.step_id} produced no MODEL_ARTIFACT evidence.",
+            ))
 
     def _collect_modelling_metadata(
         self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
@@ -430,6 +435,10 @@ class ReportCollector:
 
         meta = self.reader.read_step_output_optional(rs, EvidenceKind.MODELLING_METADATA)
         if meta is None:
+            self.limitations.append(Limitation(
+                severity="warning", code=LimitationCode.MISSING_MODELLING_METADATA,
+                message=f"Modelling metadata step {ref.step_id} produced no MODELLING_METADATA evidence.",
+            ))
             return
 
         target_column = meta.target_column or str(getattr(meta, "_raw", {}).get("target_column", ""))
@@ -460,6 +469,11 @@ class ReportCollector:
                 min_score=scaling.min_score,
                 max_score=scaling.max_score,
             )
+        else:
+            self.limitations.append(Limitation(
+                severity="blocker", code=LimitationCode.MISSING_SCORE_SCALING,
+                message=f"Score scaling step {ref.step_id} produced no SCORE_SCALING evidence.",
+            ))
 
     def _collect_validation(
         self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
@@ -476,6 +490,10 @@ class ReportCollector:
         if val is None:
             val = self.reader.read_step_output_optional(rs, EvidenceKind.VALIDATION_METRICS)
         if val is None:
+            self.limitations.append(Limitation(
+                severity="blocker", code=LimitationCode.MISSING_TRAIN_VALIDATION_METRICS,
+                message=f"Validation step {ref.step_id} produced no VALIDATION_EVIDENCE or VALIDATION_METRICS evidence.",
+            ))
             return
 
         validation = ValidationInfo()
@@ -522,6 +540,11 @@ class ReportCollector:
                 tables.append(CutoffTable(role=role_name, rows=cutoff_rows))
             if tables:
                 bundle.cutoffs = CutoffInfo(cutoff_tables=tables)
+        else:
+            self.limitations.append(Limitation(
+                severity="warning", code=LimitationCode.NO_CUTOFF_ANALYSIS,
+                message=f"Cutoff analysis step {ref.step_id} produced no CUTOFF_ANALYSIS evidence.",
+            ))
 
     def _collect_manual_interventions(
         self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
@@ -546,9 +569,19 @@ class ReportCollector:
                         edited_vars = list({ov.get("variable", "") for ov in overrides if ov.get("variable")})
                         reasons = list({ov.get("reason_code", "") for ov in overrides if ov.get("reason_code")})
                         # Read audit metadata from the latest review annotation
-                        annotation = self._get_latest_review_annotation(
+                        annotation_result = self._get_latest_review_annotation(
                             mb_ref.step_id, plan_version_id,
                         )
+                        from cardre.errors import is_ok, is_degraded
+                        if is_ok(annotation_result) or is_degraded(annotation_result):
+                            annotation = annotation_result.value
+                        else:
+                            annotation = None
+                        if is_degraded(annotation_result):
+                            self.limitations.append(Limitation(
+                                severity="warning", code=LimitationCode.MISSING_MANUAL_INTERVENTION_REASON,
+                                message="Review annotation could not be read.",
+                            ))
                         bundle.manual_binning_review = ManualBinningReviewState(
                             review_status="reviewed" if is_reviewed else ("accepted_automated" if is_accepted else "not_started"),
                             accepted_automated=is_accepted,
@@ -716,9 +749,11 @@ class ReportCollector:
                     ))
         return entries
 
-    def _get_latest_review_annotation(self, step_id: str, plan_version_id: str) -> dict | None:
-        """Read the most recent manual_binning_review annotation for a step."""
+    def _get_latest_review_annotation(self, step_id: str, plan_version_id: str) -> Result[dict | None]:
+        """Read the most recent manual_binning_review annotation for a step.
+        Returns Ok(dict | None) on success, Degraded(None, ...) on error."""
         import json as _json
+        from cardre.errors import Ok, Degraded, Diagnostic
 
         try:
             with self.store.transaction() as conn:
@@ -729,12 +764,17 @@ class ReportCollector:
                     (step_id, plan_version_id, "manual_binning_review"),
                 ).fetchall()
             if not rows:
-                return None
+                return Ok(None)
             payload = _json.loads(rows[0]["payload_json"])
             payload["created_at"] = rows[0]["created_at"]
-            return payload
-        except Exception:
-            return None
+            return Ok(payload)
+        except Exception as exc:
+            return Degraded(None, [Diagnostic(
+                code="REVIEW_ANNOTATION_UNREADABLE",
+                message="Could not read review annotation.",
+                exception_type=type(exc).__name__,
+                context={"step_id": step_id, "plan_version_id": plan_version_id},
+            )])
 
     def _resolve_run_step(
         self, ref: ResolvedStepRef, plan_version_id: str,
