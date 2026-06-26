@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { ArtifactListItem } from "../types";
 import { ArtifactRow } from "./ArtifactRow";
+import { ErrorNotice } from "./ErrorNotice";
 import { theme } from "../styles";
 
 interface Props {
@@ -98,9 +99,7 @@ export function ArtifactBrowser({ projectId }: Props) {
 
       {isLoading && <div style={{ color: theme.muted, fontSize: 13 }}>Loading artifacts...</div>}
       {isError && (
-        <div style={{ color: theme.redText, fontSize: 13 }}>
-          Failed to load artifacts: {(error as Error)?.message || "Unknown error"}
-        </div>
+        <ErrorNotice error={error} context="Failed to load artifacts" />
       )}
 
       {!isLoading && !isError && artifacts.length === 0 && (

@@ -2,6 +2,7 @@ import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { ArtifactPreviewPane } from "./ArtifactPreviewPane";
+import { ErrorNotice } from "./ErrorNotice";
 import { theme } from "../styles";
 
 interface Props {
@@ -9,13 +10,14 @@ interface Props {
 }
 
 export function ArtifactSummaryInline({ artifactId }: Props) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["artifactSummary", artifactId],
     queryFn: () => api.getArtifactSummary(artifactId),
     enabled: !!artifactId,
   });
 
   if (isLoading) return <div style={{ padding: 8, fontSize: 12, color: theme.muted }}>Loading summary...</div>;
+  if (isError) return <ErrorNotice error={error} context="Artifact summary unavailable" />;
   if (!data) return null;
 
   const metaRows: [string, string | number | null][] = [

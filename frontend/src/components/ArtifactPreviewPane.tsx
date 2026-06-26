@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { ErrorNotice } from "./ErrorNotice";
 import { linkButtonSmallStyle, preBlockStyle, pageButtonStyle, theme } from "../styles";
 
 const LARGE_ROW_THRESHOLD = 100_000;
@@ -18,7 +19,7 @@ export function ArtifactPreviewPane({ artifactId, mediaType, rowCount, summaryPr
   const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
 
-  const { data: preview, isLoading } = useQuery({
+  const { data: preview, isLoading, isError, error } = useQuery({
     queryKey: ["artifactPreview", artifactId, limit, offset],
     queryFn: () => api.getArtifactPreview(artifactId, limit, offset),
     enabled: showPreview,
