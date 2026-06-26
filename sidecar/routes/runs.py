@@ -38,6 +38,11 @@ def _is_stale(run: dict) -> bool:
 
 
 def _maybe_recover_stale_run(store: ProjectStore, run: dict) -> None:
+    """Recover a stale run before creating a new one to unblock concurrent-run checks.
+
+    Only called from POST /runs, never from GET /runs/{id}, to avoid
+    marking a legitimate long-running step as interrupted.
+    """
     if _is_stale(run):
         store.finish_run(run["run_id"], "interrupted")
         store.append_run_diagnostic(run["run_id"], {
@@ -205,6 +210,11 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
         if existing_run_id is not None:
             return _build_run_response(store, existing_run_id)
 
+    # Recover any stale running runs for this plan_version before creating a new one
+    for existing_run in store.list_runs(plan_version_id=body.plan_version_id):
+        if existing_run.get("status") == "running":
+            _maybe_recover_stale_run(store, existing_run)
+
     run_id = store.create_run(body.plan_version_id, **branch_kw)
     project_path = str(store.root)
     try:
@@ -248,7 +258,6 @@ def get_run(run_id: str):
             continue
         run = store.get_run(run_id)
         if run is not None:
-            _maybe_recover_stale_run(store, run)
             return _build_run_response(store, run_id)
     raise HTTPException(status_code=404, detail={"code": "RUN_NOT_FOUND", "message": f"No run with ID {run_id}"})
 

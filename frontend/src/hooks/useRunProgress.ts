@@ -26,7 +26,7 @@ interface RunOptions {
 
 interface UseRunProgressReturn extends RunProgressState {
   startRun: (planVersionId: string, options?: RunOptions) => Promise<void>;
-  cancelRun: () => void;
+  stopWatchingRun: () => void;
   addDiagnostic: (msg: string) => void;
   lastPollError: ApiError | null;
   lastRunError: string | null;
@@ -85,14 +85,14 @@ export function useRunProgress(
     setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
   }, []);
 
-  const cancelRun = useCallback(() => {
+  const stopWatchingRun = useCallback(() => {
     stopPolling();
     setRunning(false);
-    setError("Run cancelled by user.");
+    setError("Stopped watching run (backend execution continues).");
     setCarriedForwardSteps({});
     setLiveStepStatus({});
     setLiveDiagnostic(null);
-    addDiagnostic("Run cancelled by user");
+    addDiagnostic("Stopped watching run — backend execution continues");
   }, [stopPolling, addDiagnostic]);
 
   const startRun = useCallback(async (planVersionId: string, options?: RunOptions) => {
@@ -178,16 +178,15 @@ export function useRunProgress(
           if (snapshot !== lastStepSnapshotRef.current) {
             lastStepSnapshotRef.current = snapshot;
             stallCountRef.current = 0;
+            setRunStalled(false);
           } else {
             stallCountRef.current++;
             if (stallCountRef.current >= STALL_POLL_LIMIT && run.status === "running") {
-              stopPolling();
-              setRunning(false);
+              // Warn but keep polling — a long-running step is legitimate
               setRunStalled(true);
-              setError("Run appears stalled — no progress detected for over a minute.");
-              addDiagnostic("Run stalled — no step progress detected");
-              onRunComplete();
-              return;
+              if (stallCountRef.current === STALL_POLL_LIMIT) {
+                addDiagnostic("Warning: no step progress for ~60s — still checking");
+              }
             }
           }
 
@@ -275,7 +274,7 @@ export function useRunProgress(
     diagnostics,
     liveDiagnostic,
     startRun,
-    cancelRun,
+    stopWatchingRun,
     addDiagnostic,
     lastPollError,
     lastRunError,

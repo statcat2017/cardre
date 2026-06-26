@@ -54,7 +54,7 @@ export function ProjectView({ projectId, onBack }: Props) {
     refetchPlan();
     queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
   });
-  const { running, error, runStalled, carriedForwardSteps, liveStepStatus, stepProgress, diagnostics, liveDiagnostic, startRun, cancelRun, addDiagnostic, lastPollError, lastRunError } = runProgress;
+  const { running, error, runStalled, carriedForwardSteps, liveStepStatus, stepProgress, diagnostics, liveDiagnostic, startRun, stopWatchingRun, addDiagnostic, lastPollError, lastRunError } = runProgress;
 
   // Resolve default branch invisibly so guidance has a branch key
   const { data: branchData } = useQuery({

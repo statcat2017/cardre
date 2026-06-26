@@ -107,6 +107,7 @@ export async function fetchJson<T>(path: string, init?: FetchOptions): Promise<T
 
   const controller = new AbortController();
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let didTimeout = false;
 
   if (init?.signal) {
     if (init.signal.aborted) {
@@ -117,40 +118,67 @@ export async function fetchJson<T>(path: string, init?: FetchOptions): Promise<T
   }
 
   if (timeoutMs > 0) {
-    timeoutId = setTimeout(() => controller.abort(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
+    timeoutId = setTimeout(() => {
+      didTimeout = true;
+      controller.abort(new Error(`Request timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
   }
+
+  // Generate and send outbound request ID for diagnostics
+  const outboundRequestId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const mergedHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Cardre-Request-Id": outboundRequestId,
+    ...(init?.headers as Record<string, string> | undefined),
+  };
 
   let res: Response;
   try {
     res = await fetch(url, {
       ...init,
       signal: controller.signal,
-      headers: { "Content-Type": "application/json", ...init?.headers },
+      headers: mergedHeaders,
     });
   } catch (e) {
-    const aborted = controller.signal.aborted;
     clearTimeout(timeoutId);
-    if (aborted && timeoutId !== undefined && !init?.signal?.aborted) {
+    if (didTimeout) {
       throw new ApiError(0, {
         code: "REQUEST_TIMEOUT",
         message: `Request timed out after ${timeoutMs}ms.`,
-      }, { timedOutAtMs: timeoutMs });
+      }, { timedOutAtMs: timeoutMs, requestId: outboundRequestId });
     }
-    if (aborted && init?.signal?.aborted) {
+    if (controller.signal.aborted) {
       throw new ApiError(0, {
         code: "REQUEST_ABORTED",
         message: "Request was cancelled.",
-      });
+      }, { requestId: outboundRequestId });
     }
     throw new ApiError(0, {
       code: "SIDECAR_UNREACHABLE",
       message: "Could not reach the Cardre sidecar.",
-    }, { rawBodyPreview: String(e) });
+    }, { rawBodyPreview: String(e), requestId: outboundRequestId });
+  }
+
+  // Keep timeout active through body read — body streaming can also hang
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (didTimeout) {
+      throw new ApiError(0, {
+        code: "REQUEST_TIMEOUT",
+        message: `Response body timed out after ${timeoutMs}ms.`,
+      }, { timedOutAtMs: timeoutMs, requestId: outboundRequestId });
+    }
+    throw new ApiError(0, {
+      code: "SIDECAR_UNREACHABLE",
+      message: "Could not read response body.",
+    }, { rawBodyPreview: String(e), requestId: outboundRequestId });
   }
   clearTimeout(timeoutId);
 
-  const text = await res.text();
-  const requestId = res.headers.get("X-Cardre-Request-Id") ?? undefined;
+  const requestId = res.headers.get("X-Cardre-Request-Id") ?? outboundRequestId;
   if (!res.ok) {
     if (text.length === 0) {
       throw new ApiError(res.status, {

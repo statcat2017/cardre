@@ -56,7 +56,7 @@ function makeSteps(statuses: string[]) {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.spyOn(api, "health").mockResolvedValue({ status: "ok" });
+  vi.spyOn(api, "health").mockResolvedValue({ status: "ok", cardre_version: "0.1.0", registry_accessible: false, registered_node_count: 0, launch_node_count: 0, deferred_node_count: 0, governance_enabled: false, checked_at: "", diagnostics: [] });
   vi.spyOn(api, "runPlan").mockResolvedValue(makeRun("running") as any);
   vi.spyOn(api, "getRun").mockResolvedValue(makeRun("running") as any);
   vi.spyOn(api, "getRunSteps").mockResolvedValue(makeSteps(["running", "running", "running"]) as any);
@@ -192,7 +192,7 @@ describe("useRunProgress", () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
-  it("detects a stalled run and stops", async () => {
+  it("detects a stalled run but keeps polling", async () => {
     const onComplete = vi.fn();
     const { result } = renderHook(() => useRunProgress(PROJECT_ID, onComplete), {
       wrapper: createWrapper(),
@@ -210,20 +210,20 @@ describe("useRunProgress", () => {
     });
 
     // STALL_POLL_LIMIT = 30 polls * 2000ms = 60000ms
-    // Advance in chunks to let each poll cycle complete
     for (let i = 0; i < 35; i++) {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2000);
       });
     }
 
-    expect(result.current.running).toBe(false);
+    // Should still be running (keeps polling), but flagged as stalled
+    expect(result.current.running).toBe(true);
     expect(result.current.runStalled).toBe(true);
-    expect(result.current.error).toContain("stalled");
-    expect(onComplete).toHaveBeenCalledTimes(1);
+    // Should NOT have called onRunComplete
+    expect(onComplete).not.toHaveBeenCalled();
   });
 
-  it("cancels an in-progress run", async () => {
+  it("stops watching an in-progress run", async () => {
     const onComplete = vi.fn();
     const { result } = renderHook(() => useRunProgress(PROJECT_ID, onComplete), {
       wrapper: createWrapper(),
@@ -237,11 +237,11 @@ describe("useRunProgress", () => {
     expect(result.current.running).toBe(true);
 
     await act(async () => {
-      result.current.cancelRun();
+      result.current.stopWatchingRun();
     });
 
     expect(result.current.running).toBe(false);
-    expect(result.current.error).toBe("Run cancelled by user.");
+    expect(result.current.error).toContain("Stopped watching");
   });
 
   it("health gate prevents run when sidecar is down", async () => {
