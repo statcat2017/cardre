@@ -161,6 +161,8 @@ class TestEnvelope:
 
 
 class MockRequest:
+    method = "GET"
+    url = type("URL", (), {"path": "/test"})()
     state = type("State", (), {"request_id": "req-123"})()
 
 

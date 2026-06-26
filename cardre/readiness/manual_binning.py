@@ -32,6 +32,18 @@ def compute_manual_binning_blockers(
     shared by the editor state, the review endpoint, and evidence/report.
     """
     blockers: list[dict] = []
+
+    if selected_variables and not variable_summaries:
+        return [{
+            "code": "VARIABLE_SUMMARY_UNREADABLE",
+            "message": (
+                f"Final WOE/IV evidence could not be loaded for "
+                f"{len(selected_variables)} selected variable(s). "
+                "Review cannot be completed while evidence is unreadable."
+            ),
+            "step_id": step_id,
+        }]
+
     override_vars = {ov.get("variable") for ov in current_overrides}
 
     for vs in variable_summaries:

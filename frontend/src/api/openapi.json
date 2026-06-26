@@ -3707,6 +3707,15 @@
             "type": "string",
             "title": "Checked At",
             "default": ""
+          },
+          "diagnostics": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Diagnostics",
+            "default": []
           }
         },
         "type": "object",
