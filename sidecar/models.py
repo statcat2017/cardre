@@ -21,6 +21,7 @@ class HealthResponse(BaseModel):
     deferred_node_count: int = 0
     governance_enabled: bool = False
     checked_at: str = ""
+    diagnostics: list[dict] = []
 
 
 # ---------------------------------------------------------------------------

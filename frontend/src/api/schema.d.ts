@@ -1330,6 +1330,13 @@ export interface components {
              * @default
              */
             checked_at: string;
+            /**
+             * Diagnostics
+             * @default []
+             */
+            diagnostics: {
+                [key: string]: unknown;
+            }[];
         };
         /** ImportDatasetRequest */
         ImportDatasetRequest: {

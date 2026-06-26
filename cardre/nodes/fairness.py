@@ -312,6 +312,7 @@ class ProxyRiskReportNode(NodeType):
 
         reader = ArtifactEvidenceReader(store)
         train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
+        warnings: list[dict] = []
 
         report: dict[str, Any] = {
             "sensitive_columns": sensitive_columns,
@@ -343,7 +344,11 @@ class ProxyRiskReportNode(NodeType):
         if train_art:
             try:
                 df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
-            except Exception:
+            except Exception as exc:
+                warnings.append({
+                    "code": "TRAIN_DATA_READ_FAILED",
+                    "message": f"Could not read training data for fairness analysis: {exc}",
+                })
                 df = None
         else:
             df = None
@@ -353,6 +358,7 @@ class ProxyRiskReportNode(NodeType):
                 report["proxy_flags"].append({
                     "sensitive_column": col,
                     "status": "column_not_found",
+                    "risk_level": "unknown",
                     "message": f"Sensitive column {col!r} not found in training data",
                 })
                 continue
@@ -418,8 +424,14 @@ class ProxyRiskReportNode(NodeType):
 
             report["proxy_flags"].append(flag)
 
+        if df is None and sensitive_columns:
+            warnings.append({
+                "code": "FAIRNESS_CHECK_INCOMPLETE",
+                "message": "Fairness analysis is incomplete: training data could not be loaded.",
+            })
+
         # Overall risk assessment
-        risk_levels = [f["risk_level"] for f in report["proxy_flags"]]
+        risk_levels = [f.get("risk_level", "unknown") for f in report["proxy_flags"]]
         if "high" in risk_levels:
             report["overall_risk"] = "high"
         elif "medium" in risk_levels:
@@ -435,7 +447,8 @@ class ProxyRiskReportNode(NodeType):
         )
         return NodeOutput(
             artifacts=[art],
-            metrics={"overall_risk": report["overall_risk"]})
+            metrics={"overall_risk": report["overall_risk"]},
+            warnings=warnings if warnings else None)
 
 
 class AlternativeDataManifestNode(NodeType):
@@ -472,14 +485,19 @@ class AlternativeDataManifestNode(NodeType):
         store = context.store
         params = context.validated_params
         data_sources = list(params.get("data_sources", []))
+        warnings: list[dict] = []
 
         train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
         df = None
         if train_art:
             try:
                 df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
-            except Exception:
-                pass
+            except Exception as exc:
+                warnings.append({
+                    "code": "TRAIN_DATA_READ_FAILED",
+                    "message": f"Could not read training data for fairness analysis: {exc}",
+                })
+                df = None
 
         # Compute coverage and missingness per source
         source_evidence: list[dict] = []
@@ -549,4 +567,5 @@ class AlternativeDataManifestNode(NodeType):
         )
         return NodeOutput(
             artifacts=[art],
-            metrics={"total_sources": len(source_evidence)})
+            metrics={"total_sources": len(source_evidence)},
+            warnings=warnings if warnings else None)
