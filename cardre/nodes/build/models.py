@@ -633,6 +633,7 @@ class NoopNode(NodeType):
     node_type = "cardre.noop"
     version = "1"
     category = "transform"
+    is_internal = True
     input_roles: list[str] = []
     output_roles: list[str] = []
 
