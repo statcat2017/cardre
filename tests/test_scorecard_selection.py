@@ -6,7 +6,7 @@ import io
 import json
 import unittest
 import uuid
-from pathlib import Path
+from typing import Any
 
 import polars as pl
 

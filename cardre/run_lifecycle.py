@@ -53,7 +53,7 @@ def build_manifest_payload(
     in_scope_step_ids: list[str] | None = None,
 ) -> JsonDict:
     """Build a run manifest payload from run metadata and step records.
-    
+
     The manifest is a deterministic document describing what was run,
     which steps were executed/reused/cancelled, and their evidence.
     """

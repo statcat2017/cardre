@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from cardre.node_parameters import NodeParameterSchema
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime

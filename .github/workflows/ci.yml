@@ -30,12 +30,15 @@ jobs:
           cache-dependency-path: pyproject.toml
       - name: Install dependencies
         run: pip install -e ".[sidecar,test]"
+      - name: Ruff check
+        # Non-blocking baseline: 359 pre-existing F401/F841 errors.
+        # Remove continue-on-error once those are fixed.
+        continue-on-error: true
+        run: pip install ruff && ruff check
       - name: Check line counts
         run: python3 scripts/check-line-counts.py
       - name: Check doc references
         run: python3 scripts/check_doc_references.py
-      - name: Ruff check
-        run: pip install ruff && ruff check; rc=$?; echo "ruff exit code: $rc (non-blocking)"
 
   typecheck-frontend:
     runs-on: ubuntu-latest
@@ -55,11 +58,15 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit
       - name: ESLint
+        # Non-blocking baseline: 5 pre-existing errors (hoisting, setState-in-effect).
+        # Remove continue-on-error once those are fixed.
         continue-on-error: true
-        run: npx eslint src/ --max-warnings 0
+        run: npm run lint
       - name: Prettier check
+        # Non-blocking baseline: 69 files need formatting.
+        # Remove continue-on-error once those are fixed.
         continue-on-error: true
-        run: npx prettier --check src/
+        run: npm run format:check
 
   test-python:
     runs-on: ubuntu-latest
@@ -138,11 +145,18 @@ jobs:
         with:
           name: cardre-api-sidecar
           path: frontend/src-tauri/binaries/
-      - name: Validate sidecar exists
+      - name: Validate sidecar exists (Linux)
+        if: matrix.os == 'ubuntu-latest'
         working-directory: frontend/src-tauri
         run: |
           ls -la binaries/
           file binaries/cardre-api-*
+      - name: Validate sidecar exists (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: frontend/src-tauri
+        run: |
+          dir binaries\
+          python3 -c "import sys; from pathlib import Path; p=list(Path('binaries').glob('cardre-api-*')); assert len(p)>0, f'no sidecar found'; print(f'Found: {p[0]}')"
       - name: cargo check
         working-directory: frontend/src-tauri
         run: cargo check

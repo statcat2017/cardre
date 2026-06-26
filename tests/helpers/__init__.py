@@ -122,7 +122,7 @@ def make_sample_german_credit_zip(tmp: Path) -> Path:
 
 def make_synthetic_csv(tmp: Path, filename: str = "synthetic.csv", rows: int = 50) -> Path:
     """Create a synthetic CSV with header, numeric features, and binary target.
-    
+
     Target column is ``default_flag`` with values ``Y``/``N`` (not 1/2).
     """
     rng = np.random.RandomState(42)
