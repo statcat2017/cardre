@@ -34,7 +34,7 @@ jobs:
         # Non-blocking baseline: 359 pre-existing F401/F841 errors.
         # Remove continue-on-error once those are fixed.
         continue-on-error: true
-        run: pip install ruff && ruff check
+        run: pip install ruff==0.15.20 && ruff check
       - name: Check line counts
         run: python3 scripts/check-line-counts.py
       - name: Check doc references
@@ -140,7 +140,8 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-workspaces: "frontend/src-tauri"
-      - name: Download real sidecar binary
+      - name: Download sidecar binary (Linux)
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/download-artifact@v4
         with:
           name: cardre-api-sidecar
@@ -151,18 +152,12 @@ jobs:
         run: |
           ls -la binaries/
           file binaries/cardre-api-*
-      - name: Validate sidecar exists (Windows)
-        if: matrix.os == 'windows-latest'
-        working-directory: frontend/src-tauri
-        run: |
-          dir binaries\
-          python3 -c "import sys; from pathlib import Path; p=list(Path('binaries').glob('cardre-api-*')); assert len(p)>0, f'no sidecar found'; print(f'Found: {p[0]}')"
-      - name: cargo check
-        working-directory: frontend/src-tauri
-        run: cargo check
       - name: cargo fmt --check
         working-directory: frontend/src-tauri
         run: cargo fmt --check
+      - name: cargo check
+        working-directory: frontend/src-tauri
+        run: cargo check
       - name: cargo clippy
         working-directory: frontend/src-tauri
         run: cargo clippy --all-targets -- -D warnings

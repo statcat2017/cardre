@@ -81,17 +81,33 @@ runner-minute cost without adding safety:
 ### Resulting graph
 
 ```
-lint ────────────────┐
-typecheck-frontend ──┤
-test-python ─────────┼──> (merge gate via branch-protection required checks)
-build-sidecar ───────┤
-check-api-contracts ─┘
-check-tauri (needs build-sidecar)
+lint ─────────────────┐
+typecheck-frontend ───┤
+test-python ───────────┼──> (merge gate via branch-protection required checks)
+build-sidecar ────────┤
+check-api-contracts ──┘
+check-tauri (needs build-sidecar, matrix: ubuntu-latest + windows-latest)
 test-frontend (needs typecheck-frontend)
+smoke-test-sidecar (needs build-sidecar)
 ```
 
-Six jobs, down from nine. Maximum serial depth: two (build-sidecar →
-check-tauri), down from three.
+Eight jobs, down from nine. Maximum serial depth: two (build-sidecar →
+check-tauri or smoke-test-sidecar), down from three.
+
+### Required status checks
+
+Branch protection on `main` must require the following checks (including
+matrix expansion):
+
+- `lint`
+- `typecheck-frontend`
+- `test-python`
+- `test-frontend`
+- `build-sidecar`
+- `check-api-contracts`
+- `smoke-test-sidecar`
+- `check-tauri (ubuntu-latest)`
+- `check-tauri (windows-latest)`
 
 ## Consequences
 
@@ -101,8 +117,8 @@ check-tauri), down from three.
 - **Easier:** fewer jobs to reason about; the graph matches the actual data
   dependencies.
 - **Harder:** branch protection on `main` must be configured with the correct
-  set of required status checks (all six job names). This is a one-time
-  GitHub settings change, documented in the PR description.
+  set of required status checks (nine check names including matrix expansion).
+  This is a one-time GitHub settings change, documented in the PR description.
 - **Risk:** if branch protection is misconfigured, a failing `test-python`
   could merge alongside a green `build-sidecar`. Mitigated by requiring all
   six checks as required status checks before merge.

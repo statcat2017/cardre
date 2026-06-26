@@ -71,7 +71,9 @@ fn main() {
             let sidecar_cmd = if let Ok(path) = which::which("cardre-api") {
                 path.to_string_lossy().to_string()
             } else {
-                let bundled = app.path().resource_dir()
+                let bundled = app
+                    .path()
+                    .resource_dir()
                     .unwrap_or_default()
                     .join("binaries")
                     .join("cardre-api");
