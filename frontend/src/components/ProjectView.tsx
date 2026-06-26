@@ -1,6 +1,5 @@
-import React, { useState, useCallback, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, formatApiError } from "../api/client";
+import React, { useState, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { TopBar } from "./TopBar";
 import { LeftNav } from "./LeftNav";
 import { PathwayView } from "./PathwayView";
@@ -13,7 +12,11 @@ import { ManualBinningEditor } from "./ManualBinningEditor";
 import { ExportPanel } from "./ExportPanel";
 import { useRunProgress } from "../hooks/useRunProgress";
 import { useWorkflowGuidance } from "../hooks/useWorkflowGuidance";
-import type { PlanResponse, StepStatus, UpdateStepParamsResponse, WorkflowGuidance, BranchListItem } from "../types";
+import { useProjectPlanState } from "../hooks/useProjectPlanState";
+import { useSelectedBranch } from "../hooks/useSelectedBranch";
+import { useJourneyActions } from "../hooks/useJourneyActions";
+import { useDiagnosticsPanel } from "../hooks/useDiagnosticsPanel";
+import type { StepStatus, WorkflowGuidance } from "../types";
 import { theme } from "../styles";
 
 interface Props {
@@ -26,48 +29,15 @@ export function ProjectView({ projectId, onBack }: Props) {
   const [activeSection, setActiveSection] = useState("pathway");
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
-  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
 
-  const { data: project, isLoading: projectLoading } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => api.getProject(projectId),
-  });
-
-  const { data: projectPlans } = useQuery({
-    queryKey: ["projectPlans", projectId],
-    queryFn: () => api.getProjectPlans(projectId),
-    enabled: !!projectId,
-  });
-
-  // Find the default scorecard plan
-  const scorecardPlan = projectPlans?.plans?.find((p) => p.is_default);
-
-  const planId = scorecardPlan?.plan_id ?? null;
-
-  const { data: planData, refetch: refetchPlan } = useQuery({
-    queryKey: ["plan", planId],
-    queryFn: () => api.getPlan(planId!, projectId),
-    enabled: !!planId,
-  });
+  const { project, projectLoading, scorecardPlan, planId, planData, refetchPlan } = useProjectPlanState(projectId);
+  const { selectedBranchId, setSelectedBranchId } = useSelectedBranch(projectId);
 
   const runProgress = useRunProgress(projectId, () => {
     refetchPlan();
     queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
   });
   const { running, error, runStalled, carriedForwardSteps, liveStepStatus, stepProgress, diagnostics, liveDiagnostic, startRun, stopWatchingRun, addDiagnostic, lastPollError, lastRunError } = runProgress;
-
-  // Resolve default branch invisibly so guidance has a branch key
-  const { data: branchData } = useQuery({
-    queryKey: ["projectBranches", projectId],
-    queryFn: () => api.listBranches(projectId, { status: "active" }),
-    enabled: !!projectId,
-  });
-  useEffect(() => {
-    if (!selectedBranchId && branchData?.branches?.length) {
-      const baseline = branchData.branches.find((b: BranchListItem) => b.branch_type === "baseline");
-      setSelectedBranchId((baseline ?? branchData.branches[0]).branch_id);
-    }
-  }, [selectedBranchId, branchData]);
 
   const { data: guidance } = useWorkflowGuidance(
     planId,
@@ -76,8 +46,17 @@ export function ProjectView({ projectId, onBack }: Props) {
   );
   const runId = guidance?.run_id ?? null;
 
+  const { handleJourneyAction } = useJourneyActions(
+    scorecardPlan, planData, startRun, addDiagnostic,
+    setActiveSection, setSelectedStepId, setEditingStepId,
+  );
+
+  const { diagnosticsMessages } = useDiagnosticsPanel(
+    diagnostics, liveDiagnostic, error, lastPollError, lastRunError, runStalled,
+  );
+
   const handlePlanRefreshed = useCallback(
-    (detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string }) => {
+    (detailOrResp: any) => {
       refetchPlan();
       queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
       if ("latest_version_id" in detailOrResp && detailOrResp.latest_version_id) {
@@ -86,7 +65,7 @@ export function ProjectView({ projectId, onBack }: Props) {
         addDiagnostic(`New plan version created: ${detailOrResp.new_plan_version_id.slice(0, 8)}…`);
       }
     },
-    [refetchPlan, addDiagnostic],
+    [refetchPlan, addDiagnostic, queryClient],
   );
 
   const handleRun = async () => {
@@ -94,7 +73,6 @@ export function ProjectView({ projectId, onBack }: Props) {
     await startRun(planData.latest_version_id);
   };
 
-  // After import, re-fetch project plans
   const handleImported = () => {
     queryClient.invalidateQueries({ queryKey: ["project", projectId] });
     queryClient.invalidateQueries({ queryKey: ["projectPlans", projectId] });
@@ -119,57 +97,12 @@ export function ProjectView({ projectId, onBack }: Props) {
 
   const handleEditManualBinning = (stepId: string) => {
     setEditingStepId(stepId);
-    setActiveSection("pathway"); // Keep pathway visible in nav
+    setActiveSection("pathway");
   };
 
   const handleBackFromEdit = () => {
     setEditingStepId(null);
   };
-
-  const handleJourneyAction = useCallback(
-    (g: WorkflowGuidance) => {
-      const action = g.next_action;
-      switch (action.kind) {
-        case "import_dataset":
-          setActiveSection("dataset");
-          break;
-        case "configure_step":
-        case "resolve_blocker":
-        case "review_evidence":
-          if (action.step_id) {
-            setSelectedStepId(action.step_id);
-            setActiveSection("pathway");
-          }
-          break;
-        case "edit_bins":
-          if (action.step_id) {
-            setEditingStepId(action.step_id);
-            setActiveSection("pathway");
-          }
-          break;
-        case "run_pathway":
-          if (scorecardPlan && planData) {
-            const scope = action.run_scope ?? "full_plan";
-            if (scope === "to_node" && !action.step_id) {
-              addDiagnostic("[warning] run_pathway with to_node scope but no step_id — falling back to full_plan");
-            }
-            startRun(planData.latest_version_id, {
-              run_scope: scope,
-              target_step_id: scope === "to_node" ? action.step_id ?? undefined : undefined,
-              branch_id: g.branch_id ?? undefined,
-            });
-          }
-          break;
-        case "export_report":
-          setActiveSection("exports");
-          break;
-        case "resolve_diagnostics":
-          setActiveSection("diagnostics");
-          break;
-      }
-    },
-    [scorecardPlan, planData, startRun, addDiagnostic],
-  );
 
   const selectedStep: StepStatus | null =
     planData?.steps?.find((s: StepStatus) => s.step_id === selectedStepId) ?? null;
@@ -184,15 +117,6 @@ export function ProjectView({ projectId, onBack }: Props) {
   if (!project) {
     return <div style={{ padding: 24, backgroundColor: theme.canvas, color: theme.muted }}>Project not found.</div>;
   }
-
-  const diagnosticsMessages = [
-    ...diagnostics,
-    ...(liveDiagnostic ? [`  └ ${liveDiagnostic}`] : []),
-    error ? `[error] ${error}` : null,
-    lastPollError ? `[poll error] ${formatApiError(lastPollError)}` : null,
-    lastRunError ? `[run error] ${lastRunError}` : null,
-    runStalled ? "[stalled] Run stalled — no progress detected" : null,
-  ].filter(Boolean) as string[];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: theme.canvas }}>
@@ -211,7 +135,6 @@ export function ProjectView({ projectId, onBack }: Props) {
         <LeftNav activeSection={activeSection} onSectionChange={setActiveSection} />
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", backgroundColor: theme.canvas }}>
-          {/* Manual Binning Editor takes over center when editing */}
           {editingStepId && planId && basePlanVersionId && (
             <ManualBinningEditor
               planId={planId}
@@ -223,7 +146,6 @@ export function ProjectView({ projectId, onBack }: Props) {
             />
           )}
 
-          {/* Pathway View */}
           {activeSection === "pathway" && !editingStepId && planData && (
             <PathwayView
               steps={planData.steps}

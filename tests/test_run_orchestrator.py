@@ -97,15 +97,15 @@ def test_execute_run_preserves_precreated_async_run_id_on_branch_short_circuit(m
 
 
 def test_is_branch_current_returns_none_when_no_short_circuit(monkeypatch):
-    """_is_branch_current returns None when prepare_branch_run has no short_circuit_run_id."""
+    """_is_branch_current returns None when prepare_branch_evidence has no short_circuit_run_id."""
     from sidecar.routes.runs import _is_branch_current
+    from cardre.services.evidence_policy import ShortCircuitResult
 
     class NoShortCircuitResolver:
-        def prepare_branch_run(self, store, branch_id, plan_version_id, force=False):
-            ctx = type("ctx", (), {"short_circuit_run_id": None})()
-            return ctx
+        def check_branch_current(self, plan_version_id, branch_id):
+            return ShortCircuitResult()
 
-    monkeypatch.setattr("sidecar.routes.runs.BranchEvidenceResolver", lambda executor: NoShortCircuitResolver())
+    monkeypatch.setattr("sidecar.routes.runs.EvidencePolicyService", lambda store: NoShortCircuitResolver())
 
     result = _is_branch_current(DummyStore(), "pv", "branch-1")
     assert result is None
@@ -114,27 +114,28 @@ def test_is_branch_current_returns_none_when_no_short_circuit(monkeypatch):
 def test_is_branch_current_returns_run_id_when_short_circuit(monkeypatch):
     """_is_branch_current returns the short_circuit_run_id when branch is current."""
     from sidecar.routes.runs import _is_branch_current
+    from cardre.services.evidence_policy import ShortCircuitResult
 
     class ShortCircuitResolver:
-        def prepare_branch_run(self, store, branch_id, plan_version_id, force=False):
-            ctx = type("ctx", (), {"short_circuit_run_id": "existing-run-42"})()
-            return ctx
+        def check_branch_current(self, plan_version_id, branch_id):
+            return ShortCircuitResult(run_id="existing-run-42", reason="branch_current")
 
-    monkeypatch.setattr("sidecar.routes.runs.BranchEvidenceResolver", lambda executor: ShortCircuitResolver())
+    monkeypatch.setattr("sidecar.routes.runs.EvidencePolicyService", lambda store: ShortCircuitResolver())
 
     result = _is_branch_current(DummyStore(), "pv", "branch-1")
     assert result == "existing-run-42"
 
 
 def test_is_branch_current_returns_none_on_exception(monkeypatch):
-    """_is_branch_current returns None when prepare_branch_run raises."""
+    """_is_branch_current returns None when check_branch_current raises."""
     from sidecar.routes.runs import _is_branch_current
+    from cardre.errors import CardreError
 
     class BrokenResolver:
-        def prepare_branch_run(self, store, branch_id, plan_version_id, force=False):
-            raise ValueError("branch not found")
+        def check_branch_current(self, plan_version_id, branch_id):
+            raise CardreError("branch not found", code="BRANCH_NOT_FOUND")
 
-    monkeypatch.setattr("sidecar.routes.runs.BranchEvidenceResolver", lambda executor: BrokenResolver())
+    monkeypatch.setattr("sidecar.routes.runs.EvidencePolicyService", lambda store: BrokenResolver())
 
     result = _is_branch_current(DummyStore(), "pv", "branch-1")
     assert result is None

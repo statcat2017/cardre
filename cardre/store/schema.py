@@ -2,7 +2,7 @@
 
 # Current app schema version — bump when making backwards-incompatible changes.
 # Stored in store_meta table; old apps will reject newer stores.
-STORE_SCHEMA_VERSION = 3
+STORE_SCHEMA_VERSION = 4
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -184,4 +184,25 @@ CREATE TABLE IF NOT EXISTS store_meta (
     value TEXT NOT NULL
 );
 INSERT OR IGNORE INTO store_meta (key, value) VALUES ('schema_version', '1');
+"""
+
+# Performance indexes for common query patterns.
+# Applied by run_migrations() — safe to re-run (IF NOT EXISTS).
+INDEXES_SQL = """
+CREATE INDEX IF NOT EXISTS idx_runs_plan_version_branch_status
+    ON runs(plan_version_id, branch_id, status, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_run_steps_run_started
+    ON run_steps(run_id, started_at, run_step_id);
+CREATE INDEX IF NOT EXISTS idx_run_steps_pv_step_status
+    ON run_steps(plan_version_id, step_id, status, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_plans_project_created
+    ON plans(project_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_plan_branches_project_plan_status
+    ON plan_branches(project_id, plan_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_branch_step_map_branch_pv
+    ON branch_step_map(branch_id, plan_version_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_type_role
+    ON artifacts(artifact_type, role);
+CREATE INDEX IF NOT EXISTS idx_run_steps_run_id
+    ON run_steps(run_id);
 """

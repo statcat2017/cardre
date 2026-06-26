@@ -165,11 +165,35 @@ def get_artifact_preview(
                 limit=limit,
                 offset=offset,
             )
-        except Exception:
-            raise HTTPException(status_code=400, detail={"code": "PREVIEW_FAILED", "message": "Could not read Parquet artifact"})
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail={
+                "code": "PREVIEW_FAILED",
+                "message": f"Could not read Parquet artifact: {exc}",
+                "context": {"artifact_id": artifact_id, "path": str(artifact_path)},
+            })
 
     return ArtifactPreviewResponse(
         artifact_id=artifact.artifact_id,
         media_type=artifact.media_type,
         json_content={"note": f"Preview not supported for media type {artifact.media_type}"},
+    )
+
+
+@router.get("/project/{project_id}/artifacts/{artifact_id}", response_model=ArtifactResponse)
+def get_project_artifact(project_id: str, artifact_id: str):
+    from cardre.services.project_registry import get_store_for_project
+    store = get_store_for_project(project_id)
+    artifact = store.get_artifact(artifact_id)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id} in project {project_id}"})
+    return ArtifactResponse(
+        artifact_id=artifact.artifact_id,
+        artifact_type=artifact.artifact_type,
+        role=artifact.role,
+        path=artifact.path,
+        physical_hash=artifact.physical_hash,
+        logical_hash=artifact.logical_hash,
+        media_type=artifact.media_type,
+        created_at=artifact.created_at,
+        metadata=artifact.metadata,
     )

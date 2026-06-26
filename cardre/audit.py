@@ -115,6 +115,12 @@ class NodeType(ABC):
     is_internal: bool = False
     is_deprecated: bool = False
     replacement_node_type: str | None = None
+    model_family: str | None = None
+    feature_strategies: list[str] | None = None
+    interpretability_level: str | None = None
+    champion_eligibility: str | None = None
+    description: str = ""
+    optional_dependencies: list[str] | None = None
 
     @abstractmethod
     def run(self, context: ExecutionContext) -> NodeOutput:

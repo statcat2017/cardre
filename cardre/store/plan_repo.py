@@ -60,7 +60,31 @@ class PlanRepository:
         return None if row is None else dict(row)
 
     def get_version_steps(self, plan_version_id: str) -> list[StepSpec]:
-        return self._store.get_plan_version_steps(plan_version_id)
+        rows = self._db().execute(
+            "SELECT * FROM plan_steps WHERE plan_version_id = ? ORDER BY position",
+            (plan_version_id,),
+        ).fetchall()
+        if not rows:
+            return []
+        col_names = rows[0].keys()
+        has_canonical = "canonical_step_id" in col_names
+        has_branch = "branch_id" in col_names
+        return [
+            self._store._migrate_step_spec(StepSpec(
+                step_id=r["step_id"],
+                node_type=r["node_type"],
+                node_version=r["node_version"],
+                category=r["category"],
+                params=json.loads(r["params_json"]),
+                params_hash=r["params_hash"],
+                parent_step_ids=json.loads(r["parent_step_ids_json"]),
+                branch_label=r["branch_label"],
+                position=r["position"],
+                canonical_step_id=r["canonical_step_id"] if has_canonical else r["step_id"],
+                branch_id=r["branch_id"] if has_branch else None,
+            ))
+            for r in rows
+        ]
 
     def get_latest_version_id(self, plan_id: str) -> str | None:
         row = self._db().execute(

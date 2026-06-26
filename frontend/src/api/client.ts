@@ -296,8 +296,11 @@ export const api = {
   getArtifactPreview: (id: string, limit = 100, offset = 0) =>
     fetchJson<ArtifactPreviewResponse>(`/artifacts/${id}/preview?limit=${limit}&offset=${offset}`, { timeoutMs: 10_000 }),
 
-  getManualBinningEditorState: (planId: string, projectId: string, stepId = "manual-binning") =>
-    fetchJson<ManualBinningEditorStateResponse>(`/plans/${planId}/steps/${stepId}/editor-state?project_id=${projectId}`, { timeoutMs: 5_000 }),
+  getManualBinningEditorState: (planId: string, projectId: string, stepId = "manual-binning", planVersionId?: string) => {
+    let url = `/plans/${planId}/steps/${stepId}/editor-state?project_id=${projectId}`;
+    if (planVersionId) url += `&plan_version_id=${planVersionId}`;
+    return fetchJson<ManualBinningEditorStateResponse>(url, { timeoutMs: 5_000 });
+  },
 
   previewManualBinning: (planId: string, body: ManualBinningPreviewBody, stepId = "manual-binning") =>
     fetchJson<ManualBinningPreviewResponse>(`/plans/${planId}/steps/${stepId}/manual-binning/preview`, {

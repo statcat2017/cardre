@@ -85,12 +85,13 @@ class ManualBinningService:
     # ------------------------------------------------------------------
 
     def get_editor_state(
-        self, plan_id: str, step_id: str = "manual-binning"
+        self, plan_id: str, step_id: str = "manual-binning", plan_version_id: str | None = None
     ) -> ManualBinningEditorStateResponse:
         """Assemble manual-binning editor state from upstream artifacts.
 
         Supports both baseline (manual-binning) and branch-owned steps
-        (manual-binning__br_xxx).
+        (manual-binning__br_xxx).  When *plan_version_id* is provided,
+        uses that version instead of the latest.
         """
         plan = self._store.get_plan(plan_id)
         if plan is None:
@@ -100,15 +101,15 @@ class ManualBinningService:
                 blocked_code="PLAN_NOT_FOUND",
             )
 
-        latest_pv_id = self._store.get_latest_plan_version_id(plan_id)
-        if latest_pv_id is None:
+        pv_id = plan_version_id or self._store.get_latest_plan_version_id(plan_id)
+        if pv_id is None:
             return ManualBinningEditorStateResponse(
                 plan_id=plan_id, plan_version_id="", step_id=step_id,
                 ready=False, blocked_reason="Plan has no versions.",
                 blocked_code="PLAN_HAS_NO_VERSIONS",
             )
 
-        steps = self._store.get_plan_version_steps(latest_pv_id)
+        steps = self._store.get_plan_version_steps(pv_id)
 
         mb_spec = None
         for s in steps:
@@ -118,21 +119,21 @@ class ManualBinningService:
 
         if mb_spec is None:
             return ManualBinningEditorStateResponse(
-                plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
+                plan_id=plan_id, plan_version_id=pv_id, step_id=step_id,
                 ready=False, blocked_reason="Manual binning step not found in this plan.",
                 blocked_code="MANUAL_BINNING_STEP_NOT_FOUND",
             )
 
         if mb_spec.canonical_step_id != "manual-binning":
             return ManualBinningEditorStateResponse(
-                plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
+                plan_id=plan_id, plan_version_id=pv_id, step_id=step_id,
                 ready=False, blocked_reason=f"Step {step_id} is not a manual-binning step.",
                 blocked_code="STEP_NOT_MANUAL_BINNING",
             )
 
         branch_id = mb_spec.branch_id
         if branch_id:
-            branch_step_map = self._store.get_branch_step_map(branch_id, latest_pv_id)
+            branch_step_map = self._store.get_branch_step_map(branch_id, pv_id)
         else:
             branch_step_map = [{"step_id": s.step_id, "is_shared_upstream": 0, "is_branch_owned": 1} for s in steps]
 
@@ -144,13 +145,13 @@ class ManualBinningService:
 
         if bin_spec is None:
             return ManualBinningEditorStateResponse(
-                plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
+                plan_id=plan_id, plan_version_id=pv_id, step_id=step_id,
                 ready=False, blocked_reason="Binning step is not an ancestor of this manual-binning step.",
                 required_steps=["binning"],
                 blocked_code="BINNING_SOURCE_NOT_FOUND",
             )
 
-        staleness = compute_staleness(self._store, latest_pv_id, branch_id=branch_id)
+        staleness = compute_staleness(self._store, pv_id, branch_id=branch_id)
         bin_stale = staleness.get(bin_actual_id, True)
         vs_stale = staleness.get(vs_actual_id, True) if vs_spec else True
 
@@ -161,19 +162,19 @@ class ManualBinningService:
             if vs_stale:
                 blocked.append(vs_actual_id)
             return ManualBinningEditorStateResponse(
-                plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
+                plan_id=plan_id, plan_version_id=pv_id, step_id=step_id,
                 ready=False, blocked_reason=f"Upstream steps stale: {', '.join(blocked)}. Run the pathway to refresh.",
                 required_steps=blocked,
                 blocked_code="UPSTREAM_STEPS_STALE",
             )
 
         upstream_result = self._resolve_upstream_defs(
-            latest_pv_id, plan_id, bin_step_id=bin_actual_id, vs_step_id=vs_actual_id, branch_id=branch_id,
+            pv_id, plan_id, bin_step_id=bin_actual_id, vs_step_id=vs_actual_id, branch_id=branch_id,
         )
         if isinstance(upstream_result, Fail):
             d = upstream_result.diagnostics[0]
             return ManualBinningEditorStateResponse(
-                plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
+                plan_id=plan_id, plan_version_id=pv_id, step_id=step_id,
                 ready=False, blocked_reason=d.message, required_steps=["binning", "variable-selection"],
                 blocked_code="MANUAL_BINNING_UPSTREAM_EVIDENCE_UNREADABLE",
                 context=d.context,
@@ -208,7 +209,7 @@ class ManualBinningService:
             review_status = "not_started"
 
         # Read latest review annotation for audit fields
-        review_annotation_result = _get_latest_review_annotation(self._store, step_id, latest_pv_id)
+        review_annotation_result = _get_latest_review_annotation(self._store, step_id, pv_id)
         review_annotation = review_annotation_result.value if isinstance(review_annotation_result, (Ok, Degraded)) else None
         if isinstance(review_annotation_result, Degraded):
             for d in review_annotation_result.diagnostics:
@@ -216,7 +217,7 @@ class ManualBinningService:
 
         # Build the response with Phase 1 fields
         result = ManualBinningEditorStateResponse(
-            plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id, ready=True,
+            plan_id=plan_id, plan_version_id=pv_id, step_id=step_id, ready=True,
             source=ManualBinningSourceInfo(
                 binning_step_id=bin_actual_id, binning_artifact_id=bin_artifact_id,
                 binning_method=binning_method,
@@ -245,11 +246,11 @@ class ManualBinningService:
         try:
             reader = ArtifactEvidenceReader(self._store)
             run_id_found = None
-            for run in self._store.list_runs(latest_pv_id):
+            for run in self._store.list_runs(pv_id):
                 if run.get("status") == "succeeded":
                     run_id_found = run["run_id"]
                     woe_evidence = find_evidence_for_canonical_step(
-                        self._store, latest_pv_id, "final-woe-iv", branch_id=branch_id,
+                        self._store, pv_id, "final-woe-iv", branch_id=branch_id,
                     )
                     if woe_evidence:
                         for aid in woe_evidence.output_artifact_ids:
@@ -299,7 +300,7 @@ class ManualBinningService:
                 "message": "Variable summary could not be loaded — WOE/IV evidence may be missing or stale.",
                 "context": {
                     "step_id": step_id,
-                    "plan_version_id": latest_pv_id,
+                    "plan_version_id": pv_id,
                     "branch_id": branch_id,
                     "exception_type": type(exc).__name__,
                 },

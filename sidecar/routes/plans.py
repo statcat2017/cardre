@@ -66,9 +66,9 @@ def update_step_params(plan_id: str, step_id: str, req: UpdateStepParamsRequest)
 
 
 @router.get("/{plan_id}/steps/{step_id}/editor-state", response_model=ManualBinningEditorStateResponse)
-def get_manual_binning_editor_state(plan_id: str, step_id: str, project_id: str):
+def get_manual_binning_editor_state(plan_id: str, step_id: str, project_id: str, plan_version_id: str | None = None):
     store = project_store_from_registry(project_id)
-    result = ManualBinningService(store).get_editor_state(plan_id, step_id=step_id)
+    result = ManualBinningService(store).get_editor_state(plan_id, step_id=step_id, plan_version_id=plan_version_id)
     return ManualBinningEditorStateResponse(**dataclasses.asdict(result))
 
 

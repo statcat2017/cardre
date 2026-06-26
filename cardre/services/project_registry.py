@@ -16,7 +16,8 @@ _DEFAULT_REGISTRY_PATH = Path.home() / ".cardre" / "projects.json"
 
 
 def _registry_path() -> Path:
-    return Path(os.environ.get("CARDRE_REGISTRY_PATH", _DEFAULT_REGISTRY_PATH))
+    from cardre.config import CardreConfig
+    return CardreConfig.from_env().registry_path
 
 
 def registry_path() -> Path:

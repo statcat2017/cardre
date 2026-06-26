@@ -22,20 +22,33 @@ class RunRepository:
     def _db(self) -> sqlite3.Connection:
         return self._store._connect()
 
-    def create(self, plan_version_id: str, branch_id: str | None = None) -> str:
-        run_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        if branch_id:
-            self._db().execute(
-                "INSERT INTO runs (run_id, plan_version_id, branch_id, status, started_at) "
-                "VALUES (?, ?, ?, 'running', ?)",
-                (run_id, plan_version_id, branch_id, now),
-            )
-        else:
-            self._db().execute(
-                "INSERT INTO runs (run_id, plan_version_id, status, started_at) "
-                "VALUES (?, ?, 'running', ?)",
-                (run_id, plan_version_id, now),
+    def create(self, plan_version_id: str, branch_id: str | None = None, force: bool = False) -> str:
+        from cardre.errors import ConcurrentRunError
+        with self._store.transaction(mode="IMMEDIATE") as conn:
+            if not force:
+                if branch_id:
+                    row = conn.execute(
+                        "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id = ? AND status = 'running'",
+                        (plan_version_id, branch_id),
+                    ).fetchone()
+                else:
+                    row = conn.execute(
+                        "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id IS NULL AND status = 'running'",
+                        (plan_version_id,),
+                    ).fetchone()
+                if row is not None:
+                    suffix = f" (branch {branch_id})" if branch_id else ""
+                    raise ConcurrentRunError(
+                        f"A run is already in progress for plan_version {plan_version_id}{suffix}. "
+                        "Use force=True to override."
+                    )
+            run_id = str(uuid.uuid4())
+            now = utc_now_iso()
+            heartbeat = now
+            conn.execute(
+                "INSERT INTO runs (run_id, plan_version_id, status, started_at, branch_id, heartbeat_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (run_id, plan_version_id, "running", now, branch_id, heartbeat),
             )
         return run_id
 
@@ -56,6 +69,47 @@ class RunRepository:
             "SELECT * FROM runs WHERE run_id = ?", (run_id,)
         ).fetchone()
         return None if row is None else dict(row)
+
+    def heartbeat(self, run_id: str) -> None:
+        now = utc_now_iso()
+        with self._store.transaction() as conn:
+            conn.execute(
+                "UPDATE runs SET heartbeat_at = ? WHERE run_id = ? AND status = 'running'",
+                (now, run_id),
+            )
+
+    def append_diagnostic(self, run_id: str, diagnostic: dict) -> None:
+        try:
+            with self._store.transaction() as conn:
+                row = conn.execute(
+                    "SELECT metadata_json FROM runs WHERE run_id = ?", (run_id,)
+                ).fetchone()
+                if row is None:
+                    import logging
+                    logging.getLogger(__name__).warning("append_run_diagnostic: run %s not found", run_id)
+                    return
+                meta = json.loads(row["metadata_json"] or "{}")
+                diags = meta.get("diagnostics", [])
+                diags.append(diagnostic)
+                meta["diagnostics"] = diags
+                if diagnostic.get("severity") == "error":
+                    meta["latest_error"] = diagnostic
+                conn.execute(
+                    "UPDATE runs SET metadata_json = ? WHERE run_id = ?",
+                    (json.dumps(meta, sort_keys=True), run_id),
+                )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("append_run_diagnostic failed for run %s: %s", run_id, e)
+
+    def get_diagnostics(self, run_id: str) -> list[dict]:
+        row = self._db().execute(
+            "SELECT metadata_json FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        if row is None:
+            return []
+        meta = json.loads(row["metadata_json"] or "{}")
+        return meta.get("diagnostics", [])
 
     def list_for_plan_version(self, plan_version_id: str | None = None) -> list[dict[str, Any]]:
         if plan_version_id is not None:
@@ -108,6 +162,33 @@ class RunRepository:
             (run_id,),
         ).fetchall()
         return [self._store._row_to_run_step(r) for r in rows]
+
+    def get_step(self, run_step_id: str) -> RunStepRecord | None:
+        row = self._db().execute(
+            "SELECT * FROM run_steps WHERE run_step_id = ?",
+            (run_step_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._store._row_to_run_step(row)
+
+    def get_artifact_ids_for_run(self, run_id: str) -> set[str]:
+        rows = self._db().execute(
+            "SELECT DISTINCT json_each.value AS artifact_id "
+            "FROM run_steps, json_each(run_steps.output_artifact_ids_json) "
+            "WHERE run_steps.run_id = ?",
+            (run_id,),
+        ).fetchall()
+        return {r["artifact_id"] for r in rows}
+
+    def get_artifact_ids_for_producing_step(self, step_id: str) -> set[str]:
+        rows = self._db().execute(
+            "SELECT DISTINCT json_each.value AS artifact_id "
+            "FROM run_steps, json_each(run_steps.output_artifact_ids_json) "
+            "WHERE run_steps.step_id = ?",
+            (step_id,),
+        ).fetchall()
+        return {r["artifact_id"] for r in rows}
 
     def get_latest_successful_id(
         self, plan_version_id: str, branch_id: str | None = None,

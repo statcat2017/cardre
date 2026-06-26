@@ -60,8 +60,8 @@ app.include_router(node_types.router)
 app.include_router(method_summary.router)
 
 # Governance features are gated behind CARDRE_GOVERNANCE=1
-import os
-if os.environ.get("CARDRE_GOVERNANCE", "0") in ("1", "true", "True"):
+from cardre.config import CardreConfig
+if CardreConfig.from_env().governance_enabled:
     app.include_router(branches.router)
     app.include_router(comparisons.router)
     app.include_router(champion.router)

@@ -33,6 +33,7 @@ from cardre.audit import (
 
 from cardre.store.schema import (
     BRANCH_TABLES_SQL,
+    INDEXES_SQL,
     MIGRATIONS_SQL,
     SCHEMA_SQL,
     STORE_SCHEMA_VERSION,
@@ -45,8 +46,8 @@ from cardre.store.project_repo import ProjectRepository
 
 
 def _governance_enabled() -> bool:
-    val = os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower()
-    return val in ("1", "true")
+    from cardre.config import CardreConfig
+    return CardreConfig.from_env().governance_enabled
 
 # Read-time migration map for legacy node types → canonical
 _LEGACY_NODE_TYPE_METHOD: dict[str, tuple[str, str]] = {
@@ -111,6 +112,9 @@ class ProjectStore:
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_versions_plan_version "
             "ON plan_versions(plan_id, version_number)"
         )
+
+        # Performance indexes for common query patterns (schema v4)
+        conn.executescript(INDEXES_SQL)
 
         # Stamp current schema version after successful migrations
         self._ensure_store_meta()
@@ -203,39 +207,10 @@ class ProjectStore:
         return recovered
 
     def append_run_diagnostic(self, run_id: str, diagnostic: dict) -> None:
-        try:
-            with self.transaction() as conn:
-                row = conn.execute(
-                    "SELECT metadata_json FROM runs WHERE run_id = ?", (run_id,)
-                ).fetchone()
-                if row is None:
-                    import logging
-                    logging.getLogger(__name__).warning("append_run_diagnostic: run %s not found", run_id)
-                    return
-                import json
-                meta = json.loads(row["metadata_json"] or "{}")
-                diags = meta.get("diagnostics", [])
-                diags.append(diagnostic)
-                meta["diagnostics"] = diags
-                if diagnostic.get("severity") == "error":
-                    meta["latest_error"] = diagnostic
-                conn.execute(
-                    "UPDATE runs SET metadata_json = ? WHERE run_id = ?",
-                    (json.dumps(meta, sort_keys=True), run_id),
-                )
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).exception("append_run_diagnostic failed for run %s: %s", run_id, e)
+        self.runs.append_diagnostic(run_id, diagnostic)
 
     def get_run_diagnostics(self, run_id: str) -> list[dict]:
-        row = self._connect().execute(
-            "SELECT metadata_json FROM runs WHERE run_id = ?", (run_id,)
-        ).fetchone()
-        if row is None:
-            return []
-        import json
-        meta = json.loads(row["metadata_json"] or "{}")
-        return meta.get("diagnostics", [])
+        return self.runs.get_diagnostics(run_id)
 
     def _connect(self) -> sqlite3.Connection:
         if self._db is not None:
@@ -311,84 +286,29 @@ class ProjectStore:
     # ------------------------------------------------------------------
 
     def create_project(self, name: str, cardre_version: str = "0.1.0") -> str:
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        with self.transaction() as conn:
-            conn.execute(
-                "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-                (project_id, name, now, cardre_version),
-            )
-        return project_id
+        return self.projects_repo.create(name, cardre_version=cardre_version)
 
     def get_project(self, project_id: str) -> JsonDict | None:
-        row = self._connect().execute(
-            "SELECT * FROM projects WHERE project_id = ?", (project_id,)
-        ).fetchone()
-        if row is None:
-            return None
-        return dict(row)
+        return self.projects_repo.get(project_id)
 
     # ------------------------------------------------------------------
     # Artifacts
     # ------------------------------------------------------------------
 
     def register_artifact(self, artifact: ArtifactRef) -> str:
-        sql = """
-            INSERT INTO artifacts
-                (artifact_id, artifact_type, role, path, physical_hash,
-                 logical_hash, media_type, created_at, metadata_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        now = utc_now_iso()
-        with self.transaction() as conn:
-            conn.execute(sql, (
-                artifact.artifact_id,
-                artifact.artifact_type,
-                artifact.role,
-                artifact.path,
-                artifact.physical_hash,
-                artifact.logical_hash,
-                artifact.media_type,
-                now,
-                json.dumps(artifact.metadata),
-            ))
-        return artifact.artifact_id
+        return self.artifacts.register(artifact)
 
     def get_artifact(self, artifact_id: str) -> ArtifactRef | None:
-        row = self._connect().execute(
-            "SELECT * FROM artifacts WHERE artifact_id = ?", (artifact_id,)
-        ).fetchone()
-        if row is None:
-            return None
-        return self._row_to_artifact_ref(row)
+        return self.artifacts.get(artifact_id)
 
     def list_artifacts(self) -> list[ArtifactRef]:
-        rows = self._connect().execute(
-            "SELECT * FROM artifacts ORDER BY created_at"
-        ).fetchall()
-        return [self._row_to_artifact_ref(r) for r in rows]
+        return self.artifacts.list()
 
     def list_artifacts_for_project(self, project_id: str) -> list[ArtifactRef]:
-        sql = (
-            "SELECT DISTINCT a.* FROM artifacts a "
-            "JOIN run_steps rs ON a.artifact_id IN ("
-            "  SELECT value FROM json_each(rs.output_artifact_ids_json)"
-            ") "
-            "JOIN runs r ON rs.run_id = r.run_id "
-            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-            "JOIN plans p ON pv.plan_id = p.plan_id "
-            "WHERE p.project_id = ? "
-            "ORDER BY a.created_at"
-        )
-        rows = self._connect().execute(sql, [project_id]).fetchall()
-        return [self._row_to_artifact_ref(r) for r in rows]
+        return self.artifacts.list_for_project(project_id)
 
     def get_plans_for_project(self, project_id: str) -> list[dict]:
-        rows = self._connect().execute(
-            "SELECT plan_id, name, created_at FROM plans WHERE project_id = ? ORDER BY created_at",
-            (project_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return self.plans.list_for_project(project_id)
 
     def artifact_path(self, artifact: ArtifactRef) -> Path:
         return self.root / artifact.path
@@ -525,8 +445,7 @@ class ProjectStore:
         steps: list[StepSpec],
         description: str = "",
     ) -> str:
-        with self.transaction(mode="IMMEDIATE") as conn:
-            return self._insert_plan_version_and_steps(conn, plan_id, steps, description)
+        return self.plans.create_version(plan_id, steps, description)
 
     def create_plan_version_in_transaction(
         self,
@@ -543,37 +462,10 @@ class ProjectStore:
         return self._insert_plan_version_and_steps(conn, plan_id, steps, description)
 
     def get_plan_version(self, plan_version_id: str) -> JsonDict | None:
-        row = self._connect().execute(
-            "SELECT * FROM plan_versions WHERE plan_version_id = ?", (plan_version_id,)
-        ).fetchone()
-        return None if row is None else dict(row)
+        return self.plans.get_version(plan_version_id)
 
     def get_plan_version_steps(self, plan_version_id: str) -> list[StepSpec]:
-        rows = self._connect().execute(
-            "SELECT * FROM plan_steps WHERE plan_version_id = ? ORDER BY position",
-            (plan_version_id,),
-        ).fetchall()
-        if not rows:
-            return []
-        col_names = rows[0].keys()
-        has_canonical = "canonical_step_id" in col_names
-        has_branch = "branch_id" in col_names
-        return [
-            self._migrate_step_spec(StepSpec(
-                step_id=r["step_id"],
-                node_type=r["node_type"],
-                node_version=r["node_version"],
-                category=r["category"],
-                params=json.loads(r["params_json"]),
-                params_hash=r["params_hash"],
-                parent_step_ids=json.loads(r["parent_step_ids_json"]),
-                branch_label=r["branch_label"],
-                position=r["position"],
-                canonical_step_id=r["canonical_step_id"] if has_canonical else r["step_id"],
-                branch_id=r["branch_id"] if has_branch else None,
-            ))
-            for r in rows
-        ]
+        return self.plans.get_version_steps(plan_version_id)
 
     @staticmethod
     def _migrate_step_spec(spec: StepSpec) -> StepSpec:
@@ -600,19 +492,10 @@ class ProjectStore:
         )
 
     def get_latest_plan_version_id(self, plan_id: str) -> str | None:
-        row = self._connect().execute(
-            "SELECT plan_version_id FROM plan_versions WHERE plan_id = ? "
-            "ORDER BY version_number DESC LIMIT 1",
-            (plan_id,),
-        ).fetchone()
-        return None if row is None else row["plan_version_id"]
+        return self.plans.get_latest_version_id(plan_id)
 
     def list_plan_versions(self, plan_id: str) -> list[JsonDict]:
-        rows = self._connect().execute(
-            "SELECT * FROM plan_versions WHERE plan_id = ? ORDER BY version_number",
-            (plan_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return self.plans.list_versions(plan_id)
 
     # ------------------------------------------------------------------
     # Branches
@@ -634,30 +517,18 @@ class ProjectStore:
         branch_point_canonical_step_id: str | None = None,
         segment_filter_spec_json: str | None = None,
     ) -> str:
-        bid = branch_id or str(uuid.uuid4())
-        now = utc_now_iso()
-        with self.transaction() as conn:
-            conn.execute(
-                "INSERT INTO plan_branches "
-                "(branch_id, project_id, plan_id, name, description, branch_type, status, "
-                " base_branch_id, base_plan_version_id, head_plan_version_id, "
-                " branch_point_step_id, branch_point_canonical_step_id, "
-                " segment_filter_spec_json, created_reason, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    bid, project_id, plan_id, name, description, branch_type,
-                    base_branch_id, base_plan_version_id, head_plan_version_id,
-                    branch_point_step_id, branch_point_canonical_step_id,
-                    segment_filter_spec_json, created_reason, now, now,
-                ),
-            )
-        return bid
+        return self.branches.create(
+            project_id, plan_id, name, branch_type,
+            base_plan_version_id, head_plan_version_id, created_reason,
+            branch_id=branch_id, description=description,
+            base_branch_id=base_branch_id,
+            branch_point_step_id=branch_point_step_id,
+            branch_point_canonical_step_id=branch_point_canonical_step_id,
+            segment_filter_spec_json=segment_filter_spec_json,
+        )
 
     def get_branch(self, branch_id: str) -> JsonDict | None:
-        row = self._connect().execute(
-            "SELECT * FROM plan_branches WHERE branch_id = ?", (branch_id,)
-        ).fetchone()
-        return None if row is None else dict(row)
+        return self.branches.get(branch_id)
 
     def list_branches(
         self,
@@ -666,20 +537,7 @@ class ProjectStore:
         branch_type: str | None = None,
         status: str | None = None,
     ) -> list[JsonDict]:
-        sql = "SELECT * FROM plan_branches WHERE project_id = ?"
-        params: list[Any] = [project_id]
-        if plan_id is not None:
-            sql += " AND plan_id = ?"
-            params.append(plan_id)
-        if branch_type is not None:
-            sql += " AND branch_type = ?"
-            params.append(branch_type)
-        if status is not None:
-            sql += " AND status = ?"
-            params.append(status)
-        sql += " ORDER BY created_at"
-        rows = self._connect().execute(sql, params).fetchall()
-        return [dict(r) for r in rows]
+        return self.branches.list(project_id, plan_id=plan_id, branch_type=branch_type, status=status)
 
     def create_branch_plan_version(
         self,
@@ -728,19 +586,7 @@ class ProjectStore:
         branch_id: str,
         head_plan_version_id: str,
     ) -> None:
-        """Update the branch head plan version.
-
-        WARNING: This does NOT copy branch_step_map entries for the new
-        head version.  Callers must ensure step-map consistency separately
-        (e.g. by using create_branch_plan_version or
-        PlanService._create_branch_version_atomic).
-        """
-        now = utc_now_iso()
-        with self.transaction() as conn:
-            conn.execute(
-                "UPDATE plan_branches SET head_plan_version_id = ?, updated_at = ? WHERE branch_id = ?",
-                (head_plan_version_id, now, branch_id),
-            )
+        self.branches.update_head(branch_id, head_plan_version_id)
 
     def create_branch_step_map(
         self,
@@ -753,23 +599,11 @@ class ProjectStore:
         source_branch_id: str | None = None,
         source_step_id: str | None = None,
     ) -> str:
-        map_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        with self.transaction() as conn:
-            conn.execute(
-                "INSERT INTO branch_step_map "
-                "(branch_step_map_id, branch_id, plan_version_id, canonical_step_id, step_id, "
-                " source_branch_id, source_step_id, is_shared_upstream, is_branch_owned, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    map_id, branch_id, plan_version_id, canonical_step_id, step_id,
-                    source_branch_id, source_step_id,
-                    1 if is_shared_upstream else 0,
-                    1 if is_branch_owned else 0,
-                    now,
-                ),
-            )
-        return map_id
+        return self.branches.create_step_map(
+            branch_id, plan_version_id, canonical_step_id, step_id,
+            is_shared_upstream=is_shared_upstream, is_branch_owned=is_branch_owned,
+            source_branch_id=source_branch_id, source_step_id=source_step_id,
+        )
 
     def get_branch_step_map(
         self,
@@ -777,15 +611,11 @@ class ProjectStore:
         plan_version_id: str | None = None,
     ) -> list[JsonDict]:
         if plan_version_id is not None:
-            rows = self._connect().execute(
-                "SELECT * FROM branch_step_map WHERE branch_id = ? AND plan_version_id = ?",
-                (branch_id, plan_version_id),
-            ).fetchall()
-        else:
-            rows = self._connect().execute(
-                "SELECT * FROM branch_step_map WHERE branch_id = ?",
-                (branch_id,),
-            ).fetchall()
+            return self.branches.get_step_map(branch_id, plan_version_id)
+        rows = self._connect().execute(
+            "SELECT * FROM branch_step_map WHERE branch_id = ?",
+            (branch_id,),
+        ).fetchall()
         return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------
@@ -793,158 +623,41 @@ class ProjectStore:
     # ------------------------------------------------------------------
 
     def create_run(self, plan_version_id: str, branch_id: str | None = None, force: bool = False) -> str:
-        from cardre.errors import ConcurrentRunError
-        # BEGIN IMMEDIATE acquires a write lock at transaction start, serialising
-        # concurrent connections so the SELECT check and INSERT are atomic.
-        with self.transaction(mode="IMMEDIATE") as conn:
-            if not force:
-                if branch_id:
-                    row = conn.execute(
-                        "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id = ? AND status = 'running'",
-                        (plan_version_id, branch_id),
-                    ).fetchone()
-                else:
-                    row = conn.execute(
-                        "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id IS NULL AND status = 'running'",
-                        (plan_version_id,),
-                    ).fetchone()
-                if row is not None:
-                    suffix = f" (branch {branch_id})" if branch_id else ""
-                    raise ConcurrentRunError(
-                        f"A run is already in progress for plan_version {plan_version_id}{suffix}. "
-                        "Use force=True to override."
-                    )
-            run_id = str(uuid.uuid4())
-            now = utc_now_iso()
-            heartbeat = now
-            conn.execute(
-                "INSERT INTO runs (run_id, plan_version_id, status, started_at, branch_id, heartbeat_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (run_id, plan_version_id, "running", now, branch_id, heartbeat),
-            )
-        return run_id
+        return self.runs.create(plan_version_id, branch_id=branch_id, force=force)
 
     def run_heartbeat(self, run_id: str) -> None:
-        """Update the heartbeat timestamp for a running run.
-
-        Call periodically during long-running execution to prevent the
-        stale-run recovery from interrupting a legitimate run.
-        """
-        now = utc_now_iso()
-        with self.transaction() as conn:
-            conn.execute(
-                "UPDATE runs SET heartbeat_at = ? WHERE run_id = ? AND status = 'running'",
-                (now, run_id),
-            )
+        self.runs.heartbeat(run_id)
 
     def finish_run(self, run_id: str, status: str = "succeeded") -> None:
-        now = utc_now_iso()
-        with self.transaction() as conn:
-            cursor = conn.execute(
-                "UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ? AND status = 'running'",
-                (status, now, run_id),
-            )
-            if cursor.rowcount == 0:
-                import logging
-                logging.getLogger(__name__).warning(
-                    "finish_run: no running run found for %s (status=%s)", run_id, status,
-                )
+        self.runs.finish(run_id, status=status)
 
     def get_run(self, run_id: str) -> JsonDict | None:
-        row = self._connect().execute(
-            "SELECT * FROM runs WHERE run_id = ?", (run_id,)
-        ).fetchone()
-        return None if row is None else dict(row)
+        return self.runs.get(run_id)
 
     def save_run_step(self, rs: RunStepRecord) -> None:
-        with self.transaction() as conn:
-            conn.execute(
-                "INSERT INTO run_steps "
-                "(run_step_id, run_id, step_id, plan_version_id, status, "
-                " started_at, finished_at, input_artifact_ids_json, "
-                " output_artifact_ids_json, execution_fingerprint_json, "
-                " warnings_json, errors_json, is_carried_forward) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    rs.run_step_id,
-                    rs.run_id,
-                    rs.step_id,
-                    rs.plan_version_id,
-                    rs.status,
-                    rs.started_at,
-                    rs.finished_at,
-                    json.dumps(rs.input_artifact_ids),
-                    json.dumps(rs.output_artifact_ids),
-                    json.dumps(rs.execution_fingerprint),
-                    json.dumps(rs.warnings),
-                    json.dumps(rs.errors),
-                    int(rs.is_carried_forward),
-                ),
-            )
+        self.runs.save_step(rs)
 
     def get_run_steps(self, run_id: str) -> list[RunStepRecord]:
-        rows = self._connect().execute(
-            "SELECT * FROM run_steps WHERE run_id = ? ORDER BY started_at, run_step_id",
-            (run_id,),
-        ).fetchall()
-        return [self._row_to_run_step(r) for r in rows]
+        return self.runs.get_steps(run_id)
 
     def get_artifact_ids_for_run(self, run_id: str) -> set[str]:
-        rows = self._connect().execute(
-            "SELECT DISTINCT json_each.value AS artifact_id "
-            "FROM run_steps, json_each(run_steps.output_artifact_ids_json) "
-            "WHERE run_steps.run_id = ?",
-            (run_id,),
-        ).fetchall()
-        return {r["artifact_id"] for r in rows}
+        return self.runs.get_artifact_ids_for_run(run_id)
 
     def get_artifact_ids_for_producing_step(self, step_id: str) -> set[str]:
-        rows = self._connect().execute(
-            "SELECT DISTINCT json_each.value AS artifact_id "
-            "FROM run_steps, json_each(run_steps.output_artifact_ids_json) "
-            "WHERE run_steps.step_id = ?",
-            (step_id,),
-        ).fetchall()
-        return {r["artifact_id"] for r in rows}
+        return self.runs.get_artifact_ids_for_producing_step(step_id)
 
     def get_latest_successful_run_id(
         self,
         plan_version_id: str,
         branch_id: str | None = None,
     ) -> str | None:
-        if branch_id:
-            row = self._connect().execute(
-                "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id = ? AND status = 'succeeded' "
-                "ORDER BY started_at DESC, run_id DESC LIMIT 1",
-                (plan_version_id, branch_id),
-            ).fetchone()
-        else:
-            row = self._connect().execute(
-                "SELECT run_id FROM runs WHERE plan_version_id = ? AND branch_id IS NULL AND status = 'succeeded' "
-                "ORDER BY started_at DESC, run_id DESC LIMIT 1",
-                (plan_version_id,),
-            ).fetchone()
-        return None if row is None else row["run_id"]
+        return self.runs.get_latest_successful_id(plan_version_id, branch_id=branch_id)
 
     def get_latest_successful_run_id_for_plan(self, plan_id: str) -> str | None:
-        """Return the most recent successful run_id across all versions of a plan."""
-        row = self._connect().execute(
-            "SELECT r.run_id FROM runs r "
-            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-            "WHERE pv.plan_id = ? AND r.status = 'succeeded' AND r.branch_id IS NULL "
-            "ORDER BY r.started_at DESC, r.run_id DESC LIMIT 1",
-            (plan_id,),
-        ).fetchone()
-        return None if row is None else row["run_id"]
+        return self.runs.get_latest_successful_id_for_plan(plan_id)
 
     def get_run_step(self, run_step_id: str) -> RunStepRecord | None:
-        row = self._connect().execute(
-            "SELECT * FROM run_steps WHERE run_step_id = ?",
-            (run_step_id,),
-        ).fetchone()
-        if row is None:
-            return None
-        return self._row_to_run_step(row)
+        return self.runs.get_step(run_step_id)
 
     def get_latest_successful_run_step_for_step(
         self,
@@ -952,29 +665,7 @@ class ProjectStore:
         step_id: str,
         branch_id: str | None = None,
     ) -> RunStepRecord | None:
-        if branch_id:
-            row = self._connect().execute(
-                "SELECT rs.* FROM run_steps rs "
-                "JOIN runs r ON rs.run_id = r.run_id "
-                "WHERE rs.plan_version_id = ? AND rs.step_id = ? "
-                "AND r.branch_id = ? AND rs.status = 'succeeded' "
-                "AND r.status = 'succeeded' "
-                "ORDER BY rs.started_at DESC, rs.run_step_id DESC LIMIT 1",
-                (plan_version_id, step_id, branch_id),
-            ).fetchone()
-        else:
-            row = self._connect().execute(
-                "SELECT rs.* FROM run_steps rs "
-                "JOIN runs r ON rs.run_id = r.run_id "
-                "WHERE rs.plan_version_id = ? AND rs.step_id = ? "
-                "AND r.branch_id IS NULL AND rs.status = 'succeeded' "
-                "AND r.status = 'succeeded' "
-                "ORDER BY rs.started_at DESC, rs.run_step_id DESC LIMIT 1",
-                (plan_version_id, step_id),
-            ).fetchone()
-        if row is None:
-            return None
-        return self._row_to_run_step(row)
+        return self.runs.get_latest_successful_step(plan_version_id, step_id, branch_id=branch_id)
 
     def get_latest_successful_run_step_for_step_across_plan(
         self,
@@ -982,146 +673,48 @@ class ProjectStore:
         step_id: str,
         branch_id: str | None = None,
     ) -> RunStepRecord | None:
-        if branch_id:
-            row = self._connect().execute(
-                "SELECT rs.* FROM run_steps rs "
-                "JOIN runs r ON rs.run_id = r.run_id "
-                "JOIN plan_versions pv ON rs.plan_version_id = pv.plan_version_id "
-                "WHERE pv.plan_id = ? AND rs.step_id = ? "
-                "AND r.branch_id = ? AND rs.status = 'succeeded' "
-                "AND r.status = 'succeeded' "
-                "ORDER BY rs.started_at DESC, rs.run_step_id DESC LIMIT 1",
-                (plan_id, step_id, branch_id),
-            ).fetchone()
-        else:
-            row = self._connect().execute(
-                "SELECT rs.* FROM run_steps rs "
-                "JOIN runs r ON rs.run_id = r.run_id "
-                "JOIN plan_versions pv ON rs.plan_version_id = pv.plan_version_id "
-                "WHERE pv.plan_id = ? AND rs.step_id = ? "
-                "AND r.branch_id IS NULL AND rs.status = 'succeeded' "
-                "AND r.status = 'succeeded' "
-                "ORDER BY rs.started_at DESC, rs.run_step_id DESC LIMIT 1",
-                (plan_id, step_id),
-            ).fetchone()
-        if row is None:
-            return None
-        return self._row_to_run_step(row)
+        return self.runs.get_latest_successful_step_across_plan(plan_id, step_id, branch_id=branch_id)
 
     def get_plan_id_for_version(self, plan_version_id: str) -> str | None:
-        row = self._connect().execute(
-            "SELECT plan_id FROM plan_versions WHERE plan_version_id = ?",
-            (plan_version_id,),
-        ).fetchone()
-        return None if row is None else row["plan_id"]
+        return self.plans.get_plan_id_for_version(plan_version_id)
 
     def list_runs(self, plan_version_id: str | None = None) -> list[JsonDict]:
-        if plan_version_id is not None:
-            rows = self._connect().execute(
-                "SELECT * FROM runs WHERE plan_version_id = ? ORDER BY started_at DESC, run_id DESC",
-                (plan_version_id,),
-            ).fetchall()
-        else:
-            rows = self._connect().execute(
-                "SELECT * FROM runs ORDER BY started_at DESC, run_id DESC"
-            ).fetchall()
-        return [dict(r) for r in rows]
+        return self.runs.list_for_plan_version(plan_version_id)
 
     def list_runs_for_project(self, project_id: str) -> list[JsonDict]:
-        rows = self._connect().execute(
-            "SELECT r.*, COALESCE(rs.step_count, 0) AS step_count FROM runs r "
-            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-            "JOIN plans p ON pv.plan_id = p.plan_id "
-            "LEFT JOIN (SELECT run_id, COUNT(*) AS step_count FROM run_steps GROUP BY run_id) rs "
-            "  ON r.run_id = rs.run_id "
-            "WHERE p.project_id = ? "
-            "ORDER BY r.started_at DESC, r.run_id DESC",
-            (project_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return self.runs.list_for_project(project_id)
 
     # ------------------------------------------------------------------
     # Champion assignments
     # ------------------------------------------------------------------
 
     def get_champion_assignment(self, plan_id: str, champion_branch_id: str | None = None) -> dict | None:
-        """Get the current champion assignment for a plan, optionally filtered by branch."""
-        if champion_branch_id:
-            row = self._connect().execute(
-                "SELECT * FROM champion_assignments "
-                "WHERE plan_id = ? AND champion_branch_id = ? AND superseded_at IS NULL "
-                "ORDER BY assigned_at DESC LIMIT 1",
-                (plan_id, champion_branch_id),
-            ).fetchone()
-        else:
-            row = self._connect().execute(
-                "SELECT * FROM champion_assignments "
-                "WHERE plan_id = ? AND superseded_at IS NULL "
-                "ORDER BY assigned_at DESC LIMIT 1",
-                (plan_id,),
-            ).fetchone()
-        return None if row is None else dict(row)
+        return self.branches.get_champion_assignment(plan_id, champion_branch_id=champion_branch_id)
 
     # ------------------------------------------------------------------
     # Branch comparisons
     # ------------------------------------------------------------------
 
     def get_branch_comparison(self, comparison_id: str) -> JsonDict | None:
-        row = self._connect().execute(
-            "SELECT * FROM branch_comparisons WHERE comparison_id = ?",
-            (comparison_id,),
-        ).fetchone()
-        return None if row is None else dict(row)
+        return self.branches.get_comparison(comparison_id)
 
     def get_comparison_snapshot(self, snapshot_id: str) -> JsonDict | None:
-        row = self._connect().execute(
-            "SELECT * FROM branch_comparison_snapshots WHERE comparison_snapshot_id = ?",
-            (snapshot_id,),
-        ).fetchone()
-        return None if row is None else dict(row)
+        return self.branches.get_comparison_snapshot(snapshot_id)
 
     def get_comparison_snapshots_for_comparison(self, comparison_id: str) -> list[JsonDict]:
-        rows = self._connect().execute(
-            "SELECT * FROM branch_comparison_snapshots WHERE comparison_id = ? ORDER BY created_at DESC",
-            (comparison_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return self.branches.get_comparison_snapshots(comparison_id)
 
     def get_champion_assignment_by_branch(self, branch_id: str) -> dict | None:
-        row = self._connect().execute(
-            "SELECT * FROM champion_assignments "
-            "WHERE champion_branch_id = ? AND superseded_at IS NULL "
-            "ORDER BY assigned_at DESC LIMIT 1",
-            (branch_id,),
-        ).fetchone()
-        return None if row is None else dict(row)
+        return self.branches.get_champion_assignment_by_branch(branch_id)
 
     def get_plan_version_ids_for_branch(self, branch_id: str) -> list[str]:
-        rows = self._connect().execute(
-            "SELECT DISTINCT plan_version_id FROM branch_step_map WHERE branch_id = ?",
-            (branch_id,),
-        ).fetchall()
-        return [r["plan_version_id"] for r in rows]
+        return self.branches.get_plan_version_ids(branch_id)
 
     def get_any_successful_run_id_for_plan(self, plan_id: str) -> str | None:
-        row = self._connect().execute(
-            "SELECT r.run_id FROM runs r "
-            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-            "WHERE pv.plan_id = ? AND r.status = 'succeeded' "
-            "ORDER BY r.started_at DESC, r.run_id DESC LIMIT 1",
-            (plan_id,),
-        ).fetchone()
-        return None if row is None else row["run_id"]
+        return self.runs.get_any_successful_id_for_plan(plan_id)
 
     def get_output_artifact_ids_for_branch(self, branch_id: str) -> list[list[str]]:
-        rows = self._connect().execute(
-            "SELECT rs.output_artifact_ids_json FROM run_steps rs "
-            "JOIN runs r ON rs.run_id = r.run_id "
-            "WHERE r.branch_id = ? AND rs.status = 'succeeded' "
-            "ORDER BY rs.started_at DESC",
-            (branch_id,),
-        ).fetchall()
-        return [json.loads(r["output_artifact_ids_json"]) for r in rows if r["output_artifact_ids_json"]]
+        return self.branches.get_output_artifact_ids(branch_id)
 
     # ------------------------------------------------------------------
     # Database / state queries

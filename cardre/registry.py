@@ -13,14 +13,8 @@ Node tiers:
 
 from __future__ import annotations
 
-import os
-
 from cardre.audit import ExecutionContext, NodeOutput, NodeType
-
-
-def _is_launch_mode() -> bool:
-    val = os.environ.get("CARDRE_LAUNCH_MODE", "1").strip().lower()
-    return val in ("1", "true")
+from cardre.config import CardreConfig
 
 
 class NodeRegistry:
@@ -55,7 +49,7 @@ class NodeRegistry:
 
     def instantiate(self, node_type: str) -> NodeType:
         cls = self.resolve(node_type)
-        if _is_launch_mode() and getattr(cls, "_deferred", False):
+        if CardreConfig.from_env().launch_mode and getattr(cls, "_deferred", False):
             from cardre.errors import NodeNotAvailableForLaunch
             raise NodeNotAvailableForLaunch(
                 f"Node {node_type!r} is not available in launch mode. "
