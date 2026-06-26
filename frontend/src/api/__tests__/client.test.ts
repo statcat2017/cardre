@@ -114,6 +114,78 @@ describe("fetchJson malformed response", () => {
   });
 });
 
+describe("fetchJson response-body timeout", () => {
+  it("throws REQUEST_TIMEOUT when headers arrive but body never resolves", async () => {
+    vi.useFakeTimers();
+    let textReject: ((e: Error) => void) | null = null;
+    vi.spyOn(global, "fetch").mockImplementation((_url, init) => {
+      const signal = (init as RequestInit)?.signal;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Map() as unknown as Headers,
+        text: () => new Promise<never>((_resolve, reject) => {
+          textReject = reject;
+          if (signal?.aborted) {
+            reject(new DOMException("The operation was aborted", "AbortError"));
+            return;
+          }
+          signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted", "AbortError"));
+          }, { once: true });
+        }),
+      } as unknown as Response);
+    });
+    const promise = fetchJson("/health", { timeoutMs: 100 });
+    await vi.advanceTimersByTimeAsync(200);
+    await expect(promise).rejects.toMatchObject({ code: "REQUEST_TIMEOUT" });
+    // Settle the text() promise to avoid unhandled rejection
+    if (textReject) {
+      try { textReject(new Error("settled")); } catch { /* ok */ }
+    }
+    await vi.advanceTimersByTimeAsync(0);
+    vi.useRealTimers();
+  });
+});
+
+describe("fetchJson outbound request ID", () => {
+  it("sends X-Cardre-Request-Id header on every request", { timeout: 10_000 }, async () => {
+    const spy = vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Map() as unknown as Headers,
+      text: () => Promise.resolve(JSON.stringify({ status: "ok" })),
+    } as Response);
+    await api.health();
+    const headers = spy.mock.calls[0][1]?.headers as Record<string, string> | undefined;
+    expect(headers?.["X-Cardre-Request-Id"]).toBeDefined();
+    expect(typeof headers!["X-Cardre-Request-Id"]).toBe("string");
+    expect(headers!["X-Cardre-Request-Id"].length).toBeGreaterThan(0);
+  });
+
+  it("falls back to outbound request ID when no response header", { timeout: 10_000 }, async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: false,
+      status: 500,
+      headers: new Map() as unknown as Headers,
+      text: () => Promise.resolve(""),
+    } as Response);
+    const promise = api.health();
+    await expect(promise).rejects.toThrow(ApiError);
+    await expect(promise).rejects.toMatchObject({
+      code: "EMPTY_ERROR_RESPONSE",
+    });
+    try {
+      await promise;
+    } catch (e: unknown) {
+      if (e instanceof ApiError) {
+        expect(e.requestId).toBeDefined();
+        expect(e.requestId!.length).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
 describe("fetchJson empty body", () => {
   it("throws EMPTY_OK_BODY on 200 with empty body by default", async () => {
     mockFetchResponse(200, "");

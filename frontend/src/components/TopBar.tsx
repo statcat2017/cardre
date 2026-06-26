@@ -10,9 +10,10 @@ interface Props {
   guidance?: WorkflowGuidance | null;
   onAction: (guidance: WorkflowGuidance) => void;
   onRun?: () => void;
+  onStopWatching?: () => void;
 }
 
-export function TopBar({ project, planName, running, stepProgress, guidance, onAction, onRun }: Props) {
+export function TopBar({ project, planName, running, stepProgress, guidance, onAction, onRun, onStopWatching }: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   const runLabel = running
@@ -88,6 +89,23 @@ export function TopBar({ project, planName, running, stepProgress, guidance, onA
           <span style={{ fontSize: 11, color: theme.muted, fontFamily: theme.fontMono }}>
             {project.plan_count} plans, {project.run_count} runs
           </span>
+          {running && onStopWatching && (
+            <button
+              onClick={onStopWatching}
+              style={{
+                padding: "7px 12px",
+                borderRadius: 4,
+                border: `1px solid ${theme.border}`,
+                backgroundColor: "transparent",
+                color: theme.muted,
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+              title="Stop polling — backend execution continues"
+            >
+              Stop watching
+            </button>
+          )}
           <button
             onClick={handleCtaClick}
             disabled={ctaDisabled}

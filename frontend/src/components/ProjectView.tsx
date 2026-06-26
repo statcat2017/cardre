@@ -204,6 +204,7 @@ export function ProjectView({ projectId, onBack }: Props) {
         guidance={guidance}
         onAction={handleJourneyAction}
         onRun={handleRun}
+        onStopWatching={running ? stopWatchingRun : undefined}
       />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
