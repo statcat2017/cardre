@@ -47,6 +47,14 @@ export function getBaseUrl(): string {
   return (window as unknown as Record<string, string>).__API_URL__ || "http://127.0.0.1:8752";
 }
 
+export interface FetchOptions extends RequestInit {
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  allowEmpty?: boolean;
+}
+
+export const DEFAULT_TIMEOUT_MS = 30_000;
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -60,11 +68,12 @@ export class ApiError extends Error {
   };
   readonly requestId?: string;
   readonly rawBodyPreview?: string;
+  readonly timedOutAtMs?: number;
 
   constructor(
     status: number,
     detail: ApiError["detail"],
-    opts?: { requestId?: string; rawBodyPreview?: string },
+    opts?: { requestId?: string; rawBodyPreview?: string; timedOutAtMs?: number },
   ) {
     super(detail.message || `HTTP ${status}`);
     this.status = status;
@@ -72,6 +81,7 @@ export class ApiError extends Error {
     this.detail = detail;
     this.requestId = opts?.requestId;
     this.rawBodyPreview = opts?.rawBodyPreview;
+    this.timedOutAtMs = opts?.timedOutAtMs;
   }
 }
 
@@ -79,20 +89,66 @@ export function isApiError(e: unknown): e is ApiError {
   return e instanceof ApiError;
 }
 
-async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+export function formatApiError(e: unknown): string {
+  if (isApiError(e)) {
+    const parts = [e.code];
+    if (e.requestId) parts.push(`req=${e.requestId.slice(0, 8)}`);
+    if (e.timedOutAtMs) parts.push(`timeout=${e.timedOutAtMs}ms`);
+    return `${parts.join(" ")}: ${e.message}`;
+  }
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
+export async function fetchJson<T>(path: string, init?: FetchOptions): Promise<T> {
   const url = `${getBaseUrl()}${path}`;
+  const timeoutMs = init?.timeoutMs ?? 30_000;
+  const allowEmpty = init?.allowEmpty ?? false;
+
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  if (init?.signal) {
+    if (init.signal.aborted) {
+      controller.abort();
+    } else {
+      init.signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+  }
+
+  if (timeoutMs > 0) {
+    timeoutId = setTimeout(() => controller.abort(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
+  }
+
   let res: Response;
   try {
     res = await fetch(url, {
       ...init,
+      signal: controller.signal,
       headers: { "Content-Type": "application/json", ...init?.headers },
     });
   } catch (e) {
+    const aborted = controller.signal.aborted;
+    clearTimeout(timeoutId);
+    if (aborted && timeoutId !== undefined && !init?.signal?.aborted) {
+      throw new ApiError(0, {
+        code: "REQUEST_TIMEOUT",
+        message: `Request timed out after ${timeoutMs}ms.`,
+      }, { timedOutAtMs: timeoutMs });
+    }
+    if (aborted && init?.signal?.aborted) {
+      throw new ApiError(0, {
+        code: "REQUEST_ABORTED",
+        message: "Request was cancelled.",
+      });
+    }
     throw new ApiError(0, {
       code: "SIDECAR_UNREACHABLE",
       message: "Could not reach the Cardre sidecar.",
     }, { rawBodyPreview: String(e) });
   }
+  clearTimeout(timeoutId);
+
   const text = await res.text();
   const requestId = res.headers.get("X-Cardre-Request-Id") ?? undefined;
   if (!res.ok) {
@@ -119,7 +175,13 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(res.status, detail, { requestId });
   }
-  if (text.length === 0) return undefined as unknown as T;
+  if (text.length === 0) {
+    if (allowEmpty) return undefined as unknown as T;
+    throw new ApiError(res.status, {
+      code: "EMPTY_OK_BODY",
+      message: "OK response was empty (expected JSON).",
+    }, { requestId, rawBodyPreview: "" });
+  }
   try {
     return JSON.parse(text) as T;
   } catch {
@@ -131,27 +193,29 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  health: () => fetchJson<HealthResponse>("/health"),
+  health: () => fetchJson<HealthResponse>("/health", { timeoutMs: 5_000 }),
 
   createProject: (body: CreateProjectBody) =>
     fetchJson<ProjectResponse>("/projects", {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 10_000,
     }),
 
-  getProject: (id: string) => fetchJson<ProjectDetailResponse>(`/projects/${id}`),
+  getProject: (id: string) => fetchJson<ProjectDetailResponse>(`/projects/${id}`, { timeoutMs: 5_000 }),
 
-  getProjectPlans: (id: string) => fetchJson<ProjectPlansResponse>(`/projects/${id}/plans`),
+  getProjectPlans: (id: string) => fetchJson<ProjectPlansResponse>(`/projects/${id}/plans`, { timeoutMs: 5_000 }),
 
   importDataset: (body: ImportBody) =>
     fetchJson<ArtifactResponse>("/datasets/import", {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 30_000,
     }),
 
   getPlan: (id: string, projectId?: string) => {
     const qs = projectId ? `?project_id=${projectId}` : "";
-    return fetchJson<PlanResponse>(`/plans/${id}${qs}`);
+    return fetchJson<PlanResponse>(`/plans/${id}${qs}`, { timeoutMs: 5_000 });
   },
 
   getWorkflowGuidance: (planId: string, params?: { project_id?: string; branch_id?: string; run_id?: string }) => {
@@ -160,17 +224,18 @@ export const api = {
     if (params?.branch_id) qs.set("branch_id", params.branch_id);
     if (params?.run_id) qs.set("run_id", params.run_id);
     const query = qs.toString();
-    return fetchJson<WorkflowGuidance>(`/plans/${planId}/workflow-guidance${query ? `?${query}` : ""}`);
+    return fetchJson<WorkflowGuidance>(`/plans/${planId}/workflow-guidance${query ? `?${query}` : ""}`, { timeoutMs: 5_000 });
   },
 
   updateStepParams: (planId: string, stepId: string, body: UpdateStepParamsBody) =>
     fetchJson<UpdateStepParamsResponse>(`/plans/${planId}/steps/${stepId}/params`, {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 10_000,
     }),
 
   getProjectRuns: (projectId: string) =>
-    fetchJson<ProjectRunsResponse>(`/projects/${projectId}/runs`),
+    fetchJson<ProjectRunsResponse>(`/projects/${projectId}/runs`, { timeoutMs: 5_000 }),
 
   getProjectArtifacts: (projectId: string, params?: { role?: string; artifact_type?: string; producing_step_id?: string; run_id?: string; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
@@ -181,147 +246,153 @@ export const api = {
     if (params?.limit) qs.set("limit", String(params.limit));
     if (params?.offset) qs.set("offset", String(params.offset));
     const query = qs.toString();
-    return fetchJson<ProjectArtifactsResponse>(`/projects/${projectId}/artifacts${query ? `?${query}` : ""}`);
+    return fetchJson<ProjectArtifactsResponse>(`/projects/${projectId}/artifacts${query ? `?${query}` : ""}`, { timeoutMs: 10_000 });
   },
 
   runPlan: (body: RunBody) =>
     fetchJson<RunResponse>("/runs", {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 10_000,
     }),
 
-  getRun: (id: string) => fetchJson<RunResponse>(`/runs/${id}`),
+  getRun: (id: string, opts?: FetchOptions) => fetchJson<RunResponse>(`/runs/${id}`, { timeoutMs: 5_000, ...opts }),
 
-  getRunSteps: (id: string) => fetchJson<RunStepsResponse>(`/runs/${id}/steps`),
+  getRunSteps: (id: string, opts?: FetchOptions) => fetchJson<RunStepsResponse>(`/runs/${id}/steps`, { timeoutMs: 5_000, ...opts }),
 
-  getArtifact: (id: string) => fetchJson<ArtifactResponse>(`/artifacts/${id}`),
+  getArtifact: (id: string) => fetchJson<ArtifactResponse>(`/artifacts/${id}`, { timeoutMs: 5_000 }),
 
   getArtifactSummary: (id: string) =>
-    fetchJson<ArtifactSummaryResponse>(`/artifacts/${id}/summary`),
+    fetchJson<ArtifactSummaryResponse>(`/artifacts/${id}/summary`, { timeoutMs: 5_000 }),
 
   getArtifactPreview: (id: string, limit = 100, offset = 0) =>
-    fetchJson<ArtifactPreviewResponse>(`/artifacts/${id}/preview?limit=${limit}&offset=${offset}`),
+    fetchJson<ArtifactPreviewResponse>(`/artifacts/${id}/preview?limit=${limit}&offset=${offset}`, { timeoutMs: 10_000 }),
 
-  // stepId defaults to "manual-binning" for the baseline step; branch-owned steps
-  // use IDs like "manual-binning__br_xxx" — pass the actual step_id from plan data.
   getManualBinningEditorState: (planId: string, projectId: string, stepId = "manual-binning") =>
-    fetchJson<ManualBinningEditorStateResponse>(`/plans/${planId}/steps/${stepId}/editor-state?project_id=${projectId}`),
+    fetchJson<ManualBinningEditorStateResponse>(`/plans/${planId}/steps/${stepId}/editor-state?project_id=${projectId}`, { timeoutMs: 5_000 }),
 
   previewManualBinning: (planId: string, body: ManualBinningPreviewBody, stepId = "manual-binning") =>
     fetchJson<ManualBinningPreviewResponse>(`/plans/${planId}/steps/${stepId}/manual-binning/preview`, {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 10_000,
     }),
 
   reviewManualBinning: (planId: string, stepId: string, body: { project_id: string; plan_version_id: string; step_id: string; reviewed: boolean; accept_automated: boolean; overrides?: Record<string, unknown>[]; reason_code?: string; review_reason?: string; reviewed_by?: string }) =>
     fetchJson<ManualBinningReviewResponse>(`/plans/${planId}/steps/${stepId}/manual-binning/review`, {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 10_000,
     }),
 
-  // Phase 4 — Branches
   listBranches: (projectId: string, params?: { plan_id?: string; branch_type?: string; status?: string }) => {
     const qs = new URLSearchParams();
     if (params?.plan_id) qs.set("plan_id", params.plan_id);
     if (params?.branch_type) qs.set("branch_type", params.branch_type);
     if (params?.status) qs.set("status", params.status);
     const query = qs.toString();
-    return fetchJson<BranchListResponse>(`/projects/${projectId}/branches${query ? `?${query}` : ""}`);
+    return fetchJson<BranchListResponse>(`/projects/${projectId}/branches${query ? `?${query}` : ""}`, { timeoutMs: 5_000 });
   },
 
   getBranch: (branchId: string, projectId?: string) => {
     const qs = projectId ? `?project_id=${projectId}` : "";
-    return fetchJson<BranchResponse>(`/branches/${branchId}${qs}`);
+    return fetchJson<BranchResponse>(`/branches/${branchId}${qs}`, { timeoutMs: 5_000 });
   },
 
   createBranch: (planId: string, body: CreateBranchBody) =>
     fetchJson<CreateBranchResponse>(`/plans/${planId}/branches`, {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 10_000,
     }),
 
   migrateBaseline: (projectId: string) =>
     fetchJson<MigrateResponse>("/migrations/baseline", {
       method: "POST",
       body: JSON.stringify({ project_id: projectId }),
+      timeoutMs: 30_000,
     }),
 
-  // Phase 4 — Comparisons
   createComparison: (body: { project_id: string; plan_id: string; baseline_branch_id: string; challenger_branch_ids: string[]; comparison_spec?: Record<string, unknown>; created_reason?: string }) =>
     fetchJson<ComparisonResponse>("/branch-comparisons", {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 10_000,
     }),
 
-  getComparison: (id: string) => fetchJson<ComparisonResponse>(`/branch-comparisons/${id}`),
+  getComparison: (id: string) => fetchJson<ComparisonResponse>(`/branch-comparisons/${id}`, { timeoutMs: 5_000 }),
 
   refreshComparison: (id: string) =>
     fetchJson<RefreshComparisonResponse>(`/branch-comparisons/${id}/refresh`, {
       method: "POST",
+      timeoutMs: 30_000,
     }),
 
   getComparisonSnapshot: (id: string) =>
-    fetchJson<ComparisonSnapshotResponse>(`/branch-comparison-snapshots/${id}`),
+    fetchJson<ComparisonSnapshotResponse>(`/branch-comparison-snapshots/${id}`, { timeoutMs: 5_000 }),
 
-  // Phase 4 — Champion
   assignChampion: (planId: string, body: AssignChampionBody) =>
     fetchJson<ChampionResponse>(`/plans/${planId}/champion`, {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 10_000,
     }),
 
   getChampion: (planId: string, projectId: string) =>
-    fetchJson<ChampionResponse>(`/plans/${planId}/champion?project_id=${projectId}`),
+    fetchJson<ChampionResponse>(`/plans/${planId}/champion?project_id=${projectId}`, { timeoutMs: 5_000 }),
 
-  // Phase 4 — Export
   exportAuditPack: (body: ExportAuditPackBody) =>
     fetchJson<ExportAuditPackResponse>("/exports/audit-pack", {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 60_000,
     }),
 
-  // Phase 5 — Reports
   getReportReadiness: (projectId: string, runId: string, body: { target_branch_id: string; report_mode?: string; include_challenger_comparison?: boolean }) =>
     fetchJson<ReportReadinessResponse>(`/projects/${projectId}/runs/${runId}/report-readiness`, {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 10_000,
     }),
 
   generateReport: (projectId: string, runId: string, body: { target_branch_id: string; report_mode?: string; include_challenger_comparison?: boolean; include_supporting_artifacts?: boolean; output_formats?: string[]; export_zip?: boolean }) =>
     fetchJson<GenerateReportResponse>(`/projects/${projectId}/runs/${runId}/reports`, {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 120_000,
     }),
 
   getReportMetadata: (projectId: string, runId: string, reportId: string) =>
     fetchJson<{ report_id: string; created_at: string; target_branch_id: string; report_mode: string; html_path: string; bundle_path: string; export_path: string; status: string }>(
       `/projects/${projectId}/runs/${runId}/reports/${reportId}`,
+      { timeoutMs: 5_000 },
     ),
 
-  listNodeTypes: () => fetchJson<NodeTypeListResponse>("/node-types"),
+  listNodeTypes: () => fetchJson<NodeTypeListResponse>("/node-types", { timeoutMs: 5_000 }),
 
   getNodeTypeSchema: (nodeType: string) =>
-    fetchJson<NodeTypeSchemaResponse>(`/node-types/${encodeURIComponent(nodeType)}/schema`),
+    fetchJson<NodeTypeSchemaResponse>(`/node-types/${encodeURIComponent(nodeType)}/schema`, { timeoutMs: 5_000 }),
 
   getBranchMethodSummary: (branchId: string, projectId: string) =>
-    fetchJson<MethodSummaryResponse>(`/branches/${branchId}/method-summary?project_id=${projectId}`),
+    fetchJson<MethodSummaryResponse>(`/branches/${branchId}/method-summary?project_id=${projectId}`, { timeoutMs: 5_000 }),
 
   getModelRanking: (snapshotId: string, projectId: string, metric?: string) => {
     const qs = new URLSearchParams({ project_id: projectId });
     if (metric) qs.set("metric", metric);
-    return fetchJson<ModelRankingResponse>(`/branch-comparison-snapshots/${snapshotId}/model-ranking?${qs.toString()}`);
+    return fetchJson<ModelRankingResponse>(`/branch-comparison-snapshots/${snapshotId}/model-ranking?${qs.toString()}`, { timeoutMs: 5_000 });
   },
 
   listRunReports: (projectId: string, runId: string) =>
     fetchJson<components["schemas"]["ReportMetadataResponse"][]>(
       `/projects/${projectId}/runs/${runId}/reports`,
+      { timeoutMs: 5_000 },
     ),
 
   getStepEvidence: (runId: string, stepId: string, projectId: string) =>
-    fetchJson<RunStepEvidenceResponse>(`/runs/${runId}/steps/${stepId}/evidence?project_id=${projectId}`),
+    fetchJson<RunStepEvidenceResponse>(`/runs/${runId}/steps/${stepId}/evidence?project_id=${projectId}`, { timeoutMs: 10_000 }),
 
   getRunEvidence: (runId: string, projectId: string) =>
-    fetchJson<RunStepEvidenceResponse>(`/runs/${runId}/evidence?project_id=${projectId}`),
+    fetchJson<RunStepEvidenceResponse>(`/runs/${runId}/evidence?project_id=${projectId}`, { timeoutMs: 10_000 }),
 };
 
 export function getReportServeUrl(projectId: string, htmlPath: string): string {

@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import threading
 from dataclasses import asdict
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
 
+from cardre.audit import utc_now_iso
 from cardre.errors import CardreError
 from cardre.executor import PlanExecutor
 from cardre.evidence import ArtifactEvidenceReader
@@ -17,6 +19,36 @@ from cardre.store import ProjectStore
 from sidecar.models import RunDiagnostic, RunRequest, RunResponse, RunStepsResponse, RunStepItem
 
 router = APIRouter(prefix="/runs", tags=["runs"])
+
+STALE_HEARTBEAT_SECONDS = int(__import__("os").environ.get("CARDRE_STALE_HEARTBEAT_SECONDS", "300"))
+
+
+def _is_stale(run: dict) -> bool:
+    if run.get("status") != "running":
+        return False
+    hb = run.get("heartbeat_at")
+    if hb is None:
+        return True
+    try:
+        hb_ts = datetime.fromisoformat(hb).replace(tzinfo=timezone.utc).timestamp()
+        now_ts = datetime.now(timezone.utc).timestamp()
+        return (now_ts - hb_ts) > STALE_HEARTBEAT_SECONDS
+    except (ValueError, TypeError):
+        return True
+
+
+def _maybe_recover_stale_run(store: ProjectStore, run: dict) -> None:
+    if _is_stale(run):
+        store.finish_run(run["run_id"], "interrupted")
+        store.append_run_diagnostic(run["run_id"], {
+            "code": "RUN_RECOVERED_STALE",
+            "message": f"Run {run['run_id']} was stuck in 'running' with stale heartbeat — recovered as interrupted.",
+            "severity": "error",
+            "category": "lifecycle",
+            "run_id": run["run_id"],
+            "plan_version_id": run.get("plan_version_id", ""),
+            "created_at": utc_now_iso(),
+        })
 
 
 def _is_branch_current(store, plan_version_id, branch_id):
@@ -82,6 +114,8 @@ def _build_run_response(store: ProjectStore, run_id: str, executed_ids: list[str
         executed_step_ids=executed_ids or [],
         diagnostics=[RunDiagnostic(**d) for d in diags],
         latest_error=RunDiagnostic(**latest_error) if latest_error else None,
+        heartbeat_at=run.get("heartbeat_at"),
+        is_stale=_is_stale(run),
     )
 
 
@@ -214,6 +248,7 @@ def get_run(run_id: str):
             continue
         run = store.get_run(run_id)
         if run is not None:
+            _maybe_recover_stale_run(store, run)
             return _build_run_response(store, run_id)
     raise HTTPException(status_code=404, detail={"code": "RUN_NOT_FOUND", "message": f"No run with ID {run_id}"})
 

@@ -91,6 +91,7 @@ def dispatch_run_async(
     """Execute a run in a background thread."""
     store = ProjectStore(project_path)
     try:
+        store.run_heartbeat(run_id)
         execute_run(
             store=store,
             plan_version_id=plan_version_id,

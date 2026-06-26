@@ -18,6 +18,5 @@ export function useWorkflowGuidance(
       }),
     enabled: !!planId && !!projectId && !!branchId,
     staleTime: 2000,
-    retry: false,
   });
 }

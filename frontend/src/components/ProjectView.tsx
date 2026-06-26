@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { api, formatApiError } from "../api/client";
 import { TopBar } from "./TopBar";
 import { LeftNav } from "./LeftNav";
 import { PathwayView } from "./PathwayView";
@@ -54,7 +54,7 @@ export function ProjectView({ projectId, onBack }: Props) {
     refetchPlan();
     queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
   });
-  const { running, error, carriedForwardSteps, liveStepStatus, stepProgress, diagnostics, liveDiagnostic, startRun, addDiagnostic } = runProgress;
+  const { running, error, runStalled, carriedForwardSteps, liveStepStatus, stepProgress, diagnostics, liveDiagnostic, startRun, cancelRun, addDiagnostic, lastPollError, lastRunError } = runProgress;
 
   // Resolve default branch invisibly so guidance has a branch key
   const { data: branchData } = useQuery({
@@ -189,6 +189,9 @@ export function ProjectView({ projectId, onBack }: Props) {
     ...diagnostics,
     ...(liveDiagnostic ? [`  └ ${liveDiagnostic}`] : []),
     error ? `[error] ${error}` : null,
+    lastPollError ? `[poll error] ${formatApiError(lastPollError)}` : null,
+    lastRunError ? `[run error] ${lastRunError}` : null,
+    runStalled ? "[stalled] Run stalled — no progress detected" : null,
   ].filter(Boolean) as string[];
 
   return (

@@ -59,7 +59,6 @@ export function StepInspector({
         ? api.getManualBinningEditorState(planId, projectId, step!.step_id)
         : Promise.reject("not manual-binning"),
     enabled: !!step && isManualBinning && !!planId && !!projectId,
-    retry: false,
   });
 
   if (!step) {

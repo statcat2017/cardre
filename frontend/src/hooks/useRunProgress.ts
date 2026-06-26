@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, isApiError, type ApiError } from "../api/client";
+import { api, isApiError, formatApiError, type ApiError } from "../api/client";
 
 interface StepProgress {
   completed: number;
@@ -15,6 +15,7 @@ interface RunProgressState {
   stepProgress: StepProgress | null;
   diagnostics: string[];
   liveDiagnostic: string | null;
+  runStalled: boolean;
 }
 
 interface RunOptions {
@@ -25,10 +26,15 @@ interface RunOptions {
 
 interface UseRunProgressReturn extends RunProgressState {
   startRun: (planVersionId: string, options?: RunOptions) => Promise<void>;
+  cancelRun: () => void;
   addDiagnostic: (msg: string) => void;
   lastPollError: ApiError | null;
   lastRunError: string | null;
 }
+
+const POLL_INTERVAL_MS = 2000;
+const MAX_CONSECUTIVE_ERRORS = 5;
+const STALL_POLL_LIMIT = 30; // ~60s without progress
 
 export function useRunProgress(
   projectId: string,
@@ -44,30 +50,75 @@ export function useRunProgress(
   const [totalPlanSteps, setTotalPlanSteps] = useState(0);
   const [lastPollError, setLastPollError] = useState<ApiError | null>(null);
   const [lastRunError, setLastRunError] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [runStalled, setRunStalled] = useState(false);
+
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
+  const consecutiveErrorsRef = useRef(0);
+  const stallCountRef = useRef(0);
+  const lastStepSnapshotRef = useRef("");
+
+  const clearPollTimer = useCallback(() => {
+    if (pollTimerRef.current !== null) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  const stopPolling = useCallback(() => {
+    clearPollTimer();
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+  }, [clearPollTimer]);
 
   useEffect(() => {
     return () => {
       mountedRef.current = false;
-      if (pollRef.current !== null) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
+      stopPolling();
     };
-  }, []);
+  }, [stopPolling]);
 
   const addDiagnostic = useCallback((msg: string) => {
     setDiagnostics((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
   }, []);
 
+  const cancelRun = useCallback(() => {
+    stopPolling();
+    setRunning(false);
+    setError("Run cancelled by user.");
+    setCarriedForwardSteps({});
+    setLiveStepStatus({});
+    setLiveDiagnostic(null);
+    addDiagnostic("Run cancelled by user");
+  }, [stopPolling, addDiagnostic]);
+
   const startRun = useCallback(async (planVersionId: string, options?: RunOptions) => {
     setRunning(true);
     setError(null);
+    setRunStalled(false);
     setLiveDiagnostic(null);
     setCarriedForwardSteps({});
     setLiveStepStatus({});
     setTotalPlanSteps(0);
+    setLastPollError(null);
+    setLastRunError(null);
+    consecutiveErrorsRef.current = 0;
+    stallCountRef.current = 0;
+    lastStepSnapshotRef.current = "";
+
+    // Health gate: check sidecar is reachable before attempting run
+    try {
+      await api.health();
+    } catch (e: unknown) {
+      const msg = isApiError(e) ? formatApiError(e) : String(e);
+      setError(msg);
+      addDiagnostic(`Sidecar unreachable: ${msg}`);
+      setRunning(false);
+      return;
+    }
 
     try {
       const runResp = await api.runPlan({
@@ -83,18 +134,30 @@ export function useRunProgress(
 
       queryClient.invalidateQueries({ queryKey: ["projectRuns", projectId] });
 
-      let consecutiveErrors = 0;
-      const MAX_CONSECUTIVE_ERRORS = 5;
-
-      const checkProgress = async () => {
+      const scheduleNextPoll = () => {
         if (!mountedRef.current) return;
+        pollTimerRef.current = setTimeout(() => {
+          pollOnce();
+        }, POLL_INTERVAL_MS);
+      };
+
+      const pollOnce = async () => {
+        if (!mountedRef.current) return;
+
+        const pollAbort = new AbortController();
+        abortRef.current = pollAbort;
+
         try {
           const [run, steps] = await Promise.all([
-            api.getRun(runId),
-            api.getRunSteps(runId),
+            api.getRun(runId, { signal: pollAbort.signal }),
+            api.getRunSteps(runId, { signal: pollAbort.signal }),
           ]);
-          consecutiveErrors = 0;
+
+          if (!mountedRef.current) return;
+
+          consecutiveErrorsRef.current = 0;
           setLastPollError(null);
+
           const cfMap: Record<string, boolean> = {};
           const liveMap: Record<string, string> = {};
           steps.steps.forEach((s) => {
@@ -104,17 +167,32 @@ export function useRunProgress(
           setCarriedForwardSteps(cfMap);
           setLiveStepStatus(liveMap);
           setTotalPlanSteps(steps.steps.length);
+
           const stepStatuses = steps.steps.map(
             (s) => `${s.step_id}: ${s.status}${s.is_carried_forward ? " (carried forward)" : ""}`
           );
-          // Replace live diagnostic on each poll instead of appending
           setLiveDiagnostic(`steps: [${stepStatuses.join(", ")}]`);
 
-          if (run.status !== "running") {
-            if (pollRef.current !== null) {
-              clearInterval(pollRef.current);
-              pollRef.current = null;
+          // Stall detection: track whether step statuses have changed
+          const snapshot = stepStatuses.join("|");
+          if (snapshot !== lastStepSnapshotRef.current) {
+            lastStepSnapshotRef.current = snapshot;
+            stallCountRef.current = 0;
+          } else {
+            stallCountRef.current++;
+            if (stallCountRef.current >= STALL_POLL_LIMIT && run.status === "running") {
+              stopPolling();
+              setRunning(false);
+              setRunStalled(true);
+              setError("Run appears stalled — no progress detected for over a minute.");
+              addDiagnostic("Run stalled — no step progress detected");
+              onRunComplete();
+              return;
             }
+          }
+
+          if (run.status !== "running") {
+            stopPolling();
             queryClient.invalidateQueries({ queryKey: ["project", projectId] });
             queryClient.invalidateQueries({ queryKey: ["projectRuns", projectId] });
             setRunning(false);
@@ -137,29 +215,48 @@ export function useRunProgress(
               }
             }
             onRunComplete();
+            return;
           }
+
+          scheduleNextPoll();
         } catch (e: unknown) {
-          consecutiveErrors++;
-          setLastPollError(isApiError(e) ? e : null);
-          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-            if (pollRef.current !== null) {
-              clearInterval(pollRef.current);
-              pollRef.current = null;
-            }
+          if (!mountedRef.current) return;
+
+          // If the poll was aborted (cancel), don't treat as error
+          if (isApiError(e) && (e as ApiError).code === "REQUEST_ABORTED") {
+            return;
+          }
+
+          consecutiveErrorsRef.current++;
+          const pollErr = isApiError(e) ? e : null;
+          setLastPollError(pollErr);
+          if (pollErr?.requestId) {
+            addDiagnostic(`Poll error (${pollErr.code}, req=${pollErr.requestId.slice(0, 8)}): ${pollErr.message}`);
+          } else {
+            addDiagnostic(`Poll error (${isApiError(e) ? (e as ApiError).code : "UNKNOWN"}): ${isApiError(e) ? (e as ApiError).message : String(e)}`);
+          }
+
+          if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
+            stopPolling();
             setRunning(false);
             setError("Run polling failed after multiple retries.");
             addDiagnostic(`Polling failed after ${MAX_CONSECUTIVE_ERRORS} consecutive errors`);
+            onRunComplete();
+            return;
           }
+
+          scheduleNextPoll();
         }
       };
 
-      pollRef.current = setInterval(checkProgress, 2000);
+      scheduleNextPoll();
     } catch (e: any) {
-      setError(e.message);
-      addDiagnostic(`Run failed: ${e.message}`);
+      const msg = isApiError(e) ? formatApiError(e) : e.message;
+      setError(msg);
+      addDiagnostic(`Run failed: ${msg}`);
       setRunning(false);
     }
-  }, [projectId, queryClient, addDiagnostic, onRunComplete]);
+  }, [projectId, queryClient, addDiagnostic, onRunComplete, stopPolling]);
 
   const progressCompleted = Object.values(liveStepStatus).filter((s) =>
     ["succeeded", "failed", "cancelled"].includes(s)
@@ -171,12 +268,14 @@ export function useRunProgress(
   return {
     running,
     error,
+    runStalled,
     carriedForwardSteps,
     liveStepStatus,
     stepProgress,
     diagnostics,
     liveDiagnostic,
     startRun,
+    cancelRun,
     addDiagnostic,
     lastPollError,
     lastRunError,

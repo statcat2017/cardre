@@ -12,6 +12,5 @@ export function useStepEvidence(
     queryFn: () => api.getStepEvidence(runId!, stepId!, projectId!),
     enabled: !!projectId && !!runId && !!stepId,
     staleTime: 30_000,
-    retry: false,
   });
 }

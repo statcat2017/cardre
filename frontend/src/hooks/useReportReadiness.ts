@@ -22,6 +22,5 @@ export function useReportReadiness(
       !!targetBranchId &&
       (opts?.enabled ?? true),
     staleTime: 5000,
-    retry: false,
   });
 }

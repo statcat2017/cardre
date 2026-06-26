@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, getReportServeUrl } from "../api/client";
+import { api, formatApiError, getReportServeUrl } from "../api/client";
 import { useReportReadiness } from "../hooks/useReportReadiness";
 import { BranchSelector } from "./BranchSelector";
 import { ReadinessPanel } from "./ReadinessPanel";
@@ -142,7 +142,7 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
       ]);
     },
     onError: (e: any) => {
-      setGenerateErrorMsg(e.detail?.message || e.message || "Report generation failed");
+      setGenerateErrorMsg(formatApiError(e));
     },
   });
 

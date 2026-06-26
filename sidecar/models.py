@@ -158,6 +158,8 @@ class RunResponse(BaseModel):
     executed_step_ids: list[str] = Field(default_factory=list)
     diagnostics: list[RunDiagnostic] = Field(default_factory=list)
     latest_error: RunDiagnostic | None = None
+    heartbeat_at: str | None = None
+    is_stale: bool = False
 
 
 class RunStepItem(BaseModel):
