@@ -133,13 +133,44 @@ class ValidationMetricsNode(NodeType):
             })
             return None, warnings
 
+        good_list = list(good)
         bad_list = list(bad)
+        all_known = good | bad
+        target_str = df[target_col].cast(pl.String)
+        is_known = target_str.is_in(all_known)
+        unknown_count = int((~is_known).sum())
+        if unknown_count > 0:
+            warnings.append({
+                "code": "UNKNOWN_TARGET_VALUES",
+                "message": f"Target column {target_col!r} contains {unknown_count} row(s) "
+                           f"with values not declared as good or bad. "
+                           f"These rows are excluded from metric computation.",
+            })
+
+        known_mask = is_known.to_numpy()
         y_bin = (df.with_columns(
-            pl.when(pl.col(target_col).cast(pl.String).is_in(bad_list))
-            .then(pl.lit(1)).otherwise(pl.lit(0)).alias("_y_binary")
+            pl.when(target_str.is_in(bad_list))
+            .then(pl.lit(1))
+            .when(target_str.is_in(good_list))
+            .then(pl.lit(0))
+            .otherwise(pl.lit(None, dtype=pl.Int64))
+            .alias("_y_binary")
         )["_y_binary"].to_numpy())
-        n_bad = sum(y_bin)
-        n_good = len(y_bin) - n_bad
+        valid = y_bin is not None
+        if valid:
+            valid_mask = y_bin != np.array(None) if y_bin.dtype == object else np.ones_like(y_bin, dtype=bool)
+            y_bin_clean = y_bin[valid_mask].astype(np.int64) if valid_mask.any() else np.array([], dtype=np.int64)
+        else:
+            y_bin_clean = np.array([], dtype=np.int64)
+        n_bad = int(y_bin_clean.sum()) if len(y_bin_clean) > 0 else 0
+        n_good = int(len(y_bin_clean) - n_bad) if len(y_bin_clean) > 0 else 0
+        if n_bad == 0 and n_good == 0:
+            warnings.append({
+                "code": "NO_KNOWN_TARGET_VALUES",
+                "message": f"Target column {target_col!r} has no rows with declared good or bad values; "
+                           "all metrics are unavailable.",
+            })
+            return None, warnings
         if n_bad == 0:
             warnings.append({
                 "code": "SINGLE_CLASS_ONLY_GOOD",
@@ -152,7 +183,7 @@ class ValidationMetricsNode(NodeType):
                 "message": f"Target column {target_col!r} has no good-class rows; "
                            "AUC and discrimination metrics are undefined.",
             })
-        return y_bin, warnings
+        return y_bin_clean, warnings
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
@@ -267,15 +298,16 @@ class ValidationMetricsNode(NodeType):
                 auc_val = round(float(roc_auc_score(y_bin, y_prob)), 6)
                 gini_val = round(2 * auc_val - 1, 6)
 
+                ks_sort_col = "score" if has_score else "predicted_bad_probability"
                 ks_df = df.with_columns(
                     pl.when(pl.col(target_col).cast(pl.String).is_in(bad_list))
                     .then(pl.lit(1)).otherwise(pl.lit(0)).alias("_y_binary")
-                ).sort("score").with_columns(
+                ).sort(ks_sort_col).with_columns(
                     (pl.lit(1) - pl.col("_y_binary")).cum_sum().alias("_cum_good"),
                     pl.col("_y_binary").cum_sum().alias("_cum_bad"),
                 ).select(
                     (pl.col("_cum_good") / n_good - pl.col("_cum_bad") / n_bad).abs().alias("ks_val"),
-                    pl.col("score").alias("ks_at"),
+                    pl.col(ks_sort_col).alias("ks_at"),
                 )
                 ks_max = ks_df.select(pl.max("ks_val")).item()
                 if ks_max is not None:
@@ -445,8 +477,9 @@ class ValidationMetricsNode(NodeType):
             expected_counts = np.array([len(expected_arr)])
             actual_counts = np.array([len(actual_arr)])
         else:
-            expected_counts = np.histogram(expected_arr, bins=bin_edges)[0]
-            actual_counts = np.histogram(actual_arr, bins=bin_edges)[0]
+            extended_edges = np.concatenate([[-np.inf], bin_edges, [np.inf]])
+            expected_counts = np.histogram(expected_arr, bins=extended_edges)[0]
+            actual_counts = np.histogram(actual_arr, bins=extended_edges)[0]
 
         psi = 0.0
         n_exp = len(expected_arr)

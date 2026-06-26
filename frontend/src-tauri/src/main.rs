@@ -87,15 +87,12 @@ fn main() {
     let api_url = format!("http://127.0.0.1:{port}");
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .manage(AppState {
             sidecar_child: Mutex::new(None),
         })
         .setup(move |app| {
-            // Find the sidecar binary
-            let sidecar_cmd = if let Ok(path) = which::which("cardre-api") {
-                path.to_string_lossy().to_string()
-            } else {
+            // Find the sidecar binary — prefer bundled, fall back to PATH
+            let sidecar_cmd = {
                 let bundled = app
                     .path()
                     .resource_dir()
@@ -104,6 +101,8 @@ fn main() {
                     .join("cardre-api");
                 if bundled.exists() {
                     bundled.to_string_lossy().to_string()
+                } else if let Ok(path) = which::which("cardre-api") {
+                    path.to_string_lossy().to_string()
                 } else {
                     "cardre-api".to_string()
                 }

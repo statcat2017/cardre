@@ -298,7 +298,7 @@ def _populate_export(
                     # Supporting report artifacts
                     report_art_dir = export_dir / "report_artifacts"
                     report_art_dir.mkdir(parents=True, exist_ok=True)
-                    file_count += _copy_report_artifacts(store, bundle_data, report_art_dir)
+                    file_count += _copy_report_artifacts(store, bundle_data, report_art_dir, include_row_level_data)
 
                     diagnostics.append({
                         "code": "REPORT_GENERATED",
@@ -342,8 +342,13 @@ def _copy_report_artifacts(
     store: ProjectStore,
     bundle: dict,
     report_art_dir: Path,
+    include_row_level_data: bool = False,
 ) -> int:
-    """Copy supporting artifacts referenced in the report bundle."""
+    """Copy supporting artifacts referenced in the report bundle.
+
+    When *include_row_level_data* is False, row-level dataset/tabular
+    artifacts are skipped to prevent data leakage in audit packs.
+    """
     artifacts = bundle.get("artifacts", [])
     count = 0
     from cardre.audit import ArtifactRef
@@ -351,6 +356,8 @@ def _copy_report_artifacts(
         art_id = entry.get("artifact_id", "")
         art = store.get_artifact(art_id)
         if art is None:
+            continue
+        if not include_row_level_data and art.artifact_type in ROW_LEVEL_ARTIFACT_TYPES:
             continue
         src = store.artifact_path(art)  # cardre-allow-artifact-read: artifact-byte-download
         if not src.exists():
