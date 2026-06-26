@@ -118,16 +118,17 @@ class PlanExecutor:
         resolver = BranchEvidenceResolver(self)
         try:
             ctx = resolver.prepare_branch_run(store, branch_id, plan_version_id, force=force)
-        except BranchEvidenceError:
+        except BranchEvidenceError as exc:
             if run_id is not None:
                 store.append_run_diagnostic(run_id, {
-                    "code": "BRANCH_PREPARATION_FAILED",
-                    "message": "Branch preparation failed before run lifecycle started.",
+                    "code": exc.code,
+                    "message": exc.message,
                     "severity": "error",
                     "category": "execution",
                     "run_id": run_id,
                     "plan_version_id": plan_version_id,
                     "branch_id": branch_id,
+                    "context": exc.context,
                 })
             raise
         if not force and ctx.short_circuit_run_id is not None:
@@ -140,6 +141,20 @@ class PlanExecutor:
             force=force,
         ) as lifecycle:
             run_id = lifecycle.run_id
+
+            # Persist any diagnostics collected during branch evidence resolution
+            for d in ctx.diagnostics:
+                store.append_run_diagnostic(run_id, {
+                    "code": d.code,
+                    "message": d.message,
+                    "severity": d.severity,
+                    "category": "execution",
+                    "source": d.source,
+                    "run_id": run_id,
+                    "plan_version_id": plan_version_id,
+                    "branch_id": branch_id,
+                    "context": d.context,
+                })
 
             # Build action list but defer parent evidence resolution to
             # just-before-execute so branch-owned parent steps produce
