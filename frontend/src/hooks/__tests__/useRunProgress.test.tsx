@@ -58,8 +58,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.spyOn(api, "health").mockResolvedValue({ status: "ok", cardre_version: "0.1.0", registry_accessible: false, registered_node_count: 0, launch_node_count: 0, deferred_node_count: 0, governance_enabled: false, checked_at: "", diagnostics: [] });
   vi.spyOn(api, "runPlan").mockResolvedValue(makeRun("running") as any);
-  vi.spyOn(api, "getRun").mockResolvedValue(makeRun("running") as any);
-  vi.spyOn(api, "getRunSteps").mockResolvedValue(makeSteps(["running", "running", "running"]) as any);
+  vi.spyOn(api, "getProjectRun").mockResolvedValue(makeRun("running") as any);
+  vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(makeSteps(["running", "running", "running"]) as any);
 });
 
 afterEach(() => {
@@ -88,15 +88,15 @@ describe("useRunProgress", () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
 
-    expect(api.getRun).toHaveBeenCalledTimes(1);
-    expect(api.getRunSteps).toHaveBeenCalledTimes(1);
+    expect(api.getProjectRun).toHaveBeenCalledTimes(1);
+    expect(api.getProjectRunSteps).toHaveBeenCalledTimes(1);
 
     // Second poll
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
 
-    expect(api.getRun).toHaveBeenCalledTimes(2);
+    expect(api.getProjectRun).toHaveBeenCalledTimes(2);
   });
 
   it("stops polling when run completes with succeeded status", async () => {
@@ -106,8 +106,8 @@ describe("useRunProgress", () => {
     });
 
     // First poll returns running, second returns succeeded
-    vi.spyOn(api, "getRun").mockReset();
-    vi.spyOn(api, "getRun")
+    vi.spyOn(api, "getProjectRun").mockReset();
+    vi.spyOn(api, "getProjectRun")
       .mockResolvedValueOnce(makeRun("running") as any)
       .mockResolvedValue(makeRun("succeeded") as any);
 
@@ -136,8 +136,8 @@ describe("useRunProgress", () => {
       wrapper: createWrapper(),
     });
 
-    vi.spyOn(api, "getRun").mockReset();
-    vi.spyOn(api, "getRun")
+    vi.spyOn(api, "getProjectRun").mockReset();
+    vi.spyOn(api, "getProjectRun")
       .mockResolvedValueOnce(makeRun("running") as any)
       .mockResolvedValue(
         makeRun("failed", { latest_error: { code: "ERR_001", message: "Step failed" } }) as any,
@@ -170,10 +170,10 @@ describe("useRunProgress", () => {
     });
 
     // All polls reject
-    vi.spyOn(api, "getRun").mockRejectedValue(
+    vi.spyOn(api, "getProjectRun").mockRejectedValue(
       new ApiError(0, { code: "SIDECAR_UNREACHABLE", message: "Down" }),
     );
-    vi.spyOn(api, "getRunSteps").mockRejectedValue(
+    vi.spyOn(api, "getProjectRunSteps").mockRejectedValue(
       new ApiError(0, { code: "SIDECAR_UNREACHABLE", message: "Down" }),
     );
 
@@ -199,10 +199,10 @@ describe("useRunProgress", () => {
     });
 
     // Always return running with same steps
-    vi.spyOn(api, "getRun").mockReset();
-    vi.spyOn(api, "getRun").mockResolvedValue(makeRun("running") as any);
-    vi.spyOn(api, "getRunSteps").mockReset();
-    vi.spyOn(api, "getRunSteps").mockResolvedValue(makeSteps(["running", "running", "running"]) as any);
+    vi.spyOn(api, "getProjectRun").mockReset();
+    vi.spyOn(api, "getProjectRun").mockResolvedValue(makeRun("running") as any);
+    vi.spyOn(api, "getProjectRunSteps").mockReset();
+    vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(makeSteps(["running", "running", "running"]) as any);
 
     await act(async () => {
       result.current.startRun("pv1");

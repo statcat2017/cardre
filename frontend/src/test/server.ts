@@ -80,4 +80,22 @@ export const server = setupServer(
   http.get(`${BASE}/projects/:projectId/runs`, () =>
     HttpResponse.json({ runs: [] })
   ),
+  http.get(`${BASE}/runs/project/:projectId/runs/:runId`, () =>
+    HttpResponse.json({
+      run_id: "run1",
+      plan_version_id: "pv1",
+      status: "succeeded",
+      started_at: "2026-01-01T00:00:00Z",
+      finished_at: "2026-01-01T00:01:00Z",
+      step_count: 3,
+      diagnostics: [],
+      is_stale: false,
+    })
+  ),
+  http.get(`${BASE}/runs/project/:projectId/runs/:runId/steps`, () =>
+    HttpResponse.json({
+      run_id: "run1",
+      steps: [],
+    })
+  ),
 );

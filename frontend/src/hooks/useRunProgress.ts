@@ -149,8 +149,8 @@ export function useRunProgress(
 
         try {
           const [run, steps] = await Promise.all([
-            api.getRun(runId, { signal: pollAbort.signal }),
-            api.getRunSteps(runId, { signal: pollAbort.signal }),
+            api.getProjectRun(projectId, runId, { signal: pollAbort.signal }),
+            api.getProjectRunSteps(projectId, runId, { signal: pollAbort.signal }),
           ]);
 
           if (!mountedRef.current) return;
