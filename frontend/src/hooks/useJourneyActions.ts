@@ -1,10 +1,16 @@
 import { useCallback } from "react";
-import type { WorkflowGuidance } from "../types";
+import type { WorkflowGuidance, PlanListItem, PlanResponse } from "../types";
+
+interface RunOptions {
+  run_scope?: "full_plan" | "branch" | "to_node";
+  target_step_id?: string;
+  branch_id?: string;
+}
 
 export function useJourneyActions(
-  scorecardPlan: Record<string, unknown> | null,
-  planData: Record<string, unknown> | null,
-  startRun: (planVersionId: string, options?: Record<string, unknown>) => Promise<void>,
+  scorecardPlan: PlanListItem | undefined,
+  planData: PlanResponse | undefined,
+  startRun: (planVersionId: string, options?: RunOptions) => Promise<void>,
   addDiagnostic: (msg: string) => void,
   setActiveSection: (section: string) => void,
   setSelectedStepId: (id: string | null) => void,
