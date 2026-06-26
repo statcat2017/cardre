@@ -105,7 +105,7 @@ class ManualBinningService:
             return ManualBinningEditorStateResponse(
                 plan_id=plan_id, plan_version_id="", step_id=step_id,
                 ready=False, blocked_reason="Plan has no versions.",
-                blocked_code="PLAN_NOT_FOUND",
+                blocked_code="PLAN_HAS_NO_VERSIONS",
             )
 
         steps = self._store.get_plan_version_steps(latest_pv_id)
@@ -120,14 +120,14 @@ class ManualBinningService:
             return ManualBinningEditorStateResponse(
                 plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
                 ready=False, blocked_reason="Manual binning step not found in this plan.",
-                blocked_code="PLAN_NOT_FOUND",
+                blocked_code="MANUAL_BINNING_STEP_NOT_FOUND",
             )
 
         if mb_spec.canonical_step_id != "manual-binning":
             return ManualBinningEditorStateResponse(
                 plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
                 ready=False, blocked_reason=f"Step {step_id} is not a manual-binning step.",
-                blocked_code="PLAN_NOT_FOUND",
+                blocked_code="STEP_NOT_MANUAL_BINNING",
             )
 
         branch_id = mb_spec.branch_id
@@ -147,7 +147,7 @@ class ManualBinningService:
                 plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
                 ready=False, blocked_reason="Binning step is not an ancestor of this manual-binning step.",
                 required_steps=["binning"],
-                blocked_code="PLAN_NOT_FOUND",
+                blocked_code="BINNING_SOURCE_NOT_FOUND",
             )
 
         staleness = compute_staleness(self._store, latest_pv_id, branch_id=branch_id)
@@ -164,7 +164,7 @@ class ManualBinningService:
                 plan_id=plan_id, plan_version_id=latest_pv_id, step_id=step_id,
                 ready=False, blocked_reason=f"Upstream steps stale: {', '.join(blocked)}. Run the pathway to refresh.",
                 required_steps=blocked,
-                blocked_code="PLAN_NOT_FOUND",
+                blocked_code="UPSTREAM_STEPS_STALE",
             )
 
         upstream_result = self._resolve_upstream_defs(
