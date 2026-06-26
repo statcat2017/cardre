@@ -3,7 +3,7 @@
     clippy::expect_used,
     clippy::print_stderr,
     clippy::mutex_atomic,
-    clippy::let_with_underscore_drop
+    let_underscore_drop
 )]
 
 use std::io::{BufRead, BufReader, Read};
@@ -156,7 +156,7 @@ fn main() {
             }
 
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.eval(&format!("window.__API_URL__ = '{api_url}'"));
+                let _ = window.eval(format!("window.__API_URL__ = '{api_url}'").as_str());
             }
             Ok(())
         })
