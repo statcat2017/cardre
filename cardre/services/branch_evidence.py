@@ -12,6 +12,7 @@ from typing import Any
 from cardre.audit import ArtifactRef, RunStepRecord, StepSpec
 from cardre.errors import BranchEvidenceError, Diagnostic
 from cardre.evidence_locator import resolve_output_artifacts
+from cardre.executor import PlanExecutor
 from cardre.staleness import compute_staleness, step_is_stale
 from cardre.store import ProjectStore
 from cardre.topology import validate_topology

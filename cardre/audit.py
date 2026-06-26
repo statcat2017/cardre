@@ -14,9 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import polars as pl
-
 if TYPE_CHECKING:
+    from cardre.node_parameters import NodeParameterSchema
     from cardre.store import ProjectStore
 
 

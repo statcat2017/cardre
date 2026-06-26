@@ -37,6 +37,13 @@ include = ["cardre*", "sidecar*"]
 [tool.setuptools.package-data]
 cardre = ["reporting/templates/*.j2"]
 
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["F", "W"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_classes = ["Test*", "*Tests"]

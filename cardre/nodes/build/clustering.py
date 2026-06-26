@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import numpy as np
 import polars as pl
 
 from cardre.artifacts import write_json_artifact

@@ -1195,6 +1195,7 @@ class TestOptBinningFullIntegration:
             ArtifactRef, json_logical_hash, physical_hash, relative_path, table_logical_hash,
         )
         from cardre.evidence import SCHEMA_BIN_DEFINITION, SCHEMA_WOE_TABLE
+        from tests.helpers import _make_json_artifact
 
         df = pl.DataFrame({
             "age": [25.0, 30.0, 35.0, 40.0, 45.0, 50.0,

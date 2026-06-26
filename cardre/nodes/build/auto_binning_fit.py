@@ -10,7 +10,7 @@ from typing import Any
 import polars as pl
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.audit import ExecutionContext, NodeOutput, NodeType
+from cardre.audit import ArtifactRef, ExecutionContext, NodeOutput, NodeType
 from cardre.evidence import (
     ArtifactEvidenceReader,
     EvidenceKind,

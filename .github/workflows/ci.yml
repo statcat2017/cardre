@@ -6,59 +6,43 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 env:
   PYTHON_VERSION: "3.12"
   NODE_VERSION: "20"
 
 jobs:
-  check-line-counts:
+  lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install dependencies
+        run: pip install -e ".[sidecar,test]"
+      - name: Ruff check
+        # Non-blocking baseline: 359 pre-existing F401/F841 errors.
+        # Remove continue-on-error once those are fixed.
+        continue-on-error: true
+        run: pip install ruff==0.15.20 && ruff check
       - name: Check line counts
         run: python3 scripts/check-line-counts.py
-
-  check_doc_references:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - name: Check doc references
         run: python3 scripts/check_doc_references.py
 
-  test-python:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Install dependencies
-        run: |
-          pip install -e ".[sidecar,test]"
-      - name: Run tests
-        run: python3 -m pytest tests/ -q --tb=short --cov-fail-under=75
-
-  artifact-read-guardrail:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Install dependencies
-        run: |
-          pip install -e ".[sidecar,test]"
-      - name: Audit artifact reads
-        run: make audit-artifact-reads
-      - name: Test evidence surfaces
-        run: make test-evidence
-      - name: Test launch core
-        run: make test-launch-core
-      - name: Guardrail test
-        run: python3 -m pytest tests/test_artifact_guardrail.py -v
-
   typecheck-frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: frontend
@@ -73,10 +57,38 @@ jobs:
         run: npm ci
       - name: TypeScript check
         run: npx tsc --noEmit
+      - name: ESLint
+        # Non-blocking baseline: 5 pre-existing errors (hoisting, setState-in-effect).
+        # Remove continue-on-error once those are fixed.
+        continue-on-error: true
+        run: npm run lint
+      - name: Prettier check
+        # Non-blocking baseline: 69 files need formatting.
+        # Remove continue-on-error once those are fixed.
+        continue-on-error: true
+        run: npm run format:check
+
+  test-python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install dependencies
+        run: pip install -e ".[sidecar,test]"
+      - name: Audit artifact reads
+        run: make audit-artifact-reads
+      - name: Run tests
+        run: python3 -m pytest tests/ -q --tb=short --cov-fail-under=75
 
   test-frontend:
     runs-on: ubuntu-latest
     needs: [typecheck-frontend]
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: frontend
@@ -88,17 +100,18 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - run: npx tsc --noEmit
       - run: npm test
 
   build-sidecar:
     runs-on: ubuntu-latest
-    needs: [test-python]
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
       - name: Install dependencies
         run: |
           pip install pyinstaller
@@ -114,6 +127,7 @@ jobs:
   check-tauri:
     runs-on: ubuntu-latest
     needs: [build-sidecar]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Install system deps
@@ -121,7 +135,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-workspaces: "frontend/src-tauri"
-      - name: Download real sidecar binary
+      - name: Download sidecar binary
         uses: actions/download-artifact@v4
         with:
           name: cardre-api-sidecar
@@ -131,18 +145,70 @@ jobs:
         run: |
           ls -la binaries/
           file binaries/cardre-api-*
+      - name: cargo fmt --check
+        working-directory: frontend/src-tauri
+        run: cargo fmt --check
       - name: cargo check
         working-directory: frontend/src-tauri
         run: cargo check
+      - name: cargo clippy
+        working-directory: frontend/src-tauri
+        run: cargo clippy --all-targets -- -D warnings
 
-  check-api-contracts:
+  smoke-test-sidecar:
     runs-on: ubuntu-latest
-    needs: [test-python]
+    needs: [build-sidecar]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install httpx for health check
+        run: pip install httpx
+      - name: Download sidecar binary
+        uses: actions/download-artifact@v4
+        with:
+          name: cardre-api-sidecar
+          path: binaries/
+      - name: Make binary executable
+        run: chmod +x binaries/cardre-api-*
+      - name: Launch sidecar and wait for health
+        run: |
+          BINARY=$(ls binaries/cardre-api-*-linux-* binaries/cardre-api-x86_64-unknown-linux-gnu 2>/dev/null | head -1)
+          if [ -z "$BINARY" ]; then
+            echo "ERROR: No Linux sidecar binary found in artifact"
+            ls -la binaries/
+            exit 1
+          fi
+          echo "Launching $BINARY on port 18000"
+          $BINARY 18000 &
+          SIDECAR_PID=$!
+          echo "Sidecar PID: $SIDECAR_PID"
+          for i in $(seq 1 30); do
+            if python3 -c "import httpx; r = httpx.get('http://127.0.0.1:18000/health', timeout=2); assert r.json().get('status') == 'ok'; print('HEALTHY')" 2>/dev/null; then
+              echo "Sidecar is healthy"
+              kill $SIDECAR_PID 2>/dev/null || true
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "ERROR: Sidecar did not become healthy within 30 seconds"
+          kill $SIDECAR_PID 2>/dev/null || true
+          exit 1
+
+  check-api-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
       - name: Install sidecar deps
         run: pip install -e ".[sidecar]"
       - uses: actions/setup-node@v4

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from cardre.store import ProjectStore
 
 import pytest
 

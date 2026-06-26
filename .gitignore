@@ -26,3 +26,6 @@ package-lock.json
 /docs/credit-scoring-repos-research.md
 /docs/plans/reject-inference-module-plan.md
 /docs/plans/cardre-application-plan.md
+
+# Generated knowledge graph artifacts
+/graphify-out/

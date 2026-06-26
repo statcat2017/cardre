@@ -9,6 +9,7 @@ from sklearn.linear_model import LogisticRegression
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import ExecutionContext, NodeOutput, NodeType
+from cardre.node_parameters import NodeParameterSchema
 from cardre.evidence import (
     ArtifactEvidenceReader,
     EvidenceKind,
