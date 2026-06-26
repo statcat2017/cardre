@@ -121,7 +121,7 @@ matrix expansion):
   This is a one-time GitHub settings change, documented in the PR description.
 - **Risk:** if branch protection is misconfigured, a failing `test-python`
   could merge alongside a green `build-sidecar`. Mitigated by requiring all
-  six checks as required status checks before merge.
+  nine required checks (including matrix expansion) before merge.
 - **Risk:** folding `audit-artifact-reads` into `test-python` means an audit
   failure now fails the whole test job rather than a dedicated job. The
   failure message is still attributable via the step name. Acceptable

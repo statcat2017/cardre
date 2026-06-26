@@ -140,6 +140,12 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-workspaces: "frontend/src-tauri"
+      - name: Create dummy sidecar for compile check (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: frontend/src-tauri
+        run: |
+          New-Item -ItemType Directory -Force -Path binaries
+          Set-Content -Path binaries/cardre-api-x86_64-pc-windows-msvc.exe -Value "dummy"
       - name: Download sidecar binary (Linux)
         if: matrix.os == 'ubuntu-latest'
         uses: actions/download-artifact@v4
