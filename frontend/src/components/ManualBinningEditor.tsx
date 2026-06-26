@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useManualBinningState } from "../hooks/useManualBinningState";
 import { theme, backButtonStyle, linkButtonStyle } from "../styles";
+import { ErrorNotice } from "./ErrorNotice";
 import { ManualBinningVariableList } from "./ManualBinningVariableList";
 import { ManualBinningReviewPanel } from "./ManualBinningReviewPanel";
 import { ManualBinningReviewActions } from "./ManualBinningReviewActions";
@@ -42,8 +43,8 @@ export function ManualBinningEditor({
 
   if (!es) {
     return (
-      <div style={{ padding: 24, color: theme.redText, fontSize: 13 }}>
-        Could not load editor state.
+      <div style={{ padding: 24, fontSize: 13 }}>
+        <ErrorNotice error={state.error} context="Could not load editor state" />
         <button onClick={onBack} style={linkButtonStyle}>Back</button>
       </div>
     );

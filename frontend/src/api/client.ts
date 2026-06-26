@@ -42,6 +42,7 @@ import type {
   WorkflowGuidance,
 } from "../types";
 import type { components } from "./schema";
+import { withQuery } from "../utils/query";
 
 export function getBaseUrl(): string {
   return (window as unknown as Record<string, string>).__API_URL__ || "http://127.0.0.1:8752";
@@ -241,19 +242,11 @@ export const api = {
       timeoutMs: 30_000,
     }),
 
-  getPlan: (id: string, projectId?: string) => {
-    const qs = projectId ? `?project_id=${projectId}` : "";
-    return fetchJson<PlanResponse>(`/plans/${id}${qs}`, { timeoutMs: 5_000 });
-  },
+  getPlan: (id: string, projectId?: string) =>
+    fetchJson<PlanResponse>(withQuery(`/plans/${id}`, { project_id: projectId }), { timeoutMs: 5_000 }),
 
-  getWorkflowGuidance: (planId: string, params?: { project_id?: string; branch_id?: string; run_id?: string }) => {
-    const qs = new URLSearchParams();
-    if (params?.project_id) qs.set("project_id", params.project_id);
-    if (params?.branch_id) qs.set("branch_id", params.branch_id);
-    if (params?.run_id) qs.set("run_id", params.run_id);
-    const query = qs.toString();
-    return fetchJson<WorkflowGuidance>(`/plans/${planId}/workflow-guidance${query ? `?${query}` : ""}`, { timeoutMs: 5_000 });
-  },
+  getWorkflowGuidance: (planId: string, params?: { project_id?: string; branch_id?: string; run_id?: string }) =>
+    fetchJson<WorkflowGuidance>(withQuery(`/plans/${planId}/workflow-guidance`, params), { timeoutMs: 5_000 }),
 
   updateStepParams: (planId: string, stepId: string, body: UpdateStepParamsBody) =>
     fetchJson<UpdateStepParamsResponse>(`/plans/${planId}/steps/${stepId}/params`, {
@@ -265,17 +258,8 @@ export const api = {
   getProjectRuns: (projectId: string) =>
     fetchJson<ProjectRunsResponse>(`/projects/${projectId}/runs`, { timeoutMs: 5_000 }),
 
-  getProjectArtifacts: (projectId: string, params?: { role?: string; artifact_type?: string; producing_step_id?: string; run_id?: string; limit?: number; offset?: number }) => {
-    const qs = new URLSearchParams();
-    if (params?.role) qs.set("role", params.role);
-    if (params?.artifact_type) qs.set("artifact_type", params.artifact_type);
-    if (params?.producing_step_id) qs.set("producing_step_id", params.producing_step_id);
-    if (params?.run_id) qs.set("run_id", params.run_id);
-    if (params?.limit) qs.set("limit", String(params.limit));
-    if (params?.offset) qs.set("offset", String(params.offset));
-    const query = qs.toString();
-    return fetchJson<ProjectArtifactsResponse>(`/projects/${projectId}/artifacts${query ? `?${query}` : ""}`, { timeoutMs: 10_000 });
-  },
+  getProjectArtifacts: (projectId: string, params?: { role?: string; artifact_type?: string; producing_step_id?: string; run_id?: string; limit?: number; offset?: number }) =>
+    fetchJson<ProjectArtifactsResponse>(withQuery(`/projects/${projectId}/artifacts`, params), { timeoutMs: 10_000 }),
 
   runPlan: (body: RunBody) =>
     fetchJson<RunResponse>("/runs", {
@@ -294,10 +278,10 @@ export const api = {
     fetchJson<ArtifactSummaryResponse>(`/artifacts/${id}/summary`, { timeoutMs: 5_000 }),
 
   getArtifactPreview: (id: string, limit = 100, offset = 0) =>
-    fetchJson<ArtifactPreviewResponse>(`/artifacts/${id}/preview?limit=${limit}&offset=${offset}`, { timeoutMs: 10_000 }),
+    fetchJson<ArtifactPreviewResponse>(withQuery(`/artifacts/${id}/preview`, { limit, offset }), { timeoutMs: 10_000 }),
 
   getManualBinningEditorState: (planId: string, projectId: string, stepId = "manual-binning") =>
-    fetchJson<ManualBinningEditorStateResponse>(`/plans/${planId}/steps/${stepId}/editor-state?project_id=${projectId}`, { timeoutMs: 5_000 }),
+    fetchJson<ManualBinningEditorStateResponse>(withQuery(`/plans/${planId}/steps/${stepId}/editor-state`, { project_id: projectId }), { timeoutMs: 5_000 }),
 
   previewManualBinning: (planId: string, body: ManualBinningPreviewBody, stepId = "manual-binning") =>
     fetchJson<ManualBinningPreviewResponse>(`/plans/${planId}/steps/${stepId}/manual-binning/preview`, {
@@ -313,19 +297,11 @@ export const api = {
       timeoutMs: 10_000,
     }),
 
-  listBranches: (projectId: string, params?: { plan_id?: string; branch_type?: string; status?: string }) => {
-    const qs = new URLSearchParams();
-    if (params?.plan_id) qs.set("plan_id", params.plan_id);
-    if (params?.branch_type) qs.set("branch_type", params.branch_type);
-    if (params?.status) qs.set("status", params.status);
-    const query = qs.toString();
-    return fetchJson<BranchListResponse>(`/projects/${projectId}/branches${query ? `?${query}` : ""}`, { timeoutMs: 5_000 });
-  },
+  listBranches: (projectId: string, params?: { plan_id?: string; branch_type?: string; status?: string }) =>
+    fetchJson<BranchListResponse>(withQuery(`/projects/${projectId}/branches`, params), { timeoutMs: 5_000 }),
 
-  getBranch: (branchId: string, projectId?: string) => {
-    const qs = projectId ? `?project_id=${projectId}` : "";
-    return fetchJson<BranchResponse>(`/branches/${branchId}${qs}`, { timeoutMs: 5_000 });
-  },
+  getBranch: (branchId: string, projectId?: string) =>
+    fetchJson<BranchResponse>(withQuery(`/branches/${branchId}`, { project_id: projectId }), { timeoutMs: 5_000 }),
 
   createBranch: (planId: string, body: CreateBranchBody) =>
     fetchJson<CreateBranchResponse>(`/plans/${planId}/branches`, {
@@ -367,7 +343,7 @@ export const api = {
     }),
 
   getChampion: (planId: string, projectId: string) =>
-    fetchJson<ChampionResponse>(`/plans/${planId}/champion?project_id=${projectId}`, { timeoutMs: 5_000 }),
+    fetchJson<ChampionResponse>(withQuery(`/plans/${planId}/champion`, { project_id: projectId }), { timeoutMs: 5_000 }),
 
   exportAuditPack: (body: ExportAuditPackBody) =>
     fetchJson<ExportAuditPackResponse>("/exports/audit-pack", {
@@ -402,13 +378,10 @@ export const api = {
     fetchJson<NodeTypeSchemaResponse>(`/node-types/${encodeURIComponent(nodeType)}/schema`, { timeoutMs: 5_000 }),
 
   getBranchMethodSummary: (branchId: string, projectId: string) =>
-    fetchJson<MethodSummaryResponse>(`/branches/${branchId}/method-summary?project_id=${projectId}`, { timeoutMs: 5_000 }),
+    fetchJson<MethodSummaryResponse>(withQuery(`/branches/${branchId}/method-summary`, { project_id: projectId }), { timeoutMs: 5_000 }),
 
-  getModelRanking: (snapshotId: string, projectId: string, metric?: string) => {
-    const qs = new URLSearchParams({ project_id: projectId });
-    if (metric) qs.set("metric", metric);
-    return fetchJson<ModelRankingResponse>(`/branch-comparison-snapshots/${snapshotId}/model-ranking?${qs.toString()}`, { timeoutMs: 5_000 });
-  },
+  getModelRanking: (snapshotId: string, projectId: string, metric?: string) =>
+    fetchJson<ModelRankingResponse>(withQuery(`/branch-comparison-snapshots/${snapshotId}/model-ranking`, { project_id: projectId, metric }), { timeoutMs: 5_000 }),
 
   listRunReports: (projectId: string, runId: string) =>
     fetchJson<components["schemas"]["ReportMetadataResponse"][]>(
@@ -417,10 +390,10 @@ export const api = {
     ),
 
   getStepEvidence: (runId: string, stepId: string, projectId: string) =>
-    fetchJson<RunStepEvidenceResponse>(`/runs/${runId}/steps/${stepId}/evidence?project_id=${projectId}`, { timeoutMs: 10_000 }),
+    fetchJson<RunStepEvidenceResponse>(withQuery(`/runs/${runId}/steps/${stepId}/evidence`, { project_id: projectId }), { timeoutMs: 10_000 }),
 
   getRunEvidence: (runId: string, projectId: string) =>
-    fetchJson<RunStepEvidenceResponse>(`/runs/${runId}/evidence?project_id=${projectId}`, { timeoutMs: 10_000 }),
+    fetchJson<RunStepEvidenceResponse>(withQuery(`/runs/${runId}/evidence`, { project_id: projectId }), { timeoutMs: 10_000 }),
 };
 
 export function getReportServeUrl(projectId: string, htmlPath: string): string {

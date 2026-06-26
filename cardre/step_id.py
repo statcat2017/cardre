@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from cardre.audit import RunStepRecord
+from cardre.evidence_resolver import EvidenceResolver
 from cardre.store import ProjectStore
 
 
@@ -100,31 +101,33 @@ def resolve_run_step(
     resolution: str = "exact",
     run_id: str | None = None,
 ) -> RunStepRecord | None:
+    resolver = EvidenceResolver(store)
+
     if run_id is not None:
-        for rs in store.get_run_steps(run_id):
-            if rs.step_id == step_id and rs.status == "succeeded":
-                return rs
+        rs, source, _diags = resolver.resolve(
+            plan_version_id, step_id, run_id=run_id, policy="run_only",
+        )
+        if rs is not None:
+            return rs
 
     if resolution == "exact":
         return None
 
     branch_id_for_lookup = resolved_branch_id if resolution in ("exact", "ancestor") else None
-    rs = store.get_latest_successful_run_step_for_step(
+    rs, source, _diags = resolver.resolve(
         plan_version_id, step_id, branch_id=branch_id_for_lookup,
+        policy="branch_then_full_then_plan",
     )
-    if rs is None and branch_id_for_lookup is not None:
-        rs = store.get_latest_successful_run_step_for_step(
-            plan_version_id, step_id, branch_id=None,
-        )
+    if rs is not None:
+        return rs
 
-    if rs is None and resolution == "ancestor":
+    if resolution == "ancestor":
         plan_id = store.get_plan_id_for_version(plan_version_id)
-        if plan_id:
-            rs = store.get_latest_successful_run_step_for_step_across_plan(
-                plan_id, step_id, branch_id=branch_id_for_lookup,
-            )
-            if rs is None and branch_id_for_lookup is not None:
-                rs = store.get_latest_successful_run_step_for_step_across_plan(
-                    plan_id, step_id, branch_id=None,
-                )
-    return rs
+        rs, source, _diags = resolver.resolve(
+            plan_version_id, step_id, branch_id=branch_id_for_lookup,
+            plan_id=plan_id, policy="across_plan",
+        )
+        if rs is not None:
+            return rs
+
+    return None

@@ -12,6 +12,7 @@ from typing import Any
 from cardre.audit import ArtifactRef, RunStepRecord, StepSpec
 from cardre.errors import BranchEvidenceError, Diagnostic
 from cardre.evidence_locator import resolve_output_artifacts
+from cardre.evidence_resolver import EvidenceResolver
 from cardre.executor import PlanExecutor
 from cardre.staleness import compute_staleness, step_is_stale
 from cardre.store import ProjectStore
@@ -263,58 +264,16 @@ class BranchEvidenceResolver:
     ) -> RunStepRecord | None:
         """Look up successful evidence for a shared upstream step.
 
-        Searches across all plan versions so inherited parent-branch
-        evidence (produced under the parent's plan version) is found.
+        Delegates to EvidenceResolver with source_branch_then_full_then_plan
+        policy, preserving the diagnostic codes from the original inline logic.
         """
-        policies_tried: list[str] = []
-        lookup_branch = source_branch_id or None
-        policies_tried.append(f"branch_id={lookup_branch!r}")
-        rs = store.get_latest_successful_run_step_for_step_across_plan(
-            plan_id, step_id, branch_id=lookup_branch,
+        resolver = EvidenceResolver(store)
+        rs, source, diags = resolver.resolve(
+            plan_version_id, step_id,
+            plan_id=plan_id,
+            source_branch_id=source_branch_id,
+            policy="source_branch_then_full_then_plan",
         )
-        if rs is not None:
-            return rs
-        if lookup_branch is not None:
-            policies_tried.append("branch_id=None")
-            rs = store.get_latest_successful_run_step_for_step_across_plan(
-                plan_id, step_id, branch_id=None,
-            )
-            if rs is not None:
-                if diagnostics is not None:
-                    diagnostics.append(Diagnostic(
-                        code="INHERITED_BASELINE_EVIDENCE",
-                        message=(
-                            f"Step {step_id}: source branch {source_branch_id} "
-                            "has no evidence; fell back to baseline (branch_id=None)."
-                        ),
-                        source="BranchEvidenceResolver._find_shared_evidence",
-                        severity="warning",
-                        context={
-                            "step_id": step_id,
-                            "plan_id": plan_id,
-                            "source_branch_id": source_branch_id,
-                            "fallback_branch_id": None,
-                        },
-                    ))
-                return rs
-        policies_tried.append("latest_plan_run")
-        plan_run_id = store.get_latest_successful_run_id_for_plan(plan_id)
-        if plan_run_id is not None:
-            for prs in store.get_run_steps(plan_run_id):
-                if prs.step_id == step_id and prs.status == STATUS_SUCCEEDED:
-                    return prs
         if diagnostics is not None:
-            diagnostics.append(Diagnostic(
-                code="REUSE_EVIDENCE_NOT_FOUND",
-                message=f"No shared evidence found for step {step_id} in plan {plan_id}",
-                source="BranchEvidenceResolver._find_shared_evidence",
-                severity="warning",
-                context={
-                    "step_id": step_id,
-                    "plan_id": plan_id,
-                    "plan_version_id": plan_version_id,
-                    "source_branch_id": source_branch_id,
-                    "policies_tried": policies_tried,
-                },
-            ))
-        return None
+            diagnostics.extend(diags)
+        return rs
