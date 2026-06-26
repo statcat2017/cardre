@@ -2,14 +2,14 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 
-export function useSelectedBranch(projectId: string) {
+export function useSelectedBranch(projectId: string, enabled = true) {
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const initialized = useRef(false);
 
   const { data: branchData } = useQuery({
     queryKey: ["projectBranches", projectId],
     queryFn: () => api.listBranches(projectId, { status: "active" }),
-    enabled: !!projectId,
+    enabled: enabled && !!projectId,
   });
 
   useEffect(() => {

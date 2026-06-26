@@ -110,13 +110,11 @@ class RunService:
         executor = PlanExecutor(NodeRegistry.with_defaults())
         try:
             if run_scope == "branch" and branch_id:
-                from cardre.services.branch_evidence import BranchEvidenceResolver
-                resolver = BranchEvidenceResolver(executor)
                 ctx = self._evidence.prepare_branch_evidence(plan_version_id, branch_id, force=force)
                 if not force and ctx.short_circuit_run_id is not None:
                     self._store.finish_run(run_id, "cancelled")
                     return self._build_response(ctx.short_circuit_run_id)
-                result_id = executor.run_branch(self._store, plan_version_id, branch_id, run_id=run_id, force=force)
+                result_id = executor.run_branch(self._store, plan_version_id, branch_id, run_id=run_id, force=force, branch_ctx=ctx)
             elif run_scope == "to_node" and target_step_id:
                 result_id = executor.run_to_node(self._store, plan_version_id, target_step_id, run_id=run_id, force=force, branch_id=branch_id)
             else:

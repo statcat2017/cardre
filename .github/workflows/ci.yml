@@ -202,8 +202,6 @@ jobs:
   check-api-contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -224,13 +222,4 @@ jobs:
       - name: Generate OpenAPI types
         run: python3 scripts/generate-openapi-types.py
       - name: Check for stale generated types
-        id: check-types
-        run: git diff --exit-code || echo "stale=true" >> "$GITHUB_OUTPUT"
-      - name: Auto-fix stale generated types
-        if: steps.check-types.outputs.stale == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add frontend/src/api/openapi.json frontend/src/api/schema.d.ts
-          git commit -m "chore: regenerate OpenAPI types [skip ci]"
-          git push
+        run: git diff --exit-code

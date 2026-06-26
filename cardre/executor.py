@@ -111,26 +111,30 @@ class PlanExecutor:
         branch_id: str,
         run_id: str | None = None,
         force: bool = False,
+        branch_ctx: Any = None,
     ) -> str:
         from cardre.errors import BranchEvidenceError
         from cardre.run_lifecycle import RunLifecycle
         from cardre.services.branch_evidence import BranchEvidenceResolver
-        resolver = BranchEvidenceResolver(self)
-        try:
-            ctx = resolver.prepare_branch_run(store, branch_id, plan_version_id, force=force)
-        except BranchEvidenceError as exc:
-            if run_id is not None:
-                store.append_run_diagnostic(run_id, {
-                    "code": exc.code,
-                    "message": exc.message,
-                    "severity": "error",
-                    "category": "execution",
-                    "run_id": run_id,
-                    "plan_version_id": plan_version_id,
-                    "branch_id": branch_id,
-                    "context": exc.context,
-                })
-            raise
+        if branch_ctx is not None:
+            ctx = branch_ctx
+        else:
+            resolver = BranchEvidenceResolver(self)
+            try:
+                ctx = resolver.prepare_branch_run(store, branch_id, plan_version_id, force=force)
+            except BranchEvidenceError as exc:
+                if run_id is not None:
+                    store.append_run_diagnostic(run_id, {
+                        "code": exc.code,
+                        "message": exc.message,
+                        "severity": "error",
+                        "category": "execution",
+                        "run_id": run_id,
+                        "plan_version_id": plan_version_id,
+                        "branch_id": branch_id,
+                        "context": exc.context,
+                    })
+                raise
         if not force and ctx.short_circuit_run_id is not None:
             return ctx.short_circuit_run_id
 
@@ -159,6 +163,8 @@ class PlanExecutor:
             # Build action list but defer parent evidence resolution to
             # just-before-execute so branch-owned parent steps produce
             # fresh evidence before their children resolve inputs.
+            from cardre.services.branch_evidence import BranchEvidenceResolver
+            resolver = BranchEvidenceResolver(self)
             actions: list[_StepAction] = []
             for spec in ctx.steps:
                 if spec.step_id not in ctx.branch_owned_step_ids:

@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "../api/client";
 import { TopBar } from "./TopBar";
 import { LeftNav } from "./LeftNav";
 import { PathwayView } from "./PathwayView";
@@ -31,7 +32,15 @@ export function ProjectView({ projectId, onBack }: Props) {
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
 
   const { project, projectLoading, scorecardPlan, planId, planData, refetchPlan } = useProjectPlanState(projectId);
-  const { selectedBranchId, setSelectedBranchId } = useSelectedBranch(projectId);
+
+  const { data: health } = useQuery({
+    queryKey: ["health"],
+    queryFn: () => api.health(),
+    staleTime: 30_000,
+  });
+  const governanceEnabled = health?.governance_enabled ?? false;
+
+  const { selectedBranchId, setSelectedBranchId } = useSelectedBranch(projectId, governanceEnabled);
 
   const runProgress = useRunProgress(projectId, () => {
     refetchPlan();

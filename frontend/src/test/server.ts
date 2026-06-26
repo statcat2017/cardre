@@ -12,6 +12,18 @@ const MB_STATES: Record<string, any> = {
 };
 
 export const server = setupServer(
+  http.get(`${BASE}/health`, () =>
+    HttpResponse.json({
+      status: "ok",
+      governance_enabled: false,
+      registry_accessible: true,
+      registered_node_count: 51,
+      launch_node_count: 32,
+      deferred_node_count: 19,
+      checked_at: "2026-01-01T00:00:00Z",
+      diagnostics: [],
+    })
+  ),
   http.get(`${BASE}/plans/:planId/steps/:stepId/editor-state`, ({ request }) => {
     const url = new URL(request.url);
     const mbState = url.searchParams.get("mb_state") || "default";

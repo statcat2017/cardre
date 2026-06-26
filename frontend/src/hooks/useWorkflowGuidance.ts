@@ -16,7 +16,7 @@ export function useWorkflowGuidance(
         ...(branchId ? { branch_id: branchId } : {}),
         ...(runId ? { run_id: runId } : {}),
       }),
-    enabled: !!planId && !!projectId && !!branchId,
+    enabled: !!planId && !!projectId,
     staleTime: 2000,
   });
 }
