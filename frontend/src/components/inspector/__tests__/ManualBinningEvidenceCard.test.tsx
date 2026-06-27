@@ -36,7 +36,9 @@ describe("ManualBinningEvidenceCard", () => {
       ),
     );
     render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
         <ManualBinningEvidenceCard projectId="prj1" planId="plan1" stepId="manual-binning" />
       </QueryClientProvider>,
     );
@@ -48,7 +50,9 @@ describe("ManualBinningEvidenceCard", () => {
   it("shows not-ready state when editor is not ready", async () => {
     server.use(
       http.get(`${BASE}/plans/:planId/steps/:stepId/editor-state`, () =>
-        HttpResponse.json(buildManualBinningEditorState({ ready: false, blocked_reason: "Upstream stale." })),
+        HttpResponse.json(
+          buildManualBinningEditorState({ ready: false, blocked_reason: "Upstream stale." }),
+        ),
       ),
     );
     renderCard();

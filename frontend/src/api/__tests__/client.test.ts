@@ -1,11 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { api, ApiError, isApiError, formatApiError, getBaseUrl, fetchJson } from "../client";
 
-function mockFetchResponse(
-  status: number,
-  body: string,
-  headers?: Record<string, string>,
-) {
+function mockFetchResponse(status: number, body: string, headers?: Record<string, string>) {
   return vi.spyOn(global, "fetch").mockResolvedValue({
     ok: status >= 200 && status < 300,
     status,
@@ -22,20 +18,22 @@ function mockFetchResponse(
 }
 
 function mockFetchNeverResolves() {
-  return vi.spyOn(global, "fetch").mockImplementation(
-    (_url, init) => {
-      const signal = (init as RequestInit)?.signal;
-      return new Promise<Response>((_resolve, reject) => {
-        if (signal?.aborted) {
+  return vi.spyOn(global, "fetch").mockImplementation((_url, init) => {
+    const signal = (init as RequestInit)?.signal;
+    return new Promise<Response>((_resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new DOMException("The operation was aborted", "AbortError"));
+        return;
+      }
+      signal?.addEventListener(
+        "abort",
+        () => {
           reject(new DOMException("The operation was aborted", "AbortError"));
-          return;
-        }
-        signal?.addEventListener("abort", () => {
-          reject(new DOMException("The operation was aborted", "AbortError"));
-        }, { once: true });
-      });
-    },
-  );
+        },
+        { once: true },
+      );
+    });
+  });
 }
 
 function mockFetchError(error: Error) {
@@ -47,16 +45,20 @@ afterEach(() => {
 });
 
 describe("fetchJson timeout", () => {
-  it("throws REQUEST_TIMEOUT when fetch never resolves within timeoutMs", { timeout: 10_000 }, async () => {
-    mockFetchNeverResolves();
-    // Use a custom call with a very short timeout to avoid waiting 5s
-    const promise = api.health();
-    await expect(promise).rejects.toThrow(ApiError);
-    await expect(promise).rejects.toMatchObject({
-      code: "REQUEST_TIMEOUT",
-      status: 0,
-    });
-  });
+  it(
+    "throws REQUEST_TIMEOUT when fetch never resolves within timeoutMs",
+    { timeout: 10_000 },
+    async () => {
+      mockFetchNeverResolves();
+      // Use a custom call with a very short timeout to avoid waiting 5s
+      const promise = api.health();
+      await expect(promise).rejects.toThrow(ApiError);
+      await expect(promise).rejects.toMatchObject({
+        code: "REQUEST_TIMEOUT",
+        status: 0,
+      });
+    },
+  );
 
   it("aborts the underlying request on timeout", { timeout: 10_000 }, async () => {
     const spy = mockFetchNeverResolves();
@@ -69,26 +71,28 @@ describe("fetchJson timeout", () => {
 });
 
 describe("fetchJson abort", () => {
-  it("throws REQUEST_ABORTED when caller signal aborts before fetch", { timeout: 10_000 }, async () => {
-    const controller = new AbortController();
-    controller.abort();
-    // Mock that checks the signal — if already aborted, reject immediately
-    vi.spyOn(global, "fetch").mockImplementation(
-      (_url, init) => {
+  it(
+    "throws REQUEST_ABORTED when caller signal aborts before fetch",
+    { timeout: 10_000 },
+    async () => {
+      const controller = new AbortController();
+      controller.abort();
+      // Mock that checks the signal — if already aborted, reject immediately
+      vi.spyOn(global, "fetch").mockImplementation((_url, init) => {
         const signal = (init as RequestInit)?.signal;
         if (signal?.aborted) {
           return Promise.reject(new DOMException("The operation was aborted", "AbortError"));
         }
         return new Promise<Response>(() => {});
-      },
-    );
-    const promise = fetchJson("/health", { signal: controller.signal, timeoutMs: 10_000 });
-    await expect(promise).rejects.toThrow(ApiError);
-    await expect(promise).rejects.toMatchObject({
-      code: "REQUEST_ABORTED",
-      status: 0,
-    });
-  });
+      });
+      const promise = fetchJson("/health", { signal: controller.signal, timeoutMs: 10_000 });
+      await expect(promise).rejects.toThrow(ApiError);
+      await expect(promise).rejects.toMatchObject({
+        code: "REQUEST_ABORTED",
+        status: 0,
+      });
+    },
+  );
 });
 
 describe("fetchJson malformed response", () => {
@@ -123,15 +127,20 @@ describe("fetchJson response-body timeout", () => {
         ok: true,
         status: 200,
         headers: new Map() as unknown as Headers,
-        text: () => new Promise<string>((resolve, reject) => {
-          if (signal?.aborted) {
-            reject(new DOMException("The operation was aborted", "AbortError"));
-            return;
-          }
-          signal?.addEventListener("abort", () => {
-            reject(new DOMException("The operation was aborted", "AbortError"));
-          }, { once: true });
-        }),
+        text: () =>
+          new Promise<string>((resolve, reject) => {
+            if (signal?.aborted) {
+              reject(new DOMException("The operation was aborted", "AbortError"));
+              return;
+            }
+            signal?.addEventListener(
+              "abort",
+              () => {
+                reject(new DOMException("The operation was aborted", "AbortError"));
+              },
+              { once: true },
+            );
+          }),
       } as unknown as Response);
     });
     const promise = fetchJson("/health", { timeoutMs: 50 });
@@ -215,9 +224,13 @@ describe("fetchJson unreachable", () => {
 
 describe("fetchJson server error with code", () => {
   it("throws ApiError with server code and requestId", async () => {
-    mockFetchResponse(500, JSON.stringify({
-      detail: { code: "RUN_EXECUTION_FAILED", message: "Something broke" },
-    }), { "X-Cardre-Request-Id": "req_abc123" });
+    mockFetchResponse(
+      500,
+      JSON.stringify({
+        detail: { code: "RUN_EXECUTION_FAILED", message: "Something broke" },
+      }),
+      { "X-Cardre-Request-Id": "req_abc123" },
+    );
     const promise = api.health();
     await expect(promise).rejects.toThrow(ApiError);
     await expect(promise).rejects.toMatchObject({
@@ -262,18 +275,26 @@ describe("formatApiError", () => {
   });
 
   it("includes requestId when present", () => {
-    const err = new ApiError(500, {
-      code: "RUN_EXECUTION_FAILED",
-      message: "Something broke",
-    }, { requestId: "req_abc123" });
+    const err = new ApiError(
+      500,
+      {
+        code: "RUN_EXECUTION_FAILED",
+        message: "Something broke",
+      },
+      { requestId: "req_abc123" },
+    );
     expect(formatApiError(err)).toContain("req=req_abc1");
   });
 
   it("includes timeout when present", () => {
-    const err = new ApiError(0, {
-      code: "REQUEST_TIMEOUT",
-      message: "Request timed out after 5000ms.",
-    }, { timedOutAtMs: 5000 });
+    const err = new ApiError(
+      0,
+      {
+        code: "REQUEST_TIMEOUT",
+        message: "Request timed out after 5000ms.",
+      },
+      { timedOutAtMs: 5000 },
+    );
     expect(formatApiError(err)).toContain("timeout=5000ms");
   });
 

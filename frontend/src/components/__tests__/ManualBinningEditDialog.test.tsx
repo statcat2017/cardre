@@ -18,17 +18,22 @@ function renderDialog() {
   const onClose = vi.fn();
   const onSaved = vi.fn();
   return {
-    ...render(<QueryClientProvider client={qc}><ManualBinningEditDialog
-      variable="income"
-      state={state}
-      planId={PLAN_ID}
-      basePlanVersionId={BASE_PV}
-      stepId={STEP_ID}
-      projectId={PROJECT_ID}
-      onClose={onClose}
-      onSaved={onSaved}
-    /></QueryClientProvider>),
-    onClose, onSaved,
+    ...render(
+      <QueryClientProvider client={qc}>
+        <ManualBinningEditDialog
+          variable="income"
+          state={state}
+          planId={PLAN_ID}
+          basePlanVersionId={BASE_PV}
+          stepId={STEP_ID}
+          projectId={PROJECT_ID}
+          onClose={onClose}
+          onSaved={onSaved}
+        />
+      </QueryClientProvider>,
+    ),
+    onClose,
+    onSaved,
   };
 }
 
@@ -85,7 +90,11 @@ describe("ManualBinningEditDialog", () => {
     const user = userEvent.setup();
     server.use(
       http.post(/\/plans\/.*\/steps\/.*\/manual-binning\/preview/, () => {
-        return HttpResponse.json({ valid: true, diagnostics: { override_count: 1, warnings: [] }, refined_bins_by_variable: { income: { bins: [{ label: "merged" }] } } });
+        return HttpResponse.json({
+          valid: true,
+          diagnostics: { override_count: 1, warnings: [] },
+          refined_bins_by_variable: { income: { bins: [{ label: "merged" }] } },
+        });
       }),
     );
     renderDialog();
@@ -103,7 +112,11 @@ describe("ManualBinningEditDialog", () => {
     const user = userEvent.setup();
     server.use(
       http.post(/\/plans\/.*\/steps\/.*\/manual-binning\/preview/, () =>
-        HttpResponse.json({ valid: false, diagnostics: { override_count: 1, warnings: ["Invalid merge"] }, refined_bins_by_variable: {} }),
+        HttpResponse.json({
+          valid: false,
+          diagnostics: { override_count: 1, warnings: ["Invalid merge"] },
+          refined_bins_by_variable: {},
+        }),
       ),
     );
     renderDialog();
@@ -119,8 +132,12 @@ describe("ManualBinningEditDialog", () => {
     let sentBody: Record<string, unknown> | undefined;
     server.use(
       http.post(/\/plans\/.*\/steps\/.*\/manual-binning\/preview/, async ({ request }) => {
-        sentBody = await request.json() as Record<string, unknown>;
-        return HttpResponse.json({ valid: true, diagnostics: { override_count: 1, warnings: [] }, refined_bins_by_variable: { income: { bins: [] } } });
+        sentBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          valid: true,
+          diagnostics: { override_count: 1, warnings: [] },
+          refined_bins_by_variable: { income: { bins: [] } },
+        });
       }),
     );
     renderDialog();
@@ -147,8 +164,13 @@ describe("ManualBinningEditDialog", () => {
     let sentBody: Record<string, unknown> | undefined;
     server.use(
       http.post(/\/plans\/.*\/steps\/.*\/manual-binning\/review/, async ({ request }) => {
-        sentBody = await request.json() as Record<string, unknown>;
-        return HttpResponse.json({ plan_id: PLAN_ID, new_plan_version_id: "pv2", reviewed: false, accept_automated: false });
+        sentBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          plan_id: PLAN_ID,
+          new_plan_version_id: "pv2",
+          reviewed: false,
+          accept_automated: false,
+        });
       }),
     );
     renderDialog();

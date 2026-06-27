@@ -32,9 +32,7 @@ export function ArtifactPreviewPane({ artifactId, mediaType, rowCount, summaryPr
     return (
       <div style={{ marginTop: 8 }}>
         <div style={{ color: theme.muted, marginBottom: 2 }}>Summary Preview</div>
-        <pre style={preBlockStyle}>
-          {JSON.stringify(summaryPreview, null, 2)}
-        </pre>
+        <pre style={preBlockStyle}>{JSON.stringify(summaryPreview, null, 2)}</pre>
       </div>
     );
   }
@@ -42,8 +40,19 @@ export function ArtifactPreviewPane({ artifactId, mediaType, rowCount, summaryPr
   if (mediaType === "application/vnd.apache.parquet" || mediaType === "application/json") {
     if (isTooLarge) {
       return (
-        <div style={{ marginTop: 8, padding: "8px 12px", backgroundColor: theme.yellowBg, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, color: theme.yellowText }}>
-          Dataset has {total.toLocaleString()} rows - too large to preview. Use the summary endpoint or download the artifact directly.
+        <div
+          style={{
+            marginTop: 8,
+            padding: "8px 12px",
+            backgroundColor: theme.yellowBg,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 6,
+            fontSize: 12,
+            color: theme.yellowText,
+          }}
+        >
+          Dataset has {total.toLocaleString()} rows - too large to preview. Use the summary endpoint
+          or download the artifact directly.
         </div>
       );
     }
@@ -59,9 +68,17 @@ export function ArtifactPreviewPane({ artifactId, mediaType, rowCount, summaryPr
           <div style={{ color: theme.muted, fontSize: 11 }}>Loading preview...</div>
         ) : preview ? (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 4,
+              }}
+            >
               <span style={{ fontSize: 11, color: theme.muted }}>
-                Showing rows {offset + 1}–{Math.min(offset + limit, total)} of {total.toLocaleString()}
+                Showing rows {offset + 1}–{Math.min(offset + limit, total)} of{" "}
+                {total.toLocaleString()}
               </span>
               <div style={{ display: "flex", gap: 4 }}>
                 <button
@@ -86,8 +103,18 @@ export function ArtifactPreviewPane({ artifactId, mediaType, rowCount, summaryPr
                   <thead>
                     <tr style={{ borderBottom: `1px solid ${theme.border}` }}>
                       {preview.columns.map((c: { name: string; dtype: string }) => (
-                        <th key={c.name} style={{ textAlign: "left", padding: "4px 6px", color: theme.textSoft, whiteSpace: "nowrap" }}>
-                          {c.name}<br /><span style={{ fontWeight: 400, color: theme.mutedSoft }}>{c.dtype}</span>
+                        <th
+                          key={c.name}
+                          style={{
+                            textAlign: "left",
+                            padding: "4px 6px",
+                            color: theme.textSoft,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {c.name}
+                          <br />
+                          <span style={{ fontWeight: 400, color: theme.mutedSoft }}>{c.dtype}</span>
                         </th>
                       ))}
                     </tr>
@@ -96,8 +123,20 @@ export function ArtifactPreviewPane({ artifactId, mediaType, rowCount, summaryPr
                     {preview.rows.map((row: Record<string, unknown>, ri: number) => (
                       <tr key={ri} style={{ borderBottom: `1px solid ${theme.border}` }}>
                         {preview.columns!.map((c: { name: string }) => (
-                          <td key={c.name} style={{ padding: "3px 6px", color: theme.textSoft, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {row[c.name] !== null && row[c.name] !== undefined ? String(row[c.name]) : "—"}
+                          <td
+                            key={c.name}
+                            style={{
+                              padding: "3px 6px",
+                              color: theme.textSoft,
+                              maxWidth: 200,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {row[c.name] !== null && row[c.name] !== undefined
+                              ? String(row[c.name])
+                              : "—"}
                           </td>
                         ))}
                       </tr>
@@ -107,14 +146,10 @@ export function ArtifactPreviewPane({ artifactId, mediaType, rowCount, summaryPr
               </div>
             )}
             {preview.json_content && (
-              <pre style={preBlockStyle}>
-                {JSON.stringify(preview.json_content, null, 2)}
-              </pre>
+              <pre style={preBlockStyle}>{JSON.stringify(preview.json_content, null, 2)}</pre>
             )}
             {!preview.rows?.length && !preview.json_content && (
-              <div style={{ color: theme.mutedSoft, fontSize: 11 }}>
-                No preview data available.
-              </div>
+              <div style={{ color: theme.mutedSoft, fontSize: 11 }}>No preview data available.</div>
             )}
           </div>
         ) : null}
@@ -123,8 +158,19 @@ export function ArtifactPreviewPane({ artifactId, mediaType, rowCount, summaryPr
   }
 
   return (
-    <div style={{ marginTop: 8, padding: "8px 12px", backgroundColor: theme.canvasSoft, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, color: theme.muted }}>
-      Preview not supported for media type <code>{mediaType}</code>. Use the summary endpoint or download the artifact directly.
+    <div
+      style={{
+        marginTop: 8,
+        padding: "8px 12px",
+        backgroundColor: theme.canvasSoft,
+        border: `1px solid ${theme.border}`,
+        borderRadius: 6,
+        fontSize: 12,
+        color: theme.muted,
+      }}
+    >
+      Preview not supported for media type <code>{mediaType}</code>. Use the summary endpoint or
+      download the artifact directly.
     </div>
   );
 }

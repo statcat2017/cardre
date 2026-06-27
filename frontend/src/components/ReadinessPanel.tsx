@@ -31,9 +31,7 @@ export function ReadinessPanel({
 }: ReadinessPanelProps) {
   if (!targetBranchId) {
     return (
-      <div style={{ fontSize: 13, color: theme.muted, padding: "12px 0" }}>
-        Select a branch.
-      </div>
+      <div style={{ fontSize: 13, color: theme.muted, padding: "12px 0" }}>Select a branch.</div>
     );
   }
 
@@ -56,9 +54,15 @@ export function ReadinessPanel({
             onClick={onRecheck}
             disabled
             style={{
-              padding: "8px 16px", borderRadius: 6, border: `1px solid ${theme.border}`,
-              fontSize: 13, backgroundColor: theme.surfaceMuted, cursor: "pointer",
-              fontWeight: 500, color: theme.textSoft, opacity: 0.5,
+              padding: "8px 16px",
+              borderRadius: 6,
+              border: `1px solid ${theme.border}`,
+              fontSize: 13,
+              backgroundColor: theme.surfaceMuted,
+              cursor: "pointer",
+              fontWeight: 500,
+              color: theme.textSoft,
+              opacity: 0.5,
             }}
           >
             Checking…
@@ -73,18 +77,19 @@ export function ReadinessPanel({
       <div>
         <div
           style={{
-            padding: 12, border: `1px solid ${theme.border}`, borderRadius: 8,
-            backgroundColor: theme.redBg, fontSize: 13, color: theme.redText,
+            padding: 12,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 8,
+            backgroundColor: theme.redBg,
+            fontSize: 13,
+            color: theme.redText,
           }}
         >
           <strong>Readiness check failed.</strong>{" "}
-          {(readinessError instanceof Error ? readinessError.message : "Unknown error")}
+          {readinessError instanceof Error ? readinessError.message : "Unknown error"}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-          <RecheckButton
-            loading={false}
-            onClick={onRecheck}
-          />
+          <RecheckButton loading={false} onClick={onRecheck} />
         </div>
       </div>
     );
@@ -93,10 +98,7 @@ export function ReadinessPanel({
   if (!readinessData) {
     return (
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <RecheckButton
-          loading={false}
-          onClick={onRecheck}
-        />
+        <RecheckButton loading={false} onClick={onRecheck} />
       </div>
     );
   }
@@ -113,34 +115,60 @@ export function ReadinessPanel({
         {readinessData.target_branch_id || branchName || targetBranchId} using run{" "}
         {(readinessData.run_id || latestRunId).slice(0, 8)} &middot;{" "}
         {readinessData.report_mode || reportMode} mode.
-        {readinessData.checked_at && (
-          <span> Last checked {readinessData.checked_at}.</span>
-        )}
+        {readinessData.checked_at && <span> Last checked {readinessData.checked_at}.</span>}
       </div>
 
       {/* Result panel */}
       <div
         style={{
-          padding: 16, border: `1px solid ${theme.border}`, borderRadius: 8,
-          backgroundColor: !isReady ? theme.redBg : hasWarnings ? theme.yellowBg : theme.surfaceMuted,
+          padding: 16,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 8,
+          backgroundColor: !isReady
+            ? theme.redBg
+            : hasWarnings
+              ? theme.yellowBg
+              : theme.surfaceMuted,
         }}
       >
         {!hasBlockers && (
-          <div style={{ fontSize: 13, color: hasWarnings ? theme.yellowText : theme.greenText, marginBottom: hasWarnings ? 8 : 0 }}>
+          <div
+            style={{
+              fontSize: 13,
+              color: hasWarnings ? theme.yellowText : theme.greenText,
+              marginBottom: hasWarnings ? 8 : 0,
+            }}
+          >
             <strong>Ready.</strong> All evidence available. Ready to generate.
           </div>
         )}
         {readinessData.blockers?.map((b) => (
-          <div key={b.code} style={{ padding: "4px 0", fontSize: 13, color: theme.redText, display: "flex", alignItems: "center", gap: 8 }}>
+          <div
+            key={b.code}
+            style={{
+              padding: "4px 0",
+              fontSize: 13,
+              color: theme.redText,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
             <strong style={{ marginRight: 4 }}>Blocked</strong>
             <strong>{b.code}:</strong> {b.message}
             {b.step_id && onStepSelect && (
               <button
                 onClick={() => onStepSelect(b.step_id!)}
                 style={{
-                  padding: "2px 8px", borderRadius: 4, border: `1px solid ${theme.border}`,
-                  backgroundColor: theme.surface, color: theme.textSoft, fontSize: 10,
-                  cursor: "pointer", marginLeft: "auto", whiteSpace: "nowrap",
+                  padding: "2px 8px",
+                  borderRadius: 4,
+                  border: `1px solid ${theme.border}`,
+                  backgroundColor: theme.surface,
+                  color: theme.textSoft,
+                  fontSize: 10,
+                  cursor: "pointer",
+                  marginLeft: "auto",
+                  whiteSpace: "nowrap",
                 }}
               >
                 Go to step
@@ -158,10 +186,7 @@ export function ReadinessPanel({
 
       {/* Recheck button */}
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-        <RecheckButton
-          loading={false}
-          onClick={onRecheck}
-        />
+        <RecheckButton loading={false} onClick={onRecheck} />
       </div>
     </div>
   );
@@ -173,9 +198,14 @@ function RecheckButton({ loading, onClick }: { loading: boolean; onClick: () => 
       onClick={onClick}
       disabled={loading}
       style={{
-        padding: "8px 16px", borderRadius: 6, border: `1px solid ${theme.border}`,
-        fontSize: 13, backgroundColor: theme.surfaceMuted, cursor: "pointer",
-        fontWeight: 500, color: theme.textSoft,
+        padding: "8px 16px",
+        borderRadius: 6,
+        border: `1px solid ${theme.border}`,
+        fontSize: 13,
+        backgroundColor: theme.surfaceMuted,
+        cursor: "pointer",
+        fontWeight: 500,
+        color: theme.textSoft,
         opacity: loading ? 0.5 : 1,
       }}
     >

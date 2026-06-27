@@ -26,7 +26,9 @@ interface Props {
   projectId: string | null;
   basePlanVersionId: string | null;
   currentParams: Record<string, unknown>;
-  onPlanRefreshed: (detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string }) => void;
+  onPlanRefreshed: (
+    detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string },
+  ) => void;
   onEditManualBinning: (stepId: string) => void;
   guidance?: WorkflowGuidance | null;
   runId?: string | null;
@@ -38,22 +40,35 @@ interface InnerProps {
   projectId: string | null;
   basePlanVersionId: string | null;
   currentParams: Record<string, unknown>;
-  onPlanRefreshed: (detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string }) => void;
+  onPlanRefreshed: (
+    detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string },
+  ) => void;
   onEditManualBinning: (stepId: string) => void;
   guidance?: WorkflowGuidance | null;
   runId: string | null;
 }
 
 export function StepInspector({
-  step, planId, projectId, basePlanVersionId, currentParams,
-  onPlanRefreshed, onEditManualBinning, guidance, runId = null,
+  step,
+  planId,
+  projectId,
+  basePlanVersionId,
+  currentParams,
+  onPlanRefreshed,
+  onEditManualBinning,
+  guidance,
+  runId = null,
 }: Props) {
   if (!step) {
     return (
       <div
         style={{
-          width: 320, borderLeft: `1px solid ${theme.border}`, backgroundColor: theme.canvasSoft,
-          padding: 20, flexShrink: 0, overflowY: "auto",
+          width: 320,
+          borderLeft: `1px solid ${theme.border}`,
+          backgroundColor: theme.canvasSoft,
+          padding: 20,
+          flexShrink: 0,
+          overflowY: "auto",
         }}
       >
         <div style={{ color: theme.muted, fontSize: 13 }}>Select a step to inspect</div>
@@ -78,8 +93,15 @@ export function StepInspector({
 }
 
 function StepInspectorInner({
-  step, planId, projectId, basePlanVersionId, currentParams,
-  onPlanRefreshed, onEditManualBinning, guidance, runId,
+  step,
+  planId,
+  projectId,
+  basePlanVersionId,
+  currentParams,
+  onPlanRefreshed,
+  onEditManualBinning,
+  guidance,
+  runId,
 }: InnerProps) {
   const [tab, setTab] = useState<InspectorTab>("next_action");
 
@@ -89,9 +111,11 @@ function StepInspectorInner({
   const canEdit = !!planId && !!projectId && !!basePlanVersionId;
   const canonicalId = step ? canonicalizeStepId(step.step_id) : null;
   const guidanceForStep = canonicalId ? guidance?.step_guidance?.[canonicalId] : null;
-  const stepBlockers = step ? (guidance?.blockers ?? []).filter(
-    (b) => b.step_id && canonicalizeStepId(b.step_id) === canonicalId,
-  ) : [];
+  const stepBlockers = step
+    ? (guidance?.blockers ?? []).filter(
+        (b) => b.step_id && canonicalizeStepId(b.step_id) === canonicalId,
+      )
+    : [];
 
   const editorStateQuery = useQuery({
     queryKey: ["manualBinningEditorState", planId, projectId, step?.step_id],
@@ -105,8 +129,13 @@ function StepInspectorInner({
   return (
     <div
       style={{
-        width: 320, borderLeft: `1px solid ${theme.border}`, backgroundColor: theme.canvasSoft,
-        flexShrink: 0, overflowY: "auto", display: "flex", flexDirection: "column",
+        width: 320,
+        borderLeft: `1px solid ${theme.border}`,
+        backgroundColor: theme.canvasSoft,
+        flexShrink: 0,
+        overflowY: "auto",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       <div style={{ padding: "16px 16px 8px" }}>
@@ -116,16 +145,31 @@ function StepInspectorInner({
         </div>
       </div>
 
-      <div style={{ display: "flex", borderBottom: `1px solid ${theme.border}`, padding: "0 8px", gap: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          borderBottom: `1px solid ${theme.border}`,
+          padding: "0 8px",
+          gap: 0,
+        }}
+      >
         {(Object.keys(TAB_LABELS) as InspectorTab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             style={{
-              flex: 1, padding: "6px 4px", border: "none", borderBottom: `2px solid ${tab === t ? theme.text : "transparent"}`,
-              backgroundColor: "transparent", color: tab === t ? theme.text : theme.muted,
-              fontSize: 10, fontWeight: tab === t ? 600 : 400, cursor: "pointer",
-              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              flex: 1,
+              padding: "6px 4px",
+              border: "none",
+              borderBottom: `2px solid ${tab === t ? theme.text : "transparent"}`,
+              backgroundColor: "transparent",
+              color: tab === t ? theme.text : theme.muted,
+              fontSize: 10,
+              fontWeight: tab === t ? 600 : 400,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}
           >
             {TAB_LABELS[t]}
@@ -139,7 +183,13 @@ function StepInspectorInner({
             guidanceForStep={guidanceForStep}
             isManualBinning={isManualBinning}
             onEditManualBinning={() => onEditManualBinning(step.step_id)}
-            manualBinningState={editorStateQuery.data as { ready: boolean; blocked_reason?: string; selected_variables?: string[] } | null ?? null}
+            manualBinningState={
+              (editorStateQuery.data as {
+                ready: boolean;
+                blocked_reason?: string;
+                selected_variables?: string[];
+              } | null) ?? null
+            }
             loadingManualBinning={editorStateQuery.isLoading}
           />
         )}
@@ -170,19 +220,11 @@ function StepInspectorInner({
         )}
 
         {tab === "warnings" && (
-          <WarningsTab
-            blockers={stepBlockers}
-            stepFailed={step.status === "failed"}
-          />
+          <WarningsTab blockers={stepBlockers} stepFailed={step.status === "failed"} />
         )}
 
         {tab === "history" && (
-          <RunHistoryTab
-            stepId={step.step_id}
-            projectId={projectId!}
-            runId={runId}
-            tab={tab}
-          />
+          <RunHistoryTab stepId={step.step_id} projectId={projectId!} runId={runId} tab={tab} />
         )}
       </div>
     </div>

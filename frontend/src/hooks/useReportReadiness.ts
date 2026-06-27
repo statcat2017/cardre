@@ -16,11 +16,7 @@ export function useReportReadiness(
         target_branch_id: targetBranchId!,
         report_mode: reportMode,
       }),
-    enabled:
-      !!projectId &&
-      !!runId &&
-      !!targetBranchId &&
-      (opts?.enabled ?? true),
+    enabled: !!projectId && !!runId && !!targetBranchId && (opts?.enabled ?? true),
     staleTime: 5000,
   });
 }

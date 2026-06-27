@@ -10,11 +10,34 @@ import type { BranchListItem } from "../../types";
 const BASE = "http://127.0.0.1:8752";
 
 const branches: BranchListItem[] = [
-  { branch_id: "br_default", name: "Baseline", branch_type: "baseline", status: "active", plan_id: "plan1", base_plan_version_id: "pv1", head_plan_version_id: "pv1" },
-  { branch_id: "br_challenger", name: "Challenger", branch_type: "challenger", status: "active", plan_id: "plan1", base_plan_version_id: "pv1", head_plan_version_id: "pv1" },
+  {
+    branch_id: "br_default",
+    name: "Baseline",
+    branch_type: "baseline",
+    status: "active",
+    plan_id: "plan1",
+    base_plan_version_id: "pv1",
+    head_plan_version_id: "pv1",
+  },
+  {
+    branch_id: "br_challenger",
+    name: "Challenger",
+    branch_type: "challenger",
+    status: "active",
+    plan_id: "plan1",
+    base_plan_version_id: "pv1",
+    head_plan_version_id: "pv1",
+  },
 ];
 
-const run = { run_id: "run1", plan_version_id: "pv1", status: "succeeded", started_at: "2026-02-01T00:00:00Z", finished_at: "2026-02-01T01:00:00Z", step_count: 10 };
+const run = {
+  run_id: "run1",
+  plan_version_id: "pv1",
+  status: "succeeded",
+  started_at: "2026-02-01T00:00:00Z",
+  finished_at: "2026-02-01T01:00:00Z",
+  step_count: 10,
+};
 
 function renderExportPanel(targetBranchId: string | null, onBranchSelect?: (id: string) => void) {
   const client = new QueryClient({
@@ -37,23 +60,24 @@ describe("ExportPanel generate safety", () => {
     let capturedUrl: string | null = null;
 
     server.use(
-      http.get(`${BASE}/projects/:projectId/branches`, () =>
-        HttpResponse.json({ branches })
-      ),
-      http.get(`${BASE}/projects/:projectId/runs`, () =>
-        HttpResponse.json({ runs: [run] })
-      ),
+      http.get(`${BASE}/projects/:projectId/branches`, () => HttpResponse.json({ branches })),
+      http.get(`${BASE}/projects/:projectId/runs`, () => HttpResponse.json({ runs: [run] })),
       http.post(`${BASE}/projects/:projectId/runs/:runId/report-readiness`, () =>
-        HttpResponse.json({ ready: true, status: "ready", blockers: [], warnings: [] })
+        HttpResponse.json({ ready: true, status: "ready", blockers: [], warnings: [] }),
       ),
-      http.get(`${BASE}/projects/:projectId/runs/:runId/reports`, () =>
-        HttpResponse.json([])
-      ),
+      http.get(`${BASE}/projects/:projectId/runs/:runId/reports`, () => HttpResponse.json([])),
       http.post(`${BASE}/projects/:projectId/runs/:runId/reports`, async ({ request }) => {
         capturedUrl = request.url;
-        capturedBody = await request.json() as Record<string, unknown>;
+        capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(
-          { report_id: "rpt1", status: "completed", report_bundle_path: "/rpt.json", html_path: "/rpt.html", export_path: "/rpt.zip", zip_path: "/rpt.zip" },
+          {
+            report_id: "rpt1",
+            status: "completed",
+            report_bundle_path: "/rpt.json",
+            html_path: "/rpt.html",
+            export_path: "/rpt.zip",
+            zip_path: "/rpt.zip",
+          },
           { status: 201 },
         );
       }),
@@ -77,25 +101,21 @@ describe("ExportPanel generate safety", () => {
   });
 
   it("disables generate and shows Checking during branch-switch refetch (no stale state leak)", async () => {
-
     server.use(
-      http.get(`${BASE}/projects/:projectId/branches`, () =>
-        HttpResponse.json({ branches })
-      ),
-      http.get(`${BASE}/projects/:projectId/runs`, () =>
-        HttpResponse.json({ runs: [run] })
-      ),
+      http.get(`${BASE}/projects/:projectId/branches`, () => HttpResponse.json({ branches })),
+      http.get(`${BASE}/projects/:projectId/runs`, () => HttpResponse.json({ runs: [run] })),
       http.post(`${BASE}/projects/:projectId/runs/:runId/report-readiness`, async ({ request }) => {
         const url = new URL(request.url);
         const targetBranch = url.pathname.includes("br_default") ? "br_default" : "br_challenger";
         return HttpResponse.json({
-          ready: true, status: "ready", blockers: [], warnings: [],
+          ready: true,
+          status: "ready",
+          blockers: [],
+          warnings: [],
           _echo_branch: targetBranch,
         });
       }),
-      http.get(`${BASE}/projects/:projectId/runs/:runId/reports`, () =>
-        HttpResponse.json([])
-      ),
+      http.get(`${BASE}/projects/:projectId/runs/:runId/reports`, () => HttpResponse.json([])),
     );
 
     const { rerender } = renderExportPanel("br_default");
@@ -109,7 +129,9 @@ describe("ExportPanel generate safety", () => {
     // Switch branch — triggers refetch
     rerender(
       <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300_000 } } })}
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300_000 } } })
+        }
       >
         <ExportPanel projectId="prj1" targetBranchId="br_challenger" />
       </QueryClientProvider>,
@@ -127,18 +149,12 @@ describe("ExportPanel generate safety", () => {
 
   it("disables generate on readiness error", async () => {
     server.use(
-      http.get(`${BASE}/projects/:projectId/branches`, () =>
-        HttpResponse.json({ branches })
-      ),
-      http.get(`${BASE}/projects/:projectId/runs`, () =>
-        HttpResponse.json({ runs: [run] })
-      ),
+      http.get(`${BASE}/projects/:projectId/branches`, () => HttpResponse.json({ branches })),
+      http.get(`${BASE}/projects/:projectId/runs`, () => HttpResponse.json({ runs: [run] })),
       http.post(`${BASE}/projects/:projectId/runs/:runId/report-readiness`, () =>
-        HttpResponse.text("Internal error", { status: 500 })
+        HttpResponse.text("Internal error", { status: 500 }),
       ),
-      http.get(`${BASE}/projects/:projectId/runs/:runId/reports`, () =>
-        HttpResponse.json([])
-      ),
+      http.get(`${BASE}/projects/:projectId/runs/:runId/reports`, () => HttpResponse.json([])),
     );
 
     renderExportPanel("br_default");
@@ -151,20 +167,17 @@ describe("ExportPanel generate safety", () => {
 
   it("shows generate error when generate endpoint fails", async () => {
     server.use(
-      http.get(`${BASE}/projects/:projectId/branches`, () =>
-        HttpResponse.json({ branches })
-      ),
-      http.get(`${BASE}/projects/:projectId/runs`, () =>
-        HttpResponse.json({ runs: [run] })
-      ),
+      http.get(`${BASE}/projects/:projectId/branches`, () => HttpResponse.json({ branches })),
+      http.get(`${BASE}/projects/:projectId/runs`, () => HttpResponse.json({ runs: [run] })),
       http.post(`${BASE}/projects/:projectId/runs/:runId/report-readiness`, () =>
-        HttpResponse.json({ ready: true, status: "ready", blockers: [], warnings: [] })
+        HttpResponse.json({ ready: true, status: "ready", blockers: [], warnings: [] }),
       ),
-      http.get(`${BASE}/projects/:projectId/runs/:runId/reports`, () =>
-        HttpResponse.json([])
-      ),
+      http.get(`${BASE}/projects/:projectId/runs/:runId/reports`, () => HttpResponse.json([])),
       http.post(`${BASE}/projects/:projectId/runs/:runId/reports`, () =>
-        HttpResponse.json({ detail: { code: "GENERATE_FAILED", message: "Bundle assembly failed" } }, { status: 500 })
+        HttpResponse.json(
+          { detail: { code: "GENERATE_FAILED", message: "Bundle assembly failed" } },
+          { status: 500 },
+        ),
       ),
     );
 

@@ -1,4 +1,12 @@
-import type { ProjectDetailResponse, PlanResponse, BranchListItem, RunListItem, ReportReadinessResponse, GenerateReportResponse, WorkflowGuidance } from "../../types";
+import type {
+  ProjectDetailResponse,
+  PlanResponse,
+  BranchListItem,
+  RunListItem,
+  ReportReadinessResponse,
+  GenerateReportResponse,
+  WorkflowGuidance,
+} from "../../types";
 
 export const PROJECT_ID = "prj1";
 export const PLAN_ID = "plan1";
@@ -23,9 +31,36 @@ export function buildPlanWithLaunchSteps(): PlanResponse {
     name: "Scorecard Pathway",
     latest_version_id: "pv1",
     steps: [
-      { step_id: "import", node_type: "cardre.import", category: "setup", status: "succeeded", is_stale: false, position: 0, params: {}, canonical_step_id: "import" },
-      { step_id: "target-definition", node_type: "cardre.target", category: "build", status: "not_run", is_stale: false, position: 1, params: {}, canonical_step_id: "target-definition" },
-      { step_id: "manual-binning", node_type: "cardre.manual_binning", category: "build", status: "not_run", is_stale: false, position: 12, params: {}, canonical_step_id: "manual-binning" },
+      {
+        step_id: "import",
+        node_type: "cardre.import",
+        category: "setup",
+        status: "succeeded",
+        is_stale: false,
+        position: 0,
+        params: {},
+        canonical_step_id: "import",
+      },
+      {
+        step_id: "target-definition",
+        node_type: "cardre.target",
+        category: "build",
+        status: "not_run",
+        is_stale: false,
+        position: 1,
+        params: {},
+        canonical_step_id: "target-definition",
+      },
+      {
+        step_id: "manual-binning",
+        node_type: "cardre.manual_binning",
+        category: "build",
+        status: "not_run",
+        is_stale: false,
+        position: 12,
+        params: {},
+        canonical_step_id: "manual-binning",
+      },
     ],
   };
 }

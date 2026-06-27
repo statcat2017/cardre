@@ -13,7 +13,15 @@ export function ManualBinningEvidenceCard({ projectId, planId, stepId }: Props) 
 
   if (isLoading) {
     return (
-      <div style={{ padding: 12, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 11, color: theme.muted }}>
+      <div
+        style={{
+          padding: 12,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 8,
+          fontSize: 11,
+          color: theme.muted,
+        }}
+      >
         Loading review state…
       </div>
     );
@@ -21,7 +29,15 @@ export function ManualBinningEvidenceCard({ projectId, planId, stepId }: Props) 
 
   if (isError || !state) {
     return (
-      <div style={{ padding: 12, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 11, color: theme.redText }}>
+      <div
+        style={{
+          padding: 12,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 8,
+          fontSize: 11,
+          color: theme.redText,
+        }}
+      >
         Could not load manual-binning review state.
       </div>
     );
@@ -29,7 +45,15 @@ export function ManualBinningEvidenceCard({ projectId, planId, stepId }: Props) 
 
   if (!state.ready) {
     return (
-      <div style={{ padding: 12, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 11, color: theme.muted }}>
+      <div
+        style={{
+          padding: 12,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 8,
+          fontSize: 11,
+          color: theme.muted,
+        }}
+      >
         Manual binning not yet available — run the pathway first.
       </div>
     );
@@ -94,9 +118,7 @@ export function ManualBinningEvidenceCard({ projectId, planId, stepId }: Props) 
       )}
 
       {state.review_reason && (
-        <div style={{ fontSize: 10, color: theme.muted }}>
-          Reason: {state.review_reason}
-        </div>
+        <div style={{ fontSize: 10, color: theme.muted }}>Reason: {state.review_reason}</div>
       )}
     </div>
   );

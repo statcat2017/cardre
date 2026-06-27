@@ -1,5 +1,5 @@
-import React from 'react';
-import { formInputStyle, addButtonStyle, theme } from '../styles';
+import React from "react";
+import { formInputStyle, addButtonStyle, theme } from "../styles";
 
 interface Props {
   overrideVar: string;
@@ -54,7 +54,9 @@ export function AddOverrideForm({
             >
               <option value="">—</option>
               {selectedVars.map((v) => (
-                <option key={v} value={v}>{v}</option>
+                <option key={v} value={v}>
+                  {v}
+                </option>
               ))}
             </select>
           </label>

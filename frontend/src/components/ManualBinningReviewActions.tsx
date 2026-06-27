@@ -25,7 +25,13 @@ const REASON_CODES = [
   { value: "other", label: "Other" },
 ];
 
-export function ManualBinningReviewActions({ state, planId, stepId, basePlanVersionId, onPlanRefreshed }: Props) {
+export function ManualBinningReviewActions({
+  state,
+  planId,
+  stepId,
+  basePlanVersionId,
+  onPlanRefreshed,
+}: Props) {
   const queryClient = useQueryClient();
   const { msg, msgType, clearMsg, setError, setSuccess, setInfo } = useMessage();
   const [reviewing, setReviewing] = useState(false);
@@ -36,9 +42,11 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
   const editedCount = state.variable_summaries?.filter((v) => v.edited).length ?? 0;
   const reviewedCount = state.variable_summaries?.filter((v) => !v.review_required).length ?? 0;
   const totalCount = state.variable_summaries?.length ?? 0;
-  const warnTotal = state.variable_summaries?.reduce(
-    (s, v) => s + (v.zero_cell_warning_count || 0) + (v.sparse_bin_warning_count || 0), 0,
-  ) ?? 0;
+  const warnTotal =
+    state.variable_summaries?.reduce(
+      (s, v) => s + (v.zero_cell_warning_count || 0) + (v.sparse_bin_warning_count || 0),
+      0,
+    ) ?? 0;
   const isBlocked = (state.blocking_issues?.length ?? 0) > 0;
 
   const handleReview = async (acceptAutomated: boolean) => {
@@ -51,11 +59,15 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
         step_id: stepId,
         reviewed: !acceptAutomated,
         accept_automated: acceptAutomated,
-        ...(acceptAutomated ? {} : { reason_code: reasonCode || undefined, review_reason: reviewReason || undefined }),
+        ...(acceptAutomated
+          ? {}
+          : { reason_code: reasonCode || undefined, review_reason: reviewReason || undefined }),
       });
       setSuccess(acceptAutomated ? "Automated bins accepted." : "Manual binning review complete.");
       queryClient.invalidateQueries({ queryKey: ["plan"] });
-      queryClient.invalidateQueries({ queryKey: ["manualBinningState", state.project_id, planId, stepId] });
+      queryClient.invalidateQueries({
+        queryKey: ["manualBinningState", state.project_id, planId, stepId],
+      });
       queryClient.invalidateQueries({ queryKey: ["manualBinningEditorState"] });
       queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
       queryClient.invalidateQueries({ queryKey: ["reportReadiness"] });
@@ -68,9 +80,13 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
     } catch (e: unknown) {
       if (isApiError(e) && e.status === 409 && e.detail.code === "STALE_VERSION") {
         setInfo("Plan was modified externally. Refreshing…");
-        onPlanRefreshed({ latest_version_id: e.detail.context?.latest_version_id as string | undefined });
+        onPlanRefreshed({
+          latest_version_id: e.detail.context?.latest_version_id as string | undefined,
+        });
       } else {
-        setError(isApiError(e) ? e.detail.message : (acceptAutomated ? "Accept failed" : "Review failed"));
+        setError(
+          isApiError(e) ? e.detail.message : acceptAutomated ? "Accept failed" : "Review failed",
+        );
       }
     } finally {
       setReviewing(false);
@@ -79,9 +95,19 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
 
   if (state.review_status === "reviewed" || state.review_status === "accepted_automated") {
     return (
-      <div style={{ marginTop: 16, padding: 16, border: `1px solid ${theme.border}`, borderRadius: 8, backgroundColor: theme.greenBg }}>
+      <div
+        style={{
+          marginTop: 16,
+          padding: 16,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 8,
+          backgroundColor: theme.greenBg,
+        }}
+      >
         <div style={{ fontSize: 12, fontWeight: 600, color: theme.greenText, marginBottom: 8 }}>
-          {state.review_status === "accepted_automated" ? "Automated bins accepted" : "Review complete"}
+          {state.review_status === "accepted_automated"
+            ? "Automated bins accepted"
+            : "Review complete"}
         </div>
         {state.reviewed_by && (
           <div style={{ fontSize: 11, color: theme.textSoft }}>
@@ -90,7 +116,9 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
           </div>
         )}
         {state.review_reason && (
-          <div style={{ fontSize: 10, color: theme.muted, marginTop: 4 }}>Reason: {state.review_reason}</div>
+          <div style={{ fontSize: 10, color: theme.muted, marginTop: 4 }}>
+            Reason: {state.review_reason}
+          </div>
         )}
       </div>
     );
@@ -100,15 +128,37 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
     <div style={{ marginTop: 16 }}>
       <MessageBanner message={msg} type={msgType} />
 
-      <div style={{ padding: 16, border: `1px solid ${theme.border}`, borderRadius: 8, backgroundColor: theme.surfaceMuted }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: theme.text, marginBottom: 4 }}>Bin Review</div>
+      <div
+        style={{
+          padding: 16,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 8,
+          backgroundColor: theme.surfaceMuted,
+        }}
+      >
+        <div style={{ fontSize: 12, fontWeight: 600, color: theme.text, marginBottom: 4 }}>
+          Bin Review
+        </div>
         <div style={{ fontSize: 11, color: theme.textSoft, marginBottom: 12 }}>
-          {reviewedCount} of {totalCount} variables reviewed · {editedCount} edited · {warnTotal} unresolved warnings
+          {reviewedCount} of {totalCount} variables reviewed · {editedCount} edited · {warnTotal}{" "}
+          unresolved warnings
         </div>
 
         {state.blocking_issues && state.blocking_issues.length > 0 && (
-          <div style={{ marginBottom: 12, padding: 8, backgroundColor: theme.yellowBg, border: `1px solid ${theme.border}`, borderRadius: 4 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: theme.yellowText, marginBottom: 4 }}>BLOCKING ISSUES</div>
+          <div
+            style={{
+              marginBottom: 12,
+              padding: 8,
+              backgroundColor: theme.yellowBg,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 4,
+            }}
+          >
+            <div
+              style={{ fontSize: 10, fontWeight: 600, color: theme.yellowText, marginBottom: 4 }}
+            >
+              BLOCKING ISSUES
+            </div>
             {(state.blocking_issues as Array<{ code: string; message: string }>).map((bi, i) => (
               <div key={i} style={{ fontSize: 10, color: theme.yellowText, padding: "1px 0" }}>
                 <strong>{bi.code}</strong>: {bi.message}
@@ -123,9 +173,13 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
               onClick={() => setShowReasonForm(true)}
               disabled={isBlocked}
               style={{
-                padding: "8px 16px", borderRadius: 4, border: "none",
+                padding: "8px 16px",
+                borderRadius: 4,
+                border: "none",
                 backgroundColor: isBlocked ? theme.mutedSoft : theme.text,
-                color: "#fff", fontSize: 12, fontWeight: 600,
+                color: "#fff",
+                fontSize: 12,
+                fontWeight: 600,
                 cursor: isBlocked ? "not-allowed" : "pointer",
                 opacity: isBlocked ? 0.5 : 1,
               }}
@@ -137,10 +191,14 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
               onClick={() => handleReview(true)}
               disabled={reviewing}
               style={{
-                padding: "8px 16px", borderRadius: 4,
+                padding: "8px 16px",
+                borderRadius: 4,
                 border: `1px solid ${theme.border}`,
-                backgroundColor: theme.surface, color: theme.textSoft,
-                fontSize: 12, fontWeight: 500, cursor: reviewing ? "not-allowed" : "pointer",
+                backgroundColor: theme.surface,
+                color: theme.textSoft,
+                fontSize: 12,
+                fontWeight: 500,
+                cursor: reviewing ? "not-allowed" : "pointer",
               }}
             >
               {reviewing ? "Saving..." : "Accept automated bins"}
@@ -156,13 +214,20 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
                 value={reasonCode}
                 onChange={(e) => setReasonCode(e.target.value)}
                 style={{
-                  width: "100%", padding: "6px 8px", border: `1px solid ${theme.border}`,
-                  borderRadius: 4, fontSize: 11, color: theme.text, backgroundColor: theme.surface,
+                  width: "100%",
+                  padding: "6px 8px",
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 4,
+                  fontSize: 11,
+                  color: theme.text,
+                  backgroundColor: theme.surface,
                 }}
               >
                 <option value="">Select a reason code…</option>
                 {REASON_CODES.map((rc) => (
-                  <option key={rc.value} value={rc.value}>{rc.label}</option>
+                  <option key={rc.value} value={rc.value}>
+                    {rc.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -173,9 +238,15 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
                 placeholder="Describe why you are marking review complete…"
                 rows={2}
                 style={{
-                  width: "100%", padding: "6px 8px", border: `1px solid ${theme.border}`,
-                  borderRadius: 4, fontSize: 11, color: theme.text, backgroundColor: theme.surface,
-                  resize: "vertical", boxSizing: "border-box",
+                  width: "100%",
+                  padding: "6px 8px",
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 4,
+                  fontSize: 11,
+                  color: theme.text,
+                  backgroundColor: theme.surface,
+                  resize: "vertical",
+                  boxSizing: "border-box",
                 }}
               />
             </div>
@@ -184,22 +255,33 @@ export function ManualBinningReviewActions({ state, planId, stepId, basePlanVers
                 onClick={() => handleReview(false)}
                 disabled={reviewing || !reasonCode || !reviewReason}
                 style={{
-                  padding: "8px 16px", borderRadius: 4, border: "none",
-                  backgroundColor: (!reasonCode || !reviewReason) ? theme.mutedSoft : theme.text,
-                  color: "#fff", fontSize: 12, fontWeight: 600,
-                  cursor: (!reasonCode || !reviewReason) ? "not-allowed" : "pointer",
-                  opacity: (!reasonCode || !reviewReason) ? 0.5 : 1,
+                  padding: "8px 16px",
+                  borderRadius: 4,
+                  border: "none",
+                  backgroundColor: !reasonCode || !reviewReason ? theme.mutedSoft : theme.text,
+                  color: "#fff",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: !reasonCode || !reviewReason ? "not-allowed" : "pointer",
+                  opacity: !reasonCode || !reviewReason ? 0.5 : 1,
                 }}
               >
                 {reviewing ? "Submitting…" : "Confirm review"}
               </button>
               <button
-                onClick={() => { setShowReasonForm(false); setReasonCode(""); setReviewReason(""); }}
+                onClick={() => {
+                  setShowReasonForm(false);
+                  setReasonCode("");
+                  setReviewReason("");
+                }}
                 style={{
-                  padding: "8px 16px", borderRadius: 4,
+                  padding: "8px 16px",
+                  borderRadius: 4,
                   border: `1px solid ${theme.border}`,
-                  backgroundColor: theme.surface, color: theme.textSoft,
-                  fontSize: 12, cursor: "pointer",
+                  backgroundColor: theme.surface,
+                  color: theme.textSoft,
+                  fontSize: 12,
+                  cursor: "pointer",
                 }}
               >
                 Cancel

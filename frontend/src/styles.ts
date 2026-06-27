@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 export const theme = {
   canvas: "#F7F6F3",

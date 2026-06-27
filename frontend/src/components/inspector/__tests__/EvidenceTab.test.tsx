@@ -35,26 +35,14 @@ describe("EvidenceTab", () => {
 
   it('renders "no-run" state when runId is null', () => {
     renderWithClient(
-      <EvidenceTab
-        runId={null}
-        stepId="step1"
-        projectId="prj1"
-        tab="evidence"
-        planId="plan1"
-      />,
+      <EvidenceTab runId={null} stepId="step1" projectId="prj1" tab="evidence" planId="plan1" />,
     );
     expect(screen.getByText(/No run yet/)).toBeInTheDocument();
   });
 
   it('renders "no-evidence" state when tab is not "evidence" (hook disabled)', async () => {
     renderWithClient(
-      <EvidenceTab
-        runId="run1"
-        stepId="step1"
-        projectId="prj1"
-        tab="guidance"
-        planId="plan1"
-      />,
+      <EvidenceTab runId="run1" stepId="step1" projectId="prj1" tab="guidance" planId="plan1" />,
     );
     await waitFor(() => {
       expect(screen.getByText(/No evidence found/)).toBeInTheDocument();
@@ -69,13 +57,7 @@ describe("EvidenceTab", () => {
       ),
     );
     renderWithClient(
-      <EvidenceTab
-        runId="run1"
-        stepId="step1"
-        projectId="prj1"
-        tab="evidence"
-        planId="plan1"
-      />,
+      <EvidenceTab runId="run1" stepId="step1" projectId="prj1" tab="evidence" planId="plan1" />,
     );
     expect(screen.getByText(/Loading evidence/)).toBeInTheDocument();
   });
@@ -87,13 +69,7 @@ describe("EvidenceTab", () => {
       ),
     );
     renderWithClient(
-      <EvidenceTab
-        runId="run1"
-        stepId="step1"
-        projectId="prj1"
-        tab="evidence"
-        planId="plan1"
-      />,
+      <EvidenceTab runId="run1" stepId="step1" projectId="prj1" tab="evidence" planId="plan1" />,
     );
     await waitFor(() => {
       expect(screen.getByText(/Evidence could not be loaded/)).toBeInTheDocument();
@@ -107,13 +83,7 @@ describe("EvidenceTab", () => {
       ),
     );
     renderWithClient(
-      <EvidenceTab
-        runId="run1"
-        stepId="step1"
-        projectId="prj1"
-        tab="evidence"
-        planId="plan1"
-      />,
+      <EvidenceTab runId="run1" stepId="step1" projectId="prj1" tab="evidence" planId="plan1" />,
     );
     await waitFor(() => {
       expect(screen.getByText(/No evidence found/)).toBeInTheDocument();
@@ -123,36 +93,34 @@ describe("EvidenceTab", () => {
   it('renders "stale" state', async () => {
     server.use(
       http.get(`${BASE}/runs/:runId/steps/:stepId/evidence`, () =>
-        HttpResponse.json(makeEvidenceResponse({
-          status: "stale",
-          items: [{
-            artifact_id: "art-1",
-            artifact_type: "woe-iv-evidence",
-            role: "train",
-            media_type: "application/json",
-            evidence_kind: "woe-iv",
-            logical_hash: "abc123",
-            created_at: "2026-06-23T00:00:00Z",
-            is_stale: true,
-            staleness_reason: "upstream_stale",
-            canonical_step_id: "final-woe-iv",
-            source_step_id: "step1",
-            source_branch_id: null,
+        HttpResponse.json(
+          makeEvidenceResponse({
             status: "stale",
-            summary: { selected_variable_count: 12, iv_min: 0.18, iv_max: 0.42 },
-            warnings: [],
-          }],
-        })),
+            items: [
+              {
+                artifact_id: "art-1",
+                artifact_type: "woe-iv-evidence",
+                role: "train",
+                media_type: "application/json",
+                evidence_kind: "woe-iv",
+                logical_hash: "abc123",
+                created_at: "2026-06-23T00:00:00Z",
+                is_stale: true,
+                staleness_reason: "upstream_stale",
+                canonical_step_id: "final-woe-iv",
+                source_step_id: "step1",
+                source_branch_id: null,
+                status: "stale",
+                summary: { selected_variable_count: 12, iv_min: 0.18, iv_max: 0.42 },
+                warnings: [],
+              },
+            ],
+          }),
+        ),
       ),
     );
     renderWithClient(
-      <EvidenceTab
-        runId="run1"
-        stepId="step1"
-        projectId="prj1"
-        tab="evidence"
-        planId="plan1"
-      />,
+      <EvidenceTab runId="run1" stepId="step1" projectId="prj1" tab="evidence" planId="plan1" />,
     );
     await waitFor(() => {
       expect(screen.getByText(/Evidence is stale/)).toBeInTheDocument();
@@ -162,36 +130,34 @@ describe("EvidenceTab", () => {
   it('renders "partial" state', async () => {
     server.use(
       http.get(`${BASE}/runs/:runId/steps/:stepId/evidence`, () =>
-        HttpResponse.json(makeEvidenceResponse({
-          status: "partial",
-          items: [{
-            artifact_id: "art-1",
-            artifact_type: "woe-iv-evidence",
-            role: "train",
-            media_type: "application/json",
-            evidence_kind: "woe-iv",
-            logical_hash: "abc123",
-            created_at: "2026-06-23T00:00:00Z",
-            is_stale: false,
-            staleness_reason: null,
-            canonical_step_id: "final-woe-iv",
-            source_step_id: "step1",
-            source_branch_id: null,
-            status: "unsupported",
-            summary: { unsupported_kind: true },
-            warnings: [],
-          }],
-        })),
+        HttpResponse.json(
+          makeEvidenceResponse({
+            status: "partial",
+            items: [
+              {
+                artifact_id: "art-1",
+                artifact_type: "woe-iv-evidence",
+                role: "train",
+                media_type: "application/json",
+                evidence_kind: "woe-iv",
+                logical_hash: "abc123",
+                created_at: "2026-06-23T00:00:00Z",
+                is_stale: false,
+                staleness_reason: null,
+                canonical_step_id: "final-woe-iv",
+                source_step_id: "step1",
+                source_branch_id: null,
+                status: "unsupported",
+                summary: { unsupported_kind: true },
+                warnings: [],
+              },
+            ],
+          }),
+        ),
       ),
     );
     renderWithClient(
-      <EvidenceTab
-        runId="run1"
-        stepId="step1"
-        projectId="prj1"
-        tab="evidence"
-        planId="plan1"
-      />,
+      <EvidenceTab runId="run1" stepId="step1" projectId="prj1" tab="evidence" planId="plan1" />,
     );
     await waitFor(() => {
       expect(screen.getByText(/Partial evidence/)).toBeInTheDocument();
@@ -201,36 +167,39 @@ describe("EvidenceTab", () => {
   it('renders "available" state with summary', async () => {
     server.use(
       http.get(`${BASE}/runs/:runId/steps/:stepId/evidence`, () =>
-        HttpResponse.json(makeEvidenceResponse({
-          status: "available",
-          items: [{
-            artifact_id: "art-woe-001",
-            artifact_type: "woe-iv-evidence",
-            role: "train",
-            media_type: "application/json",
-            evidence_kind: "woe-iv",
-            logical_hash: "abc123def456",
-            created_at: "2026-06-23T10:14:00Z",
-            is_stale: false,
-            staleness_reason: null,
-            canonical_step_id: "final-woe-iv",
-            source_step_id: "step1",
-            source_branch_id: null,
+        HttpResponse.json(
+          makeEvidenceResponse({
             status: "available",
-            summary: { selected_variable_count: 12, iv_min: 0.18, iv_max: 0.42, top_variables: [{ name: "income_band", iv: 0.42 }] },
-            warnings: [],
-          }],
-        })),
+            items: [
+              {
+                artifact_id: "art-woe-001",
+                artifact_type: "woe-iv-evidence",
+                role: "train",
+                media_type: "application/json",
+                evidence_kind: "woe-iv",
+                logical_hash: "abc123def456",
+                created_at: "2026-06-23T10:14:00Z",
+                is_stale: false,
+                staleness_reason: null,
+                canonical_step_id: "final-woe-iv",
+                source_step_id: "step1",
+                source_branch_id: null,
+                status: "available",
+                summary: {
+                  selected_variable_count: 12,
+                  iv_min: 0.18,
+                  iv_max: 0.42,
+                  top_variables: [{ name: "income_band", iv: 0.42 }],
+                },
+                warnings: [],
+              },
+            ],
+          }),
+        ),
       ),
     );
     renderWithClient(
-      <EvidenceTab
-        runId="run1"
-        stepId="step1"
-        projectId="prj1"
-        tab="evidence"
-        planId="plan1"
-      />,
+      <EvidenceTab runId="run1" stepId="step1" projectId="prj1" tab="evidence" planId="plan1" />,
     );
     await waitFor(() => {
       expect(screen.getByText(/WOE\/IV Evidence/)).toBeInTheDocument();
@@ -241,36 +210,34 @@ describe("EvidenceTab", () => {
   it("renders warnings on evidence card", async () => {
     server.use(
       http.get(`${BASE}/runs/:runId/steps/:stepId/evidence`, () =>
-        HttpResponse.json(makeEvidenceResponse({
-          status: "available",
-          items: [{
-            artifact_id: "art-warn",
-            artifact_type: "validation-metrics",
-            role: "test",
-            media_type: "application/json",
-            evidence_kind: "validation-metrics",
-            logical_hash: "def",
-            created_at: "2026-06-23T00:00:00Z",
-            is_stale: false,
-            staleness_reason: null,
-            canonical_step_id: "validation-metrics",
-            source_step_id: "step1",
-            source_branch_id: null,
+        HttpResponse.json(
+          makeEvidenceResponse({
             status: "available",
-            summary: { gini: 0.45, ks: 0.31 },
-            warnings: ["PSI exceeds threshold for train segment."],
-          }],
-        })),
+            items: [
+              {
+                artifact_id: "art-warn",
+                artifact_type: "validation-metrics",
+                role: "test",
+                media_type: "application/json",
+                evidence_kind: "validation-metrics",
+                logical_hash: "def",
+                created_at: "2026-06-23T00:00:00Z",
+                is_stale: false,
+                staleness_reason: null,
+                canonical_step_id: "validation-metrics",
+                source_step_id: "step1",
+                source_branch_id: null,
+                status: "available",
+                summary: { gini: 0.45, ks: 0.31 },
+                warnings: ["PSI exceeds threshold for train segment."],
+              },
+            ],
+          }),
+        ),
       ),
     );
     renderWithClient(
-      <EvidenceTab
-        runId="run1"
-        stepId="step1"
-        projectId="prj1"
-        tab="evidence"
-        planId="plan1"
-      />,
+      <EvidenceTab runId="run1" stepId="step1" projectId="prj1" tab="evidence" planId="plan1" />,
     );
     await waitFor(() => {
       expect(screen.getByText(/PSI exceeds threshold/)).toBeInTheDocument();
@@ -280,7 +247,22 @@ describe("EvidenceTab", () => {
   it("renders manual-binning evidence card when stepId contains manual-binning", async () => {
     server.use(
       http.get(`${BASE}/plans/:planId/steps/:stepId/editor-state`, () =>
-        HttpResponse.json({ ready: true, review_status: "not_started", reviewed: false, accept_automated: false, variable_summaries: [], blocking_issues: [], selected_variables: [], source_bins_by_variable: {}, current_overrides: [], warnings: [], plan_id: "plan1", plan_version_id: "pv1", step_id: "manual-binning", project_id: "prj1" }),
+        HttpResponse.json({
+          ready: true,
+          review_status: "not_started",
+          reviewed: false,
+          accept_automated: false,
+          variable_summaries: [],
+          blocking_issues: [],
+          selected_variables: [],
+          source_bins_by_variable: {},
+          current_overrides: [],
+          warnings: [],
+          plan_id: "plan1",
+          plan_version_id: "pv1",
+          step_id: "manual-binning",
+          project_id: "prj1",
+        }),
       ),
     );
     renderWithClient(

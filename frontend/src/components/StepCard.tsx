@@ -14,7 +14,15 @@ interface Props {
   blockers?: WorkflowBlocker[];
 }
 
-export function StepCard({ step, isSelected, onSelect, carriedForward, liveStatus, guidanceForStep, blockers }: Props) {
+export function StepCard({
+  step,
+  isSelected,
+  onSelect,
+  carriedForward,
+  liveStatus,
+  guidanceForStep,
+  blockers,
+}: Props) {
   const meta = getStepDisplayMetadata(step.step_id);
   const label = meta?.label ?? step.step_id;
   const shortDesc = meta?.shortDescription ?? step.node_type;
@@ -26,7 +34,11 @@ export function StepCard({ step, isSelected, onSelect, carriedForward, liveStatu
         border: `1px solid ${isSelected ? theme.text : step.is_stale ? theme.yellowText : theme.border}`,
         borderRadius: 8,
         padding: "14px 16px",
-        backgroundColor: isSelected ? theme.surface : step.is_stale ? theme.yellowBg : theme.surface,
+        backgroundColor: isSelected
+          ? theme.surface
+          : step.is_stale
+            ? theme.yellowBg
+            : theme.surface,
         cursor: "pointer",
         position: "relative",
         transition: "border-color 0.2s, box-shadow 0.2s, transform 0.2s",
@@ -68,8 +80,12 @@ export function StepCard({ step, isSelected, onSelect, carriedForward, liveStatu
           Carried forward
         </span>
       )}
-      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, color: theme.text }}>{label}</div>
-      <div style={{ fontSize: 12, color: theme.muted, marginBottom: 10, lineHeight: 1.45 }}>{shortDesc}</div>
+      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, color: theme.text }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 12, color: theme.muted, marginBottom: 10, lineHeight: 1.45 }}>
+        {shortDesc}
+      </div>
       {/* Readiness row from guidance */}
       {guidanceForStep && (
         <div style={{ marginBottom: 8, fontSize: 11, lineHeight: 1.5 }}>
@@ -92,7 +108,8 @@ export function StepCard({ step, isSelected, onSelect, carriedForward, liveStatu
           )}
           {guidanceForStep.evidence_kinds && guidanceForStep.evidence_kinds.length > 0 && (
             <span style={{ color: theme.muted, marginLeft: 8 }}>
-              {guidanceForStep.evidence_kinds.length} evidence item{guidanceForStep.evidence_kinds.length !== 1 ? "s" : ""}
+              {guidanceForStep.evidence_kinds.length} evidence item
+              {guidanceForStep.evidence_kinds.length !== 1 ? "s" : ""}
             </span>
           )}
         </div>

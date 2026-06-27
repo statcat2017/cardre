@@ -14,11 +14,7 @@ function createWrapper() {
     defaultOptions: { queries: { retry: false } },
   });
   return function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    );
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
   };
 }
 
@@ -57,10 +53,22 @@ function makeSteps(statuses: string[]) {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.spyOn(api, "health").mockResolvedValue({ status: "ok", cardre_version: "0.1.0", registry_accessible: false, registered_node_count: 0, launch_node_count: 0, deferred_node_count: 0, governance_enabled: false, checked_at: "", diagnostics: [] });
+  vi.spyOn(api, "health").mockResolvedValue({
+    status: "ok",
+    cardre_version: "0.1.0",
+    registry_accessible: false,
+    registered_node_count: 0,
+    launch_node_count: 0,
+    deferred_node_count: 0,
+    governance_enabled: false,
+    checked_at: "",
+    diagnostics: [],
+  });
   vi.spyOn(api, "runPlan").mockResolvedValue(makeRun("running") as unknown as RunResponse);
   vi.spyOn(api, "getProjectRun").mockResolvedValue(makeRun("running") as unknown as RunResponse);
-  vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(makeSteps(["running", "running", "running"]) as unknown as RunStepsResponse);
+  vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(
+    makeSteps(["running", "running", "running"]) as unknown as RunStepsResponse,
+  );
 });
 
 afterEach(() => {
@@ -141,7 +149,9 @@ describe("useRunProgress", () => {
     vi.spyOn(api, "getProjectRun")
       .mockResolvedValueOnce(makeRun("running") as unknown as RunResponse)
       .mockResolvedValue(
-        makeRun("failed", { latest_error: { code: "ERR_001", message: "Step failed" } }) as unknown as RunResponse,
+        makeRun("failed", {
+          latest_error: { code: "ERR_001", message: "Step failed" },
+        }) as unknown as RunResponse,
       );
 
     await act(async () => {
@@ -203,7 +213,9 @@ describe("useRunProgress", () => {
     vi.spyOn(api, "getProjectRun").mockReset();
     vi.spyOn(api, "getProjectRun").mockResolvedValue(makeRun("running") as unknown as RunResponse);
     vi.spyOn(api, "getProjectRunSteps").mockReset();
-    vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(makeSteps(["running", "running", "running"]) as unknown as RunStepsResponse);
+    vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(
+      makeSteps(["running", "running", "running"]) as unknown as RunStepsResponse,
+    );
 
     await act(async () => {
       result.current.startRun("pv1");
@@ -247,7 +259,10 @@ describe("useRunProgress", () => {
 
   it("health gate prevents run when sidecar is down", async () => {
     vi.spyOn(api, "health").mockRejectedValue(
-      new ApiError(0, { code: "SIDECAR_UNREACHABLE", message: "Could not reach the Cardre sidecar." }),
+      new ApiError(0, {
+        code: "SIDECAR_UNREACHABLE",
+        message: "Could not reach the Cardre sidecar.",
+      }),
     );
 
     const onComplete = vi.fn();

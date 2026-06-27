@@ -13,7 +13,16 @@ interface Props {
   onStopWatching?: () => void;
 }
 
-export function TopBar({ project, planName, running, stepProgress, guidance, onAction, onRun, onStopWatching }: Props) {
+export function TopBar({
+  project,
+  planName,
+  running,
+  stepProgress,
+  guidance,
+  onAction,
+  onRun,
+  onStopWatching,
+}: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   const runLabel = running
@@ -56,7 +65,16 @@ export function TopBar({ project, planName, running, stepProgress, guidance, onA
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontFamily: theme.fontSerif, fontWeight: 600, fontSize: 20, letterSpacing: "-0.03em" }}>Cardre</span>
+          <span
+            style={{
+              fontFamily: theme.fontSerif,
+              fontWeight: 600,
+              fontSize: 20,
+              letterSpacing: "-0.03em",
+            }}
+          >
+            Cardre
+          </span>
           <span style={{ fontSize: 12, color: theme.mutedSoft }}>/</span>
           <span style={{ fontSize: 13, color: theme.textSoft }}>{project.name}</span>
           {planName && (
@@ -176,12 +194,14 @@ export function TopBar({ project, planName, running, stepProgress, guidance, onA
                 borderRadius: 4,
                 backgroundColor: guidance.report_readiness.ready
                   ? theme.greenBg
-                  : guidance.report_readiness.blockers && guidance.report_readiness.blockers.length > 0
+                  : guidance.report_readiness.blockers &&
+                      guidance.report_readiness.blockers.length > 0
                     ? theme.redBg
                     : theme.yellowBg,
                 color: guidance.report_readiness.ready
                   ? theme.greenText
-                  : guidance.report_readiness.blockers && guidance.report_readiness.blockers.length > 0
+                  : guidance.report_readiness.blockers &&
+                      guidance.report_readiness.blockers.length > 0
                     ? theme.redText
                     : theme.yellowText,
                 fontWeight: 600,
@@ -222,10 +242,10 @@ export function TopBar({ project, planName, running, stepProgress, guidance, onA
           <strong>Import vs Scorecard Pathway</strong>
           <p style={{ margin: "4px 0 0", color: theme.muted }}>
             Importing a dataset creates a hidden <code>__import__</code> plan that preserves
-            source-data evidence separately. The <strong>Scorecard Pathway</strong> consumes
-            the imported artifact and records its own modelling run evidence — the two plans
-            remain independent so you can always trace the original source data.
-            Import evidence is visible in the Artifacts browser.
+            source-data evidence separately. The <strong>Scorecard Pathway</strong> consumes the
+            imported artifact and records its own modelling run evidence — the two plans remain
+            independent so you can always trace the original source data. Import evidence is visible
+            in the Artifacts browser.
           </p>
         </div>
       )}

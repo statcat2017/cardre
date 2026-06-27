@@ -8,7 +8,7 @@ export interface StepDisplayMetadata {
 }
 
 export const STEP_DISPLAY_METADATA: Record<string, StepDisplayMetadata> = {
-  "import": {
+  import: {
     stepId: "import",
     expectedBackendPosition: 0,
     displayOrder: 0,
@@ -32,7 +32,7 @@ export const STEP_DISPLAY_METADATA: Record<string, StepDisplayMetadata> = {
     label: "Apply Exclusions",
     shortDescription: "Filter rows based on exclusion rules",
   },
-  "profile": {
+  profile: {
     stepId: "profile",
     expectedBackendPosition: 3,
     displayOrder: 3,
@@ -56,7 +56,7 @@ export const STEP_DISPLAY_METADATA: Record<string, StepDisplayMetadata> = {
     label: "Development Sample Definition",
     shortDescription: "Define sampling method and population parameters",
   },
-  "split": {
+  split: {
     stepId: "split",
     expectedBackendPosition: 6,
     displayOrder: 6,
@@ -236,7 +236,10 @@ export interface SectionPhaseResult {
 /** Aggregate per-step readiness from guidance into a section summary. */
 export function sectionPhase(
   steps: { step_id: string }[],
-  guidance: { step_guidance?: Record<string, { readiness: string; primary_action: string }> } | null | undefined,
+  guidance:
+    | { step_guidance?: Record<string, { readiness: string; primary_action: string }> }
+    | null
+    | undefined,
 ): SectionPhaseResult {
   const counts = { complete: 0, stale: 0, blocked: 0, notStarted: 0, needsConfig: 0 };
   let firstUnfinished: string | null = null;

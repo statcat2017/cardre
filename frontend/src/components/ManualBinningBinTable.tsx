@@ -36,21 +36,48 @@ export function ManualBinningBinTable({ variable, sourceBins, summary: _summary,
   const bins = (sourceBins.bins as BinData[] | undefined) ?? [];
   if (bins.length === 0) {
     return (
-      <div style={{ padding: 16, fontSize: 11, color: theme.muted }}>No bin data available for <strong>{variable}</strong>.</div>
+      <div style={{ padding: 16, fontSize: 11, color: theme.muted }}>
+        No bin data available for <strong>{variable}</strong>.
+      </div>
     );
   }
 
   return (
-    <div style={{ marginTop: 16, border: `1px solid ${theme.border}`, borderRadius: 8, overflow: "hidden" }}>
-      <div style={{ padding: "8px 12px", backgroundColor: theme.surfaceMuted, borderBottom: `1px solid ${theme.border}`, fontSize: 11, fontWeight: 600, color: theme.text, display: "flex", alignItems: "center", gap: 8 }}>
+    <div
+      style={{
+        marginTop: 16,
+        border: `1px solid ${theme.border}`,
+        borderRadius: 8,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          padding: "8px 12px",
+          backgroundColor: theme.surfaceMuted,
+          borderBottom: `1px solid ${theme.border}`,
+          fontSize: 11,
+          fontWeight: 600,
+          color: theme.text,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
         <span>Bin Details — {variable}</span>
         {onEdit && (
           <button
             onClick={() => onEdit(variable)}
             style={{
-              marginLeft: "auto", padding: "2px 8px", borderRadius: 3,
-              border: `1px solid ${theme.border}`, backgroundColor: theme.surface,
-              fontSize: 10, fontWeight: 500, color: theme.textSoft, cursor: "pointer",
+              marginLeft: "auto",
+              padding: "2px 8px",
+              borderRadius: 3,
+              border: `1px solid ${theme.border}`,
+              backgroundColor: theme.surface,
+              fontSize: 10,
+              fontWeight: 500,
+              color: theme.textSoft,
+              cursor: "pointer",
             }}
           >
             Edit bins
@@ -74,9 +101,10 @@ export function ManualBinningBinTable({ variable, sourceBins, summary: _summary,
           </thead>
           <tbody>
             {bins.map((b: BinData, i: number) => {
-              const range = b.min != null || b.max != null
-                ? `${b.min ?? "—"} – ${b.max ?? "—"}`
-                : b.label || b.bin_id || "—";
+              const range =
+                b.min != null || b.max != null
+                  ? `${b.min ?? "—"} – ${b.max ?? "—"}`
+                  : b.label || b.bin_id || "—";
               const woe = b.woe != null ? b.woe.toFixed(4) : "—";
               const ivContrib = b.iv_contrib != null ? b.iv_contrib.toFixed(4) : "—";
               const count = b.count ?? "—";
@@ -101,7 +129,9 @@ export function ManualBinningBinTable({ variable, sourceBins, summary: _summary,
                   <td style={tableDataStyle}>{badRate}</td>
                   <td style={tableDataStyle}>{woe}</td>
                   <td style={tableDataStyle}>{ivContrib}</td>
-                  <td style={{ ...tableDataStyle, color: warnColor }}>{flags.length > 0 ? flags.join(", ") : "—"}</td>
+                  <td style={{ ...tableDataStyle, color: warnColor }}>
+                    {flags.length > 0 ? flags.join(", ") : "—"}
+                  </td>
                 </tr>
               );
             })}

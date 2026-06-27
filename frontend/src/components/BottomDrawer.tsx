@@ -20,7 +20,16 @@ export function BottomDrawer({ messages }: Props) {
         flexShrink: 0,
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 600, color: theme.textSoft, marginBottom: 4, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: theme.textSoft,
+          marginBottom: 4,
+          letterSpacing: "0.05em",
+          textTransform: "uppercase",
+        }}
+      >
         Diagnostics
       </div>
       {messages.map((msg, i) => (

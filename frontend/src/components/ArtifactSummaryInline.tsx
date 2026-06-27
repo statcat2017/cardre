@@ -15,7 +15,8 @@ export function ArtifactSummaryInline({ artifactId }: Props) {
     enabled: !!artifactId,
   });
 
-  if (isLoading) return <div style={{ padding: 8, fontSize: 12, color: theme.muted }}>Loading summary...</div>;
+  if (isLoading)
+    return <div style={{ padding: 8, fontSize: 12, color: theme.muted }}>Loading summary...</div>;
   if (!data) return null;
 
   const metaRows: [string, string | number | null][] = [
@@ -27,8 +28,20 @@ export function ArtifactSummaryInline({ artifactId }: Props) {
   ];
 
   return (
-    <div style={{ marginLeft: 16, marginTop: 4, padding: "8px 12px", border: `1px solid ${theme.border}`, borderRadius: 4, backgroundColor: theme.surfaceMuted, fontSize: 11 }}>
-      <div style={{ fontWeight: 600, marginBottom: 6, color: theme.text, fontSize: 12 }}>Summary</div>
+    <div
+      style={{
+        marginLeft: 16,
+        marginTop: 4,
+        padding: "8px 12px",
+        border: `1px solid ${theme.border}`,
+        borderRadius: 4,
+        backgroundColor: theme.surfaceMuted,
+        fontSize: 11,
+      }}
+    >
+      <div style={{ fontWeight: 600, marginBottom: 6, color: theme.text, fontSize: 12 }}>
+        Summary
+      </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
         {metaRows.map(([label, val]) => (
           <div key={label}>

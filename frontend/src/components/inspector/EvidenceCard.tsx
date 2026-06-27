@@ -27,7 +27,8 @@ function formatSummary(item: RunStepEvidenceItem): string {
     if (s.dataset_role) parts.push(`role: ${s.dataset_role}`);
   } else if (kind === "target-definition") {
     if (s.target_column) parts.push(`target: ${s.target_column}`);
-    if (s.event_rate !== undefined) parts.push(`event rate: ${((s.event_rate as number) * 100).toFixed(1)}%`);
+    if (s.event_rate !== undefined)
+      parts.push(`event rate: ${((s.event_rate as number) * 100).toFixed(1)}%`);
   } else if (kind === "split") {
     if (s.train_count !== undefined) parts.push(`${s.train_count} train`);
     if (s.test_count !== undefined) parts.push(`${s.test_count} test`);
@@ -36,9 +37,12 @@ function formatSummary(item: RunStepEvidenceItem): string {
     if (s.variable_count !== undefined) parts.push(`${s.variable_count} variables`);
     if (s.bin_total !== undefined) parts.push(`${s.bin_total} bins`);
   } else if (kind === "woe-iv") {
-    if (s.selected_variable_count !== undefined) parts.push(`${s.selected_variable_count} variables`);
+    if (s.selected_variable_count !== undefined)
+      parts.push(`${s.selected_variable_count} variables`);
     if (s.iv_min !== undefined && s.iv_max !== undefined) {
-      parts.push(`IV range ${(s.iv_min as number).toFixed(2)} – ${(s.iv_max as number).toFixed(2)}`);
+      parts.push(
+        `IV range ${(s.iv_min as number).toFixed(2)} – ${(s.iv_max as number).toFixed(2)}`,
+      );
     }
     const topVars = s.top_variables as { name: string; iv: number }[] | undefined;
     if (topVars?.length) {
@@ -140,9 +144,7 @@ export function EvidenceCard({ item }: EvidenceCardProps) {
             </div>
           ))}
           {warnings.length > 3 && (
-            <div style={{ color: theme.muted, fontSize: 10 }}>
-              +{warnings.length - 3} more
-            </div>
+            <div style={{ color: theme.muted, fontSize: 10 }}>+{warnings.length - 3} more</div>
           )}
         </div>
       )}

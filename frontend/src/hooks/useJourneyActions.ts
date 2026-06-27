@@ -41,11 +41,13 @@ export function useJourneyActions(
           if (scorecardPlan && planData) {
             const scope = action.run_scope ?? "full_plan";
             if (scope === "to_node" && !action.step_id) {
-              addDiagnostic("[warning] run_pathway with to_node scope but no step_id — falling back to full_plan");
+              addDiagnostic(
+                "[warning] run_pathway with to_node scope but no step_id — falling back to full_plan",
+              );
             }
             startRun(planData.latest_version_id, {
               run_scope: scope,
-              target_step_id: scope === "to_node" ? action.step_id ?? undefined : undefined,
+              target_step_id: scope === "to_node" ? (action.step_id ?? undefined) : undefined,
               branch_id: g.branch_id ?? undefined,
             });
           }
@@ -58,7 +60,15 @@ export function useJourneyActions(
           break;
       }
     },
-    [scorecardPlan, planData, startRun, addDiagnostic, setActiveSection, setSelectedStepId, setEditingStepId],
+    [
+      scorecardPlan,
+      planData,
+      startRun,
+      addDiagnostic,
+      setActiveSection,
+      setSelectedStepId,
+      setEditingStepId,
+    ],
   );
 
   return { handleJourneyAction };

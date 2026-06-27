@@ -1,5 +1,5 @@
-import React from 'react';
-import { theme } from '../styles';
+import React from "react";
+import { theme } from "../styles";
 
 interface Props {
   selectedVars: string[];
