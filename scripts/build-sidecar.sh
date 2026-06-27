@@ -35,3 +35,15 @@ else
   echo "ERROR: PyInstaller did not produce a cardre-api binary"
   exit 1
 fi
+
+# Guard: the binary MUST be triple-suffixed for Tauri externalBin to find it.
+# On Windows the suffix is .exe; on Linux/macOS there is no extension.
+if [ -f "frontend/src-tauri/binaries/cardre-api-${TARGET}" ]; then
+  echo "Verified: frontend/src-tauri/binaries/cardre-api-${TARGET}"
+elif [ -f "frontend/src-tauri/binaries/cardre-api-${TARGET}.exe" ]; then
+  echo "Verified: frontend/src-tauri/binaries/cardre-api-${TARGET}.exe"
+else
+  echo "ERROR: expected frontend/src-tauri/binaries/cardre-api-${TARGET} after rename"
+  ls -la frontend/src-tauri/binaries/
+  exit 1
+fi
