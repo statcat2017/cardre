@@ -45,7 +45,7 @@ def execute_run(
                     "created_at": utc_now_iso(),
                 })
                 store.finish_run(run_id, "cancelled")
-                return run_id
+                return ctx.short_circuit_run_id
             return ctx.short_circuit_run_id
         result_id = executor.run_branch(
             store, plan_version_id, branch_id,

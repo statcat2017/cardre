@@ -116,6 +116,28 @@ class RunService:
                     plan_version_id, target_step_id, branch_id=branch_id,
                 )
                 if result.run_id is not None:
+                    branch_kw = {"branch_id": branch_id} if branch_id else {}
+                    placeholder_id = self._store.create_run(plan_version_id, **branch_kw)
+                    self._store.append_run_diagnostic(placeholder_id, {
+                        "code": "RUN_SHORT_CIRCUITED",
+                        "message": f"Run {placeholder_id} short-circuited for to-node {target_step_id} (existing run {result.run_id})",
+                        "severity": "info",
+                        "category": "lifecycle",
+                        "run_id": placeholder_id,
+                        "plan_version_id": plan_version_id,
+                        "branch_id": branch_id,
+                        "created_at": utc_now_iso(),
+                    })
+                    from cardre.run_lifecycle import finalise_run, RunFinalisation
+                    finalise_run(self._store, RunFinalisation(
+                        run_id=placeholder_id,
+                        plan_version_id=plan_version_id,
+                        status="cancelled",
+                        execution_mode="to_node",
+                        finished_at=utc_now_iso(),
+                        branch_id=branch_id,
+                        target_step_id=target_step_id,
+                    ))
                     return self._build_response(result.run_id)
 
         # Recover stale runs for this plan_version

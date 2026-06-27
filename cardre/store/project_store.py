@@ -231,9 +231,9 @@ class ProjectStore:
             rd = dict(row)
             self.finish_run(rd["run_id"], "interrupted")
             self.append_run_diagnostic(rd["run_id"], {
-                "code": "RUN_INTERRUPTED_RECOVERY",
+                "code": "RUN_RECOVERED_STALE",
                 "message": f"Run {rd['run_id']} was in 'running' state with stale heartbeat; marked as interrupted during startup recovery.",
-                "severity": "warning",
+                "severity": "error",
                 "category": "lifecycle",
                 "run_id": rd["run_id"],
                 "plan_version_id": rd.get("plan_version_id"),
