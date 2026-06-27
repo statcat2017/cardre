@@ -505,6 +505,36 @@ class HeartbeatTests(unittest.TestCase):
         run = store.get_run(run_id)
         self.assertEqual(run["status"], "interrupted")
 
+    def test_stale_recovery_emits_canonical_diagnostic_code(self) -> None:
+        """RED: Both recovery paths (ProjectStore.recover_interrupted_runs
+        and RunService._maybe_recover_stale_run) must emit the same
+        diagnostic code: RUN_RECOVERED_STALE. Currently startup recovery
+        emits RUN_INTERRUPTED_RECOVERY with severity 'warning' —
+        inconsistent with RunService which emits RUN_RECOVERED_STALE
+        with severity 'error'.
+        """
+        store, tmp = make_store()
+        run_id = self._setup_run(store)
+        old_time = "2020-01-01T00:00:00"
+        store._connect().execute(
+            "UPDATE runs SET started_at = ?, heartbeat_at = ? WHERE run_id = ?",
+            (old_time, old_time, run_id),
+        )
+        recovered = store.recover_interrupted_runs(max_age_seconds=1)
+        self.assertGreaterEqual(len(recovered), 1)
+
+        diags = store.get_run_diagnostics(run_id)
+        codes = [d.get("code") for d in diags]
+        assert "RUN_RECOVERED_STALE" in codes, (
+            f"startup recovery must emit RUN_RECOVERED_STALE for consistency "
+            f"with RunService recovery; got {codes}"
+        )
+        rec_diags = [d for d in diags if d.get("code") == "RUN_RECOVERED_STALE"]
+        assert rec_diags[0].get("severity") == "error", (
+            f"RUN_RECOVERED_STALE must be severity 'error' in both paths; "
+            f"got {rec_diags[0].get('severity')!r}"
+        )
+
 
 # ======================================================================
 # Slice 7: Concurrent-connection race test for BEGIN IMMEDIATE

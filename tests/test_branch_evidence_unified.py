@@ -391,6 +391,85 @@ def test_s2_async_branch_short_circuit_parity():
     assert "RUN_SHORT_CIRCUITED" in ph_codes, ph_codes
 
 
+# ---------------------------------------------------------------------------
+# S3/S4 – to-node short-circuit diagnostic parity (sync + async)
+# ---------------------------------------------------------------------------
+
+
+def test_s3_to_node_short_circuit_emits_diagnostic_sync():
+    """RED: Sync to-node run that short-circuits must record
+    RUN_SHORT_CIRCUITED on the placeholder run and cancel it, returning
+    the existing run_id — matching the branch contract (test_s1).
+
+    Currently _execute_sync finishes the placeholder as 'cancelled' with
+    NO diagnostic (run_service.py:166-168), unlike the branch path which
+    emits RUN_SHORT_CIRCUITED (run_service.py:149).
+    """
+    from cardre.services.run_service import RunService
+    from cardre.services.run_worker import SyncRunDispatcher
+
+    store, _ = make_store()
+    pid = store.create_project("p")
+    plan_id = store.create_plan(pid, "plan")
+    a = _step("a")
+    pv_id = store.create_plan_version(plan_id, [a])
+
+    prev = store.create_run(pv_id)
+    _seed_run_step(store, prev, pv_id, "a", a.params_hash)
+    store.finish_run(prev, "succeeded")
+
+    svc = RunService(store, dispatcher=SyncRunDispatcher())
+    resp = svc.run_plan(pv_id, run_scope="to_node", target_step_id="a", sync=True)
+
+    assert resp.run_id == prev, f"must return existing run_id, got {resp.run_id}"
+    placeholders = [r for r in store.list_runs(plan_version_id=pv_id)
+                   if r.get("status") == "cancelled"]
+    assert len(placeholders) >= 1, "placeholder run must be created for audit trail"
+    placeholder = placeholders[-1]
+    codes = [d["code"] for d in store.get_run_diagnostics(placeholder["run_id"])]
+    assert "RUN_SHORT_CIRCUITED" in codes, (
+        f"to-node short-circuit must emit RUN_SHORT_CIRCUITED for parity with "
+        f"branch; got {codes}"
+    )
+
+
+def test_s4_to_node_short_circuit_async_parity():
+    """RED: Async to-node short-circuit must create a placeholder and
+    emit RUN_SHORT_CIRCUITED, matching the sync path (test_s3) and the
+    branch contract (test_s2).
+
+    Currently the async preflight (run_service.py:114-119) returns the
+    existing run_id with NO placeholder and NO diagnostic — asymmetric
+    with both sync to-node and async branch.
+    """
+    from cardre.services.run_service import RunService
+    from cardre.services.run_worker import SyncRunDispatcher
+
+    store, _ = make_store()
+    pid = store.create_project("p")
+    plan_id = store.create_plan(pid, "plan")
+    a = _step("a")
+    pv_id = store.create_plan_version(plan_id, [a])
+
+    prev = store.create_run(pv_id)
+    _seed_run_step(store, prev, pv_id, "a", a.params_hash)
+    store.finish_run(prev, "succeeded")
+
+    svc = RunService(store, dispatcher=SyncRunDispatcher())
+    resp = svc.run_plan(pv_id, run_scope="to_node", target_step_id="a", sync=False)
+
+    assert resp.run_id == prev
+    placeholders = [r for r in store.list_runs(plan_version_id=pv_id)
+                   if r.get("status") == "cancelled"]
+    assert len(placeholders) >= 1, (
+        "async to-node short-circuit must create a placeholder for audit "
+        "trail (parity with sync and with branch)"
+    )
+    placeholder = placeholders[-1]
+    codes = [d["code"] for d in store.get_run_diagnostics(placeholder["run_id"])]
+    assert "RUN_SHORT_CIRCUITED" in codes, codes
+
+
 def _patch_registry(monkeypatch):
     """Monkeypatch NodeRegistry.with_defaults to include test node types."""
     from cardre.registry import NodeRegistry

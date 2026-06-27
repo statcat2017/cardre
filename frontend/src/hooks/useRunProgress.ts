@@ -192,6 +192,12 @@ export function useRunProgress(projectId: string, onRunComplete: () => void): Us
               }
             }
 
+            if (run.is_stale) {
+              addDiagnostic(
+                "Warning: run heartbeat is stale — the worker may have crashed or been killed",
+              );
+            }
+
             if (run.status !== "running") {
               stopPolling();
               queryClient.invalidateQueries({ queryKey: ["project", projectId] });
@@ -201,7 +207,7 @@ export function useRunProgress(projectId: string, onRunComplete: () => void): Us
               setLiveStepStatus({});
               setLiveDiagnostic(null);
               addDiagnostic(`Run ${run.status}`);
-              if (run.status === "failed") {
+              if (run.status === "failed" || run.status === "interrupted") {
                 if (run.latest_error) {
                   const errMsg = `${run.latest_error.code}: ${run.latest_error.message}`;
                   setLastRunError(errMsg);
