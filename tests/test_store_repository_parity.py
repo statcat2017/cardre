@@ -7,7 +7,6 @@ behaviours.
 
 from __future__ import annotations
 
-import polars as pl
 
 from cardre.audit import ArtifactRef, StepSpec, json_logical_hash
 from cardre.store import (

@@ -190,7 +190,6 @@ class GenericImportTests(unittest.TestCase):
         self.assertEqual(df.schema["default_flag"], pl.Utf8)
 
     def test_schema_overrides_invalid_dtype_rejected(self) -> None:
-        import tempfile
         tmp = Path(tempfile.mkdtemp())
         source = tmp / "dummy.csv"
         source.write_text("a,b\n1,2")
@@ -215,9 +214,8 @@ class GenericImportTests(unittest.TestCase):
         )
 
     def test_max_rows_csv_imports_exactly_n_rows(self) -> None:
-        import tempfile
         import polars as pl
-        s = make_synthetic_csv(tmp := Path(tempfile.mkdtemp()))
+        s = make_synthetic_csv(Path(tempfile.mkdtemp()))
         store, output = _run_import(s, max_rows=3)
         art = output.artifacts[0]
         self.assertEqual(art.metadata.get("row_count"), 3)
@@ -229,7 +227,6 @@ class GenericImportTests(unittest.TestCase):
         self.assertTrue(any("SOURCE_ROW_LIMIT_APPLIED" in str(w) for w in output.warnings))
 
     def test_max_rows_parquet_imports_exactly_n_rows(self) -> None:
-        import tempfile
         import polars as pl
         tmp = Path(tempfile.mkdtemp())
         df = pl.DataFrame({"x": list(range(50))})
@@ -242,24 +239,21 @@ class GenericImportTests(unittest.TestCase):
         self.assertEqual(df2.height, 3)
 
     def test_max_rows_none_imports_all_rows(self) -> None:
-        import tempfile
-        s = make_synthetic_csv(tmp := Path(tempfile.mkdtemp()), rows=50)
+        s = make_synthetic_csv(Path(tempfile.mkdtemp()), rows=50)
         store, output = _run_import(s)
         art = output.artifacts[0]
         self.assertEqual(art.metadata.get("row_count"), 50)
 
     def test_max_rows_validation_rejects_invalid(self) -> None:
-        import tempfile
         from cardre.nodes import ImportTabularDatasetNode
         node = ImportTabularDatasetNode()
-        s = make_synthetic_csv(tmp := Path(tempfile.mkdtemp()))
+        s = make_synthetic_csv(Path(tempfile.mkdtemp()))
         for bad_val in [0, -1, "abc", 1.5, True, False]:
             errors = node.validate_params({"source_path": str(s), "max_rows": bad_val})
             self.assertTrue(any("max_rows" in e for e in errors),
                             f"Expected max_rows error for {bad_val}")
 
     def test_null_values_custom_markers_imported(self) -> None:
-        import tempfile
         tmp = Path(tempfile.mkdtemp())
         csv_path = tmp / "nulls.csv"
         csv_path.write_text("a,b\n1,N/A\n2,3\nNULL,4\n")
@@ -271,7 +265,6 @@ class GenericImportTests(unittest.TestCase):
         assert df["b"].null_count() >= 1
 
     def test_encoding_failure_raises_on_invalid_encoding(self) -> None:
-        import tempfile
         tmp = Path(tempfile.mkdtemp())
         # Write a file with non-UTF8 bytes
         csv_path = tmp / "latin1.csv"
@@ -281,7 +274,6 @@ class GenericImportTests(unittest.TestCase):
 
     def test_latin1_encoding_imports_successfully(self) -> None:
         """Positive test: Latin-1 file imports correctly when encoding='latin1'."""
-        import tempfile
         import polars as pl
         tmp = Path(tempfile.mkdtemp())
         csv_path = tmp / "latin1.csv"
@@ -298,7 +290,6 @@ class GenericImportTests(unittest.TestCase):
         The import does NOT raise; instead polars appends `_duplicated_N`.
         This is a known silent-corruption risk.
         """
-        import tempfile
         tmp = Path(tempfile.mkdtemp())
         csv_path = tmp / "dup_cols.csv"
         csv_path.write_text("a,a\n1,2\n3,4\n")
@@ -311,7 +302,6 @@ class GenericImportTests(unittest.TestCase):
 
     def test_empty_column_name_imports_as_empty(self) -> None:
         """Empty column names may pass import — documents risk #7."""
-        import tempfile
         tmp = Path(tempfile.mkdtemp())
         csv_path = tmp / "empty_col.csv"
         csv_path.write_text(",b\n1,2\n3,4\n")
@@ -329,9 +319,7 @@ class WideDatasetSmokeTests(unittest.TestCase):
 
         Marked slow — not run in CI by default.
         """
-        import tempfile
         from pathlib import Path
-        import polars as pl
 
         tmp = Path(tempfile.mkdtemp())
         csv_path = tmp / "wide.csv"

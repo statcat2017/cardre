@@ -7,7 +7,7 @@ import sqlite3
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from cardre.audit import StepSpec, json_logical_hash, utc_now_iso
+from cardre.audit import StepSpec, utc_now_iso
 
 if TYPE_CHECKING:
     from cardre.store.project_store import ProjectStore

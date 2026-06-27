@@ -20,7 +20,6 @@ from cardre.evidence import (
     EvidenceKind,
     EvidenceNotFoundError,
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
-    SCHEMA_SCORE_APPLICATION_EVIDENCE,
     SCHEMA_SELECTION_DEFINITION,
     SCHEMA_WOE_APPLICATION_EVIDENCE,
 )

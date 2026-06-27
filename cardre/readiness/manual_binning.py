@@ -8,14 +8,7 @@ integration (Phase 4).
 
 from __future__ import annotations
 
-from typing import Any
 
-from cardre.engine.binning.diagnostics import (
-    MonotonicStatus,
-    check_sparse_bins_ratio,
-    check_zero_cell_bins,
-    monotonicity_status,
-)
 from cardre.services.plan_dto import ManualBinningVariableSummary
 
 

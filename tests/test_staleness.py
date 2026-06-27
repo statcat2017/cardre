@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 
-from cardre.audit import RunStepRecord, StepSpec, json_logical_hash, replace_step_params, utc_now_iso
+from cardre.audit import RunStepRecord, StepSpec, json_logical_hash, utc_now_iso
 from cardre.errors import GraphValidationError
 from cardre.staleness import compute_staleness, staleness_detail, step_is_stale, _find_spec
 from tests.helpers import make_store
@@ -141,7 +141,6 @@ class StepIsStaleTests:
         pv_id = str(uuid.uuid4())
         parent = _make_step("p")
         child = _make_step("c", parent_ids=["p"])
-        parent_rs = _make_rs("p", pv_id, "r1", parent.params_hash, output_hashes=["old_hash"])
         # Child's fingerprint records parent_hashes as ["old_hash"], but parent current is ["new_hash"]
         child_rs = _make_rs(
             "c", pv_id, "r1", child.params_hash,

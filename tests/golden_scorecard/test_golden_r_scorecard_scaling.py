@@ -21,7 +21,6 @@ from tests.golden_scorecard.helpers import (
     R_SCORECARD_PARAMS,
     build_bin_def_from_r_bins,
     build_woe_table_from_r_bins,
-    r_col,
     r_woe_col,
 )
 

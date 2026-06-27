@@ -4,16 +4,13 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
-from pathlib import Path
 
 import numpy as np
 import polars as pl
 
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
-from cardre.nodes.explainability import CHAMPION_ELIGIBILITY, ModelExplainabilityNode, ModelLimitationsNode
+from cardre.nodes.explainability import ModelExplainabilityNode, ModelLimitationsNode
 from cardre.nodes.ml_models import DecisionTreeNode, GradientBoostingClassifierNode, RandomForestClassifierNode
-from cardre.store import ProjectStore
 
 from tests.helpers import make_numeric_dataset, make_store
 import pytest

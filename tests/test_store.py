@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from cardre.audit import (
     ArtifactRef,
-    json_logical_hash,
-    physical_hash,
-    relative_path,
-    table_logical_hash,
     utc_now_iso,
 )
 from cardre.store import ProjectStore
@@ -734,9 +729,6 @@ class IntegrityTests(unittest.TestCase):
 
 def _register_dummy_artifact(store: ProjectStore) -> ArtifactRef:
     """Create and register a small artifact, returning the ref."""
-    import uuid
-    from cardre.audit import ArtifactRef, physical_hash
-    from cardre.store import ProjectStore
     ref = store.ingest_existing_artifact(
         source_path=Path(__file__),  # any small file
         artifact_type="test",

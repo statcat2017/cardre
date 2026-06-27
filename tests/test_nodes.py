@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import json
-import tempfile
 import unittest
 import sys
 from pathlib import Path
@@ -31,7 +30,6 @@ from cardre.nodes import (
     ApplyModelNode,
     DefineModellingMetadataNode,
     DevelopmentSampleDefinitionNode,
-    DummyApplyNode,
     DummyFitNode,
     ExplicitMissingOutlierTreatmentNode,
     ImportGermanCreditNode,
@@ -43,7 +41,6 @@ from cardre.nodes import (
     TechnicalManifestExportNode,
     CutoffAnalysisNode,
     ValidationMetricsNode,
-    ValidateBinaryTargetNode,
     VariableSelectionNode,
 )
 from cardre.registry import NodeRegistry
@@ -138,8 +135,6 @@ class GermanCreditImportTests(unittest.TestCase):
 
     def test_import_from_file_creates_parquet_artifact(self) -> None:
         store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
         source = make_sample_german_credit_file(tmp)
 
         step_spec = StepSpec(
@@ -177,8 +172,6 @@ class GermanCreditImportTests(unittest.TestCase):
 
     def test_imported_artifact_metadata_is_correct(self) -> None:
         store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
         source = make_sample_german_credit_file(tmp)
 
         step_spec = StepSpec(
@@ -213,8 +206,6 @@ class GermanCreditImportTests(unittest.TestCase):
 
     def test_reimport_same_file_produces_same_logical_hash(self) -> None:
         store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
         source = make_sample_german_credit_file(tmp)
 
         params = {"source_path": str(source)}
@@ -249,8 +240,6 @@ class GermanCreditImportTests(unittest.TestCase):
 
     def test_import_from_zip(self) -> None:
         store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
         zpath = make_sample_german_credit_zip(tmp)
 
         params = {"source_path": str(zpath)}
@@ -277,8 +266,6 @@ class GermanCreditImportTests(unittest.TestCase):
 
     def test_import_malformed_rows_fails(self) -> None:
         store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
         source = tmp / "malformed.data"
         source.write_text("1 2 3\n4 5 6 7\n")
         params = {"source_path": str(source)}
@@ -306,8 +293,6 @@ class GermanCreditImportTests(unittest.TestCase):
 
     def test_import_unsupported_extension_fails(self) -> None:
         store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
         source = tmp / "data.csv"
         source.write_text("dummy")
         params = {"source_path": str(source)}
@@ -330,8 +315,6 @@ class GermanCreditImportTests(unittest.TestCase):
 
     def test_import_zip_without_german_data_fails(self) -> None:
         store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test")
         import zipfile
         zpath = tmp / "empty.zip"
         with zipfile.ZipFile(zpath, "w") as zf:
@@ -398,7 +381,7 @@ class SplitRegressionTests(unittest.TestCase):
             "target": pl.Series(["g", "g", "g"], dtype=pl.String),
         })
         art = _make_train_artifact(store, df, role="input")
-        meta_art = _make_json_artifact(store, {
+        _make_json_artifact(store, {
             "target_column": "target",
             "good_values": ["g"], "bad_values": ["b"],
         }, stem="meta")
@@ -776,7 +759,6 @@ class ExplicitMissingOutlierTreatmentTests(unittest.TestCase):
         project_id, plan_id = make_project_with_import(store, tmp)
         import_artifact = store.list_artifacts()[0]
 
-        df = pl.read_parquet(store.artifact_path(import_artifact))
         # Create a mock treated output by taking all 3 roles from the import
         mock_artifacts = [
             import_artifact,

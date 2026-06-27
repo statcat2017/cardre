@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import threading
-from pathlib import Path
 from typing import Literal
 
 from cardre.audit import utc_now_iso

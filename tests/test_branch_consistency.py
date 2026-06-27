@@ -13,7 +13,6 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-import pytest
 
 from cardre.audit import StepSpec, utc_now_iso, json_logical_hash
 from cardre.store import ProjectStore

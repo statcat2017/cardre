@@ -10,12 +10,11 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
 from cardre.errors import CardreError
-from cardre.services.project_registry import get_store_for_project, ProjectNotFoundError
+from cardre.services.project_registry import get_store_for_project
 from cardre.services.report_generation_service import ReportGenerationService
 
 logger = logging.getLogger(__name__)
 
-from cardre.store import ProjectStore
 from sidecar.models import (
     GenerateReportRequest,
     GenerateReportResponse,

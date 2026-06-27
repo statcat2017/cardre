@@ -8,13 +8,11 @@ logical_hash.
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from datetime import UTC, datetime
 

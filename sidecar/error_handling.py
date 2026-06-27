@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-from cardre.errors import CardreError, Diagnostic
+from cardre.errors import CardreError
 
 logger = logging.getLogger(__name__)
 

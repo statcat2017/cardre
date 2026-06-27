@@ -2,39 +2,27 @@
 
 from __future__ import annotations
 
-import io
-import tempfile
 from pathlib import Path
 
 import polars as pl
 
 from cardre.artifacts import write_json_artifact
 from cardre.audit import (
-    ArtifactRef,
     ExecutionContext,
     NodeOutput,
     NodeType,
     StepSpec,
     json_logical_hash,
-    physical_hash,
-    relative_path,
-    table_logical_hash,
 )
-from cardre.executor import PlanExecutor, RoleAccessError
+from cardre.executor import PlanExecutor
 from cardre.errors import ArtifactReadError, GraphValidationError
 from cardre.staleness import compute_staleness
 from cardre.nodes import (
-    DummyApplyNode,
     DummyFitNode,
     ImportGermanCreditNode,
-    ProfileDatasetNode,
     SplitTrainTestOotNode,
-    FineClassingNode,
-    CalculateWoeIvNode,
-    WoeTransformTrainNode,
 )
 from cardre.registry import NodeRegistry
-from cardre.store import ProjectStore
 
 import pytest
 
@@ -364,7 +352,6 @@ class SplitAndRoleTests:
         run_steps = store.get_run_steps(run_id)
 
         split_rs = [rs for rs in run_steps if rs.step_id == "split"][0]
-        import_rs = [rs for rs in run_steps if rs.step_id == "import"][0]
 
 
         roles_found = set()
@@ -422,7 +409,6 @@ class SplitAndRoleTests:
         assert run["status"] == "failed"
 
         run_steps = store.get_run_steps(run_id)
-        fit_steps = [rs for rs in run_steps if rs.step_id == "fit-on-import"]
         any_role_error = any(
             "role" in str(e.get("message", "")) for rs in run_steps for e in rs.errors
         )
@@ -673,12 +659,8 @@ class StalenessAndReplayTests:
         reg = NodeRegistry.with_defaults()
         executor = PlanExecutor(reg)
 
-        first_run_id = executor.run_plan_version(store, pv_id)
-        second_run_id = executor.run_plan_version(store, pv_id)
-
-        first_steps = store.get_run_steps(first_run_id)
-        second_steps = store.get_run_steps(second_run_id)
-
+        executor.run_plan_version(store, pv_id)
+        executor.run_plan_version(store, pv_id)
 
     def test_old_run_remains_queryable(self) -> None:
         store, tmp = make_store()
@@ -699,16 +681,13 @@ class StalenessAndReplayTests:
         reg = NodeRegistry.with_defaults()
         executor = PlanExecutor(reg)
 
-        first_run_id = executor.run_plan_version(store, pv_id)
+        executor.run_plan_version(store, pv_id)
 
         new_params = {"source_path": str(tmp / "nonexistent")}
         try:
             executor.replay_from_step(store, plan_id, pv_id, "import", new_params)
         except (FileNotFoundError, RuntimeError):
             pass
-
-        old_run = store.get_run(first_run_id)
-
 
 # ======================================================================
 # Wave 2: run_to_node, force, cancellation, manifest
@@ -921,7 +900,6 @@ class Phase1LifecycleTests:
         pv_id = store.create_plan_version(plan_id, steps)
         reg = NodeRegistry()
         reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
 
         from cardre.run_lifecycle import RunLifecycle
         try:
@@ -953,7 +931,6 @@ class Phase1LifecycleTests:
         pv_id = store.create_plan_version(plan_id, steps)
         reg = NodeRegistry()
         reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
 
         from cardre.run_lifecycle import RunLifecycle
         try:
@@ -995,7 +972,7 @@ class Phase1LifecycleTests:
         reg = NodeRegistry.with_defaults()
         executor = PlanExecutor(reg)
 
-        first_run_id = executor.run_plan_version(store, pv_id)
+        executor.run_plan_version(store, pv_id)
 
         new_params = {"source_path": str(source)}
         new_run_id = executor.replay_from_step(store, plan_id, pv_id, "import", new_params)

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import io
 import json
-import tempfile
-from pathlib import Path
 
 import polars as pl
 import pytest
@@ -25,7 +23,6 @@ from cardre.evidence import (
     EvidenceParseError,
     SCHEMA_BIN_DEFINITION,
     SCHEMA_CUTOFF_ANALYSIS,
-    SCHEMA_MANUAL_BINNING_OVERRIDES,
     SCHEMA_MODELLING_METADATA,
     SCHEMA_MODEL_ARTIFACT,
     SCHEMA_SAMPLE_DEFINITION,
@@ -34,7 +31,6 @@ from cardre.evidence import (
     SCHEMA_VALIDATION_EVIDENCE,
     SCHEMA_VALIDATION_METRICS,
     SCHEMA_WOE_IV_EVIDENCE,
-    SCHEMA_WOE_TABLE,
     SampleDefinition,
 )
 from cardre.store import ProjectStore

@@ -223,7 +223,6 @@ class BranchService:
         now = utc_now_iso()
         segment_filter_json = json.dumps(segment_filter_spec, sort_keys=True) if segment_filter_spec else None
 
-        connection = self._store._connect()
         with self._store.transaction() as conn:
             new_pv_id = self._store.create_plan_version_in_transaction(
                 conn=conn,

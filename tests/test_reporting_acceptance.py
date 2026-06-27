@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 import shutil
 import tempfile
 import unittest
@@ -20,7 +19,6 @@ from cardre.audit import (
     json_logical_hash,
 )
 from cardre.evidence import SCHEMA_SCORE_SCALING
-from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.executor import PlanExecutor
 from cardre.nodes import BuildSummaryReportNode
 from cardre.nodes.build.export import TechnicalManifestExportNode
@@ -30,7 +28,7 @@ from cardre.readiness import check_report_readiness
 from cardre.services.export_service import export_branch_audit_pack
 from cardre.store import ProjectStore
 
-from tests.helpers import SAMPLE_GERMAN_CREDIT_LINES, _make_json_artifact, _make_parquet_report, _make_train_artifact, make_store
+from tests.helpers import SAMPLE_GERMAN_CREDIT_LINES, _make_json_artifact, _make_parquet_report, make_store
 
 # German Credit columns must be loaded as strings for scorecard pipeline compat.
 # With proper CSV inference polars converts numeric codes (e.g. duration=6,
@@ -291,10 +289,10 @@ class TestAcceptanceChampionReport:
 
         # Verify report files exist
         report_bundle = export_dir / "report" / "report_bundle.json"
-        assert report_bundle.exists(), f"report_bundle.json not found"
+        assert report_bundle.exists(), "report_bundle.json not found"
 
         report_html = export_dir / "report" / "report.html"
-        assert report_html.exists(), f"report.html not found"
+        assert report_html.exists(), "report.html not found"
 
         # Verify HTML is self-contained
         html_content = report_html.read_text()

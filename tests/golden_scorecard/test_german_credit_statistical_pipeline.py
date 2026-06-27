@@ -12,7 +12,6 @@ import json
 import polars as pl
 import pytest
 
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
 from cardre.nodes import (
     CalculateWoeIvNode,
@@ -22,7 +21,7 @@ from cardre.nodes import (
     VariableSelectionNode,
 )
 from cardre.nodes.prep import DefineModellingMetadataNode, ImportGermanCreditNode
-from tests.golden_scorecard.helpers import r_col, CARDRE_TO_R
+from tests.golden_scorecard.helpers import r_col
 
 
 # ---------------------------------------------------------------------------

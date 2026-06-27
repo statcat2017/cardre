@@ -13,7 +13,7 @@ __all__ = [
     "BinningNode",
     "BuildSummaryReportNode", "CalculateWoeIvNode", "DummyFitNode",
     "FineClassingNode", "FrozenScorecardBundleNode", "LogisticRegressionNode", "ManualBinningNode",
-    "ScoreScalingNode", "TechnicalManifestExportNode",
+    "NoopNode", "ScoreScalingNode", "TechnicalManifestExportNode",
     "VariableClusteringNode", "VariableSelectionNode",
     "WoeTransformTrainNode",
     "apply_manual_binning_overrides", "validate_manual_binning_overrides",

@@ -7,10 +7,9 @@ bloat the plan query/update service.
 from __future__ import annotations
 
 import json
-import uuid
 from typing import Any
 
-from cardre.audit import RunStepRecord, StepSpec, utc_now_iso
+from cardre.audit import RunStepRecord
 from cardre.evidence import ArtifactEvidenceReader, EvidenceError, EvidenceKind
 from cardre._evidence.models import WoeIvEvidence
 from cardre.engine.binning.diagnostics import (
@@ -626,7 +625,6 @@ def _get_latest_review_annotation(store, step_id: str, plan_version_id: str) -> 
     """Read the most recent manual_binning_review annotation for a step + plan version.
     Returns Ok(dict | None) on success, Degraded(None, ...) on error."""
     try:
-        from cardre.store import ProjectStore
         with store.transaction() as conn:
             rows = conn.execute(
                 "SELECT payload_json, created_at FROM step_annotations "

@@ -92,6 +92,7 @@ from cardre.nodes.validate import (
 
 __all__ = [
     "AlternativeDataManifestNode",
+    "AutoBinningFitNode",
     "BinningNode",
     "ApplyExclusionsNode",
     "ApplyModelNode",

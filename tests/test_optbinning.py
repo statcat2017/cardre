@@ -524,7 +524,6 @@ class TestAutoBinningFitNode:
             ArtifactRef, ExecutionContext, StepSpec, json_logical_hash,
             physical_hash, relative_path, table_logical_hash,
         )
-        from cardre.evidence import SCHEMA_BIN_DEFINITION
 
         store, tmp = make_store()
         store.initialize()
@@ -958,7 +957,6 @@ class TestPipelineCompatibility:
         from tests.helpers import _make_train_artifact, _make_json_artifact, _make_parquet_report
         from cardre.nodes import WoeTransformTrainNode
         from cardre.audit import ExecutionContext, StepSpec
-        from cardre.evidence import SCHEMA_WOE_TABLE
 
         df = pl.DataFrame({
             "age": [25.0, 30.0, 35.0, 18.0, 45.0, 55.0],
@@ -972,7 +970,6 @@ class TestPipelineCompatibility:
         )
 
         # WOE table (from CalculateWoeIvNode output)
-        import io
         woe_df = pl.DataFrame({
             "variable": ["age", "age"],
             "bin_id": ["age_bin_001", "age_bin_002"],
@@ -1005,10 +1002,6 @@ class TestPipelineCompatibility:
         import sys
 
         # Check apply module's imports
-        from cardre.nodes import ApplyWoeMappingNode, WoeTransformTrainNode
-        import cardre.nodes._bin_mask
-        import cardre.nodes.validate.apply
-        import cardre.nodes.build.features
 
         # No optbinning references in these modules
         for mod_name in ("cardre.nodes._bin_mask", "cardre.nodes.validate.apply",
@@ -1192,9 +1185,9 @@ class TestOptBinningFullIntegration:
 
         import io
         from cardre.audit import (
-            ArtifactRef, json_logical_hash, physical_hash, relative_path, table_logical_hash,
+            ArtifactRef, physical_hash, relative_path, table_logical_hash,
         )
-        from cardre.evidence import SCHEMA_BIN_DEFINITION, SCHEMA_WOE_TABLE
+        from cardre.evidence import SCHEMA_BIN_DEFINITION
         from tests.helpers import _make_json_artifact
 
         df = pl.DataFrame({
@@ -1399,7 +1392,6 @@ class TestOptBinningFullIntegration:
 
         # Step 5: LogisticRegressionNode
         from cardre.nodes import LogisticRegressionNode
-        from cardre.artifacts import write_parquet_artifact
 
         lr_node = LogisticRegressionNode()
         lr_ctx = ExecutionContext(
@@ -1425,10 +1417,6 @@ class TestOptBinningFullIntegration:
 
     def test_optbinning_apply_path_no_optbinning_import(self):
         """Re-verifies that apply/scoring path has no optbinning dependency."""
-        from cardre.nodes import ApplyWoeMappingNode, WoeTransformTrainNode
-        import cardre.nodes._bin_mask
-        import cardre.nodes.validate.apply
-        import cardre.nodes.build.features
         import sys
 
         for mod_name in ("cardre.nodes._bin_mask", "cardre.nodes.validate.apply",

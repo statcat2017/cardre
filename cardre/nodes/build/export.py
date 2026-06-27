@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import json  # noqa: F401 — imported for monkeypatch/patch compatibility in tests
 from typing import Any
 
 from cardre.artifacts import write_json_artifact

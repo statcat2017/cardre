@@ -13,7 +13,7 @@ import sys
 import traceback
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from cardre.audit import (
@@ -23,7 +23,6 @@ from cardre.audit import (
     NodeType,
     RunStepRecord,
     StepSpec,
-    json_logical_hash,
     physical_hash,
     replace_step_params,
     utc_now_iso,
@@ -33,7 +32,6 @@ from cardre.errors import (
     ArtifactWriteError,
     CardreError,
     ContractViolationError,
-    Diagnostic,
     GraphValidationError,
     MissingInputArtifactError,
     NodeExecutionError,

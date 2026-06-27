@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from cardre.services.champion_service import assign_champion, get_champion as _get_champion
 from sidecar.models import AssignChampionRequest, ChampionResponse
-from cardre.services.project_registry import get_store_for_project, load_registry
+from cardre.services.project_registry import get_store_for_project
 
 router = APIRouter(tags=["champion"])
 

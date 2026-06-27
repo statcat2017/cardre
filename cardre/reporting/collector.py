@@ -7,7 +7,6 @@ It must not become a second modelling execution path.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from cardre.audit import RunStepRecord
@@ -17,7 +16,6 @@ from cardre.store import ProjectStore
 from cardre.evidence import (
     ArtifactEvidenceReader,
     EvidenceKind,
-    SCHEMA_VARIABLE_CLUSTERING_EVIDENCE,
 )
 from cardre.reporting.limitation_codes import LimitationCode
 from cardre.step_id import resolve_run_step, resolve_required_steps, resolve_step_for_branch
@@ -30,9 +28,7 @@ from cardre.reporting.schema import (
     CutoffInfo,
     CutoffRow,
     CutoffTable,
-    DatasetDateRange,
     DatasetRole,
-    DatasetTargetSummary,
     ExecutionFingerprint,
     GeneratedBy,
     Limitation,
@@ -49,20 +45,16 @@ from cardre.reporting.schema import (
     RedundancyReviewInfo,
     ReportBundle,
     ReportGenerationInfo,
-    ReportSource,
-    ReportSummary,
     ReproducibilityInfo,
     ResolvedStepRef,
     ScoreScalingInfo,
-    SelectedCutoff,
-    StabilityInfo,
     ValidationInfo,
     VariableBin,
     VariableInfo,
     WoeSmoothingInfo,
 )
 
-from cardre.reporting.evidence_contract import REQUIRED_STEPS_COLLECTOR, find_evidence_for_canonical_step
+from cardre.reporting.evidence_contract import REQUIRED_STEPS_COLLECTOR
 
 CARDRE_VERSION = "0.1.0"
 
@@ -634,7 +626,6 @@ class ReportCollector:
     def _collect_redundancy_review(
         self, bundle: ReportBundle, plan_version_id: str,
     ) -> None:
-        from cardre.evidence import VariableClusteringEvidence
 
         ref = None
         step_map = self.store.get_branch_step_map(self.target_branch_id, plan_version_id)

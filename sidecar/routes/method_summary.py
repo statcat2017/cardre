@@ -143,8 +143,6 @@ def get_model_ranking(
     rankings: list[ModelRankingItem] = []
     for branch_id, branch_model in model_branches.items():
         model_family = branch_model.get("model_family")
-        feature_count = branch_model.get("feature_count", 0)
-        branch_warnings = branch_model.get("warnings", [])
 
         # Get metric value from validation data across roles
         metric_value = None

@@ -924,7 +924,6 @@ class ApplyExclusionsNode(NodeType):
             if df.schema[column] == pl.Utf8 and isinstance(value, (int, float)):
                 col_expr = pl.col(column).cast(pl.Float64)
 
-            n_before_rule = df.height
             if operator == "==":
                 exclusion_mask = col_expr == value
             elif operator == "!=":
@@ -951,7 +950,6 @@ class ApplyExclusionsNode(NodeType):
                 exclusion_mask = col_expr.is_not_null()
             removed = int(df.select(exclusion_mask.sum()).item())
             df = df.filter(~exclusion_mask)
-            n_after_rule = df.height
             rule_counts.append({
                 "column": column,
                 "operator": operator,

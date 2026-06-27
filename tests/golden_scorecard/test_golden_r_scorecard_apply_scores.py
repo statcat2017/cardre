@@ -5,7 +5,6 @@ Uses R model coefficients + R scorecard to verify Cardre score formula. """
 from __future__ import annotations
 
 import polars as pl
-import pytest
 
 from cardre.artifacts import write_parquet_artifact
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash

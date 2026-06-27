@@ -20,7 +20,6 @@ from cardre.errors import CardreError, Diagnostic
 from cardre.readiness import check_report_readiness, ReadinessBlocker, ReportReadinessResult
 from cardre.reporting.collector import generate_report_bundle
 from cardre.reporting.renderer_html import write_html_report
-from cardre.reporting.schema import ReportBundle
 from cardre.store import ProjectStore
 
 

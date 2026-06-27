@@ -192,8 +192,6 @@ class TestMethodSummarySchemaDrift:
         proof_pv_id = store.get_latest_plan_version_id(proof_plan_id)
 
         # Configure metadata for the Proof Pathway
-        from sidecar.routes.plans import update_step_params as update_params_route
-        from fastapi import APIRouter
 
         # Update validate-target and split with target_column
         from cardre.services.plan_service import PlanService

@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import json
 import math
-from pathlib import Path
-from typing import Any
 
 import polars as pl
 
@@ -21,9 +18,6 @@ from cardre.evidence import (
     ArtifactEvidenceReader,
     EvidenceKind,
     EvidenceNotFoundError,
-    SCHEMA_BIN_DEFINITION,
-    SCHEMA_SELECTION_DEFINITION,
-    SCHEMA_VARIABLE_CLUSTERING_EVIDENCE,
     SCHEMA_WOE_TABLE,
 )
 

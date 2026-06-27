@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import json
 
-import pytest
 
 from cardre.audit import StepSpec, json_logical_hash
 from cardre.executor import PlanExecutor
-from cardre.nodes import DummyFitNode, DummyApplyNode
+from cardre.nodes import DummyFitNode
 from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 
@@ -119,7 +118,7 @@ class TestFullPlanRunLifecycle:
         reg.register(SimpleSourceNode)
         executor = PlanExecutor(reg)
 
-        run_id = executor.run_plan_version(store, pv_id)
+        executor.run_plan_version(store, pv_id)
         manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
         manifest = json.loads(store.artifact_path(manifest_arts[-1]).read_text())
         assert manifest["steps"][0]["action"] == "executed"
@@ -241,7 +240,7 @@ class TestForceMode:
         reg.register(SimpleSourceNode)
         executor = PlanExecutor(reg)
 
-        run_id = executor.run_plan_version(store, pv_id, force=True)
+        executor.run_plan_version(store, pv_id, force=True)
         manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
         manifest = json.loads(store.artifact_path(manifest_arts[-1]).read_text())
         assert manifest["execution_mode"] == "force"
@@ -326,7 +325,7 @@ class TestToNodeRunLifecycle:
         reg.register(SimpleTransformNode)
         executor = PlanExecutor(reg)
 
-        run_id = executor.run_to_node(store, pv_id, "target")
+        executor.run_to_node(store, pv_id, "target")
         manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
         manifest = json.loads(store.artifact_path(manifest_arts[-1]).read_text())
         assert manifest["target_step_id"] == "target"
@@ -361,11 +360,11 @@ class TestManifestDeterminism:
 
         # Both runs use the same plan_version_id with force to get deterministic fingerprints
         # (same inputs → same output artifact logical hashes)
-        run_id = executor.run_plan_version(store, pv_id, force=True)
+        executor.run_plan_version(store, pv_id, force=True)
         manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
         manifest1 = json.loads(store.artifact_path(manifest_arts[-1]).read_text())
 
-        run_id2 = executor.run_plan_version(store, pv_id, force=True)
+        executor.run_plan_version(store, pv_id, force=True)
         manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
         manifest2 = json.loads(store.artifact_path(manifest_arts[-1]).read_text())
 

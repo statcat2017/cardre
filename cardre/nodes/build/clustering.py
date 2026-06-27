@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import numpy as np
@@ -250,7 +249,6 @@ class VariableClusteringNode(NodeType):
     @staticmethod
     def _tie_aware_rank(values: np.ndarray) -> np.ndarray:
         """Assign average ranks, handling ties correctly."""
-        import numpy as np
         from scipy.stats import rankdata  # type: ignore[import-untyped]
 
         return rankdata(values, method="average").astype(float)
@@ -353,7 +351,6 @@ class VariableClusteringNode(NodeType):
         iv_map: dict[str, float], missing_map: dict[str, float],
         representative_rule: str,
     ) -> tuple[list[dict], list[str], list[dict]]:
-        import numpy as np
 
         arr = corr_matrix.drop("_col").to_numpy()
         n = len(columns)
@@ -511,7 +508,6 @@ class VariableClusteringNode(NodeType):
         return {"variable": best, "reason": "highest IV"}
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        import numpy as np
 
         store = context.store
         reader = ArtifactEvidenceReader(store)

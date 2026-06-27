@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 import polars as pl
@@ -15,10 +14,7 @@ from cardre.audit import (
     json_logical_hash,
 )
 from cardre.evidence import (
-    ArtifactEvidenceReader,
-    EvidenceKind,
     SCHEMA_MODELLING_METADATA,
-    SCHEMA_REJECT_INFERENCE_RESULT,
     SCHEMA_REJECT_POPULATION_CONFIG,
     SCHEMA_SAMPLE_DEFINITION,
 )

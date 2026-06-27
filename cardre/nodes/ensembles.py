@@ -9,14 +9,13 @@ record full lineage for auditability.
 from __future__ import annotations
 
 import io
-import time
 from typing import Any
 
 import joblib
 import numpy as np
 import polars as pl
 
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
+from cardre.artifacts import write_json_artifact
 from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.audit import (
     ExecutionContext,
@@ -217,12 +216,12 @@ class VotingEnsembleNode(NodeType):
 
         if voting == "soft":
             # Average probabilities
-            ensemble_probs = np.mean(prob_matrix, axis=1)
+            np.mean(prob_matrix, axis=1)
         else:
             # Hard voting: majority of thresholded predictions
             predictions = (prob_matrix >= threshold).astype(int)
             majority = np.sum(predictions, axis=1) > (len(models) / 2)
-            ensemble_probs = majority.astype(float)
+            majority.astype(float)
 
         # Build ensemble model artifact
         bad_class = sorted(bad_values)[0]
@@ -439,7 +438,7 @@ class WeightedEnsembleNode(NodeType):
             weights = np.ones(len(models)) / len(models)
 
         # Weighted average
-        ensemble_probs = prob_matrix @ weights
+        prob_matrix @ weights
 
         bad_class = sorted(bad_values)[0]
         good_class = sorted(good_values)[0]
