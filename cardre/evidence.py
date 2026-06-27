@@ -89,6 +89,7 @@ from cardre._evidence.models import (
     WoeTransformEvidence,
 )
 from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre._evidence.profiles import EVIDENCE_PROFILES as _EVIDENCE_PROFILES  # noqa: F401 — imported by tests/test_evidence.py
 
 __all__ = [
     "SCHEMA_MODELLING_METADATA",
