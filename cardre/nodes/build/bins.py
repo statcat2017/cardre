@@ -265,13 +265,21 @@ class FineClassingNode(NodeType):
 
             is_last = i == len(bin_stats) - 1
             hi = None if brk == float("inf") else float(brk)
-            lo = prev_upper
-            lower_inc = True
-            if i > 0:
+            if i == 0:
+                lo = None
+                lower_inc = False
+            else:
                 lower_inc = False
                 lo = float(_all_bk[i - 1]) if _all_bk[i - 1] != float("inf") else prev_upper
 
-            label = f"[{lo:.4g}, {hi:.4g}]" if lo is not None and hi is not None else f"[{lo:.4g}, +inf)" if lo is not None else "All values"
+            if lo is not None and hi is not None:
+                label = f"[{lo:.4g}, {hi:.4g}]"
+            elif lo is not None:
+                label = f"[{lo:.4g}, +inf)"
+            elif hi is not None:
+                label = f"(-inf, {hi:.4g}]"
+            else:
+                label = "All values"
             prev_upper = hi if hi is not None else lo
 
             bins.append({
