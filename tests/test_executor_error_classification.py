@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from cardre.audit import ExecutionContext, NodeOutput, NodeType, StepSpec, json_logical_hash
+from cardre.audit import ExecutionContext, NodeOutput, StepSpec, json_logical_hash
 from cardre.executor import PlanExecutor
 from cardre.errors import (
     CardreError,
