@@ -231,6 +231,60 @@ class FineClassingTests(unittest.TestCase):
         self.assertIsNone(first_bin["lower"], "first bin lower should be None (open on left)")
         self.assertFalse(first_bin["lower_inclusive"], "first bin should be open on left")
 
+    def test_concentrated_numeric_emits_warning(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "score": [1.0] * 8 + [2.0, 3.0, 4.0, 5.0, 6.0],
+            "target": ["good"] * 7 + ["bad"] * 6,
+        })
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        train_path = store.root / "datasets" / "test-train.parquet"
+        train_path.parent.mkdir(parents=True, exist_ok=True)
+        train_path.write_bytes(buf.getvalue())
+        train_artifact = ArtifactRef(
+            artifact_id="train1", artifact_type="dataset", role="train",
+            path=relative_path(train_path, store.root),
+            physical_hash=physical_hash(train_path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet",
+            metadata={},
+        )
+        store.register_artifact(train_artifact)
+        meta_params = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_path = store.root / "artifacts" / "test-meta.json"
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(meta_params, sort_keys=True))
+        meta_artifact = ArtifactRef(
+            artifact_id="meta1", artifact_type="definition", role="definition",
+            path=relative_path(meta_path, store.root),
+            physical_hash=physical_hash(meta_path),
+            logical_hash=json_logical_hash(meta_params),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(meta_artifact)
+        params = {"max_bins": 5, "min_bin_fraction": 0.01, "missing_policy": "ignore"}
+        step_spec = StepSpec(
+            step_id="binning", node_type="cardre.binning",
+            node_version="1", category="fit",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=1,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=step_spec, parent_run_steps=[],
+            input_artifacts=[train_artifact, meta_artifact],
+            validated_params=params, runtime_metadata={},
+        )
+        node = FineClassingNode()
+        output = node.run(ctx)
+        payload = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.BIN_DEFINITION)
+        dup_warnings = [w for w in payload.warnings if w.get("code") == "DUPLICATE_VALUES_CONCENTRATED"]
+        assert len(dup_warnings) > 0, "Expected DUPLICATE_VALUES_CONCENTRATED warning"
+        assert dup_warnings[0].get("variable") == "score"
+        assert dup_warnings[0].get("concentration_ratio", 0) > 0.5
+
     def test_fine_classing_max_bins_validation(self) -> None:
         store, tmp = make_store()
         store.initialize()

@@ -252,6 +252,21 @@ class FineClassingNode(NodeType):
             pl.col("_tgt_str").is_in(good_list).sum().alias("good_count"),
         ]).sort("_brk")
 
+        vc = non_null[col].value_counts().sort("count", descending=True)
+        max_count = vc["count"][0]
+        dup_ratio = max_count / n
+        if dup_ratio > 0.5:
+            dominant_val = vc[col][0]
+            warnings.append({
+                "code": "DUPLICATE_VALUES_CONCENTRATED",
+                "variable": col,
+                "concentration_ratio": round(float(dup_ratio), 4),
+                "dominant_value": str(dominant_val),
+                "message": f"Variable {col!r} has {int(max_count)}/{int(n)} rows "
+                          f"({dup_ratio:.1%}) with the same value {dominant_val!r}; "
+                          f"bin boundaries may be unstable.",
+            })
+
         _all_bk = bin_stats["_brk"].to_list()
         col_min = float(non_null[col].min())
         prev_upper = col_min
