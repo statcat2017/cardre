@@ -85,7 +85,15 @@ class ProjectStore:
         conn.executescript(BRANCH_TABLES_SQL)
         conn.executescript(LINEAGE_TABLES_SQL)
 
+        # Add branch_id to runs table if missing (must happen before backfill
+        # which references r.branch_id)
+        run_cols = {r["name"] for r in conn.execute("PRAGMA table_info(runs)").fetchall()}
+        if "branch_id" not in run_cols:
+            conn.execute("ALTER TABLE runs ADD COLUMN branch_id TEXT")
+
         # Backfill artifact_lineage from existing run_steps JSON arrays
+        # Ensure store_meta exists (may not in legacy stores)
+        conn.executescript(MIGRATIONS_SQL)
         row = conn.execute(
             "SELECT value FROM store_meta WHERE key = 'lineage_backfilled'"
         ).fetchone()
@@ -125,11 +133,6 @@ class ProjectStore:
             conn.execute("ALTER TABLE plan_steps ADD COLUMN canonical_step_id TEXT NOT NULL DEFAULT ''")
         if "branch_id" not in cols:
             conn.execute("ALTER TABLE plan_steps ADD COLUMN branch_id TEXT")
-
-        # Add branch_id to runs table if missing
-        run_cols = {r["name"] for r in conn.execute("PRAGMA table_info(runs)").fetchall()}
-        if "branch_id" not in run_cols:
-            conn.execute("ALTER TABLE runs ADD COLUMN branch_id TEXT")
 
         # Add is_carried_forward to run_steps table if missing
         run_step_cols = {r["name"] for r in conn.execute("PRAGMA table_info(run_steps)").fetchall()}
