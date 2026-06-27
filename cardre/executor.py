@@ -146,18 +146,9 @@ class PlanExecutor:
         steps = store.get_plan_version_steps(plan_version_id)
         issues: list[dict] = []
         for spec in steps:
-            try:
-                av = self.registry.availability(spec.node_type)
-            except KeyError:
-                issues.append({
-                    "step_id": spec.step_id,
-                    "node_type": spec.node_type,
-                    "available": False,
-                    "disabled_reason": f"Unknown node type {spec.node_type!r}",
-                    "missing_optional_dependencies": [],
-                    "tier": "unknown",
-                })
+            if not self.registry.has(spec.node_type):
                 continue
+            av = self.registry.availability(spec.node_type)
             if not av.available:
                 issues.append({
                     "step_id": spec.step_id,
