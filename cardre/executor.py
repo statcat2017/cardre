@@ -10,6 +10,7 @@ whatever input evidence was resolved before the failure.
 from __future__ import annotations
 
 import sys
+import threading
 import traceback
 import uuid
 from collections.abc import Callable
@@ -44,6 +45,64 @@ from cardre.store import ProjectStore
 from cardre.topology import validate_topology
 
 
+class _HeartbeatWatchdog:
+    """Daemon thread that keeps ``heartbeat_at`` fresh while a step executes.
+
+    Started before ``node.run(ctx)`` and stopped after it returns.  The
+    watchdog ticks at ``interval_seconds`` so a healthy long-running step
+    never goes stale.  A truly dead worker (process crash) takes the
+    daemon thread with it, so stale recovery still works.
+
+    Also records the active step id in run metadata for diagnostics.
+
+    The watchdog thread uses its own ``ProjectStore`` instance (backed by
+    a separate SQLite connection) so it never shares the executor's
+    connection across threads.
+    """
+
+    def __init__(
+        self,
+        store: ProjectStore,
+        run_id: str,
+        step_id: str,
+        interval_seconds: int = 75,
+    ) -> None:
+        self._root = store.root
+        self._run_id = run_id
+        self._step_id = step_id
+        self._interval = interval_seconds
+        self._stop = threading.Event()
+        self._thread = threading.Thread(
+            target=self._tick,
+            name=f"hb-watchdog-{run_id[:8]}",
+            daemon=True,
+        )
+
+    def __enter__(self) -> _HeartbeatWatchdog:
+        # __enter__/__exit__ run on the executor's thread — safe to use
+        # the executor's store for the initial beat and metadata.
+        from cardre.store import ProjectStore
+        main_store = ProjectStore(self._root)
+        main_store.set_active_step(self._run_id, self._step_id)
+        main_store.run_heartbeat(self._run_id)
+        self._stop.clear()
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._stop.set()
+        self._thread.join(timeout=self._interval * 2 + 2)
+        from cardre.store import ProjectStore
+        main_store = ProjectStore(self._root)
+        main_store.set_active_step(self._run_id, None)
+
+    def _tick(self) -> None:
+        from cardre.store import ProjectStore
+        hb_store = ProjectStore(self._root)
+        while not self._stop.wait(self._interval):
+            hb_store.run_heartbeat(self._run_id)
+
+
 LEAKAGE_SENSITIVE_CATEGORIES = {"fit", "selection", "refinement"}
 
 STATUS_NOT_RUN = "not_run"
@@ -67,6 +126,8 @@ class PlanExecutor:
 
     def __init__(self, registry: NodeRegistry) -> None:
         self.registry = registry
+        from cardre.config import CardreConfig
+        self._heartbeat_interval = CardreConfig.from_env().heartbeat_watchdog_interval_seconds
 
     # ------------------------------------------------------------------
     # Run a plan version
@@ -307,10 +368,14 @@ class PlanExecutor:
                     if action.before_execute is not None:
                         action.before_execute()
                     store.run_heartbeat(run_id)
-                    rs = self._execute_step(
-                        store, action.spec, plan_version_id, run_id,
-                        outputs, records,
-                    )
+                    with _HeartbeatWatchdog(
+                        store, run_id, action.spec.step_id,
+                        interval_seconds=self._heartbeat_interval,
+                    ):
+                        rs = self._execute_step(
+                            store, action.spec, plan_version_id, run_id,
+                            outputs, records,
+                        )
                     records[action.spec.step_id] = rs
                     outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)
                     if rs.status == STATUS_FAILED:
@@ -322,10 +387,14 @@ class PlanExecutor:
                     action.before_execute()
 
                 store.run_heartbeat(run_id)
-                rs = self._execute_step(
-                    store, action.spec, plan_version_id, run_id,
-                    outputs, records,
-                )
+                with _HeartbeatWatchdog(
+                    store, run_id, action.spec.step_id,
+                    interval_seconds=self._heartbeat_interval,
+                ):
+                    rs = self._execute_step(
+                        store, action.spec, plan_version_id, run_id,
+                        outputs, records,
+                    )
                 store.run_heartbeat(run_id)
                 records[action.spec.step_id] = rs
                 outputs[action.spec.step_id] = resolve_output_artifacts(store, rs)

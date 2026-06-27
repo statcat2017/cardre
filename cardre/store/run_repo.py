@@ -78,6 +78,31 @@ class RunRepository:
                 (now, run_id),
             )
 
+    def set_active_step(self, run_id: str, step_id: str | None) -> None:
+        with self._store.transaction() as conn:
+            row = conn.execute(
+                "SELECT metadata_json FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if row is None:
+                return
+            meta = json.loads(row["metadata_json"] or "{}")
+            if step_id is None:
+                meta.pop("active_step_id", None)
+            else:
+                meta["active_step_id"] = step_id
+            conn.execute(
+                "UPDATE runs SET metadata_json = ? WHERE run_id = ?",
+                (json.dumps(meta, sort_keys=True), run_id),
+            )
+
+    def get_active_step(self, run_id: str) -> str | None:
+        row = self._db().execute(
+            "SELECT metadata_json FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return json.loads(row["metadata_json"] or "{}").get("active_step_id")
+
     def append_diagnostic(self, run_id: str, diagnostic: dict) -> None:
         try:
             with self._store.transaction() as conn:

@@ -183,7 +183,11 @@ export function useRunProgress(projectId: string, onRunComplete: () => void): Us
                 // Warn but keep polling — a long-running step is legitimate
                 setRunStalled(true);
                 if (stallCountRef.current === STALL_POLL_LIMIT) {
-                  addDiagnostic("Warning: no step progress for ~60s — still checking");
+                  const hbAge = run.heartbeat_at
+                    ? Math.round((Date.now() - new Date(run.heartbeat_at).getTime()) / 1000)
+                    : null;
+                  const hbSuffix = hbAge != null ? ` (last heartbeat ${hbAge}s ago)` : "";
+                  addDiagnostic(`Warning: no step progress for ~60s — still checking${hbSuffix}`);
                 }
               }
             }

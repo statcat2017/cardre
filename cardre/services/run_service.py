@@ -175,8 +175,8 @@ class RunService:
 
     def _maybe_recover_stale_run(self, run: dict) -> None:
         if self._is_stale(run):
-            self._store.finish_run(run["run_id"], "interrupted")
-            self._store.append_run_diagnostic(run["run_id"], {
+            active_step_id = self._store.get_active_step(run["run_id"])
+            diag: dict = {
                 "code": "RUN_RECOVERED_STALE",
                 "message": f"Run {run['run_id']} was stuck in 'running' with stale heartbeat — recovered as interrupted.",
                 "severity": "error",
@@ -184,7 +184,15 @@ class RunService:
                 "run_id": run["run_id"],
                 "plan_version_id": run.get("plan_version_id", ""),
                 "created_at": utc_now_iso(),
-            })
+            }
+            if active_step_id is not None:
+                diag["active_step_id"] = active_step_id
+                diag["message"] = (
+                    f"Run {run['run_id']} was stuck in 'running' with stale heartbeat "
+                    f"(last active step: {active_step_id}) — recovered as interrupted."
+                )
+            self._store.finish_run(run["run_id"], "interrupted")
+            self._store.append_run_diagnostic(run["run_id"], diag)
 
     def _is_stale(self, run: dict) -> bool:
         if run.get("status") != "running":
