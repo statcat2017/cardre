@@ -77,12 +77,33 @@ class RunService:
                 "Set the environment variable to enable challenger governance."
             )
 
-        # Preflight short-circuit checks
+        # Preflight short-circuit checks (sync runs fall through to
+        # _execute_sync which records the RUN_SHORT_CIRCUITED diagnostic)
         if not force:
             if run_scope == "branch" and branch_id:
                 result = self._evidence.check_branch_current(plan_version_id, branch_id)
                 if result.run_id is not None:
-                    return self._build_response(result.run_id)
+                    if sync:
+                        # Sync: fall through to _execute_sync which creates the
+                        # placeholder run and records the diagnostic.
+                        pass
+                    else:
+                        # Async: create a placeholder run and record the diagnostic
+                        # so the caller sees the short-circuit in the run history.
+                        branch_kw = {"branch_id": branch_id} if branch_id else {}
+                        placeholder_id = self._store.create_run(plan_version_id, **branch_kw)
+                        self._store.append_run_diagnostic(placeholder_id, {
+                            "code": "RUN_SHORT_CIRCUITED",
+                            "message": f"Run {placeholder_id} short-circuited because branch has no stale steps (existing run {result.run_id})",
+                            "severity": "info",
+                            "category": "lifecycle",
+                            "run_id": placeholder_id,
+                            "plan_version_id": plan_version_id,
+                            "branch_id": branch_id,
+                            "created_at": utc_now_iso(),
+                        })
+                        self._store.finish_run(placeholder_id, "cancelled")
+                        return self._build_response(result.run_id)
 
             if run_scope == "to_node" and target_step_id:
                 result = self._evidence.check_to_node_current(
@@ -119,6 +140,16 @@ class RunService:
             if run_scope == "branch" and branch_id:
                 ctx = self._evidence.prepare_branch_evidence(plan_version_id, branch_id, force=force)
                 if not force and ctx.short_circuit_run_id is not None:
+                    self._store.append_run_diagnostic(run_id, {
+                        "code": "RUN_SHORT_CIRCUITED",
+                        "message": f"Run {run_id} short-circuited because branch has no stale steps (existing run {ctx.short_circuit_run_id})",
+                        "severity": "info",
+                        "category": "lifecycle",
+                        "run_id": run_id,
+                        "plan_version_id": plan_version_id,
+                        "branch_id": branch_id,
+                        "created_at": utc_now_iso(),
+                    })
                     self._store.finish_run(run_id, "cancelled")
                     return self._build_response(ctx.short_circuit_run_id)
                 result_id = executor.run_branch(self._store, plan_version_id, branch_id, run_id=run_id, force=force, branch_ctx=ctx)

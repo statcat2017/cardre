@@ -15,7 +15,7 @@ import traceback
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from cardre.audit import (
     ArtifactRef,
@@ -42,6 +42,9 @@ from cardre.evidence_locator import resolve_output_artifacts
 from cardre.registry import NodeRegistry
 from cardre.step_graph import ancestor_closure, descendant_closure
 from cardre.store import ProjectStore
+
+if TYPE_CHECKING:
+    from cardre.services.evidence_policy import BranchRunEvidence
 from cardre.topology import validate_topology
 
 
@@ -168,32 +171,15 @@ class PlanExecutor:
         store: ProjectStore,
         plan_version_id: str,
         branch_id: str,
+        *,
         run_id: str | None = None,
         force: bool = False,
-        branch_ctx: Any = None,
+        branch_ctx: "BranchRunEvidence",
     ) -> str:
-        from cardre.errors import BranchEvidenceError
         from cardre.run_lifecycle import RunLifecycle
-        from cardre.services.branch_evidence import BranchEvidenceResolver
-        if branch_ctx is not None:
-            ctx = branch_ctx
-        else:
-            resolver = BranchEvidenceResolver(self)
-            try:
-                ctx = resolver.prepare_branch_run(store, branch_id, plan_version_id, force=force)
-            except BranchEvidenceError as exc:
-                if run_id is not None:
-                    store.append_run_diagnostic(run_id, {
-                        "code": exc.code,
-                        "message": exc.message,
-                        "severity": "error",
-                        "category": "execution",
-                        "run_id": run_id,
-                        "plan_version_id": plan_version_id,
-                        "branch_id": branch_id,
-                        "context": exc.context,
-                    })
-                raise
+        from cardre.services.evidence_policy import EvidencePolicyService
+
+        ctx = branch_ctx
         if not force and ctx.short_circuit_run_id is not None:
             return ctx.short_circuit_run_id
 
@@ -205,7 +191,6 @@ class PlanExecutor:
         ) as lifecycle:
             run_id = lifecycle.run_id
 
-            # Persist any diagnostics collected during branch evidence resolution
             for d in ctx.diagnostics:
                 store.append_run_diagnostic(run_id, {
                     "code": d.code,
@@ -217,13 +202,10 @@ class PlanExecutor:
                     "plan_version_id": plan_version_id,
                     "branch_id": branch_id,
                     "context": d.context,
+                    "created_at": utc_now_iso(),
                 })
 
-            # Build action list but defer parent evidence resolution to
-            # just-before-execute so branch-owned parent steps produce
-            # fresh evidence before their children resolve inputs.
-            from cardre.services.branch_evidence import BranchEvidenceResolver
-            resolver = BranchEvidenceResolver(self)
+            policy = EvidencePolicyService(store)
             actions: list[_StepAction] = []
             for spec in ctx.steps:
                 if spec.step_id not in ctx.branch_owned_step_ids:
@@ -233,9 +215,7 @@ class PlanExecutor:
                 else:
                     actions.append(_StepAction(
                         spec=spec, action="execute",
-                        before_execute=lambda s=spec: resolver.resolve_parent_evidence(
-                            store, ctx, s,
-                        ),
+                        before_execute=lambda s=spec: policy.resolve_parent_evidence(ctx, s),
                     ))
 
             has_failure, outputs, records = self._execute_actions(

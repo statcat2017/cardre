@@ -78,6 +78,23 @@ jobs:
       - name: Run tests
         run: python3 -m pytest tests/ -q --tb=short --cov-fail-under=75
 
+  test-python-governance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARDRE_GOVERNANCE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install dependencies
+        run: pip install -e ".[sidecar,test]"
+      - name: Run governance-marked tests
+        run: python3 -m pytest -m governance -q --tb=short --no-cov
+
   test-frontend:
     runs-on: ubuntu-latest
     needs: [typecheck-frontend]
