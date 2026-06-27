@@ -167,21 +167,20 @@ def check_report_readiness(
                 ))
             elif canonical_step_id == "final-woe-iv" and report_mode == "champion" and v1_art is not None:
                 try:
-                    import json
-                    v1_path = store.artifact_path(v1_art)
-                    if v1_path.exists():
-                        v1_data = json.loads(v1_path.read_text())
-                        for var in v1_data.get("variables", []):
-                            for w in var.get("warnings", []):
-                                if w.get("code") == "NON_MONOTONIC_WOE":
-                                    blockers.append(ReadinessBlocker(
-                                        LimitationCode.NON_MONOTONIC_WOE_CHAMPION,
-                                        f"Final WOE variable {var.get('variable_name', '?')!r} "
-                                        "is non-monotonic. Re-bin to monotonic or configure "
-                                        "enforce_monotonic_woe=False for champion promotion.",
-                                        step_id=ref.step_id,
-                                    ))
-                                    break
+                    from cardre.evidence import ArtifactEvidenceReader
+                    reader = ArtifactEvidenceReader(store)
+                    evidence = reader.read(v1_art.artifact_id, EvidenceKind.WOE_IV_EVIDENCE)
+                    for var in evidence.variables:
+                        for w in var.warnings:
+                            if w.get("code") == "NON_MONOTONIC_WOE":
+                                blockers.append(ReadinessBlocker(
+                                    LimitationCode.NON_MONOTONIC_WOE_CHAMPION,
+                                    f"Final WOE variable {var.variable_name!r} "
+                                    "is non-monotonic. Re-bin to monotonic or configure "
+                                    "enforce_monotonic_woe=False for champion promotion.",
+                                    step_id=ref.step_id,
+                                ))
+                                break
                 except Exception:
                     pass
 
@@ -250,10 +249,17 @@ def check_report_readiness(
 
     # Check OOT dataset role
     if not _check_oot_exists(store, run_id):
-        warnings.append(ReadinessWarning(
-            LimitationCode.NO_OOT_SAMPLE,
-            "No OOT dataset role was present for this run.",
-        ))
+        if report_mode == "champion":
+            blockers.append(ReadinessBlocker(
+                LimitationCode.NO_OOT_SAMPLE_CHAMPION,
+                "No OOT dataset role was present for this run. "
+                "OOT is required for champion promotion.",
+            ))
+        else:
+            warnings.append(ReadinessWarning(
+                LimitationCode.NO_OOT_SAMPLE,
+                "No OOT dataset role was present for this run.",
+            ))
 
     return ReportReadinessResult(
         blockers=blockers,

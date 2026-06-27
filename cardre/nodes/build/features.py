@@ -12,7 +12,7 @@ from cardre.node_parameters import (
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.engine.binning.diagnostics import MonotonicStatus, monotonicity_status
+from cardre.engine.binning.diagnostics import MonotonicStatus, check_pure_bins, monotonicity_status
 from cardre.nodes._bin_mask import build_bin_condition
 from cardre.evidence import (
     AmbiguousEvidenceError,
@@ -256,6 +256,17 @@ class CalculateWoeIvNode(NodeType):
                     "bad_rate": round(woe_row["bad_count"] / max(woe_row["good_count"] + woe_row["bad_count"], 1), 4),
                     "woe": woe_row["woe"],
                     "iv_contribution": woe_row["iv_component"],
+                })
+
+            pure_diags = check_pure_bins(variable, bins, total_good, total_bad)
+            for d in pure_diags:
+                warnings_list.append({
+                    "code": d.code,
+                    "variable": d.variable,
+                    "bin_id": d.bin_id,
+                    "message": d.message,
+                    "requires_acknowledgement": d.requires_acknowledgement,
+                    **d.details,
                 })
 
             var_status = "included"
