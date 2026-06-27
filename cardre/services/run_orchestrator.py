@@ -76,9 +76,9 @@ def dispatch_run_async(
     target_step_id: str | None = None,
     force: bool = False,
 ) -> None:
-    """Execute a run in a background thread.
+    """Compatibility wrapper that executes the RunWorker body inline.
 
-    Thin compatibility wrapper around :class:`cardre.services.run_worker.RunWorker`.
+    New async dispatch should go through ``RunService`` + ``RunDispatcher``.
     Existing tests monkeypatch ``execute_run`` in this module; the worker
     calls it via :meth:`RunWorker._invoke_executor`, so those patches
     continue to take effect. The diagnostic code recorded on failure is

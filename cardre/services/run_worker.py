@@ -30,8 +30,6 @@ from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
 from cardre.audit import utc_now_iso
-from cardre.executor import PlanExecutor
-from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 
 logger = logging.getLogger(__name__)
@@ -74,14 +72,16 @@ class RunWorker:
     This is the one place where a run's background body lives. It owns:
 
     * the initial heartbeat;
-    * executor construction;
     * exception capture and diagnostic recording (``RUN_WORKER_FAILED``);
     * final-status cleanup (``fail_run_if_running``).
 
+    It delegates actual step execution to
+    :func:`cardre.services.run_orchestrator.execute_run`, which
+    constructs the executor. This keeps the sync and async paths
+    sharing one execution entrypoint.
+
     It deliberately does *not* decide dispatch strategy (thread / process /
-    queue) — that is the dispatcher's job. It also deliberately re-uses
-    :func:`cardre.services.run_orchestrator.execute_run` so the sync and
-    async paths share one execution entrypoint.
+    queue) — that is the dispatcher's job.
     """
 
     def execute(self, request: RunRequest) -> None:
