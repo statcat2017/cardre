@@ -5,7 +5,7 @@
 The `PlanExecutor` (`cardre/executor.py`) is the single execution seam for all run modes:
 
 - **Full-plan run**: executes all steps in a plan version in topological order.
-- **Branch run**: executes only branch-owned steps, reusing evidence from the baseline for shared upstream steps.
+- **Branch run**: executes only branch-owned steps, reusing evidence from the baseline for shared upstream steps. **Branch evidence policy (validation, staleness, short-circuit, shared/branch-owned evidence seeding, and parent evidence resolution) is owned by `cardre/services/evidence_policy.py` (`EvidencePolicyService`) — the single source of truth.** `PlanExecutor.run_branch` is a pure consumer: it requires a `BranchRunEvidence` prepared upstream and does not resolve policy itself. Both sync (`RunService._execute_sync`) and async (`run_orchestrator.execute_run` → `RunWorker`) paths prepare evidence via `EvidencePolicyService` and pass it as `branch_ctx`.
 - **To-node run**: executes the ancestor closure of a target step, reusing non-stale upstream evidence.
 - **Replay**: re-executes steps with modified parameters, reusing unchanged upstream evidence.
 

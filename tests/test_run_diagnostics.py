@@ -19,9 +19,7 @@ from cardre.errors import (
     BranchEvidenceError,
     RunLifecycleError,
 )
-from cardre.executor import PlanExecutor
-from cardre.registry import NodeRegistry
-from cardre.services.branch_evidence import BranchEvidenceResolver
+from cardre.services.evidence_policy import EvidencePolicyService
 from cardre.services.run_orchestrator import dispatch_run_async
 from cardre.store import ProjectStore
 from cardre.run_lifecycle import RunLifecycle, write_manifest
@@ -143,9 +141,9 @@ def test_branch_version_mismatch_raises_typed_error():
 
         pv_id2 = store.create_plan_version(plan_id, steps)
 
-        resolver = BranchEvidenceResolver(PlanExecutor(NodeRegistry()))
+        svc = EvidencePolicyService(store)
         with pytest.raises(BranchEvidenceError) as excinfo:
-            resolver.prepare_branch_run(store, branch_id, pv_id2, force=False)
+            svc.prepare_branch_evidence(pv_id2, branch_id, force=False)
         assert excinfo.value.code == "BRANCH_VERSION_MISMATCH"
         context = excinfo.value.context
         assert context.get("branch_id") == branch_id
@@ -190,9 +188,9 @@ def test_reuse_evidence_not_found_diagnostic():
             step_id="branch-step", is_shared_upstream=False, is_branch_owned=True,
         )
 
-        resolver = BranchEvidenceResolver(PlanExecutor(NodeRegistry()))
+        svc = EvidencePolicyService(store)
         with pytest.raises(BranchEvidenceError) as excinfo:
-            resolver.prepare_branch_run(store, branch_id, pv_id, force=False)
+            svc.prepare_branch_evidence(pv_id, branch_id, force=False)
         assert excinfo.value.code in ("SHARED_UPSTREAM_STALE", "BRANCH_NO_OP_FAILED")
 
 

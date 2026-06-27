@@ -12,6 +12,7 @@ from cardre.audit import (
 from cardre.artifacts import write_json_artifact
 from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
+from cardre.services.evidence_policy import EvidencePolicyService
 
 import pytest
 
@@ -19,6 +20,12 @@ from tests.helpers import make_store
 
 
 pytestmark = pytest.mark.integration
+
+
+def _branch_ctx(store, pv_id, branch_id, force=True):
+    return EvidencePolicyService(store).prepare_branch_evidence(
+        pv_id, branch_id, force=force,
+    )
 
 
 class SimpleSourceNode(NodeType):
@@ -110,7 +117,7 @@ class TestBranchExecution:
         )
 
         # Branch run (force to bypass staleness short-circuit)
-        branch_run_id = executor.run_branch(store, pv_id, branch_id, force=True)
+        branch_run_id = executor.run_branch(store, pv_id, branch_id, force=True, branch_ctx=_branch_ctx(store, pv_id, branch_id, force=True))
         assert store.get_run(branch_run_id)["status"] == "succeeded"
         branch_steps = store.get_run_steps(branch_run_id)
 
@@ -193,7 +200,7 @@ class TestBranchExecution:
         )
 
         # Branch run (force to bypass staleness)
-        branch_run_id = executor.run_branch(store, pv_id, branch_id, force=True)
+        branch_run_id = executor.run_branch(store, pv_id, branch_id, force=True, branch_ctx=_branch_ctx(store, pv_id, branch_id, force=True))
         assert store.get_run(branch_run_id)["status"] == "succeeded"
         branch_steps = store.get_run_steps(branch_run_id)
 
