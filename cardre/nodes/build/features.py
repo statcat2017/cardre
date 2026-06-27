@@ -154,40 +154,39 @@ class CalculateWoeIvNode(NodeType):
                 if good_dist == 0.0 or bad_dist == 0.0:
                     zero_cell_count += 1
                     zero_cell_encountered = True
-                    if zero_cell_policy == "block" and purpose == "final":
-                        if smoothing and smoothing.get("method") == "additive":
-                            alpha = float(smoothing.get("alpha", 0.5))
-                            if alpha <= 0:
-                                raise ValueError("Smoothing alpha must be positive")
-                            if not smoothing.get("rationale"):
-                                raise ValueError(
-                                    f"Zero cell in variable {variable!r} bin {bin_id!r}: "
-                                    f"smoothing configured without a rationale"
-                                )
-                            good_dist = (bin_good + alpha) / (total_good + alpha * len(bins)) if total_good > 0 else alpha / (alpha * len(bins))
-                            bad_dist = (bin_bad + alpha) / (total_bad + alpha * len(bins)) if total_bad > 0 else alpha / (alpha * len(bins))
-                            was_smoothed = True
-                            smoothing_applied = True
-                            warnings_list.append({
-                                "variable": variable,
-                                "bin_id": bin_id,
-                                "message": f"Zero cell smoothed with additive alpha={alpha}",
-                            })
-                        else:
-                            raise ValueError(
-                                f"Zero cell in variable {variable!r} bin {bin_id!r}: "
-                                f"good_dist={good_dist:.4f}, bad_dist={bad_dist:.4f}. "
-                                f"Final WOE blocked by zero_cell_policy={zero_cell_policy!r}. "
-                                f"Configure smoothing with a rationale to proceed."
-                            )
-                    elif smoothing and smoothing.get("method") == "additive":
+                    if smoothing and smoothing.get("method") == "additive":
                         alpha = float(smoothing.get("alpha", 0.5))
                         if alpha <= 0:
                             raise ValueError("Smoothing alpha must be positive")
+                        if purpose == "final" and not smoothing.get("rationale"):
+                            raise ValueError(
+                                f"Zero cell in variable {variable!r} bin {bin_id!r}: "
+                                f"smoothing configured without a rationale"
+                            )
                         good_dist = (bin_good + alpha) / (total_good + alpha * len(bins)) if total_good > 0 else alpha / (alpha * len(bins))
                         bad_dist = (bin_bad + alpha) / (total_bad + alpha * len(bins)) if total_bad > 0 else alpha / (alpha * len(bins))
                         was_smoothed = True
                         smoothing_applied = True
+                        warnings_list.append({
+                            "variable": variable,
+                            "bin_id": bin_id,
+                            "message": f"Zero cell smoothed with additive alpha={alpha}",
+                        })
+                    elif zero_cell_policy == "block" and purpose == "final":
+                        raise ValueError(
+                            f"Zero cell in variable {variable!r} bin {bin_id!r}: "
+                            f"good_dist={good_dist:.4f}, bad_dist={bad_dist:.4f}. "
+                            f"Final WOE blocked by zero_cell_policy={zero_cell_policy!r}. "
+                            f"Configure smoothing with a rationale to proceed."
+                        )
+                    else:
+                        warnings_list.append({
+                            "code": "ZERO_CELL_INITIAL_IV_DEFLATED",
+                            "variable": variable,
+                            "bin_id": bin_id,
+                            "message": f"Zero cell in variable {variable!r} bin {bin_id!r} "
+                                      f"during initial pass; IV component set to 0",
+                        })
 
                 if good_dist == 0.0 or bad_dist == 0.0:
                     woe_val = 0.0
