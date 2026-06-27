@@ -193,7 +193,9 @@ export function useRunProgress(projectId: string, onRunComplete: () => void): Us
             }
 
             if (run.is_stale) {
-              addDiagnostic("Warning: run heartbeat is stale — the worker may have crashed or been killed");
+              addDiagnostic(
+                "Warning: run heartbeat is stale — the worker may have crashed or been killed",
+              );
             }
 
             if (run.status !== "running") {

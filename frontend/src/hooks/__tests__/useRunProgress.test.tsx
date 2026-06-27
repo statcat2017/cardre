@@ -372,10 +372,7 @@ describe("useRunProgress", () => {
 
     // The hook should surface staleness immediately via a diagnostic,
     // not wait for the 60s stall heuristic.
-    const staleDiag = result.current.diagnostics.find((d) =>
-      d.toLowerCase().includes("stale"),
-    );
-    expect(staleDiag, "is_stale=true should produce a stale diagnostic on first poll")
-      .toBeTruthy();
+    const staleDiag = result.current.diagnostics.find((d) => d.toLowerCase().includes("stale"));
+    expect(staleDiag, "is_stale=true should produce a stale diagnostic on first poll").toBeTruthy();
   });
 });
