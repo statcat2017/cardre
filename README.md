@@ -64,9 +64,6 @@ pip install pyinstaller
 ```
 
 Produces `frontend/src-tauri/binaries/cardre-api-{target-triple}` for Tauri bundling.
-The target triple is embedded at Rust compile time by `tauri-build`. In dev,
-`main.rs` falls back to `cardre-api` on PATH (from `pip install -e ".[sidecar]"`).
-See [docs/release/sidecar-packaging.md](docs/release/sidecar-packaging.md) for details.
 
 ### Run Tests
 
