@@ -98,6 +98,16 @@ def test_execute_run_returns_created_run_id_for_sync_branch(monkeypatch):
     reason="requires CARDRE_GOVERNANCE=1",
 )
 def test_execute_run_preserves_precreated_async_run_id_on_branch_short_circuit(monkeypatch):
+    """RED: The worker-path branch short-circuit must return the EXISTING
+    successful run_id (parity with RunService._execute_sync at
+    run_service.py:160), not the placeholder run_id. Previously this
+    asserted ``run_id == "precreated-run"`` which characterised the bug
+    (root of issue #168); the assertion is flipped to lock the correct
+    contract.
+
+    The placeholder is still cancelled for the audit trail, and the
+    executor is not called.
+    """
     _patch_executor(monkeypatch)
     _FakeCtx.short_circuit_run_id = "existing-successful-run"
     monkeypatch.setattr(
@@ -112,10 +122,45 @@ def test_execute_run_preserves_precreated_async_run_id_on_branch_short_circuit(m
         run_scope="branch", branch_id="branch-1",
     )
 
-    assert run_id == "precreated-run"
-    assert store.finished == [("precreated-run", "cancelled")]
+    assert run_id == "existing-successful-run", (
+        f"worker-path branch short-circuit must return the existing run_id "
+        f"(parity with RunService._execute_sync), got {run_id!r}"
+    )
+    assert ("precreated-run", "cancelled") in store.finished, (
+        "placeholder must still be cancelled for audit trail"
+    )
     assert FakeExecutor.calls == [], "short-circuit must not call the executor"
     _FakeCtx.short_circuit_run_id = None  # reset for other tests
+
+
+def test_branch_short_circuit_worker_path_returns_existing_run_id(monkeypatch):
+    """RED: Explicit pin that the worker path (run_orchestrator.execute_run)
+    returns the existing successful run_id on a branch short-circuit,
+    matching RunService._execute_sync. This is the canonical contract test
+    for issue #168 — sync and async must return the same run_id for the
+    same logical outcome.
+    """
+    _patch_executor(monkeypatch)
+    _FakeCtx.short_circuit_run_id = "existing-successful-run"
+    monkeypatch.setattr(
+        "cardre.services.evidence_policy.EvidencePolicyService.prepare_branch_evidence",
+        lambda self, pv, bid, force=False: _FakeCtx(),
+    )
+    FakeExecutor.result_id = "existing-successful-run"
+    store = DummyStore()
+
+    returned = run_orchestrator.execute_run(
+        store, "pv", run_id="precreated-run",
+        run_scope="branch", branch_id="branch-1",
+    )
+
+    assert returned == "existing-successful-run", (
+        f"worker-path branch short-circuit must return the existing run_id "
+        f"(parity with RunService._execute_sync), got {returned!r}"
+    )
+    assert ("precreated-run", "cancelled") in store.finished
+    assert FakeExecutor.calls == []
+    _FakeCtx.short_circuit_run_id = None
 
 
 class _FakeCtx:

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 
 
-from cardre.audit import StepSpec, json_logical_hash
+from cardre.audit import RunStepRecord, StepSpec, json_logical_hash, utc_now_iso
 from cardre.executor import PlanExecutor
 from cardre.nodes import DummyFitNode
 from cardre.registry import NodeRegistry
@@ -373,5 +373,84 @@ class TestManifestDeterminism:
             assert s1["action"] == s2["action"] == "executed"
             assert s1["node_type"] == s2["node_type"]
             assert s1["step_id"] == s2["step_id"]
+
+
+# ======================================================================
+# Phase 0 — Short-circuit placeholder manifest (ADR 0004 atomic finalisation)
+# ======================================================================
+
+
+class TestShortCircuitManifest:
+    """RED: Short-circuit placeholder runs must have a manifest artifact,
+    per ADR 0004's atomic-finalisation guarantee. Currently short-circuit
+    placeholders are finished via direct ``store.finish_run(run_id,
+    "cancelled")`` calls that bypass ``RunLifecycle`` / ``finalise_run``,
+    so no manifest is written.
+    """
+
+    def test_to_node_short_circuit_placeholder_has_manifest(self) -> None:
+        """A to-node short-circuit placeholder must have a manifest with
+        status='cancelled'. No governance gate needed for to-node scope."""
+        from cardre.services.run_service import RunService
+        from cardre.services.run_worker import SyncRunDispatcher
+        from cardre.artifacts import write_json_artifact
+        import uuid
+
+        store, tmp = make_store()
+        store.initialize()
+        project_id = store.create_project("test")
+        plan_id = store.create_plan(project_id, "test-plan")
+        steps = [
+            StepSpec(
+                step_id="source", node_type="cardre.test.simple_source",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0,
+            ),
+        ]
+        pv_id = store.create_plan_version(plan_id, steps)
+
+        # Seed a prior successful run so the to-node run short-circuits.
+        prev_run_id = store.create_run(pv_id)
+        art = write_json_artifact(
+            store, artifact_type="report", role="artifact",
+            stem="seed-source", payload={"step_id": "source"}, metadata={},
+        )
+        store.save_run_step(RunStepRecord(
+            run_step_id=str(uuid.uuid4()), run_id=prev_run_id, step_id="source",
+            plan_version_id=pv_id, status="succeeded",
+            started_at=utc_now_iso(), finished_at=utc_now_iso(),
+            input_artifact_ids=[], output_artifact_ids=[art.artifact_id],
+            execution_fingerprint={
+                "params_hash": steps[0].params_hash,
+                "node_type": "cardre.test.simple_source",
+                "node_version": "1",
+                "parent_output_logical_hashes_by_step": {},
+                "output_artifact_logical_hashes": [art.logical_hash],
+            },
+            warnings=[], errors=[],
+        ))
+        store.finish_run(prev_run_id, "succeeded")
+
+        svc = RunService(store, dispatcher=SyncRunDispatcher())
+        resp = svc.run_plan(pv_id, run_scope="to_node", target_step_id="source", sync=True)
+
+        assert resp.run_id == prev_run_id, "must return existing run_id"
+
+        placeholders = [r for r in store.list_runs(plan_version_id=pv_id)
+                        if r.get("status") == "cancelled"]
+        assert placeholders, "expected a cancelled placeholder"
+        ph_id = placeholders[-1]["run_id"]
+
+        manifests = [a for a in store.list_artifacts()
+                     if a.artifact_type == "run_manifest"
+                     and a.metadata.get("run_id") == ph_id]
+        assert len(manifests) == 1, (
+            f"short-circuit placeholder must have exactly one manifest "
+            f"(ADR 0004 atomic finalisation); got {len(manifests)}"
+        )
+        manifest = json.loads(store.artifact_path(manifests[0]).read_text())
+        assert manifest["status"] == "cancelled"
+        assert manifest["execution_mode"] == "to_node"
 
 
