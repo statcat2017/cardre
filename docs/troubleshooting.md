@@ -2,12 +2,28 @@
 
 ## Sidecar Won't Start
 
-**Symptom**: `cardre-api` command not found.
+The launcher logs its resolution path, port, and health status to stderr.
+Check the terminal output for lines starting with `sidecar:`.
 
-**Fix**: Ensure the sidecar is installed:
-```bash
-pip install -e ".[sidecar]"
-```
+**Symptom**: `sidecar: bundled path not found: .../binaries/cardre-api-{triple}`
+followed by `sidecar: dev fallback using PATH entry` (dev only).
+
+**Fix (dev)**: `pip install -e ".[sidecar]"` so `cardre-api` is on PATH, or
+build the sidecar first: `./scripts/build-sidecar.sh`.
+
+**Symptom (packaged)**: `FATAL: Could not resolve sidecar. Bundled: ...`
+
+**Fix (packaged)**: The bundled build is missing the triple-suffixed binary.
+Rebuild via `./scripts/build-sidecar.sh` and repackage. Run
+`python3 scripts/check-sidecar-naming.py` to verify naming consistency.
+
+**Symptom**: `FATAL: sidecar health check did not become healthy` with
+`[sidecar:err]` lines.
+
+**Fix**: The sidecar started but crashed. Read the `[sidecar:err]` lines. Common
+causes: missing PyInstaller hidden imports (rebuild with `--hidden-import`),
+port conflict (the launcher picks an ephemeral port, so this is rare), or a
+missing system library for a bundled dependency.
 
 **Symptom**: Port 8752 already in use.
 
