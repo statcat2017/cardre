@@ -627,6 +627,50 @@ class ApplyWoeMappingTests(unittest.TestCase):
             df = pl.read_parquet(self.store.artifact_path(art))
             self.assertIn("x_woe", df.columns)
 
+    def test_default_woe_unmatched_policy_is_fail(self):
+        store, tmp = make_store()
+        store.initialize()
+        df_oot = pl.DataFrame({"cat": ["z"], "target": ["g"]})
+        oot_art = _make_train_artifact(store, df_oot, role="oot")
+        df_train = pl.DataFrame({"cat": ["a", "b", "c"], "target": ["g", "b", "g"]})
+        train_art = _make_train_artifact(store, df_train, role="train")
+        bin_def = {
+            "variables": [{
+                "variable": "cat", "kind": "categorical",
+                "bins": [
+                    {"bin_id": "cat_b1", "label": "A", "lower": None, "upper": None,
+                     "lower_inclusive": False, "upper_inclusive": False,
+                     "categories": ["a", "b"], "is_missing_bin": False,
+                     "row_count": 2, "good_count": 1, "bad_count": 1},
+                    {"bin_id": "cat_b2", "label": "C", "lower": None, "upper": None,
+                     "lower_inclusive": False, "upper_inclusive": False,
+                     "categories": ["c"], "is_missing_bin": False,
+                     "row_count": 1, "good_count": 1, "bad_count": 0},
+                ],
+            }],
+            "warnings": [],
+        }
+        bin_art = _make_json_artifact(store, bin_def, stem="bins")
+        woe_df = pl.DataFrame({
+            "variable": ["cat", "cat"], "bin_id": ["cat_b1", "cat_b2"],
+            "label": ["A", "C"], "row_count": [2, 1],
+            "good_count": [1, 1], "bad_count": [1, 0],
+            "good_distribution": [0.5, 0.5], "bad_distribution": [1.0, 0.0],
+            "woe": [0.5, -0.3], "iv_component": [0.25, 0.15],
+        })
+        woe_art = _make_parquet_report(store, woe_df, stem="woe")
+        params = {}
+        spec = StepSpec(step_id="aw", node_type="cardre.apply_woe_mapping", node_version="1", category="apply",
+                        params=params, params_hash=json_logical_hash(params),
+                        parent_step_ids=[], branch_label="", position=0)
+        ctx = ExecutionContext(store=store, run_id="r1", plan_version_id="pv1", step_spec=spec,
+                               parent_run_steps=[],
+                               input_artifacts=[train_art, oot_art, bin_art, woe_art],
+                               validated_params=params, runtime_metadata={})
+        with self.assertRaises(ValueError) as cm:
+            ApplyWoeMappingNode().run(ctx)
+        self.assertIn("did not match any bin", str(cm.exception))
+
     def test_unmatched_rows_fail_policy_raises(self):
         df_oot = pl.DataFrame({"x": [-1.0, -2.0], "target": ["g", "b"]})
         oot_art = _make_train_artifact(self.store, df_oot, role="oot")
@@ -748,7 +792,7 @@ class ApplyWoeMappingEvidenceTests(unittest.TestCase):
         self.woe_art = _make_parquet_report(self.store, self.woe_df, stem="woe")
 
     def test_evidence_artifact_present(self):
-        params = {}
+        params = {"woe_unmatched_policy": "warn"}
         spec = StepSpec(step_id="aw", node_type="cardre.apply_woe_mapping", node_version="1", category="apply",
                         params=params, params_hash=json_logical_hash(params),
                         parent_step_ids=[], branch_label="", position=0)
