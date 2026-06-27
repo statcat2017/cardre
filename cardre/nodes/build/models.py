@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json  # noqa: F401 — imported for monkeypatch compatibility in tests
 import math
+import warnings
 from typing import Any
 
 import polars as pl
@@ -178,6 +179,7 @@ class LogisticRegressionNode(NodeType):
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         import numpy as np
+        from sklearn.exceptions import ConvergenceWarning
         from sklearn.linear_model import LogisticRegression as SkLearnLR
 
         store = context.store
@@ -238,7 +240,9 @@ class LogisticRegressionNode(NodeType):
         lr_params = {"C": C, "max_iter": max_iter, "solver": solver, "random_state": random_seed, "penalty": penalty}
 
         lr = SkLearnLR(**lr_params)
-        lr.fit(X, y_binary)
+        with warnings.catch_warnings(record=True) as fit_warnings:
+            warnings.simplefilter("always")
+            lr.fit(X, y_binary)
 
         bad_class = sorted(bad_values)[0] if bad_values else "1"
         good_class = sorted(good_values)[0] if good_values else "0"
@@ -252,8 +256,10 @@ class LogisticRegressionNode(NodeType):
         coefficients = {col: round(float(coef), 6) for col, coef in zip(features_list, lr.coef_[0])}
 
         fail_on_non_convergence = bool(params.get("fail_on_non_convergence", True))
+        has_sklearn_warning = any(issubclass(w.category, ConvergenceWarning) for w in fit_warnings)
+        converged = not has_sklearn_warning and bool(lr.n_iter_[0] < max_iter)
         warnings_list: list[dict] = []
-        if not lr.n_iter_[0] < max_iter:
+        if not converged:
             msg = f"Logistic regression did not converge after {max_iter} iterations"
             if fail_on_non_convergence:
                 raise ValueError(f"{msg} (set fail_on_non_convergence=False to warn only)")
@@ -261,8 +267,6 @@ class LogisticRegressionNode(NodeType):
                 "code": "CONVERGENCE_FAILURE",
                 "message": msg,
             })
-
-        converged = bool(lr.n_iter_[0] < max_iter)
         training_params = {}
         for k, v in lr_params.items():
             if isinstance(v, np.bool_):
