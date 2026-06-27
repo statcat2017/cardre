@@ -519,10 +519,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * List Node Types
-         * @description List all registered node types with method metadata.
-         */
+        /** List Node Types */
         get: operations["list_node_types_node_types_get"];
         put?: never;
         post?: never;

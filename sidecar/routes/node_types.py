@@ -146,9 +146,10 @@ def _get_registry() -> NodeRegistry:
 
 @router.get("/node-types", response_model=NodeTypeListResponse)
 def list_node_types(
-    available_only: bool = False,
+    available_only: bool = Query(default=False, description="Exclude unavailable nodes"),
 ) -> NodeTypeListResponse:
-    """List all registered node types with method metadata."""
+    if not isinstance(available_only, bool):
+        available_only = False
     registry = _get_registry()
     items: list[NodeTypeItem] = []
 

@@ -1742,7 +1742,6 @@
           "node-types"
         ],
         "summary": "List Node Types",
-        "description": "List all registered node types with method metadata.",
         "operationId": "list_node_types_node_types_get",
         "parameters": [
           {
