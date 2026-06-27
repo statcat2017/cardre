@@ -8,17 +8,15 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import datetime, timezone
 
 import pytest
 
 from cardre.audit import ExecutionContext, NodeOutput, NodeType, StepSpec, json_logical_hash
-from cardre.config import CardreConfig
 from cardre.errors import ConcurrentRunError
 from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
 from cardre.services.run_service import RunService
-from cardre.services.run_worker import SyncRunDispatcher, ThreadRunDispatcher
+from cardre.services.run_worker import SyncRunDispatcher
 from cardre.store import ProjectStore
 
 from tests.helpers import make_store
@@ -286,3 +284,105 @@ def test_stale_recovery_diagnostic_includes_active_step(monkeypatch: pytest.Monk
     assert len(rec) == 1, "expected exactly one RUN_RECOVERED_STALE diagnostic"
     assert rec[0].get("active_step_id") == "binning", \
         f"expected active_step_id='binning', got {rec[0].get('active_step_id')!r}"
+
+
+# ======================================================================
+# T6 — concurrent store write while watchdog ticks
+# ======================================================================
+
+class ConcurrentWriteNode(NodeType):
+    """A node that writes artifacts through the store while the watchdog
+    heartbeats on its own connection, proving no cross-thread crash."""
+    node_type = "cardre.test.concurrent_write"
+    version = "1"
+    category = "transform"
+    input_roles: list[str] = []
+    output_roles: list[str] = ["artifact"]
+
+    release: threading.Event = threading.Event()
+    entered: bool = False
+    seen_heartbeats: list[str] = []
+
+    def validate_params(self, params: dict) -> list[str]:
+        return []
+
+    def run(self, ctx: ExecutionContext) -> NodeOutput:
+        from cardre.artifacts import write_json_artifact
+
+        type(self).entered = True
+        type(self).seen_heartbeats = []
+
+        deadline = time.time() + 10
+        while not self.release.wait(timeout=0.05):
+            # Write an artifact through the executor's store while the
+            # watchdog ticks on its own ProjectStore connection.
+            write_json_artifact(
+                ctx.store, artifact_type="report", role="artifact",
+                stem=f"concurrent-{int(time.time() * 1000)}",
+                payload={"ts": time.time()}, metadata={},
+            )
+            now = ctx.store.get_run(ctx.run_id)["heartbeat_at"]
+            if now not in type(self).seen_heartbeats:
+                type(self).seen_heartbeats.append(now)
+            if time.time() > deadline:
+                break
+
+        art = write_json_artifact(
+            ctx.store, artifact_type="report", role="artifact",
+            stem=f"concurrent-final-{ctx.step_spec.step_id}",
+            payload={}, metadata={},
+        )
+        return NodeOutput(artifacts=[art], metrics={})
+
+
+@pytest.fixture(autouse=True)
+def reset_concurrent_write_node() -> None:
+    ConcurrentWriteNode.release = threading.Event()
+    ConcurrentWriteNode.entered = False
+    ConcurrentWriteNode.seen_heartbeats = []
+
+
+def test_concurrent_store_write_while_watchdog_ticks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The watchdog heartbeats on its own ProjectStore connection while
+    node.run writes artifacts through the executor's store — no crash."""
+    monkeypatch.setenv("CARDRE_STALE_HEARTBEAT_SECONDS", "2")
+    store, _ = make_store()
+    pid = store.create_project("t")
+    plan_id = store.create_plan(pid, "p")
+    steps = [StepSpec(
+        step_id="concurrent", node_type="cardre.test.concurrent_write",
+        node_version="1", category="transform", params={},
+        params_hash=json_logical_hash({}),
+        parent_step_ids=[], branch_label="", position=0,
+    )]
+    pv_id = store.create_plan_version(plan_id, steps)
+
+    reg = NodeRegistry()
+    reg.register(ConcurrentWriteNode)
+    executor = PlanExecutor(reg)
+
+    result: dict = {}
+    def runner() -> None:
+        try:
+            result["run_id"] = executor.run_plan_version(store, pv_id)
+        except Exception as exc:
+            result["exc"] = exc
+
+    bg = threading.Thread(target=runner, daemon=True)
+    bg.start()
+
+    deadline = time.time() + 15
+    while time.time() < deadline and len(ConcurrentWriteNode.seen_heartbeats) < 2:
+        time.sleep(0.05)
+
+    assert len(ConcurrentWriteNode.seen_heartbeats) >= 2, (
+        f"heartbeat did not advance during concurrent write; "
+        f"saw {ConcurrentWriteNode.seen_heartbeats}"
+    )
+
+    ConcurrentWriteNode.release.set()
+    bg.join(timeout=10)
+
+    assert "exc" not in result, f"run failed with concurrent store access: {result.get('exc')}"
+    run = store.get_run(result["run_id"])
+    assert run["status"] == "succeeded"

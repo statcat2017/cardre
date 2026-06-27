@@ -54,6 +54,10 @@ class _HeartbeatWatchdog:
     daemon thread with it, so stale recovery still works.
 
     Also records the active step id in run metadata for diagnostics.
+
+    The watchdog thread uses its own ``ProjectStore`` instance (backed by
+    a separate SQLite connection) so it never shares the executor's
+    connection across threads.
     """
 
     def __init__(
@@ -63,7 +67,7 @@ class _HeartbeatWatchdog:
         step_id: str,
         interval_seconds: int = 75,
     ) -> None:
-        self._store = store
+        self._root = store.root
         self._run_id = run_id
         self._step_id = step_id
         self._interval = interval_seconds
@@ -75,8 +79,12 @@ class _HeartbeatWatchdog:
         )
 
     def __enter__(self) -> _HeartbeatWatchdog:
-        self._store.set_active_step(self._run_id, self._step_id)
-        self._store.run_heartbeat(self._run_id)
+        # __enter__/__exit__ run on the executor's thread — safe to use
+        # the executor's store for the initial beat and metadata.
+        from cardre.store import ProjectStore
+        main_store = ProjectStore(self._root)
+        main_store.set_active_step(self._run_id, self._step_id)
+        main_store.run_heartbeat(self._run_id)
         self._stop.clear()
         self._thread.start()
         return self
@@ -84,11 +92,15 @@ class _HeartbeatWatchdog:
     def __exit__(self, *exc: object) -> None:
         self._stop.set()
         self._thread.join(timeout=self._interval * 2 + 2)
-        self._store.set_active_step(self._run_id, None)
+        from cardre.store import ProjectStore
+        main_store = ProjectStore(self._root)
+        main_store.set_active_step(self._run_id, None)
 
     def _tick(self) -> None:
+        from cardre.store import ProjectStore
+        hb_store = ProjectStore(self._root)
         while not self._stop.wait(self._interval):
-            self._store.run_heartbeat(self._run_id)
+            hb_store.run_heartbeat(self._run_id)
 
 
 LEAKAGE_SENSITIVE_CATEGORIES = {"fit", "selection", "refinement"}
