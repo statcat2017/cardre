@@ -173,6 +173,11 @@ class VariableClusteringNode(NodeType):
         similarity_metric = params.get("similarity_metric", "pearson")
         if similarity_metric not in ("pearson", "spearman"):
             errors.append(f"Unknown similarity_metric: {similarity_metric!r}")
+        if similarity_metric == "spearman":
+            try:
+                import scipy.stats  # noqa: F401
+            except ImportError:
+                errors.append("spearman requires scipy, which is a core dependency of cardre")
 
         if method == "correlation_threshold":
             threshold = params.get("threshold", params.get("correlation_threshold", 0.7))

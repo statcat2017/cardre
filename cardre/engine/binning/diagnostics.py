@@ -163,6 +163,35 @@ def check_sparse_bins(
     return results
 
 
+def check_pure_bins(
+    variable: str,
+    bins: list[dict],
+    total_good: int,
+    total_bad: int,
+) -> list[BinningDiagnostic]:
+    results: list[BinningDiagnostic] = []
+    for b in bins:
+        bin_good = b.get("good_count", 0)
+        bin_bad = b.get("bad_count", 0)
+        direction = None
+        if bin_good > 0 and bin_bad == 0:
+            direction = "all_good"
+        elif bin_bad > 0 and bin_good == 0:
+            direction = "all_bad"
+        if direction is not None:
+            results.append(BinningDiagnostic(
+                code="PURE_BIN",
+                severity="warning",
+                variable=variable,
+                bin_id=b.get("bin_id"),
+                message=f"Bin {b.get('bin_id', '?')!r} of variable {variable!r} "
+                       f"is a pure bin (all {direction.replace('all_', '')} rows)",
+                requires_acknowledgement=True,
+                details={"direction": direction, "bin_id": b.get("bin_id", "")},
+            ))
+    return results
+
+
 def check_variable_failed(
     variable: str,
     status: str,

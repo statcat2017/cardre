@@ -343,6 +343,195 @@ class LogisticRegressionTests:
         assert model._raw["class_mapping"]["bad"] == "bad"
         assert model.training["converged"]
 
+    def test_standard_logit_params_explicit_l2(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "x_woe": [0.5, -0.3, 0.5, -0.3],
+            "target": ["bad", "good", "bad", "good"],
+        })
+        train_art = _make_train_artifact(store, df)
+        meta = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_art = _make_json_artifact(store, meta, stem="meta")
+        params = {"C": 1.0, "max_iter": 1000, "solver": "lbfgs", "random_seed": 42}
+        spec = StepSpec(
+            step_id="lr", node_type="cardre.logistic_regression",
+            node_version="1", category="fit",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[train_art, meta_art],
+            validated_params=params, runtime_metadata={},
+        )
+        node = LogisticRegressionNode()
+        output = node.run(ctx)
+        reader = ArtifactEvidenceReader(store)
+        model = reader.read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert model.training["params"].get("penalty") == "l2", (
+            f"Expected penalty='l2' in training params, got {model.training['params']}"
+        )
+
+    def test_source_variables_explicit_not_suffix_stripped(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "my_woe_woe": [0.5, -0.3, 0.5, -0.3],
+            "target": ["bad", "good", "bad", "good"],
+        })
+        train_art = _make_train_artifact(store, df)
+        meta = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_art = _make_json_artifact(store, meta, stem="meta")
+        params = {"C": 1.0, "max_iter": 1000, "solver": "lbfgs", "random_seed": 42}
+        spec = StepSpec(
+            step_id="lr", node_type="cardre.logistic_regression",
+            node_version="1", category="fit",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[train_art, meta_art],
+            validated_params=params, runtime_metadata={},
+        )
+        node = LogisticRegressionNode()
+        output = node.run(ctx)
+        reader = ArtifactEvidenceReader(store)
+        model = reader.read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        # Without selection definition, should strip _woe as fallback
+        assert model._raw.get("source_variables") == ["my_woe"], (
+            f"Expected source_variables ['my_woe'], got {model._raw.get('source_variables')}"
+        )
+
+    def test_source_variables_with_selection_def(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "my_var_woe": [0.5, -0.3, 0.5, -0.3],
+            "target": ["bad", "good", "bad", "good"],
+        })
+        train_art = _make_train_artifact(store, df)
+        meta = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_art = _make_json_artifact(store, meta, stem="meta")
+        sel_payload = {
+            "schema_version": "cardre.selection_definition.v1",
+            "selected": [
+                {"variable": "my_var", "reason": "high IV"},
+            ],
+            "method": "iv_threshold",
+        }
+        sel_art = _make_json_artifact(store, sel_payload, stem="sel")
+        params = {"C": 1.0, "max_iter": 1000, "solver": "lbfgs", "random_seed": 42}
+        spec = StepSpec(
+            step_id="lr", node_type="cardre.logistic_regression",
+            node_version="1", category="fit",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[train_art, meta_art, sel_art],
+            validated_params=params, runtime_metadata={},
+        )
+        node = LogisticRegressionNode()
+        output = node.run(ctx)
+        reader = ArtifactEvidenceReader(store)
+        model = reader.read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert model._raw.get("source_variables") == ["my_var"], (
+            f"Expected source_variables ['my_var'], got {model._raw.get('source_variables')}"
+        )
+
+    def test_convergence_signal_uses_sklearn_warning(self, monkeypatch) -> None:
+        from sklearn.exceptions import ConvergenceWarning
+        import warnings as builtin_warnings
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "x_woe": [0.5, -0.3, 0.5, -0.3],
+            "target": ["bad", "good", "bad", "good"],
+        })
+        train_art = _make_train_artifact(store, df)
+        meta = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_art = _make_json_artifact(store, meta, stem="meta")
+        node = LogisticRegressionNode()
+
+        # Case 1: normal convergence, no ConvergenceWarning
+        params1 = {"C": 1.0, "max_iter": 1000, "solver": "lbfgs", "random_seed": 42}
+        spec1 = StepSpec(
+            step_id="lr", node_type="cardre.logistic_regression",
+            node_version="1", category="fit",
+            params=params1, params_hash=json_logical_hash(params1),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx1 = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec1, parent_run_steps=[],
+            input_artifacts=[train_art, meta_art],
+            validated_params=params1, runtime_metadata={},
+        )
+        output1 = node.run(ctx1)
+        reader = ArtifactEvidenceReader(store)
+        model1 = reader.read(output1.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert model1.training["converged"], "Normal LR should converge"
+
+        # Case 2: inject ConvergenceWarning to verify detection
+        import sklearn.linear_model as lm
+
+        real_fit = lm.LogisticRegression.fit
+        def _patched_fit(self, X, y):
+            result = real_fit(self, X, y)
+            builtin_warnings.warn("simulated non-convergence", ConvergenceWarning)
+            return result
+        monkeypatch.setattr(lm.LogisticRegression, "fit", _patched_fit)
+        params2 = {"C": 1.0, "max_iter": 1000, "solver": "lbfgs", "random_seed": 42, "fail_on_non_convergence": False}
+        spec2 = StepSpec(
+            step_id="lr2", node_type="cardre.logistic_regression",
+            node_version="1", category="fit",
+            params=params2, params_hash=json_logical_hash(params2),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx2 = ExecutionContext(
+            store=store, run_id="r2", plan_version_id="pv1",
+            step_spec=spec2, parent_run_steps=[],
+            input_artifacts=[train_art, meta_art],
+            validated_params=params2, runtime_metadata={},
+        )
+        output2 = node.run(ctx2)
+        model2 = reader.read(output2.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert not model2.training["converged"], "Should detect injected ConvergenceWarning"
+
+    def test_lr_non_convergence_fails_step(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "x_woe": [0.5, -0.3, 0.5, -0.3],
+            "target": ["bad", "good", "bad", "good"],
+        })
+        train_art = _make_train_artifact(store, df)
+        meta = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_art = _make_json_artifact(store, meta, stem="meta")
+        params = {"C": 1.0, "max_iter": 1, "solver": "lbfgs", "random_seed": 42, "fail_on_non_convergence": True}
+        spec = StepSpec(
+            step_id="lr", node_type="cardre.logistic_regression",
+            node_version="1", category="fit",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[train_art, meta_art],
+            validated_params=params, runtime_metadata={},
+        )
+        node = LogisticRegressionNode()
+        with pytest.raises(ValueError) as excinfo:
+            node.run(ctx)
+        assert "did not converge" in str(excinfo.value)
+
     def test_logistic_regression_needs_woe_columns(self) -> None:
         store, tmp = make_store()
         store.initialize()

@@ -143,6 +143,11 @@ LINE_COUNT_DEBT: dict[str, dict[str, Any]] = {
         "ceiling": 1300,
         "reason": "reporting test; candidate by template split",
     },
+    "tests/test_woe.py": {
+        "current_count": 1447,
+        "ceiling": 1500,
+        "reason": "WOE test; candidate for scenario split",
+    },
 }
 
 

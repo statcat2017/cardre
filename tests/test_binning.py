@@ -164,16 +164,126 @@ class FineClassingTests(unittest.TestCase):
 
         for i, b in enumerate(non_missing):
             if i == 0:
-                self.assertTrue(b["lower_inclusive"],
-                                "first numeric bin should have lower_inclusive=True")
+                self.assertFalse(b["lower_inclusive"],
+                                 "first numeric bin should have lower_inclusive=False (open on left)")
+                self.assertIsNone(b["lower"],
+                                  "first numeric bin should have lower=None (open on left)")
             else:
                 self.assertFalse(b["lower_inclusive"],
                                  f"bin {i} ({b['label']}) should have lower_inclusive=False")
-            self.assertIsNotNone(b["lower"],
-                                 f"bin {i} should have a lower boundary")
-            if b.get("upper") is not None:
                 self.assertIsNotNone(b["lower"],
                                      f"bin {i} should have a lower boundary")
+
+    def test_oot_below_train_min_maps_to_first_bin(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "score": [2.0, 3.0, 4.0, 5.0, 6.0],
+            "target": ["good", "bad", "good", "bad", "good"],
+        })
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        train_path = store.root / "datasets" / "test-train.parquet"
+        train_path.parent.mkdir(parents=True, exist_ok=True)
+        train_path.write_bytes(buf.getvalue())
+        train_artifact = ArtifactRef(
+            artifact_id="train1", artifact_type="dataset", role="train",
+            path=relative_path(train_path, store.root),
+            physical_hash=physical_hash(train_path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet",
+            metadata={},
+        )
+        store.register_artifact(train_artifact)
+        meta_params = {
+            "target_column": "target",
+            "good_values": ["good"], "bad_values": ["bad"],
+        }
+        meta_path = store.root / "artifacts" / "test-meta.json"
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(meta_params, sort_keys=True))
+        meta_artifact = ArtifactRef(
+            artifact_id="meta1", artifact_type="definition", role="definition",
+            path=relative_path(meta_path, store.root),
+            physical_hash=physical_hash(meta_path),
+            logical_hash=json_logical_hash(meta_params),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(meta_artifact)
+        params = {"max_bins": 5, "min_bin_fraction": 0.01, "missing_policy": "ignore"}
+        step_spec = StepSpec(
+            step_id="binning", node_type="cardre.binning",
+            node_version="1", category="fit",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=1,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=step_spec, parent_run_steps=[],
+            input_artifacts=[train_artifact, meta_artifact],
+            validated_params=params, runtime_metadata={},
+        )
+        output = FineClassingNode().run(ctx)
+        payload = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.BIN_DEFINITION)
+        score_bins = [v for v in payload.variables if v.variable == "score"][0].bins
+        non_missing = [b for b in score_bins if not b.get("is_missing_bin")]
+        first_bin = non_missing[0]
+        self.assertIsNone(first_bin["lower"], "first bin lower should be None (open on left)")
+        self.assertFalse(first_bin["lower_inclusive"], "first bin should be open on left")
+
+    def test_concentrated_numeric_emits_warning(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "score": [1.0] * 8 + [2.0, 3.0, 4.0, 5.0, 6.0],
+            "target": ["good"] * 7 + ["bad"] * 6,
+        })
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        train_path = store.root / "datasets" / "test-train.parquet"
+        train_path.parent.mkdir(parents=True, exist_ok=True)
+        train_path.write_bytes(buf.getvalue())
+        train_artifact = ArtifactRef(
+            artifact_id="train1", artifact_type="dataset", role="train",
+            path=relative_path(train_path, store.root),
+            physical_hash=physical_hash(train_path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet",
+            metadata={},
+        )
+        store.register_artifact(train_artifact)
+        meta_params = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_path = store.root / "artifacts" / "test-meta.json"
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(meta_params, sort_keys=True))
+        meta_artifact = ArtifactRef(
+            artifact_id="meta1", artifact_type="definition", role="definition",
+            path=relative_path(meta_path, store.root),
+            physical_hash=physical_hash(meta_path),
+            logical_hash=json_logical_hash(meta_params),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(meta_artifact)
+        params = {"max_bins": 5, "min_bin_fraction": 0.01, "missing_policy": "ignore"}
+        step_spec = StepSpec(
+            step_id="binning", node_type="cardre.binning",
+            node_version="1", category="fit",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=1,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=step_spec, parent_run_steps=[],
+            input_artifacts=[train_artifact, meta_artifact],
+            validated_params=params, runtime_metadata={},
+        )
+        node = FineClassingNode()
+        output = node.run(ctx)
+        payload = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.BIN_DEFINITION)
+        dup_warnings = [w for w in payload.warnings if w.get("code") == "DUPLICATE_VALUES_CONCENTRATED"]
+        assert len(dup_warnings) > 0, "Expected DUPLICATE_VALUES_CONCENTRATED warning"
+        assert dup_warnings[0].get("variable") == "score"
+        assert dup_warnings[0].get("concentration_ratio", 0) > 0.5
 
     def test_fine_classing_max_bins_validation(self) -> None:
         store, tmp = make_store()
@@ -527,6 +637,74 @@ def test_high_cardinality_creates_other_bin() -> None:
     cat_var = next(v for v in payload.variables if v.variable == "cat_var")
     bin_labels = [b["label"] for b in cat_var.bins]
     assert "Other" in bin_labels, "High-cardinality categorical should create an 'Other' bin"
+
+
+def test_top_frequency_category_in_explicit_bin_not_other() -> None:
+    store, tmp = make_store()
+    store.initialize()
+    df = pl.DataFrame({
+        "cat_var": ["z", "z", "z", "a", "b", "c"],
+        "target": ["good", "good", "good", "bad", "good", "bad"],
+    })
+    buf = io.BytesIO()
+    df.write_parquet(buf)
+    path = store.root / "datasets" / "train.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(buf.getvalue())
+    from cardre.audit import physical_hash, relative_path
+    train = ArtifactRef(
+        artifact_id="t1", artifact_type="dataset", role="train",
+        path=relative_path(path, store.root),
+        physical_hash=physical_hash(path),
+        logical_hash=table_logical_hash(df),
+        media_type="application/vnd.apache.parquet", metadata={},
+    )
+    store.register_artifact(train)
+    meta_params = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+    meta_path = store.root / "artifacts" / "meta.json"
+    meta_path.write_text(json.dumps(meta_params, sort_keys=True))
+    meta_art = ArtifactRef(
+        artifact_id="m1", artifact_type="definition", role="definition",
+        path=relative_path(meta_path, store.root),
+        physical_hash=physical_hash(meta_path),
+        logical_hash=json_logical_hash(meta_params),
+        media_type="application/json", metadata={},
+    )
+    store.register_artifact(meta_art)
+    params = {
+        "method": "fine_classing",
+        "max_bins": 20, "min_bin_fraction": 0.01,
+        "missing_policy": "separate_bin",
+        "max_categorical_levels": 2,
+        "exclude_columns": [],
+    }
+    spec = StepSpec(
+        step_id="fc", node_type="cardre.binning",
+        node_version="1", category="fit",
+        params=params, params_hash=json_logical_hash(params),
+        parent_step_ids=[], branch_label="", position=0,
+    )
+    ctx = ExecutionContext(
+        store=store, run_id="r1", plan_version_id="pv1",
+        step_spec=spec, parent_run_steps=[],
+        input_artifacts=[train, meta_art],
+        validated_params=params, runtime_metadata={},
+    )
+    node = FineClassingNode()
+    output = node.run(ctx)
+    payload = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.BIN_DEFINITION)
+    cat_var = next(v for v in payload.variables if v.variable == "cat_var")
+    explicit_bins = [b for b in cat_var.bins if not b.get("is_missing_bin") and b["label"] != "Other"]
+    all_explicit_categories = []
+    for b in explicit_bins:
+        if b.get("categories"):
+            all_explicit_categories.extend(b["categories"])
+    assert "z" in all_explicit_categories, (
+        f"Most frequent category 'z' should be in explicit bins, got {all_explicit_categories}"
+    )
+    assert len(explicit_bins) == 2, (
+        f"Expected exactly 2 explicit bins with max_categorical_levels=2, got {len(explicit_bins)}"
+    )
 
 
 def test_special_bin_reorder_missing_to_last() -> None:

@@ -12,6 +12,7 @@ from cardre.node_parameters import (
     ParameterConstraint,
     ParameterDefinition,
 )
+from cardre.engine.binning.diagnostics import MonotonicStatus, check_pure_bins, monotonicity_status
 from cardre.nodes._bin_mask import build_bin_condition
 from cardre.evidence import (
     AmbiguousEvidenceError,
@@ -65,6 +66,13 @@ class CalculateWoeIvNode(NodeType):
                             required=False,
                             help_text="Optional additive smoothing configuration with method, alpha, and rationale",
                         ),
+                        ParameterDefinition(
+                            name="enforce_monotonic_woe",
+                            label="Enforce Monotonic WOE",
+                            kind="boolean",
+                            default=False,
+                            help_text="When true and purpose=final, reject variables with non-monotonic WOE",
+                        ),
                     ],
                 ),
             ],
@@ -78,6 +86,7 @@ class CalculateWoeIvNode(NodeType):
         zero_cell_policy = params.get("zero_cell_policy", "block")
         smoothing = params.get("smoothing")
         purpose = params.get("purpose", "initial")
+        enforce_monotonic_woe = bool(params.get("enforce_monotonic_woe", False))
 
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
         bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
@@ -154,40 +163,39 @@ class CalculateWoeIvNode(NodeType):
                 if good_dist == 0.0 or bad_dist == 0.0:
                     zero_cell_count += 1
                     zero_cell_encountered = True
-                    if zero_cell_policy == "block" and purpose == "final":
-                        if smoothing and smoothing.get("method") == "additive":
-                            alpha = float(smoothing.get("alpha", 0.5))
-                            if alpha <= 0:
-                                raise ValueError("Smoothing alpha must be positive")
-                            if not smoothing.get("rationale"):
-                                raise ValueError(
-                                    f"Zero cell in variable {variable!r} bin {bin_id!r}: "
-                                    f"smoothing configured without a rationale"
-                                )
-                            good_dist = (bin_good + alpha) / (total_good + alpha * len(bins)) if total_good > 0 else alpha / (alpha * len(bins))
-                            bad_dist = (bin_bad + alpha) / (total_bad + alpha * len(bins)) if total_bad > 0 else alpha / (alpha * len(bins))
-                            was_smoothed = True
-                            smoothing_applied = True
-                            warnings_list.append({
-                                "variable": variable,
-                                "bin_id": bin_id,
-                                "message": f"Zero cell smoothed with additive alpha={alpha}",
-                            })
-                        else:
-                            raise ValueError(
-                                f"Zero cell in variable {variable!r} bin {bin_id!r}: "
-                                f"good_dist={good_dist:.4f}, bad_dist={bad_dist:.4f}. "
-                                f"Final WOE blocked by zero_cell_policy={zero_cell_policy!r}. "
-                                f"Configure smoothing with a rationale to proceed."
-                            )
-                    elif smoothing and smoothing.get("method") == "additive":
+                    if smoothing and smoothing.get("method") == "additive":
                         alpha = float(smoothing.get("alpha", 0.5))
                         if alpha <= 0:
                             raise ValueError("Smoothing alpha must be positive")
+                        if purpose == "final" and not smoothing.get("rationale"):
+                            raise ValueError(
+                                f"Zero cell in variable {variable!r} bin {bin_id!r}: "
+                                f"smoothing configured without a rationale"
+                            )
                         good_dist = (bin_good + alpha) / (total_good + alpha * len(bins)) if total_good > 0 else alpha / (alpha * len(bins))
                         bad_dist = (bin_bad + alpha) / (total_bad + alpha * len(bins)) if total_bad > 0 else alpha / (alpha * len(bins))
                         was_smoothed = True
                         smoothing_applied = True
+                        warnings_list.append({
+                            "variable": variable,
+                            "bin_id": bin_id,
+                            "message": f"Zero cell smoothed with additive alpha={alpha}",
+                        })
+                    elif zero_cell_policy == "block" and purpose == "final":
+                        raise ValueError(
+                            f"Zero cell in variable {variable!r} bin {bin_id!r}: "
+                            f"good_dist={good_dist:.4f}, bad_dist={bad_dist:.4f}. "
+                            f"Final WOE blocked by zero_cell_policy={zero_cell_policy!r}. "
+                            f"Configure smoothing with a rationale to proceed."
+                        )
+                    else:
+                        warnings_list.append({
+                            "code": "ZERO_CELL_INITIAL_IV_DEFLATED",
+                            "variable": variable,
+                            "bin_id": bin_id,
+                            "message": f"Zero cell in variable {variable!r} bin {bin_id!r} "
+                                      f"during initial pass; IV component set to 0",
+                        })
 
                 if good_dist == 0.0 or bad_dist == 0.0:
                     woe_val = 0.0
@@ -250,13 +258,42 @@ class CalculateWoeIvNode(NodeType):
                     "iv_contribution": woe_row["iv_component"],
                 })
 
+            pure_diags = check_pure_bins(variable, bins, total_good, total_bad)
+            for d in pure_diags:
+                warnings_list.append({
+                    "code": d.code,
+                    "variable": d.variable,
+                    "bin_id": d.bin_id,
+                    "message": d.message,
+                    "requires_acknowledgement": d.requires_acknowledgement,
+                    **d.details,
+                })
+
+            var_status = "included"
+            var_warnings: list[dict] = []
+            if enforce_monotonic_woe and purpose == "final" and len(var_woe_rows) >= 2:
+                woe_by_bin = {r["bin_id"]: r["woe"] for r in var_woe_rows}
+                m_status = monotonicity_status(woe_by_bin)
+                if m_status == MonotonicStatus.non_monotonic:
+                    var_status = "REJECTED"
+                    w = {
+                        "code": "NON_MONOTONIC_WOE",
+                        "variable": variable,
+                        "message": f"Variable {variable!r} has non-monotonic WOE and was rejected",
+                    }
+                    warnings_list.append(w)
+                    var_warnings.append(w)
+                    iv_rows[variable]["iv"] = 0.0
+                    iv_rows[variable]["warning_count"] += 1
+
             evidence_variables.append({
                 "variable_name": variable,
-                "status": "included",
-                "iv": round(var_iv, 6),
+                "status": var_status,
+                "iv": round(var_iv, 6) if var_status == "included" else 0.0,
                 "smoothing_applied": smoothing_applied,
                 "zero_cell_encountered": zero_cell_encountered,
                 "affected_bins": affected_bins,
+                "warnings": var_warnings,
                 "bins": var_bins_out,
             })
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from cardre.readiness.dto import ReadinessBlocker, ReadinessWarning, ReportReadinessResult
+from cardre.evidence import EvidenceKind
 from cardre.readiness.limitation_codes import LimitationCode
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_BRANCH,
@@ -151,10 +152,12 @@ def check_report_readiness(
         # For WOE/IV, check evidence v1
         if canonical_step_id in ("final-woe-iv", "initial-woe-iv"):
             has_v1 = False
+            v1_art = None
             for aid in rs.output_artifact_ids:
                 art = store.get_artifact(aid)
                 if art and art.metadata.get("schema_version") == "cardre.woe_iv_evidence.v1":
                     has_v1 = True
+                    v1_art = art
                     break
             if not has_v1:
                 blockers.append(ReadinessBlocker(
@@ -163,6 +166,33 @@ def check_report_readiness(
                     "Phase 5 requires the controlled evidence artifact.",
                     step_id=ref.step_id,
                 ))
+            elif canonical_step_id == "final-woe-iv" and report_mode == "champion" and v1_art is not None:
+                try:
+                    from cardre.evidence import ArtifactEvidenceReader
+                    from cardre.engine.binning.diagnostics import monotonicity_status
+                    reader = ArtifactEvidenceReader(store)
+                    evidence = reader.read(v1_art.artifact_id, EvidenceKind.WOE_IV_EVIDENCE)
+                    for var in evidence.variables:
+                        woe_by_bin: dict[str, float] = {}
+                        for b in var.bins:
+                            if b.woe is not None:
+                                woe_by_bin[b.bin_id] = b.woe
+                        if len(woe_by_bin) >= 2:
+                            m_status = monotonicity_status(woe_by_bin)
+                            if m_status.value == "non_monotonic":
+                                blockers.append(ReadinessBlocker(
+                                    LimitationCode.NON_MONOTONIC_WOE_CHAMPION,
+                                    f"Final WOE variable {var.variable_name!r} "
+                                    "is non-monotonic. Re-bin to monotonic for champion promotion.",
+                                    step_id=ref.step_id,
+                                ))
+                except Exception:
+                    blockers.append(ReadinessBlocker(
+                        LimitationCode.WOE_EVIDENCE_READ_FAILURE,
+                        f"Failed to read final WOE evidence from step {ref.step_id} "
+                        "for champion monotonicity check.",
+                        step_id=ref.step_id,
+                    ))
 
     # Champion mode checks
     if plan_id:
@@ -229,10 +259,17 @@ def check_report_readiness(
 
     # Check OOT dataset role
     if not _check_oot_exists(store, run_id):
-        warnings.append(ReadinessWarning(
-            LimitationCode.NO_OOT_SAMPLE,
-            "No OOT dataset role was present for this run.",
-        ))
+        if report_mode == "champion":
+            blockers.append(ReadinessBlocker(
+                LimitationCode.NO_OOT_SAMPLE_CHAMPION,
+                "No OOT dataset role was present for this run. "
+                "OOT is required for champion promotion.",
+            ))
+        else:
+            warnings.append(ReadinessWarning(
+                LimitationCode.NO_OOT_SAMPLE,
+                "No OOT dataset role was present for this run.",
+            ))
 
     return ReportReadinessResult(
         blockers=blockers,

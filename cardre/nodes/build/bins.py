@@ -252,6 +252,21 @@ class FineClassingNode(NodeType):
             pl.col("_tgt_str").is_in(good_list).sum().alias("good_count"),
         ]).sort("_brk")
 
+        vc = non_null[col].value_counts().sort("count", descending=True)
+        max_count = vc["count"][0]
+        dup_ratio = max_count / n
+        if dup_ratio > 0.5:
+            dominant_val = vc[col][0]
+            warnings.append({
+                "code": "DUPLICATE_VALUES_CONCENTRATED",
+                "variable": col,
+                "concentration_ratio": round(float(dup_ratio), 4),
+                "dominant_value": str(dominant_val),
+                "message": f"Variable {col!r} has {int(max_count)}/{int(n)} rows "
+                          f"({dup_ratio:.1%}) with the same value {dominant_val!r}; "
+                          f"bin boundaries may be unstable.",
+            })
+
         _all_bk = bin_stats["_brk"].to_list()
         col_min = float(non_null[col].min())
         prev_upper = col_min
@@ -265,13 +280,21 @@ class FineClassingNode(NodeType):
 
             is_last = i == len(bin_stats) - 1
             hi = None if brk == float("inf") else float(brk)
-            lo = prev_upper
-            lower_inc = True
-            if i > 0:
+            if i == 0:
+                lo = None
+                lower_inc = False
+            else:
                 lower_inc = False
                 lo = float(_all_bk[i - 1]) if _all_bk[i - 1] != float("inf") else prev_upper
 
-            label = f"[{lo:.4g}, {hi:.4g}]" if lo is not None and hi is not None else f"[{lo:.4g}, +inf)" if lo is not None else "All values"
+            if lo is not None and hi is not None:
+                label = f"[{lo:.4g}, {hi:.4g}]"
+            elif lo is not None:
+                label = f"[{lo:.4g}, +inf)"
+            elif hi is not None:
+                label = f"(-inf, {hi:.4g}]"
+            else:
+                label = "All values"
             prev_upper = hi if hi is not None else lo
 
             bins.append({
@@ -335,7 +358,7 @@ class FineClassingNode(NodeType):
         if non_null.height == 0:
             return bins
 
-        vc = non_null[col].value_counts().sort(col, descending=True)
+        vc = non_null[col].value_counts().sort("count", descending=True)
         all_levels = vc[col].to_list()
 
         other_categories: list = []

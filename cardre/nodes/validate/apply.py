@@ -50,9 +50,9 @@ class ApplyWoeMappingNode(NodeType):
                             name="woe_unmatched_policy",
                             label="Unmatched Policy",
                             kind="enum",
-                            default="warn",
+                            default="fail",
                             constraint=ParameterConstraint(enum_values=["fill_zero", "warn", "fail"]),
-                            help_text="Policy when rows do not match any WOE bin: fill_zero, warn, or fail",
+                            help_text="Policy when rows do not match any WOE bin (default fail). Choose 'warn' or 'fill_zero' for permissive handling.",
                         ),
                     ],
                 ),
@@ -61,7 +61,7 @@ class ApplyWoeMappingNode(NodeType):
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
-        policy = params.get("woe_unmatched_policy", "warn")
+        policy = params.get("woe_unmatched_policy", "fail")
         if policy not in self.VALID_UNMATCHED_POLICIES:
             errors.append(
                 f"woe_unmatched_policy must be one of {self.VALID_UNMATCHED_POLICIES}, got {policy!r}"
@@ -72,7 +72,7 @@ class ApplyWoeMappingNode(NodeType):
         store = context.store
         reader = ArtifactEvidenceReader(store)
         params = context.validated_params
-        woe_unmatched_policy = params.get("woe_unmatched_policy", "warn")
+        woe_unmatched_policy = params.get("woe_unmatched_policy", "fail")
 
         # Detect frozen scorecard bundle for governed-path defaults
         bundle_art = next(

@@ -33,6 +33,7 @@ from cardre.reporting.schema import (
     ChampionInfo,
 )
 from cardre.evidence import SCHEMA_MANUAL_BINNING_OVERRIDES
+from cardre.nodes.validate.analyse import ValidationMetricsNode
 from cardre.step_id import resolve_step_for_branch
 from cardre.store import ProjectStore
 
@@ -1178,6 +1179,38 @@ class TestCollectorRegression:
         assert LimitationCode.MISSING_WOE_IV_EVIDENCE_V1 in codes, (
             f"Expected MISSING_WOE_IV_EVIDENCE_V1 blocker, got codes: {codes}"
         )
+
+
+# =========================================================================
+# PSI empty-bin tests
+# =========================================================================
+
+def test_psi_empty_oot_bin_is_large_not_zero() -> None:
+    import polars as pl
+    node = ValidationMetricsNode()
+    train_scores = pl.Series("score", [1.0] * 5 + [2.0] * 5)
+    oot_scores = pl.Series("score", [1.0] * 10)
+    psi_val, psi_warnings = node._psi(train_scores, oot_scores)
+    assert psi_val > 0.5, f"PSI with empty bin should be large, got {psi_val}"
+    assert psi_val != 0.0, "PSI should not be zero when a bin has empty OOT"
+    assert any(w["code"] == "PSI_EMPTY_BIN" for w in psi_warnings), (
+        "Expected PSI_EMPTY_BIN warning"
+    )
+
+
+def test_accuracy_denominator_excludes_unknown_target_rows() -> None:
+    import polars as pl
+    node = ValidationMetricsNode()
+    df = pl.DataFrame({
+        "target": ["good"] * 45 + ["bad"] * 45 + ["unknown"] * 10,
+        "predicted_bad_probability": [0.1] * 45 + [0.9] * 45 + [0.5] * 10,
+    })
+    y_bin, known_mask, warnings = node._derive_y_bin(df, "target", {"good"}, {"bad"})
+    assert len(y_bin) == 90, f"Expected 90 known-target rows, got {len(y_bin)}"
+    assert any(w["code"] == "UNKNOWN_TARGET_VALUES" for w in warnings), (
+        "Expected UNKNOWN_TARGET_VALUES warning"
+    )
+    assert sum(y_bin) == 45, f"Expected 45 bad rows, got {sum(y_bin)}"
 
 
 # =========================================================================
