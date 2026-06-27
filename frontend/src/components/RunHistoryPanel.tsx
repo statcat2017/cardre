@@ -48,7 +48,9 @@ export function RunHistoryPanel({ projectId }: Props) {
 
   return (
     <div style={{ padding: 24, overflowY: "auto", flex: 1 }}>
-      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>Run History</h3>
+      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>
+        Run History
+      </h3>
 
       {isLoading && <div style={{ color: theme.muted, fontSize: 13 }}>Loading runs...</div>}
       {isError && (

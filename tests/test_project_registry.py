@@ -1,6 +1,5 @@
 """Tests for the project registry service."""
 
-import json
 from pathlib import Path
 
 import pytest

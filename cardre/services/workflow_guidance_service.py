@@ -9,7 +9,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
-from cardre.errors import CardreError, Diagnostic, Ok, Degraded, Fail, is_ok, is_degraded, is_fail
+from cardre.errors import CardreError, Diagnostic, Ok, Degraded, Fail, is_degraded, is_fail
 from cardre.readiness import check_report_readiness
 from cardre.services.manual_binning_service import ManualBinningService
 from cardre.staleness import compute_staleness
@@ -304,7 +304,7 @@ class WorkflowGuidanceService:
                 )
                 report_readiness = result.to_dict()
                 readiness_r = Ok(report_readiness)
-            except Exception as e:
+            except Exception:
                 diagnostics.append(Diagnostic(
                     code="REPORT_READINESS_UNAVAILABLE",
                     message="Could not check report readiness.",

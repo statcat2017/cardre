@@ -17,13 +17,20 @@ describe("Journey acceptance", () => {
       http.get("/plans/:planId/workflow-guidance", () =>
         HttpResponse.json({
           phase: "build",
-          next_action: { kind: "configure_step", label: "Configure target", description: "Define the target column.", run_scope: null, step_id: "target-definition", action_target: null },
+          next_action: {
+            kind: "configure_step",
+            label: "Configure target",
+            description: "Define the target column.",
+            run_scope: null,
+            step_id: "target-definition",
+            action_target: null,
+          },
           blockers: [],
           step_guidance: {},
           report_readiness: null,
           branch_id: "br_default",
           run_id: null,
-        })
+        }),
       ),
     );
 
@@ -31,12 +38,26 @@ describe("Journey acceptance", () => {
     const { TopBar } = await import("../TopBar");
     renderWithClient(
       <TopBar
-        project={{ project_id: "prj1", path: "/tmp", name: "Test", created_at: "2026-01-01T00:00:00Z", plan_count: 1, run_count: 0 }}
+        project={{
+          project_id: "prj1",
+          path: "/tmp",
+          name: "Test",
+          created_at: "2026-01-01T00:00:00Z",
+          plan_count: 1,
+          run_count: 0,
+        }}
         planName="Scorecard Pathway"
         running={false}
         guidance={{
           phase: "build",
-          next_action: { kind: "configure_step", label: "Configure target", description: "Define the target column.", run_scope: null, step_id: "target-definition", action_target: null },
+          next_action: {
+            kind: "configure_step",
+            label: "Configure target",
+            description: "Define the target column.",
+            run_scope: null,
+            step_id: "target-definition",
+            action_target: null,
+          },
           blockers: [],
           step_guidance: {},
           report_readiness: null,

@@ -112,7 +112,15 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
               Create Project
             </h2>
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: theme.textSoft }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  marginBottom: 4,
+                  color: theme.textSoft,
+                }}
+              >
                 Project Path
               </label>
               <input
@@ -136,7 +144,15 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
               </div>
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: theme.textSoft }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  marginBottom: 4,
+                  color: theme.textSoft,
+                }}
+              >
                 Project Name
               </label>
               <input
@@ -198,12 +214,11 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
                   lineHeight: 1.5,
                 }}
               >
-                <strong>How it works:</strong> Import runs in a hidden <code>__import__</code>{" "}
-                plan to preserve source-data evidence separately. After import, the{" "}
-                <strong>Scorecard Pathway</strong> consumes the imported artifact and records
-                its own modelling run evidence — the two plans remain independent
-                so you can always trace the original source data. Import evidence is
-                visible in the Artifacts browser.
+                <strong>How it works:</strong> Import runs in a hidden <code>__import__</code> plan
+                to preserve source-data evidence separately. After import, the{" "}
+                <strong>Scorecard Pathway</strong> consumes the imported artifact and records its
+                own modelling run evidence — the two plans remain independent so you can always
+                trace the original source data. Import evidence is visible in the Artifacts browser.
               </div>
             }
           />

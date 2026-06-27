@@ -273,7 +273,6 @@ class ModelExplainabilityNode(NodeType):
         """Compute permutation importance on specified data."""
         try:
             from sklearn.inspection import permutation_importance as sklearn_permutation_importance
-            import numpy as np
         except ImportError:
             return None
 
@@ -384,7 +383,6 @@ class ModelExplainabilityNode(NodeType):
     ) -> list | None:
         try:
             from sklearn.inspection import partial_dependence
-            import numpy as np
         except ImportError:
             return None
 
@@ -494,8 +492,6 @@ class ModelExplainabilityNode(NodeType):
 
     def _champion_gate(self, explanation_level: str, report: dict) -> dict:
         """Determine champion gate status from explanation level."""
-        eligibility = CHAMPION_ELIGIBILITY.get(explanation_level, "not_champion_eligible")
-
         if explanation_level == "native_scorecard":
             return {
                 "status": "pass",

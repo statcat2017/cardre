@@ -14,7 +14,9 @@ export function useSelectedBranch(projectId: string, enabled = true) {
 
   useEffect(() => {
     if (!initialized.current && !selectedBranchId && branchData?.branches?.length) {
-      const baseline = branchData.branches.find((b: { branch_type?: string }) => b.branch_type === "baseline");
+      const baseline = branchData.branches.find(
+        (b: { branch_type?: string }) => b.branch_type === "baseline",
+      );
       setSelectedBranchId((baseline ?? branchData.branches[0]).branch_id);
       initialized.current = true;
     }

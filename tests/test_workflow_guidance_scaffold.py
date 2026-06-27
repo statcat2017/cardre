@@ -262,7 +262,6 @@ def test_step_readiness_from_branch_context():
 def test_degraded_diagnostics_when_staleness_fails(monkeypatch):
     """When compute_staleness raises, guidance is degraded with STALENESS_UNAVAILABLE."""
     from cardre.errors import GraphValidationError
-    from cardre.staleness import compute_staleness
 
     def _raise_staleness(*args, **kwargs):
         raise GraphValidationError("Staleness failed")

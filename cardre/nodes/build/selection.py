@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import polars as pl
 
 from cardre.artifacts import write_json_artifact
 from cardre.audit import ExecutionContext, NodeOutput, NodeType

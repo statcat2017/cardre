@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
 
 from cardre.audit import StepSpec
 from cardre.readiness import check_report_readiness, LimitationCode

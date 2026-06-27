@@ -7,7 +7,7 @@ import sqlite3
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from cardre.audit import ArtifactRef, RunStepRecord, utc_now_iso
+from cardre.audit import RunStepRecord, utc_now_iso
 
 if TYPE_CHECKING:
     from cardre.store.project_store import ProjectStore

@@ -15,8 +15,24 @@ function createClientWithCache(entries: Array<[Array<string | number>, unknown]>
 }
 
 const branches = [
-  { branch_id: "br_default", name: "Baseline", branch_type: "baseline", status: "active", plan_id: "plan1", base_plan_version_id: "pv1", head_plan_version_id: "pv1" },
-  { branch_id: "br_challenger", name: "Challenger", branch_type: "challenger", status: "active", plan_id: "plan1", base_plan_version_id: "pv1", head_plan_version_id: "pv1" },
+  {
+    branch_id: "br_default",
+    name: "Baseline",
+    branch_type: "baseline",
+    status: "active",
+    plan_id: "plan1",
+    base_plan_version_id: "pv1",
+    head_plan_version_id: "pv1",
+  },
+  {
+    branch_id: "br_challenger",
+    name: "Challenger",
+    branch_type: "challenger",
+    status: "active",
+    plan_id: "plan1",
+    base_plan_version_id: "pv1",
+    head_plan_version_id: "pv1",
+  },
 ];
 
 export function setupFetchStub(readinessCalls: string[]) {
@@ -26,36 +42,36 @@ export function setupFetchStub(readinessCalls: string[]) {
     if (urlStr.includes("/report-readiness")) {
       const body = JSON.parse(opts?.body as string);
       readinessCalls.push(body.target_branch_id);
-      return Promise.resolve(new Response(
-        JSON.stringify({ ready: true, status: "ready", blockers: [], warnings: [] }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ));
+      return Promise.resolve(
+        new Response(JSON.stringify({ ready: true, status: "ready", blockers: [], warnings: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
     }
     if (urlStr.includes("/reports")) {
-      return Promise.resolve(new Response(
-        JSON.stringify([]),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ));
+      return Promise.resolve(
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
     }
     return originalFetch(url, opts);
   }) as typeof fetch;
-  return () => { globalThis.fetch = originalFetch; };
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
 }
 
 describe("ExportPanel branch selection", () => {
   it("calls onBranchSelect when controlled select changes", async () => {
-    const client = createClientWithCache([
-      [["projectBranches", "prj1"], { branches }],
-    ]);
+    const client = createClientWithCache([[["projectBranches", "prj1"], { branches }]]);
 
     const onBranchSelect = vi.fn();
     render(
       <QueryClientProvider client={client}>
-        <ExportPanel
-          projectId="prj1"
-          targetBranchId="br_default"
-          onBranchSelect={onBranchSelect}
-        />
+        <ExportPanel projectId="prj1" targetBranchId="br_default" onBranchSelect={onBranchSelect} />
       </QueryClientProvider>,
     );
 
@@ -66,16 +82,11 @@ describe("ExportPanel branch selection", () => {
   });
 
   it("renders read-only branch text when onBranchSelect is absent", async () => {
-    const client = createClientWithCache([
-      [["projectBranches", "prj1"], { branches }],
-    ]);
+    const client = createClientWithCache([[["projectBranches", "prj1"], { branches }]]);
 
     render(
       <QueryClientProvider client={client}>
-        <ExportPanel
-          projectId="prj1"
-          targetBranchId="br_default"
-        />
+        <ExportPanel projectId="prj1" targetBranchId="br_default" />
       </QueryClientProvider>,
     );
 
@@ -128,7 +139,14 @@ describe("ExportPanel branch selection", () => {
   it("triggers readiness for current branch", async () => {
     const readinessCalls: string[] = [];
     const restore = setupFetchStub(readinessCalls);
-    const run = { run_id: "run1", plan_version_id: "pv1", status: "succeeded", started_at: "2026-02-01T00:00:00Z", finished_at: "2026-02-01T01:00:00Z", step_count: 10 };
+    const run = {
+      run_id: "run1",
+      plan_version_id: "pv1",
+      status: "succeeded",
+      started_at: "2026-02-01T00:00:00Z",
+      finished_at: "2026-02-01T01:00:00Z",
+      step_count: 10,
+    };
 
     const client = createClientWithCache([
       [["projectBranches", "prj1"], { branches }],
@@ -151,7 +169,14 @@ describe("ExportPanel branch selection", () => {
   it("re-fetches readiness when targetBranchId prop changes", async () => {
     const readinessCalls: string[] = [];
     const restore = setupFetchStub(readinessCalls);
-    const run = { run_id: "run1", plan_version_id: "pv1", status: "succeeded", started_at: "2026-02-01T00:00:00Z", finished_at: "2026-02-01T01:00:00Z", step_count: 10 };
+    const run = {
+      run_id: "run1",
+      plan_version_id: "pv1",
+      status: "succeeded",
+      started_at: "2026-02-01T00:00:00Z",
+      finished_at: "2026-02-01T01:00:00Z",
+      step_count: 10,
+    };
 
     const initialClient = createClientWithCache([
       [["projectBranches", "prj1"], { branches }],

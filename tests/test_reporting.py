@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import json
 import tempfile
-import uuid
 from pathlib import Path
 
 import pytest
 
 from cardre.audit import RunStepRecord
-from cardre.reporting.collector import ReportCollector, generate_report_bundle
+from cardre.reporting.collector import generate_report_bundle
 from cardre.readiness import LimitationCode
 from cardre.readiness import (
     check_report_readiness,
@@ -32,13 +31,9 @@ from cardre.reporting.schema import (
     ValidationInfo,
     MetricsByRole,
     ChampionInfo,
-    BranchInfo,
-    BranchSummary,
-    ManualIntervention,
-    ArtifactEntry,
 )
 from cardre.evidence import SCHEMA_MANUAL_BINNING_OVERRIDES
-from cardre.step_id import resolve_step_for_branch, ResolvedStepRef as ResolverRef
+from cardre.step_id import resolve_step_for_branch
 from cardre.store import ProjectStore
 
 pytestmark = pytest.mark.integration
@@ -1010,23 +1005,6 @@ class TestCollectorRegression:
         store.initialize()
         project_id = store.create_project("Test")
         plan_id = store.create_plan(project_id, "Test Plan")
-        steps = [
-            RunStepRecord(
-                run_step_id="rs_001",
-                run_id="r_fallback",
-                step_id="final-woe-iv",
-                plan_version_id="pv_fallback",
-                status="succeeded",
-                started_at="2026-01-01T00:00:00Z",
-                finished_at="2026-01-01T01:00:00Z",
-                input_artifact_ids=[],
-                output_artifact_ids=[],
-                execution_fingerprint={},
-                warnings=[],
-                errors=[],
-            ),
-        ]
-
         # Build a collector directly with the synthetic data
         # We need a branch and run to exist
         pv_id = store.create_plan_version(plan_id, [], description="v1")
@@ -1062,10 +1040,6 @@ class TestCollectorRegression:
             source_branch_id="baseline",
         )
 
-        collector = ReportCollector(
-            store=store, project_id=project_id, run_id=run_id,
-            target_branch_id=branch_id, report_mode="branch",
-        )
         from cardre.step_id import resolve_step_for_branch
         step_map = store.get_branch_step_map(branch_id, pv_id)
         ref = resolve_step_for_branch(

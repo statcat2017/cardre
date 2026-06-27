@@ -22,9 +22,10 @@ export function EvidenceTab({ runId, stepId, projectId, tab, planId }: Props) {
   );
 
   // Manual-binning review card (shown above evidence items)
-  const mbCard = isManualBinning && planId ? (
-    <ManualBinningEvidenceCard projectId={projectId} planId={planId} stepId={stepId} />
-  ) : null;
+  const mbCard =
+    isManualBinning && planId ? (
+      <ManualBinningEvidenceCard projectId={projectId} planId={planId} stepId={stepId} />
+    ) : null;
 
   // 1. No run yet
   if (!runId) {
@@ -40,11 +41,7 @@ export function EvidenceTab({ runId, stepId, projectId, tab, planId }: Props) {
 
   // 2. Loading
   if (isLoading) {
-    return (
-      <div style={{ fontSize: 12, color: theme.muted, padding: 10 }}>
-        Loading evidence…
-      </div>
-    );
+    return <div style={{ fontSize: 12, color: theme.muted, padding: 10 }}>Loading evidence…</div>;
   }
 
   // 3. Load failed
@@ -54,8 +51,12 @@ export function EvidenceTab({ runId, stepId, projectId, tab, planId }: Props) {
         {mbCard}
         <div
           style={{
-            padding: 12, border: `1px solid ${theme.border}`, borderRadius: 8,
-            backgroundColor: theme.redBg, fontSize: 13, color: theme.redText,
+            padding: 12,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 8,
+            backgroundColor: theme.redBg,
+            fontSize: 13,
+            color: theme.redText,
           }}
         >
           <strong>Evidence could not be loaded.</strong>{" "}
@@ -84,8 +85,11 @@ export function EvidenceTab({ runId, stepId, projectId, tab, planId }: Props) {
         {mbCard}
         <div
           style={{
-            padding: 10, fontSize: 12, color: theme.yellowText,
-            backgroundColor: theme.yellowBg, borderRadius: 6,
+            padding: 10,
+            fontSize: 12,
+            color: theme.yellowText,
+            backgroundColor: theme.yellowBg,
+            borderRadius: 6,
           }}
         >
           Evidence is stale — upstream inputs have changed.
@@ -104,8 +108,11 @@ export function EvidenceTab({ runId, stepId, projectId, tab, planId }: Props) {
         {mbCard}
         <div
           style={{
-            padding: 10, fontSize: 12, color: theme.yellowText,
-            backgroundColor: theme.yellowBg, borderRadius: 6,
+            padding: 10,
+            fontSize: 12,
+            color: theme.yellowText,
+            backgroundColor: theme.yellowBg,
+            borderRadius: 6,
           }}
         >
           Partial evidence — some expected artifacts are missing or unsupported.

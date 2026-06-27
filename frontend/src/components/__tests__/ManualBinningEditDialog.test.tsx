@@ -7,7 +7,6 @@ import { server } from "../../test/server";
 import { ManualBinningEditDialog } from "../ManualBinningEditDialog";
 import { buildManualBinningEditorState } from "../../test/fixtures/manualBinning";
 
-const BASE = "http://127.0.0.1:8752";
 const PLAN_ID = "plan1";
 const STEP_ID = "manual-binning";
 const PROJECT_ID = "prj1";
@@ -19,17 +18,22 @@ function renderDialog() {
   const onClose = vi.fn();
   const onSaved = vi.fn();
   return {
-    ...render(<QueryClientProvider client={qc}><ManualBinningEditDialog
-      variable="income"
-      state={state}
-      planId={PLAN_ID}
-      basePlanVersionId={BASE_PV}
-      stepId={STEP_ID}
-      projectId={PROJECT_ID}
-      onClose={onClose}
-      onSaved={onSaved}
-    /></QueryClientProvider>),
-    onClose, onSaved,
+    ...render(
+      <QueryClientProvider client={qc}>
+        <ManualBinningEditDialog
+          variable="income"
+          state={state}
+          planId={PLAN_ID}
+          basePlanVersionId={BASE_PV}
+          stepId={STEP_ID}
+          projectId={PROJECT_ID}
+          onClose={onClose}
+          onSaved={onSaved}
+        />
+      </QueryClientProvider>,
+    ),
+    onClose,
+    onSaved,
   };
 }
 
@@ -86,7 +90,11 @@ describe("ManualBinningEditDialog", () => {
     const user = userEvent.setup();
     server.use(
       http.post(/\/plans\/.*\/steps\/.*\/manual-binning\/preview/, () => {
-        return HttpResponse.json({ valid: true, diagnostics: { override_count: 1, warnings: [] }, refined_bins_by_variable: { income: { bins: [{ label: "merged" }] } } });
+        return HttpResponse.json({
+          valid: true,
+          diagnostics: { override_count: 1, warnings: [] },
+          refined_bins_by_variable: { income: { bins: [{ label: "merged" }] } },
+        });
       }),
     );
     renderDialog();
@@ -104,7 +112,11 @@ describe("ManualBinningEditDialog", () => {
     const user = userEvent.setup();
     server.use(
       http.post(/\/plans\/.*\/steps\/.*\/manual-binning\/preview/, () =>
-        HttpResponse.json({ valid: false, diagnostics: { override_count: 1, warnings: ["Invalid merge"] }, refined_bins_by_variable: {} }),
+        HttpResponse.json({
+          valid: false,
+          diagnostics: { override_count: 1, warnings: ["Invalid merge"] },
+          refined_bins_by_variable: {},
+        }),
       ),
     );
     renderDialog();
@@ -117,11 +129,15 @@ describe("ManualBinningEditDialog", () => {
 
   it("preview sends current overrides plus proposed override", async () => {
     const user = userEvent.setup();
-    let sentBody: any;
+    let sentBody: Record<string, unknown> | undefined;
     server.use(
       http.post(/\/plans\/.*\/steps\/.*\/manual-binning\/preview/, async ({ request }) => {
-        sentBody = await request.json();
-        return HttpResponse.json({ valid: true, diagnostics: { override_count: 1, warnings: [] }, refined_bins_by_variable: { income: { bins: [] } } });
+        sentBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          valid: true,
+          diagnostics: { override_count: 1, warnings: [] },
+          refined_bins_by_variable: { income: { bins: [] } },
+        });
       }),
     );
     renderDialog();
@@ -129,8 +145,8 @@ describe("ManualBinningEditDialog", () => {
 
     await user.click(screen.getByText("Preview"));
     await waitFor(() => expect(sentBody).toBeTruthy());
-    expect(sentBody.overrides.length).toBe(2);
-    expect(sentBody.overrides[1].variable).toBe("income");
+    expect((sentBody!.overrides as unknown[]).length).toBe(2);
+    expect((sentBody!.overrides as Record<string, unknown>[])[1].variable).toBe("income");
   });
 
   it("revert requires reason code and text", async () => {
@@ -145,11 +161,16 @@ describe("ManualBinningEditDialog", () => {
 
   it("revert sends reason_code and review_reason to server", async () => {
     const user = userEvent.setup();
-    let sentBody: any;
+    let sentBody: Record<string, unknown> | undefined;
     server.use(
       http.post(/\/plans\/.*\/steps\/.*\/manual-binning\/review/, async ({ request }) => {
-        sentBody = await request.json();
-        return HttpResponse.json({ plan_id: PLAN_ID, new_plan_version_id: "pv2", reviewed: false, accept_automated: false });
+        sentBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          plan_id: PLAN_ID,
+          new_plan_version_id: "pv2",
+          reviewed: false,
+          accept_automated: false,
+        });
       }),
     );
     renderDialog();
@@ -157,8 +178,8 @@ describe("ManualBinningEditDialog", () => {
 
     await user.click(screen.getByText("Revert to automated"));
     await waitFor(() => expect(sentBody).toBeTruthy());
-    expect(sentBody.reason_code).toBe("monotonicity");
-    expect(sentBody.review_reason).toBe("Test merge.");
-    expect(Array.isArray(sentBody.overrides)).toBe(true);
+    expect(sentBody!.reason_code).toBe("monotonicity");
+    expect(sentBody!.review_reason).toBe("Test merge.");
+    expect(Array.isArray(sentBody!.overrides)).toBe(true);
   });
 });

@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from cardre.store import ProjectStore
 
-import pytest
 
 from cardre.evidence import ArtifactEvidenceReader
 from sidecar.routes.evidence import _to_item, _derive_step_status
@@ -31,7 +30,6 @@ def _make_run_with_artifact(tmp: str) -> tuple:
     import uuid
     from cardre.audit import StepSpec, utc_now_iso
     from cardre.artifacts import write_json_artifact
-    from cardre.store import ProjectStore
 
     store = _init_store(tmp)
     prj_id = store.create_project("Test Project")

@@ -9,10 +9,20 @@ interface Props {
   projectId: string;
   basePlanVersionId: string;
   currentParams: Record<string, unknown>;
-  onPlanRefreshed: (detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string }) => void;
+  onPlanRefreshed: (
+    detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string },
+  ) => void;
 }
 
-export function ConfigureTab({ stepId, nodeType, planId, projectId, basePlanVersionId, currentParams, onPlanRefreshed }: Props) {
+export function ConfigureTab({
+  stepId,
+  nodeType,
+  planId,
+  projectId,
+  basePlanVersionId,
+  currentParams,
+  onPlanRefreshed,
+}: Props) {
   return (
     <SchemaDrivenParamsEditor
       key={`${stepId}:${nodeType}`}

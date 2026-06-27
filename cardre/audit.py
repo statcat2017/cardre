@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from cardre.node_parameters import NodeParameterSchema
     from cardre.store import ProjectStore
+    import polars as pl
 
 
 JsonDict = dict[str, Any]

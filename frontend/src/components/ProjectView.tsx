@@ -17,7 +17,7 @@ import { useProjectPlanState } from "../hooks/useProjectPlanState";
 import { useSelectedBranch } from "../hooks/useSelectedBranch";
 import { useJourneyActions } from "../hooks/useJourneyActions";
 import { useDiagnosticsPanel } from "../hooks/useDiagnosticsPanel";
-import type { StepStatus, WorkflowGuidance } from "../types";
+import type { StepStatus } from "../types";
 import { theme } from "../styles";
 
 interface Props {
@@ -25,13 +25,14 @@ interface Props {
   onBack: () => void;
 }
 
-export function ProjectView({ projectId, onBack }: Props) {
+export function ProjectView({ projectId, onBack: _onBack }: Props) {
   const queryClient = useQueryClient();
   const [activeSection, setActiveSection] = useState("pathway");
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
 
-  const { project, projectLoading, scorecardPlan, planId, planData, refetchPlan } = useProjectPlanState(projectId);
+  const { project, projectLoading, scorecardPlan, planId, planData, refetchPlan } =
+    useProjectPlanState(projectId);
 
   const { data: health } = useQuery({
     queryKey: ["health"],
@@ -46,32 +47,56 @@ export function ProjectView({ projectId, onBack }: Props) {
     refetchPlan();
     queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
   });
-  const { running, error, runStalled, carriedForwardSteps, liveStepStatus, stepProgress, diagnostics, liveDiagnostic, startRun, stopWatchingRun, addDiagnostic, lastPollError, lastRunError } = runProgress;
+  const {
+    running,
+    error,
+    runStalled,
+    carriedForwardSteps,
+    liveStepStatus,
+    stepProgress,
+    diagnostics,
+    liveDiagnostic,
+    startRun,
+    stopWatchingRun,
+    addDiagnostic,
+    lastPollError,
+    lastRunError,
+  } = runProgress;
 
-  const { data: guidance } = useWorkflowGuidance(
-    planId,
-    projectId,
-    selectedBranchId,
-  );
+  const { data: guidance } = useWorkflowGuidance(planId, projectId, selectedBranchId);
   const runId = guidance?.run_id ?? null;
 
   const { handleJourneyAction } = useJourneyActions(
-    scorecardPlan, planData, startRun, addDiagnostic,
-    setActiveSection, setSelectedStepId, setEditingStepId,
+    scorecardPlan,
+    planData,
+    startRun,
+    addDiagnostic,
+    setActiveSection,
+    setSelectedStepId,
+    setEditingStepId,
   );
 
   const { diagnosticsMessages } = useDiagnosticsPanel(
-    diagnostics, liveDiagnostic, error, lastPollError, lastRunError, runStalled,
+    diagnostics,
+    liveDiagnostic,
+    error,
+    lastPollError,
+    lastRunError,
+    runStalled,
   );
 
   const handlePlanRefreshed = useCallback(
-    (detailOrResp: any) => {
+    (detailOrResp: Record<string, unknown>) => {
       refetchPlan();
       queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
       if ("latest_version_id" in detailOrResp && detailOrResp.latest_version_id) {
-        addDiagnostic(`Plan refreshed to version ${(detailOrResp.latest_version_id as string).slice(0, 8)}…`);
+        addDiagnostic(
+          `Plan refreshed to version ${(detailOrResp.latest_version_id as string).slice(0, 8)}…`,
+        );
       } else if ("new_plan_version_id" in detailOrResp) {
-        addDiagnostic(`New plan version created: ${detailOrResp.new_plan_version_id.slice(0, 8)}…`);
+        addDiagnostic(
+          `New plan version created: ${(detailOrResp.new_plan_version_id as string).slice(0, 8)}…`,
+        );
       }
     },
     [refetchPlan, addDiagnostic, queryClient],
@@ -120,15 +145,30 @@ export function ProjectView({ projectId, onBack }: Props) {
   const basePlanVersionId = planData?.latest_version_id ?? null;
 
   if (projectLoading) {
-    return <div style={{ padding: 24, backgroundColor: theme.canvas, color: theme.muted }}>Loading project...</div>;
+    return (
+      <div style={{ padding: 24, backgroundColor: theme.canvas, color: theme.muted }}>
+        Loading project...
+      </div>
+    );
   }
 
   if (!project) {
-    return <div style={{ padding: 24, backgroundColor: theme.canvas, color: theme.muted }}>Project not found.</div>;
+    return (
+      <div style={{ padding: 24, backgroundColor: theme.canvas, color: theme.muted }}>
+        Project not found.
+      </div>
+    );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: theme.canvas }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        backgroundColor: theme.canvas,
+      }}
+    >
       <TopBar
         project={project}
         planName={planName}
@@ -143,7 +183,15 @@ export function ProjectView({ projectId, onBack }: Props) {
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <LeftNav activeSection={activeSection} onSectionChange={setActiveSection} />
 
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", backgroundColor: theme.canvas }}>
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            backgroundColor: theme.canvas,
+          }}
+        >
           {editingStepId && planId && basePlanVersionId && (
             <ManualBinningEditor
               planId={planId}
@@ -191,7 +239,9 @@ export function ProjectView({ projectId, onBack }: Props) {
 
           {activeSection === "diagnostics" && (
             <div style={{ padding: 24, overflowY: "auto", flex: 1, backgroundColor: theme.canvas }}>
-              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>Diagnostics</h3>
+              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>
+                Diagnostics
+              </h3>
               {diagnosticsMessages.length === 0 ? (
                 <div style={{ color: theme.muted, fontSize: 13 }}>No diagnostics yet.</div>
               ) : (

@@ -11,8 +11,6 @@ import polars as pl
 from cardre.audit import ArtifactRef, JsonDict
 from cardre._evidence.kinds import (
     EvidenceKind,
-    EvidenceSchemaError,
-    LegacyEvidenceCompatibilityError,
     EvidenceNotFoundError,
     AmbiguousEvidenceError,
     EvidenceParseError,

@@ -7,14 +7,12 @@ or explicitly acknowledged as a gap.
 
 from __future__ import annotations
 
-import json
 import os
 import uuid
 from pathlib import Path
 
 import pytest
 
-from cardre.audit import StepSpec, json_logical_hash
 from cardre.store import ProjectStore
 
 pytestmark = [

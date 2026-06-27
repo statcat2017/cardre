@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import io
 import json
-import tempfile
 import unittest
-from pathlib import Path
 
 import polars as pl
 import pytest
@@ -25,7 +23,6 @@ from cardre.evidence import (
     ArtifactEvidenceReader,
     EvidenceKind,
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
-    SCHEMA_SELECTION_DEFINITION,
     SCHEMA_WOE_APPLICATION_EVIDENCE,
 )
 from cardre.artifacts import write_json_artifact
@@ -34,7 +31,6 @@ from cardre.nodes import (
     CalculateWoeIvNode,
     WoeTransformTrainNode,
 )
-from cardre.store import ProjectStore
 
 from tests.helpers import (
     _make_json_artifact,
@@ -59,13 +55,11 @@ class CalculateWoeIvTests(unittest.TestCase):
             "var1": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
             "target": ["good", "bad", "good", "bad", "good", "bad"],
         })
-        import io
         buf = io.BytesIO()
         df.write_parquet(buf)
         train_path = store.root / "datasets" / "test-train.parquet"
         train_path.parent.mkdir(parents=True, exist_ok=True)
         train_path.write_bytes(buf.getvalue())
-        from cardre.audit import physical_hash, relative_path
         train_artifact = ArtifactRef(
             artifact_id="train1", artifact_type="dataset", role="train",
             path=relative_path(train_path, store.root),
@@ -107,7 +101,6 @@ class CalculateWoeIvTests(unittest.TestCase):
         bin_path = store.root / "artifacts" / "test-bins.json"
         bin_path.parent.mkdir(parents=True, exist_ok=True)
         bin_path.write_text(json.dumps(bin_def, sort_keys=True))
-        from cardre.audit import physical_hash, relative_path
         bin_artifact = ArtifactRef(
             artifact_id="bin1", artifact_type="definition", role="definition",
             path=relative_path(bin_path, store.root),
@@ -159,7 +152,6 @@ class CalculateWoeIvTests(unittest.TestCase):
 
         woe_art = output.artifacts[0]
         iv_art = output.artifacts[1]
-        summary_art = output.artifacts[2]
         evidence_art = output.artifacts[3]
         woe_df = pl.read_parquet(store.artifact_path(woe_art))
         iv_df = pl.read_parquet(store.artifact_path(iv_art))
@@ -180,13 +172,11 @@ class CalculateWoeIvTests(unittest.TestCase):
             "var1": [1.0, 2.0, 3.0, 4.0, 5.0],
             "target": ["good", "bad", "good", "bad", "good"],
         })
-        import io
         buf = io.BytesIO()
         df.write_parquet(buf)
         parquet_path = store.root / "datasets" / "test-train.parquet"
         parquet_path.parent.mkdir(parents=True, exist_ok=True)
         parquet_path.write_bytes(buf.getvalue())
-        from cardre.audit import physical_hash, relative_path, table_logical_hash
         train_artifact = ArtifactRef(
             artifact_id="train1", artifact_type="dataset", role="train",
             path=relative_path(parquet_path, store.root),
@@ -283,13 +273,11 @@ class CalculateWoeIvTests(unittest.TestCase):
             "var1": [1.0, 2.0, 3.0, 4.0, 5.0],
             "target": ["good", "bad", "good", "bad", "good"],
         })
-        import io
         buf = io.BytesIO()
         df.write_parquet(buf)
         parquet_path = store.root / "datasets" / "test-train.parquet"
         parquet_path.parent.mkdir(parents=True, exist_ok=True)
         parquet_path.write_bytes(buf.getvalue())
-        from cardre.audit import physical_hash, relative_path, table_logical_hash
         train_artifact = ArtifactRef(
             artifact_id="train1", artifact_type="dataset", role="train",
             path=relative_path(parquet_path, store.root),
@@ -378,13 +366,11 @@ def test_final_woe_zero_cell_block_fails_without_smoothing() -> None:
         "var1": [1.0, 2.0, 3.0],
         "target": ["good", "good", "bad"],
     })
-    import io
     buf = io.BytesIO()
     df.write_parquet(buf)
     path = store.root / "datasets" / "train.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(buf.getvalue())
-    from cardre.audit import physical_hash, relative_path
     train = ArtifactRef(
         artifact_id="t1", artifact_type="dataset", role="train",
         path=relative_path(path, store.root),

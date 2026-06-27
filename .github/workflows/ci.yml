@@ -31,9 +31,6 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[sidecar,test]"
       - name: Ruff check
-        # Non-blocking baseline: 359 pre-existing F401/F841 errors.
-        # Remove continue-on-error once those are fixed.
-        continue-on-error: true
         run: pip install ruff==0.15.20 && ruff check
       - name: Check line counts
         run: python3 scripts/check-line-counts.py
@@ -60,14 +57,8 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit
       - name: ESLint
-        # Non-blocking baseline: 5 pre-existing errors (hoisting, setState-in-effect).
-        # Remove continue-on-error once those are fixed.
-        continue-on-error: true
         run: npm run lint
       - name: Prettier check
-        # Non-blocking baseline: 69 files need formatting.
-        # Remove continue-on-error once those are fixed.
-        continue-on-error: true
         run: npm run format:check
 
   test-python:

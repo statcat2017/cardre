@@ -25,7 +25,10 @@ interface Props {
 }
 
 export function StatusBadge({ status }: Props) {
-  const color = STATUS_COLORS[status as StepStatusCode] || { bg: theme.canvasSoft, text: theme.muted };
+  const color = STATUS_COLORS[status as StepStatusCode] || {
+    bg: theme.canvasSoft,
+    text: theme.muted,
+  };
   const label = STATUS_LABELS[status as StepStatusCode] || status;
 
   return (

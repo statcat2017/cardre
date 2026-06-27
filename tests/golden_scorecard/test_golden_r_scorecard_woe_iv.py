@@ -18,7 +18,6 @@ from tests.golden_scorecard.helpers import (
     R_SELECTED_VARS_DOT,
     build_bin_def_from_r_bins,
     build_woe_data_from_r,
-    r_col,
     r_woe_col,
 )
 

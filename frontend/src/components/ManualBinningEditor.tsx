@@ -44,7 +44,9 @@ export function ManualBinningEditor({
     return (
       <div style={{ padding: 24, color: theme.redText, fontSize: 13 }}>
         Could not load editor state.
-        <button onClick={onBack} style={linkButtonStyle}>Back</button>
+        <button onClick={onBack} style={linkButtonStyle}>
+          Back
+        </button>
       </div>
     );
   }
@@ -52,7 +54,9 @@ export function ManualBinningEditor({
   if (!es.ready) {
     return (
       <div style={{ padding: 24 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>Manual Bin Editing</h3>
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>
+          Manual Bin Editing
+        </h3>
         <div
           style={{
             padding: 16,
@@ -71,7 +75,9 @@ export function ManualBinningEditor({
             </div>
           )}
         </div>
-        <button onClick={onBack} style={{ ...linkButtonStyle, marginTop: 12 }}>Back to Pathway</button>
+        <button onClick={onBack} style={{ ...linkButtonStyle, marginTop: 12 }}>
+          Back to Pathway
+        </button>
       </div>
     );
   }
@@ -86,15 +92,21 @@ export function ManualBinningEditor({
       />
       <div style={{ flex: 2, overflow: "auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <button onClick={onBack} style={backButtonStyle}>Back</button>
-          <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: theme.text }}>Manual Bin Editing</h3>
+          <button onClick={onBack} style={backButtonStyle}>
+            Back
+          </button>
+          <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: theme.text }}>
+            Manual Bin Editing
+          </h3>
         </div>
         <ManualBinningReviewPanel variable={firstVar} state={es} />
         <ManualBinningBinTable
           variable={firstVar}
           sourceBins={
             firstVar
-              ? (es.source_bins_by_variable as Record<string, any>)?.[firstVar] ?? null
+              ? (((es.source_bins_by_variable as Record<string, unknown>)?.[firstVar] as
+                  | Record<string, unknown>
+                  | undefined) ?? null)
               : null
           }
           summary={firstVar ? es.variable_summaries?.find((v) => v.variable === firstVar) : null}

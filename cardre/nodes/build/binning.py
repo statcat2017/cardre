@@ -300,15 +300,15 @@ class BinningNode(NodeType):
 
         solver = params.get("solver", "cp")
         if solver not in {"cp", "mip"}:
-            errors.append(f"solver must be one of {{'cp', 'mip'}}")
+            errors.append("solver must be one of {'cp', 'mip'}")
 
         divergence = params.get("divergence", "iv")
         if divergence not in {"iv", "js", "hellinger"}:
-            errors.append(f"divergence must be one of {{'iv', 'js', 'hellinger'}}")
+            errors.append("divergence must be one of {'iv', 'js', 'hellinger'}")
 
         trend = params.get("monotonic_trend", "auto")
         if trend not in {"auto", "none", "ascending", "descending"}:
-            errors.append(f"monotonic_trend must be one of auto/none/ascending/descending")
+            errors.append("monotonic_trend must be one of auto/none/ascending/descending")
 
         for key in ("max_n_prebins", "max_n_bins", "min_bin_n_event",
                      "min_bin_n_nonevent", "time_limit"):

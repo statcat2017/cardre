@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import json
-import tempfile
-from pathlib import Path
 
 import numpy as np
 import polars as pl
 
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
 from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
-from cardre.modeling.schema import validate_model_artifact
 from cardre.nodes.fairness import (
     AlternativeDataManifestNode,
     FairnessReportNode,
@@ -68,7 +65,6 @@ def make_dataset_with_sensitive(
 
 def make_scored_dataset(store, data_art, def_art, step_id="score"):
     """Fit a decision tree and apply it to produce scored data."""
-    from cardre.nodes.ml_models import DecisionTreeNode
     from cardre.nodes.validate import ApplyModelNode
 
     dt_ctx = ExecutionContext(

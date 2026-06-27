@@ -12,7 +12,6 @@ import pytest
 from cardre.audit import StepSpec, json_logical_hash
 from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.store import ProjectStore
-from sidecar.main import app
 
 # All 21 German Credit columns must be read as strings for scorecard compatibility.
 # With proper CSV type inference polars converts numeric-looking fields (e.g.
@@ -194,7 +193,6 @@ class TestPlans:
     def test_get_proof_pathway_plan(self, client, tmp_dir):
         proj_path = tmp_dir / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
-        proj_detail = client.get(f"/projects/{proj['project_id']}").json()
 
         from cardre.store import ProjectStore
         store = ProjectStore(proj_path)
@@ -1061,7 +1059,7 @@ class TestProjectArtifacts:
         import json as jmod
 
         proj_path = tmp_dir / "test.cardre"
-        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
 
         store = ProjectStore(proj_path)
         artifact = store.write_artifact_bytes(
@@ -1090,7 +1088,7 @@ class TestProjectArtifacts:
         import json as jmod
 
         proj_path = tmp_dir / "test.cardre"
-        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
 
         store = ProjectStore(proj_path)
         artifact = store.write_artifact_bytes(

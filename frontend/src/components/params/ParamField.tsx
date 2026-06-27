@@ -85,20 +85,19 @@ export function ParamField({ param, value, error, disabled, onChange }: Props) {
 
       case "list": {
         const isComplex =
-          param.constraint?.enum_values === undefined &&
-          param.constraint?.min_items === undefined;
+          param.constraint?.enum_values === undefined && param.constraint?.min_items === undefined;
         const textValue = Array.isArray(value)
           ? (value as string[]).join("\n")
           : typeof value === "string"
             ? value
-            : JSON.stringify(value, null, 2) ?? "";
+            : (JSON.stringify(value, null, 2) ?? "");
         return (
           <div>
             {isComplex && (
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: theme.muted,
+              <div
+                style={{
+                  fontSize: 10,
+                  color: theme.muted,
                   marginBottom: 2,
                 }}
               >
@@ -177,9 +176,7 @@ export function ParamField({ param, value, error, disabled, onChange }: Props) {
           }}
         >
           {param.label}
-          {param.required && (
-            <span style={{ color: theme.redText, marginLeft: 2 }}>*</span>
-          )}
+          {param.required && <span style={{ color: theme.redText, marginLeft: 2 }}>*</span>}
         </label>
         {param.help_text && (
           <span
@@ -195,11 +192,7 @@ export function ParamField({ param, value, error, disabled, onChange }: Props) {
         )}
       </div>
       {renderControl()}
-      {error && (
-        <div style={{ fontSize: 10, color: theme.redText, marginTop: 2 }}>
-          {error}
-        </div>
-      )}
+      {error && <div style={{ fontSize: 10, color: theme.redText, marginTop: 2 }}>{error}</div>}
     </div>
   );
 }

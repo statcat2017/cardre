@@ -30,13 +30,32 @@ cd frontend && npm test
 
 ### Pre-commit Checks
 
-Before submitting a PR, run:
+Before submitting a PR, run all of the following. These are the same checks
+CI enforces as blocking quality gates.
 
 ```bash
-python3 -m pytest tests/ -q
+# Python
+ruff check
+python3 -m pytest tests/ -q --cov-fail-under=75
 python3 scripts/check-line-counts.py
-cd frontend && npx tsc --noEmit
+python3 scripts/check_doc_references.py
+
+# Frontend (run from frontend/)
+cd frontend
+npm run lint
+npm run format:check
+npx tsc --noEmit
+npm test
 ```
+
+Auto-fixes: `ruff check --fix` (Python lint), `npm run format` (Prettier).
+Regenerate API types after changing the FastAPI app with
+`python3 scripts/generate-openapi-types.py`, then commit
+`frontend/src/api/schema.d.ts` and `frontend/src/api/openapi.json` together.
+Generated API files are excluded from Prettier (see `frontend/.prettierignore`)
+and ESLint (see `frontend/eslint.config.js`) and from line-count limits
+(see `scripts/check-line-counts.py`); the `check-api-contracts` CI job verifies
+they are not stale.
 
 ## Pull Request Process
 

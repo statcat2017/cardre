@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import polars as pl
-import pytest
 
 from tests.golden_scorecard.helpers import (
     R_BASE_POINTS,

@@ -8,21 +8,42 @@ interface Props {
 }
 
 function recommendedAction(vs: ManualBinningVariableSummary): string {
-  if (vs.monotonicity_status === "non_monotonic") return "Review monotonicity; merge adjacent bins or accept with a `monotonicity` reason code.";
-  if ((vs.zero_cell_warning_count || 0) > 0) return "Address zero-cell bin: merge, isolate, or accept with a `zero_cell` reason code.";
-  if ((vs.sparse_bin_warning_count || 0) > 0) return "Merge sparse bin with a neighbour, or accept with a `sparse_bin` reason code.";
-  if ((vs.missing_count || 0) > 0) return "Confirm missing handling with the `missing_value_treatment` reason code.";
-  if ((vs.special_bin_count || 0) > 0) return "Confirm special handling with the `special_value_treatment` reason code.";
+  if (vs.monotonicity_status === "non_monotonic")
+    return "Review monotonicity; merge adjacent bins or accept with a `monotonicity` reason code.";
+  if ((vs.zero_cell_warning_count || 0) > 0)
+    return "Address zero-cell bin: merge, isolate, or accept with a `zero_cell` reason code.";
+  if ((vs.sparse_bin_warning_count || 0) > 0)
+    return "Merge sparse bin with a neighbour, or accept with a `sparse_bin` reason code.";
+  if ((vs.missing_count || 0) > 0)
+    return "Confirm missing handling with the `missing_value_treatment` reason code.";
+  if ((vs.special_bin_count || 0) > 0)
+    return "Confirm special handling with the `special_value_treatment` reason code.";
   return "No action required; optionally accept automated bins.";
 }
 
-function warningsForVariable(vs: ManualBinningVariableSummary): { code: string; message: string }[] {
+function warningsForVariable(
+  vs: ManualBinningVariableSummary,
+): { code: string; message: string }[] {
   const w: { code: string; message: string }[] = [];
-  if (vs.monotonicity_status === "non_monotonic") w.push({ code: "NON_MONOTONIC", message: `WOE is not monotonic across bins (${vs.iv} IV).` });
-  if ((vs.zero_cell_warning_count || 0) > 0) w.push({ code: "ZERO_CELL", message: `${vs.zero_cell_warning_count} bin(s) have zero good or bad count.` });
-  if ((vs.sparse_bin_warning_count || 0) > 0) w.push({ code: "SPARSE_BIN", message: `${vs.sparse_bin_warning_count} bin(s) are below 5% of total observations.` });
-  if ((vs.missing_count || 0) > 0) w.push({ code: "MISSING_BINS", message: `${vs.missing_count} missing bin(s) present.` });
-  if ((vs.special_bin_count || 0) > 0) w.push({ code: "SPECIAL_BINS", message: `${vs.special_bin_count} special value bin(s) present.` });
+  if (vs.monotonicity_status === "non_monotonic")
+    w.push({ code: "NON_MONOTONIC", message: `WOE is not monotonic across bins (${vs.iv} IV).` });
+  if ((vs.zero_cell_warning_count || 0) > 0)
+    w.push({
+      code: "ZERO_CELL",
+      message: `${vs.zero_cell_warning_count} bin(s) have zero good or bad count.`,
+    });
+  if ((vs.sparse_bin_warning_count || 0) > 0)
+    w.push({
+      code: "SPARSE_BIN",
+      message: `${vs.sparse_bin_warning_count} bin(s) are below 5% of total observations.`,
+    });
+  if ((vs.missing_count || 0) > 0)
+    w.push({ code: "MISSING_BINS", message: `${vs.missing_count} missing bin(s) present.` });
+  if ((vs.special_bin_count || 0) > 0)
+    w.push({
+      code: "SPECIAL_BINS",
+      message: `${vs.special_bin_count} special value bin(s) present.`,
+    });
   return w;
 }
 
@@ -32,7 +53,11 @@ export function ManualBinningReviewPanel({ variable, state }: Props) {
     [variable, state.variable_summaries],
   );
 
-  const sourceBins = variable ? (state.source_bins_by_variable as Record<string, any>)?.[variable] : null;
+  const sourceBins = variable
+    ? (((state.source_bins_by_variable as Record<string, unknown>)?.[variable] as
+        | { bins?: { bad_rate?: number; woe?: number }[] }
+        | undefined) ?? null)
+    : null;
 
   if (!variable) {
     return (
@@ -55,8 +80,8 @@ export function ManualBinningReviewPanel({ variable, state }: Props) {
 
   // Evidence summary
   const binsList = sourceBins?.bins ?? [];
-  const badRates = binsList.map((b: any) => b.bad_rate).filter((r: number) => r != null);
-  const woes = binsList.map((b: any) => b.woe).filter((w: number) => w != null);
+  const badRates = binsList.map((b) => b.bad_rate).filter((r) => r != null);
+  const woes = binsList.map((b) => b.woe).filter((w) => w != null);
   const minBadRate = badRates.length ? Math.min(...badRates).toFixed(3) : "—";
   const maxBadRate = badRates.length ? Math.max(...badRates).toFixed(3) : "—";
   const minWoe = woes.length ? Math.min(...woes).toFixed(3) : "—";
@@ -78,7 +103,13 @@ export function ManualBinningReviewPanel({ variable, state }: Props) {
 
   return (
     <div style={{ border: `1px solid ${theme.border}`, borderRadius: 8, overflow: "hidden" }}>
-      <div style={{ padding: 12, backgroundColor: theme.surfaceMuted, borderBottom: `1px solid ${theme.border}` }}>
+      <div
+        style={{
+          padding: 12,
+          backgroundColor: theme.surfaceMuted,
+          borderBottom: `1px solid ${theme.border}`,
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <strong style={{ fontSize: 13, color: theme.text }}>{variable}</strong>
           <span style={{ fontSize: 10, color: theme.muted }}>{vs.variable_type || "—"}</span>
@@ -87,19 +118,31 @@ export function ManualBinningReviewPanel({ variable, state }: Props) {
 
       <div style={blockStyle}>
         <div style={labelStyle}>Overview</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px", fontSize: 11 }}>
-          <span style={{ color: theme.muted }}>IV</span><span style={{ color: theme.text }}>{vs.iv != null ? vs.iv.toFixed(4) : "—"}</span>
-          <span style={{ color: theme.muted }}>Bins</span><span style={{ color: theme.text }}>{vs.bin_count ?? "—"}</span>
-          <span style={{ color: theme.muted }}>Missing rate</span><span style={{ color: theme.text }}>{vs.missing_rate != null ? `${(vs.missing_rate * 100).toFixed(1)}%` : "—"}</span>
-          <span style={{ color: theme.muted }}>Special rate</span><span style={{ color: theme.text }}>{vs.special_rate != null ? `${(vs.special_rate * 100).toFixed(1)}%` : "—"}</span>
-          <span style={{ color: theme.muted }}>Monotonicity</span><span style={{ color: theme.text }}>{vs.monotonicity_status}</span>
+        <div
+          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px", fontSize: 11 }}
+        >
+          <span style={{ color: theme.muted }}>IV</span>
+          <span style={{ color: theme.text }}>{vs.iv != null ? vs.iv.toFixed(4) : "—"}</span>
+          <span style={{ color: theme.muted }}>Bins</span>
+          <span style={{ color: theme.text }}>{vs.bin_count ?? "—"}</span>
+          <span style={{ color: theme.muted }}>Missing rate</span>
+          <span style={{ color: theme.text }}>
+            {vs.missing_rate != null ? `${(vs.missing_rate * 100).toFixed(1)}%` : "—"}
+          </span>
+          <span style={{ color: theme.muted }}>Special rate</span>
+          <span style={{ color: theme.text }}>
+            {vs.special_rate != null ? `${(vs.special_rate * 100).toFixed(1)}%` : "—"}
+          </span>
+          <span style={{ color: theme.muted }}>Monotonicity</span>
+          <span style={{ color: theme.text }}>{vs.monotonicity_status}</span>
         </div>
       </div>
 
       <div style={blockStyle}>
         <div style={labelStyle}>Evidence Summary</div>
         <div style={{ fontSize: 11, color: theme.textSoft }}>
-          {binsList.length} bins · bad rate {minBadRate}–{maxBadRate} · WOE {minWoe}–{maxWoe} · IV {vs.iv != null ? vs.iv.toFixed(4) : "—"}
+          {binsList.length} bins · bad rate {minBadRate}–{maxBadRate} · WOE {minWoe}–{maxWoe} · IV{" "}
+          {vs.iv != null ? vs.iv.toFixed(4) : "—"}
         </div>
       </div>
 

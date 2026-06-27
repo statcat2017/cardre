@@ -14,7 +14,6 @@ from cardre.services.plan_dto import (
     ManualBinningEditorStateResponse,
     ManualBinningVariableSummary,
     ManualBinningSourceInfo,
-    UpdateStepParamsResponse,
 )
 from cardre.services.plan_service import PlanValidationError
 

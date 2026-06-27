@@ -49,7 +49,9 @@ export function ImportDatasetForm({
 
   return (
     <div style={{ padding: 24, maxWidth: 620 }}>
-      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>Import Dataset</h3>
+      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>
+        Import Dataset
+      </h3>
       <div
         style={{
           padding: 24,
@@ -61,7 +63,15 @@ export function ImportDatasetForm({
         {headerContent}
 
         <div style={{ marginBottom: 12 }}>
-          <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: theme.textSoft }}>
+          <label
+            style={{
+              display: "block",
+              fontSize: 12,
+              fontWeight: 600,
+              marginBottom: 4,
+              color: theme.textSoft,
+            }}
+          >
             {label}
           </label>
           <input

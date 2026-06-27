@@ -726,7 +726,6 @@ class TestClusteringNodeBehaviours(unittest.TestCase):
         store.initialize()
 
         import numpy as np
-        import math
         rng = np.random.default_rng(42)
         n = 100
         nan = float("nan")

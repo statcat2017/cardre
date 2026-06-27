@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
-from pathlib import Path
 
-import numpy as np
 import polars as pl
 
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
@@ -25,7 +22,7 @@ from cardre.nodes.validate import (
 )
 from cardre.store import ProjectStore
 
-from tests.helpers import make_numeric_dataset, make_oot_dataset, make_store
+from tests.helpers import make_numeric_dataset, make_store
 from tests.helpers.evidence_assertions import assert_model_artifact
 
 import pytest

@@ -850,14 +850,13 @@ class TestRicherBinDefinitionAccessors:
     """BinDefinition from the evidence reader now provides deeper access."""
 
     def test_lifecycle_backed_reader(self, optbinning_payload):
-        from cardre.evidence import BinDefinition, ArtifactEvidenceReader, EvidenceKind
+        from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
         from tests.helpers import make_store
 
         store, _ = make_store()
         store.initialize()
         from cardre.evidence import SCHEMA_BIN_DEFINITION
         from cardre.audit import ArtifactRef, json_logical_hash, physical_hash, relative_path
-        import json
         p = store.root / "artifacts" / "optbinning.json"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(optbinning_payload, sort_keys=True))
@@ -886,13 +885,12 @@ class TestRicherBinDefinitionAccessors:
         assert result.source["engine"] == "optbinning"
 
     def test_fc_reader_does_not_have_rejected(self, fc_payload):
-        from cardre.evidence import BinDefinition, ArtifactEvidenceReader, EvidenceKind
+        from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
         from tests.helpers import make_store
 
         store, _ = make_store()
         store.initialize()
         from cardre.audit import ArtifactRef, json_logical_hash, physical_hash, relative_path
-        import json
         p = store.root / "artifacts" / "fc.json"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(fc_payload, sort_keys=True))

@@ -13,7 +13,6 @@ was deferred until long-running nodes need it.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from cardre.artifacts import write_json_artifact
 from cardre.audit import RunStepRecord, JsonDict, utc_now_iso

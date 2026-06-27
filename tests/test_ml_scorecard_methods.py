@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import tempfile
-from pathlib import Path
 
 import polars as pl
 
@@ -12,7 +10,6 @@ import pytest
 
 from cardre.audit import (
     ExecutionContext,
-    NodeOutput,
     StepSpec,
     json_logical_hash,
 )
@@ -20,7 +17,6 @@ from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from cardre.modeling.schema import (
     MODEL_ARTIFACT_SCHEMA_VERSION,
     FeatureContract,
-    InterpretabilityMetadata,
     ModelArtifactV1,
     PredictionContract,
     TrainingMetadata,
@@ -31,7 +27,7 @@ from cardre.modeling.serialization import (
     read_estimator_artifact,
     write_estimator_artifact,
 )
-from cardre.nodes.validate import CutoffAnalysisNode, ValidationMetricsNode
+from cardre.nodes.validate import CutoffAnalysisNode
 from cardre.store import ProjectStore
 from tests.helpers import make_store
 
@@ -431,4 +427,4 @@ class EstimatorSerializationTests:
             creating_run_id="",
         )
 
-        read_data = read_estimator_artifact(store, artifact, trusted_only=False)
+        read_estimator_artifact(store, artifact, trusted_only=False)

@@ -13,7 +13,6 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from cardre.audit import utc_now_iso
 from cardre.services.report_generation_service import ReportGenerationService
 from cardre.store import ProjectStore
 
@@ -351,7 +350,6 @@ def _copy_report_artifacts(
     """
     artifacts = bundle.get("artifacts", [])
     count = 0
-    from cardre.audit import ArtifactRef
     for entry in artifacts:
         art_id = entry.get("artifact_id", "")
         art = store.get_artifact(art_id)
@@ -371,7 +369,6 @@ def _copy_report_artifacts(
 
 
 def _run_step_to_dict(rs) -> dict:
-    from cardre.audit import RunStepRecord
     return {
         "run_step_id": rs.run_step_id,
         "run_id": rs.run_id,

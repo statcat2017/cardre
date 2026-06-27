@@ -7,7 +7,6 @@ from json import JSONDecodeError
 
 from fastapi import APIRouter, HTTPException, Query
 
-from cardre.audit import utc_now_iso
 from cardre.errors import CardreError
 from cardre.evidence import ArtifactEvidenceReader, EvidenceError
 from cardre.services.evidence_policy import EvidencePolicyService

@@ -9,9 +9,7 @@ import {
   PROJECT_ID,
   BRANCH_ID,
   RUN_ID,
-  PLAN_ID,
   buildSucceededRun,
-  buildWorkflowGuidanceBuildPhase,
   buildWorkflowGuidanceManualBinningPhase,
   buildWorkflowGuidanceExportPhase,
   buildReportReadinessBlocked,
@@ -53,18 +51,12 @@ describe("Guided launch journey", () => {
     const blockerStepId = "target-definition";
 
     server.use(
-      http.get(`${BASE}/plans/:planId/workflow-guidance`, () =>
-        HttpResponse.json(guidance)
-      ),
-      http.get(`${BASE}/projects/:projectId/runs`, () =>
-        HttpResponse.json({ runs: [run] })
-      ),
+      http.get(`${BASE}/plans/:planId/workflow-guidance`, () => HttpResponse.json(guidance)),
+      http.get(`${BASE}/projects/:projectId/runs`, () => HttpResponse.json({ runs: [run] })),
       http.post(`${BASE}/projects/:projectId/runs/:runId/report-readiness`, () =>
-        HttpResponse.json(buildReportReadinessBlocked(blockerStepId))
+        HttpResponse.json(buildReportReadinessBlocked(blockerStepId)),
       ),
-      http.get(`${BASE}/projects/:projectId/runs/:runId/reports`, () =>
-        HttpResponse.json([])
-      ),
+      http.get(`${BASE}/projects/:projectId/runs/:runId/reports`, () => HttpResponse.json([])),
     );
 
     renderProjectView();
@@ -102,21 +94,15 @@ describe("Guided launch journey", () => {
     let capturedGenerateBody: Record<string, unknown> | null = null;
 
     server.use(
-      http.get(`${BASE}/plans/:planId/workflow-guidance`, () =>
-        HttpResponse.json(guidance)
-      ),
-      http.get(`${BASE}/projects/:projectId/runs`, () =>
-        HttpResponse.json({ runs: [run] })
-      ),
+      http.get(`${BASE}/plans/:planId/workflow-guidance`, () => HttpResponse.json(guidance)),
+      http.get(`${BASE}/projects/:projectId/runs`, () => HttpResponse.json({ runs: [run] })),
       http.post(`${BASE}/projects/:projectId/runs/:runId/report-readiness`, () =>
-        HttpResponse.json(buildReportReadinessReady())
+        HttpResponse.json(buildReportReadinessReady()),
       ),
-      http.get(`${BASE}/projects/:projectId/runs/:runId/reports`, () =>
-        HttpResponse.json([])
-      ),
+      http.get(`${BASE}/projects/:projectId/runs/:runId/reports`, () => HttpResponse.json([])),
       http.post(`${BASE}/projects/:projectId/runs/:runId/reports`, async ({ request }) => {
         capturedGenerateUrl = request.url;
-        capturedGenerateBody = await request.json() as Record<string, unknown>;
+        capturedGenerateBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(buildGenerateReportResponse(), { status: 201 });
       }),
     );
@@ -149,10 +135,20 @@ describe("Guided launch journey", () => {
 
     server.use(
       http.get(`http://127.0.0.1:8752/plans/:planId/workflow-guidance`, () =>
-        HttpResponse.json(guidance)
+        HttpResponse.json(guidance),
       ),
       http.get(`http://127.0.0.1:8752/plans/:planId/steps/:stepId/editor-state`, () =>
-        HttpResponse.json({ step_id: "manual-binning", method: "default", overrides: [], variables: [], selected_variable: null, source_info: null, variable_summaries: [], has_unsaved_changes: false, node_version: "1" })
+        HttpResponse.json({
+          step_id: "manual-binning",
+          method: "default",
+          overrides: [],
+          variables: [],
+          selected_variable: null,
+          source_info: null,
+          variable_summaries: [],
+          has_unsaved_changes: false,
+          node_version: "1",
+        }),
       ),
     );
 

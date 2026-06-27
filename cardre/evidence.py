@@ -71,8 +71,6 @@ from cardre._evidence.models import (
     SelectionDefinition,
     ModellingMetadata,
     SampleDefinition,
-    RejectPopulationConfig,
-    RejectInferenceResult,
     ProfileSummary,
     ProxyRiskReport,
     ReportBundleEvidence,
@@ -86,15 +84,12 @@ from cardre._evidence.models import (
     WoeTable,
     IvTable,
     ScoredDataset,
-    ClusterMember,
-    VariableCluster,
-    VariableClusteringEvidence,
     SplitSummary,
     TechnicalManifestIndex,
     WoeTransformEvidence,
 )
 from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.profiles import EVIDENCE_PROFILES as _EVIDENCE_PROFILES  # backward compat
+from cardre._evidence.profiles import EVIDENCE_PROFILES as _EVIDENCE_PROFILES  # noqa: F401 — imported by tests/test_evidence.py
 
 __all__ = [
     "SCHEMA_MODELLING_METADATA",

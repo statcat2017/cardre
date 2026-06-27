@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import io
 import json
-import tempfile
 import unittest
-from pathlib import Path
 
 import polars as pl
 import pytest
@@ -25,7 +23,6 @@ from cardre.nodes import (
     FineClassingNode,
     ManualBinningNode,
 )
-from cardre.store import ProjectStore
 
 from tests.helpers import make_store
 from tests.helpers.evidence_assertions import assert_bin_definition
@@ -45,7 +42,6 @@ class FineClassingTests(unittest.TestCase):
             "var2": ["a", "b", "a", "b", "a", "b"],
             "target": ["good", "good", "bad", "bad", "good", "bad"],
         })
-        import io
         buf = io.BytesIO()
         df.write_parquet(buf)
         train_path = store.root / "datasets" / "test-train.parquet"
@@ -116,7 +112,6 @@ class FineClassingTests(unittest.TestCase):
             "score": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
             "target": ["good", "bad", "good", "bad", "good", "bad"],
         })
-        import io
         buf = io.BytesIO()
         df.write_parquet(buf)
         train_path = store.root / "datasets" / "test-train.parquet"
@@ -244,7 +239,6 @@ class ManualBinningTests(unittest.TestCase):
         bin_path = store.root / "artifacts" / "test-bins.json"
         bin_path.parent.mkdir(parents=True, exist_ok=True)
         bin_path.write_text(json.dumps(bin_def, sort_keys=True))
-        from cardre.audit import physical_hash, relative_path
         bin_artifact = ArtifactRef(
             artifact_id="bin1", artifact_type="definition", role="definition",
             path=relative_path(bin_path, store.root),
@@ -320,7 +314,6 @@ def test_non_adjacent_numeric_merge_fails() -> None:
     bin_path = store.root / "artifacts" / "bins.json"
     bin_path.parent.mkdir(parents=True, exist_ok=True)
     bin_path.write_text(json.dumps(bin_def, sort_keys=True))
-    from cardre.audit import physical_hash, relative_path
     bin_art = ArtifactRef(
         artifact_id="b1", artifact_type="definition", role="definition",
         path=relative_path(bin_path, store.root),
@@ -481,7 +474,6 @@ def test_high_cardinality_creates_other_bin() -> None:
         "cat_var": [f"level_{i}" for i in range(60)],
         "target": ["good"] * 30 + ["bad"] * 30,
     })
-    import io
     buf = io.BytesIO()
     df.write_parquet(buf)
     path = store.root / "datasets" / "train.parquet"

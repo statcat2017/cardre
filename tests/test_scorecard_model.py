@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import io
 import json
 import math
 import sys
@@ -11,19 +10,14 @@ from pathlib import Path
 import polars as pl
 
 from cardre.audit import (
-    ArtifactRef,
     ExecutionContext,
     StepSpec,
     json_logical_hash,
-    physical_hash,
-    relative_path,
-    table_logical_hash,
 )
 from cardre.artifacts import write_json_artifact
 from cardre.evidence import ArtifactEvidenceReader, EvidenceKind, EvidenceNotFoundError
 from cardre.executor import PlanExecutor
 from cardre.nodes import (
-    ApplyModelNode,
     BuildSummaryReportNode,
     CalculateWoeIvNode,
     FineClassingNode,
@@ -33,7 +27,6 @@ from cardre.nodes import (
     WoeTransformTrainNode,
 )
 from cardre.registry import NodeRegistry
-from cardre.store import ProjectStore
 
 import pytest
 
@@ -800,4 +793,4 @@ class Phase2BEndToEndTests:
                                validated_params=params, runtime_metadata={})
         output = WoeTransformTrainNode().run(ctx)
 
-        transformed = pl.read_parquet(store.artifact_path(output.artifacts[0]))
+        pl.read_parquet(store.artifact_path(output.artifacts[0]))

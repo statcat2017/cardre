@@ -16,7 +16,7 @@ const statusColors: Record<string, { bg: string; text: string }> = {
 };
 
 function formatSummary(item: RunStepEvidenceItem): string {
-  const s = item.summary as Record<string, any> | undefined;
+  const s = item.summary as Record<string, unknown> | undefined;
   if (!s || Object.keys(s).length === 0) return "";
   const parts: string[] = [];
   const kind = item.evidence_kind || "";
@@ -27,43 +27,59 @@ function formatSummary(item: RunStepEvidenceItem): string {
     if (s.dataset_role) parts.push(`role: ${s.dataset_role}`);
   } else if (kind === "target-definition") {
     if (s.target_column) parts.push(`target: ${s.target_column}`);
-    if (s.event_rate !== undefined) parts.push(`event rate: ${(s.event_rate * 100).toFixed(1)}%`);
+    if (s.event_rate !== undefined)
+      parts.push(`event rate: ${((s.event_rate as number) * 100).toFixed(1)}%`);
   } else if (kind === "split") {
-    if (s.train_count !== undefined) parts.push(`train: ${s.train_count}`);
-    if (s.test_count !== undefined) parts.push(`test: ${s.test_count}`);
-    if (s.oot_count !== undefined) parts.push(`oot: ${s.oot_count}`);
+    if (s.train_count !== undefined) parts.push(`${s.train_count} train`);
+    if (s.test_count !== undefined) parts.push(`${s.test_count} test`);
+    if (s.oot_count !== undefined) parts.push(`${s.oot_count} oot`);
   } else if (kind === "binning") {
     if (s.variable_count !== undefined) parts.push(`${s.variable_count} variables`);
     if (s.bin_total !== undefined) parts.push(`${s.bin_total} bins`);
   } else if (kind === "woe-iv") {
-    if (s.selected_variable_count !== undefined) parts.push(`${s.selected_variable_count} variables`);
+    if (s.selected_variable_count !== undefined)
+      parts.push(`${s.selected_variable_count} variables`);
     if (s.iv_min !== undefined && s.iv_max !== undefined) {
-      parts.push(`IV range ${s.iv_min.toFixed(2)} – ${s.iv_max.toFixed(2)}`);
+      parts.push(
+        `IV range ${(s.iv_min as number).toFixed(2)} – ${(s.iv_max as number).toFixed(2)}`,
+      );
     }
-    if (s.top_variables?.length) {
-      const top3 = s.top_variables.slice(0, 3).map((v: any) => `${v.name} ${v.iv.toFixed(2)}`);
+    const topVars = s.top_variables as { name: string; iv: number }[] | undefined;
+    if (topVars?.length) {
+      const top3 = topVars.slice(0, 3).map((v) => `${v.name} ${v.iv.toFixed(2)}`);
       return `Top IV: ${top3.join(", ")}`;
     }
   } else if (kind === "logistic-model") {
     if (s.variable_count !== undefined) parts.push(`${s.variable_count} variables`);
-    if (s.coefficient_count !== undefined) parts.push(`${s.coefficient_count} coefficients`);
-    if (s.fit_status) parts.push(`fit: ${s.fit_status}`);
+    const coeffCount = s.coefficient_count as number | undefined;
+    if (coeffCount !== undefined) parts.push(`${coeffCount} coefficients`);
+    const fitStatus = s.fit_status as string | undefined;
+    if (fitStatus) parts.push(`fit: ${fitStatus}`);
   } else if (kind === "score-scaling") {
-    if (s.score_min !== undefined && s.score_max !== undefined) {
-      parts.push(`score range ${s.score_min} – ${s.score_max}`);
+    const scoreMin = s.score_min as number | undefined;
+    const scoreMax = s.score_max as number | undefined;
+    if (scoreMin !== undefined && scoreMax !== undefined) {
+      parts.push(`score range ${scoreMin} – ${scoreMax}`);
     }
-    if (s.pdo !== undefined) parts.push(`PDO ${s.pdo}`);
+    const pdo = s.pdo as number | undefined;
+    if (pdo !== undefined) parts.push(`PDO ${pdo}`);
   } else if (kind === "validation-metrics") {
-    if (s.gini !== undefined) parts.push(`Gini ${s.gini.toFixed(3)}`);
-    if (s.ks !== undefined) parts.push(`KS ${s.ks.toFixed(3)}`);
-    if (s.auc !== undefined) parts.push(`AUC ${s.auc.toFixed(3)}`);
+    const gini = s.gini as number | undefined;
+    const ks = s.ks as number | undefined;
+    const auc = s.auc as number | undefined;
+    if (gini !== undefined) parts.push(`Gini ${gini.toFixed(3)}`);
+    if (ks !== undefined) parts.push(`KS ${ks.toFixed(3)}`);
+    if (auc !== undefined) parts.push(`AUC ${auc.toFixed(3)}`);
   } else if (kind === "report-bundle") {
-    if (s.ready !== undefined) parts.push(s.ready ? "Ready" : "Blocked");
-    if (s.blocker_count !== undefined) parts.push(`${s.blocker_count} blockers`);
-    if (s.warning_count !== undefined) parts.push(`${s.warning_count} warnings`);
+    const ready = s.ready as boolean | undefined;
+    if (ready !== undefined) parts.push(ready ? "Ready" : "Blocked");
+    const blockerCount = s.blocker_count as number | undefined;
+    if (blockerCount !== undefined) parts.push(`${blockerCount} blockers`);
+    const warningCount = s.warning_count as number | undefined;
+    if (warningCount !== undefined) parts.push(`${warningCount} warnings`);
   }
 
-  if (parts.length === 0 && s.unsupported_kind) {
+  if (parts.length === 0 && (s.unsupported_kind as boolean | undefined)) {
     return "This artifact kind has no summary yet.";
   }
 
@@ -128,9 +144,7 @@ export function EvidenceCard({ item }: EvidenceCardProps) {
             </div>
           ))}
           {warnings.length > 3 && (
-            <div style={{ color: theme.muted, fontSize: 10 }}>
-              +{warnings.length - 3} more
-            </div>
+            <div style={{ color: theme.muted, fontSize: 10 }}>+{warnings.length - 3} more</div>
           )}
         </div>
       )}

@@ -37,17 +37,22 @@ export function RawJsonParamsFallback({
   }, [basePlanVersionId, currentParams, setInfo]);
 
   const saveMutation = useMutation({
-    mutationFn: (body: { project_id: string; base_plan_version_id: string; params: Record<string, unknown> }) =>
-      api.updateStepParams(planId, stepId, body),
+    mutationFn: (body: {
+      project_id: string;
+      base_plan_version_id: string;
+      params: Record<string, unknown>;
+    }) => api.updateStepParams(planId, stepId, body),
     onSuccess: (resp) => {
       setSuccess(`Saved — new plan version ${resp.new_plan_version_id.slice(0, 8)}… created.`);
       onSaved(resp);
     },
     onError: (err: unknown) => {
       if (isApiError(err) && err.status === 409 && err.detail.code === "STALE_VERSION") {
-        const latestId: string | undefined = err.detail.context?.latest_version_id as string | undefined;
+        const latestId: string | undefined = err.detail.context?.latest_version_id as
+          | string
+          | undefined;
         setInfo(
-          `Plan modified externally. Refreshing…${latestId ? ` (latest: ${latestId.slice(0, 8)}…)` : ""}`
+          `Plan modified externally. Refreshing…${latestId ? ` (latest: ${latestId.slice(0, 8)}…)` : ""}`,
         );
         onSaved({ latest_version_id: latestId });
       } else if (isApiError(err) && err.status === 422) {
@@ -94,12 +99,8 @@ export function RawJsonParamsFallback({
           marginBottom: 8,
         }}
       >
-        <span style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>
-          Parameters
-        </span>
-        <span
-          style={{ fontSize: 10, color: theme.mutedSoft, fontFamily: theme.fontMono }}
-        >
+        <span style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>Parameters</span>
+        <span style={{ fontSize: 10, color: theme.mutedSoft, fontFamily: theme.fontMono }}>
           v{basePlanVersionId.slice(0, 8)}…
         </span>
       </div>

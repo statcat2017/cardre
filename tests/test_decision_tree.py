@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import json
-import tempfile
-from pathlib import Path
 
-import numpy as np
 import polars as pl
 
 from cardre.artifacts import write_json_artifact
@@ -17,7 +14,7 @@ from cardre.nodes.ml_models import DecisionTreeNode
 from cardre.nodes.validate import ApplyModelNode, ValidationMetricsNode
 from cardre.store import ProjectStore
 
-from tests.helpers import make_numeric_dataset, make_oot_dataset, make_store
+from tests.helpers import make_numeric_dataset, make_store
 import pytest
 
 pytestmark = pytest.mark.integration
@@ -426,7 +423,6 @@ class DecisionTreeApplyTests:
         dt_output = dt_node.run(dt_ctx)
 
         model_art = dt_output.artifacts[0]
-        estimator_art = dt_output.artifacts[1]
 
         # Create scored datasets using ApplyModelNode
         step_spec = StepSpec(

@@ -8,7 +8,6 @@ polluting the top-level ``tests/conftest.py``.
 from __future__ import annotations
 
 import json
-import math
 import re
 from pathlib import Path
 

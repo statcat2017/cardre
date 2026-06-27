@@ -1,6 +1,11 @@
 import React from "react";
 import type { StepStatus, WorkflowGuidance } from "../types";
-import { STEP_DISPLAY_METADATA, SECTION_ORDER, canonicalizeStepId, sectionPhase } from "../config/stepDisplayMetadata";
+import {
+  STEP_DISPLAY_METADATA,
+  SECTION_ORDER,
+  canonicalizeStepId,
+  sectionPhase,
+} from "../config/stepDisplayMetadata";
 import { StepCard } from "./StepCard";
 import { theme } from "../styles";
 
@@ -13,7 +18,14 @@ interface Props {
   guidance?: WorkflowGuidance | null;
 }
 
-export function PathwayView({ steps, selectedStepId, onStepSelect, carriedForwardSteps, liveStepStatus, guidance }: Props) {
+export function PathwayView({
+  steps,
+  selectedStepId,
+  onStepSelect,
+  carriedForwardSteps,
+  liveStepStatus,
+  guidance,
+}: Props) {
   const stepsBySection: Record<string, StepStatus[]> = {};
   for (const step of steps) {
     const canonicalId = canonicalizeStepId(step.step_id);
@@ -43,34 +55,61 @@ export function PathwayView({ steps, selectedStepId, onStepSelect, carriedForwar
           >
             {section}
           </h3>
-          {guidance && (() => {
-            const sr = sectionPhase(stepsBySection[section], guidance);
-            const nextLabel = sr.nextStep
-              ? (STEP_DISPLAY_METADATA[sr.nextStep]?.label ?? sr.nextStep)
-              : null;
-            return (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                <span style={{
-                  fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em",
-                  padding: "1px 6px", borderRadius: 3,
-                  backgroundColor: sr.phase === "complete" ? theme.greenBg : sr.phase === "blocked" ? theme.redBg : sr.phase === "in_progress" ? theme.yellowBg : "transparent",
-                  color: sr.phase === "complete" ? theme.greenText : sr.phase === "blocked" ? theme.redText : sr.phase === "in_progress" ? theme.yellowText : theme.muted,
-                }}>
-                  {sr.phase === "not_started" ? "Not started" : sr.phase === "in_progress" ? "In progress" : sr.phase === "complete" ? "Complete" : "Blocked"}
-                </span>
-                <span style={{ fontSize: 10, color: theme.muted }}>
-                  {sr.complete}/{sr.total} complete
-                  {sr.stale > 0 ? ` · ${sr.stale} stale` : ""}
-                  {sr.blocked > 0 ? ` · ${sr.blocked} blocked` : ""}
-                </span>
-                {nextLabel && (
-                  <span style={{ fontSize: 10, color: theme.blueText, marginLeft: "auto" }}>
-                    Next: {nextLabel}
+          {guidance &&
+            (() => {
+              const sr = sectionPhase(stepsBySection[section], guidance);
+              const nextLabel = sr.nextStep
+                ? (STEP_DISPLAY_METADATA[sr.nextStep]?.label ?? sr.nextStep)
+                : null;
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                      padding: "1px 6px",
+                      borderRadius: 3,
+                      backgroundColor:
+                        sr.phase === "complete"
+                          ? theme.greenBg
+                          : sr.phase === "blocked"
+                            ? theme.redBg
+                            : sr.phase === "in_progress"
+                              ? theme.yellowBg
+                              : "transparent",
+                      color:
+                        sr.phase === "complete"
+                          ? theme.greenText
+                          : sr.phase === "blocked"
+                            ? theme.redText
+                            : sr.phase === "in_progress"
+                              ? theme.yellowText
+                              : theme.muted,
+                    }}
+                  >
+                    {sr.phase === "not_started"
+                      ? "Not started"
+                      : sr.phase === "in_progress"
+                        ? "In progress"
+                        : sr.phase === "complete"
+                          ? "Complete"
+                          : "Blocked"}
                   </span>
-                )}
-              </div>
-            );
-          })()}
+                  <span style={{ fontSize: 10, color: theme.muted }}>
+                    {sr.complete}/{sr.total} complete
+                    {sr.stale > 0 ? ` · ${sr.stale} stale` : ""}
+                    {sr.blocked > 0 ? ` · ${sr.blocked} blocked` : ""}
+                  </span>
+                  {nextLabel && (
+                    <span style={{ fontSize: 10, color: theme.blueText, marginLeft: "auto" }}>
+                      Next: {nextLabel}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           <div
             style={{
               display: "grid",

@@ -5,12 +5,10 @@ Polars-based data inspection lives here, not in route handlers.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import polars as pl
 
-from cardre.audit import ArtifactRef
 from cardre.store import ProjectStore
 from cardre.services.project_registry import load_registry
 

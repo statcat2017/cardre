@@ -12,7 +12,6 @@ from cardre.audit import (
 from cardre.artifacts import write_json_artifact
 from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
-from cardre.store import ProjectStore
 
 import pytest
 

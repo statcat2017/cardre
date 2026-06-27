@@ -7,7 +7,6 @@ validation, blocker computation, and atomic write semantics.
 from __future__ import annotations
 
 import json
-import uuid
 
 import pytest
 

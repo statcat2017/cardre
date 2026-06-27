@@ -296,13 +296,11 @@ def apply_ensemble(
     scorecard scaling."""
     store = context.store
     model_payload = model.get("model_payload", {})
-    base_models = model_payload.get("base_models", [])
     ensemble_type = model_payload.get("ensemble_type", "voting")
     weights_list = model_payload.get("weights", None)
     voting = model_payload.get("voting", "soft")
     threshold = model_payload.get("threshold", 0.5)
     features = model.get("features", [])
-    prob_col_idx = model.get("probability_column_index", 1)
     base_parsed = model.get("_base_models_parsed", None) or []
     if not base_parsed:
         raise ValueError("No base model data available for ensemble apply")

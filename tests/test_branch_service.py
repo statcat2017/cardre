@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -18,8 +15,7 @@ from cardre.services.branch_service import (
 )
 from cardre.step_graph import descendant_closure as _descendant_closure
 from cardre.pathway import build_pathway_steps
-from cardre.store import ProjectStore
-from sidecar.proof_pathway import PROOF_PATHWAY, SCORECARD_PATHWAY
+from sidecar.proof_pathway import SCORECARD_PATHWAY
 
 
 def _scorecard_steps(count: int | None = None):
@@ -375,7 +371,7 @@ class BaselineMigrationTests:
         project_id = self.store.create_project("test")
         plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
         steps = _scorecard_steps()
-        pv_id = self.store.create_plan_version(plan_id, steps, description="v1")
+        self.store.create_plan_version(plan_id, steps, description="v1")
 
         result = migrate_project_to_branch_model(self.store, project_id)
 

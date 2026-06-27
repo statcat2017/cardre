@@ -7,7 +7,6 @@ branch mode (warns but does not block without champion assignment).
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
 
 from cardre.readiness.dto import ReadinessBlocker, ReadinessWarning, ReportReadinessResult
 from cardre.readiness.limitation_codes import LimitationCode

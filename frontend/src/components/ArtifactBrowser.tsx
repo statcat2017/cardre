@@ -39,7 +39,9 @@ export function ArtifactBrowser({ projectId }: Props) {
 
   return (
     <div style={{ padding: 24, overflowY: "auto", flex: 1 }}>
-      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>Artifacts</h3>
+      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: theme.text }}>
+        Artifacts
+      </h3>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
         <label style={{ fontSize: 11, color: theme.muted }}>

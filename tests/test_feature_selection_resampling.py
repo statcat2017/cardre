@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import json
-import tempfile
-import unittest
-from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -378,7 +375,6 @@ class SmoteTrainingDataRunTests:
     def test_smote_import_error(self) -> None:
         """Test that missing imbalanced-learn gives clear error."""
         import unittest.mock
-        import sys
 
         # Temporarily remove imblearn from import path
         real_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__

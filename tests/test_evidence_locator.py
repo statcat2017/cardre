@@ -18,7 +18,6 @@ from cardre.evidence_locator import (
 from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
 
-import pytest
 
 from tests.helpers import make_store
 

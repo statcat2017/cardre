@@ -26,7 +26,6 @@ from typing import Any
 
 from sklearn.model_selection import StratifiedKFold, cross_validate
 
-import numpy as np
 import polars as pl
 
 from cardre.artifacts import write_json_artifact

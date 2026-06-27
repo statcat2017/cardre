@@ -1,5 +1,5 @@
-import React from 'react';
-import { theme } from '../styles';
+import React from "react";
+import { theme } from "../styles";
 
 interface Props {
   overrides: Record<string, unknown>[];
@@ -37,7 +37,15 @@ export function OverridesList({ overrides, onRemoveOverride }: Props) {
             <span style={{ color: theme.muted, minWidth: 120 }}>
               bins: {(o.source_bin_ids as string[])?.join(", ") || "—"}
             </span>
-            <span style={{ color: theme.mutedSoft, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span
+              style={{
+                color: theme.mutedSoft,
+                flex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
               {String(o.reason || "—")}
             </span>
             <button

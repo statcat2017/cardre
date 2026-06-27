@@ -8,8 +8,6 @@ from sklearn.calibration import calibration_curve
 from sklearn.metrics import (
     confusion_matrix,
     f1_score,
-    precision_score,
-    recall_score,
     roc_auc_score,
 )
 

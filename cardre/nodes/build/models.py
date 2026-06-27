@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
+import json  # noqa: F401 — imported for monkeypatch compatibility in tests
 import math
 from typing import Any
 
 import polars as pl
-from sklearn.linear_model import LogisticRegression
 
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
+from cardre.artifacts import write_json_artifact
 from cardre.audit import ExecutionContext, NodeOutput, NodeType, json_logical_hash
 from cardre.node_parameters import (
     MethodOption,
@@ -22,7 +21,6 @@ from cardre.evidence import (
     EvidenceParseError,
     SCHEMA_MODEL_ARTIFACT,
     SCHEMA_SCORE_SCALING,
-    ScoreScaling,
 )
 
 
@@ -230,7 +228,6 @@ class LogisticRegressionNode(NodeType):
 
         bad_class = sorted(bad_values)[0] if bad_values else "1"
         good_class = sorted(good_values)[0] if good_values else "0"
-        class_map = {idx: label for idx, label in enumerate(lr.classes_)}
         bad_class_idx = 1 if len(lr.classes_) > 1 else 0
         if bad_class_idx == 0:
             class_mapping = {"good": str(good_class), "bad": str(bad_class)}
@@ -390,7 +387,6 @@ class ScoreScalingNode(NodeType):
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
-        import math
 
         store = context.store
         params = context.validated_params

@@ -5,7 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { server } from "../../test/server";
 import { ManualBinningEditor } from "../ManualBinningEditor";
-import { buildManualBinningEditorState, buildReviewedEditorState } from "../../test/fixtures/manualBinning";
+import {
+  buildManualBinningEditorState,
+  buildReviewedEditorState,
+} from "../../test/fixtures/manualBinning";
 
 const BASE = "http://127.0.0.1:8752";
 

@@ -1,10 +1,9 @@
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi import APIRouter
 
 from cardre.registry import NodeRegistry
-from cardre.services.project_registry import registry_path, load_registry
+from cardre.services.project_registry import load_registry
 from sidecar.models import HealthResponse
 
 router = APIRouter(tags=["health"])

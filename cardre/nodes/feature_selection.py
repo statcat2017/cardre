@@ -17,7 +17,6 @@ from cardre.audit import (
     ExecutionContext,
     NodeOutput,
     NodeType,
-    json_logical_hash,
 )
 from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 
@@ -369,7 +368,6 @@ class FeatureSelectionEmbeddedNode(NodeType):
         meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         if not target_column:
             target_column = meta.target_column if meta is not None else ""
-        good_values = set(str(v) for v in (meta.good_values if meta is not None else []))
         bad_values = set(str(v) for v in (meta.bad_values if meta is not None else []))
 
         if not target_column or target_column not in df.columns:
@@ -555,7 +553,6 @@ class ResampleTrainingDataNode(NodeType):
         reader = ArtifactEvidenceReader(store)
         meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         target_col = meta.target_column if meta is not None else ""
-        good_values = set(str(v) for v in (meta.good_values if meta is not None else []))
         bad_values = set(str(v) for v in (meta.bad_values if meta is not None else []))
 
         if not target_col:

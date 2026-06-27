@@ -16,7 +16,6 @@ from cardre.services.step_topology import (
     AmbiguousBranchAncestorError,
     find_nearest_binning_source,
 )
-from cardre.services.manual_binning_service import ManualBinningService
 
 
 class TestFindNearestBinningSource:
@@ -262,7 +261,7 @@ class TestManualBinningServiceEvidenceReads:
             plan_id="plan-1",
         )
 
-        from cardre.errors import Ok, Fail
+        from cardre.errors import Ok
         assert isinstance(result, Ok), f"Expected Ok, got {result}"
         bin_def, sel_def, bin_artifact_id, sel_artifact_id = result.value
         assert bin_artifact_id == "art-bin"

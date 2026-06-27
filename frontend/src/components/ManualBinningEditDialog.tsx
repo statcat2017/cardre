@@ -39,16 +39,36 @@ const ACTIONS = [
 ];
 
 const OVERLAY_STYLE: React.CSSProperties = {
-  position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.3)",
-  display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100,
+  position: "fixed",
+  inset: 0,
+  backgroundColor: "rgba(0,0,0,0.3)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 100,
 };
 
 const DIALOG_STYLE: React.CSSProperties = {
-  backgroundColor: theme.surface, borderRadius: 8, border: `1px solid ${theme.border}`,
-  padding: 20, minWidth: 400, maxWidth: 500, boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+  backgroundColor: theme.surface,
+  borderRadius: 8,
+  border: `1px solid ${theme.border}`,
+  padding: 20,
+  minWidth: 400,
+  maxWidth: 500,
+  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
 };
 
-export function ManualBinningEditDialog({ variable, state, planId, basePlanVersionId, stepId, projectId, onClose, onSaved, onPlanRefreshed }: Props) {
+export function ManualBinningEditDialog({
+  variable,
+  state,
+  planId,
+  basePlanVersionId,
+  stepId,
+  projectId,
+  onClose,
+  onSaved,
+  onPlanRefreshed,
+}: Props) {
   const queryClient = useQueryClient();
   const { msg, msgType, clearMsg, setError, setSuccess } = useMessage();
 
@@ -58,28 +78,47 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
   const [reasonText, setReasonText] = useState("");
   const [newLabel, setNewLabel] = useState("");
 
+  const previewMutation = useMutation({
+    mutationFn: (proposedOverride: Record<string, unknown>) =>
+      api.previewManualBinning(
+        planId,
+        {
+          project_id: projectId,
+          plan_version_id: basePlanVersionId,
+          overrides: [
+            ...((state.current_overrides || []) as Record<string, unknown>[]),
+            proposedOverride,
+          ],
+        },
+        stepId,
+      ),
+  });
+
   // Reset preview state whenever form inputs change
   const resetPreview = useCallback(() => {
     previewMutation.reset();
-  }, []);
+  }, [previewMutation]);
 
-  const handleActionChange = (v: string) => { setAction(v); resetPreview(); };
-  const handleBinIdsChange = (v: string) => { setSourceBinIds(v); resetPreview(); };
-  const handleReasonCodeChange = (v: string) => { setReasonCode(v); resetPreview(); };
-  const handleReasonTextChange = (v: string) => { setReasonText(v); resetPreview(); };
-  const handleLabelChange = (v: string) => { setNewLabel(v); resetPreview(); };
-
-  const previewMutation = useMutation({
-    mutationFn: (proposedOverride: Record<string, unknown>) =>
-      api.previewManualBinning(planId, {
-        project_id: projectId,
-        plan_version_id: basePlanVersionId,
-        overrides: [
-          ...((state.current_overrides || []) as Record<string, unknown>[]),
-          proposedOverride,
-        ],
-      }, stepId),
-  });
+  const handleActionChange = (v: string) => {
+    setAction(v);
+    resetPreview();
+  };
+  const handleBinIdsChange = (v: string) => {
+    setSourceBinIds(v);
+    resetPreview();
+  };
+  const handleReasonCodeChange = (v: string) => {
+    setReasonCode(v);
+    resetPreview();
+  };
+  const handleReasonTextChange = (v: string) => {
+    setReasonText(v);
+    resetPreview();
+  };
+  const handleLabelChange = (v: string) => {
+    setNewLabel(v);
+    resetPreview();
+  };
 
   const saveMutation = useMutation({
     mutationFn: (proposedOverride: Record<string, unknown>) =>
@@ -96,13 +135,17 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
     onSuccess: (data) => {
       setSuccess("Override saved.");
       queryClient.invalidateQueries({ queryKey: ["plan"] });
-      queryClient.invalidateQueries({ queryKey: ["manualBinningState", projectId, planId, stepId] });
+      queryClient.invalidateQueries({
+        queryKey: ["manualBinningState", projectId, planId, stepId],
+      });
       queryClient.invalidateQueries({ queryKey: ["manualBinningEditorState"] });
       onSaved(data?.new_plan_version_id);
     },
     onError: (err: unknown) => {
       if (isApiError(err) && err.status === 409 && err.detail.code === "STALE_VERSION") {
-        onPlanRefreshed?.({ latest_version_id: err.detail.context?.latest_version_id as string | undefined });
+        onPlanRefreshed?.({
+          latest_version_id: err.detail.context?.latest_version_id as string | undefined,
+        });
       } else {
         const rendered = renderApiError(err);
         setError(rendered ? rendered.message : "Save failed");
@@ -111,9 +154,16 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
   });
 
   const revertMutation = useMutation({
-    mutationFn: ({ reasonCode: rc, reasonText: rt }: { reasonCode: string; reasonText: string }) => {
-      const filteredOverrides = ((state.current_overrides || []) as Record<string, unknown>[])
-        .filter((ov) => ov.variable !== variable);
+    mutationFn: ({
+      reasonCode: rc,
+      reasonText: rt,
+    }: {
+      reasonCode: string;
+      reasonText: string;
+    }) => {
+      const filteredOverrides = (
+        (state.current_overrides || []) as Record<string, unknown>[]
+      ).filter((ov) => ov.variable !== variable);
       return api.reviewManualBinning(planId, stepId, {
         project_id: projectId,
         plan_version_id: basePlanVersionId,
@@ -128,13 +178,17 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
     onSuccess: (data) => {
       setSuccess("Reverted to automated bins.");
       queryClient.invalidateQueries({ queryKey: ["plan"] });
-      queryClient.invalidateQueries({ queryKey: ["manualBinningState", projectId, planId, stepId] });
+      queryClient.invalidateQueries({
+        queryKey: ["manualBinningState", projectId, planId, stepId],
+      });
       queryClient.invalidateQueries({ queryKey: ["manualBinningEditorState"] });
       onSaved(data?.new_plan_version_id);
     },
     onError: (err: unknown) => {
       if (isApiError(err) && err.status === 409 && err.detail.code === "STALE_VERSION") {
-        onPlanRefreshed?.({ latest_version_id: err.detail.context?.latest_version_id as string | undefined });
+        onPlanRefreshed?.({
+          latest_version_id: err.detail.context?.latest_version_id as string | undefined,
+        });
       } else {
         const rendered = renderApiError(err);
         setError(rendered ? rendered.message : "Revert failed");
@@ -150,7 +204,10 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
       setError("Reason code and reason text are required.");
       return null;
     }
-    const binIds = sourceBinIds.split(",").map((s) => s.trim()).filter(Boolean);
+    const binIds = sourceBinIds
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     if ((action === "merge_bins" || action === "group_categories") && binIds.length < 2) {
       setError("This action requires at least two source bin IDs.");
       return null;
@@ -192,18 +249,36 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
   return (
     <div style={OVERLAY_STYLE} onClick={onClose}>
       <div style={DIALOG_STYLE} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 16,
+          }}
+        >
           <strong style={{ fontSize: 14, color: theme.text }}>Edit — {variable}</strong>
-          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 16 }}>×</button>
+          <button
+            onClick={onClose}
+            style={{ border: "none", background: "none", cursor: "pointer", fontSize: 16 }}
+          >
+            ×
+          </button>
         </div>
 
         <MessageBanner message={msg} type={msgType} />
 
         <div style={{ marginBottom: 12 }}>
           <label style={labelStyle}>Action</label>
-          <select value={action} onChange={(e) => handleActionChange(e.target.value)} style={selectStyle}>
+          <select
+            value={action}
+            onChange={(e) => handleActionChange(e.target.value)}
+            style={selectStyle}
+          >
             {ACTIONS.map((a) => (
-              <option key={a.value} value={a.value}>{a.label}</option>
+              <option key={a.value} value={a.value}>
+                {a.label}
+              </option>
             ))}
           </select>
         </div>
@@ -236,10 +311,16 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
 
         <div style={{ marginBottom: 12 }}>
           <label style={labelStyle}>Reason code</label>
-          <select value={reasonCode} onChange={(e) => handleReasonCodeChange(e.target.value)} style={selectStyle}>
+          <select
+            value={reasonCode}
+            onChange={(e) => handleReasonCodeChange(e.target.value)}
+            style={selectStyle}
+          >
             <option value="">Select a reason code…</option>
             {REASON_CODES.map((rc) => (
-              <option key={rc.value} value={rc.value}>{rc.label}</option>
+              <option key={rc.value} value={rc.value}>
+                {rc.label}
+              </option>
             ))}
           </select>
         </div>
@@ -256,28 +337,75 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
         </div>
 
         {previewMutation.data && previewMutation.data.valid && (
-          <div style={{ marginBottom: 12, padding: 8, backgroundColor: theme.greenBg, borderRadius: 4, fontSize: 10, color: theme.greenText }}>
-            Preview: {((previewMutation.data.refined_bins_by_variable || {}) as Record<string, any>)[variable]?.bins?.length ?? "?"} bins after edit — preview valid.
+          <div
+            style={{
+              marginBottom: 12,
+              padding: 8,
+              backgroundColor: theme.greenBg,
+              borderRadius: 4,
+              fontSize: 10,
+              color: theme.greenText,
+            }}
+          >
+            Preview:{" "}
+            {(
+              (previewMutation.data.refined_bins_by_variable || {}) as Record<
+                string,
+                { bins?: unknown[] }
+              >
+            )[variable]?.bins?.length ?? "?"}{" "}
+            bins after edit — preview valid.
           </div>
         )}
 
         {previewMutation.data && !previewMutation.data.valid && (
-          <div style={{ marginBottom: 12, padding: 8, backgroundColor: theme.yellowBg, borderRadius: 4, fontSize: 10, color: theme.yellowText }}>
+          <div
+            style={{
+              marginBottom: 12,
+              padding: 8,
+              backgroundColor: theme.yellowBg,
+              borderRadius: 4,
+              fontSize: 10,
+              color: theme.yellowText,
+            }}
+          >
             Preview invalid: {(previewMutation.data.diagnostics?.warnings || []).join("; ")}
           </div>
         )}
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={handlePreview} disabled={!canSave || previewMutation.isPending} style={btnStyle(theme.text, canSave && !previewMutation.isPending)}>
+          <button
+            onClick={handlePreview}
+            disabled={!canSave || previewMutation.isPending}
+            style={btnStyle(theme.text, canSave && !previewMutation.isPending)}
+          >
             {previewMutation.isPending ? "Previewing…" : "Preview"}
           </button>
-          <button onClick={handleSave} disabled={!canSave || !hasValidPreview || saveMutation.isPending} style={btnStyle(theme.text, canSave && hasValidPreview && !saveMutation.isPending)}>
+          <button
+            onClick={handleSave}
+            disabled={!canSave || !hasValidPreview || saveMutation.isPending}
+            style={btnStyle(theme.text, canSave && hasValidPreview && !saveMutation.isPending)}
+          >
             {saveMutation.isPending ? "Saving…" : "Save"}
           </button>
-          <button onClick={handleRevert} disabled={!canSave || revertMutation.isPending} style={btnStyle(theme.yellowText, canSave && !revertMutation.isPending)}>
+          <button
+            onClick={handleRevert}
+            disabled={!canSave || revertMutation.isPending}
+            style={btnStyle(theme.yellowText, canSave && !revertMutation.isPending)}
+          >
             {revertMutation.isPending ? "Reverting…" : "Revert to automated"}
           </button>
-          <button onClick={onClose} style={{ ...btnStyle(theme.textSoft, true), border: `1px solid ${theme.border}`, backgroundColor: theme.surface, color: theme.textSoft }}>Cancel</button>
+          <button
+            onClick={onClose}
+            style={{
+              ...btnStyle(theme.textSoft, true),
+              border: `1px solid ${theme.border}`,
+              backgroundColor: theme.surface,
+              color: theme.textSoft,
+            }}
+          >
+            Cancel
+          </button>
         </div>
       </div>
     </div>
@@ -285,13 +413,23 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
 }
 
 const labelStyle: React.CSSProperties = {
-  display: "block", fontSize: 10, fontWeight: 600, color: theme.muted,
-  textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4,
+  display: "block",
+  fontSize: 10,
+  fontWeight: 600,
+  color: theme.muted,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  marginBottom: 4,
 };
 
 const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "6px 8px", border: `1px solid ${theme.borderStrong}`,
-  borderRadius: 4, fontSize: 11, color: theme.text, backgroundColor: theme.surface,
+  width: "100%",
+  padding: "6px 8px",
+  border: `1px solid ${theme.borderStrong}`,
+  borderRadius: 4,
+  fontSize: 11,
+  color: theme.text,
+  backgroundColor: theme.surface,
   boxSizing: "border-box",
 };
 
@@ -301,9 +439,13 @@ const selectStyle: React.CSSProperties = {
 
 function btnStyle(color: string, enabled: boolean): React.CSSProperties {
   return {
-    padding: "6px 14px", borderRadius: 4, border: "none",
+    padding: "6px 14px",
+    borderRadius: 4,
+    border: "none",
     backgroundColor: enabled ? color : theme.mutedSoft,
-    color: "#fff", fontSize: 11, fontWeight: 600,
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: 600,
     cursor: enabled ? "pointer" : "not-allowed",
     opacity: enabled ? 1 : 0.5,
   };

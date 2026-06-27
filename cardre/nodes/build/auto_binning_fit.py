@@ -294,7 +294,6 @@ class AutoBinningFitNode(NodeType):
         )
 
         # Build bin definition (Cardre SCHEMA_BIN_DEFINITION)
-        from cardre.engine.binning.diagnostics import BinningDiagnostic
 
         variables_out: list[dict[str, Any]] = []
         all_warnings: list[dict[str, Any]] = []
@@ -330,7 +329,7 @@ class AutoBinningFitNode(NodeType):
                     "code": "VARIABLE_FAILED",
                     "severity": "error",
                     "variable": var_result.variable,
-                    "message": f"Variable failed optbinning fit; excluded from active definition",
+                    "message": "Variable failed optbinning fit; excluded from active definition",
                     "requires_acknowledgement": True,
                     "details": {},
                 })

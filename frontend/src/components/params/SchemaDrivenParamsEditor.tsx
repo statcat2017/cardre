@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api, isApiError } from "../../api/client";
 import type { UpdateStepParamsResponse } from "../../types";
@@ -83,10 +83,14 @@ export function SchemaDrivenParamsEditor({
 }: Props) {
   const { msg, msgType, clearMsg, setError, setInfo, setSuccess } = useMessage();
 
-  const { data: schema, isLoading: schemaLoading, error: schemaError } = useQuery({
+  const {
+    data: schema,
+    isLoading: schemaLoading,
+    error: schemaError,
+  } = useQuery({
     queryKey: ["nodeTypeSchema", nodeType],
     queryFn: async () => {
-      const raw = await api.getNodeTypeSchema(nodeType) as Record<string, unknown>;
+      const raw = (await api.getNodeTypeSchema(nodeType)) as Record<string, unknown>;
       return normalizeSchema(raw);
     },
     enabled: !!nodeType,
@@ -94,55 +98,57 @@ export function SchemaDrivenParamsEditor({
 
   const availableMethods = useMemo(
     () => schema?.methods.filter((m) => m.status === "available") ?? [],
-    [schema]
+    [schema],
   );
 
   const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
-
-  const selectedMethod = useMemo(
-    () => (schema?.methods ?? []).find((m) => m.id === selectedMethodId) ?? null,
-    [schema, selectedMethodId]
-  );
-
-  useEffect(() => {
-    if (schema && !selectedMethodId) {
-      const currentMethod = currentParams.method as string | undefined;
-      if (currentMethod && availableMethods.some((m) => m.id === currentMethod)) {
-        setSelectedMethodId(currentMethod);
-      } else {
-        const first = availableMethods[0] ?? null;
-        setSelectedMethodId(first?.id ?? null);
-      }
-    }
-  }, [schema, availableMethods, selectedMethodId, currentParams.method]);
-
-  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    if (!selectedMethod) return;
+  // Effective method id: user choice, else currentParams.method if valid, else first available.
+  const effectiveMethodId =
+    selectedMethodId ??
+    (currentParams.method && availableMethods.some((m) => m.id === currentParams.method)
+      ? (currentParams.method as string)
+      : (availableMethods[0]?.id ?? null));
+
+  const selectedMethod = useMemo(
+    () => (schema?.methods ?? []).find((m) => m.id === effectiveMethodId) ?? null,
+    [schema, effectiveMethodId],
+  );
+
+  // Derive base form values from the effective method; merge user edits on top.
+  const baseFormValues = useMemo<Record<string, unknown>>(() => {
+    if (!selectedMethod) return {};
     const merged: Record<string, unknown> = {};
     for (const p of selectedMethod.params) {
-      if (p.default !== undefined) {
-        merged[p.name] = p.default;
-      } else if (p.kind === "boolean") {
-        merged[p.name] = false;
-      } else if (p.kind === "integer" || p.kind === "float") {
-        merged[p.name] = "";
-      } else {
-        merged[p.name] = "";
-      }
+      if (p.default !== undefined) merged[p.name] = p.default;
+      else if (p.kind === "boolean") merged[p.name] = false;
+      else if (p.kind === "integer" || p.kind === "float") merged[p.name] = "";
+      else merged[p.name] = "";
     }
     Object.assign(merged, currentParams);
-    setFormValues(merged);
-    setValidationErrors({});
+    return merged;
   }, [selectedMethod, currentParams]);
+
+  const [userEdits, setUserEdits] = useState<Record<string, unknown>>({});
+  const effectiveFormValues = useMemo(
+    () => ({ ...baseFormValues, ...userEdits }),
+    [baseFormValues, userEdits],
+  );
+
+  // When the effective method changes, clear user edits + validation errors.
+  const prevMethodRef = useRef<string | null>(null);
+  if (prevMethodRef.current !== effectiveMethodId) {
+    prevMethodRef.current = effectiveMethodId;
+    setUserEdits({});
+    setValidationErrors({});
+  }
 
   const validate = useCallback((): Record<string, string> => {
     const errs: Record<string, string> = {};
     if (!selectedMethod) return errs;
     for (const p of selectedMethod.params) {
-      const val = formValues[p.name];
+      const val = effectiveFormValues[p.name];
       if (p.required && (val === undefined || val === null || val === "")) {
         errs[p.name] = `${p.label} is required`;
         continue;
@@ -185,14 +191,18 @@ export function SchemaDrivenParamsEditor({
         }
         case "object": {
           if (typeof val === "string") {
-            try { JSON.parse(val as string); } catch { errs[p.name] = `${p.label} must be valid JSON`; }
+            try {
+              JSON.parse(val as string);
+            } catch {
+              errs[p.name] = `${p.label} must be valid JSON`;
+            }
           }
           break;
         }
       }
     }
     return errs;
-  }, [selectedMethod, formValues]);
+  }, [selectedMethod, effectiveFormValues]);
 
   const gatherParams = useCallback((): Record<string, unknown> => {
     if (!selectedMethod) return {};
@@ -200,7 +210,7 @@ export function SchemaDrivenParamsEditor({
     result["method"] = selectedMethod.id;
     for (const p of selectedMethod.params) {
       if (p.name === "method") continue;
-      const val = formValues[p.name];
+      const val = effectiveFormValues[p.name];
       if (val === undefined || val === null || val === "") {
         result[p.name] = val;
         continue;
@@ -217,7 +227,11 @@ export function SchemaDrivenParamsEditor({
           break;
         case "object":
           if (typeof val === "string") {
-            try { result[p.name] = JSON.parse(val as string); } catch { result[p.name] = val; }
+            try {
+              result[p.name] = JSON.parse(val as string);
+            } catch {
+              result[p.name] = val;
+            }
           } else {
             result[p.name] = val;
           }
@@ -226,9 +240,16 @@ export function SchemaDrivenParamsEditor({
           if (typeof val === "string") {
             const trimmed = (val as string).trim();
             if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
-              try { result[p.name] = JSON.parse(trimmed); } catch { result[p.name] = val; }
+              try {
+                result[p.name] = JSON.parse(trimmed);
+              } catch {
+                result[p.name] = val;
+              }
             } else if (trimmed) {
-              result[p.name] = trimmed.split("\n").map((s) => s.trim()).filter(Boolean);
+              result[p.name] = trimmed
+                .split("\n")
+                .map((s) => s.trim())
+                .filter(Boolean);
             } else {
               result[p.name] = [];
             }
@@ -241,20 +262,25 @@ export function SchemaDrivenParamsEditor({
       }
     }
     return result;
-  }, [selectedMethod, formValues]);
+  }, [selectedMethod, effectiveFormValues]);
 
   const saveMutation = useMutation({
-    mutationFn: (body: { project_id: string; base_plan_version_id: string; params: Record<string, unknown> }) =>
-      api.updateStepParams(planId, stepId, body),
+    mutationFn: (body: {
+      project_id: string;
+      base_plan_version_id: string;
+      params: Record<string, unknown>;
+    }) => api.updateStepParams(planId, stepId, body),
     onSuccess: (resp) => {
       setSuccess(`Saved — new plan version ${resp.new_plan_version_id.slice(0, 8)}… created.`);
       onSaved(resp);
     },
     onError: (err: unknown) => {
       if (isApiError(err) && err.status === 409 && err.detail.code === "STALE_VERSION") {
-        const latestId: string | undefined = err.detail.context?.latest_version_id as string | undefined;
+        const latestId: string | undefined = err.detail.context?.latest_version_id as
+          | string
+          | undefined;
         setInfo(
-          `Plan modified externally. Refreshing…${latestId ? ` (latest: ${latestId.slice(0, 8)}…)` : ""}`
+          `Plan modified externally. Refreshing…${latestId ? ` (latest: ${latestId.slice(0, 8)}…)` : ""}`,
         );
         onSaved({ latest_version_id: latestId });
       } else if (isApiError(err) && err.status === 422) {
@@ -280,7 +306,7 @@ export function SchemaDrivenParamsEditor({
   };
 
   const handleChange = (name: string, value: unknown) => {
-    setFormValues((prev) => ({ ...prev, [name]: value }));
+    setUserEdits((prev) => ({ ...prev, [name]: value }));
     setValidationErrors((prev) => {
       if (!prev[name]) return prev;
       const next = { ...prev };
@@ -314,7 +340,14 @@ export function SchemaDrivenParamsEditor({
 
   return (
     <div style={{ borderTop: `1px solid ${theme.border}`, marginTop: 12, paddingTop: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 8,
+        }}
+      >
         <span style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>Parameters</span>
         <span style={{ fontSize: 10, color: theme.mutedSoft, fontFamily: theme.fontMono }}>
           v{basePlanVersionId.slice(0, 8)}…
@@ -323,7 +356,15 @@ export function SchemaDrivenParamsEditor({
 
       {schema.methods.length > 1 && (
         <div style={{ marginBottom: 10 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: theme.textSoft, marginBottom: 4, display: "block" }}>
+          <label
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: theme.textSoft,
+              marginBottom: 4,
+              display: "block",
+            }}
+          >
             Method
           </label>
           <select
@@ -331,13 +372,20 @@ export function SchemaDrivenParamsEditor({
             onChange={(e) => setSelectedMethodId(e.target.value)}
             disabled={saving}
             style={{
-              width: "100%", padding: "4px 8px", border: `1px solid ${theme.borderStrong}`,
-              borderRadius: 4, fontSize: 12, boxSizing: "border-box", backgroundColor: theme.surface, color: theme.text,
+              width: "100%",
+              padding: "4px 8px",
+              border: `1px solid ${theme.borderStrong}`,
+              borderRadius: 4,
+              fontSize: 12,
+              boxSizing: "border-box",
+              backgroundColor: theme.surface,
+              color: theme.text,
             }}
           >
             {schema.methods.map((m) => (
               <option key={m.id} value={m.id} disabled={m.status === "coming_soon"}>
-                {m.label}{m.status === "coming_soon" ? " (coming soon)" : ""}
+                {m.label}
+                {m.status === "coming_soon" ? " (coming soon)" : ""}
               </option>
             ))}
           </select>
@@ -352,20 +400,24 @@ export function SchemaDrivenParamsEditor({
 
       {selectedMethod && selectedMethod.params.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {selectedMethod.params.filter((p) => p.name !== "method").map((param) => (
-            <ParamField
-              key={param.name}
-              param={param}
-              value={formValues[param.name]}
-              error={validationErrors[param.name]}
-              disabled={saving}
-              onChange={(val) => handleChange(param.name, val)}
-            />
-          ))}
+          {selectedMethod.params
+            .filter((p) => p.name !== "method")
+            .map((param) => (
+              <ParamField
+                key={param.name}
+                param={param}
+                value={effectiveFormValues[param.name]}
+                error={validationErrors[param.name]}
+                disabled={saving}
+                onChange={(val) => handleChange(param.name, val)}
+              />
+            ))}
         </div>
       ) : (
         <div style={{ fontSize: 11, color: theme.mutedSoft }}>
-          {selectedMethod ? "No parameters for this method." : "No available methods for this node type."}
+          {selectedMethod
+            ? "No parameters for this method."
+            : "No available methods for this node type."}
         </div>
       )}
 
@@ -375,9 +427,15 @@ export function SchemaDrivenParamsEditor({
         onClick={handleSave}
         disabled={saving}
         style={{
-          marginTop: 8, padding: "6px 16px", borderRadius: 4, border: "none",
-          backgroundColor: saving ? theme.mutedSoft : theme.text, color: "#fff",
-          fontSize: 12, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer",
+          marginTop: 8,
+          padding: "6px 16px",
+          borderRadius: 4,
+          border: "none",
+          backgroundColor: saving ? theme.mutedSoft : theme.text,
+          color: "#fff",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: saving ? "not-allowed" : "pointer",
         }}
       >
         {saving ? "Saving..." : "Save Params"}

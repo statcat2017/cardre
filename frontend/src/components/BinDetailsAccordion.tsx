@@ -1,5 +1,5 @@
-import React from 'react';
-import { tableHeaderStyle, tableDataStyle, theme } from '../styles';
+import React from "react";
+import { tableHeaderStyle, tableDataStyle, theme } from "../styles";
 
 interface Props {
   selectedVars: string[];
@@ -17,7 +17,9 @@ export function BinDetailsAccordion({ selectedVars, sourceBins }: Props) {
         const bins = sourceBins[v]?.bins || [];
         return (
           <details key={v} style={{ marginBottom: 6 }}>
-            <summary style={{ cursor: "pointer", fontSize: 12, color: theme.textSoft, fontWeight: 500 }}>
+            <summary
+              style={{ cursor: "pointer", fontSize: 12, color: theme.textSoft, fontWeight: 500 }}
+            >
               {v} ({bins.length} bins)
             </summary>
             <div
@@ -48,8 +50,12 @@ export function BinDetailsAccordion({ selectedVars, sourceBins }: Props) {
                   {bins.map((b: Record<string, unknown>, i: number) => (
                     <tr key={String(b.bin_id || i)}>
                       <td style={tableDataStyle}>{String(b.bin_id || "—").slice(0, 16)}</td>
-                      <td style={tableDataStyle}>{b.lower !== undefined ? String(b.lower) : "—"}</td>
-                      <td style={tableDataStyle}>{b.upper !== undefined ? String(b.upper) : "—"}</td>
+                      <td style={tableDataStyle}>
+                        {b.lower !== undefined ? String(b.lower) : "—"}
+                      </td>
+                      <td style={tableDataStyle}>
+                        {b.upper !== undefined ? String(b.upper) : "—"}
+                      </td>
                       <td style={tableDataStyle}>{String(b.row_count ?? "—")}</td>
                       <td style={tableDataStyle}>{String(b.good_count ?? "—")}</td>
                       <td style={tableDataStyle}>{String(b.bad_count ?? "—")}</td>

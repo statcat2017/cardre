@@ -16,7 +16,6 @@ from cardre.audit import (
     ExecutionContext,
     NodeOutput,
     NodeType,
-    json_logical_hash,
 )
 
 # Minimum group size for reliable metrics
@@ -73,11 +72,9 @@ class FairnessReportNode(NodeType):
         meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         if meta:
             target_col = meta.target_column
-            good = set(str(v) for v in meta.good_values)
             bad = set(str(v) for v in meta.bad_values)
         else:
             target_col = ""
-            good = set()
             bad = set()
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
@@ -88,8 +85,6 @@ class FairnessReportNode(NodeType):
             "roles": {},
         }
 
-        model_features: list[str] = []
-        feature_importance: dict[str, float] = {}
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
         if model_art:
             try:
@@ -102,10 +97,6 @@ class FairnessReportNode(NodeType):
                 raise ValueError(
                     f"fairness_report requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
                 )
-            model = dict(getattr(model_typed, "_raw", {}))
-            model_features = list(model_typed.features)
-            feature_importance = model.get("model_payload", {}).get("feature_importance", {})
-
         for data_art in data_arts:
             role = data_art.role
             df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input

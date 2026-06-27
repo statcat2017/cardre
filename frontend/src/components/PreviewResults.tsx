@@ -1,6 +1,6 @@
-import React from 'react';
-import type { ManualBinningPreviewResponse } from '../types';
-import { theme } from '../styles';
+import React from "react";
+import type { ManualBinningPreviewResponse } from "../types";
+import { theme } from "../styles";
 
 interface Props {
   previewData: ManualBinningPreviewResponse | undefined;
@@ -29,8 +29,7 @@ export function PreviewResults({ previewData }: Props) {
       >
         {previewData.valid ? "Preview Passed" : "Preview Failed"}
       </div>
-      {previewData.diagnostics?.warnings &&
-        previewData.diagnostics.warnings.length > 0 && (
+      {previewData.diagnostics?.warnings && previewData.diagnostics.warnings.length > 0 && (
         <div style={{ fontSize: 11, color: theme.redText, marginBottom: 6 }}>
           {previewData.diagnostics.warnings.map((w, i) => (
             <div key={i}>Warning: {w}</div>
@@ -40,26 +39,26 @@ export function PreviewResults({ previewData }: Props) {
       {previewData.valid &&
         previewData.refined_bins_by_variable &&
         Object.keys(previewData.refined_bins_by_variable).length > 0 && (
-        <details>
-          <summary style={{ cursor: "pointer", fontSize: 11, color: theme.greenText }}>
-            Show refined bins
-          </summary>
-          <pre
-            style={{
-              marginTop: 8,
-              padding: 8,
-              backgroundColor: theme.surface,
-              border: `1px solid ${theme.border}`,
-              borderRadius: 4,
-              fontSize: 10,
-              maxHeight: 300,
-              overflow: "auto",
-            }}
-          >
-            {JSON.stringify(previewData.refined_bins_by_variable, null, 2)}
-          </pre>
-        </details>
-      )}
+          <details>
+            <summary style={{ cursor: "pointer", fontSize: 11, color: theme.greenText }}>
+              Show refined bins
+            </summary>
+            <pre
+              style={{
+                marginTop: 8,
+                padding: 8,
+                backgroundColor: theme.surface,
+                border: `1px solid ${theme.border}`,
+                borderRadius: 4,
+                fontSize: 10,
+                maxHeight: 300,
+                overflow: "auto",
+              }}
+            >
+              {JSON.stringify(previewData.refined_bins_by_variable, null, 2)}
+            </pre>
+          </details>
+        )}
     </div>
   );
 }

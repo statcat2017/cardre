@@ -11,7 +11,9 @@ describe("ManualBinningBinTable", () => {
 
   it("renders bin labels and ranges for a variable", () => {
     const state = buildManualBinningEditorState();
-    const sourceBins = (state.source_bins_by_variable as Record<string, any>)["income"];
+    const sourceBins = (state.source_bins_by_variable as Record<string, unknown>)[
+      "income"
+    ] as Record<string, unknown> | null;
     const summary = state.variable_summaries!.find((v) => v.variable === "income");
     render(<ManualBinningBinTable variable="income" sourceBins={sourceBins} summary={summary} />);
     expect(screen.getByText("0 - 30000")).toBeTruthy();
@@ -21,7 +23,9 @@ describe("ManualBinningBinTable", () => {
 
   it("shows bin metadata: count, good, bad, bad rate, WOE", () => {
     const state = buildManualBinningEditorState();
-    const sourceBins = (state.source_bins_by_variable as Record<string, any>)["income"];
+    const sourceBins = (state.source_bins_by_variable as Record<string, unknown>)[
+      "income"
+    ] as Record<string, unknown> | null;
     const summary = state.variable_summaries!.find((v) => v.variable === "income");
     render(<ManualBinningBinTable variable="income" sourceBins={sourceBins} summary={summary} />);
     // First bin: count=200, good=150, bad=50, bad_rate=0.25, woe=0.2
@@ -34,7 +38,9 @@ describe("ManualBinningBinTable", () => {
 
   it("shows missing/special flags", () => {
     const state = buildManualBinningEditorState();
-    const sourceBins = (state.source_bins_by_variable as Record<string, any>)["income"];
+    const sourceBins = (state.source_bins_by_variable as Record<string, unknown>)[
+      "income"
+    ] as Record<string, unknown> | null;
     const summary = state.variable_summaries!.find((v) => v.variable === "income");
     render(<ManualBinningBinTable variable="income" sourceBins={sourceBins} summary={summary} />);
     // The "Missing" row has both the label "Missing" and the flag "Missing"
@@ -43,7 +49,10 @@ describe("ManualBinningBinTable", () => {
 
   it("shows special value flag", () => {
     const state = buildManualBinningEditorState();
-    const sourceBins = (state.source_bins_by_variable as Record<string, any>)["age"];
+    const sourceBins = (state.source_bins_by_variable as Record<string, unknown>)["age"] as Record<
+      string,
+      unknown
+    > | null;
     const summary = state.variable_summaries!.find((v) => v.variable === "age");
     render(<ManualBinningBinTable variable="age" sourceBins={sourceBins} summary={summary} />);
     expect(screen.getByText("Special")).toBeTruthy();

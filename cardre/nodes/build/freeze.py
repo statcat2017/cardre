@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import json  # noqa: F401 — imported for monkeypatch compatibility in tests
 from typing import Any
 
 from cardre.artifacts import write_json_artifact
@@ -8,13 +8,8 @@ from cardre.audit import ExecutionContext, NodeOutput, NodeType, json_logical_ha
 from cardre.evidence import (
     ArtifactEvidenceReader,
     EvidenceKind,
-    SCHEMA_BIN_DEFINITION,
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
-    SCHEMA_MODEL_ARTIFACT,
-    SCHEMA_MODELLING_METADATA,
-    SCHEMA_SCORE_SCALING,
     SCHEMA_SELECTION_DEFINITION,
-    SCHEMA_WOE_TABLE,
 )
 
 

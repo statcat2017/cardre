@@ -1,9 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ManualBinningReviewActions } from "../ManualBinningReviewActions";
-import { buildManualBinningEditorState, buildReviewedEditorState, buildAcceptedEditorState, buildBlockedEditorState } from "../../test/fixtures/manualBinning";
+import {
+  buildManualBinningEditorState,
+  buildReviewedEditorState,
+  buildAcceptedEditorState,
+  buildBlockedEditorState,
+} from "../../test/fixtures/manualBinning";
 
 function renderWithQuery(ui: React.ReactElement) {
   const qc = new QueryClient();
@@ -115,7 +120,9 @@ describe("ManualBinningReviewActions", () => {
     await user.click(screen.getByText("Mark review complete"));
     expect(screen.getByText(/Provide a reason/)).toBeTruthy();
     expect(screen.getByText(/Select a reason code/)).toBeTruthy();
-    expect(screen.getByPlaceholderText("Describe why you are marking review complete…")).toBeTruthy();
+    expect(
+      screen.getByPlaceholderText("Describe why you are marking review complete…"),
+    ).toBeTruthy();
   });
 
   it("disables confirm button until reason code and text are supplied", async () => {
