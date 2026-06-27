@@ -338,8 +338,26 @@ class ProjectStore:
     def list_artifacts(self) -> list[ArtifactRef]:
         return self.artifacts.list()
 
-    def list_artifacts_for_project(self, project_id: str) -> list[ArtifactRef]:
-        return self.artifacts.list_for_project(project_id)
+    def list_artifacts_for_project(
+        self,
+        project_id: str,
+        *,
+        role: str | None = None,
+        artifact_type: str | None = None,
+        producing_step_id: str | None = None,
+        run_id: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[ArtifactRef]:
+        return self.artifacts.list_for_project(
+            project_id,
+            role=role,
+            artifact_type=artifact_type,
+            producing_step_id=producing_step_id,
+            run_id=run_id,
+            limit=limit,
+            offset=offset,
+        )
 
     def get_plans_for_project(self, project_id: str) -> list[dict]:
         return self.plans.list_for_project(project_id)

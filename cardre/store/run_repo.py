@@ -228,18 +228,16 @@ class RunRepository:
 
     def get_artifact_ids_for_run(self, run_id: str) -> set[str]:
         rows = self._db().execute(
-            "SELECT DISTINCT json_each.value AS artifact_id "
-            "FROM run_steps, json_each(run_steps.output_artifact_ids_json) "
-            "WHERE run_steps.run_id = ?",
+            "SELECT DISTINCT artifact_id FROM artifact_lineage "
+            "WHERE run_id = ? AND direction = 'output'",
             (run_id,),
         ).fetchall()
         return {r["artifact_id"] for r in rows}
 
     def get_artifact_ids_for_producing_step(self, step_id: str) -> set[str]:
         rows = self._db().execute(
-            "SELECT DISTINCT json_each.value AS artifact_id "
-            "FROM run_steps, json_each(run_steps.output_artifact_ids_json) "
-            "WHERE run_steps.step_id = ?",
+            "SELECT DISTINCT artifact_id FROM artifact_lineage "
+            "WHERE step_id = ? AND direction = 'output'",
             (step_id,),
         ).fetchall()
         return {r["artifact_id"] for r in rows}

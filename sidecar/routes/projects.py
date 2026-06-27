@@ -181,20 +181,15 @@ def get_project_artifacts(
     offset: int = 0,
 ):
     store = get_store_for_project(project_id)
-    artifacts = store.list_artifacts_for_project(project_id)
-
-    if role:
-        artifacts = [a for a in artifacts if a.role == role]
-    if artifact_type:
-        artifacts = [a for a in artifacts if a.artifact_type == artifact_type]
-    if producing_step_id:
-        artifact_ids = store.get_artifact_ids_for_producing_step(producing_step_id)
-        artifacts = [a for a in artifacts if a.artifact_id in artifact_ids]
-    if run_id:
-        artifact_ids = store.get_artifact_ids_for_run(run_id)
-        artifacts = [a for a in artifacts if a.artifact_id in artifact_ids]
-
-    artifacts = artifacts[offset:offset + limit]
+    artifacts = store.list_artifacts_for_project(
+        project_id,
+        role=role,
+        artifact_type=artifact_type,
+        producing_step_id=producing_step_id,
+        run_id=run_id,
+        limit=limit,
+        offset=offset,
+    )
 
     items = [
         ArtifactListItem(
