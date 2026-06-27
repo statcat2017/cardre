@@ -92,12 +92,14 @@ class FrozenScorecardBundleNode(NodeType):
             "order_hash", json_logical_hash({"features": model_features})
         )
 
-        if model_features and all(
-            f.endswith("_woe") for f in model_features
-        ):
-            source_variables = [f[:-4] for f in model_features]
-        else:
-            source_variables = list(model_features)
+        source_variables = model_raw.get("source_variables")
+        if source_variables is None:
+            if model_features and all(
+                f.endswith("_woe") for f in model_features
+            ):
+                source_variables = [f[:-4] for f in model_features]
+            else:
+                source_variables = list(model_features)
 
         feature_contract = {
             "features": model_features,

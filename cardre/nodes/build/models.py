@@ -188,6 +188,7 @@ class LogisticRegressionNode(NodeType):
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
 
         meta = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        sel_def = reader.find_optional(context.input_artifacts, EvidenceKind.SELECTION_DEFINITION)
 
         target_column = meta.target_column
         good_values = set(str(v) for v in meta.good_values)
@@ -253,6 +254,10 @@ class LogisticRegressionNode(NodeType):
             class_mapping = {"good": str(good_class), "bad": str(bad_class)}
 
         features_list = woe_cols
+        if sel_def is not None:
+            source_variables = list(sel_def.selected_names)
+        else:
+            source_variables = [f[:-4] for f in features_list if f.endswith("_woe")] if features_list else []
         coefficients = {col: round(float(coef), 6) for col, coef in zip(features_list, lr.coef_[0])}
 
         fail_on_non_convergence = bool(params.get("fail_on_non_convergence", True))
@@ -293,6 +298,7 @@ class LogisticRegressionNode(NodeType):
             "model_family": "logistic_regression",
             "target_column": target_column,
             "features": features_list,
+            "source_variables": source_variables,
             "intercept": round(float(lr.intercept_[0]), 6),
             "coefficients": coefficients,
             "class_mapping": class_mapping,

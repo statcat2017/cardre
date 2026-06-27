@@ -374,6 +374,77 @@ class LogisticRegressionTests:
             f"Expected penalty='l2' in training params, got {model.training['params']}"
         )
 
+    def test_source_variables_explicit_not_suffix_stripped(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "my_woe_woe": [0.5, -0.3, 0.5, -0.3],
+            "target": ["bad", "good", "bad", "good"],
+        })
+        train_art = _make_train_artifact(store, df)
+        meta = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_art = _make_json_artifact(store, meta, stem="meta")
+        params = {"C": 1.0, "max_iter": 1000, "solver": "lbfgs", "random_seed": 42}
+        spec = StepSpec(
+            step_id="lr", node_type="cardre.logistic_regression",
+            node_version="1", category="fit",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[train_art, meta_art],
+            validated_params=params, runtime_metadata={},
+        )
+        node = LogisticRegressionNode()
+        output = node.run(ctx)
+        reader = ArtifactEvidenceReader(store)
+        model = reader.read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        # Without selection definition, should strip _woe as fallback
+        assert model._raw.get("source_variables") == ["my_woe"], (
+            f"Expected source_variables ['my_woe'], got {model._raw.get('source_variables')}"
+        )
+
+    def test_source_variables_with_selection_def(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "my_var_woe": [0.5, -0.3, 0.5, -0.3],
+            "target": ["bad", "good", "bad", "good"],
+        })
+        train_art = _make_train_artifact(store, df)
+        meta = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_art = _make_json_artifact(store, meta, stem="meta")
+        sel_payload = {
+            "schema_version": "cardre.selection_definition.v1",
+            "selected": [
+                {"variable": "my_var", "reason": "high IV"},
+            ],
+            "method": "iv_threshold",
+        }
+        sel_art = _make_json_artifact(store, sel_payload, stem="sel")
+        params = {"C": 1.0, "max_iter": 1000, "solver": "lbfgs", "random_seed": 42}
+        spec = StepSpec(
+            step_id="lr", node_type="cardre.logistic_regression",
+            node_version="1", category="fit",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=spec, parent_run_steps=[],
+            input_artifacts=[train_art, meta_art, sel_art],
+            validated_params=params, runtime_metadata={},
+        )
+        node = LogisticRegressionNode()
+        output = node.run(ctx)
+        reader = ArtifactEvidenceReader(store)
+        model = reader.read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        assert model._raw.get("source_variables") == ["my_var"], (
+            f"Expected source_variables ['my_var'], got {model._raw.get('source_variables')}"
+        )
+
     def test_convergence_signal_uses_sklearn_warning(self, monkeypatch) -> None:
         from sklearn.exceptions import ConvergenceWarning
         import warnings as builtin_warnings
