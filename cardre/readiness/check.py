@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from cardre.readiness.dto import ReadinessBlocker, ReadinessWarning, ReportReadinessResult
+from cardre.evidence import EvidenceKind
 from cardre.readiness.limitation_codes import LimitationCode
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_BRANCH,
