@@ -1,8 +1,6 @@
 """Tests for OptionalDependencyNotInstalled and PlanContainsUnavailableNodesError."""
 from __future__ import annotations
 
-import pytest
-
 from cardre.errors import (
     OptionalDependencyNotInstalled,
     PlanContainsUnavailableNodesError,

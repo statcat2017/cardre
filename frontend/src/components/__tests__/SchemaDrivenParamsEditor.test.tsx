@@ -117,7 +117,9 @@ describe("SchemaDrivenParamsEditor", () => {
       disabled_reason: "Not available in launch mode.",
     });
 
-    renderWithClient(<SchemaDrivenParamsEditor {...BASE_PROPS} nodeType="cardre.gradient_boosting_classifier" />);
+    renderWithClient(
+      <SchemaDrivenParamsEditor {...BASE_PROPS} nodeType="cardre.gradient_boosting_classifier" />,
+    );
 
     await waitFor(() => {
       expect(screen.getByText(/not available in launch mode/i)).toBeTruthy();

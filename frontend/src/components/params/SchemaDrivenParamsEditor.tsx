@@ -343,11 +343,17 @@ export function SchemaDrivenParamsEditor({
   if (schema && schema.available === false) {
     return (
       <div style={{ borderTop: `1px solid ${theme.border}`, marginTop: 12, paddingTop: 12 }}>
-        <div style={{
-          fontSize: 11, color: theme.muted, lineHeight: 1.5,
-          padding: "8px 10px", borderRadius: 4,
-          backgroundColor: theme.surface, border: `1px solid ${theme.border}`,
-        }}>
+        <div
+          style={{
+            fontSize: 11,
+            color: theme.muted,
+            lineHeight: 1.5,
+            padding: "8px 10px",
+            borderRadius: 4,
+            backgroundColor: theme.surface,
+            border: `1px solid ${theme.border}`,
+          }}
+        >
           <strong style={{ color: theme.textSoft }}>Not configurable.</strong>{" "}
           {schema.disabled_reason ?? "This node is not available."}
         </div>
