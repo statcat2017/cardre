@@ -1734,6 +1734,15 @@ export interface components {
              */
             tier: string;
             /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /** Disabled Reason */
+            disabled_reason?: string | null;
+            /** Missing Optional Dependencies */
+            missing_optional_dependencies?: string[];
+            /**
              * Description
              * @default
              */
@@ -1786,6 +1795,13 @@ export interface components {
              * @default
              */
             description: string;
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /** Disabled Reason */
+            disabled_reason?: string | null;
         };
         /** ParameterConstraintResponse */
         ParameterConstraintResponse: {
@@ -3546,7 +3562,10 @@ export interface operations {
     };
     list_node_types_node_types_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Exclude unavailable nodes */
+                available_only?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3560,6 +3579,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NodeTypeListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

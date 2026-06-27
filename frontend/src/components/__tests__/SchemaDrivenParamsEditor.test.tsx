@@ -103,4 +103,26 @@ describe("SchemaDrivenParamsEditor", () => {
       expect(screen.getByText("Parameters")).toBeTruthy();
     });
   });
+
+  it("renders a disabled banner and hides Save when schema.available is false", async () => {
+    (api.getNodeTypeSchema as ReturnType<typeof vi.fn>).mockResolvedValue({
+      node_type: "cardre.gradient_boosting_classifier",
+      version: "1",
+      title: "Gradient Boosting",
+      methods: [{ id: "gbdt", label: "GBDT", status: "available", params: [] }],
+      params_schema: {},
+      defaults: {},
+      description: "",
+      available: false,
+      disabled_reason: "Not available in launch mode.",
+    });
+
+    renderWithClient(<SchemaDrivenParamsEditor {...BASE_PROPS} nodeType="cardre.gradient_boosting_classifier" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/not available in launch mode/i)).toBeTruthy();
+    });
+    expect(screen.queryByRole("button", { name: /save params/i })).toBeNull();
+    expect(api.updateStepParams).not.toHaveBeenCalled();
+  });
 });
