@@ -344,7 +344,8 @@ class ValidationMetricsNode(NodeType):
             for cutoff in cutoffs:
                 y_pred = (y_prob >= cutoff).astype(int)
                 tn, fp, fn, tp = confusion_matrix(y_bin, y_pred, labels=[0, 1]).ravel()
-                accuracy = round((tp + tn) / n, 6) if n > 0 else 0.0
+                n_known = len(y_bin)
+                accuracy = round((tp + tn) / n_known, 6) if n_known > 0 else 0.0
                 precision = round(tp / (tp + fp), 6) if (tp + fp) > 0 else 0.0
                 recall = round(tp / (tp + fn), 6) if (tp + fn) > 0 else 0.0
                 specificity = round(tn / (tn + fp), 6) if (tn + fp) > 0 else 0.0

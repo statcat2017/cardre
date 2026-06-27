@@ -1198,6 +1198,21 @@ def test_psi_empty_oot_bin_is_large_not_zero() -> None:
     )
 
 
+def test_accuracy_denominator_excludes_unknown_target_rows() -> None:
+    import polars as pl
+    node = ValidationMetricsNode()
+    df = pl.DataFrame({
+        "target": ["good"] * 45 + ["bad"] * 45 + ["unknown"] * 10,
+        "predicted_bad_probability": [0.1] * 45 + [0.9] * 45 + [0.5] * 10,
+    })
+    y_bin, known_mask, warnings = node._derive_y_bin(df, "target", {"good"}, {"bad"})
+    assert len(y_bin) == 90, f"Expected 90 known-target rows, got {len(y_bin)}"
+    assert any(w["code"] == "UNKNOWN_TARGET_VALUES" for w in warnings), (
+        "Expected UNKNOWN_TARGET_VALUES warning"
+    )
+    assert sum(y_bin) == 45, f"Expected 45 bad rows, got {sum(y_bin)}"
+
+
 # =========================================================================
 # Fixture helpers for the above regression tests
 # =========================================================================
