@@ -16,6 +16,7 @@ class CardreConfig:
     launch_mode: bool = True
     governance_enabled: bool = False
     stale_heartbeat_seconds: int = 300
+    heartbeat_watchdog_interval_seconds: int = 75
     api_host: str = "127.0.0.1"
     api_port: int = 8752
     registry_path: Path = field(default_factory=lambda: Path.home() / ".cardre" / "projects.json")
@@ -26,6 +27,10 @@ class CardreConfig:
             launch_mode=_env_bool("CARDRE_LAUNCH_MODE", True),
             governance_enabled=_env_bool("CARDRE_GOVERNANCE", False),
             stale_heartbeat_seconds=int(os.environ.get("CARDRE_STALE_HEARTBEAT_SECONDS", "300")),
+            heartbeat_watchdog_interval_seconds=max(
+                1,
+                int(os.environ.get("CARDRE_STALE_HEARTBEAT_SECONDS", "300")) // 4,
+            ),
             api_host=os.environ.get("CARDRE_API_HOST", "127.0.0.1"),
             api_port=int(os.environ.get("CARDRE_API_PORT", "8752")),
             registry_path=Path(os.environ.get("CARDRE_REGISTRY_PATH", str(Path.home() / ".cardre" / "projects.json"))),

@@ -626,6 +626,12 @@ class ProjectStore:
     def run_heartbeat(self, run_id: str) -> None:
         self.runs.heartbeat(run_id)
 
+    def set_active_step(self, run_id: str, step_id: str | None) -> None:
+        self.runs.set_active_step(run_id, step_id)
+
+    def get_active_step(self, run_id: str) -> str | None:
+        return self.runs.get_active_step(run_id)
+
     def finish_run(self, run_id: str, status: str = "succeeded") -> None:
         self.runs.finish(run_id, status=status)
 
