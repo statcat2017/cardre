@@ -123,11 +123,6 @@ LINE_COUNT_DEBT: dict[str, dict[str, Any]] = {
         "ceiling": 1200,
         "reason": "executor integration test; candidate for scenario split",
     },
-    "tests/test_sidecar_api.py": {
-        "current_count": 2061,
-        "ceiling": 2400,
-        "reason": "API integration test; candidate for route-module split",
-    },
     "tests/test_optbinning.py": {
         "current_count": 1444,
         "ceiling": 1700,

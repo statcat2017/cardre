@@ -13,10 +13,21 @@ scripts/pr-gate.sh --timeout 600
 scripts/pr-gate.sh --base main
 ```
 
+## Pre-push lint fix
+
+Before pushing, always run `ruff check --fix` to auto-fix lint issues:
+
+```bash
+pip install ruff==0.15.20 && ruff check --fix
+```
+
+If ruff is not available locally, install it first with `pip install ruff==0.15.20`.
+
 The gate script:
 1. pushes the current branch to origin,
 2. opens a PR if none exists for the branch (or locates the existing one),
-3. polls the GitHub Checks API until every check suite completes,
+3. polls the GitHub Checks API until the relevant Cardre CI checks complete,
+   ignoring unrelated external integrations such as `Cloudflare Workers and Pages`,
 4. on **red**: downloads each failing job's logs to
    `.opencode/pr-gate-logs/<pr-number>/<job>.log`, prints a red banner,
    and exits non-zero. You MUST then read those log files, fix the failures,
