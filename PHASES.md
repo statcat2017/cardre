@@ -1,8 +1,9 @@
-# Phase Plan — Reduce structural debt in Cardre seams
+# Phase Plan — Normalized Artifact Lineage
 
 | Phase | Name | Description |
 |-------|------|-------------|
-| 1 | Split test_sidecar_api.py | Create `tests/test_sidecar_api/` package with conftest + 12 route-domain modules; delete monolith |
-| 2 | Executor error-classification tests | Add parametrized characterization test for all 10 error categories in `_CATEGORY_MAP`/`_CODE_MAP` |
-| 3 | Update line-count guard | Remove stale debt entry for deleted monolith from `LINE_COUNT_DEBT` |
-| 4 | Verify + PR | Run full test suite + line-count guard; raise single PR |
+| 1 | Schema | Add `artifact_lineage` table, indexes, bump `STORE_SCHEMA_VERSION` to 5 |
+| 2 | Migration | Backfill from existing `run_steps` JSON arrays in `run_migrations()` |
+| 3 | Dual-write | Populate lineage in `RunRepository.save_step` inside a transaction |
+| 4 | Query rewrites | Rewrite `list_for_project`, `get_artifact_ids_for_run`, `get_artifact_ids_for_producing_step`, and sidecar route to use lineage table with SQL push-down |
+| 5 | Tests | Add `tests/test_artifact_lineage.py` covering backfill, listing, filtering, duplicates, query shape |

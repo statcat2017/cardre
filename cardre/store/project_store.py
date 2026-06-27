@@ -32,6 +32,7 @@ from cardre.audit import (
 from cardre.store.schema import (
     BRANCH_TABLES_SQL,
     INDEXES_SQL,
+    LINEAGE_TABLES_SQL,
     MIGRATIONS_SQL,
     SCHEMA_SQL,
     STORE_SCHEMA_VERSION,
@@ -82,6 +83,7 @@ class ProjectStore:
         """
         conn = self._connect()
         conn.executescript(BRANCH_TABLES_SQL)
+        conn.executescript(LINEAGE_TABLES_SQL)
 
         # Add new columns to plan_steps if missing
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(plan_steps)").fetchall()}
