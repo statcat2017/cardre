@@ -151,10 +151,12 @@ def check_report_readiness(
         # For WOE/IV, check evidence v1
         if canonical_step_id in ("final-woe-iv", "initial-woe-iv"):
             has_v1 = False
+            v1_art = None
             for aid in rs.output_artifact_ids:
                 art = store.get_artifact(aid)
                 if art and art.metadata.get("schema_version") == "cardre.woe_iv_evidence.v1":
                     has_v1 = True
+                    v1_art = art
                     break
             if not has_v1:
                 blockers.append(ReadinessBlocker(
@@ -163,6 +165,25 @@ def check_report_readiness(
                     "Phase 5 requires the controlled evidence artifact.",
                     step_id=ref.step_id,
                 ))
+            elif canonical_step_id == "final-woe-iv" and report_mode == "champion" and v1_art is not None:
+                try:
+                    import json
+                    v1_path = store.artifact_path(v1_art)
+                    if v1_path.exists():
+                        v1_data = json.loads(v1_path.read_text())
+                        for var in v1_data.get("variables", []):
+                            for w in var.get("warnings", []):
+                                if w.get("code") == "NON_MONOTONIC_WOE":
+                                    blockers.append(ReadinessBlocker(
+                                        LimitationCode.NON_MONOTONIC_WOE_CHAMPION,
+                                        f"Final WOE variable {var.get('variable_name', '?')!r} "
+                                        "is non-monotonic. Re-bin to monotonic or configure "
+                                        "enforce_monotonic_woe=False for champion promotion.",
+                                        step_id=ref.step_id,
+                                    ))
+                                    break
+                except Exception:
+                    pass
 
     # Champion mode checks
     if plan_id:

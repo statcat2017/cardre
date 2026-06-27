@@ -27,6 +27,7 @@ class LimitationCode(StrEnum):
     MISSING_PATHWAY = "MISSING_PATHWAY"
     MANUAL_BINNING_NOT_REVIEWED = "MANUAL_BINNING_NOT_REVIEWED"
     ARTIFACT_HASH_UNRESOLVED = "ARTIFACT_HASH_UNRESOLVED"
+    NON_MONOTONIC_WOE_CHAMPION = "NON_MONOTONIC_WOE_CHAMPION"
 
     # --- Warnings ---
     NO_OOT_SAMPLE = "NO_OOT_SAMPLE"
@@ -69,6 +70,7 @@ class LimitationCode(StrEnum):
             cls.MISSING_PATHWAY,
             cls.MANUAL_BINNING_NOT_REVIEWED,
             cls.ARTIFACT_HASH_UNRESOLVED,
+            cls.NON_MONOTONIC_WOE_CHAMPION,
         }
 
     @classmethod

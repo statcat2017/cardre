@@ -12,6 +12,7 @@ from cardre.node_parameters import (
     ParameterConstraint,
     ParameterDefinition,
 )
+from cardre.engine.binning.diagnostics import MonotonicStatus, monotonicity_status
 from cardre.nodes._bin_mask import build_bin_condition
 from cardre.evidence import (
     AmbiguousEvidenceError,
@@ -65,6 +66,13 @@ class CalculateWoeIvNode(NodeType):
                             required=False,
                             help_text="Optional additive smoothing configuration with method, alpha, and rationale",
                         ),
+                        ParameterDefinition(
+                            name="enforce_monotonic_woe",
+                            label="Enforce Monotonic WOE",
+                            kind="boolean",
+                            default=False,
+                            help_text="When true and purpose=final, reject variables with non-monotonic WOE",
+                        ),
                     ],
                 ),
             ],
@@ -78,6 +86,7 @@ class CalculateWoeIvNode(NodeType):
         zero_cell_policy = params.get("zero_cell_policy", "block")
         smoothing = params.get("smoothing")
         purpose = params.get("purpose", "initial")
+        enforce_monotonic_woe = bool(params.get("enforce_monotonic_woe", False))
 
         train_artifact = next(a for a in context.input_artifacts if a.role == "train")
         bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
@@ -249,13 +258,31 @@ class CalculateWoeIvNode(NodeType):
                     "iv_contribution": woe_row["iv_component"],
                 })
 
+            var_status = "included"
+            var_warnings: list[dict] = []
+            if enforce_monotonic_woe and purpose == "final" and len(var_woe_rows) >= 2:
+                woe_by_bin = {r["bin_id"]: r["woe"] for r in var_woe_rows}
+                m_status = monotonicity_status(woe_by_bin)
+                if m_status == MonotonicStatus.non_monotonic:
+                    var_status = "REJECTED"
+                    w = {
+                        "code": "NON_MONOTONIC_WOE",
+                        "variable": variable,
+                        "message": f"Variable {variable!r} has non-monotonic WOE and was rejected",
+                    }
+                    warnings_list.append(w)
+                    var_warnings.append(w)
+                    iv_rows[variable]["iv"] = 0.0
+                    iv_rows[variable]["warning_count"] += 1
+
             evidence_variables.append({
                 "variable_name": variable,
-                "status": "included",
-                "iv": round(var_iv, 6),
+                "status": var_status,
+                "iv": round(var_iv, 6) if var_status == "included" else 0.0,
                 "smoothing_applied": smoothing_applied,
                 "zero_cell_encountered": zero_cell_encountered,
                 "affected_bins": affected_bins,
+                "warnings": var_warnings,
                 "bins": var_bins_out,
             })
 

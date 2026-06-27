@@ -353,6 +353,177 @@ class CalculateWoeIvTests(unittest.TestCase):
         with self.assertRaises(AmbiguousEvidenceError):
             node.run(ctx)
 
+    def test_non_monotonic_variable_rejected_when_enforced(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "var1": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
+            "target": ["bad", "good", "bad", "good", "bad", "good", "bad", "good", "bad"],
+        })
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        path = store.root / "datasets" / "train.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(buf.getvalue())
+        train = ArtifactRef(
+            artifact_id="t1", artifact_type="dataset", role="train",
+            path=relative_path(path, store.root),
+            physical_hash=physical_hash(path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet", metadata={},
+        )
+        store.register_artifact(train)
+        bin_def = {
+            "variables": [{
+                "variable": "var1", "kind": "numeric",
+                "bins": [
+                    {"bin_id": "v1_b1", "label": "A", "lower": 0, "upper": 3,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 3, "good_count": 1, "bad_count": 2},
+                    {"bin_id": "v1_b2", "label": "B", "lower": 3, "upper": 6,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 3, "good_count": 2, "bad_count": 1},
+                    {"bin_id": "v1_b3", "label": "C", "lower": 6, "upper": None,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 3, "good_count": 1, "bad_count": 2},
+                ],
+            }],
+            "warnings": [],
+        }
+        bin_path = store.root / "artifacts" / "bins.json"
+        bin_path.parent.mkdir(parents=True, exist_ok=True)
+        bin_path.write_text(json.dumps(bin_def, sort_keys=True))
+        bin_artifact = ArtifactRef(
+            artifact_id="b1", artifact_type="definition", role="definition",
+            path=relative_path(bin_path, store.root),
+            physical_hash=physical_hash(bin_path),
+            logical_hash=json_logical_hash(bin_def),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(bin_artifact)
+        meta_params = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_path = store.root / "artifacts" / "meta.json"
+        meta_path.write_text(json.dumps(meta_params, sort_keys=True))
+        meta_artifact = ArtifactRef(
+            artifact_id="m1", artifact_type="definition", role="definition",
+            path=relative_path(meta_path, store.root),
+            physical_hash=physical_hash(meta_path),
+            logical_hash=json_logical_hash(meta_params),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(meta_artifact)
+        params = {"zero_cell_policy": "block", "smoothing": None, "purpose": "final", "enforce_monotonic_woe": True}
+        step_spec = StepSpec(
+            step_id="woe", node_type="cardre.calculate_woe_iv",
+            node_version="1", category="selection",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=step_spec, parent_run_steps=[],
+            input_artifacts=[train, bin_artifact, meta_artifact],
+            validated_params=params, runtime_metadata={},
+        )
+        node = CalculateWoeIvNode()
+        output = node.run(ctx)
+        reader = ArtifactEvidenceReader(store)
+        evidence_art = next(a for a in output.artifacts
+                           if a.metadata.get("schema_version") == "cardre.woe_iv_evidence.v1")
+        evidence = reader.read(evidence_art.artifact_id, EvidenceKind.WOE_IV_EVIDENCE)
+        var1 = next(v for v in evidence.variables if v.variable_name == "var1")
+        assert var1.status == "REJECTED", f"Expected REJECTED status, got {var1.status}"
+        assert any("non_monotonic" in str(w).lower() for w in var1.warnings), (
+            f"Expected non-monotonic warning, got {var1.warnings}"
+        )
+
+    def test_non_monotonic_passthrough_when_not_enforced(self) -> None:
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "var1": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
+            "target": ["bad", "good", "bad", "good", "bad", "good", "bad", "good", "bad"],
+        })
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        path = store.root / "datasets" / "train.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(buf.getvalue())
+        train = ArtifactRef(
+            artifact_id="t1", artifact_type="dataset", role="train",
+            path=relative_path(path, store.root),
+            physical_hash=physical_hash(path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet", metadata={},
+        )
+        store.register_artifact(train)
+        bin_def = {
+            "variables": [{
+                "variable": "var1", "kind": "numeric",
+                "bins": [
+                    {"bin_id": "v1_b1", "label": "A", "lower": 0, "upper": 3,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 3, "good_count": 1, "bad_count": 2},
+                    {"bin_id": "v1_b2", "label": "B", "lower": 3, "upper": 6,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 3, "good_count": 2, "bad_count": 1},
+                    {"bin_id": "v1_b3", "label": "C", "lower": 6, "upper": None,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 3, "good_count": 1, "bad_count": 2},
+                ],
+            }],
+            "warnings": [],
+        }
+        bin_path = store.root / "artifacts" / "bins.json"
+        bin_path.parent.mkdir(parents=True, exist_ok=True)
+        bin_path.write_text(json.dumps(bin_def, sort_keys=True))
+        bin_artifact = ArtifactRef(
+            artifact_id="b1", artifact_type="definition", role="definition",
+            path=relative_path(bin_path, store.root),
+            physical_hash=physical_hash(bin_path),
+            logical_hash=json_logical_hash(bin_def),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(bin_artifact)
+        meta_params = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_path = store.root / "artifacts" / "meta.json"
+        meta_path.write_text(json.dumps(meta_params, sort_keys=True))
+        meta_artifact = ArtifactRef(
+            artifact_id="m1", artifact_type="definition", role="definition",
+            path=relative_path(meta_path, store.root),
+            physical_hash=physical_hash(meta_path),
+            logical_hash=json_logical_hash(meta_params),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(meta_artifact)
+        params = {"zero_cell_policy": "block", "smoothing": None, "purpose": "final", "enforce_monotonic_woe": False}
+        step_spec = StepSpec(
+            step_id="woe", node_type="cardre.calculate_woe_iv",
+            node_version="1", category="selection",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=step_spec, parent_run_steps=[],
+            input_artifacts=[train, bin_artifact, meta_artifact],
+            validated_params=params, runtime_metadata={},
+        )
+        node = CalculateWoeIvNode()
+        output = node.run(ctx)
+        reader = ArtifactEvidenceReader(store)
+        evidence_art = next(a for a in output.artifacts
+                           if a.metadata.get("schema_version") == "cardre.woe_iv_evidence.v1")
+        evidence = reader.read(evidence_art.artifact_id, EvidenceKind.WOE_IV_EVIDENCE)
+        var1 = next(v for v in evidence.variables if v.variable_name == "var1")
+        assert var1.status == "included", f"Expected included status, got {var1.status}"
+
 
 # ======================================================================
 # Blocker verification — WOE/IV zero cell
