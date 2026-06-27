@@ -199,6 +199,7 @@ class TestRuns:
         )
 
         store.finish_run(data["run_id"], "failed")
+        store._connect().close()
 
     def test_get_run_steps(self, client, tmp_dir, sample_german_credit):
         proj_path = tmp_dir / "test.cardre"

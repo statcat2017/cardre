@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -19,9 +18,8 @@ _GERMAN_COLS_STR = {
 
 
 @pytest.fixture
-def tmp_dir():
-    with tempfile.TemporaryDirectory() as d:
-        yield Path(d)
+def tmp_dir(tmp_path):
+    return tmp_path
 
 
 @pytest.fixture
