@@ -85,6 +85,40 @@ class ProjectStore:
         conn.executescript(BRANCH_TABLES_SQL)
         conn.executescript(LINEAGE_TABLES_SQL)
 
+        # Backfill artifact_lineage from existing run_steps JSON arrays
+        row = conn.execute(
+            "SELECT value FROM store_meta WHERE key = 'lineage_backfilled'"
+        ).fetchone()
+        if row is None:
+            with self.transaction() as txn:
+                txn.execute("""
+                    INSERT OR IGNORE INTO artifact_lineage
+                        (lineage_id, run_id, run_step_id, plan_version_id, step_id,
+                         branch_id, artifact_id, direction, created_at)
+                    SELECT
+                        hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(6)),
+                        rs.run_id, rs.run_step_id, rs.plan_version_id, rs.step_id,
+                        r.branch_id, je.value, 'output', rs.started_at
+                    FROM run_steps rs
+                    JOIN runs r ON rs.run_id = r.run_id
+                    JOIN json_each(rs.output_artifact_ids_json) je
+                """)
+                txn.execute("""
+                    INSERT OR IGNORE INTO artifact_lineage
+                        (lineage_id, run_id, run_step_id, plan_version_id, step_id,
+                         branch_id, artifact_id, direction, created_at)
+                    SELECT
+                        hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(6)),
+                        rs.run_id, rs.run_step_id, rs.plan_version_id, rs.step_id,
+                        r.branch_id, je.value, 'input', rs.started_at
+                    FROM run_steps rs
+                    JOIN runs r ON rs.run_id = r.run_id
+                    JOIN json_each(rs.input_artifact_ids_json) je
+                """)
+                txn.execute(
+                    "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('lineage_backfilled', '1')"
+                )
+
         # Add new columns to plan_steps if missing
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(plan_steps)").fetchall()}
         if "canonical_step_id" not in cols:
