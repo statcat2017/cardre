@@ -585,6 +585,74 @@ def test_high_cardinality_creates_other_bin() -> None:
     assert "Other" in bin_labels, "High-cardinality categorical should create an 'Other' bin"
 
 
+def test_top_frequency_category_in_explicit_bin_not_other() -> None:
+    store, tmp = make_store()
+    store.initialize()
+    df = pl.DataFrame({
+        "cat_var": ["z", "z", "z", "a", "b", "c"],
+        "target": ["good", "good", "good", "bad", "good", "bad"],
+    })
+    buf = io.BytesIO()
+    df.write_parquet(buf)
+    path = store.root / "datasets" / "train.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(buf.getvalue())
+    from cardre.audit import physical_hash, relative_path
+    train = ArtifactRef(
+        artifact_id="t1", artifact_type="dataset", role="train",
+        path=relative_path(path, store.root),
+        physical_hash=physical_hash(path),
+        logical_hash=table_logical_hash(df),
+        media_type="application/vnd.apache.parquet", metadata={},
+    )
+    store.register_artifact(train)
+    meta_params = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+    meta_path = store.root / "artifacts" / "meta.json"
+    meta_path.write_text(json.dumps(meta_params, sort_keys=True))
+    meta_art = ArtifactRef(
+        artifact_id="m1", artifact_type="definition", role="definition",
+        path=relative_path(meta_path, store.root),
+        physical_hash=physical_hash(meta_path),
+        logical_hash=json_logical_hash(meta_params),
+        media_type="application/json", metadata={},
+    )
+    store.register_artifact(meta_art)
+    params = {
+        "method": "fine_classing",
+        "max_bins": 20, "min_bin_fraction": 0.01,
+        "missing_policy": "separate_bin",
+        "max_categorical_levels": 2,
+        "exclude_columns": [],
+    }
+    spec = StepSpec(
+        step_id="fc", node_type="cardre.binning",
+        node_version="1", category="fit",
+        params=params, params_hash=json_logical_hash(params),
+        parent_step_ids=[], branch_label="", position=0,
+    )
+    ctx = ExecutionContext(
+        store=store, run_id="r1", plan_version_id="pv1",
+        step_spec=spec, parent_run_steps=[],
+        input_artifacts=[train, meta_art],
+        validated_params=params, runtime_metadata={},
+    )
+    node = FineClassingNode()
+    output = node.run(ctx)
+    payload = ArtifactEvidenceReader(store).read(output.artifacts[0].artifact_id, EvidenceKind.BIN_DEFINITION)
+    cat_var = next(v for v in payload.variables if v.variable == "cat_var")
+    explicit_bins = [b for b in cat_var.bins if not b.get("is_missing_bin") and b["label"] != "Other"]
+    all_explicit_categories = []
+    for b in explicit_bins:
+        if b.get("categories"):
+            all_explicit_categories.extend(b["categories"])
+    assert "z" in all_explicit_categories, (
+        f"Most frequent category 'z' should be in explicit bins, got {all_explicit_categories}"
+    )
+    assert len(explicit_bins) == 2, (
+        f"Expected exactly 2 explicit bins with max_categorical_levels=2, got {len(explicit_bins)}"
+    )
+
+
 def test_special_bin_reorder_missing_to_last() -> None:
     """reorder_missing_bin moves the missing bin to the end of the bin list."""
     bin_def = {

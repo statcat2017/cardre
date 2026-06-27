@@ -343,7 +343,7 @@ class FineClassingNode(NodeType):
         if non_null.height == 0:
             return bins
 
-        vc = non_null[col].value_counts().sort(col, descending=True)
+        vc = non_null[col].value_counts().sort("count", descending=True)
         all_levels = vc[col].to_list()
 
         other_categories: list = []
