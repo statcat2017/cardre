@@ -80,7 +80,11 @@ def test_append_run_diagnostic_never_raises():
 
 
 def test_async_dispatch_failure_records_diagnostic(monkeypatch):
-    """When execute_run raises in dispatch_run_async, a RUN_DISPATCH_FAILED diagnostic is recorded."""
+    """When execute_run raises in dispatch_run_async, a failure diagnostic is recorded.
+
+    The worker records ``RUN_WORKER_FAILED`` (see cardre.services.run_worker)
+    and marks the run ``failed``. This characterises the worker contract.
+    """
     def _raise_execute_run(*args, **kwargs):
         raise RuntimeError("Simulated execution failure")
 
@@ -109,7 +113,7 @@ def test_async_dispatch_failure_records_diagnostic(monkeypatch):
 
         diags = store.get_run_diagnostics(run_id)
         codes = [d["code"] for d in diags]
-        assert "RUN_DISPATCH_FAILED" in codes, f"Expected RUN_DISPATCH_FAILED, got {codes}"
+        assert "RUN_WORKER_FAILED" in codes, f"Expected RUN_WORKER_FAILED, got {codes}"
         run = store.get_run(run_id)
         assert run is not None
         assert run.get("status") == "failed"

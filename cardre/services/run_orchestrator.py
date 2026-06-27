@@ -10,16 +10,6 @@ from cardre.registry import NodeRegistry
 from cardre.store import ProjectStore
 
 
-def _fail_run_if_running(store: ProjectStore, run_id: str) -> None:
-    try:
-        run = store.get_run(run_id)
-        if run and run.get("status") == "running":
-            store.finish_run(run_id, "failed")
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).exception("_fail_run_if_running failed for run %s: %s", run_id, e)
-
-
 def execute_run(
     store: ProjectStore,
     plan_version_id: str,
@@ -86,38 +76,24 @@ def dispatch_run_async(
     target_step_id: str | None = None,
     force: bool = False,
 ) -> None:
-    """Execute a run in a background thread."""
-    store = ProjectStore(project_path)
-    try:
-        store.run_heartbeat(run_id)
-        execute_run(
-            store=store,
-            plan_version_id=plan_version_id,
-            run_id=run_id,
-            run_scope=run_scope,
-            branch_id=branch_id,
-            target_step_id=target_step_id,
-            force=force,
-        )
-    except Exception:
-        import traceback
-        import sys
-        import logging
-        tb = traceback.format_exc()
-        exc_type, exc_value, _ = sys.exc_info()
-        logger = logging.getLogger(__name__)
-        logger.error("dispatch_run_async(%s) failed: %s", run_id, tb)
-        diag = {
-            "code": "RUN_DISPATCH_FAILED",
-            "message": f"{exc_type.__name__ if exc_type else 'Exception'}: {exc_value}",
-            "severity": "error",
-            "category": "execution",
-            "exception_type": exc_type.__name__ if exc_type else "Exception",
-            "run_id": run_id,
-            "plan_version_id": plan_version_id,
-            "branch_id": branch_id,
-            "traceback": tb,
-            "created_at": utc_now_iso(),
-        }
-        store.append_run_diagnostic(run_id, diag)
-        _fail_run_if_running(store, run_id)
+    """Execute a run in a background thread.
+
+    Thin compatibility wrapper around :class:`cardre.services.run_worker.RunWorker`.
+    Existing tests monkeypatch ``execute_run`` in this module; the worker
+    calls it via :meth:`RunWorker._invoke_executor`, so those patches
+    continue to take effect. The diagnostic code recorded on failure is
+    ``RUN_WORKER_FAILED`` (see :mod:`run_worker`); older tests asserted
+    ``RUN_DISPATCH_FAILED`` and are updated alongside this change.
+    """
+    from cardre.services.run_worker import RunWorker, RunRequest
+
+    request = RunRequest(
+        project_path=project_path,
+        plan_version_id=plan_version_id,
+        run_id=run_id,
+        run_scope=run_scope,
+        branch_id=branch_id,
+        target_step_id=target_step_id,
+        force=force,
+    )
+    RunWorker().execute(request)

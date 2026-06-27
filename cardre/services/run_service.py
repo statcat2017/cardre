@@ -6,7 +6,6 @@ Extracted from PlanExecutor, RunOrchestrator, and sidecar/routes/runs.py.
 
 from __future__ import annotations
 
-import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
@@ -17,6 +16,11 @@ from cardre.errors import CardreError, GovernanceNotEnabled
 from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
 from cardre.services.evidence_policy import EvidencePolicyService
+from cardre.services.run_worker import (
+    RunDispatcher,
+    RunRequest,
+    ThreadRunDispatcher,
+)
 from cardre.store import ProjectStore
 
 
@@ -38,10 +42,13 @@ class RunResponse:
 
 class RunService:
 
-    def __init__(self, store: ProjectStore) -> None:
+    def __init__(self, store: ProjectStore, dispatcher: RunDispatcher | None = None) -> None:
         self._store = store
         self._config = CardreConfig.from_env()
         self._evidence = EvidencePolicyService(store)
+        # Inject the dispatcher so tests can substitute a SyncDispatcher or
+        # a fake. Default preserves the previous thread-backed behaviour.
+        self._dispatcher: RunDispatcher = dispatcher or ThreadRunDispatcher()
 
     # ------------------------------------------------------------------
     # Public API
@@ -150,77 +157,21 @@ class RunService:
         force: bool,
     ) -> RunResponse:
         project_path = str(self._store.root)
-        try:
-            t = threading.Thread(
-                target=self._run_async_worker,
-                kwargs={
-                    "project_path": project_path,
-                    "plan_version_id": plan_version_id,
-                    "run_id": run_id,
-                    "run_scope": run_scope,
-                    "branch_id": branch_id,
-                    "target_step_id": target_step_id,
-                    "force": force,
-                },
-                name="run-bg",
-            )
-            t.start()
-        except Exception as exc:
-            self._store.finish_run(run_id, "failed")
-            raise CardreError(
-                f"Failed to start background run thread: {exc}",
-                code="RUN_DISPATCH_FAILED",
-                context={"plan_version_id": plan_version_id, "run_id": run_id, "run_scope": run_scope},
-            ) from exc
+        request = RunRequest(
+            project_path=project_path,
+            plan_version_id=plan_version_id,
+            run_id=run_id,
+            run_scope=run_scope,  # type: ignore[arg-type]
+            branch_id=branch_id,
+            target_step_id=target_step_id,
+            force=force,
+        )
+        # The dispatcher owns worker creation, naming, exception handling,
+        # and dispatch-startup failure recording. If startup fails it
+        # raises CardreError(RUN_DISPATCH_FAILED) *after* recording a
+        # diagnostic and failing the run.
+        self._dispatcher.dispatch(request)
         return self._build_response(run_id)
-
-    def _run_async_worker(
-        self, project_path: str, plan_version_id: str, run_id: str,
-        run_scope: str, branch_id: str | None, target_step_id: str | None,
-        force: bool,
-    ) -> None:
-        store = ProjectStore(project_path)
-        try:
-            store.run_heartbeat(run_id)
-            executor = PlanExecutor(NodeRegistry.with_defaults())
-            if run_scope == "branch" and branch_id:
-                executor.run_branch(store, plan_version_id, branch_id, run_id=run_id, force=force)
-            elif run_scope == "to_node" and target_step_id:
-                executor.run_to_node(store, plan_version_id, target_step_id, run_id=run_id, force=force, branch_id=branch_id)
-            else:
-                executor.run_plan_version(store, plan_version_id, run_id=run_id, force=force)
-        except Exception:
-            import traceback
-            import sys
-            import logging
-            tb = traceback.format_exc()
-            exc_type, exc_value, _ = sys.exc_info()
-            logger = logging.getLogger(__name__)
-            logger.error("_run_async_worker(%s) failed: %s", run_id, tb)
-            diag = {
-                "code": "RUN_DISPATCH_FAILED",
-                "message": f"{exc_type.__name__ if exc_type else 'Exception'}: {exc_value}",
-                "severity": "error",
-                "category": "execution",
-                "exception_type": exc_type.__name__ if exc_type else "Exception",
-                "run_id": run_id,
-                "plan_version_id": plan_version_id,
-                "branch_id": branch_id,
-                "traceback": tb,
-                "created_at": utc_now_iso(),
-            }
-            store.append_run_diagnostic(run_id, diag)
-            self._fail_run_if_running(store, run_id)
-
-    @staticmethod
-    def _fail_run_if_running(store: ProjectStore, run_id: str) -> None:
-        try:
-            run = store.get_run(run_id)
-            if run and run.get("status") == "running":
-                store.finish_run(run_id, "failed")
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).exception("_fail_run_if_running failed for run %s: %s", run_id, e)
 
     def _maybe_recover_stale_run(self, run: dict) -> None:
         if self._is_stale(run):
