@@ -5,11 +5,12 @@ import { theme } from "../styles";
 
 interface Props {
   item: ArtifactListItem;
+  projectId: string;
   expanded: boolean;
   onToggle: () => void;
 }
 
-export function ArtifactRow({ item, expanded, onToggle }: Props) {
+export function ArtifactRow({ item, projectId, expanded, onToggle }: Props) {
   return (
     <div>
       <div
@@ -37,7 +38,7 @@ export function ArtifactRow({ item, expanded, onToggle }: Props) {
           {item.created_at ? new Date(item.created_at).toLocaleString() : "—"}
         </span>
       </div>
-      {expanded && <ArtifactSummaryInline artifactId={item.artifact_id} />}
+      {expanded && <ArtifactSummaryInline projectId={projectId} artifactId={item.artifact_id} />}
     </div>
   );
 }

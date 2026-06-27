@@ -346,17 +346,11 @@ export const api = {
       timeoutMs: 10_000,
     }),
 
-  getRun: (id: string, opts?: FetchOptions) =>
-    fetchJson<RunResponse>(`/runs/${id}`, { timeoutMs: 5_000, ...opts }),
-
   getProjectRun: (projectId: string, runId: string, opts?: FetchOptions) =>
     fetchJson<RunResponse>(`/runs/project/${projectId}/runs/${runId}`, {
       timeoutMs: 5_000,
       ...opts,
     }),
-
-  getRunSteps: (id: string, opts?: FetchOptions) =>
-    fetchJson<RunStepsResponse>(`/runs/${id}/steps`, { timeoutMs: 5_000, ...opts }),
 
   getProjectRunSteps: (projectId: string, runId: string, opts?: FetchOptions) =>
     fetchJson<RunStepsResponse>(`/runs/project/${projectId}/runs/${runId}/steps`, {
@@ -364,21 +358,22 @@ export const api = {
       ...opts,
     }),
 
-  getArtifact: (id: string) =>
-    fetchJson<ArtifactResponse>(`/artifacts/${id}`, { timeoutMs: 5_000 }),
-
   getProjectArtifact: (projectId: string, artifactId: string) =>
     fetchJson<ArtifactResponse>(`/artifacts/project/${projectId}/artifacts/${artifactId}`, {
       timeoutMs: 5_000,
     }),
 
-  getArtifactSummary: (id: string) =>
-    fetchJson<ArtifactSummaryResponse>(`/artifacts/${id}/summary`, { timeoutMs: 5_000 }),
+  getProjectArtifactSummary: (projectId: string, artifactId: string) =>
+    fetchJson<ArtifactSummaryResponse>(
+      `/artifacts/project/${projectId}/artifacts/${artifactId}/summary`,
+      { timeoutMs: 5_000 },
+    ),
 
-  getArtifactPreview: (id: string, limit = 100, offset = 0) =>
-    fetchJson<ArtifactPreviewResponse>(`/artifacts/${id}/preview?limit=${limit}&offset=${offset}`, {
-      timeoutMs: 10_000,
-    }),
+  getProjectArtifactPreview: (projectId: string, artifactId: string, limit = 100, offset = 0) =>
+    fetchJson<ArtifactPreviewResponse>(
+      `/artifacts/project/${projectId}/artifacts/${artifactId}/preview?limit=${limit}&offset=${offset}`,
+      { timeoutMs: 10_000 },
+    ),
 
   getManualBinningEditorState: (
     planId: string,

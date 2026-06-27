@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from cardre.errors import CardreError
 from cardre.evidence import ArtifactEvidenceReader, EvidenceError
 from cardre.services.evidence_policy import EvidencePolicyService
-from cardre.services.project_registry import get_store_for_project, load_registry, ProjectNotFoundError, ProjectPathMissingError
+from cardre.services.project_registry import get_store_for_project
 from cardre.services.run_service import RunService
 from sidecar.models import RunDiagnostic, RunRequest, RunResponse, RunStepsResponse, RunStepItem
 
@@ -76,98 +76,8 @@ def run_plan(body: RunRequest, sync: bool = Query(default=False, description="Ex
     )
 
 
-@router.get("/{run_id}", response_model=RunResponse)
-def get_run(run_id: str):
-    registry = load_registry()
-    for pid, entry in registry.items():
-        try:
-            store = get_store_for_project(pid)
-        except (ProjectNotFoundError, ProjectPathMissingError):
-            continue
-        run = store.get_run(run_id)
-        if run is not None:
-            service = RunService(store)
-            result = service._build_response(run_id)
-            return RunResponse(
-                run_id=result.run_id,
-                plan_version_id=result.plan_version_id,
-                status=result.status,
-                started_at=result.started_at,
-                finished_at=result.finished_at,
-                step_count=result.step_count,
-                branch_id=result.branch_id,
-                executed_step_ids=result.executed_step_ids or [],
-                diagnostics=[RunDiagnostic(**d) for d in (result.diagnostics or [])],
-                latest_error=RunDiagnostic(**result.latest_error) if result.latest_error else None,
-                heartbeat_at=result.heartbeat_at,
-                is_stale=result.is_stale,
-            )
-    raise HTTPException(status_code=404, detail={"code": "RUN_NOT_FOUND", "message": f"No run with ID {run_id}"})
-
-
-@router.get("/{run_id}/steps", response_model=RunStepsResponse)
-def get_run_steps(run_id: str):
-    registry = load_registry()
-    for pid in registry:
-        try:
-            store = get_store_for_project(pid)
-        except (ProjectNotFoundError, ProjectPathMissingError):
-            continue
-        run = store.get_run(run_id)
-        if run is not None:
-            steps = store.get_run_steps(run_id)
-            return RunStepsResponse(
-                run_id=run_id,
-                steps=[
-                    RunStepItem(
-                        run_step_id=rs.run_step_id,
-                        step_id=rs.step_id,
-                        node_type=rs.execution_fingerprint.get("node_type", ""),
-                        status=rs.status,
-                        started_at=rs.started_at,
-                        finished_at=rs.finished_at,
-                        input_artifact_ids=rs.input_artifact_ids,
-                        output_artifact_ids=rs.output_artifact_ids,
-                        warnings=rs.warnings,
-                        errors=rs.errors,
-                        is_carried_forward=rs.is_carried_forward or rs.execution_fingerprint.get("cardre_step_carried_forward", False),
-                    )
-                    for rs in steps
-                ],
-            )
-    raise HTTPException(status_code=404, detail={"code": "RUN_NOT_FOUND", "message": f"No run with ID {run_id}"})
-
-
-@router.get("/{run_id}/manifest")
-def get_run_manifest(run_id: str):
-    registry = load_registry()
-    for pid in registry:
-        try:
-            store = get_store_for_project(pid)
-        except (ProjectNotFoundError, ProjectPathMissingError):
-            continue
-        run = store.get_run(run_id)
-        if run is None:
-            continue
-        reader = ArtifactEvidenceReader(store)
-        for art in store.list_artifacts():
-            if art.artifact_type == "run_manifest" and art.metadata.get("run_id") == run_id:
-                try:
-                    manifest = reader.read_run_manifest(art.artifact_id)
-                except (EvidenceError, JSONDecodeError, OSError) as e:
-                    raise CardreError(
-                        "Run manifest could not be read.",
-                        code="RUN_MANIFEST_UNREADABLE",
-                        context={"run_id": run_id, "artifact_id": art.artifact_id},
-                        severity="error",
-                    ) from e
-                return asdict(manifest)
-        raise HTTPException(status_code=404, detail={"code": "MANIFEST_NOT_FOUND", "message": f"No manifest for run {run_id}"})
-    raise HTTPException(status_code=404, detail={"code": "RUN_NOT_FOUND", "message": f"No run with ID {run_id}"})
-
-
 # ------------------------------------------------------------------
-# Project-scoped run endpoints (preferred over global ones above)
+# Project-scoped run endpoints
 # ------------------------------------------------------------------
 
 

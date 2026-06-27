@@ -7,20 +7,21 @@ const LARGE_ROW_THRESHOLD = 100_000;
 const HARD_ROW_CAP = 1_000_000;
 
 interface Props {
+  projectId: string;
   artifactId: string;
   mediaType: string;
   rowCount: number | null | undefined;
   summaryPreview: Record<string, unknown> | null | undefined;
 }
 
-export function ArtifactPreviewPane({ artifactId, mediaType, rowCount, summaryPreview }: Props) {
+export function ArtifactPreviewPane({ projectId, artifactId, mediaType, rowCount, summaryPreview }: Props) {
   const [showPreview, setShowPreview] = useState(false);
   const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
 
   const { data: preview, isLoading } = useQuery({
-    queryKey: ["artifactPreview", artifactId, limit, offset],
-    queryFn: () => api.getArtifactPreview(artifactId, limit, offset),
+    queryKey: ["artifactPreview", projectId, artifactId, limit, offset],
+    queryFn: () => api.getProjectArtifactPreview(projectId, artifactId, limit, offset),
     enabled: showPreview,
   });
 

@@ -9,24 +9,6 @@ from pathlib import Path
 
 import polars as pl
 
-from cardre.store import ProjectStore
-from cardre.services.project_registry import load_registry
-
-
-def scan_all_stores():
-    registry = load_registry()
-    for pid, entry in registry.items():
-        store = ProjectStore(Path(entry["path"]))
-        yield pid, store
-
-
-def find_artifact(artifact_id: str):
-    for pid, store in scan_all_stores():
-        artifact = store.get_artifact(artifact_id)
-        if artifact is not None:
-            return artifact, store
-    return None, None
-
 
 def build_json_summary_preview(data) -> dict | None:
     """Build a summary preview dict from JSON artifact content."""
