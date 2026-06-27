@@ -314,57 +314,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/runs/{run_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Run */
-        get: operations["get_run_runs__run_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/runs/{run_id}/steps": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Run Steps */
-        get: operations["get_run_steps_runs__run_id__steps_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/runs/{run_id}/manifest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Run Manifest */
-        get: operations["get_run_manifest_runs__run_id__manifest_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/runs/project/{project_id}/runs/{run_id}": {
         parameters: {
             query?: never;
@@ -433,57 +382,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/artifacts/{artifact_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Artifact */
-        get: operations["get_artifact_artifacts__artifact_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/artifacts/{artifact_id}/summary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Artifact Summary */
-        get: operations["get_artifact_summary_artifacts__artifact_id__summary_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/artifacts/{artifact_id}/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Artifact Preview */
-        get: operations["get_artifact_preview_artifacts__artifact_id__preview_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/artifacts/project/{project_id}/artifacts/{artifact_id}": {
         parameters: {
             query?: never;
@@ -493,6 +391,40 @@ export interface paths {
         };
         /** Get Project Artifact */
         get: operations["get_project_artifact_artifacts_project__project_id__artifacts__artifact_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/artifacts/project/{project_id}/artifacts/{artifact_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project Artifact Summary */
+        get: operations["get_project_artifact_summary_artifacts_project__project_id__artifacts__artifact_id__summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/artifacts/project/{project_id}/artifacts/{artifact_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project Artifact Preview */
+        get: operations["get_project_artifact_preview_artifacts_project__project_id__artifacts__artifact_id__preview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3213,99 +3145,6 @@ export interface operations {
             };
         };
     };
-    get_run_runs__run_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RunResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_run_steps_runs__run_id__steps_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RunStepsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_run_manifest_runs__run_id__manifest_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_project_run_runs_project__project_id__runs__run_id__get: {
         parameters: {
             query?: never;
@@ -3435,11 +3274,12 @@ export interface operations {
             };
         };
     };
-    get_artifact_artifacts__artifact_id__get: {
+    get_project_artifact_artifacts_project__project_id__artifacts__artifact_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                project_id: string;
                 artifact_id: string;
             };
             cookie?: never;
@@ -3466,11 +3306,12 @@ export interface operations {
             };
         };
     };
-    get_artifact_summary_artifacts__artifact_id__summary_get: {
+    get_project_artifact_summary_artifacts_project__project_id__artifacts__artifact_id__summary_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                project_id: string;
                 artifact_id: string;
             };
             cookie?: never;
@@ -3497,43 +3338,12 @@ export interface operations {
             };
         };
     };
-    get_artifact_preview_artifacts__artifact_id__preview_get: {
+    get_project_artifact_preview_artifacts_project__project_id__artifacts__artifact_id__preview_get: {
         parameters: {
             query?: {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
-            path: {
-                artifact_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ArtifactPreviewResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_project_artifact_artifacts_project__project_id__artifacts__artifact_id__get: {
-        parameters: {
-            query?: never;
             header?: never;
             path: {
                 project_id: string;
@@ -3549,7 +3359,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ArtifactResponse"];
+                    "application/json": components["schemas"]["ArtifactPreviewResponse"];
                 };
             };
             /** @description Validation Error */

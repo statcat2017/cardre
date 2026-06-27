@@ -157,4 +157,29 @@ export const server = setupServer(
       steps: [],
     }),
   ),
+  http.get(`${BASE}/artifacts/project/:projectId/artifacts/:artifactId/summary`, () =>
+    HttpResponse.json({
+      artifact_id: "art1",
+      artifact_type: "dataset",
+      role: "input",
+      media_type: "application/vnd.apache.parquet",
+      logical_hash: "h",
+      physical_hash: "p",
+      row_count: 0,
+      column_count: 0,
+      summary_preview: null,
+    }),
+  ),
+  http.get(`${BASE}/artifacts/project/:projectId/artifacts/:artifactId/preview`, () =>
+    HttpResponse.json({
+      artifact_id: "art1",
+      media_type: "application/vnd.apache.parquet",
+      row_count: 0,
+      column_count: 0,
+      columns: [],
+      rows: [],
+      limit: 100,
+      offset: 0,
+    }),
+  ),
 );

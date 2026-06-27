@@ -1078,130 +1078,6 @@
         }
       }
     },
-    "/runs/{run_id}": {
-      "get": {
-        "tags": [
-          "runs"
-        ],
-        "summary": "Get Run",
-        "operationId": "get_run_runs__run_id__get",
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Run Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RunResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/runs/{run_id}/steps": {
-      "get": {
-        "tags": [
-          "runs"
-        ],
-        "summary": "Get Run Steps",
-        "operationId": "get_run_steps_runs__run_id__steps_get",
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Run Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RunStepsResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/runs/{run_id}/manifest": {
-      "get": {
-        "tags": [
-          "runs"
-        ],
-        "summary": "Get Run Manifest",
-        "operationId": "get_run_manifest_runs__run_id__manifest_get",
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Run Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/runs/project/{project_id}/runs/{run_id}": {
       "get": {
         "tags": [
@@ -1394,14 +1270,23 @@
         }
       }
     },
-    "/artifacts/{artifact_id}": {
+    "/artifacts/project/{project_id}/artifacts/{artifact_id}": {
       "get": {
         "tags": [
           "artifacts"
         ],
-        "summary": "Get Artifact",
-        "operationId": "get_artifact_artifacts__artifact_id__get",
+        "summary": "Get Project Artifact",
+        "operationId": "get_project_artifact_artifacts_project__project_id__artifacts__artifact_id__get",
         "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
           {
             "name": "artifact_id",
             "in": "path",
@@ -1436,14 +1321,23 @@
         }
       }
     },
-    "/artifacts/{artifact_id}/summary": {
+    "/artifacts/project/{project_id}/artifacts/{artifact_id}/summary": {
       "get": {
         "tags": [
           "artifacts"
         ],
-        "summary": "Get Artifact Summary",
-        "operationId": "get_artifact_summary_artifacts__artifact_id__summary_get",
+        "summary": "Get Project Artifact Summary",
+        "operationId": "get_project_artifact_summary_artifacts_project__project_id__artifacts__artifact_id__summary_get",
         "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
           {
             "name": "artifact_id",
             "in": "path",
@@ -1478,14 +1372,23 @@
         }
       }
     },
-    "/artifacts/{artifact_id}/preview": {
+    "/artifacts/project/{project_id}/artifacts/{artifact_id}/preview": {
       "get": {
         "tags": [
           "artifacts"
         ],
-        "summary": "Get Artifact Preview",
-        "operationId": "get_artifact_preview_artifacts__artifact_id__preview_get",
+        "summary": "Get Project Artifact Preview",
+        "operationId": "get_project_artifact_preview_artifacts_project__project_id__artifacts__artifact_id__preview_get",
         "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
           {
             "name": "artifact_id",
             "in": "path",
@@ -1526,57 +1429,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ArtifactPreviewResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/artifacts/project/{project_id}/artifacts/{artifact_id}": {
-      "get": {
-        "tags": [
-          "artifacts"
-        ],
-        "summary": "Get Project Artifact",
-        "operationId": "get_project_artifact_artifacts_project__project_id__artifacts__artifact_id__get",
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Project Id"
-            }
-          },
-          {
-            "name": "artifact_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Artifact Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ArtifactResponse"
                 }
               }
             }

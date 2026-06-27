@@ -310,7 +310,7 @@ class TestRuns:
         })
         run_id = run_resp.json()["run_id"]
 
-        resp = client.get(f"/runs/{run_id}")
+        resp = client.get(f"/runs/project/{proj['project_id']}/runs/{run_id}")
         assert resp.status_code == 200
         assert resp.json()["status"] == "succeeded"
 
@@ -362,12 +362,13 @@ class TestRuns:
         store.finish_run(running_run_id, "failed")
 
     def test_stale_run_not_recovered_by_get(self, client, tmp_dir):
-        """GET /runs/{id} must NOT recover a stale running run."""
+        """GET project-scoped run must NOT recover a stale running run."""
         proj_path = tmp_dir / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
 
         store = ProjectStore(proj_path)
-        plan_id = store.get_plans_for_project(proj["project_id"])[0]["plan_id"]
+        plan_id = store.get_plans_for_project(pid)[0]["plan_id"]
         pv_id = store.get_latest_plan_version_id(plan_id)
 
         # Create a running run with an old heartbeat
@@ -380,11 +381,11 @@ class TestRuns:
         store._connect().commit()
 
         # GET must return it as "running" — not recovered
-        resp = client.get(f"/runs/{run_id}")
+        resp = client.get(f"/runs/project/{pid}/runs/{run_id}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "running", (
-            f"GET /runs/{run_id} should return status=running, got {data['status']}"
+            f"GET /runs/project/{pid}/runs/{run_id} should return status=running, got {data['status']}"
         )
         assert data["is_stale"] is True, "stale run should be flagged is_stale"
 
@@ -477,7 +478,7 @@ class TestRuns:
         })
         run_id = run_resp.json()["run_id"]
 
-        resp = client.get(f"/runs/{run_id}/steps")
+        resp = client.get(f"/runs/project/{proj['project_id']}/runs/{run_id}/steps")
         assert resp.status_code == 200
         steps = resp.json()["steps"]
         assert len(steps) > 0
@@ -493,19 +494,23 @@ class TestArtifacts:
     def test_get_artifact(self, client, tmp_dir, sample_german_credit):
         proj_path = tmp_dir / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
         import_resp = client.post("/datasets/import", json={
-            "project_id": proj["project_id"], "source_path": str(sample_german_credit),
+            "project_id": pid, "source_path": str(sample_german_credit),
             "dataset_id": "uci-statlog-german-credit",
         })
         artifact_id = import_resp.json()["artifact_id"]
 
-        resp = client.get(f"/artifacts/{artifact_id}")
+        resp = client.get(f"/artifacts/project/{pid}/artifacts/{artifact_id}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["artifact_type"] == "dataset"
 
-    def test_get_artifact_not_found(self, client):
-        resp = client.get("/artifacts/nonexistent-id")
+    def test_get_artifact_not_found(self, client, tmp_dir):
+        proj_path = tmp_dir / "test.cardre"
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
+        resp = client.get(f"/artifacts/project/{pid}/artifacts/nonexistent-id")
         assert resp.status_code == 404
         assert resp.json()["detail"]["code"] == "ARTIFACT_NOT_FOUND"
 
@@ -561,7 +566,7 @@ class TestFullRoundTrip:
         assert run_resp.status_code == 201
         run_id = run_resp.json()["run_id"]
 
-        steps_resp = client.get(f"/runs/{run_id}/steps")
+        steps_resp = client.get(f"/runs/project/{pid}/runs/{run_id}/steps")
         assert steps_resp.status_code == 200
         steps = steps_resp.json()["steps"]
         assert len(steps) == 6, f"Expected 6 run steps, got {len(steps)}"
@@ -635,7 +640,7 @@ class TestFullRoundTrip:
         assert data["status"] == "failed"
 
         # Verify run-step records exist with error evidence
-        steps_resp = client.get(f"/runs/{data['run_id']}/steps")
+        steps_resp = client.get(f"/runs/project/{pid}/runs/{data['run_id']}/steps")
         assert steps_resp.status_code == 200
         steps = steps_resp.json()["steps"]
         assert len(steps) > 0
@@ -973,13 +978,14 @@ class TestProjectArtifacts:
     def test_artifact_summary(self, client, tmp_dir, sample_german_credit):
         proj_path = tmp_dir / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
         import_resp = client.post("/datasets/import", json={
-            "project_id": proj["project_id"], "source_path": str(sample_german_credit),
+            "project_id": pid, "source_path": str(sample_german_credit),
             "dataset_id": "uci-statlog-german-credit",
         })
         artifact_id = import_resp.json()["artifact_id"]
 
-        resp = client.get(f"/artifacts/{artifact_id}/summary")
+        resp = client.get(f"/artifacts/project/{pid}/artifacts/{artifact_id}/summary")
         assert resp.status_code == 200
         data = resp.json()
         assert data["artifact_id"] == artifact_id
@@ -1059,7 +1065,8 @@ class TestProjectArtifacts:
         import json as jmod
 
         proj_path = tmp_dir / "test.cardre"
-        client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
 
         store = ProjectStore(proj_path)
         artifact = store.write_artifact_bytes(
@@ -1070,7 +1077,7 @@ class TestProjectArtifacts:
             media_type="application/json",
         )
 
-        resp = client.get(f"/artifacts/{artifact.artifact_id}/summary")
+        resp = client.get(f"/artifacts/project/{pid}/artifacts/{artifact.artifact_id}/summary")
         assert resp.status_code == 200
         data = resp.json()
         assert data["summary_preview"] is not None
@@ -1088,7 +1095,8 @@ class TestProjectArtifacts:
         import json as jmod
 
         proj_path = tmp_dir / "test.cardre"
-        client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
 
         store = ProjectStore(proj_path)
         artifact = store.write_artifact_bytes(
@@ -1099,7 +1107,7 @@ class TestProjectArtifacts:
             media_type="application/json",
         )
 
-        resp = client.get(f"/artifacts/{artifact.artifact_id}/preview?limit=5&offset=0")
+        resp = client.get(f"/artifacts/project/{pid}/artifacts/{artifact.artifact_id}/preview?limit=5&offset=0")
         assert resp.status_code == 200
         data = resp.json()
         assert data["media_type"] == "application/json"
@@ -1118,13 +1126,14 @@ class TestProjectArtifacts:
     def test_artifact_preview(self, client, tmp_dir, sample_german_credit):
         proj_path = tmp_dir / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
         import_resp = client.post("/datasets/import", json={
-            "project_id": proj["project_id"], "source_path": str(sample_german_credit),
+            "project_id": pid, "source_path": str(sample_german_credit),
             "dataset_id": "uci-statlog-german-credit",
         })
         artifact_id = import_resp.json()["artifact_id"]
 
-        resp = client.get(f"/artifacts/{artifact_id}/preview?limit=5&offset=0")
+        resp = client.get(f"/artifacts/project/{pid}/artifacts/{artifact_id}/preview?limit=5&offset=0")
         assert resp.status_code == 200
         data = resp.json()
         assert data["artifact_id"] == artifact_id
@@ -1142,25 +1151,26 @@ class TestProjectArtifacts:
         class FakeStore:
             root = Path("/tmp/unused")
 
+            def get_artifact(self, artifact_id):
+                if artifact_id == "art-1":
+                    return SimpleNamespace(
+                        artifact_id="art-1",
+                        artifact_type="report",
+                        role="report",
+                        path="artifacts/report.parquet",
+                        physical_hash="physical",
+                        logical_hash="logical",
+                        media_type="application/vnd.apache.parquet",
+                        created_at="2026-01-01T00:00:00+00:00",
+                        metadata={"row_count": 2},
+                    )
+                return None
+
             def artifact_path(self, artifact):
                 calls.append(artifact.artifact_id)
                 return Path("/tmp/explicit-preview.parquet")
 
-        fake_artifact = SimpleNamespace(
-            artifact_id="art-1",
-            artifact_type="report",
-            role="report",
-            path="artifacts/report.parquet",
-            physical_hash="physical",
-            logical_hash="logical",
-            media_type="application/vnd.apache.parquet",
-            created_at="2026-01-01T00:00:00+00:00",
-            metadata={"row_count": 2},
-        )
-
-        def fake_find_artifact(artifact_id):
-            assert artifact_id == "art-1"
-            return fake_artifact, FakeStore()
+        monkeypatch.setattr(artifacts_route, "get_store_for_project", lambda pid: FakeStore())
 
         def fake_build_parquet_preview(artifact_path, offset, limit, total_rows):
             assert artifact_path == Path("/tmp/explicit-preview.parquet")
@@ -1169,13 +1179,137 @@ class TestProjectArtifacts:
             assert total_rows == 2
             return {"total_rows": 2, "columns": [], "rows": []}
 
-        monkeypatch.setattr(artifacts_route, "find_artifact", fake_find_artifact)
         monkeypatch.setattr(artifacts_route, "build_parquet_preview", fake_build_parquet_preview)
 
-        resp = artifacts_route.get_artifact_preview("art-1", limit=5, offset=0)
+        resp = artifacts_route.get_project_artifact_preview("proj-1", "art-1", limit=5, offset=0)
 
         assert resp.artifact_id == "art-1"
         assert calls == ["art-1"]
+
+
+# ======================================================================
+# Project-scope isolation (Phase 3F)
+# ======================================================================
+
+class TestProjectScopeIsolation:
+    """Verify that project-scoped routes reject resources from other projects."""
+
+    def test_project_run_404_for_wrong_project(self, client, tmp_dir, sample_german_credit):
+        """A run owned by project A must not be reachable via project B."""
+        proj_a = client.post("/projects", json={
+            "path": str(tmp_dir / "a.cardre"), "name": "A",
+        }).json()
+        pid_a = proj_a["project_id"]
+        client.post("/datasets/import", json={
+            "project_id": pid_a, "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        })
+        store_a = ProjectStore(tmp_dir / "a.cardre")
+        plan_id = store_a.get_plans_for_project(pid_a)[0]["plan_id"]
+        pv_id = store_a.get_latest_plan_version_id(plan_id)
+        run_id = client.post("/runs?sync=true", json={
+            "project_id": pid_a, "plan_version_id": pv_id,
+        }).json()["run_id"]
+
+        pid_b = client.post("/projects", json={
+            "path": str(tmp_dir / "b.cardre"), "name": "B",
+        }).json()["project_id"]
+
+        for suffix in ("", "/steps", "/manifest"):
+            resp = client.get(f"/runs/project/{pid_b}/runs/{run_id}{suffix}")
+            assert resp.status_code == 404, f"suffix={suffix}"
+            assert resp.json()["detail"]["code"] == "RUN_NOT_FOUND", f"suffix={suffix}"
+
+    def test_project_artifact_metadata_404_for_wrong_project(self, client, tmp_dir, sample_german_credit):
+        """An artifact owned by project A must not be reachable via project B (metadata)."""
+        proj_a = client.post("/projects", json={
+            "path": str(tmp_dir / "a.cardre"), "name": "A",
+        }).json()
+        pid_a = proj_a["project_id"]
+        artifact_id = client.post("/datasets/import", json={
+            "project_id": pid_a, "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        }).json()["artifact_id"]
+
+        pid_b = client.post("/projects", json={
+            "path": str(tmp_dir / "b.cardre"), "name": "B",
+        }).json()["project_id"]
+
+        resp = client.get(f"/artifacts/project/{pid_b}/artifacts/{artifact_id}")
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "ARTIFACT_NOT_FOUND"
+
+    def test_project_artifact_summary_404_for_wrong_project(self, client, tmp_dir, sample_german_credit):
+        """An artifact owned by project A must not be reachable via project B (summary)."""
+        proj_a = client.post("/projects", json={
+            "path": str(tmp_dir / "a.cardre"), "name": "A",
+        }).json()
+        pid_a = proj_a["project_id"]
+        artifact_id = client.post("/datasets/import", json={
+            "project_id": pid_a, "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        }).json()["artifact_id"]
+
+        pid_b = client.post("/projects", json={
+            "path": str(tmp_dir / "b.cardre"), "name": "B",
+        }).json()["project_id"]
+
+        resp = client.get(f"/artifacts/project/{pid_b}/artifacts/{artifact_id}/summary")
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "ARTIFACT_NOT_FOUND"
+
+    def test_project_artifact_preview_404_for_wrong_project(self, client, tmp_dir, sample_german_credit):
+        """An artifact owned by project A must not be reachable via project B (preview)."""
+        proj_a = client.post("/projects", json={
+            "path": str(tmp_dir / "a.cardre"), "name": "A",
+        }).json()
+        pid_a = proj_a["project_id"]
+        artifact_id = client.post("/datasets/import", json={
+            "project_id": pid_a, "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        }).json()["artifact_id"]
+
+        pid_b = client.post("/projects", json={
+            "path": str(tmp_dir / "b.cardre"), "name": "B",
+        }).json()["project_id"]
+
+        resp = client.get(f"/artifacts/project/{pid_b}/artifacts/{artifact_id}/preview?limit=5&offset=0")
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "ARTIFACT_NOT_FOUND"
+
+    def test_project_artifact_summary_scoped(self, client, tmp_dir, sample_german_credit):
+        """Happy path: project-scoped summary succeeds for the owning project."""
+        proj = client.post("/projects", json={
+            "path": str(tmp_dir / "test.cardre"), "name": "Test",
+        }).json()
+        pid = proj["project_id"]
+        artifact_id = client.post("/datasets/import", json={
+            "project_id": pid, "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        }).json()["artifact_id"]
+
+        resp = client.get(f"/artifacts/project/{pid}/artifacts/{artifact_id}/summary")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["artifact_id"] == artifact_id
+        assert data["artifact_type"] == "dataset"
+
+    def test_project_artifact_preview_scoped(self, client, tmp_dir, sample_german_credit):
+        """Happy path: project-scoped preview succeeds for the owning project."""
+        proj = client.post("/projects", json={
+            "path": str(tmp_dir / "test.cardre"), "name": "Test",
+        }).json()
+        pid = proj["project_id"]
+        artifact_id = client.post("/datasets/import", json={
+            "project_id": pid, "source_path": str(sample_german_credit),
+            "dataset_id": "uci-statlog-german-credit",
+        }).json()["artifact_id"]
+
+        resp = client.get(f"/artifacts/project/{pid}/artifacts/{artifact_id}/preview?limit=5&offset=0")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["artifact_id"] == artifact_id
+        assert data["media_type"] == "application/vnd.apache.parquet"
 
 
 # ======================================================================
@@ -1252,15 +1386,16 @@ class TestManualBinningEditor:
         """P2#8: Parquet preview with offset reads correct rows."""
         proj_path = tmp_dir / "test.cardre"
         proj = client.post("/projects", json={"path": str(proj_path), "name": "Test"}).json()
+        pid = proj["project_id"]
         import_resp = client.post("/datasets/import", json={
-            "project_id": proj["project_id"], "source_path": str(sample_german_credit),
+            "project_id": pid, "source_path": str(sample_german_credit),
             "dataset_id": "uci-statlog-german-credit",
         })
         artifact_id = import_resp.json()["artifact_id"]
 
-        resp0 = client.get(f"/artifacts/{artifact_id}/preview?limit=1&offset=0")
+        resp0 = client.get(f"/artifacts/project/{pid}/artifacts/{artifact_id}/preview?limit=1&offset=0")
         assert resp0.status_code == 200
-        resp1 = client.get(f"/artifacts/{artifact_id}/preview?limit=1&offset=1")
+        resp1 = client.get(f"/artifacts/project/{pid}/artifacts/{artifact_id}/preview?limit=1&offset=1")
         assert resp1.status_code == 200
 
         rows0 = resp0.json()["rows"]
@@ -1342,11 +1477,11 @@ class TestE2EWithNewEndpoints:
 
         # Get artifact summary for first artifact
         artifacts = arts_resp.json()["artifacts"]
-        summary_resp = client.get(f"/artifacts/{artifacts[0]['artifact_id']}/summary")
+        summary_resp = client.get(f"/artifacts/project/{pid}/artifacts/{artifacts[0]['artifact_id']}/summary")
         assert summary_resp.status_code == 200
 
         # Preview first dataset artifact
-        preview_resp = client.get(f"/artifacts/{artifacts[0]['artifact_id']}/preview?limit=3&offset=0")
+        preview_resp = client.get(f"/artifacts/project/{pid}/artifacts/{artifacts[0]['artifact_id']}/preview?limit=3&offset=0")
         assert preview_resp.status_code == 200
 
         # Update step params
@@ -1969,7 +2104,7 @@ class TestPhase4BranchingFlow:
         assert snap_data["ready"]
 
         # Read snapshot artifact to verify content sections
-        artifact_resp = client.get(f"/artifacts/{snap_data['comparison_artifact_id']}")
+        artifact_resp = client.get(f"/artifacts/project/{pid}/artifacts/{snap_data['comparison_artifact_id']}")
         if artifact_resp.status_code == 200:
             art_path = artifact_resp.json()["path"]
             art_full_path = proj_path / art_path
@@ -2177,7 +2312,7 @@ class TestCancelAndManifest:
         assert run_resp.status_code == 201
         run_id = run_resp.json()["run_id"]
 
-        manifest_resp = client.get(f"/runs/{run_id}/manifest")
+        manifest_resp = client.get(f"/runs/project/{pid}/runs/{run_id}/manifest")
         assert manifest_resp.status_code == 200
         manifest = manifest_resp.json()
         assert manifest["manifest_version"] == "1.0.0"

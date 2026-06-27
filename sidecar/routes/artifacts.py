@@ -9,8 +9,8 @@ from fastapi import APIRouter, HTTPException, Query
 
 from cardre.services.artifact_service import (
     build_parquet_preview,
-    find_artifact,
 )
+from cardre.services.project_registry import get_store_for_project
 from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
 from sidecar.models import (
     ArtifactResponse,
@@ -79,12 +79,12 @@ def _json_artifact_preview(reader: ArtifactEvidenceReader, artifact_id: str, kin
     }
 
 
-@router.get("/{artifact_id}", response_model=ArtifactResponse)
-def get_artifact(artifact_id: str):
-    artifact, _ = find_artifact(artifact_id)
+@router.get("/project/{project_id}/artifacts/{artifact_id}", response_model=ArtifactResponse)
+def get_project_artifact(project_id: str, artifact_id: str):
+    store = get_store_for_project(project_id)
+    artifact = store.get_artifact(artifact_id)
     if artifact is None:
-        raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id}"})
-
+        raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id} in project {project_id}"})
     return ArtifactResponse(
         artifact_id=artifact.artifact_id,
         artifact_type=artifact.artifact_type,
@@ -98,22 +98,19 @@ def get_artifact(artifact_id: str):
     )
 
 
-@router.get("/{artifact_id}/summary", response_model=ArtifactSummaryResponse)
-def get_artifact_summary(artifact_id: str):
-    artifact, store = find_artifact(artifact_id)
+@router.get("/project/{project_id}/artifacts/{artifact_id}/summary", response_model=ArtifactSummaryResponse)
+def get_project_artifact_summary(project_id: str, artifact_id: str):
+    store = get_store_for_project(project_id)
+    artifact = store.get_artifact(artifact_id)
     if artifact is None:
-        raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id}"})
-
+        raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id} in project {project_id}"})
     reader = ArtifactEvidenceReader(store)
     evidence_summary = reader.summarise_artifact(artifact_id)
-
     row_count = artifact.metadata.get("row_count")
     column_count = artifact.metadata.get("column_count")
-
     summary_preview = None
     if artifact.media_type == "application/json":
         summary_preview = _json_artifact_preview(reader, artifact_id, evidence_summary.kind)
-
     return ArtifactSummaryResponse(
         artifact_id=artifact.artifact_id,
         artifact_type=artifact.artifact_type,
@@ -127,19 +124,19 @@ def get_artifact_summary(artifact_id: str):
     )
 
 
-@router.get("/{artifact_id}/preview", response_model=ArtifactPreviewResponse)
-def get_artifact_preview(
+@router.get("/project/{project_id}/artifacts/{artifact_id}/preview", response_model=ArtifactPreviewResponse)
+def get_project_artifact_preview(
+    project_id: str,
     artifact_id: str,
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ):
-    artifact, store = find_artifact(artifact_id)
-    if artifact is None or store is None:
-        raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id}"})
-
+    store = get_store_for_project(project_id)
+    artifact = store.get_artifact(artifact_id)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id} in project {project_id}"})
     artifact_path = store.artifact_path(artifact)  # cardre-allow-artifact-read: artifact-byte-download
     reader = ArtifactEvidenceReader(store)
-
     if artifact.media_type == "application/json":
         evidence_summary = reader.summarise_artifact(artifact_id)
         json_preview = _json_artifact_preview(reader, artifact_id, evidence_summary.kind)
@@ -150,7 +147,6 @@ def get_artifact_preview(
             limit=limit,
             offset=offset,
         )
-
     if artifact.media_type == "application/vnd.apache.parquet":
         try:
             total_rows = artifact.metadata.get("row_count")
@@ -171,29 +167,8 @@ def get_artifact_preview(
                 "message": f"Could not read Parquet artifact: {exc}",
                 "context": {"artifact_id": artifact_id, "path": str(artifact_path)},
             })
-
     return ArtifactPreviewResponse(
         artifact_id=artifact.artifact_id,
         media_type=artifact.media_type,
         json_content={"note": f"Preview not supported for media type {artifact.media_type}"},
-    )
-
-
-@router.get("/project/{project_id}/artifacts/{artifact_id}", response_model=ArtifactResponse)
-def get_project_artifact(project_id: str, artifact_id: str):
-    from cardre.services.project_registry import get_store_for_project
-    store = get_store_for_project(project_id)
-    artifact = store.get_artifact(artifact_id)
-    if artifact is None:
-        raise HTTPException(status_code=404, detail={"code": "ARTIFACT_NOT_FOUND", "message": f"No artifact with ID {artifact_id} in project {project_id}"})
-    return ArtifactResponse(
-        artifact_id=artifact.artifact_id,
-        artifact_type=artifact.artifact_type,
-        role=artifact.role,
-        path=artifact.path,
-        physical_hash=artifact.physical_hash,
-        logical_hash=artifact.logical_hash,
-        media_type=artifact.media_type,
-        created_at=artifact.created_at,
-        metadata=artifact.metadata,
     )

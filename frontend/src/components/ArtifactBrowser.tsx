@@ -137,6 +137,7 @@ export function ArtifactBrowser({ projectId }: Props) {
             <ArtifactRow
               key={item.artifact_id}
               item={item}
+              projectId={projectId}
               expanded={expandedId === item.artifact_id}
               onToggle={() =>
                 setExpandedId(expandedId === item.artifact_id ? null : item.artifact_id)

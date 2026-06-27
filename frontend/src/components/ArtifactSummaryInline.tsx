@@ -5,13 +5,14 @@ import { ArtifactPreviewPane } from "./ArtifactPreviewPane";
 import { theme } from "../styles";
 
 interface Props {
+  projectId: string;
   artifactId: string;
 }
 
-export function ArtifactSummaryInline({ artifactId }: Props) {
+export function ArtifactSummaryInline({ projectId, artifactId }: Props) {
   const { data, isLoading } = useQuery({
-    queryKey: ["artifactSummary", artifactId],
-    queryFn: () => api.getArtifactSummary(artifactId),
+    queryKey: ["artifactSummary", projectId, artifactId],
+    queryFn: () => api.getProjectArtifactSummary(projectId, artifactId),
     enabled: !!artifactId,
   });
 
@@ -51,6 +52,7 @@ export function ArtifactSummaryInline({ artifactId }: Props) {
         ))}
       </div>
       <ArtifactPreviewPane
+        projectId={projectId}
         artifactId={data.artifact_id}
         mediaType={data.media_type}
         rowCount={data.row_count}
