@@ -14,7 +14,13 @@ interface Props {
   summaryPreview: Record<string, unknown> | null | undefined;
 }
 
-export function ArtifactPreviewPane({ projectId, artifactId, mediaType, rowCount, summaryPreview }: Props) {
+export function ArtifactPreviewPane({
+  projectId,
+  artifactId,
+  mediaType,
+  rowCount,
+  summaryPreview,
+}: Props) {
   const [showPreview, setShowPreview] = useState(false);
   const [limit] = useState(50);
   const [offset, setOffset] = useState(0);

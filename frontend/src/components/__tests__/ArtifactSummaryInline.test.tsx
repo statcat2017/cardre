@@ -33,9 +33,7 @@ describe("ArtifactSummaryInline", () => {
   it("calls project-scoped getProjectArtifactSummary", async () => {
     const spy = vi.spyOn(api, "getProjectArtifactSummary").mockResolvedValue(MOCK_SUMMARY);
 
-    renderWithClient(
-      <ArtifactSummaryInline projectId="prj1" artifactId="art1" />,
-    );
+    renderWithClient(<ArtifactSummaryInline projectId="prj1" artifactId="art1" />);
 
     await waitFor(() => {
       expect(spy).toHaveBeenCalledWith("prj1", "art1");

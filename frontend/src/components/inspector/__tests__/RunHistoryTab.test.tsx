@@ -26,9 +26,7 @@ describe("RunHistoryTab", () => {
   it("calls project-scoped getProjectRunSteps", async () => {
     const spy = vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(MOCK_STEPS);
 
-    renderWithClient(
-      <RunHistoryTab stepId="import" projectId="prj1" runId="run1" tab="history" />,
-    );
+    renderWithClient(<RunHistoryTab stepId="import" projectId="prj1" runId="run1" tab="history" />);
 
     await waitFor(() => {
       expect(spy).toHaveBeenCalledWith("prj1", "run1");
