@@ -29,6 +29,7 @@ class LimitationCode(StrEnum):
     ARTIFACT_HASH_UNRESOLVED = "ARTIFACT_HASH_UNRESOLVED"
     NON_MONOTONIC_WOE_CHAMPION = "NON_MONOTONIC_WOE_CHAMPION"
     NO_OOT_SAMPLE_CHAMPION = "NO_OOT_SAMPLE_CHAMPION"
+    WOE_EVIDENCE_READ_FAILURE = "WOE_EVIDENCE_READ_FAILURE"
 
     # --- Warnings ---
     NO_OOT_SAMPLE = "NO_OOT_SAMPLE"
@@ -73,6 +74,7 @@ class LimitationCode(StrEnum):
             cls.ARTIFACT_HASH_UNRESOLVED,
             cls.NON_MONOTONIC_WOE_CHAMPION,
             cls.NO_OOT_SAMPLE_CHAMPION,
+            cls.WOE_EVIDENCE_READ_FAILURE,
         }
 
     @classmethod

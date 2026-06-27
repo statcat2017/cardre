@@ -177,7 +177,7 @@ class VariableClusteringNode(NodeType):
             try:
                 import scipy.stats  # noqa: F401
             except ImportError:
-                errors.append("spearman requires scipy; install cardre[stats] or equivalent")
+                errors.append("spearman requires scipy, which is a core dependency of cardre")
 
         if method == "correlation_threshold":
             threshold = params.get("threshold", params.get("correlation_threshold", 0.7))

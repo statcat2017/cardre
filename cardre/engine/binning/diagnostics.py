@@ -174,9 +174,9 @@ def check_pure_bins(
         bin_good = b.get("good_count", 0)
         bin_bad = b.get("bad_count", 0)
         direction = None
-        if total_good > 0 and bin_good == total_good:
+        if bin_good > 0 and bin_bad == 0:
             direction = "all_good"
-        elif total_bad > 0 and bin_bad == total_bad:
+        elif bin_bad > 0 and bin_good == 0:
             direction = "all_bad"
         if direction is not None:
             results.append(BinningDiagnostic(
@@ -185,7 +185,7 @@ def check_pure_bins(
                 variable=variable,
                 bin_id=b.get("bin_id"),
                 message=f"Bin {b.get('bin_id', '?')!r} of variable {variable!r} "
-                       f"contains all {direction.replace('all_', '')} rows",
+                       f"is a pure bin (all {direction.replace('all_', '')} rows)",
                 requires_acknowledgement=True,
                 details={"direction": direction, "bin_id": b.get("bin_id", "")},
             ))

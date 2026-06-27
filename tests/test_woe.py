@@ -598,10 +598,97 @@ class CalculateWoeIvTests(unittest.TestCase):
         node = CalculateWoeIvNode()
         output = node.run(ctx)
         import json as _json
-        summary_art = output.artifacts[2]  # third artifact is the JSON summary
+        summary_art = output.artifacts[2]
         data = _json.loads(store.artifact_path(summary_art).read_text())
         pure_warnings = [w for w in data.get("warnings", []) if w.get("code") == "PURE_BIN"]
         assert len(pure_warnings) > 0, "Expected PURE_BIN diagnostic"
+
+    def test_pure_bin_partial_goods_detected(self) -> None:
+        """A pure bin with only some of the total goods/bads must still be flagged."""
+        store, tmp = make_store()
+        store.initialize()
+        df = pl.DataFrame({
+            "var1": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            "target": ["good", "good", "good", "bad", "bad", "bad"],
+        })
+        buf = io.BytesIO()
+        df.write_parquet(buf)
+        path = store.root / "datasets" / "train.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(buf.getvalue())
+        train = ArtifactRef(
+            artifact_id="t1", artifact_type="dataset", role="train",
+            path=relative_path(path, store.root),
+            physical_hash=physical_hash(path),
+            logical_hash=table_logical_hash(df),
+            media_type="application/vnd.apache.parquet", metadata={},
+        )
+        store.register_artifact(train)
+        bin_def = {
+            "variables": [{
+                "variable": "var1", "kind": "numeric",
+                "bins": [
+                    {"bin_id": "v1_b1", "label": "A", "lower": 0, "upper": 2,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 2, "good_count": 2, "bad_count": 0},
+                    {"bin_id": "v1_b2", "label": "B", "lower": 2, "upper": 4,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 2, "good_count": 1, "bad_count": 1},
+                    {"bin_id": "v1_b3", "label": "C", "lower": 4, "upper": None,
+                     "lower_inclusive": False, "upper_inclusive": True,
+                     "categories": None, "is_missing_bin": False,
+                     "row_count": 2, "good_count": 0, "bad_count": 2},
+                ],
+            }],
+            "warnings": [],
+        }
+        bin_path = store.root / "artifacts" / "bins.json"
+        bin_path.parent.mkdir(parents=True, exist_ok=True)
+        bin_path.write_text(json.dumps(bin_def, sort_keys=True))
+        bin_artifact = ArtifactRef(
+            artifact_id="b1", artifact_type="definition", role="definition",
+            path=relative_path(bin_path, store.root),
+            physical_hash=physical_hash(bin_path),
+            logical_hash=json_logical_hash(bin_def),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(bin_artifact)
+        meta_params = {"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]}
+        meta_path = store.root / "artifacts" / "meta.json"
+        meta_path.write_text(json.dumps(meta_params, sort_keys=True))
+        meta_artifact = ArtifactRef(
+            artifact_id="m1", artifact_type="definition", role="definition",
+            path=relative_path(meta_path, store.root),
+            physical_hash=physical_hash(meta_path),
+            logical_hash=json_logical_hash(meta_params),
+            media_type="application/json", metadata={},
+        )
+        store.register_artifact(meta_artifact)
+        params = {"zero_cell_policy": "block", "smoothing": None, "purpose": "initial"}
+        step_spec = StepSpec(
+            step_id="woe", node_type="cardre.calculate_woe_iv",
+            node_version="1", category="selection",
+            params=params, params_hash=json_logical_hash(params),
+            parent_step_ids=[], branch_label="", position=0,
+        )
+        ctx = ExecutionContext(
+            store=store, run_id="r1", plan_version_id="pv1",
+            step_spec=step_spec, parent_run_steps=[],
+            input_artifacts=[train, bin_artifact, meta_artifact],
+            validated_params=params, runtime_metadata={},
+        )
+        node = CalculateWoeIvNode()
+        output = node.run(ctx)
+        import json as _json
+        summary_art = output.artifacts[2]
+        data = _json.loads(store.artifact_path(summary_art).read_text())
+        pure_warnings = [w for w in data.get("warnings", []) if w.get("code") == "PURE_BIN"]
+        bin_ids_flagged = {w.get("bin_id") for w in pure_warnings}
+        assert "v1_b1" in bin_ids_flagged, "Pure-good bin (2 good, 0 bad) should be flagged"
+        assert "v1_b3" in bin_ids_flagged, "Pure-bad bin (0 good, 2 bad) should be flagged"
+        assert "v1_b2" not in bin_ids_flagged, "Mixed bin should not be flagged"
 
 
 # ======================================================================

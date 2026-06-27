@@ -169,21 +169,30 @@ def check_report_readiness(
             elif canonical_step_id == "final-woe-iv" and report_mode == "champion" and v1_art is not None:
                 try:
                     from cardre.evidence import ArtifactEvidenceReader
+                    from cardre.engine.binning.diagnostics import monotonicity_status
                     reader = ArtifactEvidenceReader(store)
                     evidence = reader.read(v1_art.artifact_id, EvidenceKind.WOE_IV_EVIDENCE)
                     for var in evidence.variables:
-                        for w in var.warnings:
-                            if w.get("code") == "NON_MONOTONIC_WOE":
+                        woe_by_bin: dict[str, float] = {}
+                        for b in var.bins:
+                            if b.woe is not None:
+                                woe_by_bin[b.bin_id] = b.woe
+                        if len(woe_by_bin) >= 2:
+                            m_status = monotonicity_status(woe_by_bin)
+                            if m_status.value == "non_monotonic":
                                 blockers.append(ReadinessBlocker(
                                     LimitationCode.NON_MONOTONIC_WOE_CHAMPION,
                                     f"Final WOE variable {var.variable_name!r} "
-                                    "is non-monotonic. Re-bin to monotonic or configure "
-                                    "enforce_monotonic_woe=False for champion promotion.",
+                                    "is non-monotonic. Re-bin to monotonic for champion promotion.",
                                     step_id=ref.step_id,
                                 ))
-                                break
                 except Exception:
-                    pass
+                    blockers.append(ReadinessBlocker(
+                        LimitationCode.WOE_EVIDENCE_READ_FAILURE,
+                        f"Failed to read final WOE evidence from step {ref.step_id} "
+                        "for champion monotonicity check.",
+                        step_id=ref.step_id,
+                    ))
 
     # Champion mode checks
     if plan_id:
