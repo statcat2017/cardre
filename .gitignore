@@ -17,6 +17,7 @@ _legacy/
 .opencode/github-token
 frontend/src-tauri/target/
 frontend/src-tauri/binaries/
+frontend/src-tauri/gen/
 
 node_modules/
 package.json
