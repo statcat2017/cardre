@@ -25,7 +25,6 @@ from cardre.audit import StepSpec, json_logical_hash
 from cardre.errors import CardreError
 from cardre.services.run_worker import (
     DISPATCH_FAILED_CODE,
-    RunDispatcher,
     RunRequest,
     RunWorker,
     SyncRunDispatcher,
@@ -392,7 +391,7 @@ class TestSidecarDispatchFailure:
 
         store = _init_store(tmp_path / "proj.cardre")
         prj_id = store.create_project("test")
-        plan_id = store.create_plan(prj_id, "test-plan")
+        _ = store.create_plan(prj_id, "test-plan")
         pv_id = _one_step_plan(store)
 
         # Register the project so the sidecar can resolve it.
@@ -431,8 +430,6 @@ class TestSidecarDispatchFailure:
 
 def _join_named(name: str, timeout: float = 5.0) -> None:
     """Join any live thread whose name matches, to make tests deterministic."""
-    deadline = threading.get_ident()
-    # Wait for threads to finish by polling.
     import time
     end = time.monotonic() + timeout
     while time.monotonic() < end:
