@@ -132,6 +132,32 @@ class PlanExecutor:
         from cardre.config import CardreConfig
         self._heartbeat_interval = CardreConfig.from_env().heartbeat_watchdog_interval_seconds
 
+    def validate_plan_executability(
+        self, store: ProjectStore, plan_version_id: str,
+    ) -> list[dict]:
+        pv = store.get_plan_version(plan_version_id)
+        if pv is None:
+            from cardre.errors import CardreError
+            raise CardreError(
+                f"Plan version {plan_version_id} not found",
+                code="PLAN_VERSION_NOT_FOUND",
+                context={"plan_version_id": plan_version_id},
+            )
+        steps = store.get_plan_version_steps(plan_version_id)
+        issues: list[dict] = []
+        for spec in steps:
+            av = self.registry.availability(spec.node_type)
+            if not av.available:
+                issues.append({
+                    "step_id": spec.step_id,
+                    "node_type": spec.node_type,
+                    "available": False,
+                    "disabled_reason": av.disabled_reason,
+                    "missing_optional_dependencies": av.missing_optional_dependencies,
+                    "tier": av.tier,
+                })
+        return issues
+
     # ------------------------------------------------------------------
     # Run a plan version
     # ------------------------------------------------------------------

@@ -56,6 +56,7 @@ class ModelExplainabilityNode(NodeType):
     category = "report"
     input_roles: list[str] = ["model", "train", "test", "oot"]
     output_roles: list[str] = ["report"]
+    optional_dependencies: list[str] = ["explain"]
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
