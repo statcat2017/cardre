@@ -235,6 +235,7 @@ class TestLineCountDebt:
             "tests/test_bin_definition_lifecycle.py",
             "tests/test_nodes.py",
             "tests/test_reporting.py",
+            "tests/test_woe.py",
         }
         assert set(mod.LINE_COUNT_DEBT.keys()) == expected
 
