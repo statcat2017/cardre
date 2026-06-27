@@ -382,10 +382,15 @@ class ValidationMetricsNode(NodeType):
             "psi_train_vs_test": None,
             "psi_train_vs_oot": None,
         }
+        all_psi_warnings: list[dict] = []
         if "train" in psi_data and "test" in psi_data:
-            stability["psi_train_vs_test"] = self._psi(psi_data["train"], psi_data["test"])
+            psi_val, psi_warns = self._psi(psi_data["train"], psi_data["test"])
+            stability["psi_train_vs_test"] = psi_val
+            all_psi_warnings.extend(psi_warns)
         if "train" in psi_data and "oot" in psi_data:
-            stability["psi_train_vs_oot"] = self._psi(psi_data["train"], psi_data["oot"])
+            psi_val, psi_warns = self._psi(psi_data["train"], psi_data["oot"])
+            stability["psi_train_vs_oot"] = psi_val
+            all_psi_warnings.extend(psi_warns)
 
         # Gate: AUC threshold
         if minimum_auc is not None:
@@ -422,7 +427,7 @@ class ValidationMetricsNode(NodeType):
             "roles": roles_metrics,
             "stability": stability,
             "gates": gates,
-            "warnings": [],
+            "warnings": all_psi_warnings,
         }
         if bundle_art is not None:
             payload["frozen_bundle_artifact_id"] = bundle_art.artifact_id
@@ -476,9 +481,10 @@ class ValidationMetricsNode(NodeType):
             "p95": round(float(np.percentile(scores, 95)), 2),
         }
 
-    def _psi(self, expected: pl.Series, actual: pl.Series, n_bins: int = 10) -> float:
+    def _psi(self, expected: pl.Series, actual: pl.Series, n_bins: int = 10) -> tuple[float, list[dict]]:
+        psi_warnings: list[dict] = []
         if expected.is_empty() or actual.is_empty():
-            return 0.0
+            return 0.0, psi_warnings
 
         expected_arr = expected.to_numpy()
         actual_arr = actual.to_numpy()
@@ -495,13 +501,21 @@ class ValidationMetricsNode(NodeType):
         psi = 0.0
         n_exp = len(expected_arr)
         n_act = len(actual_arr)
-        for ec, ac in zip(expected_counts, actual_counts):
+        for bin_idx, (ec, ac) in enumerate(zip(expected_counts, actual_counts)):
             ep = ec / n_exp
             ap = ac / n_act
             if ap == 0 or ep == 0:
-                continue
+                if ep == 0:
+                    ep = 0.5 / n_exp
+                if ap == 0:
+                    ap = 0.5 / n_act
+                psi_warnings.append({
+                    "code": "PSI_EMPTY_BIN",
+                    "bin_index": bin_idx,
+                    "message": f"Bin {bin_idx} had zero count; floored for PSI computation",
+                })
             psi += (ap - ep) * np.log(ap / ep)
-        return round(float(psi), 6)
+        return round(float(psi), 6), psi_warnings
 
 
 class ThresholdOptimizationNode(NodeType):
