@@ -80,6 +80,13 @@ class LogisticRegressionNode(NodeType):
                             help_text="Random state for reproducibility.",
                             constraint=ParameterConstraint(min_value=0),
                         ),
+                        ParameterDefinition(
+                            name="fail_on_non_convergence",
+                            label="Fail on Non-convergence",
+                            kind="boolean",
+                            default=True,
+                            help_text="Raise when logistic regression does not converge. Set to false to warn only.",
+                        ),
                     ],
                 ),
                 MethodOption(
@@ -127,6 +134,13 @@ class LogisticRegressionNode(NodeType):
                             default=42,
                             help_text="Random state for reproducibility.",
                             constraint=ParameterConstraint(min_value=0),
+                        ),
+                        ParameterDefinition(
+                            name="fail_on_non_convergence",
+                            label="Fail on Non-convergence",
+                            kind="boolean",
+                            default=True,
+                            help_text="Raise when logistic regression does not converge. Set to false to warn only.",
                         ),
                     ],
                 ),
@@ -219,9 +233,9 @@ class LogisticRegressionNode(NodeType):
         solver = str(params.get("solver", "lbfgs"))
         random_seed = int(params.get("random_seed", 42))
 
-        lr_params = {"C": C, "max_iter": max_iter, "solver": solver, "random_state": random_seed}
-        if penalty is not None:
-            lr_params["penalty"] = penalty
+        if penalty is None:
+            penalty = "l2"
+        lr_params = {"C": C, "max_iter": max_iter, "solver": solver, "random_state": random_seed, "penalty": penalty}
 
         lr = SkLearnLR(**lr_params)
         lr.fit(X, y_binary)
@@ -237,11 +251,15 @@ class LogisticRegressionNode(NodeType):
         features_list = woe_cols
         coefficients = {col: round(float(coef), 6) for col, coef in zip(features_list, lr.coef_[0])}
 
+        fail_on_non_convergence = bool(params.get("fail_on_non_convergence", True))
         warnings_list: list[dict] = []
         if not lr.n_iter_[0] < max_iter:
+            msg = f"Logistic regression did not converge after {max_iter} iterations"
+            if fail_on_non_convergence:
+                raise ValueError(f"{msg} (set fail_on_non_convergence=False to warn only)")
             warnings_list.append({
                 "code": "CONVERGENCE_FAILURE",
-                "message": f"Logistic regression did not converge after {max_iter} iterations",
+                "message": msg,
             })
 
         converged = bool(lr.n_iter_[0] < max_iter)
