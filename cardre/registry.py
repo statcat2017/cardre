@@ -13,8 +13,38 @@ Node tiers:
 
 from __future__ import annotations
 
+import importlib.util
+from dataclasses import dataclass, field
+
 from cardre.audit import NodeType
 from cardre.config import CardreConfig
+
+
+@dataclass(frozen=True)
+class NodeAvailability:
+    """Whether a node type can be instantiated right now, and why not."""
+    available: bool
+    tier: str
+    disabled_reason: str | None = None
+    missing_optional_dependencies: list[str] = field(default_factory=list)
+
+
+_OPTIONAL_DEP_MODULES: dict[str, tuple[str, ...]] = {
+    "xgboost": ("xgboost",),
+    "lightgbm": ("lightgbm",),
+    "catboost": ("catboost",),
+    "imbalance": ("imblearn",),
+    "explain": ("shap", "lime"),
+    "deep": ("torch",),
+    "optimal-binning": ("optbinning",),
+}
+
+
+def _probe_optional_dep(group: str) -> bool:
+    for mod in _OPTIONAL_DEP_MODULES.get(group, ()):
+        if importlib.util.find_spec(mod) is None:
+            return False
+    return True
 
 
 class NodeRegistry:
@@ -47,14 +77,60 @@ class NodeRegistry:
     def list_types(self) -> list[str]:
         return list(self._nodes.keys())
 
+    def availability(self, node_type: str) -> NodeAvailability:
+        cls = self.resolve(node_type)
+        is_deferred = getattr(cls, "_deferred", False)
+        tier = "deferred" if is_deferred else "launch"
+
+        missing = [
+            g for g in (getattr(cls, "optional_dependencies", None) or [])
+            if not _probe_optional_dep(g)
+        ]
+
+        if missing:
+            return NodeAvailability(
+                available=False,
+                tier=tier,
+                disabled_reason=(
+                    f"Optional dependency group(s) not installed: "
+                    f"{', '.join(missing)}. "
+                    f"Install with: pip install -e '.[{','.join(missing)}]'"
+                ),
+                missing_optional_dependencies=missing,
+            )
+
+        if is_deferred and CardreConfig.from_env().launch_mode:
+            return NodeAvailability(
+                available=False,
+                tier=tier,
+                disabled_reason=(
+                    "Not available in launch mode. "
+                    "This method will be enabled in a future release."
+                ),
+                missing_optional_dependencies=missing,
+            )
+
+        return NodeAvailability(available=True, tier=tier)
+
+    def is_available(self, node_type: str) -> bool:
+        return self.availability(node_type).available
+
     def instantiate(self, node_type: str) -> NodeType:
         cls = self.resolve(node_type)
-        if CardreConfig.from_env().launch_mode and getattr(cls, "_deferred", False):
-            from cardre.errors import NodeNotAvailableForLaunch
-            raise NodeNotAvailableForLaunch(
-                f"Node {node_type!r} is not available in launch mode. "
-                f"It will be available in a future release."
-            )
+        av = self.availability(node_type)
+        if not av.available:
+            if av.tier == "deferred" and CardreConfig.from_env().launch_mode:
+                from cardre.errors import NodeNotAvailableForLaunch
+                raise NodeNotAvailableForLaunch(
+                    f"Node {node_type!r} is not available in launch mode. "
+                    f"It will be available in a future release."
+                )
+            if av.missing_optional_dependencies:
+                from cardre.errors import OptionalDependencyNotInstalled
+                raise OptionalDependencyNotInstalled(
+                    node_type=node_type,
+                    missing_groups=av.missing_optional_dependencies,
+                )
         return cls()
 
     @classmethod

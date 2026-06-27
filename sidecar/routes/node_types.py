@@ -7,7 +7,7 @@ Phase 6 adds:
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from cardre.node_parameters import (
     MethodOption,
@@ -63,7 +63,7 @@ _MODEL_FAMILIES: dict[str, dict] = {
         "interpretability_level": "native_semi_transparent",
         "champion_eligibility": "eligible_with_limitation_evidence",
         "description": "XGBoost classifier. Requires xgboost package.",
-        "optional_dependencies": ["boosting"],
+        "optional_dependencies": ["xgboost"],
     },
     "cardre.lightgbm_classifier": {
         "model_family": "lightgbm",
@@ -71,7 +71,7 @@ _MODEL_FAMILIES: dict[str, dict] = {
         "interpretability_level": "native_semi_transparent",
         "champion_eligibility": "eligible_with_limitation_evidence",
         "description": "LightGBM classifier. Requires lightgbm package.",
-        "optional_dependencies": ["boosting"],
+        "optional_dependencies": ["lightgbm"],
     },
     "cardre.catboost_classifier": {
         "model_family": "catboost",
@@ -79,7 +79,7 @@ _MODEL_FAMILIES: dict[str, dict] = {
         "interpretability_level": "native_semi_transparent",
         "champion_eligibility": "eligible_with_limitation_evidence",
         "description": "CatBoost classifier. Requires catboost package.",
-        "optional_dependencies": ["boosting"],
+        "optional_dependencies": ["catboost"],
     },
     "cardre.model_explainability": {
         "model_family": None,
@@ -145,8 +145,11 @@ def _get_registry() -> NodeRegistry:
 
 
 @router.get("/node-types", response_model=NodeTypeListResponse)
-def list_node_types() -> NodeTypeListResponse:
-    """List all registered node types with method metadata."""
+def list_node_types(
+    available_only: bool = Query(default=False, description="Exclude unavailable nodes"),
+) -> NodeTypeListResponse:
+    if not isinstance(available_only, bool):
+        available_only = False
     registry = _get_registry()
     items: list[NodeTypeItem] = []
 
@@ -155,13 +158,18 @@ def list_node_types() -> NodeTypeListResponse:
         if getattr(cls, "is_internal", False):
             continue
         meta = _MODEL_FAMILIES.get(node_type, {})
-        is_deferred = getattr(cls, "_deferred", False)
+        av = registry.availability(node_type)
+        if available_only and not av.available:
+            continue
 
         items.append(NodeTypeItem(
             node_type=node_type,
             version=getattr(cls, "version", "1"),
             category=getattr(cls, "category", "unknown"),
-            tier="deferred" if is_deferred else "launch",
+            tier=av.tier,
+            available=av.available,
+            disabled_reason=av.disabled_reason,
+            missing_optional_dependencies=av.missing_optional_dependencies,
             description=getattr(cls, "description", None) or meta.get("description", ""),
             model_family=getattr(cls, "model_family", None) or meta.get("model_family"),
             feature_strategies=getattr(cls, "feature_strategies", None) or meta.get("feature_strategies", []),
@@ -267,6 +275,7 @@ def get_node_type_schema(node_type: str) -> NodeTypeSchemaResponse:
             elif p.required:
                 defaults[p.name] = None
 
+    av = registry.availability(node_type)
     return NodeTypeSchemaResponse(
         node_type=node_type,
         version=schema.node_version,
@@ -275,4 +284,6 @@ def get_node_type_schema(node_type: str) -> NodeTypeSchemaResponse:
         params_schema=params_schema,
         defaults=defaults,
         description=meta.get("description", ""),
+        available=av.available,
+        disabled_reason=av.disabled_reason,
     )

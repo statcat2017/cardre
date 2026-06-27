@@ -39,4 +39,6 @@ export interface SafeSchema {
   params_schema: Record<string, unknown>;
   defaults: Record<string, unknown>;
   description: string;
+  available?: boolean;
+  disabled_reason?: string | null;
 }

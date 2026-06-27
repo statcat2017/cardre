@@ -12,7 +12,7 @@ from typing import Literal
 
 from cardre.audit import utc_now_iso
 from cardre.config import CardreConfig
-from cardre.errors import CardreError, GovernanceNotEnabled
+from cardre.errors import CardreError, GovernanceNotEnabled, PlanContainsUnavailableNodesError
 from cardre.executor import PlanExecutor
 from cardre.registry import NodeRegistry
 from cardre.services.evidence_policy import EvidencePolicyService
@@ -76,6 +76,12 @@ class RunService:
                 "Branch execution requires CARDRE_GOVERNANCE=1. "
                 "Set the environment variable to enable challenger governance."
             )
+
+        # Pre-execution availability gate
+        executor = PlanExecutor(NodeRegistry.with_defaults())
+        issues = executor.validate_plan_executability(self._store, plan_version_id)
+        if issues:
+            raise PlanContainsUnavailableNodesError(issues=issues)
 
         # Preflight short-circuit checks (sync runs fall through to
         # _execute_sync which records the RUN_SHORT_CIRCUITED diagnostic)

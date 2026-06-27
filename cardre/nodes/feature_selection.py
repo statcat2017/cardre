@@ -674,6 +674,7 @@ class SmoteTrainingDataNode(NodeType):
     category = "transform"
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["train"]
+    optional_dependencies: list[str] = ["imbalance"]
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []

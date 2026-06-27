@@ -1742,8 +1742,21 @@
           "node-types"
         ],
         "summary": "List Node Types",
-        "description": "List all registered node types with method metadata.",
         "operationId": "list_node_types_node_types_get",
+        "parameters": [
+          {
+            "name": "available_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Exclude unavailable nodes",
+              "default": false,
+              "title": "Available Only"
+            },
+            "description": "Exclude unavailable nodes"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1751,6 +1764,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NodeTypeListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -4740,6 +4763,29 @@
             "title": "Tier",
             "default": "available"
           },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": true
+          },
+          "disabled_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled Reason"
+          },
+          "missing_optional_dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Optional Dependencies"
+          },
           "description": {
             "type": "string",
             "title": "Description",
@@ -4872,6 +4918,22 @@
             "type": "string",
             "title": "Description",
             "default": ""
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": true
+          },
+          "disabled_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled Reason"
           }
         },
         "type": "object",

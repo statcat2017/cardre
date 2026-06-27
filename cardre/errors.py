@@ -104,6 +104,37 @@ class NodeNotAvailableForLaunch(CardreError):
     status_code = 400
 
 
+class OptionalDependencyNotInstalled(CardreError):
+    """Raised when a node's optional dependency group is not installed."""
+    code = "OPTIONAL_DEPENDENCY_NOT_INSTALLED"
+    status_code = 400
+
+    def __init__(self, node_type: str, missing_groups: list[str]) -> None:
+        self.node_type = node_type
+        self.missing_groups = list(missing_groups)
+        hint = f"pip install -e '.[{','.join(missing_groups)}]'"
+        message = (
+            f"Node {node_type!r} requires optional dependency group(s) "
+            f"{missing_groups} which are not installed. Install with: {hint}"
+        )
+        super().__init__(message, context={"node_type": node_type, "missing_groups": list(missing_groups)})
+
+
+class PlanContainsUnavailableNodesError(CardreError):
+    """Raised before a run starts when a plan contains unavailable nodes."""
+    code = "PLAN_CONTAINS_UNAVAILABLE_NODES"
+    status_code = 400
+
+    def __init__(self, issues: list[dict]) -> None:
+        self.issues = issues
+        step_ids = ", ".join(i["step_id"] for i in issues)
+        message = (
+            f"Plan contains {len(issues)} unavailable node(s): {step_ids}. "
+            "See context for details."
+        )
+        super().__init__(message, context={"issues": issues})
+
+
 class GovernanceNotEnabled(CardreError):
     """Raised when a governance-gated feature is accessed without CARDRE_GOVERNANCE=1."""
     code = "GOVERNANCE_NOT_ENABLED"
@@ -229,6 +260,8 @@ __all__ = [
     "NodeExecutionError",
     "ContractViolationError",
     "NodeNotAvailableForLaunch",
+    "OptionalDependencyNotInstalled",
+    "PlanContainsUnavailableNodesError",
     "GovernanceNotEnabled",
     "ConcurrentRunError",
     "SchemaVersionError",

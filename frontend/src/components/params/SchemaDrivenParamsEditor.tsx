@@ -69,6 +69,8 @@ function normalizeSchema(raw: Record<string, unknown>): SafeSchema {
     params_schema: (raw.params_schema as Record<string, unknown>) ?? {},
     defaults: (raw.defaults as Record<string, unknown>) ?? {},
     description: String(raw.description ?? ""),
+    available: raw.available !== false,
+    disabled_reason: (raw.disabled_reason as string | null | undefined) ?? null,
   };
 }
 
@@ -335,6 +337,27 @@ export function SchemaDrivenParamsEditor({
         basePlanVersionId={basePlanVersionId}
         onSaved={onSaved}
       />
+    );
+  }
+
+  if (schema && schema.available === false) {
+    return (
+      <div style={{ borderTop: `1px solid ${theme.border}`, marginTop: 12, paddingTop: 12 }}>
+        <div
+          style={{
+            fontSize: 11,
+            color: theme.muted,
+            lineHeight: 1.5,
+            padding: "8px 10px",
+            borderRadius: 4,
+            backgroundColor: theme.surface,
+            border: `1px solid ${theme.border}`,
+          }}
+        >
+          <strong style={{ color: theme.textSoft }}>Not configurable.</strong>{" "}
+          {schema.disabled_reason ?? "This node is not available."}
+        </div>
+      </div>
     );
   }
 
