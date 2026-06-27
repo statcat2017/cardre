@@ -605,7 +605,7 @@ class SchemaVersionGuardTests(unittest.TestCase):
             "SELECT value FROM store_meta WHERE key = 'schema_version'"
         ).fetchone()
         self.assertIsNotNone(row)
-        self.assertEqual(int(row["value"]), 4)
+        self.assertEqual(int(row["value"]), 5)
 
     def test_schema_version_accepts_compatible(self) -> None:
         store, tmp = make_store()

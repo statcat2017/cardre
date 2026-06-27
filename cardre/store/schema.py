@@ -2,7 +2,7 @@
 
 # Current app schema version — bump when making backwards-incompatible changes.
 # Stored in store_meta table; old apps will reject newer stores.
-STORE_SCHEMA_VERSION = 4
+STORE_SCHEMA_VERSION = 5
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -178,6 +178,21 @@ CREATE TABLE IF NOT EXISTS champion_assignments (
 );
 """
 
+LINEAGE_TABLES_SQL = """
+CREATE TABLE IF NOT EXISTS artifact_lineage (
+    lineage_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    run_step_id TEXT NOT NULL,
+    plan_version_id TEXT NOT NULL,
+    step_id TEXT NOT NULL,
+    branch_id TEXT,
+    artifact_id TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(run_step_id, artifact_id, direction)
+);
+"""
+
 MIGRATIONS_SQL = """
 CREATE TABLE IF NOT EXISTS store_meta (
     key TEXT PRIMARY KEY,
@@ -205,4 +220,10 @@ CREATE INDEX IF NOT EXISTS idx_artifacts_type_role
     ON artifacts(artifact_type, role);
 CREATE INDEX IF NOT EXISTS idx_run_steps_run_id
     ON run_steps(run_id);
+CREATE INDEX IF NOT EXISTS idx_lineage_artifact ON artifact_lineage(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_lineage_run_direction ON artifact_lineage(run_id, direction);
+CREATE INDEX IF NOT EXISTS idx_lineage_step_direction ON artifact_lineage(step_id, direction);
+CREATE INDEX IF NOT EXISTS idx_lineage_pv_step ON artifact_lineage(plan_version_id, step_id);
+CREATE INDEX IF NOT EXISTS idx_lineage_run_step ON artifact_lineage(run_step_id, direction);
+CREATE INDEX IF NOT EXISTS idx_lineage_branch_direction ON artifact_lineage(branch_id, direction);
 """

@@ -162,24 +162,53 @@ class RunRepository:
         return [dict(r) for r in rows]
 
     def save_step(self, rs: RunStepRecord) -> None:
-        self._db().execute(
-            "INSERT INTO run_steps "
-            "(run_step_id, run_id, step_id, plan_version_id, status, "
-            " started_at, finished_at, input_artifact_ids_json, "
-            " output_artifact_ids_json, execution_fingerprint_json, "
-            " warnings_json, errors_json, is_carried_forward) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                rs.run_step_id, rs.run_id, rs.step_id, rs.plan_version_id,
-                rs.status, rs.started_at, rs.finished_at,
-                json.dumps(rs.input_artifact_ids),
-                json.dumps(rs.output_artifact_ids),
-                json.dumps(rs.execution_fingerprint),
-                json.dumps(rs.warnings),
-                json.dumps(rs.errors),
-                int(rs.is_carried_forward),
-            ),
-        )
+        now = utc_now_iso()
+        with self._store.transaction() as conn:
+            conn.execute(
+                "INSERT INTO run_steps "
+                "(run_step_id, run_id, step_id, plan_version_id, status, "
+                " started_at, finished_at, input_artifact_ids_json, "
+                " output_artifact_ids_json, execution_fingerprint_json, "
+                " warnings_json, errors_json, is_carried_forward) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    rs.run_step_id, rs.run_id, rs.step_id, rs.plan_version_id,
+                    rs.status, rs.started_at, rs.finished_at,
+                    json.dumps(rs.input_artifact_ids),
+                    json.dumps(rs.output_artifact_ids),
+                    json.dumps(rs.execution_fingerprint),
+                    json.dumps(rs.warnings),
+                    json.dumps(rs.errors),
+                    int(rs.is_carried_forward),
+                ),
+            )
+            # Look up branch_id for lineage
+            branch_row = conn.execute(
+                "SELECT branch_id FROM runs WHERE run_id = ?", (rs.run_id,)
+            ).fetchone()
+            branch_id = branch_row["branch_id"] if branch_row else None
+
+            # Insert lineage rows for input artifacts
+            for aid in rs.input_artifact_ids:
+                conn.execute(
+                    "INSERT OR IGNORE INTO artifact_lineage "
+                    "(lineage_id, run_id, run_step_id, plan_version_id, step_id, "
+                    " branch_id, artifact_id, direction, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (str(uuid.uuid4()), rs.run_id, rs.run_step_id,
+                     rs.plan_version_id, rs.step_id, branch_id, aid, "input", now),
+                )
+
+            # Insert lineage rows for output artifacts
+            for aid in rs.output_artifact_ids:
+                conn.execute(
+                    "INSERT OR IGNORE INTO artifact_lineage "
+                    "(lineage_id, run_id, run_step_id, plan_version_id, step_id, "
+                    " branch_id, artifact_id, direction, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (str(uuid.uuid4()), rs.run_id, rs.run_step_id,
+                     rs.plan_version_id, rs.step_id, branch_id, aid, "output", now),
+                )
 
     def get_steps(self, run_id: str) -> list[RunStepRecord]:
         rows = self._db().execute(
@@ -199,18 +228,16 @@ class RunRepository:
 
     def get_artifact_ids_for_run(self, run_id: str) -> set[str]:
         rows = self._db().execute(
-            "SELECT DISTINCT json_each.value AS artifact_id "
-            "FROM run_steps, json_each(run_steps.output_artifact_ids_json) "
-            "WHERE run_steps.run_id = ?",
+            "SELECT DISTINCT artifact_id FROM artifact_lineage "
+            "WHERE run_id = ? AND direction = 'output'",
             (run_id,),
         ).fetchall()
         return {r["artifact_id"] for r in rows}
 
     def get_artifact_ids_for_producing_step(self, step_id: str) -> set[str]:
         rows = self._db().execute(
-            "SELECT DISTINCT json_each.value AS artifact_id "
-            "FROM run_steps, json_each(run_steps.output_artifact_ids_json) "
-            "WHERE run_steps.step_id = ?",
+            "SELECT DISTINCT artifact_id FROM artifact_lineage "
+            "WHERE step_id = ? AND direction = 'output'",
             (step_id,),
         ).fetchall()
         return {r["artifact_id"] for r in rows}

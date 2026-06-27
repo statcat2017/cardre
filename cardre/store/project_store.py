@@ -32,6 +32,7 @@ from cardre.audit import (
 from cardre.store.schema import (
     BRANCH_TABLES_SQL,
     INDEXES_SQL,
+    LINEAGE_TABLES_SQL,
     MIGRATIONS_SQL,
     SCHEMA_SQL,
     STORE_SCHEMA_VERSION,
@@ -82,6 +83,49 @@ class ProjectStore:
         """
         conn = self._connect()
         conn.executescript(BRANCH_TABLES_SQL)
+        conn.executescript(LINEAGE_TABLES_SQL)
+
+        # Add branch_id to runs table if missing (must happen before backfill
+        # which references r.branch_id)
+        run_cols = {r["name"] for r in conn.execute("PRAGMA table_info(runs)").fetchall()}
+        if "branch_id" not in run_cols:
+            conn.execute("ALTER TABLE runs ADD COLUMN branch_id TEXT")
+
+        # Backfill artifact_lineage from existing run_steps JSON arrays
+        # Ensure store_meta exists (may not in legacy stores)
+        conn.executescript(MIGRATIONS_SQL)
+        row = conn.execute(
+            "SELECT value FROM store_meta WHERE key = 'lineage_backfilled'"
+        ).fetchone()
+        if row is None:
+            with self.transaction() as txn:
+                txn.execute("""
+                    INSERT OR IGNORE INTO artifact_lineage
+                        (lineage_id, run_id, run_step_id, plan_version_id, step_id,
+                         branch_id, artifact_id, direction, created_at)
+                    SELECT
+                        hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(6)),
+                        rs.run_id, rs.run_step_id, rs.plan_version_id, rs.step_id,
+                        r.branch_id, je.value, 'output', rs.started_at
+                    FROM run_steps rs
+                    JOIN runs r ON rs.run_id = r.run_id
+                    JOIN json_each(rs.output_artifact_ids_json) je
+                """)
+                txn.execute("""
+                    INSERT OR IGNORE INTO artifact_lineage
+                        (lineage_id, run_id, run_step_id, plan_version_id, step_id,
+                         branch_id, artifact_id, direction, created_at)
+                    SELECT
+                        hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(6)),
+                        rs.run_id, rs.run_step_id, rs.plan_version_id, rs.step_id,
+                        r.branch_id, je.value, 'input', rs.started_at
+                    FROM run_steps rs
+                    JOIN runs r ON rs.run_id = r.run_id
+                    JOIN json_each(rs.input_artifact_ids_json) je
+                """)
+                txn.execute(
+                    "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('lineage_backfilled', '1')"
+                )
 
         # Add new columns to plan_steps if missing
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(plan_steps)").fetchall()}
@@ -89,11 +133,6 @@ class ProjectStore:
             conn.execute("ALTER TABLE plan_steps ADD COLUMN canonical_step_id TEXT NOT NULL DEFAULT ''")
         if "branch_id" not in cols:
             conn.execute("ALTER TABLE plan_steps ADD COLUMN branch_id TEXT")
-
-        # Add branch_id to runs table if missing
-        run_cols = {r["name"] for r in conn.execute("PRAGMA table_info(runs)").fetchall()}
-        if "branch_id" not in run_cols:
-            conn.execute("ALTER TABLE runs ADD COLUMN branch_id TEXT")
 
         # Add is_carried_forward to run_steps table if missing
         run_step_cols = {r["name"] for r in conn.execute("PRAGMA table_info(run_steps)").fetchall()}
@@ -302,8 +341,26 @@ class ProjectStore:
     def list_artifacts(self) -> list[ArtifactRef]:
         return self.artifacts.list()
 
-    def list_artifacts_for_project(self, project_id: str) -> list[ArtifactRef]:
-        return self.artifacts.list_for_project(project_id)
+    def list_artifacts_for_project(
+        self,
+        project_id: str,
+        *,
+        role: str | None = None,
+        artifact_type: str | None = None,
+        producing_step_id: str | None = None,
+        run_id: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[ArtifactRef]:
+        return self.artifacts.list_for_project(
+            project_id,
+            role=role,
+            artifact_type=artifact_type,
+            producing_step_id=producing_step_id,
+            run_id=run_id,
+            limit=limit,
+            offset=offset,
+        )
 
     def get_plans_for_project(self, project_id: str) -> list[dict]:
         return self.plans.list_for_project(project_id)
