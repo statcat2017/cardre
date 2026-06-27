@@ -16,6 +16,7 @@ _legacy/
 .opencode/git-credentials
 .opencode/github-token
 frontend/src-tauri/target/
+frontend/src-tauri/binaries/
 
 node_modules/
 package.json

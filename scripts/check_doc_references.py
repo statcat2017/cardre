@@ -49,6 +49,9 @@ KNOWN_EXCEPTIONS: set[str] = {
     # Pre-existing stale refs in current docs (will be fixed by this PR)
     "cardre/_evidence/reader.py::_to_typed",
     "frontend/src-tauri/binaries/cardre-api-{target-triple}",
+    # Sidecar binary paths — these are naming-pattern references, not real files
+    "frontend/src-tauri/binaries/",
+    "frontend/src-tauri/binaries/cardre-api-{triple}{.exe?}",
 }
 
 # Directories whose contents are expected to have stale references

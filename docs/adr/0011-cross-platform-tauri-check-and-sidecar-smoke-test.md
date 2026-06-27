@@ -103,3 +103,13 @@ The Windows matrix leg will be re-added in a follow-up PR that either:
 
 Until then, `check-tauri` runs on `ubuntu-latest` only, and the required
 status check list in ADR 0009 reflects this.
+
+## Amendment: Sidecar Resolution Fixed
+
+The "No end-to-end sidecar launch" gap noted in Context is partially closed by
+ADR 0012: `main.rs` now resolves the bundled resource path explicitly
+(`binaries/cardre-api-{triple}{.exe?}`), and `smoke-test-packaged-sidecar`
+asserts the naming/resolution contract against a real downloaded sidecar
+artifact. A full Tauri `tauri build --no-bundle` headless smoke test is still
+deferred (flaky on shared runners); the contract test + `cargo check` with the
+artifact present is the current proof.
