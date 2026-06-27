@@ -2,14 +2,29 @@ import React from "react";
 import type { ManualBinningVariableSummary } from "../types";
 import { theme, tableHeaderStyle, tableDataStyle } from "../styles";
 
+interface BinData {
+  bin_id?: string;
+  label?: string;
+  min?: number | null;
+  max?: number | null;
+  count?: number;
+  good_count?: number;
+  bad_count?: number;
+  bad_rate?: number;
+  woe?: number;
+  iv_contrib?: number;
+  is_missing?: boolean;
+  is_special?: boolean;
+}
+
 interface Props {
   variable: string | null;
-  sourceBins: Record<string, any> | null;
+  sourceBins: Record<string, unknown> | null;
   summary: ManualBinningVariableSummary | null | undefined;
   onEdit?: (variable: string) => void;
 }
 
-export function ManualBinningBinTable({ variable, sourceBins, summary, onEdit }: Props) {
+export function ManualBinningBinTable({ variable, sourceBins, summary: _summary, onEdit }: Props) {
   if (!variable || !sourceBins) {
     return (
       <div style={{ padding: 16, fontSize: 11, color: theme.muted, textAlign: "center" }}>
@@ -18,7 +33,7 @@ export function ManualBinningBinTable({ variable, sourceBins, summary, onEdit }:
     );
   }
 
-  const bins = sourceBins.bins ?? [];
+  const bins = (sourceBins.bins as BinData[] | undefined) ?? [];
   if (bins.length === 0) {
     return (
       <div style={{ padding: 16, fontSize: 11, color: theme.muted }}>No bin data available for <strong>{variable}</strong>.</div>
@@ -58,7 +73,7 @@ export function ManualBinningBinTable({ variable, sourceBins, summary, onEdit }:
             </tr>
           </thead>
           <tbody>
-            {bins.map((b: Record<string, any>, i: number) => {
+            {bins.map((b: BinData, i: number) => {
               const range = b.min != null || b.max != null
                 ? `${b.min ?? "—"} – ${b.max ?? "—"}`
                 : b.label || b.bin_id || "—";

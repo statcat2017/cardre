@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { api, formatApiError, getReportServeUrl } from "../api/client";
 import { useReportReadiness } from "../hooks/useReportReadiness";
 import { BranchSelector } from "./BranchSelector";
@@ -37,7 +37,6 @@ const MODE_LABELS: Record<ReportMode, string> = {
 };
 
 export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepSelect }: Props) {
-  const queryClient = useQueryClient();
   const [reportMode, setReportMode] = useState<ReportMode>("branch");
   const [newReports, setNewReports] = useState<GeneratedReport[]>([]);
   const [lastReport, setLastReport] = useState<GenerateReportResponse | null>(null);
@@ -141,7 +140,7 @@ export function ExportPanel({ projectId, targetBranchId, onBranchSelect, onStepS
         ...prev,
       ]);
     },
-    onError: (e: any) => {
+    onError: (e: unknown) => {
       setGenerateErrorMsg(formatApiError(e));
     },
   });

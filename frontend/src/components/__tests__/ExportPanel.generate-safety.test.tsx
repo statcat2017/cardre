@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -77,7 +77,6 @@ describe("ExportPanel generate safety", () => {
   });
 
   it("disables generate and shows Checking during branch-switch refetch (no stale state leak)", async () => {
-    let readinessCallCount = 0;
 
     server.use(
       http.get(`${BASE}/projects/:projectId/branches`, () =>
@@ -87,7 +86,6 @@ describe("ExportPanel generate safety", () => {
         HttpResponse.json({ runs: [run] })
       ),
       http.post(`${BASE}/projects/:projectId/runs/:runId/report-readiness`, async ({ request }) => {
-        readinessCallCount++;
         const url = new URL(request.url);
         const targetBranch = url.pathname.includes("br_default") ? "br_default" : "br_challenger";
         return HttpResponse.json({

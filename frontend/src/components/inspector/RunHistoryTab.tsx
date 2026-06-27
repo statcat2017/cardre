@@ -10,7 +10,7 @@ interface Props {
   tab: string;
 }
 
-export function RunHistoryTab({ stepId, projectId, runId, tab }: Props) {
+export function RunHistoryTab({ stepId, projectId: _projectId, runId, tab }: Props) {
   const { data: runStepsData, isLoading } = useQuery({
     queryKey: ["runSteps", runId],
     queryFn: () => api.getRunSteps(runId!),

@@ -249,8 +249,9 @@ export function useRunProgress(
       };
 
       scheduleNextPoll();
-    } catch (e: any) {
-      const msg = isApiError(e) ? formatApiError(e) : e.message;
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Polling failed";
+      const msg = isApiError(e) ? formatApiError(e) : message;
       setError(msg);
       addDiagnostic(`Run failed: ${msg}`);
       setRunning(false);

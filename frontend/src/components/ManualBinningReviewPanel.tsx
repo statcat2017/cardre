@@ -32,7 +32,7 @@ export function ManualBinningReviewPanel({ variable, state }: Props) {
     [variable, state.variable_summaries],
   );
 
-  const sourceBins = variable ? (state.source_bins_by_variable as Record<string, any>)?.[variable] : null;
+  const sourceBins = variable ? ((state.source_bins_by_variable as Record<string, unknown>)?.[variable] as { bins?: { bad_rate?: number; woe?: number }[] } | undefined) ?? null : null;
 
   if (!variable) {
     return (
@@ -55,8 +55,8 @@ export function ManualBinningReviewPanel({ variable, state }: Props) {
 
   // Evidence summary
   const binsList = sourceBins?.bins ?? [];
-  const badRates = binsList.map((b: any) => b.bad_rate).filter((r: number) => r != null);
-  const woes = binsList.map((b: any) => b.woe).filter((w: number) => w != null);
+  const badRates = binsList.map((b) => b.bad_rate).filter((r) => r != null);
+  const woes = binsList.map((b) => b.woe).filter((w) => w != null);
   const minBadRate = badRates.length ? Math.min(...badRates).toFixed(3) : "—";
   const maxBadRate = badRates.length ? Math.max(...badRates).toFixed(3) : "—";
   const minWoe = woes.length ? Math.min(...woes).toFixed(3) : "—";

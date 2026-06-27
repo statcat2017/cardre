@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { renderHook, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { api, ApiError } from "../../api/client";
 import { useRunProgress } from "../useRunProgress";
 import type { ReactNode } from "react";
+import type { RunResponse, RunStepsResponse } from "../../types";
 
 const PROJECT_ID = "prj_test";
 const RUN_ID = "run_abc123";
@@ -57,9 +58,9 @@ function makeSteps(statuses: string[]) {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.spyOn(api, "health").mockResolvedValue({ status: "ok", cardre_version: "0.1.0", registry_accessible: false, registered_node_count: 0, launch_node_count: 0, deferred_node_count: 0, governance_enabled: false, checked_at: "", diagnostics: [] });
-  vi.spyOn(api, "runPlan").mockResolvedValue(makeRun("running") as any);
-  vi.spyOn(api, "getProjectRun").mockResolvedValue(makeRun("running") as any);
-  vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(makeSteps(["running", "running", "running"]) as any);
+  vi.spyOn(api, "runPlan").mockResolvedValue(makeRun("running") as unknown as RunResponse);
+  vi.spyOn(api, "getProjectRun").mockResolvedValue(makeRun("running") as unknown as RunResponse);
+  vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(makeSteps(["running", "running", "running"]) as unknown as RunStepsResponse);
 });
 
 afterEach(() => {
@@ -108,8 +109,8 @@ describe("useRunProgress", () => {
     // First poll returns running, second returns succeeded
     vi.spyOn(api, "getProjectRun").mockReset();
     vi.spyOn(api, "getProjectRun")
-      .mockResolvedValueOnce(makeRun("running") as any)
-      .mockResolvedValue(makeRun("succeeded") as any);
+      .mockResolvedValueOnce(makeRun("running") as unknown as RunResponse)
+      .mockResolvedValue(makeRun("succeeded") as unknown as RunResponse);
 
     await act(async () => {
       result.current.startRun("pv1");
@@ -138,9 +139,9 @@ describe("useRunProgress", () => {
 
     vi.spyOn(api, "getProjectRun").mockReset();
     vi.spyOn(api, "getProjectRun")
-      .mockResolvedValueOnce(makeRun("running") as any)
+      .mockResolvedValueOnce(makeRun("running") as unknown as RunResponse)
       .mockResolvedValue(
-        makeRun("failed", { latest_error: { code: "ERR_001", message: "Step failed" } }) as any,
+        makeRun("failed", { latest_error: { code: "ERR_001", message: "Step failed" } }) as unknown as RunResponse,
       );
 
     await act(async () => {
@@ -200,9 +201,9 @@ describe("useRunProgress", () => {
 
     // Always return running with same steps
     vi.spyOn(api, "getProjectRun").mockReset();
-    vi.spyOn(api, "getProjectRun").mockResolvedValue(makeRun("running") as any);
+    vi.spyOn(api, "getProjectRun").mockResolvedValue(makeRun("running") as unknown as RunResponse);
     vi.spyOn(api, "getProjectRunSteps").mockReset();
-    vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(makeSteps(["running", "running", "running"]) as any);
+    vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(makeSteps(["running", "running", "running"]) as unknown as RunStepsResponse);
 
     await act(async () => {
       result.current.startRun("pv1");

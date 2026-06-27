@@ -58,17 +58,6 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
   const [reasonText, setReasonText] = useState("");
   const [newLabel, setNewLabel] = useState("");
 
-  // Reset preview state whenever form inputs change
-  const resetPreview = useCallback(() => {
-    previewMutation.reset();
-  }, []);
-
-  const handleActionChange = (v: string) => { setAction(v); resetPreview(); };
-  const handleBinIdsChange = (v: string) => { setSourceBinIds(v); resetPreview(); };
-  const handleReasonCodeChange = (v: string) => { setReasonCode(v); resetPreview(); };
-  const handleReasonTextChange = (v: string) => { setReasonText(v); resetPreview(); };
-  const handleLabelChange = (v: string) => { setNewLabel(v); resetPreview(); };
-
   const previewMutation = useMutation({
     mutationFn: (proposedOverride: Record<string, unknown>) =>
       api.previewManualBinning(planId, {
@@ -80,6 +69,17 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
         ],
       }, stepId),
   });
+
+  // Reset preview state whenever form inputs change
+  const resetPreview = useCallback(() => {
+    previewMutation.reset();
+  }, [previewMutation]);
+
+  const handleActionChange = (v: string) => { setAction(v); resetPreview(); };
+  const handleBinIdsChange = (v: string) => { setSourceBinIds(v); resetPreview(); };
+  const handleReasonCodeChange = (v: string) => { setReasonCode(v); resetPreview(); };
+  const handleReasonTextChange = (v: string) => { setReasonText(v); resetPreview(); };
+  const handleLabelChange = (v: string) => { setNewLabel(v); resetPreview(); };
 
   const saveMutation = useMutation({
     mutationFn: (proposedOverride: Record<string, unknown>) =>
@@ -257,7 +257,7 @@ export function ManualBinningEditDialog({ variable, state, planId, basePlanVersi
 
         {previewMutation.data && previewMutation.data.valid && (
           <div style={{ marginBottom: 12, padding: 8, backgroundColor: theme.greenBg, borderRadius: 4, fontSize: 10, color: theme.greenText }}>
-            Preview: {((previewMutation.data.refined_bins_by_variable || {}) as Record<string, any>)[variable]?.bins?.length ?? "?"} bins after edit — preview valid.
+            Preview: {((previewMutation.data.refined_bins_by_variable || {}) as Record<string, { bins?: unknown[] }>)[variable]?.bins?.length ?? "?"} bins after edit — preview valid.
           </div>
         )}
 

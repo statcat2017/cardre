@@ -13,7 +13,7 @@ import {
 
 const BASE = "http://127.0.0.1:8752";
 
-function renderCard(mbState: any = null) {
+function renderCard(mbState: Record<string, unknown> | null = null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const handler = mbState
     ? http.get(`${BASE}/plans/:planId/steps/:stepId/editor-state`, () => HttpResponse.json(mbState))

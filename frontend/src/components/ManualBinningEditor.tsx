@@ -94,7 +94,7 @@ export function ManualBinningEditor({
           variable={firstVar}
           sourceBins={
             firstVar
-              ? (es.source_bins_by_variable as Record<string, any>)?.[firstVar] ?? null
+              ? ((es.source_bins_by_variable as Record<string, unknown>)?.[firstVar] as Record<string, unknown> | undefined) ?? null
               : null
           }
           summary={firstVar ? es.variable_summaries?.find((v) => v.variable === firstVar) : null}

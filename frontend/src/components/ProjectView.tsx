@@ -17,7 +17,7 @@ import { useProjectPlanState } from "../hooks/useProjectPlanState";
 import { useSelectedBranch } from "../hooks/useSelectedBranch";
 import { useJourneyActions } from "../hooks/useJourneyActions";
 import { useDiagnosticsPanel } from "../hooks/useDiagnosticsPanel";
-import type { StepStatus, WorkflowGuidance } from "../types";
+import type { StepStatus } from "../types";
 import { theme } from "../styles";
 
 interface Props {
@@ -25,7 +25,7 @@ interface Props {
   onBack: () => void;
 }
 
-export function ProjectView({ projectId, onBack }: Props) {
+export function ProjectView({ projectId, onBack: _onBack }: Props) {
   const queryClient = useQueryClient();
   const [activeSection, setActiveSection] = useState("pathway");
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
@@ -65,13 +65,13 @@ export function ProjectView({ projectId, onBack }: Props) {
   );
 
   const handlePlanRefreshed = useCallback(
-    (detailOrResp: any) => {
+    (detailOrResp: Record<string, unknown>) => {
       refetchPlan();
       queryClient.invalidateQueries({ queryKey: ["workflowGuidance"] });
       if ("latest_version_id" in detailOrResp && detailOrResp.latest_version_id) {
         addDiagnostic(`Plan refreshed to version ${(detailOrResp.latest_version_id as string).slice(0, 8)}…`);
       } else if ("new_plan_version_id" in detailOrResp) {
-        addDiagnostic(`New plan version created: ${detailOrResp.new_plan_version_id.slice(0, 8)}…`);
+        addDiagnostic(`New plan version created: ${(detailOrResp.new_plan_version_id as string).slice(0, 8)}…`);
       }
     },
     [refetchPlan, addDiagnostic, queryClient],

@@ -1,4 +1,4 @@
-import type { WorkflowGuidance, ProjectDetailResponse, PlanResponse, BranchListResponse } from "../types";
+import type { WorkflowGuidance, ProjectDetailResponse, BranchListResponse } from "../types";
 
 export const mockProject: ProjectDetailResponse = {
   project_id: "prj1",

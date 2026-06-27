@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { StepStatus, UpdateStepParamsResponse, WorkflowGuidance } from "../types";
@@ -32,15 +32,56 @@ interface Props {
   runId?: string | null;
 }
 
+interface InnerProps {
+  step: StepStatus;
+  planId: string | null;
+  projectId: string | null;
+  basePlanVersionId: string | null;
+  currentParams: Record<string, unknown>;
+  onPlanRefreshed: (detailOrResp: UpdateStepParamsResponse | { latest_version_id?: string }) => void;
+  onEditManualBinning: (stepId: string) => void;
+  guidance?: WorkflowGuidance | null;
+  runId: string | null;
+}
+
 export function StepInspector({
   step, planId, projectId, basePlanVersionId, currentParams,
   onPlanRefreshed, onEditManualBinning, guidance, runId = null,
 }: Props) {
-  const [tab, setTab] = useState<InspectorTab>("next_action");
+  if (!step) {
+    return (
+      <div
+        style={{
+          width: 320, borderLeft: `1px solid ${theme.border}`, backgroundColor: theme.canvasSoft,
+          padding: 20, flexShrink: 0, overflowY: "auto",
+        }}
+      >
+        <div style={{ color: theme.muted, fontSize: 13 }}>Select a step to inspect</div>
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    setTab("next_action");
-  }, [step?.step_id]);
+  return (
+    <StepInspectorInner
+      key={step.step_id}
+      step={step}
+      planId={planId}
+      projectId={projectId}
+      basePlanVersionId={basePlanVersionId}
+      currentParams={currentParams}
+      onPlanRefreshed={onPlanRefreshed}
+      onEditManualBinning={onEditManualBinning}
+      guidance={guidance}
+      runId={runId}
+    />
+  );
+}
+
+function StepInspectorInner({
+  step, planId, projectId, basePlanVersionId, currentParams,
+  onPlanRefreshed, onEditManualBinning, guidance, runId,
+}: InnerProps) {
+  const [tab, setTab] = useState<InspectorTab>("next_action");
 
   const meta = step ? getStepDisplayMetadata(step.step_id) : null;
   const label = meta?.label ?? step?.step_id ?? "";
@@ -60,19 +101,6 @@ export function StepInspector({
         : Promise.reject("not manual-binning"),
     enabled: !!step && isManualBinning && !!planId && !!projectId,
   });
-
-  if (!step) {
-    return (
-      <div
-        style={{
-          width: 320, borderLeft: `1px solid ${theme.border}`, backgroundColor: theme.canvasSoft,
-          padding: 20, flexShrink: 0, overflowY: "auto",
-        }}
-      >
-        <div style={{ color: theme.muted, fontSize: 13 }}>Select a step to inspect</div>
-      </div>
-    );
-  }
 
   return (
     <div

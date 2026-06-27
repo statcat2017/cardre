@@ -78,7 +78,7 @@ export function ReadinessPanel({
           }}
         >
           <strong>Readiness check failed.</strong>{" "}
-          {(readinessError as any)?.message || "Unknown error"}
+          {(readinessError instanceof Error ? readinessError.message : "Unknown error")}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
           <RecheckButton

@@ -1,4 +1,4 @@
-import type { ProjectDetailResponse, PlanResponse, StepStatus, BranchListItem, RunListItem, ReportReadinessResponse, GenerateReportResponse, WorkflowGuidance } from "../../types";
+import type { ProjectDetailResponse, PlanResponse, BranchListItem, RunListItem, ReportReadinessResponse, GenerateReportResponse, WorkflowGuidance } from "../../types";
 
 export const PROJECT_ID = "prj1";
 export const PLAN_ID = "plan1";

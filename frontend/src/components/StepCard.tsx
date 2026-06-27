@@ -1,6 +1,6 @@
 import React from "react";
 import type { StepStatus, WorkflowStepGuidance, WorkflowBlocker } from "../types";
-import { getStepDisplayMetadata, canonicalizeStepId } from "../config/stepDisplayMetadata";
+import { getStepDisplayMetadata } from "../config/stepDisplayMetadata";
 import { StatusBadge } from "./StatusBadge";
 import { theme } from "../styles";
 

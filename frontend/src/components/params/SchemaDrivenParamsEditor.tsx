@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api, isApiError } from "../../api/client";
 import type { UpdateStepParamsResponse } from "../../types";
@@ -98,51 +98,50 @@ export function SchemaDrivenParamsEditor({
   );
 
   const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
-
-  const selectedMethod = useMemo(
-    () => (schema?.methods ?? []).find((m) => m.id === selectedMethodId) ?? null,
-    [schema, selectedMethodId]
-  );
-
-  useEffect(() => {
-    if (schema && !selectedMethodId) {
-      const currentMethod = currentParams.method as string | undefined;
-      if (currentMethod && availableMethods.some((m) => m.id === currentMethod)) {
-        setSelectedMethodId(currentMethod);
-      } else {
-        const first = availableMethods[0] ?? null;
-        setSelectedMethodId(first?.id ?? null);
-      }
-    }
-  }, [schema, availableMethods, selectedMethodId, currentParams.method]);
-
-  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    if (!selectedMethod) return;
+  // Effective method id: user choice, else currentParams.method if valid, else first available.
+  const effectiveMethodId =
+    selectedMethodId
+    ?? (currentParams.method && availableMethods.some((m) => m.id === currentParams.method)
+        ? (currentParams.method as string)
+        : (availableMethods[0]?.id ?? null));
+
+  const selectedMethod = useMemo(
+    () => (schema?.methods ?? []).find((m) => m.id === effectiveMethodId) ?? null,
+    [schema, effectiveMethodId]
+  );
+
+  // Derive base form values from the effective method; merge user edits on top.
+  const baseFormValues = useMemo<Record<string, unknown>>(() => {
+    if (!selectedMethod) return {};
     const merged: Record<string, unknown> = {};
     for (const p of selectedMethod.params) {
-      if (p.default !== undefined) {
-        merged[p.name] = p.default;
-      } else if (p.kind === "boolean") {
-        merged[p.name] = false;
-      } else if (p.kind === "integer" || p.kind === "float") {
-        merged[p.name] = "";
-      } else {
-        merged[p.name] = "";
-      }
+      if (p.default !== undefined) merged[p.name] = p.default;
+      else if (p.kind === "boolean") merged[p.name] = false;
+      else if (p.kind === "integer" || p.kind === "float") merged[p.name] = "";
+      else merged[p.name] = "";
     }
     Object.assign(merged, currentParams);
-    setFormValues(merged);
-    setValidationErrors({});
+    return merged;
   }, [selectedMethod, currentParams]);
+
+  const [userEdits, setUserEdits] = useState<Record<string, unknown>>({});
+  const effectiveFormValues = useMemo(() => ({ ...baseFormValues, ...userEdits }), [baseFormValues, userEdits]);
+
+  // When the effective method changes, clear user edits + validation errors.
+  const prevMethodRef = useRef<string | null>(null);
+  if (prevMethodRef.current !== effectiveMethodId) {
+    prevMethodRef.current = effectiveMethodId;
+    setUserEdits({});
+    setValidationErrors({});
+  }
 
   const validate = useCallback((): Record<string, string> => {
     const errs: Record<string, string> = {};
     if (!selectedMethod) return errs;
     for (const p of selectedMethod.params) {
-      const val = formValues[p.name];
+      const val = effectiveFormValues[p.name];
       if (p.required && (val === undefined || val === null || val === "")) {
         errs[p.name] = `${p.label} is required`;
         continue;
@@ -192,7 +191,7 @@ export function SchemaDrivenParamsEditor({
       }
     }
     return errs;
-  }, [selectedMethod, formValues]);
+  }, [selectedMethod, effectiveFormValues]);
 
   const gatherParams = useCallback((): Record<string, unknown> => {
     if (!selectedMethod) return {};
@@ -200,7 +199,7 @@ export function SchemaDrivenParamsEditor({
     result["method"] = selectedMethod.id;
     for (const p of selectedMethod.params) {
       if (p.name === "method") continue;
-      const val = formValues[p.name];
+      const val = effectiveFormValues[p.name];
       if (val === undefined || val === null || val === "") {
         result[p.name] = val;
         continue;
@@ -241,7 +240,7 @@ export function SchemaDrivenParamsEditor({
       }
     }
     return result;
-  }, [selectedMethod, formValues]);
+  }, [selectedMethod, effectiveFormValues]);
 
   const saveMutation = useMutation({
     mutationFn: (body: { project_id: string; base_plan_version_id: string; params: Record<string, unknown> }) =>
@@ -280,7 +279,7 @@ export function SchemaDrivenParamsEditor({
   };
 
   const handleChange = (name: string, value: unknown) => {
-    setFormValues((prev) => ({ ...prev, [name]: value }));
+    setUserEdits((prev) => ({ ...prev, [name]: value }));
     setValidationErrors((prev) => {
       if (!prev[name]) return prev;
       const next = { ...prev };
@@ -356,7 +355,7 @@ export function SchemaDrivenParamsEditor({
             <ParamField
               key={param.name}
               param={param}
-              value={formValues[param.name]}
+              value={effectiveFormValues[param.name]}
               error={validationErrors[param.name]}
               disabled={saving}
               onChange={(val) => handleChange(param.name, val)}

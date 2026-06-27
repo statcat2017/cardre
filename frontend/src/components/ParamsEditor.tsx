@@ -36,7 +36,7 @@ export function ParamsEditor({
       setText(JSON.stringify(currentParams, null, 2));
       setInfo("Plan refreshed — params have been reloaded. You can try saving again.");
     }
-  }, [basePlanVersionId, currentParams]);
+  }, [basePlanVersionId, currentParams, setInfo]);
 
   const saveMutation = useMutation({
     mutationFn: (body: { project_id: string; base_plan_version_id: string; params: Record<string, unknown> }) =>

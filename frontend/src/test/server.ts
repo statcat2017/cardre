@@ -5,10 +5,10 @@ const BASE = "http://127.0.0.1:8752";
 
 import { buildManualBinningEditorState, buildReviewedEditorState, buildBlockedEditorState } from "./fixtures/manualBinning";
 
-const MB_STATES: Record<string, any> = {
-  default: buildManualBinningEditorState(),
-  reviewed: buildReviewedEditorState(),
-  blocked: buildBlockedEditorState(),
+const MB_STATES: Record<string, Record<string, unknown>> = {
+  default: buildManualBinningEditorState() as Record<string, unknown>,
+  reviewed: buildReviewedEditorState() as Record<string, unknown>,
+  blocked: buildBlockedEditorState() as Record<string, unknown>,
 };
 
 export const server = setupServer(
