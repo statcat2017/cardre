@@ -42,7 +42,7 @@ class XGBoostClassifierNode(BaseClassifierNode):
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
     model_family = "xgboost"
-    optional_dependencies: list[str] = ["boosting"]
+    optional_dependencies: list[str] = ["xgboost"]
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -186,7 +186,7 @@ class LightGBMClassifierNode(BaseClassifierNode):
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
     model_family = "lightgbm"
-    optional_dependencies: list[str] = ["boosting"]
+    optional_dependencies: list[str] = ["lightgbm"]
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -333,7 +333,7 @@ class CatBoostClassifierNode(BaseClassifierNode):
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["model"]
     model_family = "catboost"
-    optional_dependencies: list[str] = ["boosting"]
+    optional_dependencies: list[str] = ["catboost"]
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:

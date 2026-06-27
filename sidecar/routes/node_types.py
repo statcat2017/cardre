@@ -63,7 +63,7 @@ _MODEL_FAMILIES: dict[str, dict] = {
         "interpretability_level": "native_semi_transparent",
         "champion_eligibility": "eligible_with_limitation_evidence",
         "description": "XGBoost classifier. Requires xgboost package.",
-        "optional_dependencies": ["boosting"],
+        "optional_dependencies": ["xgboost"],
     },
     "cardre.lightgbm_classifier": {
         "model_family": "lightgbm",
@@ -71,7 +71,7 @@ _MODEL_FAMILIES: dict[str, dict] = {
         "interpretability_level": "native_semi_transparent",
         "champion_eligibility": "eligible_with_limitation_evidence",
         "description": "LightGBM classifier. Requires lightgbm package.",
-        "optional_dependencies": ["boosting"],
+        "optional_dependencies": ["lightgbm"],
     },
     "cardre.catboost_classifier": {
         "model_family": "catboost",
@@ -79,7 +79,7 @@ _MODEL_FAMILIES: dict[str, dict] = {
         "interpretability_level": "native_semi_transparent",
         "champion_eligibility": "eligible_with_limitation_evidence",
         "description": "CatBoost classifier. Requires catboost package.",
-        "optional_dependencies": ["boosting"],
+        "optional_dependencies": ["catboost"],
     },
     "cardre.model_explainability": {
         "model_family": None,

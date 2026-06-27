@@ -30,7 +30,9 @@ class NodeAvailability:
 
 
 _OPTIONAL_DEP_MODULES: dict[str, tuple[str, ...]] = {
-    "boosting": ("xgboost", "lightgbm", "catboost"),
+    "xgboost": ("xgboost",),
+    "lightgbm": ("lightgbm",),
+    "catboost": ("catboost",),
     "imbalance": ("imblearn",),
     "explain": ("shap", "lime"),
     "deep": ("torch",),

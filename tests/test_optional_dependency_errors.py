@@ -11,20 +11,20 @@ class TestOptionalDependencyNotInstalled:
     def test_has_code_and_missing_groups(self) -> None:
         err = OptionalDependencyNotInstalled(
             node_type="cardre.xgboost_classifier",
-            missing_groups=["boosting"],
+            missing_groups=["xgboost"],
         )
         assert err.code == "OPTIONAL_DEPENDENCY_NOT_INSTALLED"
         assert err.status_code == 400
-        assert "boosting" in err.message
+        assert "xgboost" in err.message
         assert "cardre.xgboost_classifier" in err.message
-        assert err.context["missing_groups"] == ["boosting"]
+        assert err.context["missing_groups"] == ["xgboost"]
 
     def test_install_hint_in_message(self) -> None:
         err = OptionalDependencyNotInstalled(
             node_type="cardre.xgboost_classifier",
-            missing_groups=["boosting", "explain"],
+            missing_groups=["xgboost", "explain"],
         )
-        assert "boosting" in err.message
+        assert "xgboost" in err.message
         assert "explain" in err.message
 
 

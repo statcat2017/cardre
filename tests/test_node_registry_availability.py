@@ -36,12 +36,12 @@ class TestAvailability:
         reg = NodeRegistry.with_defaults()
         from cardre import registry as regmod
         monkeypatch.setattr(regmod, "_probe_optional_dep",
-                            lambda group: group != "boosting")
+                            lambda group: group != "xgboost")
         av = reg.availability("cardre.xgboost_classifier")
         assert av.available is False
-        assert "boosting" in av.missing_optional_dependencies
+        assert "xgboost" in av.missing_optional_dependencies
         assert av.disabled_reason is not None
-        assert "boosting" in av.disabled_reason.lower()
+        assert "xgboost" in av.disabled_reason.lower()
 
     def test_optional_dep_present_marks_available_when_not_deferred(self, monkeypatch) -> None:
         reg = NodeRegistry.with_defaults()

@@ -49,8 +49,8 @@ class TestNodeTypesLaunchMode:
 
     def test_boosting_node_reports_missing_dep(self, client, monkeypatch):
         from cardre import registry as regmod
-        monkeypatch.setattr(regmod, "_probe_optional_dep", lambda g: g != "boosting")
+        monkeypatch.setattr(regmod, "_probe_optional_dep", lambda g: g != "xgboost")
         resp = client.get("/node-types")
         xgb = next(n for n in resp.json()["node_types"]
                    if n["node_type"] == "cardre.xgboost_classifier")
-        assert "boosting" in xgb["missing_optional_dependencies"]
+        assert "xgboost" in xgb["missing_optional_dependencies"]
