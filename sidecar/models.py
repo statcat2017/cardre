@@ -688,6 +688,9 @@ class NodeTypeItem(BaseModel):
     version: str
     category: str
     tier: str = "available"
+    available: bool = True
+    disabled_reason: str | None = None
+    missing_optional_dependencies: list[str] = Field(default_factory=list)
     description: str = ""
     model_family: str | None = None
     feature_strategies: list[str] = Field(default_factory=list)
@@ -744,6 +747,8 @@ class NodeTypeSchemaResponse(BaseModel):
     params_schema: dict[str, Any] = Field(default_factory=dict)
     defaults: dict[str, Any] = Field(default_factory=dict)
     description: str = ""
+    available: bool = True
+    disabled_reason: str | None = None
 
 
 # ---------------------------------------------------------------------------
