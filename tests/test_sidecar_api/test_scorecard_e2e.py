@@ -257,6 +257,21 @@ class TestScorecardPathwayE2E:
         assert split_resp.status_code == 200
         pv_id = split_resp.json()["new_plan_version_id"]
 
+        vs_resp = client.post(f"/plans/{plan_id}/steps/variable-selection/params", json={
+            "project_id": pid, "base_plan_version_id": pv_id,
+            "params": {
+                "min_iv": 0.02, "max_variables": 15,
+                "manual_includes": [
+                    {"variable": "duration_months", "reason": "Known strong predictor"},
+                    {"variable": "credit_amount", "reason": "Known strong predictor"},
+                ],
+                "manual_excludes": [{"variable": "age_years", "reason": "Always exclude for test stability"}],
+                "cluster_representative_rule": "none",
+            },
+        })
+        assert vs_resp.status_code == 200
+        pv_id = vs_resp.json()["new_plan_version_id"]
+
         aw_resp = client.post(f"/plans/{plan_id}/steps/apply-woe/params", json={
             "project_id": pid, "base_plan_version_id": pv_id,
             "params": {"woe_unmatched_policy": "warn"},
