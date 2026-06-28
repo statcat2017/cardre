@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { ProjectView } from "../ProjectView";
+
+const useSelectedBranchMock = vi.hoisted(() =>
+  vi.fn(() => ({
+    selectedBranchId: null,
+    setSelectedBranchId: vi.fn(),
+  })),
+);
 
 vi.mock("../../hooks/useRunProgress", () => ({
   useRunProgress: () => ({
@@ -28,7 +35,12 @@ vi.mock("../../hooks/useWorkflowGuidance", () => ({
 
 vi.mock("../../hooks/useProjectPlanState", () => ({
   useProjectPlanState: () => ({
-    project: { project_id: "prj1", name: "Test Project", path: "/tmp/test", created_at: "2026-01-01" },
+    project: {
+      project_id: "prj1",
+      name: "Test Project",
+      path: "/tmp/test",
+      created_at: "2026-01-01",
+    },
     projectLoading: false,
     scorecardPlan: null,
     planId: null,
@@ -38,10 +50,7 @@ vi.mock("../../hooks/useProjectPlanState", () => ({
 }));
 
 vi.mock("../../hooks/useSelectedBranch", () => ({
-  useSelectedBranch: () => ({
-    selectedBranchId: null,
-    setSelectedBranchId: vi.fn(),
-  }),
+  useSelectedBranch: useSelectedBranchMock,
 }));
 
 vi.mock("../../hooks/useJourneyActions", () => ({
@@ -63,11 +72,12 @@ function renderWithClient(ui: React.ReactElement) {
 
 describe("ProjectView governance", () => {
   beforeEach(() => {
+    useSelectedBranchMock.mockClear();
     vi.restoreAllMocks();
   });
 
-  it("renders health query and governance_enabled flag", async () => {
-    vi.spyOn(api, "health").mockResolvedValue({
+  it("passes governance_enabled=false into branch selection when health says governance is disabled", async () => {
+    const healthSpy = vi.spyOn(api, "health").mockResolvedValue({
       status: "ok",
       cardre_version: "0.1.0",
       registry_accessible: false,
@@ -80,8 +90,12 @@ describe("ProjectView governance", () => {
     });
 
     renderWithClient(<ProjectView projectId="prj1" onBack={vi.fn()} />);
-    // With mocked hooks, the project loads and the pathway section shows
-    // "No scorecard pathway found" (planData is null in mock)
+
+    await waitFor(() => {
+      expect(healthSpy).toHaveBeenCalled();
+      expect(useSelectedBranchMock).toHaveBeenCalledWith("prj1", false);
+    });
+
     expect(screen.getByText(/No scorecard pathway found/)).toBeInTheDocument();
   });
 });

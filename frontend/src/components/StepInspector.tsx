@@ -180,8 +180,8 @@ function StepInspectorInner({
       </div>
 
       <div style={{ padding: 12, flex: 1, overflowY: "auto" }}>
-        {tab === "next_action" && (
-          editorError ? (
+        {tab === "next_action" &&
+          (editorError ? (
             <RecoveryBanner error={editorError} onRetry={() => editorStateQuery.refetch()} />
           ) : (
             <NextActionTab
@@ -197,8 +197,7 @@ function StepInspectorInner({
               }
               loadingManualBinning={editorStateQuery.isLoading}
             />
-          )
-        )}
+          ))}
 
         {tab === "configure" && canEdit && (
           <ConfigureTab

@@ -19,8 +19,7 @@ export function ArtifactSummaryInline({ projectId, artifactId }: Props) {
 
   if (isLoading)
     return <div style={{ padding: 8, fontSize: 12, color: theme.muted }}>Loading summary...</div>;
-  if (isError)
-    return <RecoveryBanner error={error} onRetry={() => refetch()} />;
+  if (isError) return <RecoveryBanner error={error} onRetry={() => refetch()} />;
   if (!data) return null;
 
   const metaRows: [string, string | number | null][] = [

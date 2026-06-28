@@ -24,9 +24,7 @@ describe("RecoveryBanner", () => {
     });
     render(<RecoveryBanner error={err} />);
     expect(screen.getByText("Can't reach the Cardre engine")).toBeInTheDocument();
-    expect(
-      screen.getByText(/The sidecar service is not running/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/The sidecar service is not running/)).toBeInTheDocument();
   });
 
   it("renders ARTIFACT_NOT_FOUND with user_fixable copy", () => {
@@ -69,13 +67,21 @@ describe("RecoveryBanner", () => {
   });
 
   it("shows request_id when available", () => {
-    const err = new ApiError(0, { code: "SIDECAR_UNREACHABLE", message: "Down" }, { requestId: "req_abc123" });
+    const err = new ApiError(
+      0,
+      { code: "SIDECAR_UNREACHABLE", message: "Down" },
+      { requestId: "req_abc123" },
+    );
     render(<RecoveryBanner error={err} />);
     expect(screen.getByText(/req_abc/)).toBeInTheDocument();
   });
 
   it("shows error_id when available", () => {
-    const err = new ApiError(500, { code: "RUN_EXECUTION_FAILED", message: "Failed", error_id: "err_xyz" });
+    const err = new ApiError(500, {
+      code: "RUN_EXECUTION_FAILED",
+      message: "Failed",
+      error_id: "err_xyz",
+    });
     render(<RecoveryBanner error={err} />);
     expect(screen.getByText(/err_xyz/)).toBeInTheDocument();
   });

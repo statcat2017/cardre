@@ -12,7 +12,13 @@ interface Props {
 }
 
 export function RunHistoryTab({ stepId, projectId, runId, tab }: Props) {
-  const { data: runStepsData, isLoading, isError, error, refetch } = useQuery({
+  const {
+    data: runStepsData,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["runSteps", projectId, runId],
     queryFn: () => api.getProjectRunSteps(projectId, runId!),
     enabled: !!runId && tab === "history",

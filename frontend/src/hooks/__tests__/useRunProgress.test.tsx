@@ -361,19 +361,47 @@ describe("useRunProgress", () => {
     const stepsWithErrors = {
       run_id: RUN_ID,
       steps: [
-        { run_step_id: "rs_0", step_id: "step_a", node_type: "test", status: "failed", started_at: "", input_artifact_ids: [], output_artifact_ids: [], warnings: [], is_carried_forward: false, errors: [{ code: "ERR_A", message: "Step A failed", traceback: "traceA" }] },
-        { run_step_id: "rs_1", step_id: "step_b", node_type: "test", status: "failed", started_at: "", input_artifact_ids: [], output_artifact_ids: [], warnings: [], is_carried_forward: false, errors: [{ code: "ERR_B", message: "Step B failed", traceback: "traceB" }] },
+        {
+          run_step_id: "rs_0",
+          step_id: "step_a",
+          node_type: "test",
+          status: "failed",
+          started_at: "",
+          input_artifact_ids: [],
+          output_artifact_ids: [],
+          warnings: [],
+          is_carried_forward: false,
+          errors: [{ code: "ERR_A", message: "Step A failed", traceback: "traceA" }],
+        },
+        {
+          run_step_id: "rs_1",
+          step_id: "step_b",
+          node_type: "test",
+          status: "failed",
+          started_at: "",
+          input_artifact_ids: [],
+          output_artifact_ids: [],
+          warnings: [],
+          is_carried_forward: false,
+          errors: [{ code: "ERR_B", message: "Step B failed", traceback: "traceB" }],
+        },
       ],
     };
-    vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(stepsWithErrors as unknown as RunStepsResponse);
+    vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(
+      stepsWithErrors as unknown as RunStepsResponse,
+    );
 
     await act(async () => {
       result.current.startRun("pv1");
       await vi.advanceTimersByTimeAsync(0);
     });
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
 
     expect(result.current.running).toBe(false);
     // Both step errors must appear in lastRunError
@@ -416,7 +444,12 @@ describe("useRunProgress", () => {
         message: "Plan contains 2 unavailable node(s): step_a, step_b.",
         context: {
           issues: [
-            { step_id: "step_a", node_type: "xgboost_classifier", reason: "missing_optional_dependency", missing_groups: ["xgboost"] },
+            {
+              step_id: "step_a",
+              node_type: "xgboost_classifier",
+              reason: "missing_optional_dependency",
+              missing_groups: ["xgboost"],
+            },
             { step_id: "step_b", node_type: "catboost_classifier", reason: "deferred_not_launch" },
           ],
         },

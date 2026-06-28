@@ -25,9 +25,7 @@ describe("RunHistoryTab recovery", () => {
       }),
     );
 
-    renderWithClient(
-      <RunHistoryTab stepId="import" projectId="prj1" runId="run1" tab="history" />,
-    );
+    renderWithClient(<RunHistoryTab stepId="import" projectId="prj1" runId="run1" tab="history" />);
 
     await waitFor(() => {
       expect(screen.getByText("Can't reach the Cardre engine")).toBeInTheDocument();
@@ -40,9 +38,7 @@ describe("RunHistoryTab recovery", () => {
       steps: [],
     });
 
-    renderWithClient(
-      <RunHistoryTab stepId="import" projectId="prj1" runId="run1" tab="history" />,
-    );
+    renderWithClient(<RunHistoryTab stepId="import" projectId="prj1" runId="run1" tab="history" />);
 
     await waitFor(() => {
       expect(
@@ -52,9 +48,7 @@ describe("RunHistoryTab recovery", () => {
   });
 
   it("still shows 'no run' message when runId is null", () => {
-    renderWithClient(
-      <RunHistoryTab stepId="import" projectId="prj1" runId={null} tab="history" />,
-    );
+    renderWithClient(<RunHistoryTab stepId="import" projectId="prj1" runId={null} tab="history" />);
 
     expect(screen.getByText(/No run yet/)).toBeInTheDocument();
   });

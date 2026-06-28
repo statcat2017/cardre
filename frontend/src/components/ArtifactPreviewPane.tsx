@@ -26,7 +26,13 @@ export function ArtifactPreviewPane({
   const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
 
-  const { data: preview, isLoading, isError, error, refetch } = useQuery({
+  const {
+    data: preview,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["artifactPreview", projectId, artifactId, limit, offset],
     queryFn: () => api.getProjectArtifactPreview(projectId, artifactId, limit, offset),
     enabled: showPreview,

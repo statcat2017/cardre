@@ -270,7 +270,12 @@ export function useRunProgress(projectId: string, onRunComplete: () => void): Us
         if (isApiError(e)) {
           const ctx = e.detail.context;
           if (e.code === "PLAN_CONTAINS_UNAVAILABLE_NODES" && ctx?.issues) {
-            const issues = ctx.issues as Array<{ step_id: string; node_type: string; reason: string; missing_groups?: string[] }>;
+            const issues = ctx.issues as Array<{
+              step_id: string;
+              node_type: string;
+              reason: string;
+              missing_groups?: string[];
+            }>;
             for (const issue of issues) {
               let detail = `  Step ${issue.step_id} (${issue.node_type}): ${issue.reason}`;
               if (issue.missing_groups && issue.missing_groups.length > 0) {

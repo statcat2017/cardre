@@ -9,10 +9,7 @@ interface RecoveryBannerProps {
   style?: React.CSSProperties;
 }
 
-const SEVERITY_COLORS: Record<
-  string,
-  { bg: string; text: string; border: string }
-> = {
+const SEVERITY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   fatal: { bg: theme.redBg, text: theme.redText, border: theme.border },
   user_fixable: { bg: theme.yellowBg, text: theme.yellowText, border: theme.border },
   developer_fixable: { bg: theme.blueBg, text: theme.blueText, border: theme.border },

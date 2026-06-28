@@ -113,7 +113,11 @@ describe("classifyError", () => {
   });
 
   it("propagates error_id and request_id from detail", () => {
-    const err = new ApiError(500, { code: "SOME_CODE", message: "msg", error_id: "err_xxx" }, { requestId: "req_yyy" });
+    const err = new ApiError(
+      500,
+      { code: "SOME_CODE", message: "msg", error_id: "err_xxx" },
+      { requestId: "req_yyy" },
+    );
     const result = classifyError(err);
     expect(result.requestId).toBe("req_yyy");
     expect(result.errorId).toBe("err_xxx");

@@ -47,7 +47,8 @@ const CODE_COPY: Record<string, Omit<RecoveryInfo, "requestId" | "errorId" | "di
   REQUEST_TIMEOUT: {
     kind: "retryable",
     title: "The request timed out",
-    message: "The engine took too long to respond. Try again \u2014 if it persists, the operation may be too large.",
+    message:
+      "The engine took too long to respond. Try again \u2014 if it persists, the operation may be too large.",
     action: { label: "Retry", description: "Re-attempt the request" },
     retryable: true,
   },
@@ -72,7 +73,8 @@ const CODE_COPY: Record<string, Omit<RecoveryInfo, "requestId" | "errorId" | "di
   GOVERNANCE_NOT_ENABLED: {
     kind: "developer_fixable",
     title: "Governance mode is off",
-    message: "Challenger branches require CARDRE_GOVERNANCE=1. Restart the sidecar with that environment variable set.",
+    message:
+      "Challenger branches require CARDRE_GOVERNANCE=1. Restart the sidecar with that environment variable set.",
     retryable: false,
   },
   ARTIFACT_NOT_FOUND: {
@@ -85,7 +87,8 @@ const CODE_COPY: Record<string, Omit<RecoveryInfo, "requestId" | "errorId" | "di
   RUN_DISPATCH_FAILED: {
     kind: "retryable",
     title: "Couldn't start the background run",
-    message: "The engine failed to launch the run worker. This is usually transient \u2014 try again.",
+    message:
+      "The engine failed to launch the run worker. This is usually transient \u2014 try again.",
     action: { label: "Retry", description: "Re-attempt the run" },
     retryable: true,
   },
