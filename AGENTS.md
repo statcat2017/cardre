@@ -30,7 +30,7 @@ make preflight
 ```
 
 Ruff is part of the project's `dev` extra, so the venv only needs to be bootstrapped once.
-`make preflight` mirrors the CI checks that routinely fail on PRs.
+`make preflight` runs the local checks that routinely fail on PRs, including governance-mode pytest. The PR gate still waits for the full GitHub CI graph, including packaged sidecar and Tauri jobs.
 
 The gate script:
 1. pushes the current branch to origin,

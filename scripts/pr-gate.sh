@@ -25,10 +25,18 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --timeout)
+      if [[ $# -lt 2 ]]; then
+        printf '%s\n' "--timeout requires a value" >&2
+        exit 2
+      fi
       TIMEOUT_SECONDS="${2:-}"
       shift 2
       ;;
     --base)
+      if [[ $# -lt 2 ]]; then
+        printf '%s\n' "--base requires a value" >&2
+        exit 2
+      fi
       BASE_BRANCH="${2:-}"
       shift 2
       ;;
@@ -127,7 +135,7 @@ def parse_origin(url: str) -> tuple[str, str]:
     raise RuntimeError(f"Unsupported origin URL: {url}")
 
 
-def write_job_log(pr_number: int, job: dict) -> Path:
+def write_job_log(owner: str, repo: str, pr_number: int, job: dict) -> Path:
     log_dir = ROOT / ".opencode" / "pr-gate-logs" / str(pr_number)
     log_dir.mkdir(parents=True, exist_ok=True)
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", job["name"]).strip("-") or f"job-{job['id']}"
@@ -138,7 +146,8 @@ def write_job_log(pr_number: int, job: dict) -> Path:
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "cardre-pr-gate",
     }
-    req = urllib.request.Request(job["logs_url"], headers=headers)
+    logs_url = f"https://api.github.com/repos/{owner}/{repo}/actions/jobs/{job['id']}/logs"
+    req = urllib.request.Request(logs_url, headers=headers)
     raw = urllib.request.urlopen(req, timeout=60).read()
     if raw.startswith(b"PK"):
         with zipfile.ZipFile(BytesIO(raw)) as archive:
@@ -156,6 +165,11 @@ def write_job_log(pr_number: int, job: dict) -> Path:
 def latest_ci_run(owner: str, repo: str, sha: str) -> dict | None:
     runs = api("GET", f"/repos/{owner}/{repo}/actions/runs?head_sha={sha}&per_page=20")
     workflow_runs = runs.get("workflow_runs", []) if isinstance(runs, dict) else []
+    workflow_runs = [
+        run
+        for run in workflow_runs
+        if run.get("name") == "CI" and run.get("event") == "pull_request"
+    ]
     if not workflow_runs:
         return None
     return sorted(workflow_runs, key=lambda item: item.get("created_at", ""), reverse=True)[0]
@@ -243,8 +257,11 @@ while True:
         print("CI RED")
         print(pr_url)
         for job in failed_jobs:
-            log_path = write_job_log(pr_number, job)
-            print(f"{job['name']}: {job.get('conclusion')} -> {log_path}")
+            try:
+                log_path = write_job_log(owner, repo, pr_number, job)
+                print(f"{job['name']}: {job.get('conclusion')} -> {log_path}")
+            except Exception as exc:  # noqa: BLE001
+                print(f"{job['name']}: {job.get('conclusion')} (log download failed: {exc})")
         sys.exit(1)
 
     print("CI GREEN")

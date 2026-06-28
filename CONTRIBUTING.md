@@ -30,8 +30,7 @@ cd frontend && npm test
 
 ### Pre-commit Checks
 
-Before submitting a PR, run all of the following. These are the same checks
-CI enforces as blocking quality gates.
+Before submitting a PR, run the local checks below. CI also adds packaged sidecar and Tauri jobs.
 
 ```bash
 # Python
@@ -40,6 +39,7 @@ make preflight
 ```
 
 Auto-fixes: `ruff check --fix` (Python lint), `npm run format` (Prettier).
+`make preflight` covers the local Python and frontend checks plus governance-mode pytest and generated OpenAPI freshness. The PR gate still waits for the full GitHub CI run.
 Regenerate API types after changing the FastAPI app with
 `python3 scripts/generate-openapi-types.py`, then commit
 `frontend/src/api/schema.d.ts` and `frontend/src/api/openapi.json` together.
