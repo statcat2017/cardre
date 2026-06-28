@@ -267,6 +267,23 @@ export function useRunProgress(projectId: string, onRunComplete: () => void): Us
         const msg = isApiError(e) ? formatApiError(e) : message;
         setError(msg);
         addDiagnostic(`Run failed: ${msg}`);
+        if (isApiError(e)) {
+          const ctx = e.detail.context;
+          if (e.code === "PLAN_CONTAINS_UNAVAILABLE_NODES" && ctx?.issues) {
+            const issues = ctx.issues as Array<{ step_id: string; node_type: string; reason: string; missing_groups?: string[] }>;
+            for (const issue of issues) {
+              let detail = `  Step ${issue.step_id} (${issue.node_type}): ${issue.reason}`;
+              if (issue.missing_groups && issue.missing_groups.length > 0) {
+                detail += ` — missing groups: ${issue.missing_groups.join(", ")}`;
+              }
+              addDiagnostic(detail);
+            }
+          }
+          if (e.code === "OPTIONAL_DEPENDENCY_NOT_INSTALLED" && ctx?.missing_groups) {
+            const groups = (ctx.missing_groups as string[]).join(",");
+            addDiagnostic(`  Install with: pip install -e '.[${groups}]'`);
+          }
+        }
         setRunning(false);
       }
     },

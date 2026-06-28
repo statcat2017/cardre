@@ -404,6 +404,65 @@ describe("useRunProgress", () => {
     expect(result.current.error).toContain("RUN_DISPATCH_FAILED");
   });
 
+  it("surfaces PLAN_CONTAINS_UNAVAILABLE_NODES context as diagnostics on run start", async () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useRunProgress(PROJECT_ID, onComplete), {
+      wrapper: createWrapper(),
+    });
+
+    vi.spyOn(api, "runPlan").mockRejectedValue(
+      new ApiError(400, {
+        code: "PLAN_CONTAINS_UNAVAILABLE_NODES",
+        message: "Plan contains 2 unavailable node(s): step_a, step_b.",
+        context: {
+          issues: [
+            { step_id: "step_a", node_type: "xgboost_classifier", reason: "missing_optional_dependency", missing_groups: ["xgboost"] },
+            { step_id: "step_b", node_type: "catboost_classifier", reason: "deferred_not_launch" },
+          ],
+        },
+      }),
+    );
+
+    await act(async () => {
+      result.current.startRun("pv1");
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(result.current.running).toBe(false);
+    expect(result.current.error).toContain("PLAN_CONTAINS_UNAVAILABLE_NODES");
+    // Diagnostics should include per-step issues
+    const issuesDiag = result.current.diagnostics.find((d) => d.includes("step_a"));
+    expect(issuesDiag).toBeTruthy();
+    const nodeTypeDiag = result.current.diagnostics.find((d) => d.includes("xgboost_classifier"));
+    expect(nodeTypeDiag).toBeTruthy();
+  });
+
+  it("surfaces OPTIONAL_DEPENDENCY_NOT_INSTALLED install hint on run start", async () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useRunProgress(PROJECT_ID, onComplete), {
+      wrapper: createWrapper(),
+    });
+
+    vi.spyOn(api, "runPlan").mockRejectedValue(
+      new ApiError(400, {
+        code: "OPTIONAL_DEPENDENCY_NOT_INSTALLED",
+        message: "Node 'xgboost_classifier' requires optional dependency group(s) ['xgboost']",
+        context: { node_type: "xgboost_classifier", missing_groups: ["xgboost"] },
+      }),
+    );
+
+    await act(async () => {
+      result.current.startRun("pv1");
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(result.current.running).toBe(false);
+    // The install hint should be surfaced in error or diagnostics
+    expect(result.current.error).toContain("OPTIONAL_DEPENDENCY_NOT_INSTALLED");
+    const depDiag = result.current.diagnostics.find((d) => d.includes("xgboost"));
+    expect(depDiag).toBeTruthy();
+  });
+
   it("shows stale warning when is_stale is true even with a fresh heartbeat", async () => {
     // RED: The backend computes is_stale and returns it on RunResponse,
     // but useRunProgress never reads it. A run that is stale (heartbeat
