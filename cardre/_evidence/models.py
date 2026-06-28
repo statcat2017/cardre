@@ -728,6 +728,8 @@ class ProfileSummary:
     profile_steps: list[JsonDict] = field(default_factory=list)
     profiles: list[JsonDict] = field(default_factory=list)
     warnings: list[JsonDict] = field(default_factory=list)
+    quality_warnings: list[JsonDict] = field(default_factory=list)
+    recommended_exclude_columns: list[str] = field(default_factory=list)
     source_artifact_id: str = ""
     schema_version: str = ""
 
@@ -749,6 +751,8 @@ class ProfileSummary:
             profile_steps=list(data.get("profile_steps", [])),
             profiles=list(profiles),
             warnings=list(data.get("warnings", [])),
+            quality_warnings=list(data.get("quality_warnings", [])),
+            recommended_exclude_columns=[str(c) for c in data.get("recommended_exclude_columns", [])],
             source_artifact_id=artifact_id,
             schema_version=data.get("schema_version", ""),
         )

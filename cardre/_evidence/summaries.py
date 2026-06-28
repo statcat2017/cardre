@@ -67,10 +67,18 @@ def _resolve_kind(artifact_row: dict) -> str:
 # ------------------------------------------------------------------
 
 def _summarise_profile(artifact_row: dict, payload: Any) -> dict:
+    warnings: list[JsonDict] = getattr(payload, "quality_warnings", None) or []
+    if not warnings:
+        warnings = getattr(payload, "warnings", None) or []
     return {
         "row_count": getattr(payload, "row_count", 0),
         "column_count": getattr(payload, "column_count", 0),
         "dataset_role": artifact_row.get("role", ""),
+        "warning_count": len(warnings),
+        "quality_warnings": [
+            f"{w.get('code', 'WARNING')}: {w.get('column', '')} {w.get('message', '')}".strip()
+            for w in warnings[:10]
+        ],
     }
 
 
@@ -227,4 +235,6 @@ def summarise(artifact_row: dict, parsed_payload: Any) -> tuple[dict, list[str]]
     summariser = _SUMMARISERS.get(kind)
     if summariser is None:
         return ({"unsupported_kind": True}, [])
-    return (summariser(artifact_row, parsed_payload), [])
+    summary = summariser(artifact_row, parsed_payload)
+    warning_strings = list(summary.get("quality_warnings", []))
+    return (summary, warning_strings)

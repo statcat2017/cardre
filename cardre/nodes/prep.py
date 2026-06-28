@@ -384,6 +384,32 @@ class ProfileDatasetNode(NodeType):
     input_roles: list[str] = ["input", "train", "test", "oot"]
     output_roles: list[str] = ["report"]
 
+    # Quality-warning thresholds
+    _NEAR_UNIQUE_RATIO: float = 0.95
+    _DOMINANT_VALUE_RATIO: float = 0.95
+    _HIGH_CARDINALITY_CUTOFF: int = 50
+    _HIGH_CARDINALITY_UNIQUE_RATIO: float = 0.5
+    _NULL_HEAVY_RATIO: float = 0.5
+    _STRING_NUMERIC_THRESHOLD: float = 0.9
+    _DATE_LIKE_THRESHOLD: float = 0.8
+    _MIN_ROWS_FOR_NEAR_UNIQUE: int = 20
+
+    # Column-name patterns for suspected roles
+    _ID_PATTERNS: tuple[str, ...] = (
+        "id", "_id", "customer_id", "application_id", "loan_id",
+        "account_id", "uuid", "user_id", "client_id", "policy_id",
+    )
+    _DATE_PATTERNS: tuple[str, ...] = (
+        "date", "_dt", "timestamp", "time",
+        "opened_at", "closed_at", "created_at", "updated_at",
+        "application_date", "decision_date",
+    )
+    _LEAKAGE_PATTERNS: tuple[str, ...] = (
+        "default", "bad", "chargeoff", "writeoff", "delinq", "dpd",
+        "arrears", "collection", "recovery", "loss", "outcome",
+        "performance", "post_",
+    )
+
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
         from cardre.node_parameters import (
@@ -428,13 +454,18 @@ class ProfileDatasetNode(NodeType):
         path = store.artifact_path(input_artifact)  # cardre-allow-artifact-read: dataset-frame-input
         df = pl.read_parquet(path, n_rows=profile_max_rows)  # cardre-allow-artifact-read: dataset-frame-input
 
-        warnings: list[JsonDict] = []
+        quality_warnings: list[JsonDict] = []
+        recommended_exclude: list[str] = []
+
+        quality_warnings, recommended_exclude = self._quality_warnings(df)
+
+        node_warnings: list[JsonDict] = []
         metadata: dict[str, Any] = {"source_artifact_id": input_artifact.artifact_id}
 
         if profile_max_rows is not None:
             metadata["profile_sampled"] = True
             metadata["profile_max_rows"] = profile_max_rows
-            warnings.append({
+            node_warnings.append({
                 "code": "PROFILE_SAMPLED",
                 "message": f"Profile based on first {profile_max_rows} rows; "
                            f"statistics may not represent the full dataset.",
@@ -448,6 +479,9 @@ class ProfileDatasetNode(NodeType):
             "null_counts": {c: int(df[c].null_count()) for c in df.columns},
             "numeric_stats": self._numeric_stats(df),
             "profile_steps": [],
+            "quality_warnings": quality_warnings,
+            "warnings": quality_warnings,
+            "recommended_exclude_columns": recommended_exclude,
         }
 
         artifact = write_json_artifact(
@@ -462,8 +496,239 @@ class ProfileDatasetNode(NodeType):
         return NodeOutput(
             artifacts=[artifact],
             metrics={"row_count": df.height},
-            warnings=warnings or None,
+            warnings=node_warnings or None,
         )
+
+    def _quality_warnings(self, df: pl.DataFrame) -> tuple[list[JsonDict], list[str]]:
+        warnings: list[JsonDict] = []
+        recommended: set[str] = set()
+
+        if df.height == 0:
+            return warnings, []
+
+        # ---- Dataset-level checks ----
+        self._check_duplicate_rows(df, warnings)
+        self._check_column_names(df, warnings, recommended)
+
+        # ---- Per-column checks ----
+        for col in df.columns:
+            series = df[col]
+            dtype_str = str(df.schema[col])
+
+            self._check_suspect_name(col, warnings, recommended)
+            self._check_constant(col, series, warnings, recommended)
+            self._check_near_unique(col, series, warnings, recommended)
+            self._check_dominant_value(col, series, dtype_str, warnings, recommended)
+            self._check_high_cardinality(col, series, dtype_str, warnings, recommended)
+            self._check_null_heavy(col, series, warnings, recommended)
+            self._check_string_coded_numeric(col, series, dtype_str, warnings, recommended)
+            self._check_date_like_string(col, series, dtype_str, warnings, recommended)
+
+        return warnings, sorted(recommended)
+
+    # ------------------------------------------------------------------
+    # Dataset-level checks
+    # ------------------------------------------------------------------
+
+    def _check_duplicate_rows(self, df: pl.DataFrame, warnings: list[JsonDict]) -> None:
+        dup_count = df.height - df.unique().height
+        if dup_count > 0:
+            warnings.append(self._warning(
+                "DUPLICATE_ROWS", "",
+                f"Dataset contains {dup_count} duplicate row(s).",
+                severity="warning", recommended_action="review",
+            ))
+
+    def _check_column_names(self, df: pl.DataFrame, warnings: list[JsonDict],
+                            recommended: set[str]) -> None:
+        for col in df.columns:
+            if not col or col.strip() == "":
+                warnings.append(self._warning(
+                    "BLANK_COLUMN_NAME", col,
+                    f"Column {col!r} has a blank or whitespace-only name.",
+                    severity="warning", recommended_action="rename",
+                ))
+            if "duplicated" in col.lower():
+                warnings.append(self._warning(
+                    "DUPLICATE_IMPORTED_COLUMN_NAME", col,
+                    f"Column {col!r} appears to be a Polars-renamed duplicate. "
+                    f"The original import had duplicate column names.",
+                    severity="warning", recommended_action="rename",
+                ))
+
+    # ------------------------------------------------------------------
+    # Per-column checks
+    # ------------------------------------------------------------------
+
+    def _check_suspect_name(self, col: str, warnings: list[JsonDict],
+                            recommended: set[str]) -> None:
+        col_lower = col.lower()
+        for pat in self._ID_PATTERNS:
+            if col_lower == pat or col_lower.endswith("_" + pat) or col_lower.startswith(pat + "_"):
+                warnings.append(self._warning(
+                    "SUSPECT_ID_COLUMN", col,
+                    f"Column {col!r} looks like an identifier and should usually be excluded "
+                    f"from modelling.",
+                    severity="warning", recommended_action="exclude",
+                ))
+                recommended.add(col)
+                return
+        for pat in self._DATE_PATTERNS:
+            if pat in col_lower:
+                warnings.append(self._warning(
+                    "SUSPECT_DATE_COLUMN", col,
+                    f"Column {col!r} looks like a date/timestamp and may need special handling.",
+                    severity="info", recommended_action="review",
+                ))
+                recommended.add(col)
+                return
+        for pat in self._LEAKAGE_PATTERNS:
+            if pat in col_lower:
+                warnings.append(self._warning(
+                    "SUSPECT_LEAKAGE_COLUMN", col,
+                    f"Column {col!r} looks like it may contain post-outcome or leakage "
+                    f"information. Verify this column is not target-derived.",
+                    severity="warning", recommended_action="review",
+                ))
+                recommended.add(col)
+                return
+
+    def _check_constant(self, col: str, series: pl.Series, warnings: list[JsonDict],
+                        recommended: set[str]) -> None:
+        non_null = series.drop_nulls()
+        if non_null.len() > 0 and non_null.n_unique() <= 1:
+            warnings.append(self._warning(
+                "CONSTANT_COLUMN", col,
+                f"Column {col!r} has only one unique non-null value.",
+                severity="warning", recommended_action="exclude",
+            ))
+            recommended.add(col)
+
+    def _check_near_unique(self, col: str, series: pl.Series, warnings: list[JsonDict],
+                           recommended: set[str]) -> None:
+        non_null = series.drop_nulls()
+        n = non_null.len()
+        if n >= self._MIN_ROWS_FOR_NEAR_UNIQUE:
+            u = non_null.n_unique()
+            if u / n >= self._NEAR_UNIQUE_RATIO:
+                warnings.append(self._warning(
+                    "NEAR_UNIQUE_COLUMN", col,
+                    f"Column {col!r} has {u} unique values out of {n} rows "
+                    f"({u/n:.1%}). Near-unique columns are usually identifiers.",
+                    severity="warning", recommended_action="exclude",
+                ))
+                recommended.add(col)
+
+    def _check_dominant_value(self, col: str, series: pl.Series, dtype_str: str,
+                              warnings: list[JsonDict], recommended: set[str]) -> None:
+        if series.dtype.is_numeric():
+            non_null = series.drop_nulls()
+            if non_null.len() == 0:
+                return
+            vc = non_null.value_counts().sort("count", descending=True)
+            top_share = vc["count"][0] / non_null.len()
+            if top_share >= self._DOMINANT_VALUE_RATIO:
+                warnings.append(self._warning(
+                    "DOMINANT_VALUE_COLUMN", col,
+                    f"Column {col!r} has a single value in {top_share:.1%} of rows.",
+                    severity="info", recommended_action="review",
+                ))
+
+    def _check_high_cardinality(self, col: str, series: pl.Series, dtype_str: str,
+                                warnings: list[JsonDict], recommended: set[str]) -> None:
+        if not series.dtype.is_numeric():
+            non_null = series.drop_nulls()
+            n = non_null.len()
+            if n == 0:
+                return
+            u = non_null.n_unique()
+            if u > self._HIGH_CARDINALITY_CUTOFF or u / n >= self._HIGH_CARDINALITY_UNIQUE_RATIO:
+                warnings.append(self._warning(
+                    "HIGH_CARDINALITY_CATEGORICAL", col,
+                    f"Column {col!r} has {u} unique values ({u/n:.1%} of rows). "
+                    f"High-cardinality categoricals may need special binning.",
+                    severity="info", recommended_action="review",
+                ))
+
+    def _check_null_heavy(self, col: str, series: pl.Series, warnings: list[JsonDict],
+                          recommended: set[str]) -> None:
+        if series.null_count() / max(series.len(), 1) >= self._NULL_HEAVY_RATIO:
+            warnings.append(self._warning(
+                "NULL_HEAVY_COLUMN", col,
+                f"Column {col!r} has {series.null_count()} null values out of "
+                f"{series.len()} rows ({series.null_count()/series.len():.1%}).",
+                severity="warning", recommended_action="review",
+            ))
+
+    def _check_string_coded_numeric(self, col: str, series: pl.Series, dtype_str: str,
+                                     warnings: list[JsonDict], recommended: set[str]) -> None:
+        if series.dtype == pl.Utf8:
+            non_null = series.drop_nulls()
+            n = non_null.len()
+            if n < 2:
+                return
+            parsed = non_null.str.replace(",", "").str.replace(r"^\s*\$", "")
+            numeric_count = 0
+            for val in parsed:
+                try:
+                    float(val)
+                    numeric_count += 1
+                except (ValueError, TypeError):
+                    pass
+            if numeric_count / n >= self._STRING_NUMERIC_THRESHOLD:
+                warnings.append(self._warning(
+                    "STRING_CODED_NUMERIC", col,
+                    f"Column {col!r} is stored as string but {numeric_count}/{n} "
+                    f"({numeric_count/n:.0%}) non-null values parse as numeric. "
+                    f"Consider importing with a schema override.",
+                    severity="warning", recommended_action="review",
+                ))
+
+    def _check_date_like_string(self, col: str, series: pl.Series, dtype_str: str,
+                                 warnings: list[JsonDict], recommended: set[str]) -> None:
+        if series.dtype == pl.Utf8:
+            non_null = series.drop_nulls()
+            n = non_null.len()
+            if n < 2:
+                return
+            from datetime import datetime
+            date_count = 0
+            date_formats = [
+                "%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S",
+                "%d/%m/%Y", "%m/%d/%Y", "%Y%m%d",
+            ]
+            for val in non_null:
+                for fmt in date_formats:
+                    try:
+                        datetime.strptime(str(val)[:19], fmt)
+                        date_count += 1
+                        break
+                    except (ValueError, TypeError):
+                        pass
+            if date_count / n >= self._DATE_LIKE_THRESHOLD:
+                warnings.append(self._warning(
+                    "DATE_LIKE_STRING", col,
+                    f"Column {col!r} is stored as string but {date_count}/{n} "
+                    f"({date_count/n:.0%}) non-null values parse as dates. "
+                    f"Consider importing with a date schema override.",
+                    severity="info", recommended_action="review",
+                ))
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _warning(code: str, column: str, message: str, *,
+                 severity: str = "warning",
+                 recommended_action: str = "review") -> JsonDict:
+        return {
+            "code": code,
+            "severity": severity,
+            "column": column,
+            "message": message,
+            "recommended_action": recommended_action,
+        }
 
     def _numeric_stats(self, df: pl.DataFrame) -> dict[str, dict[str, float]]:
         numeric_cols = [c for c in df.columns if df.schema[c].is_numeric()]
