@@ -35,17 +35,8 @@ CI enforces as blocking quality gates.
 
 ```bash
 # Python
-ruff check
-python3 -m pytest tests/ -q --cov-fail-under=75
-python3 scripts/check-line-counts.py
-python3 scripts/check_doc_references.py
-
-# Frontend (run from frontend/)
-cd frontend
-npm run lint
-npm run format:check
-npx tsc --noEmit
-npm test
+ruff check --fix
+make preflight
 ```
 
 Auto-fixes: `ruff check --fix` (Python lint), `npm run format` (Prettier).
