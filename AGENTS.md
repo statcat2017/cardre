@@ -13,9 +13,9 @@ scripts/pr-gate.sh --timeout 600
 scripts/pr-gate.sh --base main
 ```
 
-## Pre-push lint fix
+## Pre-push gate
 
-Before pushing, always run `ruff check --fix` to auto-fix lint issues:
+Before pushing, always run the repo gate:
 
 ```bash
 # One-time bootstrap per clone
@@ -26,9 +26,11 @@ pip install -e ".[sidecar,dev,test]"
 # Before pushing
 . .venv/bin/activate
 ruff check --fix
+make preflight
 ```
 
 Ruff is part of the project's `dev` extra, so the venv only needs to be bootstrapped once.
+`make preflight` runs the local checks that routinely fail on PRs, including governance-mode pytest. The PR gate still waits for the full GitHub CI graph, including packaged sidecar and Tauri jobs.
 
 The gate script:
 1. pushes the current branch to origin,

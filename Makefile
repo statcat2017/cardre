@@ -1,4 +1,4 @@
-.PHONY: test test-cov test-fail-fast test-evidence test-launch-core typecheck lint lint-line-counts lint-artifact-reads audit-artifact-reads
+.PHONY: test test-cov test-fail-fast test-evidence test-launch-core typecheck lint lint-line-counts lint-artifact-reads audit-artifact-reads preflight
 
 test:
 	python3 -m pytest tests/ -q --tb=short
@@ -19,6 +19,18 @@ typecheck:
 	cd frontend && npx tsc --noEmit
 
 lint: lint-line-counts lint-artifact-reads
+
+preflight:
+	ruff check
+	python3 scripts/check-line-counts.py
+	python3 scripts/check_doc_references.py
+	python3 scripts/check-sidecar-naming.py
+	python3 -m pytest tests/ -q --tb=short --cov-fail-under=75
+	CARDRE_GOVERNANCE=1 python3 -m pytest -m governance -q --tb=short --no-cov
+	python3 scripts/audit_artifact_reads.py --production --fail-on production_violation
+	cd frontend && npm ci && npm run lint && npm run format:check && npx tsc --noEmit && npm test
+	python3 scripts/generate-openapi-types.py
+	git diff --exit-code -- frontend/src/api/openapi.json frontend/src/api/schema.d.ts
 
 lint-line-counts:
 	python3 scripts/check-line-counts.py
