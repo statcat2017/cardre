@@ -323,7 +323,9 @@ class ValidationMetricsNode(NodeType):
                 ks_max = ks_df.select(pl.max("ks_val")).item()
                 if ks_max is not None:
                     ks_val = round(float(ks_max), 6)
-                    ks_at = float(ks_df.filter(pl.col("ks_val") == ks_max).select("ks_at").item())
+                    ks_at_rows = ks_df.filter(pl.col("ks_val") == ks_max).select("ks_at")
+                    # Ties are possible; keep the first tied location in the sorted scan.
+                    ks_at = float(ks_at_rows.row(0)[0])
 
                 calib = self._calibration(df_known, target_col, bad_list, 10)
                 score_dist = self._score_distribution(scores)

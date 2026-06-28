@@ -18,10 +18,17 @@ scripts/pr-gate.sh --base main
 Before pushing, always run `ruff check --fix` to auto-fix lint issues:
 
 ```bash
-pip install ruff==0.15.20 && ruff check --fix
+# One-time bootstrap per clone
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -e ".[sidecar,dev,test]"
+
+# Before pushing
+. .venv/bin/activate
+ruff check --fix
 ```
 
-If ruff is not available locally, install it first with `pip install ruff==0.15.20`.
+Ruff is part of the project's `dev` extra, so the venv only needs to be bootstrapped once.
 
 The gate script:
 1. pushes the current branch to origin,

@@ -42,9 +42,14 @@ starting any phase.**
 ## Pre-push gate (per AGENTS.md)
 
 ```bash
-# Lint — ruff is already installed in this repo's .venv. Only install
-# if it is missing from PATH (do NOT pip install every time).
-command -v ruff >/dev/null 2>&1 || pip install ruff==0.15.20
+# Lint — bootstrap the dev venv once; ruff lives in the dev extra.
+# One-time bootstrap per clone:
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -e ".[sidecar,dev,test]"
+
+# Before pushing:
+. .venv/bin/activate
 ruff check --fix
 
 # Full suite, including golden-R oracle + determinism tests.
@@ -55,10 +60,9 @@ python3 -m pytest tests/ -q
 scripts/pr-gate.sh
 ```
 
-**Why ruff isn't reinstalled each time:** `AGENTS.md`'s `pip install`
-line is defensive for environments without ruff. This repo's `.venv`
-already has it; re-pinning on every push just wastes time and risks
-network flakiness. The `command -v` guard installs only when absent.
+**Why ruff isn't reinstalled each time:** `AGENTS.md` installs the full dev
+environment once, and `ruff` is part of that dev extra. Re-running a separate
+`pip install ruff` step on every push just duplicates work.
 
 ## Test conventions (do not reinvent)
 
@@ -601,9 +605,15 @@ pass-through at runtime.
 
 After all 15 phases are green:
 
-1. **Lint** (ruff already in `.venv`; install only if missing):
+1. **Lint** (use the bootstrapped dev venv):
    ```bash
-   command -v ruff >/dev/null 2>&1 || pip install ruff==0.15.20
+   # One-time bootstrap per clone:
+   python3 -m venv .venv
+   . .venv/bin/activate
+   pip install -e ".[sidecar,dev,test]"
+
+   # Before pushing:
+   . .venv/bin/activate
    ruff check --fix
    ```
 2. **Full suite**:

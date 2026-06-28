@@ -9,6 +9,7 @@ import { ConfigureTab } from "./inspector/ConfigureTab";
 import { EvidenceTab } from "./inspector/EvidenceTab";
 import { WarningsTab } from "./inspector/WarningsTab";
 import { RunHistoryTab } from "./inspector/RunHistoryTab";
+import { RecoveryBanner } from "./RecoveryBanner";
 
 type InspectorTab = "next_action" | "configure" | "evidence" | "warnings" | "history";
 
@@ -125,6 +126,7 @@ function StepInspectorInner({
         : Promise.reject("not manual-binning"),
     enabled: !!step && isManualBinning && !!planId && !!projectId,
   });
+  const editorError = editorStateQuery.isError ? editorStateQuery.error : null;
 
   return (
     <div
@@ -178,21 +180,24 @@ function StepInspectorInner({
       </div>
 
       <div style={{ padding: 12, flex: 1, overflowY: "auto" }}>
-        {tab === "next_action" && (
-          <NextActionTab
-            guidanceForStep={guidanceForStep}
-            isManualBinning={isManualBinning}
-            onEditManualBinning={() => onEditManualBinning(step.step_id)}
-            manualBinningState={
-              (editorStateQuery.data as {
-                ready: boolean;
-                blocked_reason?: string;
-                selected_variables?: string[];
-              } | null) ?? null
-            }
-            loadingManualBinning={editorStateQuery.isLoading}
-          />
-        )}
+        {tab === "next_action" &&
+          (editorError ? (
+            <RecoveryBanner error={editorError} onRetry={() => editorStateQuery.refetch()} />
+          ) : (
+            <NextActionTab
+              guidanceForStep={guidanceForStep}
+              isManualBinning={isManualBinning}
+              onEditManualBinning={() => onEditManualBinning(step.step_id)}
+              manualBinningState={
+                (editorStateQuery.data as {
+                  ready: boolean;
+                  blocked_reason?: string;
+                  selected_variables?: string[];
+                } | null) ?? null
+              }
+              loadingManualBinning={editorStateQuery.isLoading}
+            />
+          ))}
 
         {tab === "configure" && canEdit && (
           <ConfigureTab
