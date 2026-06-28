@@ -2,6 +2,7 @@ import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { ArtifactPreviewPane } from "./ArtifactPreviewPane";
+import { RecoveryBanner } from "./RecoveryBanner";
 import { theme } from "../styles";
 
 interface Props {
@@ -10,7 +11,7 @@ interface Props {
 }
 
 export function ArtifactSummaryInline({ projectId, artifactId }: Props) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["artifactSummary", projectId, artifactId],
     queryFn: () => api.getProjectArtifactSummary(projectId, artifactId),
     enabled: !!artifactId,
@@ -18,6 +19,8 @@ export function ArtifactSummaryInline({ projectId, artifactId }: Props) {
 
   if (isLoading)
     return <div style={{ padding: 8, fontSize: 12, color: theme.muted }}>Loading summary...</div>;
+  if (isError)
+    return <RecoveryBanner error={error} onRetry={() => refetch()} />;
   if (!data) return null;
 
   const metaRows: [string, string | number | null][] = [

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { linkButtonSmallStyle, preBlockStyle, pageButtonStyle, theme } from "../styles";
+import { RecoveryBanner } from "./RecoveryBanner";
 
 const LARGE_ROW_THRESHOLD = 100_000;
 const HARD_ROW_CAP = 1_000_000;
@@ -25,7 +26,7 @@ export function ArtifactPreviewPane({
   const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
 
-  const { data: preview, isLoading } = useQuery({
+  const { data: preview, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["artifactPreview", projectId, artifactId, limit, offset],
     queryFn: () => api.getProjectArtifactPreview(projectId, artifactId, limit, offset),
     enabled: showPreview,
@@ -73,6 +74,8 @@ export function ArtifactPreviewPane({
           </button>
         ) : isLoading ? (
           <div style={{ color: theme.muted, fontSize: 11 }}>Loading preview...</div>
+        ) : isError ? (
+          <RecoveryBanner error={error} onRetry={() => refetch()} />
         ) : preview ? (
           <div>
             <div
