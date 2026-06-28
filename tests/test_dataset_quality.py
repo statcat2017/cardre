@@ -8,16 +8,12 @@ recommended_exclude_columns in the profile artifact payload.
 
 from __future__ import annotations
 
-import io
 import json
-import unittest
-from pathlib import Path
 
 import polars as pl
-import pytest
 
 from cardre.artifacts import write_parquet_artifact
-from cardre.audit import ExecutionContext, StepSpec, json_logical_hash, physical_hash, relative_path, table_logical_hash
+from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
 from cardre.nodes import ProfileDatasetNode
 from tests.helpers import make_store
 
