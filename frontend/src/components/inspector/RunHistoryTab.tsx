@@ -1,6 +1,7 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
+import { RecoveryBanner } from "../RecoveryBanner";
 import { theme } from "../../styles";
 
 interface Props {
@@ -11,7 +12,7 @@ interface Props {
 }
 
 export function RunHistoryTab({ stepId, projectId, runId, tab }: Props) {
-  const { data: runStepsData, isLoading } = useQuery({
+  const { data: runStepsData, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["runSteps", projectId, runId],
     queryFn: () => api.getProjectRunSteps(projectId, runId!),
     enabled: !!runId && tab === "history",
@@ -31,6 +32,10 @@ export function RunHistoryTab({ stepId, projectId, runId, tab }: Props) {
     return (
       <div style={{ fontSize: 12, color: theme.muted, padding: 8 }}>Loading run history...</div>
     );
+  }
+
+  if (isError) {
+    return <RecoveryBanner error={error} onRetry={() => refetch()} />;
   }
 
   const stepsForThisStep = runStepsData?.steps?.filter((s) => s.step_id === stepId) ?? [];
