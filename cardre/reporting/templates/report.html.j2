@@ -49,6 +49,42 @@ code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.85em;backgroun
 </p>
 </header>
 
+{% set rs = run_status %}
+{% if rs and rs.run_id %}
+<section class="section">
+<h2>Run Status</h2>
+<table>
+<thead><tr><th>Property</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>Run ID</td><td><code>{{ rs.run_id }}</code></td></tr>
+<tr><td>Status</td><td><span class="badge {{ 'badge-warning' if rs.status != 'succeeded' else 'badge-target' }}">{{ rs.status or 'N/A' }}</span></td></tr>
+<tr><td>Execution Mode</td><td>{{ rs.execution_mode }}</td></tr>
+{% if rs.started_at %}<tr><td>Started</td><td>{{ rs.started_at }}</td></tr>{% endif %}
+{% if rs.finished_at %}<tr><td>Finished</td><td>{{ rs.finished_at }}</td></tr>{% endif %}
+{% if rs.target_step_id %}<tr><td>Target Step</td><td><code>{{ rs.target_step_id }}</code></td></tr>{% endif %}
+{% if rs.short_circuit %}<tr><td>Short Circuit</td><td>Yes{% if rs.short_circuit_run_id %} (source run: <code>{{ rs.short_circuit_run_id[:12] }}&hellip;</code>){% endif %}</td></tr>{% endif %}
+</tbody>
+</table>
+{% if rs.diagnostics %}
+<h3>Diagnostics</h3>
+<table>
+<thead><tr><th>Code</th><th>Message</th><th>Severity</th><th>Category</th><th>Time</th></tr></thead>
+<tbody>
+{% for d in rs.diagnostics %}
+<tr>
+<td><code>{{ d.code }}</code></td>
+<td>{{ d.message }}</td>
+<td>{{ d.severity }}</td>
+<td>{{ d.category }}</td>
+<td>{{ d.created_at }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+</section>
+{% endif %}
+
 {% if limitations %}
 <section class="section">
 <h2>Limitations and Warnings</h2>

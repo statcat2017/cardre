@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+from cardre.audit import RunStepRecord, json_logical_hash
 
-from cardre.audit import RunStepRecord
 from cardre.errors import Result
 from cardre.store import ProjectStore
 
@@ -29,6 +29,7 @@ from cardre.reporting.schema import (
     CutoffRow,
     CutoffTable,
     DatasetRole,
+    DiagnosticEntry,
     ExecutionFingerprint,
     GeneratedBy,
     Limitation,
@@ -47,6 +48,8 @@ from cardre.reporting.schema import (
     ReportGenerationInfo,
     ReproducibilityInfo,
     ResolvedStepRef,
+    RunManifest,
+    RunStatusInfo,
     ScoreScalingInfo,
     ValidationInfo,
     VariableBin,
@@ -57,6 +60,17 @@ from cardre.reporting.schema import (
 from cardre.reporting.evidence_contract import REQUIRED_STEPS_COLLECTOR
 
 CARDRE_VERSION = "0.1.0"
+
+
+def _to_schema_ref(ref) -> ResolvedStepRef:
+    """Convert a step_id.ResolvedStepRef (dataclass) to a schema.ResolvedStepRef (Pydantic)."""
+    return ResolvedStepRef(
+        requested_branch_id=ref.requested_branch_id,
+        resolved_branch_id=ref.resolved_branch_id,
+        canonical_step_id=ref.canonical_step_id,
+        step_id=ref.step_id,
+        resolution=ref.resolution,
+    )
 
 
 def _utc_now() -> str:
@@ -108,8 +122,11 @@ class ReportCollector:
         plan_version_id = run["plan_version_id"]
         plan_id = self.store.get_plan_id_for_version(plan_version_id)
 
-        # Source info
-        bundle.source.run_manifest_path = str(self.store.root / "cardre.sqlite")
+        # Run status info
+        self._collect_run_status(bundle, run)
+
+        # Source info — updated to canonical path by _read_canonical_manifest
+        bundle.source.run_manifest_path = ""
 
         # Branch
         branch = self.store.get_branch(self.target_branch_id)
@@ -229,6 +246,9 @@ class ReportCollector:
 
         # Redundancy review
         self._collect_redundancy_review(bundle, plan_version_id)
+
+        # Read canonical manifest for hashes
+        self._read_canonical_manifest(bundle)
 
         # Reproducibility
         self._collect_reproducibility(bundle, plan_version_id)
@@ -412,6 +432,7 @@ class ReportCollector:
                 features=features,
                 intercept=model_art.intercept,
                 fit_dataset_role="train",
+                source_step_refs=[_to_schema_ref(ref)],
             )
         else:
             self.limitations.append(Limitation(
@@ -461,6 +482,7 @@ class ReportCollector:
                 rounding=scaling.rounding,
                 min_score=scaling.min_score,
                 max_score=scaling.max_score,
+                source_step_refs=[_to_schema_ref(ref)],
             )
         else:
             self.limitations.append(Limitation(
@@ -489,7 +511,7 @@ class ReportCollector:
             ))
             return
 
-        validation = ValidationInfo()
+        validation = ValidationInfo(source_step_refs=[_to_schema_ref(ref)])
         for role_name, rm in val.metrics_by_role.items():
             validation.metrics_by_role.append(MetricsByRole(
                 role=role_name,
@@ -532,7 +554,7 @@ class ReportCollector:
                 ]
                 tables.append(CutoffTable(role=role_name, rows=cutoff_rows))
             if tables:
-                bundle.cutoffs = CutoffInfo(cutoff_tables=tables)
+                bundle.cutoffs = CutoffInfo(cutoff_tables=tables, source_step_refs=[_to_schema_ref(ref)])
         else:
             self.limitations.append(Limitation(
                 severity="warning", code=LimitationCode.NO_CUTOFF_ANALYSIS,
@@ -711,8 +733,12 @@ class ReportCollector:
                 package_fingerprint={},
             ))
 
+        existing_m_hash = bundle.reproducibility.manifest_hash
+        existing_pw_hash = bundle.reproducibility.pathway_hash
         bundle.reproducibility = ReproducibilityInfo(
             run_id=self.run_id,
+            manifest_hash=existing_m_hash,
+            pathway_hash=existing_pw_hash,
             execution_fingerprints=fingerprints,
             report_generation=ReportGenerationInfo(
                 generated_at=bundle.generated_at,
@@ -767,6 +793,95 @@ class ReportCollector:
                 exception_type=type(exc).__name__,
                 context={"step_id": step_id, "plan_version_id": plan_version_id},
             )])
+
+    def _collect_run_status(self, bundle: ReportBundle, run: dict) -> None:
+        run_diags = self.store.get_run_diagnostics(self.run_id)
+        bundle.run_status = RunStatusInfo(
+            run_id=self.run_id,
+            status=run.get("status", ""),
+            started_at=run.get("started_at", ""),
+            finished_at=run.get("finished_at"),
+        )
+        for d in run_diags:
+            bundle.run_status.diagnostics.append(DiagnosticEntry(
+                code=d.get("code", ""),
+                message=d.get("message", ""),
+                severity=d.get("severity", "warning"),
+                category=d.get("category", ""),
+                created_at=d.get("created_at", ""),
+            ))
+        if run.get("status") and run["status"] != "succeeded":
+            self.limitations.append(Limitation(
+                severity="blocker",
+                code=LimitationCode.RUN_NOT_SUCCEEDED,
+                message=f"Run status is '{run['status']}', expected 'succeeded'.",
+            ))
+
+    def _read_canonical_manifest(self, bundle: ReportBundle) -> None:
+        """Try to read the canonical manifest.json and populate hash fields.
+
+        Validates the manifest payload against the RunManifest model and
+        recomputes the self-referential hash (from the raw dict) to detect
+        corruption or tampering.
+        """
+        manifest_path = self.store.root / "exports" / f"manifest-{self.run_id}" / "manifest.json"
+        if not manifest_path.exists():
+            self.limitations.append(Limitation(
+                severity="warning",
+                code=LimitationCode.CANONICAL_MANIFEST_MISSING,
+                message=f"No canonical manifest at {manifest_path}. "
+                "Manifest hash and pathway hash will be empty in the report.",
+            ))
+            return
+        try:
+            import json
+            raw = manifest_path.read_text()
+            manifest_data = json.loads(raw)
+
+            # Validate schema — extra fields are rejected if present
+            RunManifest.model_validate(manifest_data)
+
+            # Hash the raw parsed dict, not the Pydantic model, so that
+            # extra or unexpected fields are caught by the hash check.
+            payload_for_hash = dict(manifest_data)
+            payload_for_hash["manifest_hash"] = ""
+            expected_hash = json_logical_hash(payload_for_hash)
+            actual_hash = manifest_data.get("manifest_hash", "")
+
+            if actual_hash != expected_hash:
+                self.limitations.append(Limitation(
+                    severity="blocker",
+                    code=LimitationCode.ARTIFACT_HASH_UNRESOLVED,
+                    message=f"Canonical manifest hash mismatch at {manifest_path}: "
+                    f"expected {expected_hash}, got {actual_hash}.",
+                ))
+                return
+
+            pw_hash = manifest_data.get("pathway_hash", "")
+            art_root = manifest_data.get("artifact_root", "")
+            bundle.source.run_manifest_path = str(manifest_path)
+            bundle.source.run_manifest_hash = actual_hash
+            bundle.source.pathway_hash = pw_hash
+            bundle.source.artifact_root = art_root
+            bundle.reproducibility.manifest_hash = actual_hash
+            bundle.reproducibility.pathway_hash = pw_hash
+
+            bundle.run_status.execution_mode = manifest_data.get("execution_mode", "unknown")
+            bundle.run_status.target_step_id = manifest_data.get("target_step_id")
+            bundle.run_status.in_scope_step_ids = manifest_data.get("in_scope_step_ids", [])
+
+        except json.JSONDecodeError as exc:
+            self.limitations.append(Limitation(
+                severity="blocker",
+                code=LimitationCode.CANONICAL_MANIFEST_UNREADABLE,
+                message=f"Invalid JSON in canonical manifest at {manifest_path}: {exc}",
+            ))
+        except Exception as exc:
+            self.limitations.append(Limitation(
+                severity="blocker",
+                code=LimitationCode.CANONICAL_MANIFEST_UNREADABLE,
+                message=f"Could not read or validate canonical manifest at {manifest_path}: {exc}",
+            ))
 
     def _resolve_run_step(
         self, ref: ResolvedStepRef, plan_version_id: str,

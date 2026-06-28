@@ -81,6 +81,12 @@ def check_report_readiness(
             checked_at=datetime.now(timezone.utc).isoformat(),
         )
 
+    if run.get("status") != "succeeded":
+        blockers.append(ReadinessBlocker(
+            LimitationCode.RUN_NOT_SUCCEEDED,
+            f"Run {run_id!r} has status {run.get('status', 'unknown')!r}, expected 'succeeded'.",
+        ))
+
     plan_version_id = run["plan_version_id"]
     plan_id = store.get_plan_id_for_version(plan_version_id)
 

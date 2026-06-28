@@ -188,6 +188,7 @@ class ModelInfo(BaseModel):
     regularisation: dict[str, Any] | None = None
     fit_dataset_role: str = "train"
     fitting_config_hash: str = ""
+    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +205,7 @@ class ScoreScalingInfo(BaseModel):
     rounding: str = "nearest_integer"
     min_score: int = 0
     max_score: int = 0
+    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +236,7 @@ class StabilityInfo(BaseModel):
 class ValidationInfo(BaseModel):
     metrics_by_role: list[MetricsByRole] = Field(default_factory=list)
     stability: StabilityInfo = Field(default_factory=StabilityInfo)
+    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +263,7 @@ class SelectedCutoff(BaseModel):
 class CutoffInfo(BaseModel):
     cutoff_tables: list[CutoffTable] = Field(default_factory=list)
     selected_cutoff: SelectedCutoff = Field(default_factory=SelectedCutoff)
+    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +402,78 @@ class ReportSummary(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Canonical audit manifest (Phase 1)
+# ---------------------------------------------------------------------------
+
+class RunManifestStep(BaseModel):
+    step_id: str
+    canonical_step_id: str = ""
+    branch_id: str | None = None
+    node_type: str = ""
+    node_version: str = ""
+    category: str = ""
+    status: str = ""
+    action: str = ""
+    is_carried_forward: bool = False
+    started_at: str = ""
+    finished_at: str | None = None
+    params: dict[str, Any] = Field(default_factory=dict)
+    params_hash: str = ""
+    parent_step_ids: list[str] = Field(default_factory=list)
+    input_artifact_ids: list[str] = Field(default_factory=list)
+    output_artifact_ids: list[str] = Field(default_factory=list)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+    errors: list[dict[str, Any]] = Field(default_factory=list)
+    execution_fingerprint: dict[str, Any] = Field(default_factory=dict)
+
+
+class RunManifest(BaseModel):
+    manifest_version: str = "cardre.run_manifest.v1"
+    manifest_hash: str = ""
+    run_id: str
+    plan_version_id: str
+    plan_id: str = ""
+    project_id: str = ""
+    branch_id: str | None = None
+    started_at: str = ""
+    finished_at: str | None = None
+    status: str = ""
+    execution_mode: str = "unknown"
+    cardre_version: str = "0.1.0"
+    pathway_hash: str = ""
+    artifact_root: str = ""
+    target_step_id: str | None = None
+    in_scope_step_ids: list[str] = Field(default_factory=list)
+    steps: list[RunManifestStep] = Field(default_factory=list)
+    diagnostics: list[dict[str, Any]] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Run status + diagnostics
+# ---------------------------------------------------------------------------
+
+class DiagnosticEntry(BaseModel):
+    code: str
+    message: str = ""
+    severity: str = "warning"  # "error" | "warning" | "info"
+    category: str = ""
+    created_at: str = ""
+
+
+class RunStatusInfo(BaseModel):
+    run_id: str = ""
+    status: str = ""  # "succeeded" | "failed" | "interrupted" | "cancelled" | "running"
+    started_at: str = ""
+    finished_at: str | None = None
+    execution_mode: str = "unknown"
+    short_circuit: bool = False
+    short_circuit_run_id: str | None = None
+    target_step_id: str | None = None
+    in_scope_step_ids: list[str] = Field(default_factory=list)
+    diagnostics: list[DiagnosticEntry] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Top-level ReportBundle
 # ---------------------------------------------------------------------------
 
@@ -430,3 +506,4 @@ class ReportBundle(BaseModel):
     limitations: list[Limitation] = Field(default_factory=list)
     reproducibility: ReproducibilityInfo = Field(default_factory=ReproducibilityInfo)
     artifacts: list[ArtifactEntry] = Field(default_factory=list)
+    run_status: RunStatusInfo = Field(default_factory=RunStatusInfo)

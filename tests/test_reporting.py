@@ -163,6 +163,8 @@ class TestReportBundleSchema:
         assert d["metrics_by_role"][1]["role"] == "oot"
 
 
+
+
 # =========================================================================
 # Step resolver tests
 # =========================================================================
@@ -350,6 +352,14 @@ class TestHtmlRenderer:
                 {"artifact_id": "art_001", "artifact_type": "report", "role": "report",
                  "logical_hash": "abc123", "physical_hash": "def456", "path": "artifacts/report.json"},
             ],
+            "run_status": {
+                "run_id": "run_001",
+                "status": "succeeded",
+                "execution_mode": "full",
+                "diagnostics": [],
+                "short_circuit": False,
+                "in_scope_step_ids": [],
+            },
         }
 
     def test_html_renders_all_major_sections(self):
@@ -358,6 +368,8 @@ class TestHtmlRenderer:
         assert "Cardre Governance Report" in html
         assert "Test Scorecard" in html
         assert "main" in html
+        # Run Status
+        assert "Run Status" in html
         # Variables
         assert "age" in html
         assert "0.126" in html
@@ -430,6 +442,11 @@ class TestGoldenJson:
         assert isinstance(golden["limitations"], list)
         assert isinstance(golden["artifacts"], list)
         assert isinstance(golden["reproducibility"], dict)
+
+
+# =========================================================================
+# RunStatusInfo + DiagnosticEntry tests moved to tests/reporting/test_run_status.py
+# =========================================================================
 
 
 # =========================================================================

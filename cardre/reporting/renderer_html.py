@@ -85,6 +85,7 @@ def render_report_bundle_to_html(bundle: dict[str, Any]) -> str:
         manual_interventions=manual_interventions,
         pathway=pathway,
         redundancy_review=redundancy_review,
+        run_status=bundle.get("run_status", {}),
     )
     return html
 
