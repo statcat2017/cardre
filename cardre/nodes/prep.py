@@ -14,6 +14,7 @@ from cardre.audit import (
     NodeType,
 )
 from cardre.evidence import SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION
+from cardre.nodes._dataset_quality import quality_warnings as _quality_warnings
 from cardre.node_parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -428,13 +429,18 @@ class ProfileDatasetNode(NodeType):
         path = store.artifact_path(input_artifact)  # cardre-allow-artifact-read: dataset-frame-input
         df = pl.read_parquet(path, n_rows=profile_max_rows)  # cardre-allow-artifact-read: dataset-frame-input
 
-        warnings: list[JsonDict] = []
+        quality_warnings: list[JsonDict] = []
+        recommended_exclude: list[str] = []
+
+        quality_warnings, recommended_exclude = _quality_warnings(df)
+
+        node_warnings: list[JsonDict] = []
         metadata: dict[str, Any] = {"source_artifact_id": input_artifact.artifact_id}
 
         if profile_max_rows is not None:
             metadata["profile_sampled"] = True
             metadata["profile_max_rows"] = profile_max_rows
-            warnings.append({
+            node_warnings.append({
                 "code": "PROFILE_SAMPLED",
                 "message": f"Profile based on first {profile_max_rows} rows; "
                            f"statistics may not represent the full dataset.",
@@ -448,6 +454,9 @@ class ProfileDatasetNode(NodeType):
             "null_counts": {c: int(df[c].null_count()) for c in df.columns},
             "numeric_stats": self._numeric_stats(df),
             "profile_steps": [],
+            "quality_warnings": quality_warnings,
+            "warnings": quality_warnings,
+            "recommended_exclude_columns": recommended_exclude,
         }
 
         artifact = write_json_artifact(
@@ -462,7 +471,7 @@ class ProfileDatasetNode(NodeType):
         return NodeOutput(
             artifacts=[artifact],
             metrics={"row_count": df.height},
-            warnings=warnings or None,
+            warnings=node_warnings or None,
         )
 
     def _numeric_stats(self, df: pl.DataFrame) -> dict[str, dict[str, float]]:
