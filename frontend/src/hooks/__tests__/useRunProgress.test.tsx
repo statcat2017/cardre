@@ -343,6 +343,67 @@ describe("useRunProgress", () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
+  it("renders all step errors on failure, not just the first", async () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useRunProgress(PROJECT_ID, onComplete), {
+      wrapper: createWrapper(),
+    });
+
+    vi.spyOn(api, "getProjectRun").mockReset();
+    vi.spyOn(api, "getProjectRun")
+      .mockResolvedValueOnce(makeRun("running") as unknown as RunResponse)
+      .mockResolvedValue(
+        makeRun("failed", {
+          latest_error: { code: "ERR_GLOBAL", message: "Global failure" },
+        }) as unknown as RunResponse,
+      );
+
+    const stepsWithErrors = {
+      run_id: RUN_ID,
+      steps: [
+        { run_step_id: "rs_0", step_id: "step_a", node_type: "test", status: "failed", started_at: "", input_artifact_ids: [], output_artifact_ids: [], warnings: [], is_carried_forward: false, errors: [{ code: "ERR_A", message: "Step A failed", traceback: "traceA" }] },
+        { run_step_id: "rs_1", step_id: "step_b", node_type: "test", status: "failed", started_at: "", input_artifact_ids: [], output_artifact_ids: [], warnings: [], is_carried_forward: false, errors: [{ code: "ERR_B", message: "Step B failed", traceback: "traceB" }] },
+      ],
+    };
+    vi.spyOn(api, "getProjectRunSteps").mockResolvedValue(stepsWithErrors as unknown as RunStepsResponse);
+
+    await act(async () => {
+      result.current.startRun("pv1");
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+
+    expect(result.current.running).toBe(false);
+    // Both step errors must appear in lastRunError
+    expect(result.current.lastRunError).toContain("ERR_A");
+    expect(result.current.lastRunError).toContain("ERR_B");
+  });
+
+  it("distinguishes RUN_DISPATCH_FAILED from RUN_EXECUTION_FAILED in startRun", async () => {
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useRunProgress(PROJECT_ID, onComplete), {
+      wrapper: createWrapper(),
+    });
+
+    // runPlan throws RUN_DISPATCH_FAILED
+    vi.spyOn(api, "runPlan").mockRejectedValue(
+      new ApiError(500, {
+        code: "RUN_DISPATCH_FAILED",
+        message: "Failed to start background run thread",
+      }),
+    );
+
+    await act(async () => {
+      result.current.startRun("pv1");
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(result.current.running).toBe(false);
+    expect(result.current.error).toContain("RUN_DISPATCH_FAILED");
+  });
+
   it("shows stale warning when is_stale is true even with a fresh heartbeat", async () => {
     // RED: The backend computes is_stale and returns it on RunResponse,
     // but useRunProgress never reads it. A run that is stale (heartbeat

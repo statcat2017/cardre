@@ -213,12 +213,13 @@ export function useRunProgress(projectId: string, onRunComplete: () => void): Us
                   setLastRunError(errMsg);
                   addDiagnostic(errMsg);
                 }
-                const firstStepError = steps.steps.find((s) => (s.errors ?? []).length > 0);
-                if (firstStepError && (firstStepError.errors ?? []).length > 0) {
-                  const stepErr = firstStepError.errors![0];
-                  const stepErrMsg = `Step ${firstStepError.step_id}: ${stepErr.code || "ERROR"}: ${stepErr.message || stepErr.traceback || ""}`;
-                  setLastRunError((prev) => (prev ? `${prev}\n${stepErrMsg}` : stepErrMsg));
-                  addDiagnostic(stepErrMsg);
+                for (const s of steps.steps) {
+                  if (!s.errors || s.errors.length === 0) continue;
+                  for (const stepErr of s.errors) {
+                    const stepErrMsg = `Step ${s.step_id}: ${stepErr.code || "ERROR"}: ${stepErr.message || stepErr.traceback || ""}`;
+                    setLastRunError((prev) => (prev ? `${prev}\n${stepErrMsg}` : stepErrMsg));
+                    addDiagnostic(stepErrMsg);
+                  }
                 }
               }
               onRunComplete();
