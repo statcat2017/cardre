@@ -14,12 +14,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+
 from cardre.artifacts import write_json_artifact
-from cardre.audit import RunStepRecord, JsonDict, utc_now_iso
+from cardre.audit import RunStepRecord, JsonDict, json_logical_hash, utc_now_iso
 from cardre.errors import RunLifecycleError
+from cardre.reporting.schema import RunManifest, RunManifestStep
 from cardre.store import ProjectStore
 
 MANIFEST_VERSION = "1.0.0"
+
+
+def compute_manifest_hash(manifest: RunManifest) -> str:
+    """Compute SHA-256 hash of the canonical manifest JSON with the hash field blanked."""
+    payload = manifest.model_dump(mode="json", by_alias=False)
+    payload["manifest_hash"] = ""
+    return json_logical_hash(payload)
 
 STATUS_CANCELLED = "cancelled"
 
@@ -141,6 +150,90 @@ def write_manifest(
         stem=f"manifest-{run_id}",
         payload=payload,
         metadata={"run_id": run_id},
+    )
+
+    _write_canonical_manifest(store, run_id, plan_version_id, run_record, run_steps,
+                              execution_mode, final_status, finished_at, branch_id,
+                              target_step_id, in_scope_step_ids, payload)
+
+
+def _write_canonical_manifest(
+    store: ProjectStore,
+    run_id: str,
+    plan_version_id: str,
+    run_record: JsonDict,
+    run_steps: list[RunStepRecord],
+    execution_mode: str,
+    final_status: str,
+    finished_at: str,
+    branch_id: str | None,
+    target_step_id: str | None,
+    in_scope_step_ids: list[str] | None,
+    legacy_payload: JsonDict,
+) -> None:
+    """Write a canonical manifest.json (Pydantic-validated) alongside the legacy artifact.
+
+    The manifest.json is the authoritative audit artefact with a self-referential
+    manifest_hash.  The legacy run_manifest artifact continues to be written for
+    backwards compatibility.
+    """
+    plan_id = legacy_payload.get("plan_id") or store.get_plan_id_for_version(plan_version_id) or ""
+    pv = store.get_plan_version(plan_version_id)
+    plan = store.get_plan(pv["plan_id"]) if pv else None
+    project_id = plan.get("project_id", "") if plan else ""
+
+    steps_model = []
+    legacy_steps = legacy_payload.get("steps", [])
+    for idx, rs in enumerate(run_steps):
+        action = "unknown"
+        if idx < len(legacy_steps):
+            action = legacy_steps[idx].get("action", "unknown")
+        step = RunManifestStep(
+            step_id=rs.step_id,
+            canonical_step_id=rs.execution_fingerprint.get("canonical_step_id", rs.step_id),
+            node_type=rs.execution_fingerprint.get("node_type", ""),
+            node_version=rs.execution_fingerprint.get("node_version", ""),
+            status=rs.status,
+            action=action,
+            is_carried_forward=rs.is_carried_forward,
+            started_at=rs.started_at,
+            finished_at=rs.finished_at,
+            params_hash=rs.execution_fingerprint.get("params_hash", ""),
+            parent_step_ids=rs.execution_fingerprint.get("parent_step_ids", []),
+            input_artifact_ids=rs.input_artifact_ids,
+            output_artifact_ids=rs.output_artifact_ids,
+            warnings=rs.warnings,
+            errors=rs.errors,
+            execution_fingerprint=rs.execution_fingerprint,
+        )
+        steps_model.append(step)
+
+    manifest = RunManifest(
+        manifest_version="cardre.run_manifest.v1",
+        run_id=run_id,
+        plan_version_id=plan_version_id,
+        plan_id=plan_id,
+        project_id=project_id,
+        branch_id=branch_id,
+        started_at=run_record.get("started_at", ""),
+        finished_at=finished_at,
+        status=final_status,
+        execution_mode=execution_mode,
+        cardre_version="0.1.0",
+        pathway_hash="",
+        artifact_root=str(store.root / "artifacts"),
+        target_step_id=target_step_id,
+        in_scope_step_ids=in_scope_step_ids or [],
+        steps=steps_model,
+        diagnostics=[],
+    )
+    manifest.manifest_hash = compute_manifest_hash(manifest)
+
+    manifest_dir = store.root / "exports" / f"manifest-{run_id}"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = manifest_dir / "manifest.json"
+    manifest_path.write_text(
+        manifest.model_dump_json(indent=2, by_alias=False)
     )
 
 
