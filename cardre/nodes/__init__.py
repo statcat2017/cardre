@@ -54,6 +54,9 @@ from cardre.nodes.boosting import (
     LightGBMClassifierNode,
     XGBoostClassifierNode,
 )
+from cardre.nodes.calibrate import (
+    CalibrateProbabilitiesNode,
+)
 from cardre.nodes.explainability import (
     ModelExplainabilityNode,
     ModelLimitationsNode,
@@ -94,6 +97,7 @@ __all__ = [
     "AlternativeDataManifestNode",
     "AutoBinningFitNode",
     "BinningNode",
+    "CalibrateProbabilitiesNode",
     "ApplyExclusionsNode",
     "ApplyModelNode",
     "ApplyWoeMappingNode",

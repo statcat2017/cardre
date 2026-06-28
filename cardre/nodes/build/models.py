@@ -437,6 +437,20 @@ class ScoreScalingNode(NodeType):
                 f"Score scaling requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
             )
 
+        # Detect calibration compatibility before building additive scorecard points
+        model_raw = getattr(model, "_raw", {})
+        calibration = model_raw.get("calibration", {})
+        if calibration:
+            application_mode = calibration.get("application_mode", "")
+            score_scaling_compatible = bool(calibration.get("score_scaling_compatible", False))
+            if application_mode != "folded_linear_log_odds" or not score_scaling_compatible:
+                raise ValueError(
+                    "Score scaling requires calibration.application_mode="
+                    "'folded_linear_log_odds'. Runtime probability calibration "
+                    "(including isotonic and CV Platt ensembles) is not compatible "
+                    "with additive scorecard points."
+                )
+
         bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
         woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
 

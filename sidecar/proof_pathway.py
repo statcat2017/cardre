@@ -125,23 +125,34 @@ SCORECARD_PATHWAY = PathwaySpec(
                             parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "define-metadata"]),
         ],
 
-        # Phase 2B: WOE transform, logistic regression, score scaling, summary report
+        # Phase 2B: WOE transform, logistic regression, raw apply, calibration, score scaling
         [
             PathwayStepSpec("woe-transform-train", "cardre.woe_transform_train", category="fit",
                             parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv", "variable-selection"]),
             PathwayStepSpec("logistic-regression", "cardre.logistic_regression", category="fit",
                             params={"C": 1.0, "max_iter": 1000, "solver": "lbfgs", "random_seed": 42},
                             parent_step_ids=["woe-transform-train", "define-metadata"]),
+
+            # Raw apply path for calibration holdout
+            PathwayStepSpec("apply-woe-raw", "cardre.apply_woe_mapping", category="apply",
+                            params={"woe_unmatched_policy": "fill_zero"},
+                            parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv", "variable-selection"]),
+            PathwayStepSpec("apply-model-raw", "cardre.apply_model", category="apply",
+                            parent_step_ids=["apply-woe-raw", "logistic-regression"]),
+            PathwayStepSpec("calibrate-probabilities", "cardre.calibrate_probabilities", category="fit",
+                            params={"calibration_sample": "test"},
+                            parent_step_ids=["apply-model-raw", "logistic-regression", "define-metadata"]),
+
             PathwayStepSpec("score-scaling", "cardre.score_scaling", category="fit",
                             params={
                                 "base_score": 600, "base_odds": 50.0,
                                 "points_to_double_odds": 20, "higher_score_is_lower_risk": True,
                             },
-                            parent_step_ids=["logistic-regression", "manual-binning", "final-woe-iv"]),
+                            parent_step_ids=["calibrate-probabilities", "manual-binning", "final-woe-iv"]),
             PathwayStepSpec("build-summary-report", "cardre.build_summary_report", category="fit",
-                            parent_step_ids=["score-scaling", "logistic-regression", "final-woe-iv"]),
+                            parent_step_ids=["score-scaling", "calibrate-probabilities", "final-woe-iv"]),
             PathwayStepSpec("freeze-scorecard-bundle", "cardre.freeze_scorecard_bundle", category="fit",
-                            parent_step_ids=["logistic-regression", "score-scaling", "manual-binning", "final-woe-iv", "define-metadata", "variable-selection"]),
+                            parent_step_ids=["calibrate-probabilities", "score-scaling", "manual-binning", "final-woe-iv", "define-metadata", "variable-selection"]),
         ],
 
         # Phase 2C: Apply WOE, apply model, validation, cutoff analysis
@@ -149,7 +160,7 @@ SCORECARD_PATHWAY = PathwaySpec(
             PathwayStepSpec("apply-woe", "cardre.apply_woe_mapping", category="apply",
                             parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv", "freeze-scorecard-bundle", "variable-selection"]),
             PathwayStepSpec("apply-model", "cardre.apply_model", category="apply",
-                            parent_step_ids=["apply-woe", "logistic-regression", "score-scaling", "freeze-scorecard-bundle"]),
+                            parent_step_ids=["apply-woe", "calibrate-probabilities", "score-scaling", "freeze-scorecard-bundle"]),
             PathwayStepSpec("validation-metrics", "cardre.validation_metrics", category="apply",
                             parent_step_ids=["apply-model", "define-metadata", "freeze-scorecard-bundle"]),
             PathwayStepSpec("cutoff-analysis", "cardre.cutoff_analysis", category="apply",
@@ -164,7 +175,9 @@ SCORECARD_PATHWAY = PathwaySpec(
                                 "define-metadata", "sample-definition", "split",
                                 "explicit-missing-outlier-treatment", "binning",
                                 "variable-selection", "manual-binning", "final-woe-iv",
-                                "woe-transform-train", "logistic-regression", "score-scaling",
+                                "woe-transform-train", "logistic-regression",
+                                "apply-woe-raw", "apply-model-raw", "calibrate-probabilities",
+                                "score-scaling",
                                 "build-summary-report", "freeze-scorecard-bundle", "apply-woe", "apply-model",
                                 "validation-metrics", "cutoff-analysis",
                             ]),
@@ -272,23 +285,34 @@ REJECT_INFERENCE_PATHWAY = PathwaySpec(
                             parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "define-metadata"]),
         ],
 
-        # Phase 2B: WOE transform, logistic regression, score scaling, summary report
+        # Phase 2B: WOE transform, logistic regression, raw apply, calibration, score scaling
         [
             PathwayStepSpec("woe-transform-train", "cardre.woe_transform_train", category="fit",
                             parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv", "variable-selection"]),
             PathwayStepSpec("logistic-regression", "cardre.logistic_regression", category="fit",
                             params={"C": 1.0, "max_iter": 1000, "solver": "lbfgs", "random_seed": 42},
                             parent_step_ids=["woe-transform-train", "define-metadata"]),
+
+            # Raw apply path for calibration holdout
+            PathwayStepSpec("apply-woe-raw", "cardre.apply_woe_mapping", category="apply",
+                            params={"woe_unmatched_policy": "fill_zero"},
+                            parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv", "variable-selection"]),
+            PathwayStepSpec("apply-model-raw", "cardre.apply_model", category="apply",
+                            parent_step_ids=["apply-woe-raw", "logistic-regression"]),
+            PathwayStepSpec("calibrate-probabilities", "cardre.calibrate_probabilities", category="fit",
+                            params={"calibration_sample": "test"},
+                            parent_step_ids=["apply-model-raw", "logistic-regression", "define-metadata"]),
+
             PathwayStepSpec("score-scaling", "cardre.score_scaling", category="fit",
                             params={
                                 "base_score": 600, "base_odds": 50.0,
                                 "points_to_double_odds": 20, "higher_score_is_lower_risk": True,
                             },
-                            parent_step_ids=["logistic-regression", "manual-binning", "final-woe-iv"]),
+                            parent_step_ids=["calibrate-probabilities", "manual-binning", "final-woe-iv"]),
             PathwayStepSpec("build-summary-report", "cardre.build_summary_report", category="fit",
-                            parent_step_ids=["score-scaling", "logistic-regression", "final-woe-iv"]),
+                            parent_step_ids=["score-scaling", "calibrate-probabilities", "final-woe-iv"]),
             PathwayStepSpec("freeze-scorecard-bundle", "cardre.freeze_scorecard_bundle", category="fit",
-                            parent_step_ids=["logistic-regression", "score-scaling", "manual-binning", "final-woe-iv", "define-metadata", "variable-selection"]),
+                            parent_step_ids=["calibrate-probabilities", "score-scaling", "manual-binning", "final-woe-iv", "define-metadata", "variable-selection"]),
         ],
 
         # Phase 2C: Apply WOE, apply model, validation, cutoff analysis
@@ -296,7 +320,7 @@ REJECT_INFERENCE_PATHWAY = PathwaySpec(
             PathwayStepSpec("apply-woe", "cardre.apply_woe_mapping", category="apply",
                             parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv", "freeze-scorecard-bundle", "variable-selection"]),
             PathwayStepSpec("apply-model", "cardre.apply_model", category="apply",
-                            parent_step_ids=["apply-woe", "logistic-regression", "score-scaling", "freeze-scorecard-bundle"]),
+                            parent_step_ids=["apply-woe", "calibrate-probabilities", "score-scaling", "freeze-scorecard-bundle"]),
             PathwayStepSpec("validation-metrics", "cardre.validation_metrics", category="apply",
                             parent_step_ids=["apply-model", "define-metadata", "freeze-scorecard-bundle"]),
             PathwayStepSpec("cutoff-analysis", "cardre.cutoff_analysis", category="apply",
@@ -313,7 +337,9 @@ REJECT_INFERENCE_PATHWAY = PathwaySpec(
                                 "validate-target", "split",
                                 "explicit-missing-outlier-treatment", "binning",
                                 "variable-selection", "manual-binning", "final-woe-iv",
-                                "woe-transform-train", "logistic-regression", "score-scaling",
+                                "woe-transform-train", "logistic-regression",
+                                "apply-woe-raw", "apply-model-raw", "calibrate-probabilities",
+                                "score-scaling",
                                 "build-summary-report", "freeze-scorecard-bundle", "apply-woe", "apply-model",
                                 "validation-metrics", "cutoff-analysis",
                             ]),

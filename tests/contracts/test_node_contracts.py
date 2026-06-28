@@ -14,6 +14,7 @@ from cardre.nodes import (
     AutoBinningFitNode,
     BinningNode,
     BuildSummaryReportNode,
+    CalibrateProbabilitiesNode,
     CalculateWoeIvNode,
     CatBoostClassifierNode,
     CutoffAnalysisNode,
@@ -458,6 +459,16 @@ class TestBuildSummaryReportContract(NodeContractTestBase):
     expected_category = "fit"
 
 
+class TestCalibrateProbabilitiesContract(NodeContractTestBase):
+    node_cls = CalibrateProbabilitiesNode
+    bad_params: dict[str, Any] = {"calibration_sample": "invalid"}
+    expected_output_roles = {"model", "report"}
+    expected_category = "fit"
+
+    def get_good_params(self, tmp_path: Path) -> dict[str, Any]:
+        return {"calibration_sample": "test"}
+
+
 # ======================================================================
 # ML model nodes
 # ======================================================================
@@ -761,6 +772,7 @@ _COVERED_NODE_TYPES: set[str] = {
         ScoreScalingNode,
         FrozenScorecardBundleNode,
         BuildSummaryReportNode,
+        CalibrateProbabilitiesNode,
         VotingEnsembleNode,
         WeightedEnsembleNode,
         HyperparameterTuningNode,

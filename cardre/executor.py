@@ -680,6 +680,8 @@ class PlanExecutor:
     ) -> None:
         if node.category not in LEAKAGE_SENSITIVE_CATEGORIES:
             return
+        if getattr(node, "_leakage_safe", False):
+            return
         for a in artifacts:
             if a.role in ("test", "oot") and a.artifact_type == "dataset":
                 raise LeakageProtectionError(

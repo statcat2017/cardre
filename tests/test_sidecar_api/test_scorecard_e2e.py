@@ -26,7 +26,7 @@ class TestScorecardPathwayE2E:
         plan_resp = client.get(f"/plans/{plan_id}?project_id={pid}")
         assert plan_resp.status_code == 200
         plan_data = plan_resp.json()
-        assert len(plan_data["steps"]) == 24
+        assert len(plan_data["steps"]) == 27
         for step in plan_data["steps"]:
             assert "params" in step
             assert step["params"] is not None
@@ -311,7 +311,9 @@ class TestScorecardPathwayE2E:
         assert steps_map["binning"]["is_stale"]
         stale_downstream = ["initial-woe-iv", "variable-clustering", "variable-selection",
                             "manual-binning", "final-woe-iv", "woe-transform-train",
-                            "logistic-regression", "score-scaling", "build-summary-report",
+                            "logistic-regression", "apply-woe-raw", "apply-model-raw",
+                            "calibrate-probabilities",
+                            "score-scaling", "build-summary-report",
                             "apply-woe", "apply-model",
                             "validation-metrics", "cutoff-analysis", "technical-manifest-stub"]
         for step_id in stale_downstream:

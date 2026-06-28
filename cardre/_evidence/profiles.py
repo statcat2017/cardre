@@ -8,6 +8,7 @@ from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.schemas import (
     SCHEMA_APPLY_MODEL_EVIDENCE,
     SCHEMA_APPLY_WOE_EVIDENCE,
+    SCHEMA_CALIBRATION_REPORT,
     SCHEMA_COMPARISON_ARTIFACT,
     SCHEMA_CUTOFF_ANALYSIS,
     SCHEMA_ENSEMBLE_MODEL_ARTIFACT,
@@ -272,5 +273,11 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"report"},
         schema_version=SCHEMA_PROXY_RISK_REPORT,
         required_keys={"proxy_flags", "overall_risk"},
+    ),
+    EvidenceKind.CALIBRATION_REPORT: _Profile(
+        expected_roles={"report"},
+        expected_artifact_types={"report"},
+        schema_version=SCHEMA_CALIBRATION_REPORT,
+        required_keys={"method", "calibration_error", "bins"},
     ),
 }
