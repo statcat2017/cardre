@@ -157,6 +157,31 @@ def write_manifest(
                               target_step_id, in_scope_step_ids, payload)
 
 
+def _compute_pathway_hash(store: ProjectStore, plan_version_id: str) -> str:
+    """Compute a deterministic hash of the plan version steps.
+
+    Includes canonical_step_id, step_id, node_type, node_version, category,
+    params_hash, parent_step_ids, position, and branch_id for each step.
+    """
+    from cardre.audit import json_logical_hash
+    steps = store.get_plan_version_steps(plan_version_id)
+    pathway_repr = [
+        {
+            "canonical_step_id": s.canonical_step_id or s.step_id,
+            "step_id": s.step_id,
+            "node_type": s.node_type,
+            "node_version": s.node_version,
+            "category": s.category,
+            "params_hash": s.params_hash,
+            "parent_step_ids": s.parent_step_ids,
+            "position": s.position,
+            "branch_id": s.branch_id,
+        }
+        for s in steps
+    ]
+    return json_logical_hash({"pathway_steps": pathway_repr})
+
+
 def _write_canonical_manifest(
     store: ProjectStore,
     run_id: str,
@@ -208,6 +233,11 @@ def _write_canonical_manifest(
         )
         steps_model.append(step)
 
+    pathway_hash = _compute_pathway_hash(store, plan_version_id)
+
+    run_diagnostics = store.get_run_diagnostics(run_id)
+    diagnostic_entries = list(run_diagnostics) if run_diagnostics else []
+
     manifest = RunManifest(
         manifest_version="cardre.run_manifest.v1",
         run_id=run_id,
@@ -220,12 +250,12 @@ def _write_canonical_manifest(
         status=final_status,
         execution_mode=execution_mode,
         cardre_version="0.1.0",
-        pathway_hash="",
+        pathway_hash=pathway_hash,
         artifact_root=str(store.root / "artifacts"),
         target_step_id=target_step_id,
         in_scope_step_ids=in_scope_step_ids or [],
         steps=steps_model,
-        diagnostics=[],
+        diagnostics=diagnostic_entries,
     )
     manifest.manifest_hash = compute_manifest_hash(manifest)
 

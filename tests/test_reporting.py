@@ -30,10 +30,7 @@ from cardre.reporting.schema import (
     ScoreScalingInfo,
     ValidationInfo,
     MetricsByRole,
-    CutoffInfo,
     ChampionInfo,
-    RunStatusInfo,
-    DiagnosticEntry,
 )
 from cardre.evidence import SCHEMA_MANUAL_BINNING_OVERRIDES
 from cardre.nodes.validate.analyse import ValidationMetricsNode
@@ -165,53 +162,7 @@ class TestReportBundleSchema:
         assert d["metrics_by_role"][0]["auc"] == 0.742
         assert d["metrics_by_role"][1]["role"] == "oot"
 
-    def test_model_has_source_step_refs_field(self):
-        from cardre.reporting.schema import ResolvedStepRef
-        ref = ResolvedStepRef(
-            requested_branch_id="main", resolved_branch_id="main",
-            canonical_step_id="logistic-regression", step_id="fit-model",
-            resolution="exact",
-        )
-        m = ModelInfo(features=[], source_step_refs=[ref])
-        d = m.model_dump()
-        assert len(d["source_step_refs"]) == 1
-        assert d["source_step_refs"][0]["step_id"] == "fit-model"
 
-    def test_score_scaling_has_source_step_refs_field(self):
-        from cardre.reporting.schema import ResolvedStepRef
-        ref = ResolvedStepRef(
-            requested_branch_id="main", resolved_branch_id="main",
-            canonical_step_id="score-scaling", step_id="scale",
-            resolution="exact",
-        )
-        s = ScoreScalingInfo(source_step_refs=[ref])
-        d = s.model_dump()
-        assert len(d["source_step_refs"]) == 1
-        assert d["source_step_refs"][0]["canonical_step_id"] == "score-scaling"
-
-    def test_validation_has_source_step_refs_field(self):
-        from cardre.reporting.schema import ResolvedStepRef
-        ref = ResolvedStepRef(
-            requested_branch_id="main", resolved_branch_id="main",
-            canonical_step_id="validation-metrics", step_id="validate",
-            resolution="exact",
-        )
-        v = ValidationInfo(source_step_refs=[ref])
-        d = v.model_dump()
-        assert len(d["source_step_refs"]) == 1
-        assert d["source_step_refs"][0]["canonical_step_id"] == "validation-metrics"
-
-    def test_cutoff_has_source_step_refs_field(self):
-        from cardre.reporting.schema import ResolvedStepRef
-        ref = ResolvedStepRef(
-            requested_branch_id="main", resolved_branch_id="main",
-            canonical_step_id="cutoff-analysis", step_id="cutoff",
-            resolution="exact",
-        )
-        c = CutoffInfo(source_step_refs=[ref])
-        d = c.model_dump()
-        assert len(d["source_step_refs"]) == 1
-        assert d["source_step_refs"][0]["canonical_step_id"] == "cutoff-analysis"
 
 
 # =========================================================================
@@ -494,151 +445,8 @@ class TestGoldenJson:
 
 
 # =========================================================================
-# RunStatusInfo + DiagnosticEntry tests
+# RunStatusInfo + DiagnosticEntry tests moved to tests/reporting/test_run_status.py
 # =========================================================================
-
-class TestRunStatusInfo:
-    def test_run_status_model_required_fields(self):
-        r = RunStatusInfo(run_id="r1", status="succeeded")
-        assert r.run_id == "r1"
-        assert r.status == "succeeded"
-        assert r.started_at == ""
-        assert r.finished_at is None
-        assert r.execution_mode == "unknown"
-        assert r.diagnostics == []
-
-    def test_diagnostic_entry_model(self):
-        d = DiagnosticEntry(code="TEST_ERR", message="Something failed", severity="error")
-        assert d.code == "TEST_ERR"
-        assert d.message == "Something failed"
-        assert d.severity == "error"
-        assert d.category == ""
-
-    def test_run_status_deterministic_serialization(self):
-        r1 = RunStatusInfo(run_id="r1", status="succeeded", execution_mode="full")
-        r2 = RunStatusInfo(run_id="r1", status="succeeded", execution_mode="full")
-        assert r1.model_dump_json(indent=2) == r2.model_dump_json(indent=2)
-
-    def test_report_bundle_has_run_status_field(self):
-        b = ReportBundle(project_id="p1", run_id="r1", target_branch_id="main", report_mode="branch")
-        # Default should be empty (not None)
-        assert b.run_status.run_id == ""
-        assert b.run_status.status == ""
-
-
-class TestCollectorRunStatus:
-    """Collector populates run_status from store."""
-
-    def test_succeeded_run_has_no_blocker(self, store, project_and_plan):
-        project_id, plan_id = project_and_plan
-        pv_id = store.get_latest_plan_version_id(plan_id)
-        run_id = store.create_run(pv_id)
-        store.finish_run(run_id, "succeeded")
-
-        bundle = generate_report_bundle(
-            store=store, project_id=project_id, run_id=run_id,
-            target_branch_id="nonexistent", report_mode="branch",
-        )
-        assert bundle.run_status.status == "succeeded"
-
-    def test_failed_run_has_run_status_failed(self, store, project_and_plan):
-        project_id, plan_id = project_and_plan
-        pv_id = store.get_latest_plan_version_id(plan_id)
-        run_id = store.create_run(pv_id)
-        store.finish_run(run_id, "failed")
-
-        store.append_run_diagnostic(run_id, {
-            "code": "RUNTIME_ERROR", "message": "Something blew up",
-            "severity": "error", "category": "execution",
-            "created_at": "2026-06-15T00:00:00Z",
-        })
-
-        bundle = generate_report_bundle(
-            store=store, project_id=project_id, run_id=run_id,
-            target_branch_id="nonexistent", report_mode="branch",
-        )
-        assert bundle.run_status.status == "failed"
-        assert bundle.run_status.run_id == run_id
-
-        # Should have a diagnostic
-        diag_codes = [d.code for d in bundle.run_status.diagnostics]
-        assert "RUNTIME_ERROR" in diag_codes
-
-    def test_failed_run_has_blocker_limitation(self, store, project_and_plan):
-        project_id, plan_id = project_and_plan
-        pv_id = store.get_latest_plan_version_id(plan_id)
-        run_id = store.create_run(pv_id)
-        store.finish_run(run_id, "failed")
-
-        bundle = generate_report_bundle(
-            store=store, project_id=project_id, run_id=run_id,
-            target_branch_id="nonexistent", report_mode="branch",
-        )
-        codes = {l.code for l in bundle.limitations}
-        assert "MISSING_RUN_MANIFEST" in codes
-
-    def test_collector_populates_manifest_hash_from_manifest_json(self):
-        """When manifest.json exists, collector reads hashes from it."""
-        import uuid
-        from pathlib import Path
-        import tempfile
-        from cardre.reporting.schema import RunManifest
-        from cardre.run_lifecycle import compute_manifest_hash
-
-        tmp = Path(tempfile.mkdtemp())
-        store = ProjectStore(tmp / "test.cardre")
-        store.initialize()
-
-        project_id = store.create_project("Test")
-        plan_id = store.create_plan(project_id, "Test Plan")
-        pv_id = store.create_plan_version(plan_id, [], description="v1")
-        run_id = store.create_run(pv_id)
-        store.finish_run(run_id, "succeeded")
-
-        branch_id = store.create_branch(
-            project_id=project_id, plan_id=plan_id,
-            name="main", branch_type="baseline",
-            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-            created_reason="Test.",
-        )
-        for cid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
-            store.create_branch_step_map(
-                branch_id=branch_id, plan_version_id=pv_id,
-                canonical_step_id=cid, step_id=cid,
-                is_shared_upstream=False, is_branch_owned=True,
-            )
-
-        # Write a manifest.json manually
-        manifest = RunManifest(
-            run_id=run_id, plan_version_id=pv_id, plan_id=plan_id,
-            project_id=project_id, status="succeeded",
-        )
-        manifest.manifest_hash = compute_manifest_hash(manifest)
-        manifest_dir = store.root / "exports" / f"manifest-{run_id}"
-        manifest_dir.mkdir(parents=True, exist_ok=True)
-        (manifest_dir / "manifest.json").write_text(
-            manifest.model_dump_json(indent=2)
-        )
-
-        # Now instead of requiring plan_version_steps, inject run_steps so collector passes
-        from cardre.audit import RunStepRecord, utc_now_iso
-        for sid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
-            store.save_run_step(RunStepRecord(
-                run_step_id=str(uuid.uuid4()), run_id=run_id, step_id=sid,
-                plan_version_id=pv_id, status="succeeded",
-                started_at=utc_now_iso(), finished_at=utc_now_iso(),
-                input_artifact_ids=[], output_artifact_ids=[],
-                execution_fingerprint={},
-                warnings=[], errors=[],
-            ))
-
-        bundle = generate_report_bundle(
-            store=store, project_id=project_id, run_id=run_id,
-            target_branch_id=branch_id, report_mode="branch",
-        )
-
-        assert bundle.source.run_manifest_hash == manifest.manifest_hash
-        assert bundle.reproducibility.manifest_hash == manifest.manifest_hash
 
 
 # =========================================================================
@@ -972,88 +780,6 @@ class TestReadinessRegression:
         # checked_at should be ISO-8601 parsable
         from datetime import datetime
         datetime.fromisoformat(result.checked_at)
-
-    def test_readiness_blocks_on_failed_run(self):
-        """Readiness blocks when run status is not succeeded."""
-        store = ProjectStore(Path(tempfile.mkdtemp()) / "test.cardre")
-        store.initialize()
-        project_id = store.create_project("Test")
-        plan_id = store.create_plan(project_id, "Test Plan")
-        pv_id = store.create_plan_version(plan_id, [], description="v1")
-        run_id = store.create_run(pv_id)
-        store.finish_run(run_id, "failed")
-        branch_id = store.create_branch(
-            project_id=project_id, plan_id=plan_id,
-            name="Branch", branch_type="baseline",
-            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-            created_reason="Test.",
-        )
-        for cid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
-            store.create_branch_step_map(
-                branch_id=branch_id, plan_version_id=pv_id,
-                canonical_step_id=cid, step_id=cid,
-                is_shared_upstream=False, is_branch_owned=True,
-            )
-        result = check_report_readiness(
-            store=store, project_id=project_id, run_id=run_id,
-            target_branch_id=branch_id, report_mode="branch",
-        )
-        codes = {str(b.code) for b in result.blockers}
-        assert "RUN_NOT_SUCCEEDED" in codes, \
-            f"Expected RUN_NOT_SUCCEEDED blocker, got {codes}"
-
-    def test_readiness_blocks_on_interrupted_run(self):
-        """Readiness blocks when run status is interrupted."""
-        store = ProjectStore(Path(tempfile.mkdtemp()) / "test.cardre")
-        store.initialize()
-        project_id = store.create_project("Test")
-        plan_id = store.create_plan(project_id, "Test Plan")
-        pv_id = store.create_plan_version(plan_id, [], description="v1")
-        run_id = store.create_run(pv_id)
-        store.finish_run(run_id, "interrupted")
-        branch_id = store.create_branch(
-            project_id=project_id, plan_id=plan_id,
-            name="Branch", branch_type="baseline",
-            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-            created_reason="Test.",
-        )
-        for cid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
-            store.create_branch_step_map(
-                branch_id=branch_id, plan_version_id=pv_id,
-                canonical_step_id=cid, step_id=cid,
-                is_shared_upstream=False, is_branch_owned=True,
-            )
-        result = check_report_readiness(
-            store=store, project_id=project_id, run_id=run_id,
-            target_branch_id=branch_id, report_mode="branch",
-        )
-        codes = {str(b.code) for b in result.blockers}
-        assert "RUN_NOT_SUCCEEDED" in codes
-
-    def test_readiness_succeeded_run_no_status_blocker(self, store, project_and_plan):
-        """Readiness does not emit RUN_NOT_SUCCEEDED for a succeeded run."""
-        project_id, plan_id = project_and_plan
-        pv_id = store.get_latest_plan_version_id(plan_id)
-        run_id = store.create_run(pv_id)
-        store.finish_run(run_id, "succeeded")
-        branch_id = store.create_branch(
-            project_id=project_id, plan_id=plan_id,
-            name="Branch", branch_type="baseline",
-            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-            created_reason="Test.",
-        )
-        for cid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
-            store.create_branch_step_map(
-                branch_id=branch_id, plan_version_id=pv_id,
-                canonical_step_id=cid, step_id=cid,
-                is_shared_upstream=False, is_branch_owned=True,
-            )
-        result = check_report_readiness(
-            store=store, project_id=project_id, run_id=run_id,
-            target_branch_id=branch_id, report_mode="branch",
-        )
-        codes = {str(b.code) for b in result.blockers}
-        assert "RUN_NOT_SUCCEEDED" not in codes
 
     def test_blocker_step_ids_populated_for_manual_binning(self, store, project_and_plan):
         """MANUAL_BINNING_NOT_REVIEWED blocker carries step_id from resolved branch step."""

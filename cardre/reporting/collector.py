@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
-
 from cardre.audit import RunStepRecord
+
 from cardre.errors import Result
+from cardre.run_lifecycle import compute_manifest_hash
 from cardre.store import ProjectStore
 
 from cardre.evidence import (
@@ -48,6 +49,7 @@ from cardre.reporting.schema import (
     ReportGenerationInfo,
     ReproducibilityInfo,
     ResolvedStepRef,
+    RunManifest,
     RunStatusInfo,
     ScoreScalingInfo,
     ValidationInfo,
@@ -124,8 +126,8 @@ class ReportCollector:
         # Run status info
         self._collect_run_status(bundle, run)
 
-        # Source info
-        bundle.source.run_manifest_path = str(self.store.root / "cardre.sqlite")
+        # Source info — updated to canonical path by _read_canonical_manifest
+        bundle.source.run_manifest_path = ""
 
         # Branch
         branch = self.store.get_branch(self.target_branch_id)
@@ -800,8 +802,6 @@ class ReportCollector:
             status=run.get("status", ""),
             started_at=run.get("started_at", ""),
             finished_at=run.get("finished_at"),
-            execution_mode=run.get("execution_mode", "unknown"),
-            target_step_id=run.get("target_step_id"),
         )
         for d in run_diags:
             bundle.run_status.diagnostics.append(DiagnosticEntry(
@@ -814,31 +814,55 @@ class ReportCollector:
         if run.get("status") and run["status"] != "succeeded":
             self.limitations.append(Limitation(
                 severity="blocker",
-                code=LimitationCode.MISSING_RUN_MANIFEST,
+                code=LimitationCode.RUN_NOT_SUCCEEDED,
                 message=f"Run status is '{run['status']}', expected 'succeeded'.",
             ))
 
     def _read_canonical_manifest(self, bundle: ReportBundle) -> None:
-        """Try to read the canonical manifest.json and populate hash fields."""
+        """Try to read the canonical manifest.json and populate hash fields.
+
+        Validates the manifest payload against the RunManifest model and
+        recomputes the self-referential hash to detect corruption.
+        """
         manifest_path = self.store.root / "exports" / f"manifest-{self.run_id}" / "manifest.json"
         if not manifest_path.exists():
             return
         try:
             import json
-            manifest_data = json.loads(manifest_path.read_text())
-            m_hash = manifest_data.get("manifest_hash", "")
+            raw = manifest_path.read_text()
+            manifest_data = json.loads(raw)
+
+            manifest_obj = RunManifest.model_validate(manifest_data)
+            expected_hash = compute_manifest_hash(manifest_obj)
+            actual_hash = manifest_data.get("manifest_hash", "")
+
+            if actual_hash != expected_hash:
+                self.limitations.append(Limitation(
+                    severity="blocker",
+                    code=LimitationCode.ARTIFACT_HASH_UNRESOLVED,
+                    message=f"Canonical manifest hash mismatch at {manifest_path}: "
+                    f"expected {expected_hash}, got {actual_hash}.",
+                ))
+                return
+
             pw_hash = manifest_data.get("pathway_hash", "")
             art_root = manifest_data.get("artifact_root", "")
-            bundle.source.run_manifest_hash = m_hash
+            bundle.source.run_manifest_path = str(manifest_path)
+            bundle.source.run_manifest_hash = actual_hash
             bundle.source.pathway_hash = pw_hash
             bundle.source.artifact_root = art_root
-            bundle.reproducibility.manifest_hash = m_hash
+            bundle.reproducibility.manifest_hash = actual_hash
             bundle.reproducibility.pathway_hash = pw_hash
-        except (OSError, json.JSONDecodeError):
+
+            bundle.run_status.execution_mode = manifest_data.get("execution_mode", "unknown")
+            bundle.run_status.target_step_id = manifest_data.get("target_step_id")
+            bundle.run_status.in_scope_step_ids = manifest_data.get("in_scope_step_ids", [])
+
+        except Exception as exc:
             self.limitations.append(Limitation(
                 severity="warning",
                 code="CANONICAL_MANIFEST_UNREADABLE",
-                message=f"Could not read canonical manifest at {manifest_path}.",
+                message=f"Could not read canonical manifest at {manifest_path}: {exc}",
             ))
 
     def _resolve_run_step(
