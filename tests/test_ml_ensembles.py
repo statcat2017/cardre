@@ -9,6 +9,7 @@ import polars as pl
 
 from cardre.audit import ExecutionContext, StepSpec, json_logical_hash
 from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
+from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.modeling.schema import validate_model_artifact
 from cardre.nodes.ml_models import (
     DecisionTreeNode,
@@ -489,6 +490,40 @@ class ExpandedValidationMetricsTests:
         assert "prob_pred" in calib
         assert calib["n_bins"] == 10
         assert calib["strategy"] == "quantile"
+
+    def test_validation_metrics_handles_tied_ks_max(self) -> None:
+        store, tmp = make_store()
+        df = pl.DataFrame(
+            {
+                "predicted_bad_probability": [0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+                "score": [500.0] * 6,
+                "target": ["bad", "bad", "good", "bad", "good", "good"],
+            }
+        )
+        data_art = write_parquet_artifact(
+            store,
+            artifact_type="dataset",
+            role="train",
+            stem="tie-ks",
+            frame=df,
+            metadata={},
+        )
+        def_art = write_json_artifact(
+            store,
+            artifact_type="definition",
+            role="definition",
+            stem="tie-ks-def",
+            payload={"target_column": "target", "good_values": ["good"], "bad_values": ["bad"]},
+            metadata={},
+        )
+
+        val_ctx = make_val_context(store, [data_art], def_art)
+        report_out = ValidationMetricsNode().run(val_ctx)
+        report = ArtifactEvidenceReader(store).read(report_out.artifacts[0].artifact_id, EvidenceKind.VALIDATION_EVIDENCE)
+
+        train_metrics = report._raw["roles"]["train"]
+        assert train_metrics["ks"] is not None
+        assert train_metrics["ks_at_score"] == 500.0
 
 
 # ======================================================================
