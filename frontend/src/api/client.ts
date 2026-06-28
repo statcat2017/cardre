@@ -61,8 +61,10 @@ export class ApiError extends Error {
   readonly detail: {
     code: string;
     message: string;
+    recoverable?: boolean;
+    severity?: string;
     context?: Record<string, unknown>;
-    diagnostics?: Array<{ code: string; message: string }>;
+    diagnostics?: Array<{ code: string; message: string; source?: string }>;
     request_id?: string;
     error_id?: string;
   };

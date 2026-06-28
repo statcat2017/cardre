@@ -24,6 +24,7 @@ cardre-api = "sidecar.main:main"
 [project.optional-dependencies]
 sidecar = ["fastapi", "uvicorn"]
 test = ["pytest", "pytest-cov", "pytest-mock", "httpx", "starlette"]
+dev = ["ruff==0.15.20"]
 boosting = ["xgboost", "lightgbm", "catboost"]
 imbalance = ["imbalanced-learn"]
 explain = ["shap", "lime"]
