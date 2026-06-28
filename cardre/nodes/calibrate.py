@@ -24,7 +24,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold
 
 from cardre.artifacts import write_json_artifact
-from cardre.audit import ExecutionContext, JsonDict, NodeOutput, NodeType
+from cardre.audit import ArtifactRef, ExecutionContext, JsonDict, NodeOutput, NodeType
 from cardre.evidence import (
     ArtifactEvidenceReader,
     EvidenceKind,
@@ -161,7 +161,15 @@ class CalibrateProbabilitiesNode(NodeType):
     category = "fit"
     input_roles: list[str] = ["train", "test", "oot", "definition", "model"]
     output_roles: list[str] = ["model", "report"]
-    _leakage_safe = True  # Calibration intentionally consumes test data to fit calibrator
+
+    def allows_leakage_artifact(self, artifact: ArtifactRef) -> bool:
+        """Allow test/OOT scored datasets only when they carry a model_artifact_id
+        metadata proving they are apply-model outputs, not raw training splits."""
+        return (
+            artifact.role in {"test", "oot"}
+            and artifact.artifact_type == "dataset"
+            and bool(artifact.metadata.get("model_artifact_id"))
+        )
 
     MIN_CALIBRATION_ROWS = 30
     ISOTONIC_MIN_ROWS = 1000
@@ -188,22 +196,29 @@ class CalibrateProbabilitiesNode(NodeType):
                             name="calibration_sample",
                             label="Calibration Sample",
                             kind="enum",
-                            default="test",
+                            default="train",
                             constraint=ParameterConstraint(
                                 enum_values=["test", "oot", "train"],
                             ),
-                            help_text="Which data role to use for fitting the calibrator.",
+                            help_text=(
+                                "Which data role to use for fitting the calibrator. "
+                                "When 'train' is used with cross_validation=True, "
+                                "the calibrator is fitted via out-of-fold predictions "
+                                "and test/OOT remain clean holdouts for final validation."
+                            ),
                         ),
                         ParameterDefinition(
                             name="cross_validation",
                             label="Cross-Validation",
                             kind="boolean",
-                            default=False,
+                            default=True,
                             help_text=(
-                                "Use CV ensemble when True. "
-                                "Note: CV Platt is a runtime transform and "
-                                "not scorecard-point compatible; score scaling "
-                                "will fail."
+                                "Use CV ensemble when True (recommended). "
+                                "When calibration_sample='train' and CV is on, "
+                                "the calibrator is fitted on out-of-fold predictions "
+                                "to avoid overfitting. Note: CV Platt produces a "
+                                "runtime probability transform that is not "
+                                "scorecard-point compatible; score scaling will fail."
                             ),
                         ),
                         ParameterDefinition(
@@ -242,7 +257,7 @@ class CalibrateProbabilitiesNode(NodeType):
                             name="calibration_sample",
                             label="Calibration Sample",
                             kind="enum",
-                            default="test",
+                            default="train",
                             constraint=ParameterConstraint(
                                 enum_values=["test", "oot", "train"],
                             ),
@@ -252,7 +267,7 @@ class CalibrateProbabilitiesNode(NodeType):
                             name="cross_validation",
                             label="Cross-Validation",
                             kind="boolean",
-                            default=False,
+                            default=True,
                         ),
                         ParameterDefinition(
                             name="cv_folds",
@@ -268,7 +283,7 @@ class CalibrateProbabilitiesNode(NodeType):
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
-        sample = params.get("calibration_sample", "test")
+        sample = params.get("calibration_sample", "train")
         if sample not in ("test", "oot", "train"):
             errors.append(f"calibration_sample must be 'test', 'oot', or 'train', got {sample!r}")
         method = params.get("method", "platt")
@@ -281,10 +296,10 @@ class CalibrateProbabilitiesNode(NodeType):
         reader = ArtifactEvidenceReader(store)
         params = context.validated_params
         method = params.get("method", "platt")
-        calibration_sample = params.get("calibration_sample", "test")
+        calibration_sample = params.get("calibration_sample", "train")
         min_prob = float(params.get("min_probability", 0.001))
         max_prob = float(params.get("max_probability", 0.999))
-        cross_validated = bool(params.get("cross_validation", False))
+        cross_validated = bool(params.get("cross_validation", True))
         cv_folds = int(params.get("cv_folds", 5))
 
         if cv_folds < 2:
@@ -351,14 +366,14 @@ class CalibrateProbabilitiesNode(NodeType):
                 ),
             })
 
-        # Warn if calibration sample is train (risk of overfitting)
-        if calibration_sample == "train":
+        # Warn if calibration sample is train without CV (risk of overfitting)
+        if calibration_sample == "train" and not cross_validated:
             warnings_list.append({
                 "code": "CALIBRATION_ON_TRAIN_SAMPLE",
                 "message": (
-                    "Calibration fitted on the training sample. "
-                    "This risks overfitting the calibrator. "
-                    "Use a held-out sample (test/oot) when possible."
+                    "Calibration fitted on the training sample without "
+                    "cross-validation. This risks overfitting the calibrator. "
+                    "Enable cross_validation or use a held-out sample (test/oot)."
                 ),
             })
 
@@ -367,6 +382,22 @@ class CalibrateProbabilitiesNode(NodeType):
             # Pass through: original model unchanged, no calibrator artifact
             application_mode = "folded_linear_log_odds"
             score_scaling_compatible = True
+            calibrator = None
+        # Read model artifact once for model_family checks and later update
+        model_art = next(a for a in context.input_artifacts if a.role == "model")
+        typed_model = reader.read(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        model_family = typed_model.model_family
+        has_linear_coefficients = (
+            model_family == "logistic_regression"
+            and "intercept" in getattr(typed_model, "_raw", {})
+            and isinstance(getattr(typed_model, "_raw", {}).get("coefficients"), dict)
+        )
+
+        # 5. Fit calibrator (skip if too few rows)
+        if too_few_rows:
+            # Pass through: original model unchanged, no calibrator artifact
+            application_mode = "folded_linear_log_odds" if has_linear_coefficients else "runtime_probability_transform"
+            score_scaling_compatible = has_linear_coefficients
             calibrator = None
         elif method == "platt":
             raw_log_odds = _safe_logit(y_prob_raw).reshape(-1, 1)
@@ -384,8 +415,12 @@ class CalibrateProbabilitiesNode(NodeType):
                         "Platt calibration produced non-positive slope; "
                         "score ordering would invert"
                     )
-                application_mode = "folded_linear_log_odds"
-                score_scaling_compatible = True
+                if has_linear_coefficients:
+                    application_mode = "folded_linear_log_odds"
+                    score_scaling_compatible = True
+                else:
+                    application_mode = "runtime_probability_transform"
+                    score_scaling_compatible = False
         elif method == "isotonic":
             if cross_validated and cv_folds > 1:
                 calibrator = _fit_isotonic_cv(y_prob_raw, y_binary, cv_folds)
@@ -436,9 +471,7 @@ class CalibrateProbabilitiesNode(NodeType):
                 ),
             })
 
-        # 8. Read current model artifact
-        model_art = next(a for a in context.input_artifacts if a.role == "model")
-        typed_model = reader.read(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        # 8. Build updated model artifact from the original
         model: dict[str, Any] = dict(getattr(typed_model, "_raw", {}))
         model.update(typed_model.as_legacy_dict())
 
@@ -480,6 +513,10 @@ class CalibrateProbabilitiesNode(NodeType):
             "max_bin_deviation": round(max_bin_deviation, 6),
             "bins": bins,
             "warnings": warnings_list,
+            "calibration_sample_is_independent_holdout": calibration_sample in ("test", "oot"),
+            "source_scoring_policy": {
+                "woe_unmatched_policy": "fail",
+            },
         }
         report_art = write_json_artifact(
             store, artifact_type="report", role="report",

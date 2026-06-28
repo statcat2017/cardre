@@ -135,12 +135,13 @@ SCORECARD_PATHWAY = PathwaySpec(
 
             # Raw apply path for calibration holdout
             PathwayStepSpec("apply-woe-raw", "cardre.apply_woe_mapping", category="apply",
-                            params={"woe_unmatched_policy": "fill_zero"},
+                            params={"woe_unmatched_policy": "fail"},
                             parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv", "variable-selection"]),
             PathwayStepSpec("apply-model-raw", "cardre.apply_model", category="apply",
                             parent_step_ids=["apply-woe-raw", "logistic-regression"]),
             PathwayStepSpec("calibrate-probabilities", "cardre.calibrate_probabilities", category="fit",
-                            params={"calibration_sample": "test"},
+                            params={"method": "platt", "calibration_sample": "test",
+                                    "cross_validation": False},
                             parent_step_ids=["apply-model-raw", "logistic-regression", "define-metadata"]),
 
             PathwayStepSpec("score-scaling", "cardre.score_scaling", category="fit",
@@ -295,7 +296,7 @@ REJECT_INFERENCE_PATHWAY = PathwaySpec(
 
             # Raw apply path for calibration holdout
             PathwayStepSpec("apply-woe-raw", "cardre.apply_woe_mapping", category="apply",
-                            params={"woe_unmatched_policy": "fill_zero"},
+                            params={"woe_unmatched_policy": "fail"},
                             parent_step_ids=["explicit-missing-outlier-treatment", "manual-binning", "final-woe-iv", "variable-selection"]),
             PathwayStepSpec("apply-model-raw", "cardre.apply_model", category="apply",
                             parent_step_ids=["apply-woe-raw", "logistic-regression"]),

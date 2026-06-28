@@ -99,6 +99,13 @@ class TestScorecardPathwayE2E:
         assert aw_resp.status_code == 200
         pv_id = aw_resp.json()["new_plan_version_id"]
 
+        awr_resp = client.post(f"/plans/{plan_id}/steps/apply-woe-raw/params", json={
+            "project_id": pid, "base_plan_version_id": pv_id,
+            "params": {"woe_unmatched_policy": "warn"},
+        })
+        assert awr_resp.status_code == 200
+        pv_id = awr_resp.json()["new_plan_version_id"]
+
         run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": pv_id,
         })
@@ -278,6 +285,13 @@ class TestScorecardPathwayE2E:
         })
         assert aw_resp.status_code == 200
         pv_id = aw_resp.json()["new_plan_version_id"]
+
+        awr_resp = client.post(f"/plans/{plan_id}/steps/apply-woe-raw/params", json={
+            "project_id": pid, "base_plan_version_id": pv_id,
+            "params": {"woe_unmatched_policy": "warn"},
+        })
+        assert awr_resp.status_code == 200
+        pv_id = awr_resp.json()["new_plan_version_id"]
 
         run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": pv_id,

@@ -14,7 +14,6 @@ from cardre._evidence.schemas import SCHEMA_CALIBRATION_REPORT
 from cardre._evidence.profiles import EVIDENCE_PROFILES
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.audit import ArtifactRef, ExecutionContext, StepSpec, json_logical_hash
-from cardre.evidence import ArtifactEvidenceReader
 from cardre.modeling.adapters import apply_model as _apply_model_adapter
 from cardre.nodes.build import ScoreScalingNode
 from cardre.nodes.calibrate import CalibrateProbabilitiesNode
@@ -67,6 +66,7 @@ def _make_scored_dataset(
     n: int = 500,
     role: str = "test",
     bias: float = 0.0,
+    model_artifact_id: str | None = "test-model-id",
 ) -> ArtifactRef:
     """Create a scored dataset with miscalibrated probabilities."""
     rng = np.random.RandomState(42)
@@ -81,10 +81,13 @@ def _make_scored_dataset(
         "predicted_bad_probability": miscal_prob,
         "target": ["bad" if v == 1 else "good" for v in y_true],
     })
+    metadata: dict[str, object] = {}
+    if model_artifact_id:
+        metadata["model_artifact_id"] = model_artifact_id
     return write_parquet_artifact(
         store, artifact_type="dataset", role=role,
         stem=f"scored-{role}", frame=df,
-        metadata={},
+        metadata=metadata,
     )
 
 
@@ -177,7 +180,8 @@ class TestCalibrateProbabilitiesNode:
         def_art = _make_definition_artifact(store)
         scored_art = _make_scored_dataset(store, n=200, role="test")
 
-        ctx = _ctx(store, [model_art, def_art, scored_art], "cardre.calibrate_probabilities")
+        ctx = _ctx(store, [model_art, def_art, scored_art], "cardre.calibrate_probabilities",
+                   params={"calibration_sample": "test", "cross_validation": False})
         node = CalibrateProbabilitiesNode()
         output = node.run(ctx)
 
@@ -201,29 +205,36 @@ class TestCalibrateProbabilitiesNode:
             store, artifact_type="dataset", role="test",
             stem="bad-test", frame=df, metadata={},
         )
-        ctx = _ctx(store, [model_art, def_art, bad_art], "cardre.calibrate_probabilities")
+        ctx = _ctx(store, [model_art, def_art, bad_art], "cardre.calibrate_probabilities",
+                   params={"calibration_sample": "test", "cross_validation": False})
         node = CalibrateProbabilitiesNode()
         with pytest.raises(ValueError, match="predicted_bad_probability"):
             node.run(ctx)
 
-    def test_missing_target_metadata_fails_clearly(self, tmp_path: Path):
-        """Missing target column must raise."""
+    def test_missing_target_column_in_scored_data_fails_clearly(self, tmp_path: Path):
+        """Missing target column in scored data must raise."""
         store, _ = make_store()
         store.initialize()
         model_art = _make_model_artifact(store)
         def_art = _make_definition_artifact(store)
-        scored_art = _make_scored_dataset(store, n=200, role="test")
 
-        ctx = _ctx(store, [model_art, def_art, scored_art], "cardre.calibrate_probabilities")
+        # Create a scored dataset without the target column
+        rng = np.random.RandomState(42)
+        df = pl.DataFrame({
+            "x1_woe": rng.randn(200),
+            "predicted_bad_probability": rng.rand(200),
+        })
+        bad_art = write_parquet_artifact(
+            store, artifact_type="dataset", role="test",
+            stem="bad-test-scored", frame=df,
+            metadata={"model_artifact_id": "test-model-id"},
+        )
+
+        ctx = _ctx(store, [model_art, def_art, bad_art], "cardre.calibrate_probabilities",
+                   params={"calibration_sample": "test", "cross_validation": False})
         node = CalibrateProbabilitiesNode()
-        output = node.run(ctx)
-
-        # Now drop the target column from the definition's metadata
-        # Re-read to verify
-        reader = ArtifactEvidenceReader(store)
-        model = reader.read(output.artifacts[0].artifact_id, EvidenceKind.MODEL_ARTIFACT)
-        calibration = model._raw.get("calibration", {})
-        assert calibration is not None
+        with pytest.raises(ValueError, match="target column"):
+            node.run(ctx)
 
     def test_too_few_rows_emits_warning(self, tmp_path: Path):
         """Fewer than MIN_CALIBRATION_ROWS must emit warning, not raise."""
@@ -233,7 +244,8 @@ class TestCalibrateProbabilitiesNode:
         def_art = _make_definition_artifact(store)
         scored_art = _make_scored_dataset(store, n=10, role="test")
 
-        ctx = _ctx(store, [model_art, def_art, scored_art], "cardre.calibrate_probabilities")
+        ctx = _ctx(store, [model_art, def_art, scored_art], "cardre.calibrate_probabilities",
+                   params={"calibration_sample": "test", "cross_validation": False})
         node = CalibrateProbabilitiesNode()
         output = node.run(ctx)
 
@@ -250,7 +262,8 @@ class TestCalibrateProbabilitiesNode:
         def_art = _make_definition_artifact(store)
         scored_art = _make_scored_dataset(store, n=200, role="test")
 
-        ctx = _ctx(store, [model_art, def_art, scored_art], "cardre.calibrate_probabilities")
+        ctx = _ctx(store, [model_art, def_art, scored_art], "cardre.calibrate_probabilities",
+                   params={"calibration_sample": "test", "cross_validation": False})
         node = CalibrateProbabilitiesNode()
         output = node.run(ctx)
 
@@ -272,7 +285,8 @@ class TestCalibrateProbabilitiesNode:
         def_art = _make_definition_artifact(store)
         scored_art = _make_scored_dataset(store, n=200, role="test")
 
-        ctx = _ctx(store, [model_art, def_art, scored_art], "cardre.calibrate_probabilities")
+        ctx = _ctx(store, [model_art, def_art, scored_art], "cardre.calibrate_probabilities",
+                   params={"calibration_sample": "test", "cross_validation": False})
         node = CalibrateProbabilitiesNode()
         output = node.run(ctx)
 
@@ -292,8 +306,8 @@ class TestCalibrateProbabilitiesNode:
         # Check intercept was folded
         assert model_payload["intercept"] != -0.5  # should be changed by calibration
 
-    def test_train_calibration_sample_emits_warning(self, tmp_path: Path):
-        """Using train as calibration sample must emit warning."""
+    def test_train_calibration_sample_without_cv_warns(self, tmp_path: Path):
+        """Using train as calibration sample without CV must emit warning."""
         store, _ = make_store()
         store.initialize()
         model_art = _make_model_artifact(store)
@@ -301,7 +315,7 @@ class TestCalibrateProbabilitiesNode:
         scored_art = _make_scored_dataset(store, n=200, role="train")
 
         ctx = _ctx(store, [model_art, def_art, scored_art], "cardre.calibrate_probabilities",
-                   params={"calibration_sample": "train"})
+                   params={"calibration_sample": "train", "cross_validation": False})
         node = CalibrateProbabilitiesNode()
         output = node.run(ctx)
 
@@ -370,7 +384,7 @@ class TestIsotonicCalibration:
 
         # Non-CV
         ctx_no_cv = _ctx(store, [model_art, def_art, scored_art], "cardre.calibrate_probabilities",
-                         params={"method": "platt", "cross_validation": False})
+                         params={"method": "platt", "calibration_sample": "test", "cross_validation": False})
         node = CalibrateProbabilitiesNode()
         out_no_cv = node.run(ctx_no_cv)
         report_no_cv = json.loads(store.artifact_path(
@@ -378,7 +392,7 @@ class TestIsotonicCalibration:
 
         # CV
         ctx_cv = _ctx(store, [model_art, def_art, scored_art], "cardre.calibrate_probabilities",
-                      params={"method": "platt", "cross_validation": True, "cv_folds": 3})
+                      params={"method": "platt", "calibration_sample": "test", "cross_validation": True, "cv_folds": 3})
         out_cv = node.run(ctx_cv)
         report_cv = json.loads(store.artifact_path(
             next(a for a in out_cv.artifacts if a.role == "report")).read_text())

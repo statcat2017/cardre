@@ -27,6 +27,7 @@ Generated from `NodeRegistry.with_defaults()`. Nodes are divided into launch and
 | `cardre.logistic_regression` | fit | Logistic regression model |
 | `cardre.decision_tree_classifier` | fit | Decision tree classifier |
 | `cardre.score_scaling` | fit | Score scaling to points |
+| `cardre.calibrate_probabilities` | fit | Platt or isotonic probability calibration on holdout |
 | `cardre.freeze_scorecard_bundle` | transform | Freeze scorecard bundle |
 | `cardre.build_summary_report` | transform | Build summary report |
 | `cardre.apply_woe_mapping` | apply | Apply WOE mapping to test/oot |
