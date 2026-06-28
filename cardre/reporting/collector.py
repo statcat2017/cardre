@@ -8,10 +8,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
-from cardre.audit import RunStepRecord
+from cardre.audit import RunStepRecord, json_logical_hash
 
 from cardre.errors import Result
-from cardre.run_lifecycle import compute_manifest_hash
 from cardre.store import ProjectStore
 
 from cardre.evidence import (
@@ -822,18 +821,31 @@ class ReportCollector:
         """Try to read the canonical manifest.json and populate hash fields.
 
         Validates the manifest payload against the RunManifest model and
-        recomputes the self-referential hash to detect corruption.
+        recomputes the self-referential hash (from the raw dict) to detect
+        corruption or tampering.
         """
         manifest_path = self.store.root / "exports" / f"manifest-{self.run_id}" / "manifest.json"
         if not manifest_path.exists():
+            self.limitations.append(Limitation(
+                severity="warning",
+                code=LimitationCode.CANONICAL_MANIFEST_MISSING,
+                message=f"No canonical manifest at {manifest_path}. "
+                "Manifest hash and pathway hash will be empty in the report.",
+            ))
             return
         try:
             import json
             raw = manifest_path.read_text()
             manifest_data = json.loads(raw)
 
-            manifest_obj = RunManifest.model_validate(manifest_data)
-            expected_hash = compute_manifest_hash(manifest_obj)
+            # Validate schema — extra fields are rejected if present
+            RunManifest.model_validate(manifest_data)
+
+            # Hash the raw parsed dict, not the Pydantic model, so that
+            # extra or unexpected fields are caught by the hash check.
+            payload_for_hash = dict(manifest_data)
+            payload_for_hash["manifest_hash"] = ""
+            expected_hash = json_logical_hash(payload_for_hash)
             actual_hash = manifest_data.get("manifest_hash", "")
 
             if actual_hash != expected_hash:
@@ -858,11 +870,17 @@ class ReportCollector:
             bundle.run_status.target_step_id = manifest_data.get("target_step_id")
             bundle.run_status.in_scope_step_ids = manifest_data.get("in_scope_step_ids", [])
 
+        except json.JSONDecodeError as exc:
+            self.limitations.append(Limitation(
+                severity="blocker",
+                code=LimitationCode.CANONICAL_MANIFEST_UNREADABLE,
+                message=f"Invalid JSON in canonical manifest at {manifest_path}: {exc}",
+            ))
         except Exception as exc:
             self.limitations.append(Limitation(
-                severity="warning",
-                code="CANONICAL_MANIFEST_UNREADABLE",
-                message=f"Could not read canonical manifest at {manifest_path}: {exc}",
+                severity="blocker",
+                code=LimitationCode.CANONICAL_MANIFEST_UNREADABLE,
+                message=f"Could not read or validate canonical manifest at {manifest_path}: {exc}",
             ))
 
     def _resolve_run_step(

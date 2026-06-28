@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 import tempfile
 from pathlib import Path
@@ -165,3 +166,158 @@ class TestCollectorRunStatus:
 
         assert bundle.source.run_manifest_hash == manifest.manifest_hash
         assert bundle.reproducibility.manifest_hash == manifest.manifest_hash
+
+    def _setup_manifest_test(self):
+        """Create a store with a succeeded run and a branch step map."""
+        tmp = Path(tempfile.mkdtemp())
+        store = ProjectStore(tmp / "test.cardre")
+        store.initialize()
+
+        project_id = store.create_project("Test")
+        plan_id = store.create_plan(project_id, "Test Plan")
+        pv_id = store.create_plan_version(plan_id, [], description="v1")
+        run_id = store.create_run(pv_id)
+        store.finish_run(run_id, "succeeded")
+
+        branch_id = store.create_branch(
+            project_id=project_id, plan_id=plan_id,
+            name="main", branch_type="baseline",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="Test.",
+        )
+        for cid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
+            store.create_branch_step_map(
+                branch_id=branch_id, plan_version_id=pv_id,
+                canonical_step_id=cid, step_id=cid,
+                is_shared_upstream=False, is_branch_owned=True,
+            )
+
+        for sid in ("final-woe-iv", "model-fit", "score-scaling", "validation-metrics"):
+            store.save_run_step(RunStepRecord(
+                run_step_id=str(uuid.uuid4()), run_id=run_id, step_id=sid,
+                plan_version_id=pv_id, status="succeeded",
+                started_at=utc_now_iso(), finished_at=utc_now_iso(),
+                input_artifact_ids=[], output_artifact_ids=[],
+                execution_fingerprint={},
+                warnings=[], errors=[],
+            ))
+        return store, project_id, plan_id, pv_id, run_id, branch_id
+
+    def test_canonical_manifest_missing_emits_warning(self):
+        """No manifest.json -> CANONICAL_MANIFEST_MISSING warning."""
+        store, project_id, plan_id, pv_id, run_id, branch_id = self._setup_manifest_test()
+        bundle = generate_report_bundle(
+            store=store, project_id=project_id, run_id=run_id,
+            target_branch_id=branch_id, report_mode="branch",
+        )
+        codes = {l.code for l in bundle.limitations}
+        assert "CANONICAL_MANIFEST_MISSING" in codes, (
+            f"Expected CANONICAL_MANIFEST_MISSING, got {codes}"
+        )
+        # Hash fields should be empty
+        assert bundle.source.run_manifest_hash == ""
+        assert bundle.reproducibility.manifest_hash == ""
+
+    def test_canonical_manifest_invalid_json_blocks(self):
+        """Invalid JSON in manifest.json -> CANONICAL_MANIFEST_UNREADABLE blocker."""
+        store, project_id, plan_id, pv_id, run_id, branch_id = self._setup_manifest_test()
+        manifest_dir = store.root / "exports" / f"manifest-{run_id}"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        (manifest_dir / "manifest.json").write_text("not valid json")
+
+        bundle = generate_report_bundle(
+            store=store, project_id=project_id, run_id=run_id,
+            target_branch_id=branch_id, report_mode="branch",
+        )
+        codes = {l.code for l in bundle.limitations}
+        assert "CANONICAL_MANIFEST_UNREADABLE" in codes, (
+            f"Expected CANONICAL_MANIFEST_UNREADABLE, got {codes}"
+        )
+
+    def test_canonical_manifest_hash_mismatch_blocks(self):
+        """Tampered manifest (wrong hash) -> ARTIFACT_HASH_UNRESOLVED blocker."""
+        store, project_id, plan_id, pv_id, run_id, branch_id = self._setup_manifest_test()
+
+        # Write manifest with correct hash
+        manifest = RunManifest(
+            run_id=run_id, plan_version_id=pv_id, plan_id=plan_id,
+            project_id=project_id, status="succeeded",
+        )
+        correct_hash = compute_manifest_hash(manifest)
+        manifest.manifest_hash = correct_hash
+        manifest_dir = store.root / "exports" / f"manifest-{run_id}"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+
+        manifest_data = json.loads(manifest.model_dump_json(indent=2))
+        manifest_data["manifest_hash"] = "000000" + correct_hash[6:]  # corrupt the hash
+        (manifest_dir / "manifest.json").write_text(
+            json.dumps(manifest_data, indent=2, sort_keys=True)
+        )
+
+        bundle = generate_report_bundle(
+            store=store, project_id=project_id, run_id=run_id,
+            target_branch_id=branch_id, report_mode="branch",
+        )
+        codes = {l.code for l in bundle.limitations}
+        assert "ARTIFACT_HASH_UNRESOLVED" in codes, (
+            f"Expected ARTIFACT_HASH_UNRESOLVED, got {codes}"
+        )
+
+    def test_canonical_manifest_extra_field_causes_hash_mismatch(self):
+        """Extra field not in the RunManifest model causes hash mismatch (raw-dict hashing)."""
+        store, project_id, plan_id, pv_id, run_id, branch_id = self._setup_manifest_test()
+
+        manifest = RunManifest(
+            run_id=run_id, plan_version_id=pv_id, plan_id=plan_id,
+            project_id=project_id, status="succeeded",
+        )
+        correct_hash = compute_manifest_hash(manifest)
+        manifest_dir = store.root / "exports" / f"manifest-{run_id}"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+
+        manifest_data = json.loads(manifest.model_dump_json(indent=2))
+        manifest_data["manifest_hash"] = correct_hash
+        manifest_data["tampered_field"] = "extra data not in schema"
+
+        (manifest_dir / "manifest.json").write_text(
+            json.dumps(manifest_data, indent=2, sort_keys=True)
+        )
+
+        bundle = generate_report_bundle(
+            store=store, project_id=project_id, run_id=run_id,
+            target_branch_id=branch_id, report_mode="branch",
+        )
+        codes = {l.code for l in bundle.limitations}
+        # Extra field changes the raw-dict hash, so we get ARTIFACT_HASH_UNRESOLVED
+        assert "ARTIFACT_HASH_UNRESOLVED" in codes, (
+            f"Expected ARTIFACT_HASH_UNRESOLVED for manifest with extra field, got {codes}"
+        )
+
+    def test_canonical_manifest_schema_violation_blocks(self):
+        """Manifest missing required field -> CANONICAL_MANIFEST_UNREADABLE blocker."""
+        store, project_id, plan_id, pv_id, run_id, branch_id = self._setup_manifest_test()
+
+        manifest = RunManifest(
+            run_id=run_id, plan_version_id=pv_id, plan_id=plan_id,
+            project_id=project_id, status="succeeded",
+        )
+        correct_hash = compute_manifest_hash(manifest)
+        manifest_dir = store.root / "exports" / f"manifest-{run_id}"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+
+        manifest_data = json.loads(manifest.model_dump_json(indent=2))
+        manifest_data["manifest_hash"] = correct_hash
+        del manifest_data["run_id"]  # remove required field
+
+        (manifest_dir / "manifest.json").write_text(
+            json.dumps(manifest_data, indent=2, sort_keys=True)
+        )
+
+        bundle = generate_report_bundle(
+            store=store, project_id=project_id, run_id=run_id,
+            target_branch_id=branch_id, report_mode="branch",
+        )
+        codes = {l.code for l in bundle.limitations}
+        assert "CANONICAL_MANIFEST_UNREADABLE" in codes, (
+            f"Expected CANONICAL_MANIFEST_UNREADABLE for schema-violating manifest, got {codes}"
+        )
