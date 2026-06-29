@@ -377,6 +377,18 @@ class CalibrateProbabilitiesNode(NodeType):
                 ),
             })
 
+        # Warn if calibration uses test sample - OOT is needed for clean validation
+        if calibration_sample == "test":
+            warnings_list.append({
+                "code": "CALIBRATION_ON_TEST_SAMPLE",
+                "message": (
+                    "Calibration fitted on the test sample. "
+                    "Because test is used for calibration, it is not an independent "
+                    "holdout for post-calibration validation. "
+                    "Ensure an OOT sample is used for final model validation."
+                ),
+            })
+
         # 5. Fit calibrator (skip if too few rows)
         if too_few_rows:
             # Pass through: original model unchanged, no calibrator artifact
@@ -513,7 +525,9 @@ class CalibrateProbabilitiesNode(NodeType):
             "max_bin_deviation": round(max_bin_deviation, 6),
             "bins": bins,
             "warnings": warnings_list,
-            "calibration_sample_is_independent_holdout": calibration_sample in ("test", "oot"),
+            "calibration_sample_role": calibration_sample,
+            "calibration_sample_is_training_independent": calibration_sample in ("test", "oot"),
+            "calibration_sample_is_post_calibration_validation_holdout": calibration_sample == "oot",
             "source_scoring_policy": {
                 "woe_unmatched_policy": "fail",
             },
@@ -542,8 +556,8 @@ class CalibrateProbabilitiesNode(NodeType):
         else:
             model["calibration"] = {
                 "method": method,
-                "application_mode": "folded_linear_log_odds",
-                "score_scaling_compatible": True,
+                "application_mode": application_mode,
+                "score_scaling_compatible": score_scaling_compatible,
                 "cross_validated": cross_validated,
                 "calibrator_artifact_id": "",
                 "calibrator_logical_hash": "",
