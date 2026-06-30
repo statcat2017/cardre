@@ -3,6 +3,7 @@ __pycache__/
 .agents/
 skills-lock.json
 .coverage
+.coverage.*
 *.egg-info/
 .opencode/
 opencode.json
