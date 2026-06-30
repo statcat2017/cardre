@@ -98,17 +98,14 @@ class RunService:
                         # so the caller sees the short-circuit in the run history.
                         branch_kw = {"branch_id": branch_id} if branch_id else {}
                         placeholder_id = self._store.create_run(plan_version_id, **branch_kw)
-                        self._store.append_run_diagnostic(placeholder_id, {
-                            "code": "RUN_SHORT_CIRCUITED",
-                            "message": f"Run {placeholder_id} short-circuited because branch has no stale steps (existing run {result.run_id})",
-                            "severity": "info",
-                            "category": "lifecycle",
-                            "run_id": placeholder_id,
-                            "plan_version_id": plan_version_id,
-                            "branch_id": branch_id,
-                            "created_at": utc_now_iso(),
-                        })
-                        self._store.finish_run(placeholder_id, "cancelled")
+                        self._cancel_placeholder_run(
+                            placeholder_id,
+                            plan_version_id=plan_version_id,
+                            execution_mode="branch",
+                            branch_id=branch_id,
+                            existing_run_id=result.run_id,
+                            reason="because branch has no stale steps",
+                        )
                         return self._build_response(result.run_id)
 
             if run_scope == "to_node" and target_step_id:
@@ -118,26 +115,15 @@ class RunService:
                 if result.run_id is not None:
                     branch_kw = {"branch_id": branch_id} if branch_id else {}
                     placeholder_id = self._store.create_run(plan_version_id, **branch_kw)
-                    self._store.append_run_diagnostic(placeholder_id, {
-                        "code": "RUN_SHORT_CIRCUITED",
-                        "message": f"Run {placeholder_id} short-circuited for to-node {target_step_id} (existing run {result.run_id})",
-                        "severity": "info",
-                        "category": "lifecycle",
-                        "run_id": placeholder_id,
-                        "plan_version_id": plan_version_id,
-                        "branch_id": branch_id,
-                        "created_at": utc_now_iso(),
-                    })
-                    from cardre.run_lifecycle import finalise_run, RunFinalisation
-                    finalise_run(self._store, RunFinalisation(
-                        run_id=placeholder_id,
+                    self._cancel_placeholder_run(
+                        placeholder_id,
                         plan_version_id=plan_version_id,
-                        status="cancelled",
                         execution_mode="to_node",
-                        finished_at=utc_now_iso(),
                         branch_id=branch_id,
                         target_step_id=target_step_id,
-                    ))
+                        existing_run_id=result.run_id,
+                        reason=f"for to-node {target_step_id}",
+                    )
                     return self._build_response(result.run_id)
 
         # Recover stale runs for this plan_version
@@ -200,17 +186,14 @@ class RunService:
             if run_scope == "branch" and branch_id:
                 ctx = self._evidence.prepare_branch_evidence(plan_version_id, branch_id, force=force)
                 if not force and ctx.short_circuit_run_id is not None:
-                    self._store.append_run_diagnostic(run_id, {
-                        "code": "RUN_SHORT_CIRCUITED",
-                        "message": f"Run {run_id} short-circuited because branch has no stale steps (existing run {ctx.short_circuit_run_id})",
-                        "severity": "info",
-                        "category": "lifecycle",
-                        "run_id": run_id,
-                        "plan_version_id": plan_version_id,
-                        "branch_id": branch_id,
-                        "created_at": utc_now_iso(),
-                    })
-                    self._store.finish_run(run_id, "cancelled")
+                    self._cancel_placeholder_run(
+                        run_id,
+                        plan_version_id=plan_version_id,
+                        execution_mode="branch",
+                        branch_id=branch_id,
+                        existing_run_id=ctx.short_circuit_run_id,
+                        reason="because branch has no stale steps",
+                    )
                     return self._build_response(ctx.short_circuit_run_id)
                 result_id = executor.run_branch(self._store, plan_version_id, branch_id, run_id=run_id, force=force, branch_ctx=ctx)
             elif run_scope == "to_node" and target_step_id:
@@ -218,7 +201,20 @@ class RunService:
             else:
                 result_id = executor.run_plan_version(self._store, plan_version_id, run_id=run_id, force=force)
             if result_id != run_id:
-                self._store.finish_run(run_id, "cancelled")
+                execution_mode = {
+                    "branch": "branch",
+                    "to_node": "to_node",
+                    "full_plan": "full_plan",
+                }[run_scope]
+                self._cancel_placeholder_run(
+                    run_id,
+                    plan_version_id=plan_version_id,
+                    execution_mode=execution_mode,
+                    branch_id=branch_id,
+                    target_step_id=target_step_id,
+                    existing_run_id=result_id,
+                    reason="(executor returned existing run)",
+                )
                 return self._build_response(result_id)
         except CardreError:
             raise
@@ -275,7 +271,7 @@ class RunService:
         )
         # The dispatcher owns worker creation, naming, exception handling,
         # and dispatch-startup failure recording. If startup fails it
-        # raises CardreError(RUN_DISPATCH_FAILED) *after* recording a
+        # raises CardreError(RUN_DISPATCH_FAILED_CODE) *after* recording a
         # diagnostic and failing the run.
         self._dispatcher.dispatch(request)
         return self._build_response(run_id)
@@ -313,6 +309,42 @@ class RunService:
             return (now_ts - hb_ts) > self._config.stale_heartbeat_seconds
         except (ValueError, TypeError):
             return True
+
+    def _cancel_placeholder_run(
+        self,
+        run_id: str,
+        *,
+        plan_version_id: str,
+        execution_mode: str,
+        branch_id: str | None,
+        target_step_id: str | None = None,
+        existing_run_id: str,
+        reason: str,
+    ) -> None:
+        from cardre.run_lifecycle import finalise_run, RunFinalisation
+
+        self._store.append_run_diagnostic(run_id, {
+            "code": "RUN_SHORT_CIRCUITED",
+            "message": (
+                f"Run {run_id} short-circuited {reason} "
+                f"(existing run {existing_run_id})"
+            ),
+            "severity": "info",
+            "category": "lifecycle",
+            "run_id": run_id,
+            "plan_version_id": plan_version_id,
+            "branch_id": branch_id,
+            "created_at": utc_now_iso(),
+        })
+        finalise_run(self._store, RunFinalisation(
+            run_id=run_id,
+            plan_version_id=plan_version_id,
+            status="cancelled",
+            execution_mode=execution_mode,
+            finished_at=utc_now_iso(),
+            branch_id=branch_id,
+            target_step_id=target_step_id,
+        ))
 
     def _build_response(self, run_id: str, executed_ids: list[str] | None = None) -> RunResponse:
         run = self._store.get_run(run_id)

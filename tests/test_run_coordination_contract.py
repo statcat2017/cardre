@@ -658,10 +658,6 @@ def test_branch_placeholder_cancellation_writes_manifest(
     assert manifest["status"] == "cancelled"
     assert manifest["execution_mode"] == "branch"
 
-    # RED: lands in phase 4 — currently branch placeholders use
-    # store.finish_run directly without writing a manifest.
-
-
 # ======================================================================
 # Test 12 — To-node placeholder cancellation writes manifest  (GREEN)
 # ======================================================================
