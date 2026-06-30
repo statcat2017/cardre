@@ -13,9 +13,7 @@ import sys
 import threading
 import traceback
 import uuid
-from collections.abc import Callable
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 from cardre.audit import (
     ArtifactRef,
@@ -24,21 +22,27 @@ from cardre.audit import (
     NodeType,
     RunStepRecord,
     StepSpec,
-    physical_hash,
     replace_step_params,
     utc_now_iso,
 )
 from cardre.errors import (
-    ArtifactReadError,
-    ArtifactWriteError,
-    CardreError,
-    ContractViolationError,
     GraphValidationError,
     MissingInputArtifactError,
-    NodeExecutionError,
     ParameterValidationError,
 )
 from cardre.evidence_locator import resolve_output_artifacts
+from cardre.execution.action_plan import _StepAction
+from cardre.execution.failure_classification import classify_step_failure
+from cardre.execution.fingerprints import build_execution_fingerprint
+from cardre.execution.validation import (
+    LeakageProtectionError,  # noqa: F401 — re-exported for cardre.__init__
+    RoleAccessError,  # noqa: F401 — re-exported for cardre.__init__
+    filter_inputs_by_role,
+    validate_input_artifact_files,
+    validate_leakage_rules,
+    validate_node_input_roles,
+    validate_role_access,
+)
 from cardre.registry import NodeRegistry
 from cardre.step_graph import ancestor_closure, descendant_closure
 from cardre.store import ProjectStore
@@ -107,23 +111,11 @@ class _HeartbeatWatchdog:
             hb_store.run_heartbeat(self._run_id)
 
 
-LEAKAGE_SENSITIVE_CATEGORIES = {"fit", "selection", "refinement"}
-
 STATUS_NOT_RUN = "not_run"
 STATUS_QUEUED = "queued"
 STATUS_RUNNING = "running"
 STATUS_SUCCEEDED = "succeeded"
 STATUS_FAILED = "failed"
-
-
-@dataclass
-class _StepAction:
-    """A planned action for a single step during execution."""
-
-    spec: StepSpec
-    action: Literal["execute", "reuse", "skip"]
-    evidence_source: RunStepRecord | None = None
-    before_execute: Callable[[], None] | None = None
 
 
 class PlanExecutor:
@@ -491,11 +483,11 @@ class PlanExecutor:
                 )
 
             raw_inputs = self._resolve_inputs(spec, step_outputs)
-            input_artifacts = self._filter_inputs_by_role(node, raw_inputs)
-            self._validate_role_access(node, spec, input_artifacts, raw_inputs)
-            self._validate_node_input_roles(node, input_artifacts)
-            self.validate_leakage_rules(node, input_artifacts)
-            self._validate_input_artifact_files(store, input_artifacts)
+            input_artifacts = filter_inputs_by_role(node, raw_inputs)
+            validate_role_access(node, spec, input_artifacts, raw_inputs)
+            validate_node_input_roles(node, input_artifacts)
+            validate_leakage_rules(node, input_artifacts)
+            validate_input_artifact_files(store, input_artifacts)
 
             parent_run_steps = [
                 rs for pid in spec.parent_step_ids
@@ -515,7 +507,7 @@ class PlanExecutor:
 
             output: NodeOutput = node.run(ctx)
 
-            output.execution_fingerprint = self._build_execution_fingerprint(
+            output.execution_fingerprint = build_execution_fingerprint(
                 plan_version_id, spec, parent_run_steps,
                 input_artifacts, output.artifacts,
             )
@@ -535,53 +527,15 @@ class PlanExecutor:
 
         except Exception:
             tb = traceback.format_exc()
-            exc_type = sys.exc_info()[0]
             exc_value = sys.exc_info()[1]
-
-            _CATEGORY_MAP: tuple = (
-                (GraphValidationError, "GraphValidationError"),
-                (MissingInputArtifactError, "MissingInputArtifactError"),
-                (ParameterValidationError, "ParameterValidationError"),
-                (ArtifactReadError, "ArtifactReadError"),
-                (ArtifactWriteError, "ArtifactWriteError"),
-                (NodeExecutionError, "NodeExecutionError"),
-                (ContractViolationError, "ContractViolationError"),
-                (RoleAccessError, "RoleAccessError"),
-                (LeakageProtectionError, "LeakageProtectionError"),
-                (CardreError, "CardreError"),
-            )
-            category = "InternalExecutionError"
-            if exc_value is not None:
-                for exc_cls, cat in _CATEGORY_MAP:
-                    if isinstance(exc_value, exc_cls):
-                        category = cat
-                        break
-
-            _CODE_MAP: dict[str, str] = {
-                "GraphValidationError": "GRAPH_VALIDATION_ERROR",
-                "MissingInputArtifactError": "MISSING_INPUT_ARTIFACT",
-                "ParameterValidationError": "PARAMETER_VALIDATION_ERROR",
-                "ArtifactReadError": "ARTIFACT_READ_ERROR",
-                "ArtifactWriteError": "ARTIFACT_WRITE_ERROR",
-                "NodeExecutionError": "NODE_EXECUTION_ERROR",
-                "ContractViolationError": "CONTRACT_VIOLATION_ERROR",
-                "RoleAccessError": "ROLE_ACCESS_ERROR",
-                "LeakageProtectionError": "LEAKAGE_PROTECTION_ERROR",
-                "CardreError": "CARDRE_ERROR",
-            }
-            error_entry = {
-                "code": _CODE_MAP.get(category, "STEP_FAILED"),
-                "message": f"{exc_type.__name__ if exc_type else 'Unknown'}: {exc_value}",
-                "traceback": tb,
-                "category": category,
-            }
+            error_entry = classify_step_failure(exc_value, tb)
 
             recorded_input_ids = [a.artifact_id for a in input_artifacts]
 
             output = NodeOutput(
                 artifacts=[],
                 metrics={},
-                execution_fingerprint=self._build_execution_fingerprint(
+                execution_fingerprint=build_execution_fingerprint(
                     plan_version_id, spec, parent_run_steps,
                     input_artifacts, [],
                 ),
@@ -649,7 +603,7 @@ class PlanExecutor:
         validate_topology(steps)
 
     # ------------------------------------------------------------------
-    # Role enforcement
+    # Role enforcement — compatibility wrappers
     # ------------------------------------------------------------------
 
     def _filter_inputs_by_role(
@@ -657,10 +611,7 @@ class PlanExecutor:
         node: NodeType,
         artifacts: list[ArtifactRef],
     ) -> list[ArtifactRef]:
-        if not node.input_roles:
-            return artifacts
-        permitted = set(node.input_roles)
-        return [a for a in artifacts if a.role in permitted]
+        return filter_inputs_by_role(node, artifacts)
 
     def _validate_role_access(
         self,
@@ -669,69 +620,24 @@ class PlanExecutor:
         filtered_artifacts: list[ArtifactRef],
         raw_inputs: list[ArtifactRef],
     ) -> None:
-        if not node.input_roles:
-            return
-
-        if spec.parent_step_ids and not filtered_artifacts:
-            raw_roles = sorted({a.role for a in raw_inputs})
-            raise RoleAccessError(
-                f"Node {node.node_type!r} declares input roles "
-                f"{node.input_roles} but receives no matching artifacts. "
-                f"Raw parent roles: {raw_roles}. "
-                f"Check plan wiring: step {spec.step_id!r} parents "
-                f"{spec.parent_step_ids!r}."
-            )
-
-        permitted = set(node.input_roles)
-        for artifact in filtered_artifacts:
-            if artifact.role not in permitted:
-                raise RoleAccessError(
-                    f"Node {node.node_type!r} declares input roles "
-                    f"{sorted(permitted)} but cannot consume artifact "
-                    f"role {artifact.role!r}."
-                )
+        validate_role_access(node, spec, filtered_artifacts, raw_inputs)
 
     def _validate_node_input_roles(
         self,
         node: NodeType,
         artifacts: list[ArtifactRef],
     ) -> None:
-        if not node.input_roles:
-            return
-        if not artifacts:
-            raise RoleAccessError(
-                f"Node {node.node_type!r} declares input roles "
-                f"{node.input_roles} but received no artifacts."
-            )
-        actual_roles = {a.role for a in artifacts}
-        matching = set(node.input_roles) & actual_roles
-        if not matching:
-            raise RoleAccessError(
-                f"Node {node.node_type!r} permits input roles "
-                f"{node.input_roles} but receives only "
-                f"{sorted(actual_roles)}. No permitted role matched."
-            )
+        validate_node_input_roles(node, artifacts)
 
     def validate_leakage_rules(
         self,
         node: NodeType,
         artifacts: list[ArtifactRef],
     ) -> None:
-        if node.category not in LEAKAGE_SENSITIVE_CATEGORIES:
-            return
-        for a in artifacts:
-            if a.role in ("test", "oot") and a.artifact_type == "dataset":
-                if hasattr(node, "allows_leakage_artifact") and node.allows_leakage_artifact(a):
-                    continue  # Node explicitly allows this artifact (e.g. calibration)
-                raise LeakageProtectionError(
-                    f"Node {node.node_type!r} (category={node.category!r}) "
-                    f"cannot consume {a.role!r} dataset artifact. "
-                    f"Leakage-sensitive nodes must not consume test or OOT "
-                    f"tabular data. Artifact ID: {a.artifact_id}"
-                )
+        validate_leakage_rules(node, artifacts)
 
     # ------------------------------------------------------------------
-    # Execution fingerprint
+    # Execution fingerprint — compatibility wrapper
     # ------------------------------------------------------------------
 
     def _build_execution_fingerprint(
@@ -742,38 +648,14 @@ class PlanExecutor:
         input_artifacts: list[ArtifactRef],
         output_artifacts: list[ArtifactRef],
     ) -> dict[str, Any]:
-        return {
-            "plan_version_id": plan_version_id,
-            "step_id": spec.step_id,
-            "node_type": spec.node_type,
-            "node_version": spec.node_version,
-            "params_hash": spec.params_hash,
-            "parent_run_step_ids": [rs.run_step_id for rs in parent_run_steps],
-            "input_artifact_logical_hashes": [a.logical_hash for a in input_artifacts],
-            "output_artifact_logical_hashes": [a.logical_hash for a in output_artifacts],
-            "parent_output_logical_hashes_by_step": _build_parent_output_hashes(parent_run_steps),
-            "python_version": sys.version.split()[0],
-            "cardre_version": "0.1.0",
-        }
+        return build_execution_fingerprint(plan_version_id, spec, parent_run_steps, input_artifacts, output_artifacts)
 
     def _validate_input_artifact_files(
         self,
         store: ProjectStore,
         artifacts: list[ArtifactRef],
     ) -> None:
-        for artifact in artifacts:
-            path = store.artifact_path(artifact)  # cardre-allow-artifact-read: low-level-evidence-parser
-            if not path.exists():
-                raise ArtifactReadError(
-                    f"Artifact {artifact.artifact_id!r} metadata points to missing file {artifact.path!r}"
-                )
-            current_hash = physical_hash(path)
-            if current_hash != artifact.physical_hash:
-                raise ArtifactReadError(
-                    f"Artifact {artifact.artifact_id!r} physical hash mismatch for {artifact.path!r}: "
-                    f"metadata has {artifact.physical_hash}, file has {current_hash}. "
-                    "The artifact file was modified after registration."
-                )
+        validate_input_artifact_files(store, artifacts)
 
     # ------------------------------------------------------------------
     # Run-step record
@@ -942,29 +824,3 @@ class PlanExecutor:
         )
         store.save_run_step(copied_rs)
         return copied_rs
-
-
-class RoleAccessError(CardreError):
-    """Raised when a node attempts to consume an artifact with an
-    unacceptable role for its category."""
-    code = "ROLE_ACCESS_ERROR"
-    status_code = 400
-
-
-class LeakageProtectionError(CardreError):
-    """Raised when a leakage-sensitive node attempts to consume test or OOT data."""
-    code = "LEAKAGE_PROTECTION_ERROR"
-    status_code = 400
-
-
-def _output_logical_hashes(rs: RunStepRecord) -> list[str]:
-    return rs.execution_fingerprint.get("output_artifact_logical_hashes", [])
-
-
-def _build_parent_output_hashes(
-    parent_run_steps: list[RunStepRecord],
-) -> dict[str, list[str]]:
-    return {
-        rs.step_id: rs.execution_fingerprint.get("output_artifact_logical_hashes", [])
-        for rs in parent_run_steps
-    }
