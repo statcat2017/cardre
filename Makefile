@@ -1,4 +1,4 @@
-.PHONY: test test-cov test-fail-fast test-evidence test-launch-core typecheck lint lint-line-counts lint-artifact-reads audit-artifact-reads preflight
+.PHONY: test test-cov test-fail-fast test-evidence test-launch-core typecheck lint lint-line-counts lint-artifact-reads audit-artifact-reads preflight v2-phase-check
 
 test:
 	python3 -m pytest tests/ -q --tb=short
@@ -31,6 +31,9 @@ preflight:
 	cd frontend && npm ci && npm run lint && npm run format:check && npx tsc --noEmit && npm test
 	python3 scripts/generate-openapi-types.py
 	git diff --exit-code -- frontend/src/api/openapi.json frontend/src/api/schema.d.ts
+
+v2-phase-check:
+	bash scripts/v2-phase-check.sh "$(PHASE)"
 
 lint-line-counts:
 	python3 scripts/check-line-counts.py
