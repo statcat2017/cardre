@@ -76,8 +76,8 @@ class RunWorker:
     * final-status cleanup (``fail_run_if_running``).
 
     It delegates actual step execution to
-    :func:`cardre.services.run_orchestrator.execute_run`, which
-    constructs the executor. This keeps the sync and async paths
+    :meth:`cardre.services.run_service.RunService.execute_created_run`,
+    which constructs the executor. This keeps the sync and async paths
     sharing one execution entrypoint.
 
     It deliberately does *not* decide dispatch strategy (thread / process /
@@ -98,17 +98,9 @@ class RunWorker:
 
     @staticmethod
     def _invoke_executor(store: ProjectStore, request: RunRequest) -> None:
-        from cardre.services.run_orchestrator import execute_run
+        from cardre.services.run_service import RunService
 
-        execute_run(
-            store=store,
-            plan_version_id=request.plan_version_id,
-            run_id=request.run_id,
-            run_scope=request.run_scope,
-            branch_id=request.branch_id,
-            target_step_id=request.target_step_id,
-            force=request.force,
-        )
+        RunService(store).execute_created_run(request)
 
     @staticmethod
     def _record_failure(

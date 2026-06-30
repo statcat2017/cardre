@@ -72,7 +72,6 @@ def test_async_dispatch_uses_precreated_run_id(tmp_path: Path) -> None:
 # ======================================================================
 
 
-@pytest.mark.xfail(reason="lands in phase 3")
 def test_worker_delegates_to_run_service_execute_created_run(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -111,7 +110,6 @@ def test_worker_delegates_to_run_service_execute_created_run(
 # ======================================================================
 
 
-@pytest.mark.xfail(reason="lands in phase 3")
 def test_worker_failure_records_diagnostic_and_fails_run(
     tmp_path: Path, monkeypatch
 ) -> None:
