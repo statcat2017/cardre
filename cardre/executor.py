@@ -44,7 +44,8 @@ from cardre.step_graph import ancestor_closure, descendant_closure
 from cardre.store import ProjectStore
 
 if TYPE_CHECKING:
-    from cardre.services.evidence_policy import BranchRunEvidence
+    from cardre.services.evidence_policy import BranchRunEvidence, EvidencePolicyService
+    from cardre.run_lifecycle import RunLifecycle
 from cardre.topology import validate_topology
 
 
@@ -170,28 +171,27 @@ class PlanExecutor:
         plan_version_id: str,
         run_id: str | None = None,
         force: bool = False,
+        lifecycle: "RunLifecycle | None" = None,
     ) -> str:
         steps = store.get_plan_version_steps(plan_version_id)
         self._validate_topology(steps)
 
-        from cardre.run_lifecycle import RunLifecycle
         execution_mode = "force" if force else "full"
-        with RunLifecycle.start(store, plan_version_id, run_id=run_id, execution_mode=execution_mode, force=force) as lifecycle:
-            run_id = lifecycle.run_id
+        if lifecycle is None:
+            from cardre.run_lifecycle import RunLifecycle
+            with RunLifecycle.start(store, plan_version_id, run_id=run_id, execution_mode=execution_mode, force=force) as lc:
+                run_id = lc.run_id
+                actions = [_StepAction(spec=s, action="execute") for s in steps]
+                has_failure, outputs, records = self._execute_actions(store, actions, plan_version_id, run_id)
+                status = self._compute_final_status(has_failure, actions)
+                lc.finalise(status=status, execution_mode=execution_mode)
+            return run_id
 
-            actions = [
-                _StepAction(spec=s, action="execute")
-                for s in steps
-            ]
-
-            has_failure, outputs, records = self._execute_actions(
-                store, actions, plan_version_id, run_id,
-            )
-            status = self._compute_final_status(has_failure, actions)
-
-            lifecycle.finalise(
-                status=status, execution_mode=execution_mode,
-            )
+        run_id = lifecycle.run_id
+        actions = [_StepAction(spec=s, action="execute") for s in steps]
+        has_failure, outputs, records = self._execute_actions(store, actions, plan_version_id, run_id)
+        status = self._compute_final_status(has_failure, actions)
+        lifecycle.finalise(status=status, execution_mode=execution_mode)
         return run_id
 
     def run_branch(
@@ -203,61 +203,58 @@ class PlanExecutor:
         run_id: str | None = None,
         force: bool = False,
         branch_ctx: "BranchRunEvidence",
+        lifecycle: "RunLifecycle | None" = None,
     ) -> str:
-        from cardre.run_lifecycle import RunLifecycle
         from cardre.services.evidence_policy import EvidencePolicyService
 
         ctx = branch_ctx
-        if not force and ctx.short_circuit_run_id is not None:
-            return ctx.short_circuit_run_id
 
         execution_mode = "force" if force else "branch"
-        with RunLifecycle.start(
-            store, plan_version_id, run_id=run_id,
-            branch_id=branch_id, execution_mode=execution_mode,
-            force=force,
-        ) as lifecycle:
-            run_id = lifecycle.run_id
+        if lifecycle is None:
+            from cardre.run_lifecycle import RunLifecycle
+            with RunLifecycle.start(
+                store, plan_version_id, run_id=run_id,
+                branch_id=branch_id, execution_mode=execution_mode,
+                force=force,
+            ) as lc:
+                run_id = lc.run_id
+                for d in ctx.diagnostics:
+                    store.append_run_diagnostic(run_id, {
+                        "code": d.code, "message": d.message, "severity": d.severity,
+                        "category": "execution", "source": d.source,
+                        "run_id": run_id, "plan_version_id": plan_version_id,
+                        "branch_id": branch_id, "context": d.context,
+                        "created_at": utc_now_iso(),
+                    })
+                policy = EvidencePolicyService(store)
+                actions = self._build_branch_actions(ctx, force, policy)
+                has_failure, outputs, records = self._execute_actions(
+                    store, actions, plan_version_id, run_id,
+                    step_outputs=ctx.step_outputs, run_step_records=ctx.run_step_records,
+                    branch_id=branch_id,
+                )
+                status = self._compute_final_status(has_failure, actions)
+                lc.finalise(status=status, execution_mode=execution_mode, branch_id=branch_id)
+            return run_id
 
-            for d in ctx.diagnostics:
-                store.append_run_diagnostic(run_id, {
-                    "code": d.code,
-                    "message": d.message,
-                    "severity": d.severity,
-                    "category": "execution",
-                    "source": d.source,
-                    "run_id": run_id,
-                    "plan_version_id": plan_version_id,
-                    "branch_id": branch_id,
-                    "context": d.context,
-                    "created_at": utc_now_iso(),
-                })
-
-            policy = EvidencePolicyService(store)
-            actions: list[_StepAction] = []
-            for spec in ctx.steps:
-                if spec.step_id not in ctx.branch_owned_step_ids:
-                    actions.append(_StepAction(spec=spec, action="skip"))
-                elif not force and spec.step_id not in ctx.stale_branch_step_ids:
-                    actions.append(_StepAction(spec=spec, action="skip"))
-                else:
-                    actions.append(_StepAction(
-                        spec=spec, action="execute",
-                        before_execute=lambda s=spec: policy.resolve_parent_evidence(ctx, s),
-                    ))
-
-            has_failure, outputs, records = self._execute_actions(
-                store, actions, plan_version_id, run_id,
-                step_outputs=ctx.step_outputs,
-                run_step_records=ctx.run_step_records,
-                branch_id=branch_id,
-            )
-            status = self._compute_final_status(has_failure, actions)
-
-            lifecycle.finalise(
-                status=status, execution_mode=execution_mode,
-                branch_id=branch_id,
-            )
+        run_id = lifecycle.run_id
+        for d in ctx.diagnostics:
+            store.append_run_diagnostic(run_id, {
+                "code": d.code, "message": d.message, "severity": d.severity,
+                "category": "execution", "source": d.source,
+                "run_id": run_id, "plan_version_id": plan_version_id,
+                "branch_id": branch_id, "context": d.context,
+                "created_at": utc_now_iso(),
+            })
+        policy = EvidencePolicyService(store)
+        actions = self._build_branch_actions(ctx, force, policy)
+        has_failure, outputs, records = self._execute_actions(
+            store, actions, plan_version_id, run_id,
+            step_outputs=ctx.step_outputs, run_step_records=ctx.run_step_records,
+            branch_id=branch_id,
+        )
+        status = self._compute_final_status(has_failure, actions)
+        lifecycle.finalise(status=status, execution_mode=execution_mode, branch_id=branch_id)
         return run_id
 
     def run_to_node(
@@ -268,6 +265,7 @@ class PlanExecutor:
         run_id: str | None = None,
         force: bool = False,
         branch_id: str | None = None,
+        lifecycle: "RunLifecycle | None" = None,
     ) -> str:
         steps = store.get_plan_version_steps(plan_version_id)
         self._validate_topology(steps)
@@ -282,51 +280,83 @@ class PlanExecutor:
         closure = ancestors | {target_step_id}
         closure_steps = [s for s in steps if s.step_id in closure]
 
-        # Short-circuit when nothing to run
-        if not force:
-            from cardre.staleness import compute_staleness
-            staleness = compute_staleness(store, plan_version_id, branch_id=branch_id)
-            if all(not staleness.get(s.step_id, True) for s in closure_steps):
-                existing_run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=branch_id)
-                if existing_run_id is not None:
-                    return existing_run_id
-
-        from cardre.run_lifecycle import RunLifecycle
         execution_mode = "force" if force else "to_node"
-        with RunLifecycle.start(
-            store, plan_version_id, run_id=run_id,
-            execution_mode=execution_mode,
-            target_step_id=target_step_id,
-            in_scope_step_ids=sorted(closure),
-            branch_id=branch_id,
-            force=force,
-        ) as lifecycle:
-            run_id = lifecycle.run_id
-
-            from cardre.staleness import compute_staleness
-            staleness = compute_staleness(store, plan_version_id, branch_id=branch_id)
-
-            # Planning is pure: reuse is recorded as action metadata, not written to store.
-            actions: list[_StepAction] = []
-            for spec in closure_steps:
-                if not force and spec.step_id in staleness and not staleness[spec.step_id]:
-                    actions.append(_StepAction(spec=spec, action="reuse"))
-                else:
-                    actions.append(_StepAction(spec=spec, action="execute"))
-
-            has_failure, outputs, records = self._execute_actions(
-                store, actions, plan_version_id, run_id,
-                branch_id=branch_id,
-            )
-            status = self._compute_final_status(has_failure, actions)
-
-            lifecycle.finalise(
-                status=status, execution_mode=execution_mode,
+        if lifecycle is None:
+            from cardre.run_lifecycle import RunLifecycle
+            with RunLifecycle.start(
+                store, plan_version_id, run_id=run_id,
+                execution_mode=execution_mode,
                 target_step_id=target_step_id,
                 in_scope_step_ids=sorted(closure),
                 branch_id=branch_id,
-            )
+                force=force,
+            ) as lc:
+                run_id = lc.run_id
+                actions = self._build_to_node_actions(store, plan_version_id, closure_steps, force, branch_id)
+                has_failure, outputs, records = self._execute_actions(
+                    store, actions, plan_version_id, run_id, branch_id=branch_id,
+                )
+                status = self._compute_final_status(has_failure, actions)
+                lc.finalise(
+                    status=status, execution_mode=execution_mode,
+                    target_step_id=target_step_id,
+                    in_scope_step_ids=sorted(closure), branch_id=branch_id,
+                )
+            return run_id
+
+        run_id = lifecycle.run_id
+        actions = self._build_to_node_actions(store, plan_version_id, closure_steps, force, branch_id)
+        has_failure, outputs, records = self._execute_actions(
+            store, actions, plan_version_id, run_id, branch_id=branch_id,
+        )
+        status = self._compute_final_status(has_failure, actions)
+        lifecycle.finalise(
+            status=status, execution_mode=execution_mode,
+            target_step_id=target_step_id,
+            in_scope_step_ids=sorted(closure), branch_id=branch_id,
+        )
         return run_id
+
+    # ------------------------------------------------------------------
+    # Action planning helpers (extracted so RunService can pass lifecycle)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_branch_actions(
+        ctx: "BranchRunEvidence",
+        force: bool,
+        policy: "EvidencePolicyService",
+    ) -> list[_StepAction]:
+        actions: list[_StepAction] = []
+        for spec in ctx.steps:
+            if spec.step_id not in ctx.branch_owned_step_ids:
+                actions.append(_StepAction(spec=spec, action="skip"))
+            elif not force and spec.step_id not in ctx.stale_branch_step_ids:
+                actions.append(_StepAction(spec=spec, action="skip"))
+            else:
+                actions.append(_StepAction(
+                    spec=spec, action="execute",
+                    before_execute=lambda s=spec: policy.resolve_parent_evidence(ctx, s),
+                ))
+        return actions
+
+    @staticmethod
+    def _build_to_node_actions(
+        store: ProjectStore,
+        plan_version_id: str,
+        closure_steps: list[StepSpec],
+        force: bool,
+        branch_id: str | None,
+    ) -> list[_StepAction]:
+        from cardre.staleness import compute_staleness
+        staleness = compute_staleness(store, plan_version_id, branch_id=branch_id)
+        actions: list[_StepAction] = []
+        for spec in closure_steps:
+            if not force and spec.step_id in staleness and not staleness[spec.step_id]:
+                actions.append(_StepAction(spec=spec, action="reuse"))
+            else:
+                actions.append(_StepAction(spec=spec, action="execute"))
+        return actions
 
     # ------------------------------------------------------------------
     # Shared action execution loop

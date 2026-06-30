@@ -182,40 +182,56 @@ class RunService:
         target_step_id = request.target_step_id
         force = request.force
         executor = PlanExecutor(NodeRegistry.with_defaults())
-        try:
-            if run_scope == "branch" and branch_id:
-                ctx = self._evidence.prepare_branch_evidence(plan_version_id, branch_id, force=force)
-                if not force and ctx.short_circuit_run_id is not None:
-                    self._cancel_placeholder_run(
-                        run_id,
-                        plan_version_id=plan_version_id,
-                        execution_mode="branch",
-                        branch_id=branch_id,
-                        existing_run_id=ctx.short_circuit_run_id,
-                        reason="because branch has no stale steps",
-                    )
-                    return self._build_response(ctx.short_circuit_run_id)
-                result_id = executor.run_branch(self._store, plan_version_id, branch_id, run_id=run_id, force=force, branch_ctx=ctx)
-            elif run_scope == "to_node" and target_step_id:
-                result_id = executor.run_to_node(self._store, plan_version_id, target_step_id, run_id=run_id, force=force, branch_id=branch_id)
-            else:
-                result_id = executor.run_plan_version(self._store, plan_version_id, run_id=run_id, force=force)
-            if result_id != run_id:
-                execution_mode = {
-                    "branch": "branch",
-                    "to_node": "to_node",
-                    "full_plan": "full_plan",
-                }[run_scope]
+
+        execution_mode = {
+            "branch": "branch",
+            "to_node": "to_node",
+            "full_plan": "full_plan",
+        }[run_scope]
+
+        # Short-circuit check for branch scope
+        if run_scope == "branch" and branch_id:
+            ctx = self._evidence.prepare_branch_evidence(plan_version_id, branch_id, force=force)
+            if not force and ctx.short_circuit_run_id is not None:
                 self._cancel_placeholder_run(
                     run_id,
                     plan_version_id=plan_version_id,
-                    execution_mode=execution_mode,
+                    execution_mode="branch",
                     branch_id=branch_id,
-                    target_step_id=target_step_id,
-                    existing_run_id=result_id,
-                    reason="(executor returned existing run)",
+                    existing_run_id=ctx.short_circuit_run_id,
+                    reason="because branch has no stale steps",
                 )
-                return self._build_response(result_id)
+                return self._build_response(ctx.short_circuit_run_id)
+
+        from cardre.run_lifecycle import RunLifecycle
+
+        try:
+            with RunLifecycle(
+                store=self._store,
+                run_id=run_id,
+                plan_version_id=plan_version_id,
+                execution_mode=execution_mode,
+                branch_id=branch_id,
+                target_step_id=target_step_id,
+            ) as lifecycle:
+                if run_scope == "branch" and branch_id:
+                    executor.run_branch(
+                        self._store, plan_version_id, branch_id,
+                        run_id=run_id, force=force, branch_ctx=ctx,
+                        lifecycle=lifecycle,
+                    )
+                elif run_scope == "to_node" and target_step_id:
+                    executor.run_to_node(
+                        self._store, plan_version_id, target_step_id,
+                        run_id=run_id, force=force, branch_id=branch_id,
+                        lifecycle=lifecycle,
+                    )
+                else:
+                    executor.run_plan_version(
+                        self._store, plan_version_id,
+                        run_id=run_id, force=force,
+                        lifecycle=lifecycle,
+                    )
         except CardreError:
             raise
         except ValueError as exc:

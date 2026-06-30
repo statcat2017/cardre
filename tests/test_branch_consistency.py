@@ -291,7 +291,7 @@ class TestRunToNodeBranchContext:
         class FakeExecutor:
             def validate_plan_executability(self, store, plan_version_id):
                 return []
-            def run_to_node(self, store, plan_version_id, target_step_id, run_id=None, force=False, branch_id=None):
+            def run_to_node(self, store, plan_version_id, target_step_id, run_id=None, force=False, branch_id=None, lifecycle=None):
                 calls.append(branch_id)
                 return run_id
 
@@ -323,7 +323,7 @@ class TestRunToNodeBranchContext:
         class FakeExecutor:
             def validate_plan_executability(self, store, plan_version_id):
                 return []
-            def run_to_node(self, store, plan_version_id, target_step_id, run_id=None, force=False, branch_id=None):
+            def run_to_node(self, store, plan_version_id, target_step_id, run_id=None, force=False, branch_id=None, lifecycle=None):
                 calls.append(branch_id)
                 return run_id
 
