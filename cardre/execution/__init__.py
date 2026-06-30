@@ -4,6 +4,7 @@ Pure functions for failure classification, fingerprint construction,
 and input validation. PlanExecutor remains the single orchestration
 seam; these modules hold the reusable pieces.
 """
+from cardre.execution.action_plan import _StepAction
 from cardre.execution.failure_classification import classify_step_failure
 from cardre.execution.fingerprints import (
     build_execution_fingerprint,
@@ -22,6 +23,7 @@ from cardre.execution.validation import (
 )
 
 __all__ = [
+    "_StepAction",
     "LEAKAGE_SENSITIVE_CATEGORIES",
     "LeakageProtectionError",
     "RoleAccessError",

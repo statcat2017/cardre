@@ -13,9 +13,7 @@ import sys
 import threading
 import traceback
 import uuid
-from collections.abc import Callable
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 from cardre.audit import (
     ArtifactRef,
@@ -33,6 +31,7 @@ from cardre.errors import (
     ParameterValidationError,
 )
 from cardre.evidence_locator import resolve_output_artifacts
+from cardre.execution.action_plan import _StepAction
 from cardre.execution.failure_classification import classify_step_failure
 from cardre.execution.fingerprints import build_execution_fingerprint
 from cardre.execution.validation import (
@@ -117,16 +116,6 @@ STATUS_QUEUED = "queued"
 STATUS_RUNNING = "running"
 STATUS_SUCCEEDED = "succeeded"
 STATUS_FAILED = "failed"
-
-
-@dataclass
-class _StepAction:
-    """A planned action for a single step during execution."""
-
-    spec: StepSpec
-    action: Literal["execute", "reuse", "skip"]
-    evidence_source: RunStepRecord | None = None
-    before_execute: Callable[[], None] | None = None
 
 
 class PlanExecutor:
