@@ -83,10 +83,10 @@ def test_async_dispatch_failure_records_diagnostic(monkeypatch):
     The worker records ``RUN_WORKER_FAILED`` (see cardre.services.run_worker)
     and marks the run ``failed``. This characterises the worker contract.
     """
-    def _raise_execute_run(*args, **kwargs):
+    def _raise_execute_run(self, request):
         raise RuntimeError("Simulated execution failure")
 
-    monkeypatch.setattr("cardre.services.run_orchestrator.execute_run", _raise_execute_run)
+    monkeypatch.setattr("cardre.services.run_service.RunService.execute_created_run", _raise_execute_run)
 
     with tempfile.TemporaryDirectory() as tmp:
         store = _init_store(tmp)

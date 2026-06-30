@@ -123,11 +123,11 @@ class TestRunWorkerFailure:
         pv_id = _one_step_plan(store)
         run_id = store.create_run(pv_id)
 
-        def _raise(*args, **kwargs):
+        def _raise(self, request):
             raise RuntimeError("boom from executor")
 
         monkeypatch.setattr(
-            "cardre.services.run_orchestrator.execute_run", _raise
+            "cardre.services.run_service.RunService.execute_created_run", _raise
         )
 
         req = RunRequest(
@@ -165,12 +165,14 @@ class TestRunWorkerFailure:
 
         seen: dict = {}
 
-        def _capture_heartbeat_then_raise(store, **kw):
-            seen["heartbeat"] = store.get_run(run_id)["heartbeat_at"]
+        def _capture_heartbeat_then_raise(self, request):
+            from cardre.store import ProjectStore
+            s = ProjectStore(request.project_path)
+            seen["heartbeat"] = s.get_run(request.run_id)["heartbeat_at"]
             raise RuntimeError("stop")
 
         monkeypatch.setattr(
-            "cardre.services.run_orchestrator.execute_run",
+            "cardre.services.run_service.RunService.execute_created_run",
             _capture_heartbeat_then_raise,
         )
 
@@ -193,8 +195,8 @@ class TestRunWorkerFailure:
         run_id = store.create_run(pv_id)
 
         monkeypatch.setattr(
-            "cardre.services.run_orchestrator.execute_run",
-            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("x")),
+            "cardre.services.run_service.RunService.execute_created_run",
+            lambda self, req: (_ for _ in ()).throw(RuntimeError("x")),
         )
 
         RunWorker().execute(
@@ -209,29 +211,26 @@ class TestRunWorkerFailure:
 
 
 class TestThreadRunDispatcher:
-    def test_dispatch_success_starts_named_thread(self, tmp_path: Path) -> None:
+    def test_dispatch_success_starts_named_thread(self, tmp_path: Path, monkeypatch) -> None:
         """A real thread is started with the cardre-run- prefix name and
         the worker runs to completion."""
         store = _init_store(tmp_path)
         pv_id = _one_step_plan(store)
         run_id = store.create_run(pv_id)
 
-        # Use a simple executor stub that just records a marker artifact
-        # via the registered simple_source node path is overkill; instead
-        # patch execute_run to a no-op so the thread finishes fast.
-        import cardre.services.run_orchestrator as ro
-        original = ro.execute_run
-        ro.execute_run = lambda *a, **k: run_id  # type: ignore[assignment]
-        try:
-            req = RunRequest(
-                project_path=str(store.root),
-                plan_version_id=pv_id, run_id=run_id,
-            )
-            ThreadRunDispatcher().dispatch(req)
-            # Wait for any worker thread matching the run id prefix to finish.
-            _join_named(req.worker_name())
-        finally:
-            ro.execute_run = original  # type: ignore[assignment]
+        # Patch execute_created_run to a fast no-op that finishes the run.
+        monkeypatch.setattr(
+            "cardre.services.run_service.RunService.execute_created_run",
+            lambda self, req: store.finish_run(req.run_id, "succeeded"),
+        )
+
+        req = RunRequest(
+            project_path=str(store.root),
+            plan_version_id=pv_id, run_id=run_id,
+        )
+        ThreadRunDispatcher().dispatch(req)
+        # Wait for any worker thread matching the run id prefix to finish.
+        _join_named(req.worker_name())
 
         # No diagnostic should have been recorded on success.
         diags = store.get_run_diagnostics(run_id)
@@ -288,10 +287,12 @@ class TestSyncRunDispatcher:
 
         called: list[bool] = []
 
-        def _ok(*a, **k):
+        def _ok(self, req):
             called.append(True)
 
-        monkeypatch.setattr("cardre.services.run_orchestrator.execute_run", _ok)
+        monkeypatch.setattr(
+            "cardre.services.run_service.RunService.execute_created_run", _ok
+        )
 
         SyncRunDispatcher().dispatch(
             RunRequest(project_path=str(store.root), plan_version_id=pv_id, run_id=run_id)
@@ -306,8 +307,8 @@ class TestSyncRunDispatcher:
         run_id = store.create_run(pv_id)
 
         monkeypatch.setattr(
-            "cardre.services.run_orchestrator.execute_run",
-            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("nope")),
+            "cardre.services.run_service.RunService.execute_created_run",
+            lambda self, req: (_ for _ in ()).throw(RuntimeError("nope")),
         )
 
         # Must not raise.
@@ -347,7 +348,7 @@ class TestRunServiceDispatcherInjection:
         # The run was created but NOT executed (recorder is a no-op).
         assert store.get_run(resp.run_id)["status"] == "running"
 
-    def test_run_service_default_dispatcher_is_thread_backed(self, tmp_path: Path) -> None:
+    def test_run_service_default_dispatcher_is_thread_backed(self, tmp_path: Path, monkeypatch) -> None:
         """Without an injected dispatcher, RunService uses ThreadRunDispatcher
         and the worker actually runs."""
         from cardre.services.run_service import RunService
@@ -355,16 +356,15 @@ class TestRunServiceDispatcherInjection:
         store = _init_store(tmp_path)
         pv_id = _one_step_plan(store)
 
-        # Patch execute_run to a fast no-op so the thread exits quickly.
-        import cardre.services.run_orchestrator as ro
-        original = ro.execute_run
-        ro.execute_run = lambda *a, **k: None  # type: ignore[assignment]
-        try:
-            service = RunService(store)
-            resp = service.run_plan(plan_version_id=pv_id, sync=False)
-            _join_named(f"cardre-run-{resp.run_id[:8]}")
-        finally:
-            ro.execute_run = original  # type: ignore[assignment]
+        # Patch execute_created_run to a fast no-op that finishes the run.
+        monkeypatch.setattr(
+            "cardre.services.run_service.RunService.execute_created_run",
+            lambda self, req: store.finish_run(req.run_id, "succeeded"),
+        )
+
+        service = RunService(store)
+        resp = service.run_plan(plan_version_id=pv_id, sync=False)
+        _join_named(f"cardre-run-{resp.run_id[:8]}")
 
         run = store.get_run(resp.run_id)
         # execute_run no-op leaves the run running (no finalisation); the

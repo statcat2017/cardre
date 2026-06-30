@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import os
+import uuid
 
 import pytest
 
+from cardre.audit import RunStepRecord, utc_now_iso
 from cardre.services import run_orchestrator
+from cardre.services.run_service import RunResponse
 
 
 class DummyStore:
@@ -19,55 +22,58 @@ class DummyStore:
         self.diagnostics.append((run_id, diag))
 
 
-class FakeExecutor:
-    calls: list[tuple[str, str | None]] = []
-    branch_ctx_received: list = []
-    result_id = "created-run"
-
-    def __init__(self, registry) -> None:
-        self.registry = registry
-
-    def run_plan_version(self, store, plan_version_id, run_id=None, force=False):
-        self.calls.append(("full_plan", run_id))
-        return self.result_id
-
-    def run_to_node(self, store, plan_version_id, target_step_id, run_id=None, force=False, branch_id=None):
-        self.calls.append(("to_node", run_id))
-        return self.result_id
-
-    def run_branch(self, store, plan_version_id, branch_id, *,
-                   run_id=None, force=False, branch_ctx=None):
-        self.calls.append(("branch", run_id))
-        self.branch_ctx_received.append(branch_ctx)
-        return self.result_id
+# ---------------------------------------------------------------------------
+# Delegation tests — assert that run_orchestrator.execute_run delegates
+# to RunService.run_plan / RunService.execute_created_run.
+# ---------------------------------------------------------------------------
 
 
-def _patch_executor(monkeypatch) -> None:
-    FakeExecutor.calls = []
-    FakeExecutor.branch_ctx_received = []
-    FakeExecutor.result_id = "created-run"
-    monkeypatch.setattr(run_orchestrator, "PlanExecutor", FakeExecutor)
-    monkeypatch.setattr(run_orchestrator.NodeRegistry, "with_defaults", staticmethod(lambda: object()))
+def test_execute_run_returns_created_run_id_for_sync_full_plan(tmp_path, monkeypatch):
+    """run_orchestrator.execute_run with no run_id delegates to
+    RunService.run_plan and returns its run_id."""
+    from tests.test_run_worker import _init_store
 
+    store = _init_store(tmp_path)
 
-def test_execute_run_returns_created_run_id_for_sync_full_plan(monkeypatch):
-    _patch_executor(monkeypatch)
+    def fake_run_plan(
+        self, plan_version_id, run_scope="full_plan",
+        branch_id=None, target_step_id=None, force=False, sync=False,
+    ):
+        return RunResponse(
+            run_id="delegated-full", plan_version_id=plan_version_id,
+            status="succeeded", started_at="t", step_count=0,
+        )
 
-    run_id = run_orchestrator.execute_run(DummyStore(), "pv", run_scope="full_plan")
-
-    assert run_id == "created-run"
-    assert FakeExecutor.calls == [("full_plan", None)]
-
-
-def test_execute_run_returns_created_run_id_for_sync_to_node(monkeypatch):
-    _patch_executor(monkeypatch)
-
-    run_id = run_orchestrator.execute_run(
-        DummyStore(), "pv", run_scope="to_node", target_step_id="target",
+    monkeypatch.setattr(
+        "cardre.services.run_service.RunService.run_plan", fake_run_plan,
     )
 
-    assert run_id == "created-run"
-    assert FakeExecutor.calls == [("to_node", None)]
+    run_id = run_orchestrator.execute_run(store, "pv", run_scope="full_plan")
+    assert run_id == "delegated-full"
+
+
+def test_execute_run_returns_created_run_id_for_sync_to_node(tmp_path, monkeypatch):
+    from tests.test_run_worker import _init_store
+
+    store = _init_store(tmp_path)
+
+    def fake_run_plan(
+        self, plan_version_id, run_scope="full_plan",
+        branch_id=None, target_step_id=None, force=False, sync=False,
+    ):
+        return RunResponse(
+            run_id="delegated-to-node", plan_version_id=plan_version_id,
+            status="succeeded", started_at="t", step_count=0,
+        )
+
+    monkeypatch.setattr(
+        "cardre.services.run_service.RunService.run_plan", fake_run_plan,
+    )
+
+    run_id = run_orchestrator.execute_run(
+        store, "pv", run_scope="to_node", target_step_id="target",
+    )
+    assert run_id == "delegated-to-node"
 
 
 @pytest.mark.governance
@@ -75,21 +81,34 @@ def test_execute_run_returns_created_run_id_for_sync_to_node(monkeypatch):
     os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower() not in ("1", "true"),
     reason="requires CARDRE_GOVERNANCE=1",
 )
-def test_execute_run_returns_created_run_id_for_sync_branch(monkeypatch):
-    _patch_executor(monkeypatch)
+def test_execute_run_returns_created_run_id_for_sync_branch(tmp_path, monkeypatch):
+    from tests.test_run_worker import _init_store
+
+    store = _init_store(tmp_path)
+
+    def fake_run_plan(
+        self, plan_version_id, run_scope="full_plan",
+        branch_id=None, target_step_id=None, force=False, sync=False,
+    ):
+        return RunResponse(
+            run_id="delegated-branch", plan_version_id=plan_version_id,
+            status="succeeded", started_at="t", step_count=0,
+        )
+
     monkeypatch.setattr(
-        "cardre.services.evidence_policy.EvidencePolicyService.prepare_branch_evidence",
-        lambda self, pv, bid, force=False: _FakeCtx(),
+        "cardre.services.run_service.RunService.run_plan", fake_run_plan,
     )
 
     run_id = run_orchestrator.execute_run(
-        DummyStore(), "pv", run_scope="branch", branch_id="branch-1",
+        store, "pv", run_scope="branch", branch_id="branch-1",
     )
+    assert run_id == "delegated-branch"
 
-    assert run_id == "created-run"
-    assert FakeExecutor.calls == [("branch", None)]
-    assert len(FakeExecutor.branch_ctx_received) == 1
-    assert FakeExecutor.branch_ctx_received[0] is not None
+
+# ---------------------------------------------------------------------------
+# Branch short-circuit tests — assert that the shim returns the existing
+# run_id and cancels the placeholder when branch is current.
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.governance
@@ -97,86 +116,153 @@ def test_execute_run_returns_created_run_id_for_sync_branch(monkeypatch):
     os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower() not in ("1", "true"),
     reason="requires CARDRE_GOVERNANCE=1",
 )
-def test_execute_run_preserves_precreated_async_run_id_on_branch_short_circuit(monkeypatch):
-    """RED: The worker-path branch short-circuit must return the EXISTING
-    successful run_id (parity with RunService._execute_sync at
-    run_service.py:160), not the placeholder run_id. Previously this
-    asserted ``run_id == "precreated-run"`` which characterised the bug
-    (root of issue #168); the assertion is flipped to lock the correct
-    contract.
+def test_execute_run_preserves_precreated_async_run_id_on_branch_short_circuit(
+    tmp_path, monkeypatch,
+):
+    """The shim must return the existing successful run_id (not the
+    placeholder) and cancel the placeholder when the branch short-circuits."""
+    from cardre.audit import StepSpec, json_logical_hash
+    from tests.test_run_worker import _init_store
 
-    The placeholder is still cancelled for the audit trail, and the
-    executor is not called.
-    """
-    _patch_executor(monkeypatch)
-    _FakeCtx.short_circuit_run_id = "existing-successful-run"
+    store = _init_store(tmp_path)
+    prj_id = store.create_project("test")
+    plan_id = store.create_plan(prj_id, "test-plan")
+    steps = [
+        StepSpec(
+            step_id="source", node_type="cardre.test.simple_source",
+            node_version="1", category="transform",
+            params={}, params_hash=json_logical_hash({}),
+            parent_step_ids=[], branch_label="", position=0,
+        ),
+    ]
+    pv_id = store.create_plan_version(plan_id, steps)
+
+    branch_id = store.create_branch(
+        project_id=prj_id, plan_id=plan_id, name="test-branch",
+        branch_type="challenger",
+        base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+        created_reason="test",
+    )
+
+    # Seed an existing successful branch run.
+    existing_run_id = store.create_run(pv_id, branch_id=branch_id)
+    store.save_run_step(
+        RunStepRecord(
+            run_step_id=str(uuid.uuid4()), run_id=existing_run_id,
+            step_id="source", plan_version_id=pv_id, status="succeeded",
+            started_at=utc_now_iso(), finished_at=utc_now_iso(),
+            input_artifact_ids=[], output_artifact_ids=[],
+            execution_fingerprint={}, warnings=[], errors=[],
+        ),
+    )
+    store.finish_run(existing_run_id, "succeeded")
+
+    # Create a placeholder run.
+    placeholder_id = store.create_run(pv_id, branch_id=branch_id)
+
+    class _FakeCtx:
+        short_circuit_run_id = existing_run_id
+        diagnostics = []
+        steps = []
+        branch_owned_step_ids = set()
+        stale_branch_step_ids = []
+        step_outputs = {}
+        run_step_records = {}
+
     monkeypatch.setattr(
         "cardre.services.evidence_policy.EvidencePolicyService.prepare_branch_evidence",
         lambda self, pv, bid, force=False: _FakeCtx(),
     )
-    FakeExecutor.result_id = "existing-successful-run"
-    store = DummyStore()
 
-    run_id = run_orchestrator.execute_run(
-        store, "pv", run_id="precreated-run",
-        run_scope="branch", branch_id="branch-1",
+    result = run_orchestrator.execute_run(
+        store, pv_id, run_id=placeholder_id,
+        run_scope="branch", branch_id=branch_id,
     )
 
-    assert run_id == "existing-successful-run", (
-        f"worker-path branch short-circuit must return the existing run_id "
-        f"(parity with RunService._execute_sync), got {run_id!r}"
+    assert result == existing_run_id, (
+        f"shim must return existing run_id, got {result!r}"
     )
-    assert ("precreated-run", "cancelled") in store.finished, (
-        "placeholder must still be cancelled for audit trail"
+    assert store.get_run(placeholder_id)["status"] == "cancelled", (
+        "placeholder must be cancelled"
     )
-    assert FakeExecutor.calls == [], "short-circuit must not call the executor"
-    _FakeCtx.short_circuit_run_id = None  # reset for other tests
 
 
-def test_branch_short_circuit_worker_path_returns_existing_run_id(monkeypatch):
-    """RED: Explicit pin that the worker path (run_orchestrator.execute_run)
-    returns the existing successful run_id on a branch short-circuit,
-    matching RunService._execute_sync. This is the canonical contract test
-    for issue #168 — sync and async must return the same run_id for the
-    same logical outcome.
-    """
-    _patch_executor(monkeypatch)
-    _FakeCtx.short_circuit_run_id = "existing-successful-run"
+@pytest.mark.governance
+@pytest.mark.skipif(
+    os.environ.get("CARDRE_GOVERNANCE", "0").strip().lower() not in ("1", "true"),
+    reason="requires CARDRE_GOVERNANCE=1",
+)
+def test_branch_short_circuit_worker_path_returns_existing_run_id(
+    tmp_path, monkeypatch,
+):
+    """Explicit pin: the worker path (execute_run with run_id) returns the
+    existing successful run_id on a branch short-circuit."""
+    from cardre.audit import StepSpec, json_logical_hash
+    from tests.test_run_worker import _init_store
+
+    store = _init_store(tmp_path)
+    prj_id = store.create_project("test")
+    plan_id = store.create_plan(prj_id, "test-plan")
+    steps = [
+        StepSpec(
+            step_id="source", node_type="cardre.test.simple_source",
+            node_version="1", category="transform",
+            params={}, params_hash=json_logical_hash({}),
+            parent_step_ids=[], branch_label="", position=0,
+        ),
+    ]
+    pv_id = store.create_plan_version(plan_id, steps)
+
+    branch_id = store.create_branch(
+        project_id=prj_id, plan_id=plan_id, name="test-branch",
+        branch_type="challenger",
+        base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+        created_reason="test",
+    )
+
+    existing_run_id = store.create_run(pv_id, branch_id=branch_id)
+    store.save_run_step(
+        RunStepRecord(
+            run_step_id=str(uuid.uuid4()), run_id=existing_run_id,
+            step_id="source", plan_version_id=pv_id, status="succeeded",
+            started_at=utc_now_iso(), finished_at=utc_now_iso(),
+            input_artifact_ids=[], output_artifact_ids=[],
+            execution_fingerprint={}, warnings=[], errors=[],
+        ),
+    )
+    store.finish_run(existing_run_id, "succeeded")
+
+    placeholder_id = store.create_run(pv_id, branch_id=branch_id)
+
+    class _FakeCtx:
+        short_circuit_run_id = existing_run_id
+        diagnostics = []
+        steps = []
+        branch_owned_step_ids = set()
+        stale_branch_step_ids = []
+        step_outputs = {}
+        run_step_records = {}
+
     monkeypatch.setattr(
         "cardre.services.evidence_policy.EvidencePolicyService.prepare_branch_evidence",
         lambda self, pv, bid, force=False: _FakeCtx(),
     )
-    FakeExecutor.result_id = "existing-successful-run"
-    store = DummyStore()
 
-    returned = run_orchestrator.execute_run(
-        store, "pv", run_id="precreated-run",
-        run_scope="branch", branch_id="branch-1",
+    result = run_orchestrator.execute_run(
+        store, pv_id, run_id=placeholder_id,
+        run_scope="branch", branch_id=branch_id,
     )
 
-    assert returned == "existing-successful-run", (
-        f"worker-path branch short-circuit must return the existing run_id "
-        f"(parity with RunService._execute_sync), got {returned!r}"
+    assert result == existing_run_id, (
+        f"worker-path branch short-circuit must return existing run_id, "
+        f"got {result!r}"
     )
-    assert ("precreated-run", "cancelled") in store.finished
-    assert FakeExecutor.calls == []
-    _FakeCtx.short_circuit_run_id = None
+    assert store.get_run(placeholder_id)["status"] == "cancelled"
 
 
-class _FakeCtx:
-    short_circuit_run_id = None
-    diagnostics: list = []
-
-
-@pytest.fixture
-def _stub_branch_policy(monkeypatch):
-    """Make EvidencePolicyService.prepare_branch_evidence return a
-    minimal ctx so execute_run's branch path is unit-testable."""
-    monkeypatch.setattr(
-        "cardre.services.evidence_policy.EvidencePolicyService.prepare_branch_evidence",
-        lambda self, pv, bid, force=False: _FakeCtx(),
-    )
-    return _FakeCtx
+# ---------------------------------------------------------------------------
+# _is_branch_current tests — unchanged (test sidecar/routes/runs.py helpers)
+# ---------------------------------------------------------------------------
 
 
 def test_is_branch_current_returns_none_when_no_short_circuit(monkeypatch):
