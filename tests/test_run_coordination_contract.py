@@ -758,7 +758,6 @@ def test_to_node_placeholder_cancellation_writes_manifest(tmp_path: Path) -> Non
 # ======================================================================
 
 
-@pytest.mark.xfail(reason="lands in phase 5")
 def test_run_orchestrator_shim_delegates_to_run_service(
     tmp_path: Path, monkeypatch
 ) -> None:
