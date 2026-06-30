@@ -26,7 +26,7 @@ class TestScorecardPathwayE2E:
         plan_resp = client.get(f"/plans/{plan_id}?project_id={pid}")
         assert plan_resp.status_code == 200
         plan_data = plan_resp.json()
-        assert len(plan_data["steps"]) == 24
+        assert len(plan_data["steps"]) == 27
         for step in plan_data["steps"]:
             assert "params" in step
             assert step["params"] is not None
@@ -98,6 +98,13 @@ class TestScorecardPathwayE2E:
         })
         assert aw_resp.status_code == 200
         pv_id = aw_resp.json()["new_plan_version_id"]
+
+        awr_resp = client.post(f"/plans/{plan_id}/steps/apply-woe-raw/params", json={
+            "project_id": pid, "base_plan_version_id": pv_id,
+            "params": {"woe_unmatched_policy": "warn"},
+        })
+        assert awr_resp.status_code == 200
+        pv_id = awr_resp.json()["new_plan_version_id"]
 
         run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": pv_id,
@@ -279,6 +286,13 @@ class TestScorecardPathwayE2E:
         assert aw_resp.status_code == 200
         pv_id = aw_resp.json()["new_plan_version_id"]
 
+        awr_resp = client.post(f"/plans/{plan_id}/steps/apply-woe-raw/params", json={
+            "project_id": pid, "base_plan_version_id": pv_id,
+            "params": {"woe_unmatched_policy": "warn"},
+        })
+        assert awr_resp.status_code == 200
+        pv_id = awr_resp.json()["new_plan_version_id"]
+
         run_resp = client.post("/runs?sync=true", json={
             "project_id": pid, "plan_version_id": pv_id,
         })
@@ -311,7 +325,9 @@ class TestScorecardPathwayE2E:
         assert steps_map["binning"]["is_stale"]
         stale_downstream = ["initial-woe-iv", "variable-clustering", "variable-selection",
                             "manual-binning", "final-woe-iv", "woe-transform-train",
-                            "logistic-regression", "score-scaling", "build-summary-report",
+                            "logistic-regression", "apply-woe-raw", "apply-model-raw",
+                            "calibrate-probabilities",
+                            "score-scaling", "build-summary-report",
                             "apply-woe", "apply-model",
                             "validation-metrics", "cutoff-analysis", "technical-manifest-stub"]
         for step_id in stale_downstream:

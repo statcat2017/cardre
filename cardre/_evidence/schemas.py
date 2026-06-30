@@ -34,3 +34,4 @@ SCHEMA_HYPERPARAMETER_TUNING_EVIDENCE = "cardre.hyperparameter_tuning_evidence.v
 SCHEMA_EXPLAINABILITY_REPORT = "cardre.explainability_report.v1"
 SCHEMA_FAIRNESS_REPORT = "cardre.fairness_report.v1"
 SCHEMA_PROXY_RISK_REPORT = "cardre.proxy_risk_report.v1"
+SCHEMA_CALIBRATION_REPORT = "cardre.calibration_report.v1"

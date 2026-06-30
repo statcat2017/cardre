@@ -682,6 +682,8 @@ class PlanExecutor:
             return
         for a in artifacts:
             if a.role in ("test", "oot") and a.artifact_type == "dataset":
+                if hasattr(node, "allows_leakage_artifact") and node.allows_leakage_artifact(a):
+                    continue  # Node explicitly allows this artifact (e.g. calibration)
                 raise LeakageProtectionError(
                     f"Node {node.node_type!r} (category={node.category!r}) "
                     f"cannot consume {a.role!r} dataset artifact. "

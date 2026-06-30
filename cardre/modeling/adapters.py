@@ -144,6 +144,25 @@ def apply_logistic(
         prob_expr = (1.0 / (1.0 + (-log_odds_expr).exp())).alias("predicted_bad_probability")
         raw_expr = log_odds_expr.alias("raw_model_output")
 
+        # Compute raw probability column first
+        df = df.with_columns([prob_expr, raw_expr])
+
+        # Apply runtime calibration if present. Folded Platt is a no-op here
+        # because coefficients are already calibrated.
+        if model.get("calibration"):
+            raw_probs = df["predicted_bad_probability"].to_numpy()
+            cal_probs = _apply_calibration(model, store, raw_probs)
+            df = df.with_columns([
+                pl.Series("predicted_bad_probability", cal_probs, dtype=pl.Float64),
+            ])
+            # Recompute raw_model_output as calibrated log-odds for scorecard scoring
+            cal_log_odds = np.log(
+                np.clip(cal_probs / np.maximum(1 - cal_probs, 1e-15), 1e-15, None)
+            )
+            df = df.with_columns([
+                pl.Series("raw_model_output", cal_log_odds, dtype=pl.Float64),
+            ])
+
         base_metadata: JsonDict = {
             "model_artifact_id": model_art.artifact_id,
             "model_family": "logistic_regression",
@@ -153,12 +172,12 @@ def apply_logistic(
         output_cols = ["predicted_bad_probability", "raw_model_output",
                        "model_artifact_id", "model_family"]
         add_exprs = [
-            prob_expr, raw_expr,
             pl.lit(model_art.artifact_id).alias("model_artifact_id"),
             pl.lit("logistic_regression").alias("model_family"),
         ]
         if has_scorecard:
-            score_expr = pl.lit(offset) + pl.lit(direction * factor_val) * log_odds_expr
+            # Recompute score from potentially calibrated raw_model_output
+            score_expr = pl.lit(offset) + pl.lit(direction * factor_val) * pl.col("raw_model_output")
             add_exprs.append(score_expr.alias("score"))
             add_exprs.append(score_expr.alias("cardre_scaled_score"))
             output_cols.extend(["score", "cardre_scaled_score"])
@@ -235,6 +254,10 @@ def apply_sklearn_estimator(
             pred_bad = proba[:, prob_col_idx] if proba.shape[1] > prob_col_idx else proba[:, -1]
         else:
             pred_bad = estimator.predict(X).astype(np.float64)
+
+        # Apply runtime calibration if present
+        if model.get("calibration"):
+            pred_bad = _apply_calibration(model, store, pred_bad)
 
         base_metadata: JsonDict = {
             "model_artifact_id": model_art.artifact_id,
@@ -386,6 +409,72 @@ def apply_ensemble(
         context.step_spec.step_id,
     )
     return NodeOutput(artifacts=outputs + [evidence_art], metrics={"output_count": len(outputs)})
+
+
+# ---------------------------------------------------------------------------
+# Calibration helper
+# ---------------------------------------------------------------------------
+
+
+def _apply_calibration(
+    model: dict[str, Any],
+    store: ProjectStore,
+    y_prob: np.ndarray,
+) -> np.ndarray:
+    """If the model artifact has a runtime calibration block, load and apply
+    the calibrator.
+
+    Folded Platt calibration (application_mode="folded_linear_log_odds") is
+    a no-op here because the model artifact's intercept and coefficients have
+    already been adjusted during calibration node execution.
+
+    Args:
+        model: The parsed model artifact dict.
+        store: The project store.
+        y_prob: Raw predicted_bad_probability array (shape (n,)).
+
+    Returns:
+        Calibrated probability array (shape (n,)).
+
+    Raises:
+        ValueError: If calibration block references a missing calibrator.
+    """
+    calibration = model.get("calibration")
+    if not calibration:
+        return y_prob
+
+    application_mode = calibration.get("application_mode", "runtime_probability_transform")
+    if application_mode == "folded_linear_log_odds":
+        # Intercept/coefficients are already calibrated; no runtime transform needed.
+        return y_prob
+
+    calibrator_id = calibration.get("calibrator_artifact_id")
+    if not calibrator_id:
+        raise ValueError("Model has calibration block but no calibrator_artifact_id")
+
+    calibrator_art = store.get_artifact(calibrator_id)
+    if calibrator_art is None:
+        raise ValueError(
+            f"Calibrator artifact {calibrator_id!r} not found in store"
+        )
+
+    calibrator_bytes = read_estimator_artifact(
+        store,
+        calibrator_art,
+        expected_logical_hash=calibration.get("calibrator_logical_hash"),
+    )
+    calibrator = joblib.load(io.BytesIO(calibrator_bytes))
+
+    # Package raw probs as shape (n, 2) for sklearn calibrators that expect it.
+    X_cal = np.column_stack([1.0 - y_prob, y_prob])
+
+    if hasattr(calibrator, "predict_proba"):
+        cal_probs = calibrator.predict_proba(X_cal)
+        calibrated = cal_probs[:, 1] if cal_probs.shape[1] > 1 else cal_probs[:, 0]
+    else:
+        calibrated = calibrator.predict(y_prob)
+
+    return np.asarray(calibrated, dtype=np.float64)
 
 
 # ---------------------------------------------------------------------------

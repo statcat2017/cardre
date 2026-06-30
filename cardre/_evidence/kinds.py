@@ -45,6 +45,7 @@ class EvidenceKind(Enum):
     EXPLAINABILITY_REPORT = "explainability_report"
     FAIRNESS_REPORT = "fairness_report"
     PROXY_RISK_REPORT = "proxy_risk_report"
+    CALIBRATION_REPORT = "calibration_report"
 
 
 class EvidenceError(Exception):
