@@ -44,6 +44,7 @@ case "$PHASE" in
     python3 -m pytest tests/test_api_contracts.py tests/test_error_envelope.py tests/test_sidecar_api/ -q --tb=short
     (
       cd frontend
+      npm ci
       npm run lint
       npm run test
       npx tsc --noEmit
