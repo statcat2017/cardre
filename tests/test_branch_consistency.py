@@ -284,20 +284,31 @@ class TestRunToNodeBranchContext:
     def test_run_to_node_passes_branch_id_to_executor(self, monkeypatch, tmp_path):
         """execute_run passes branch_id to run_to_node."""
         from cardre.services import run_orchestrator
+        from tests.test_run_worker import _init_store, _one_step_plan
 
         calls = []
 
         class FakeExecutor:
-            def run_to_node(self, store, plan_version_id, target_step_id, run_id=None, force=False, branch_id=None):
+            def validate_plan_executability(self, store, plan_version_id):
+                return []
+            def run_to_node(self, store, plan_version_id, target_step_id, run_id=None, force=False, branch_id=None, lifecycle=None):
                 calls.append(branch_id)
-                return "run-1"
+                return run_id
 
-        monkeypatch.setattr(run_orchestrator, "PlanExecutor", lambda r: FakeExecutor())
-        monkeypatch.setattr(run_orchestrator.NodeRegistry, "with_defaults", staticmethod(lambda: object()))
+        monkeypatch.setattr(
+            "cardre.services.run_service.PlanExecutor", lambda r: FakeExecutor()
+        )
+        monkeypatch.setattr(
+            "cardre.services.run_service.NodeRegistry.with_defaults",
+            staticmethod(lambda: object()),
+        )
+
+        store = _init_store(tmp_path)
+        pv_id = _one_step_plan(store)
 
         run_orchestrator.execute_run(
-            store=None, plan_version_id="pv", run_scope="to_node",
-            target_step_id="target", branch_id="br-1",
+            store=store, plan_version_id=pv_id, run_scope="to_node",
+            target_step_id="source", branch_id="br-1",
         )
 
         assert calls == ["br-1"], f"Expected branch_id='br-1', got {calls}"
@@ -305,20 +316,31 @@ class TestRunToNodeBranchContext:
     def test_run_to_node_without_branch_id_passes_none(self, monkeypatch, tmp_path):
         """execute_run passes None for branch_id when not provided."""
         from cardre.services import run_orchestrator
+        from tests.test_run_worker import _init_store, _one_step_plan
 
         calls = []
 
         class FakeExecutor:
-            def run_to_node(self, store, plan_version_id, target_step_id, run_id=None, force=False, branch_id=None):
+            def validate_plan_executability(self, store, plan_version_id):
+                return []
+            def run_to_node(self, store, plan_version_id, target_step_id, run_id=None, force=False, branch_id=None, lifecycle=None):
                 calls.append(branch_id)
-                return "run-1"
+                return run_id
 
-        monkeypatch.setattr(run_orchestrator, "PlanExecutor", lambda r: FakeExecutor())
-        monkeypatch.setattr(run_orchestrator.NodeRegistry, "with_defaults", staticmethod(lambda: object()))
+        monkeypatch.setattr(
+            "cardre.services.run_service.PlanExecutor", lambda r: FakeExecutor()
+        )
+        monkeypatch.setattr(
+            "cardre.services.run_service.NodeRegistry.with_defaults",
+            staticmethod(lambda: object()),
+        )
+
+        store = _init_store(tmp_path)
+        pv_id = _one_step_plan(store)
 
         run_orchestrator.execute_run(
-            store=None, plan_version_id="pv", run_scope="to_node",
-            target_step_id="target",
+            store=store, plan_version_id=pv_id, run_scope="to_node",
+            target_step_id="source",
         )
 
         assert calls == [None], f"Expected branch_id=None, got {calls}"

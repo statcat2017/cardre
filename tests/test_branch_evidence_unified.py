@@ -560,10 +560,10 @@ def test_p2_async_branch_run_uses_unified_policy_and_passes_ctx(monkeypatch):
 
     ctx_received = []
     real_run_branch = PlanExecutor.run_branch
-    def _spy_branch(self_, store_, pv, bid, *, run_id=None, force=False, branch_ctx=None):
+    def _spy_branch(self_, store_, pv, bid, *, run_id=None, force=False, branch_ctx=None, lifecycle=None):
         ctx_received.append(branch_ctx)
         return real_run_branch(self_, store_, pv, bid, run_id=run_id,
-                                force=force, branch_ctx=branch_ctx)
+                                force=force, branch_ctx=branch_ctx, lifecycle=lifecycle)
     monkeypatch.setattr(PlanExecutor, "run_branch", _spy_branch)
 
     svc = RunService(store, dispatcher=SyncRunDispatcher())
