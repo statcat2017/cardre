@@ -52,6 +52,8 @@ KNOWN_EXCEPTIONS: set[str] = {
     # Sidecar binary paths — these are naming-pattern references, not real files
     "frontend/src-tauri/binaries/",
     "frontend/src-tauri/binaries/cardre-api-{triple}{.exe?}",
+    # Command examples in AGENTS.md that are not literal file paths
+    "scripts/pr-gate.sh --no-open",
 }
 
 # Directories whose contents are expected to have stale references
