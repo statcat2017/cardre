@@ -155,14 +155,46 @@ class RunService:
         return self._dispatch_async(run_id, plan_version_id, run_scope, branch_id, target_step_id, force)
 
     # ------------------------------------------------------------------
+    # Public execution API
+    # ------------------------------------------------------------------
+
+    def execute_created_run(self, request: RunRequest) -> RunResponse:
+        run = self._store.get_run(request.run_id)
+        if run is None:
+            raise CardreError(
+                f"Run {request.run_id} not found",
+                code="RUN_NOT_FOUND",
+                context={"run_id": request.run_id},
+            )
+        if run["plan_version_id"] != request.plan_version_id:
+            raise CardreError(
+                "Run belongs to a different plan version.",
+                code="RUN_PLAN_VERSION_MISMATCH",
+                context={
+                    "run_id": request.run_id,
+                    "actual_plan_version_id": run["plan_version_id"],
+                    "expected_plan_version_id": request.plan_version_id,
+                },
+            )
+        if run["status"] != "running":
+            raise CardreError(
+                f"Run {request.run_id} is not running.",
+                code="RUN_NOT_RUNNING",
+                context={"run_id": request.run_id, "status": run["status"]},
+            )
+        return self._execute_existing_running_run(request)
+
+    # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
 
-    def _execute_sync(
-        self, run_id: str, plan_version_id: str,
-        run_scope: str, branch_id: str | None, target_step_id: str | None,
-        force: bool,
-    ) -> RunResponse:
+    def _execute_existing_running_run(self, request: RunRequest) -> RunResponse:
+        run_id = request.run_id
+        plan_version_id = request.plan_version_id
+        run_scope = request.run_scope
+        branch_id = request.branch_id
+        target_step_id = request.target_step_id
+        force = request.force
         executor = PlanExecutor(NodeRegistry.with_defaults())
         try:
             if run_scope == "branch" and branch_id:
@@ -209,6 +241,22 @@ class RunService:
 
         executed_ids = [rs.step_id for rs in self._store.get_run_steps(run_id)]
         return self._build_response(run_id, executed_ids)
+
+    def _execute_sync(
+        self, run_id: str, plan_version_id: str,
+        run_scope: str, branch_id: str | None, target_step_id: str | None,
+        force: bool,
+    ) -> RunResponse:
+        request = RunRequest(
+            project_path=str(self._store.root),
+            plan_version_id=plan_version_id,
+            run_id=run_id,
+            run_scope=run_scope,  # type: ignore[arg-type]
+            branch_id=branch_id,
+            target_step_id=target_step_id,
+            force=force,
+        )
+        return self.execute_created_run(request)
 
     def _dispatch_async(
         self, run_id: str, plan_version_id: str,

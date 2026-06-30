@@ -192,7 +192,6 @@ def test_dispatch_startup_failure_records_diagnostic_and_fails_run(
 # ======================================================================
 
 
-@pytest.mark.xfail(reason="lands in phase 2")
 def test_execute_created_run_rejects_missing_run(tmp_path: Path) -> None:
     """execute_created_run must raise CardreError(RUN_NOT_FOUND) for a
     non-existent run_id."""
@@ -216,7 +215,6 @@ def test_execute_created_run_rejects_missing_run(tmp_path: Path) -> None:
 # ======================================================================
 
 
-@pytest.mark.xfail(reason="lands in phase 2")
 def test_execute_created_run_rejects_plan_version_mismatch(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -275,7 +273,6 @@ def test_execute_created_run_rejects_plan_version_mismatch(
 # ======================================================================
 
 
-@pytest.mark.xfail(reason="lands in phase 2")
 def test_execute_created_run_rejects_non_running_status(tmp_path: Path) -> None:
     """execute_created_run must raise CardreError(RUN_NOT_RUNNING) when
     the run is already finished."""
