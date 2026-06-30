@@ -389,12 +389,6 @@ class CalibrateProbabilitiesNode(NodeType):
                 ),
             })
 
-        # 5. Fit calibrator (skip if too few rows)
-        if too_few_rows:
-            # Pass through: original model unchanged, no calibrator artifact
-            application_mode = "folded_linear_log_odds"
-            score_scaling_compatible = True
-            calibrator = None
         # Read model artifact once for model_family checks and later update
         model_art = next(a for a in context.input_artifacts if a.role == "model")
         typed_model = reader.read(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
@@ -404,6 +398,8 @@ class CalibrateProbabilitiesNode(NodeType):
             and "intercept" in getattr(typed_model, "_raw", {})
             and isinstance(getattr(typed_model, "_raw", {}).get("coefficients"), dict)
         )
+
+        # 5. Fit calibrator (skip if too few rows)
 
         # 5. Fit calibrator (skip if too few rows)
         if too_few_rows:
@@ -527,7 +523,11 @@ class CalibrateProbabilitiesNode(NodeType):
             "warnings": warnings_list,
             "calibration_sample_role": calibration_sample,
             "calibration_sample_is_training_independent": calibration_sample in ("test", "oot"),
-            "calibration_sample_is_post_calibration_validation_holdout": calibration_sample == "oot",
+            "calibration_sample_is_post_calibration_validation_holdout": False,
+            "post_calibration_validation_requires_different_role": True,
+            "recommended_independent_validation_roles": [
+                role for role in ("test", "oot") if role != calibration_sample
+            ],
             "source_scoring_policy": {
                 "woe_unmatched_policy": "fail",
             },
