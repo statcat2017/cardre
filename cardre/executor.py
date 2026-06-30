@@ -280,6 +280,15 @@ class PlanExecutor:
         closure = ancestors | {target_step_id}
         closure_steps = [s for s in steps if s.step_id in closure]
 
+        # Short-circuit when nothing to run
+        if not force:
+            from cardre.staleness import compute_staleness
+            staleness = compute_staleness(store, plan_version_id, branch_id=branch_id)
+            if all(not staleness.get(s.step_id, True) for s in closure_steps):
+                existing_run_id = store.get_latest_successful_run_id(plan_version_id, branch_id=branch_id)
+                if existing_run_id is not None:
+                    return existing_run_id
+
         execution_mode = "force" if force else "to_node"
         if lifecycle is None:
             from cardre.run_lifecycle import RunLifecycle

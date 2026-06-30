@@ -367,8 +367,8 @@ class TestRunServiceDispatcherInjection:
         _join_named(f"cardre-run-{resp.run_id[:8]}")
 
         run = store.get_run(resp.run_id)
-        # execute_run no-op leaves the run running (no finalisation); the
-        # point of this test is that a real thread was started and ran.
+        # The fake finishes the run as succeeded; the point of this test
+        # is that a real thread was started and ran.
         assert run is not None
 
 

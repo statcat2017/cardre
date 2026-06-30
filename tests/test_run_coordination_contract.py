@@ -1,17 +1,13 @@
-"""Phase 1 — Characterisation contract tests for run coordination.
+"""Characterisation contract tests for run coordination.
 
-These tests lock the run-coordination contract *before* the refactor.
-Some will be GREEN immediately; one test (test 11) is intentionally RED
-as the target for the consolidation sprint.
+These tests lock the run-coordination contract. All tests are GREEN
+after the consolidation sprint (phases 1-7 completed).
 
 GREEN tests:
-    1, 4, 8 (governance-gated), 9, 10, 12
+    1-10, 12, 13
 
-xfail (not yet implemented):
-    2, 3, 5, 6, 7, 13
-
-RED (lands in phase 4):
-    11 (governance-gated)
+Governance-gated (require CARDRE_GOVERNANCE=1):
+    8, 11
 """
 
 from __future__ import annotations
@@ -754,7 +750,117 @@ def test_to_node_placeholder_cancellation_writes_manifest(tmp_path: Path) -> Non
 
 
 # ======================================================================
-# Test 13 — Run orchestrator shim delegates to RunService  (xfail)
+# Test 13a — execute_created_run to-node short-circuit returns existing
+# ======================================================================
+
+
+def test_execute_created_run_to_node_current_returns_existing_and_cancels_placeholder(
+    tmp_path: Path,
+) -> None:
+    """When execute_created_run is called with a to-node scope and the
+    target closure is current, the existing successful run is returned
+    and the placeholder is cancelled with a manifest."""
+    from cardre.artifacts import write_json_artifact
+
+    store = _init_store(tmp_path)
+    pv_id = _one_step_plan(store)
+
+    # Seed a prior successful run with a run step for "source"
+    prev_run_id = store.create_run(pv_id)
+    art = write_json_artifact(
+        store, artifact_type="report", role="artifact",
+        stem="seed-source", payload={"step_id": "source"}, metadata={},
+    )
+    store.save_run_step(RunStepRecord(
+        run_step_id=str(uuid.uuid4()), run_id=prev_run_id, step_id="source",
+        plan_version_id=pv_id, status="succeeded",
+        started_at=utc_now_iso(), finished_at=utc_now_iso(),
+        input_artifact_ids=[], output_artifact_ids=[art.artifact_id],
+        execution_fingerprint={
+            "params_hash": json_logical_hash({}),
+            "node_type": "cardre.test.simple_source",
+            "node_version": "1",
+            "parent_output_logical_hashes_by_step": {},
+            "output_artifact_logical_hashes": [art.logical_hash],
+        },
+        warnings=[], errors=[],
+    ))
+    store.finish_run(prev_run_id, "succeeded")
+
+    # Create a placeholder run (as if pre-created by async dispatch)
+    placeholder_id = store.create_run(pv_id)
+
+    # Call execute_created_run directly (the worker seam)
+    request = RunRequest(
+        project_path=str(store.root),
+        plan_version_id=pv_id,
+        run_id=placeholder_id,
+        run_scope="to_node",
+        target_step_id="source",
+    )
+    from cardre.services.run_service import RunService
+    response = RunService(store).execute_created_run(request)
+
+    # Must return the existing run, not the placeholder
+    assert response.run_id == prev_run_id, (
+        f"expected existing run {prev_run_id}, got {response.run_id}"
+    )
+
+    # Placeholder must be cancelled
+    placeholder = store.get_run(placeholder_id)
+    assert placeholder["status"] == "cancelled", (
+        f"expected cancelled, got {placeholder['status']}"
+    )
+
+    # Placeholder must have a manifest
+    manifests = [a for a in store.list_artifacts()
+                 if a.artifact_type == "run_manifest"
+                 and a.metadata.get("run_id") == placeholder_id]
+    assert len(manifests) == 1, (
+        f"placeholder must have exactly one manifest; got {len(manifests)}"
+    )
+    manifest = json.loads(store.artifact_path(manifests[0]).read_text())
+    assert manifest["status"] == "cancelled"
+    assert manifest["execution_mode"] == "to_node"
+
+
+# ======================================================================
+# Test 13b — Branch evidence ValueError is translated to CardreError
+# ======================================================================
+
+
+def test_execute_created_run_branch_prepare_evidence_value_error_is_translated(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """When prepare_branch_evidence raises ValueError, execute_created_run
+    translates it to a typed CardreError with the correct code."""
+    store = _init_store(tmp_path)
+    pv_id = _one_step_plan(store)
+    run_id = store.create_run(pv_id)
+
+    def _raise_value_error(*args, **kwargs):
+        raise ValueError("BRANCH_BAD: bad branch data")
+
+    monkeypatch.setattr(
+        "cardre.services.evidence_policy.EvidencePolicyService.prepare_branch_evidence",
+        _raise_value_error,
+    )
+
+    request = RunRequest(
+        project_path=str(store.root),
+        plan_version_id=pv_id,
+        run_id=run_id,
+        run_scope="branch",
+        branch_id="branch-1",
+    )
+    from cardre.services.run_service import RunService
+    with pytest.raises(CardreError) as ei:
+        RunService(store).execute_created_run(request)
+    assert ei.value.code == "BRANCH_BAD"
+
+
+# ======================================================================
+# Test 13 — Run orchestrator shim delegates to RunService
 # ======================================================================
 
 

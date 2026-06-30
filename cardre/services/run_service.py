@@ -189,23 +189,24 @@ class RunService:
             "full_plan": "full_plan",
         }[run_scope]
 
-        # Short-circuit check for branch scope
-        if run_scope == "branch" and branch_id:
-            ctx = self._evidence.prepare_branch_evidence(plan_version_id, branch_id, force=force)
-            if not force and ctx.short_circuit_run_id is not None:
-                self._cancel_placeholder_run(
-                    run_id,
-                    plan_version_id=plan_version_id,
-                    execution_mode="branch",
-                    branch_id=branch_id,
-                    existing_run_id=ctx.short_circuit_run_id,
-                    reason="because branch has no stale steps",
-                )
-                return self._build_response(ctx.short_circuit_run_id)
-
         from cardre.run_lifecycle import RunLifecycle
 
         try:
+            # Branch evidence preparation (inside try so exception translation applies)
+            ctx = None
+            if run_scope == "branch" and branch_id:
+                ctx = self._evidence.prepare_branch_evidence(plan_version_id, branch_id, force=force)
+                if not force and ctx.short_circuit_run_id is not None:
+                    self._cancel_placeholder_run(
+                        run_id,
+                        plan_version_id=plan_version_id,
+                        execution_mode="branch",
+                        branch_id=branch_id,
+                        existing_run_id=ctx.short_circuit_run_id,
+                        reason="because branch has no stale steps",
+                    )
+                    return self._build_response(ctx.short_circuit_run_id)
+
             with RunLifecycle(
                 store=self._store,
                 run_id=run_id,
@@ -215,23 +216,47 @@ class RunService:
                 target_step_id=target_step_id,
             ) as lifecycle:
                 if run_scope == "branch" and branch_id:
-                    executor.run_branch(
+                    result_id = executor.run_branch(
                         self._store, plan_version_id, branch_id,
                         run_id=run_id, force=force, branch_ctx=ctx,
                         lifecycle=lifecycle,
                     )
                 elif run_scope == "to_node" and target_step_id:
-                    executor.run_to_node(
+                    result_id = executor.run_to_node(
                         self._store, plan_version_id, target_step_id,
                         run_id=run_id, force=force, branch_id=branch_id,
                         lifecycle=lifecycle,
                     )
                 else:
-                    executor.run_plan_version(
+                    result_id = executor.run_plan_version(
                         self._store, plan_version_id,
                         run_id=run_id, force=force,
                         lifecycle=lifecycle,
                     )
+                if result_id != run_id:
+                    # Executor returned an existing run; cancel the
+                    # placeholder inside the lifecycle so __exit__ is a
+                    # no-op (avoids double finalisation).
+                    self._store.append_run_diagnostic(run_id, {
+                        "code": "RUN_SHORT_CIRCUITED",
+                        "message": (
+                            f"Run {run_id} short-circuited because executor "
+                            f"returned an existing run ({result_id})"
+                        ),
+                        "severity": "info",
+                        "category": "lifecycle",
+                        "run_id": run_id,
+                        "plan_version_id": plan_version_id,
+                        "branch_id": branch_id,
+                        "created_at": utc_now_iso(),
+                    })
+                    lifecycle.finalise(
+                        status="cancelled",
+                        execution_mode=execution_mode,
+                        branch_id=branch_id,
+                        target_step_id=target_step_id,
+                    )
+                    return self._build_response(result_id)
         except CardreError:
             raise
         except ValueError as exc:
