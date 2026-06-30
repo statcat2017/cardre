@@ -77,7 +77,9 @@ def get_store_for_project(project_id: str) -> ProjectStore:
         raise ProjectPathMissingError(
             f"Project directory at {project_path} no longer exists or is missing cardre.sqlite"
         )
-    return ProjectStore(project_path)
+    store = ProjectStore(project_path)
+    store._check_schema_version()
+    return store
 
 
 def get_entry(project_id: str) -> dict | None:

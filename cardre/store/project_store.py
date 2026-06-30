@@ -35,6 +35,7 @@ from cardre.store.schema import (
     LINEAGE_TABLES_SQL,
     MIGRATIONS_SQL,
     SCHEMA_SQL,
+    STORE_SCHEMA_FAMILY,
     STORE_SCHEMA_VERSION,
 )
 from cardre.store.artifact_repo import ArtifactRepository
@@ -153,8 +154,12 @@ class ProjectStore:
         # Performance indexes for common query patterns (schema v4)
         conn.executescript(INDEXES_SQL)
 
-        # Stamp current schema version after successful migrations
+        # Stamp current schema identity after successful migrations
         self._ensure_store_meta()
+        conn.execute(
+            "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_family', ?)",
+            (STORE_SCHEMA_FAMILY,),
+        )
         conn.execute(
             "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_version', ?)",
             (str(STORE_SCHEMA_VERSION),),
@@ -185,18 +190,41 @@ class ProjectStore:
     def _check_schema_version(self) -> None:
         from cardre.errors import SchemaVersionError
         conn = self._connect()
-        self._ensure_store_meta()
-        row = conn.execute(
-            "SELECT value FROM store_meta WHERE key = 'schema_version'"
-        ).fetchone()
-        if row is not None:
-            stored_version = int(row["value"])
-            if stored_version > STORE_SCHEMA_VERSION:
-                raise SchemaVersionError(
-                    f"Store schema version {stored_version} is newer than "
-                    f"app version {STORE_SCHEMA_VERSION}. "
-                    "Upgrade the app to open this project."
-                )
+        try:
+            rows = conn.execute(
+                "SELECT key, value FROM store_meta WHERE key IN ('schema_family', 'schema_version')"
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            raise SchemaVersionError(
+                "Store schema metadata is missing. Recreate this project with the current app."
+            ) from exc
+
+        meta = {row["key"]: row["value"] for row in rows}
+        family = meta.get("schema_family")
+        if family != STORE_SCHEMA_FAMILY:
+            raise SchemaVersionError(
+                f"Store schema family {family!r} does not match app family {STORE_SCHEMA_FAMILY!r}. "
+                "Recreate this project with the current app."
+            )
+
+        version_text = meta.get("schema_version")
+        if version_text is None:
+            raise SchemaVersionError(
+                "Store schema version is missing. Recreate this project with the current app."
+            )
+
+        try:
+            stored_version = int(version_text)
+        except ValueError as exc:
+            raise SchemaVersionError(
+                f"Store schema version {version_text!r} is invalid. Recreate this project with the current app."
+            ) from exc
+
+        if stored_version != STORE_SCHEMA_VERSION:
+            raise SchemaVersionError(
+                f"Store schema version {stored_version} does not match app version {STORE_SCHEMA_VERSION}. "
+                "Recreate this project with the current app."
+            )
 
     def recover_interrupted_runs(self, max_age_seconds: int = 86400) -> list[JsonDict]:
         """Mark runs as interrupted if both ``started_at`` and ``heartbeat_at`` are stale.

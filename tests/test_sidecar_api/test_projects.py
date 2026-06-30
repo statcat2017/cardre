@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from cardre.store.schema import STORE_SCHEMA_FAMILY, STORE_SCHEMA_VERSION
 from cardre.store import ProjectStore
 
 pytestmark = [pytest.mark.api, pytest.mark.usefixtures("_isolated_registry")]
@@ -16,6 +17,8 @@ class TestProjects:
         assert resp.status_code == 201
         data = resp.json()
         assert data["name"] == "Test Project"
+        assert data["schema_family"] == STORE_SCHEMA_FAMILY
+        assert data["schema_version"] == STORE_SCHEMA_VERSION
         assert (proj_path / "cardre.sqlite").exists()
         for sub in ("datasets", "artifacts", "exports", "logs"):
             assert (proj_path / sub).is_dir()
@@ -37,6 +40,18 @@ class TestProjects:
         data = resp.json()
         assert data["name"] == "My Project"
         assert data["path"] == str(proj_path.resolve())
+        assert data["schema_family"] == STORE_SCHEMA_FAMILY
+        assert data["schema_version"] == STORE_SCHEMA_VERSION
+
+    def test_list_projects_includes_schema_identity(self, client, tmp_dir):
+        proj_path = tmp_dir / "test.cardre"
+        client.post("/projects", json={"path": str(proj_path), "name": "Test Project"})
+
+        resp = client.get("/projects")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["projects"][0]["schema_family"] == STORE_SCHEMA_FAMILY
+        assert data["projects"][0]["schema_version"] == STORE_SCHEMA_VERSION
 
     def test_get_project_not_found(self, client):
         resp = client.get("/projects/nonexistent-id")

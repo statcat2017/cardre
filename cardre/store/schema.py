@@ -1,7 +1,8 @@
 """SQL schema and migration statements for the Cardre project store."""
 
-# Current app schema version — bump when making backwards-incompatible changes.
-# Stored in store_meta table; old apps will reject newer stores.
+# Current app schema identity — bump when making incompatible changes.
+# Stored in store_meta table; old apps will reject older or newer stores.
+STORE_SCHEMA_FAMILY = "cardre.project_store.v2"
 STORE_SCHEMA_VERSION = 5
 
 SCHEMA_SQL = """
@@ -193,12 +194,13 @@ CREATE TABLE IF NOT EXISTS artifact_lineage (
 );
 """
 
-MIGRATIONS_SQL = """
+MIGRATIONS_SQL = f"""
 CREATE TABLE IF NOT EXISTS store_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-INSERT OR IGNORE INTO store_meta (key, value) VALUES ('schema_version', '1');
+INSERT OR IGNORE INTO store_meta (key, value) VALUES ('schema_family', '{STORE_SCHEMA_FAMILY}');
+INSERT OR IGNORE INTO store_meta (key, value) VALUES ('schema_version', '{STORE_SCHEMA_VERSION}');
 """
 
 # Performance indexes for common query patterns.

@@ -5,6 +5,8 @@ export const mockProject: ProjectDetailResponse = {
   path: "/tmp/test",
   name: "Test Project",
   created_at: "2026-01-01T00:00:00Z",
+  schema_family: "cardre.project_store.v2",
+  schema_version: 5,
   plan_count: 1,
   run_count: 0,
 };

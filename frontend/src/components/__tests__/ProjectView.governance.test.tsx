@@ -34,13 +34,15 @@ vi.mock("../../hooks/useWorkflowGuidance", () => ({
 }));
 
 vi.mock("../../hooks/useProjectPlanState", () => ({
-  useProjectPlanState: () => ({
-    project: {
-      project_id: "prj1",
-      name: "Test Project",
-      path: "/tmp/test",
-      created_at: "2026-01-01",
-    },
+    useProjectPlanState: () => ({
+      project: {
+        project_id: "prj1",
+        name: "Test Project",
+        path: "/tmp/test",
+        created_at: "2026-01-01",
+        schema_family: "cardre.project_store.v2",
+        schema_version: 5,
+      },
     projectLoading: false,
     scorecardPlan: null,
     planId: null,

@@ -15,6 +15,7 @@ from cardre.services.project_registry import (
     validate_project_path,
 )
 from cardre.store import ProjectStore
+from cardre.store.schema import STORE_SCHEMA_FAMILY, STORE_SCHEMA_VERSION
 from sidecar.models import (
     CreateProjectRequest,
     PlanListItem,
@@ -63,6 +64,8 @@ def create_project(body: CreateProjectRequest):
         path=str(path.resolve()),
         name=body.name,
         created_at=store.get_project(project_id)["created_at"],
+        schema_family=STORE_SCHEMA_FAMILY,
+        schema_version=STORE_SCHEMA_VERSION,
     )
 
 
@@ -79,6 +82,8 @@ def list_projects():
             project_id=pid,
             name=entry.get("name", ""),
             path=entry.get("path", ""),
+            schema_family=STORE_SCHEMA_FAMILY,
+            schema_version=STORE_SCHEMA_VERSION,
             path_exists=exists,
         ))
     return ProjectListResponse(
@@ -107,6 +112,8 @@ def get_project(project_id: str):
         path=str(Path(entry["path"])),
         name=proj["name"],
         created_at=proj["created_at"],
+        schema_family=STORE_SCHEMA_FAMILY,
+        schema_version=STORE_SCHEMA_VERSION,
         plan_count=plans,
         run_count=runs,
     )

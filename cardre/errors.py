@@ -148,7 +148,7 @@ class ConcurrentRunError(CardreError):
 
 
 class SchemaVersionError(CardreError):
-    """Raised when the store schema version is newer than the app supports."""
+    """Raised when the store schema identity does not match the app."""
     code = "SCHEMA_VERSION_ERROR"
     status_code = 500
 

@@ -11,6 +11,7 @@ from cardre.audit import (
     utc_now_iso,
 )
 from cardre.store import ProjectStore
+from cardre.store.schema import STORE_SCHEMA_FAMILY, STORE_SCHEMA_VERSION
 
 from tests.helpers import make_store
 
@@ -629,19 +630,34 @@ class ConcurrentConnectionTests(unittest.TestCase):
 
 class SchemaVersionGuardTests(unittest.TestCase):
 
-    def test_new_store_gets_schema_version_stamped(self) -> None:
+    def test_new_store_gets_schema_identity_stamped(self) -> None:
         store, tmp = make_store()
-        row = store._connect().execute(
+        conn = store._connect()
+        family_row = conn.execute(
+            "SELECT value FROM store_meta WHERE key = 'schema_family'"
+        ).fetchone()
+        version_row = conn.execute(
             "SELECT value FROM store_meta WHERE key = 'schema_version'"
         ).fetchone()
-        self.assertIsNotNone(row)
-        self.assertEqual(int(row["value"]), 5)
+        self.assertIsNotNone(family_row)
+        self.assertIsNotNone(version_row)
+        self.assertEqual(family_row["value"], STORE_SCHEMA_FAMILY)
+        self.assertEqual(int(version_row["value"]), STORE_SCHEMA_VERSION)
 
-    def test_schema_version_accepts_compatible(self) -> None:
+    def test_schema_identity_accepts_exact_match(self) -> None:
         store, tmp = make_store()
         store._check_schema_version()  # should not raise
 
-    def test_schema_version_rejects_newer(self) -> None:
+    def test_schema_identity_rejects_family_mismatch(self) -> None:
+        store, tmp = make_store()
+        store._connect().execute(
+            "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_family', 'cardre.project_store.v1')"
+        )
+        from cardre.errors import SchemaVersionError
+        with self.assertRaises(SchemaVersionError):
+            store._check_schema_version()
+
+    def test_schema_identity_rejects_version_mismatch(self) -> None:
         store, tmp = make_store()
         store._connect().execute(
             "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_version', '99')"

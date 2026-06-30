@@ -18,6 +18,8 @@ export function buildProject(): ProjectDetailResponse {
     project_id: PROJECT_ID,
     path: "/tmp/test-project",
     name: "Test Project",
+    schema_family: "cardre.project_store.v2",
+    schema_version: 5,
     plan_count: 1,
     run_count: 0,
     created_at: "2026-01-01T00:00:00Z",
