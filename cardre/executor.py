@@ -30,15 +30,13 @@ from cardre.audit import (
 )
 from cardre.errors import (
     ArtifactReadError,
-    ArtifactWriteError,
-    CardreError,
-    ContractViolationError,
     GraphValidationError,
     MissingInputArtifactError,
-    NodeExecutionError,
     ParameterValidationError,
 )
 from cardre.evidence_locator import resolve_output_artifacts
+from cardre.execution.failure_classification import classify_step_failure
+from cardre.execution.validation import LeakageProtectionError, RoleAccessError
 from cardre.registry import NodeRegistry
 from cardre.step_graph import ancestor_closure, descendant_closure
 from cardre.store import ProjectStore
@@ -535,46 +533,8 @@ class PlanExecutor:
 
         except Exception:
             tb = traceback.format_exc()
-            exc_type = sys.exc_info()[0]
             exc_value = sys.exc_info()[1]
-
-            _CATEGORY_MAP: tuple = (
-                (GraphValidationError, "GraphValidationError"),
-                (MissingInputArtifactError, "MissingInputArtifactError"),
-                (ParameterValidationError, "ParameterValidationError"),
-                (ArtifactReadError, "ArtifactReadError"),
-                (ArtifactWriteError, "ArtifactWriteError"),
-                (NodeExecutionError, "NodeExecutionError"),
-                (ContractViolationError, "ContractViolationError"),
-                (RoleAccessError, "RoleAccessError"),
-                (LeakageProtectionError, "LeakageProtectionError"),
-                (CardreError, "CardreError"),
-            )
-            category = "InternalExecutionError"
-            if exc_value is not None:
-                for exc_cls, cat in _CATEGORY_MAP:
-                    if isinstance(exc_value, exc_cls):
-                        category = cat
-                        break
-
-            _CODE_MAP: dict[str, str] = {
-                "GraphValidationError": "GRAPH_VALIDATION_ERROR",
-                "MissingInputArtifactError": "MISSING_INPUT_ARTIFACT",
-                "ParameterValidationError": "PARAMETER_VALIDATION_ERROR",
-                "ArtifactReadError": "ARTIFACT_READ_ERROR",
-                "ArtifactWriteError": "ARTIFACT_WRITE_ERROR",
-                "NodeExecutionError": "NODE_EXECUTION_ERROR",
-                "ContractViolationError": "CONTRACT_VIOLATION_ERROR",
-                "RoleAccessError": "ROLE_ACCESS_ERROR",
-                "LeakageProtectionError": "LEAKAGE_PROTECTION_ERROR",
-                "CardreError": "CARDRE_ERROR",
-            }
-            error_entry = {
-                "code": _CODE_MAP.get(category, "STEP_FAILED"),
-                "message": f"{exc_type.__name__ if exc_type else 'Unknown'}: {exc_value}",
-                "traceback": tb,
-                "category": category,
-            }
+            error_entry = classify_step_failure(exc_value, tb)
 
             recorded_input_ids = [a.artifact_id for a in input_artifacts]
 
@@ -942,19 +902,6 @@ class PlanExecutor:
         )
         store.save_run_step(copied_rs)
         return copied_rs
-
-
-class RoleAccessError(CardreError):
-    """Raised when a node attempts to consume an artifact with an
-    unacceptable role for its category."""
-    code = "ROLE_ACCESS_ERROR"
-    status_code = 400
-
-
-class LeakageProtectionError(CardreError):
-    """Raised when a leakage-sensitive node attempts to consume test or OOT data."""
-    code = "LEAKAGE_PROTECTION_ERROR"
-    status_code = 400
 
 
 def _output_logical_hashes(rs: RunStepRecord) -> list[str]:
