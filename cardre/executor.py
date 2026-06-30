@@ -24,19 +24,25 @@ from cardre.audit import (
     NodeType,
     RunStepRecord,
     StepSpec,
-    physical_hash,
     replace_step_params,
     utc_now_iso,
 )
 from cardre.errors import (
-    ArtifactReadError,
     GraphValidationError,
     MissingInputArtifactError,
     ParameterValidationError,
 )
 from cardre.evidence_locator import resolve_output_artifacts
 from cardre.execution.failure_classification import classify_step_failure
-from cardre.execution.validation import LeakageProtectionError, RoleAccessError
+from cardre.execution.validation import (
+    LeakageProtectionError,  # noqa: F401 — re-exported for cardre.__init__
+    RoleAccessError,  # noqa: F401 — re-exported for cardre.__init__
+    filter_inputs_by_role,
+    validate_input_artifact_files,
+    validate_leakage_rules,
+    validate_node_input_roles,
+    validate_role_access,
+)
 from cardre.registry import NodeRegistry
 from cardre.step_graph import ancestor_closure, descendant_closure
 from cardre.store import ProjectStore
@@ -104,8 +110,6 @@ class _HeartbeatWatchdog:
         while not self._stop.wait(self._interval):
             hb_store.run_heartbeat(self._run_id)
 
-
-LEAKAGE_SENSITIVE_CATEGORIES = {"fit", "selection", "refinement"}
 
 STATUS_NOT_RUN = "not_run"
 STATUS_QUEUED = "queued"
@@ -489,11 +493,11 @@ class PlanExecutor:
                 )
 
             raw_inputs = self._resolve_inputs(spec, step_outputs)
-            input_artifacts = self._filter_inputs_by_role(node, raw_inputs)
-            self._validate_role_access(node, spec, input_artifacts, raw_inputs)
-            self._validate_node_input_roles(node, input_artifacts)
-            self.validate_leakage_rules(node, input_artifacts)
-            self._validate_input_artifact_files(store, input_artifacts)
+            input_artifacts = filter_inputs_by_role(node, raw_inputs)
+            validate_role_access(node, spec, input_artifacts, raw_inputs)
+            validate_node_input_roles(node, input_artifacts)
+            validate_leakage_rules(node, input_artifacts)
+            validate_input_artifact_files(store, input_artifacts)
 
             parent_run_steps = [
                 rs for pid in spec.parent_step_ids
@@ -609,7 +613,7 @@ class PlanExecutor:
         validate_topology(steps)
 
     # ------------------------------------------------------------------
-    # Role enforcement
+    # Role enforcement — compatibility wrappers
     # ------------------------------------------------------------------
 
     def _filter_inputs_by_role(
@@ -617,10 +621,7 @@ class PlanExecutor:
         node: NodeType,
         artifacts: list[ArtifactRef],
     ) -> list[ArtifactRef]:
-        if not node.input_roles:
-            return artifacts
-        permitted = set(node.input_roles)
-        return [a for a in artifacts if a.role in permitted]
+        return filter_inputs_by_role(node, artifacts)
 
     def _validate_role_access(
         self,
@@ -629,66 +630,21 @@ class PlanExecutor:
         filtered_artifacts: list[ArtifactRef],
         raw_inputs: list[ArtifactRef],
     ) -> None:
-        if not node.input_roles:
-            return
-
-        if spec.parent_step_ids and not filtered_artifacts:
-            raw_roles = sorted({a.role for a in raw_inputs})
-            raise RoleAccessError(
-                f"Node {node.node_type!r} declares input roles "
-                f"{node.input_roles} but receives no matching artifacts. "
-                f"Raw parent roles: {raw_roles}. "
-                f"Check plan wiring: step {spec.step_id!r} parents "
-                f"{spec.parent_step_ids!r}."
-            )
-
-        permitted = set(node.input_roles)
-        for artifact in filtered_artifacts:
-            if artifact.role not in permitted:
-                raise RoleAccessError(
-                    f"Node {node.node_type!r} declares input roles "
-                    f"{sorted(permitted)} but cannot consume artifact "
-                    f"role {artifact.role!r}."
-                )
+        validate_role_access(node, spec, filtered_artifacts, raw_inputs)
 
     def _validate_node_input_roles(
         self,
         node: NodeType,
         artifacts: list[ArtifactRef],
     ) -> None:
-        if not node.input_roles:
-            return
-        if not artifacts:
-            raise RoleAccessError(
-                f"Node {node.node_type!r} declares input roles "
-                f"{node.input_roles} but received no artifacts."
-            )
-        actual_roles = {a.role for a in artifacts}
-        matching = set(node.input_roles) & actual_roles
-        if not matching:
-            raise RoleAccessError(
-                f"Node {node.node_type!r} permits input roles "
-                f"{node.input_roles} but receives only "
-                f"{sorted(actual_roles)}. No permitted role matched."
-            )
+        validate_node_input_roles(node, artifacts)
 
     def validate_leakage_rules(
         self,
         node: NodeType,
         artifacts: list[ArtifactRef],
     ) -> None:
-        if node.category not in LEAKAGE_SENSITIVE_CATEGORIES:
-            return
-        for a in artifacts:
-            if a.role in ("test", "oot") and a.artifact_type == "dataset":
-                if hasattr(node, "allows_leakage_artifact") and node.allows_leakage_artifact(a):
-                    continue  # Node explicitly allows this artifact (e.g. calibration)
-                raise LeakageProtectionError(
-                    f"Node {node.node_type!r} (category={node.category!r}) "
-                    f"cannot consume {a.role!r} dataset artifact. "
-                    f"Leakage-sensitive nodes must not consume test or OOT "
-                    f"tabular data. Artifact ID: {a.artifact_id}"
-                )
+        validate_leakage_rules(node, artifacts)
 
     # ------------------------------------------------------------------
     # Execution fingerprint
@@ -721,19 +677,7 @@ class PlanExecutor:
         store: ProjectStore,
         artifacts: list[ArtifactRef],
     ) -> None:
-        for artifact in artifacts:
-            path = store.artifact_path(artifact)  # cardre-allow-artifact-read: low-level-evidence-parser
-            if not path.exists():
-                raise ArtifactReadError(
-                    f"Artifact {artifact.artifact_id!r} metadata points to missing file {artifact.path!r}"
-                )
-            current_hash = physical_hash(path)
-            if current_hash != artifact.physical_hash:
-                raise ArtifactReadError(
-                    f"Artifact {artifact.artifact_id!r} physical hash mismatch for {artifact.path!r}: "
-                    f"metadata has {artifact.physical_hash}, file has {current_hash}. "
-                    "The artifact file was modified after registration."
-                )
+        validate_input_artifact_files(store, artifacts)
 
     # ------------------------------------------------------------------
     # Run-step record
