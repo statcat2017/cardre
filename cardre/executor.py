@@ -34,6 +34,7 @@ from cardre.errors import (
 )
 from cardre.evidence_locator import resolve_output_artifacts
 from cardre.execution.failure_classification import classify_step_failure
+from cardre.execution.fingerprints import build_execution_fingerprint
 from cardre.execution.validation import (
     LeakageProtectionError,  # noqa: F401 — re-exported for cardre.__init__
     RoleAccessError,  # noqa: F401 — re-exported for cardre.__init__
@@ -517,7 +518,7 @@ class PlanExecutor:
 
             output: NodeOutput = node.run(ctx)
 
-            output.execution_fingerprint = self._build_execution_fingerprint(
+            output.execution_fingerprint = build_execution_fingerprint(
                 plan_version_id, spec, parent_run_steps,
                 input_artifacts, output.artifacts,
             )
@@ -545,7 +546,7 @@ class PlanExecutor:
             output = NodeOutput(
                 artifacts=[],
                 metrics={},
-                execution_fingerprint=self._build_execution_fingerprint(
+                execution_fingerprint=build_execution_fingerprint(
                     plan_version_id, spec, parent_run_steps,
                     input_artifacts, [],
                 ),
@@ -647,7 +648,7 @@ class PlanExecutor:
         validate_leakage_rules(node, artifacts)
 
     # ------------------------------------------------------------------
-    # Execution fingerprint
+    # Execution fingerprint — compatibility wrapper
     # ------------------------------------------------------------------
 
     def _build_execution_fingerprint(
@@ -658,19 +659,7 @@ class PlanExecutor:
         input_artifacts: list[ArtifactRef],
         output_artifacts: list[ArtifactRef],
     ) -> dict[str, Any]:
-        return {
-            "plan_version_id": plan_version_id,
-            "step_id": spec.step_id,
-            "node_type": spec.node_type,
-            "node_version": spec.node_version,
-            "params_hash": spec.params_hash,
-            "parent_run_step_ids": [rs.run_step_id for rs in parent_run_steps],
-            "input_artifact_logical_hashes": [a.logical_hash for a in input_artifacts],
-            "output_artifact_logical_hashes": [a.logical_hash for a in output_artifacts],
-            "parent_output_logical_hashes_by_step": _build_parent_output_hashes(parent_run_steps),
-            "python_version": sys.version.split()[0],
-            "cardre_version": "0.1.0",
-        }
+        return build_execution_fingerprint(plan_version_id, spec, parent_run_steps, input_artifacts, output_artifacts)
 
     def _validate_input_artifact_files(
         self,
@@ -846,16 +835,3 @@ class PlanExecutor:
         )
         store.save_run_step(copied_rs)
         return copied_rs
-
-
-def _output_logical_hashes(rs: RunStepRecord) -> list[str]:
-    return rs.execution_fingerprint.get("output_artifact_logical_hashes", [])
-
-
-def _build_parent_output_hashes(
-    parent_run_steps: list[RunStepRecord],
-) -> dict[str, list[str]]:
-    return {
-        rs.step_id: rs.execution_fingerprint.get("output_artifact_logical_hashes", [])
-        for rs in parent_run_steps
-    }
