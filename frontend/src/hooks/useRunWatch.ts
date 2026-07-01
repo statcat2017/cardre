@@ -142,9 +142,7 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
       setStatus(newStatus);
 
       // Terminal states — stop polling
-      if (
-        ["succeeded", "failed", "interrupted", "cancelled"].includes(data.status)
-      ) {
+      if (["succeeded", "failed", "interrupted", "cancelled"].includes(data.status)) {
         if (!completedRunIdsRef.current.has(data.run_id)) {
           completedRunIdsRef.current.add(data.run_id);
           onComplete?.(data);
@@ -200,14 +198,11 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
   // Start / stop polling
   useEffect(() => {
     if (!runId) {
-      setRun(null);
-      setStatus("loading");
-      setError(null);
-      setPolling(false);
       return;
     }
 
     // Initial fetch
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     poll();
 
     const interval = setInterval(poll, pollIntervalMs);

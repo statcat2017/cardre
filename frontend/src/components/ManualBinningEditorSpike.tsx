@@ -5,7 +5,7 @@
  * reviewer notes, approve/reject.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useManualBinningReview } from "../hooks/useManualBinningReview";
 import type { ManualBinningEditRequest } from "../api/schema";
 
@@ -25,7 +25,7 @@ export function ManualBinningEditorSpike({
   const { review, loading, error, submitEdit, updateReview, loadReview, clearError } =
     useManualBinningReview({ baseUrl, projectId });
 
-  const [overrides, setOverrides] = useState<Record<string, unknown>[]>([]);
+  const [overrides] = useState<Record<string, unknown>[]>([]);
   const [reviewerNotes, setReviewerNotes] = useState("");
   const [status, setStatus] = useState("pending");
   const [result, setResult] = useState<string | null>(null);
@@ -149,7 +149,12 @@ export function ManualBinningEditorSpike({
           onChange={(e) => setReviewerNotes(e.target.value)}
           placeholder="Enter review notes..."
           rows={3}
-          style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc" }}
+          style={{
+            width: "100%",
+            padding: "0.5rem",
+            borderRadius: "4px",
+            border: "1px solid #ccc",
+          }}
         />
       </section>
 
@@ -212,7 +217,14 @@ export function ManualBinningEditorSpike({
 
       {/* Current review state */}
       {review && (
-        <section style={{ marginTop: "1rem", padding: "0.5rem", background: "#f5f5f5", borderRadius: "4px" }}>
+        <section
+          style={{
+            marginTop: "1rem",
+            padding: "0.5rem",
+            background: "#f5f5f5",
+            borderRadius: "4px",
+          }}
+        >
           <h4>Current Review</h4>
           <pre>{JSON.stringify(review, null, 2)}</pre>
         </section>

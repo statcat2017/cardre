@@ -31,7 +31,7 @@ describe("fetchJson", () => {
 
   it("throws SIDECAR_UNREACHABLE on network error", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("fetch failed"));
-    const err = await fetchJson("/test").catch(e => e) as ApiError;
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe(ErrorCodes.SIDECAR_UNREACHABLE);
     expect(err.status).toBe(503);
@@ -41,7 +41,7 @@ describe("fetchJson", () => {
     const timeoutError = new DOMException("Timeout", "TimeoutError");
     vi.spyOn(globalThis, "fetch").mockRejectedValue(timeoutError);
 
-    const err = await fetchJson("/test", { timeoutMs: 10 }).catch(e => e) as ApiError;
+    const err = (await fetchJson("/test", { timeoutMs: 10 }).catch((e) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe(ErrorCodes.REQUEST_TIMEOUT);
     expect(err.status).toBe(408);
@@ -51,7 +51,7 @@ describe("fetchJson", () => {
     const abortError = new DOMException("Aborted", "AbortError");
     vi.spyOn(globalThis, "fetch").mockRejectedValue(abortError);
 
-    const err = await fetchJson("/test").catch(e => e) as ApiError;
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe(ErrorCodes.REQUEST_ABORTED);
     expect(err.status).toBe(499);
@@ -63,7 +63,7 @@ describe("fetchJson", () => {
       headers: { "content-type": "application/json" },
     });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
-    const err = await fetchJson("/test").catch(e => e) as ApiError;
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe(ErrorCodes.EMPTY_OK_BODY);
     expect(err.status).toBe(502);
@@ -75,7 +75,7 @@ describe("fetchJson", () => {
       headers: { "content-type": "application/json" },
     });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
-    const err = await fetchJson("/test").catch(e => e) as ApiError;
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe(ErrorCodes.MALFORMED_JSON_RESPONSE);
     expect(err.status).toBe(502);
@@ -87,7 +87,7 @@ describe("fetchJson", () => {
       headers: { "content-type": "text/plain" },
     });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
-    const err = await fetchJson("/test").catch(e => e) as ApiError;
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe(ErrorCodes.MALFORMED_JSON_RESPONSE);
     expect(err.status).toBe(502);
@@ -99,7 +99,7 @@ describe("fetchJson", () => {
       headers: { "content-type": "text/html" },
     });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
-    const err = await fetchJson("/test").catch(e => e) as ApiError;
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe(ErrorCodes.HTML_ERROR_RESPONSE);
     expect(err.status).toBe(400);
@@ -111,7 +111,7 @@ describe("fetchJson", () => {
       headers: { "content-type": "text/plain" },
     });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
-    const err = await fetchJson("/test").catch(e => e) as ApiError;
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe(ErrorCodes.NON_JSON_ERROR_RESPONSE);
     expect(err.status).toBe(400);
@@ -123,7 +123,7 @@ describe("fetchJson", () => {
       headers: { "content-type": "application/json" },
     });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
-    const err = await fetchJson("/test").catch(e => e) as ApiError;
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe(ErrorCodes.EMPTY_ERROR_RESPONSE);
     expect(err.status).toBe(400);
@@ -140,7 +140,7 @@ describe("fetchJson", () => {
       },
     );
     vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
-    const err = await fetchJson("/test").catch(e => e) as ApiError;
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe("PLAN_NOT_FOUND");
     expect(err.message).toBe("Plan not found");
@@ -161,7 +161,9 @@ describe("fetchJson", () => {
 
     setTimeout(() => controller.abort(), 5);
 
-    const err = await fetchJson("/test", { signal: controller.signal, timeoutMs: 5000 }).catch(e => e) as ApiError;
+    const err = (await fetchJson("/test", { signal: controller.signal, timeoutMs: 5000 }).catch(
+      (e) => e,
+    )) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe(ErrorCodes.REQUEST_ABORTED);
   });

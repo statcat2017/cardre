@@ -34,38 +34,20 @@ const reviewData = {
   updated_at: "2025-01-01T00:00:00",
 };
 
-const approvedReviewData = {
-  ...reviewData,
-  status: "approved",
-  reviewer_notes: "Looks good.",
-};
-
-const rejectedReviewData = {
-  ...reviewData,
-  status: "rejected",
-  reviewer_notes: "Need changes.",
-};
-
 const handlers = [
   // POST /edit
-  http.post(
-    `${BASE_URL}/projects/${PROJECT_ID}/manual-binning/edit`,
-    async () => {
-      return HttpResponse.json({
-        new_plan_version_id: "pv-002",
-        review_id: REVIEW_ID,
-        affected_step_ids: ["apply-woe"],
-      });
-    },
-  ),
+  http.post(`${BASE_URL}/projects/${PROJECT_ID}/manual-binning/edit`, async () => {
+    return HttpResponse.json({
+      new_plan_version_id: "pv-002",
+      review_id: REVIEW_ID,
+      affected_step_ids: ["apply-woe"],
+    });
+  }),
 
   // GET /reviews/:id
-  http.get(
-    `${BASE_URL}/projects/${PROJECT_ID}/manual-binning/reviews/:reviewId`,
-    async () => {
-      return HttpResponse.json(reviewData);
-    },
-  ),
+  http.get(`${BASE_URL}/projects/${PROJECT_ID}/manual-binning/reviews/:reviewId`, async () => {
+    return HttpResponse.json(reviewData);
+  }),
 
   // PATCH /reviews/:id
   http.patch(
@@ -211,20 +193,17 @@ describe("ManualBinningEditorSpike", () => {
   it("displays server errors", async () => {
     // Override handler to return an error
     server.use(
-      http.post(
-        `${BASE_URL}/projects/${PROJECT_ID}/manual-binning/edit`,
-        () => {
-          return HttpResponse.json(
-            {
-              detail: {
-                code: "PLAN_MUTATION_ERROR",
-                message: "Step not found",
-              },
+      http.post(`${BASE_URL}/projects/${PROJECT_ID}/manual-binning/edit`, () => {
+        return HttpResponse.json(
+          {
+            detail: {
+              code: "PLAN_MUTATION_ERROR",
+              message: "Step not found",
             },
-            { status: 400 },
-          );
-        },
-      ),
+          },
+          { status: 400 },
+        );
+      }),
     );
 
     const user = userEvent.setup();

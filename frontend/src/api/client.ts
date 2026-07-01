@@ -59,10 +59,7 @@ export interface FetchOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
-export async function fetchJson<T>(
-  url: string,
-  options: FetchOptions = {},
-): Promise<T> {
+export async function fetchJson<T>(url: string, options: FetchOptions = {}): Promise<T> {
   const { timeoutMs = 30_000, signal: externalSignal, body, ...init } = options;
 
   // Build composite signal (external + timeout)
@@ -104,11 +101,7 @@ export async function fetchJson<T>(
         );
       }
       if (err instanceof DOMException && err.name === "AbortError") {
-        throw new ApiError(
-          ErrorCodes.REQUEST_ABORTED,
-          `Request to ${url} was aborted`,
-          499,
-        );
+        throw new ApiError(ErrorCodes.REQUEST_ABORTED, `Request to ${url} was aborted`, 499);
       }
       throw new ApiError(
         ErrorCodes.SIDECAR_UNREACHABLE,
@@ -183,11 +176,7 @@ export async function fetchJson<T>(
 
     const text = await response.text();
     if (!text) {
-      throw new ApiError(
-        ErrorCodes.EMPTY_OK_BODY,
-        "Response was 200 OK with empty body",
-        502,
-      );
+      throw new ApiError(ErrorCodes.EMPTY_OK_BODY, "Response was 200 OK with empty body", 502);
     }
 
     try {
