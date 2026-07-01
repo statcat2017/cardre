@@ -238,10 +238,10 @@ CREATE INDEX idx_evidence_artifacts_edge_role
 
 This gives clean answers to: which parent step supplied evidence? Which run
 step supplied it? Was the parent evidence stale? Which artifacts came through
-that edge? Which roles were consumed? And the abort example
-("train reused + test stale from parent Y") is expressible: one
-`evidence_edge` row (parent Y, stale or not), with two `evidence_artifacts`
-rows (train, test) hanging off it.
+that edge? Which roles were consumed? Mixed role states such as
+"train reused + test stale from parent Y" are represented by separate
+`evidence_edge` rows for the different freshness/reuse states, each with the
+relevant `evidence_artifacts` rows hanging off it.
 
 `comparison_challenger_branches` +
 `comparison_snapshot_plan_versions` — replaces v1's
@@ -314,7 +314,8 @@ Full table list: `projects`, `plans`, `plan_versions` (with `is_committed`),
 - `tests/test_plan_step_edges.py` — graph edges are rows, queryable by
   parent and child.
 - `tests/test_evidence_edges_and_artifacts.py` — write/read the two-level
-  model; "train reused + test stale from parent Y" expressible in one query.
+  model; mixed role freshness is represented by separate edge rows with
+  attached artifacts.
 - `tests/test_store_manual_binning_reviews.py` — review lifecycle.
 - `tests/test_store_transaction.py` — rollback on error.
 
@@ -331,9 +332,10 @@ hard-errors on v1 stores; no queryable JSON relationship arrays exist; all
 phase-local tests green.
 
 **Abort criterion:** if `evidence_edges` + `evidence_artifacts` cannot express
-"step X consumed train+test from parent Y, train reused, test stale" in one
-query, the schema is wrong — stop and redesign before proceeding. This is a
-paper check; the running-code pressure test comes in Phase 5
+"step X consumed train+test from parent Y, with train reused and test stale"
+as separate edge rows grouped by source/run-step freshness, the schema is
+wrong — stop and redesign before proceeding. This is a paper check; the
+running-code pressure test comes in Phase 5
 (`test_launch_pathway.py`), ~12-16 days in. Treat that as the real schema
 acceptance test, not Phase 1.
 
@@ -824,7 +826,7 @@ sequentially. Phase 2 may revisit after Phase 3 — budget for it.
 
 | Phase | Risk | Abort signal | Mitigation |
 |---|---|---|---|
-| 1 | `evidence_edges`+`evidence_artifacts` schema can't express multi-artifact-per-parent with per-parent staleness | Paper check fails: can't write "train reused + test stale from parent Y" in one query | Redesign schema before Phase 3 builds on it |
+| 1 | `evidence_edges`+`evidence_artifacts` schema can't express multi-artifact-per-parent with per-edge staleness | Paper check fails: can't represent "train reused + test stale from parent Y" as separate edge rows with attached artifacts | Redesign schema before Phase 3 builds on it |
 | 1 | Schema not pressure-tested against a real run until Phase 5 (~12-16 days in) | `test_launch_pathway.py` fails on evidence assertions in Phase 5 | Budget a Phase 1/2 schema revisit if Phase 5 forces it |
 | 2 | Manual-binning domain model wrong for UI | Spike UI forces revisions to `ManualBinningReview` or `apply_manual_binning_edit` | Revise here, before Phase 3 builds execution on the model |
 | 2 | Fixture-inserted evidence doesn't match real run evidence shape | Phase 3/5 integration forces a Phase 2 revisit | Expected outcome, not failure — budget a second pass |
