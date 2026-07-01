@@ -1,4 +1,4 @@
-"""Minimal route round-trip tests for the manual-binning API."""
+"""Manual-binning API route tests."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import json
 import uuid
 
 import pytest
-
 
 
 # ---------------------------------------------------------------------------
@@ -64,32 +63,6 @@ def plan_with_mb_step(project_and_store):
 # ---------------------------------------------------------------------------
 
 
-class TestHealth:
-    def test_health_returns_ok(self, api_client):
-        resp = api_client.get("/health")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "ok"
-        assert "version" in data
-
-
-class TestProjects:
-    def test_get_project_not_found(self, api_client, project_and_store):
-        """A non-existent project returns 404."""
-        # The minimal API needs an X-Project-Path header to resolve the store
-        project_id, store, root = project_and_store
-        resp = api_client.get(
-            f"/projects/{project_id}",
-            headers={"X-Project-Path": str(root)},
-        )
-        assert resp.status_code == 200  # project actually exists in the store
-
-    def test_get_project_missing_header(self, api_client):
-        """Missing X-Project-Path returns 400."""
-        resp = api_client.get("/projects/some-id")
-        assert resp.status_code == 400
-
-
 class TestManualBinningReviews:
     def test_list_reviews_empty(self, api_client, plan_with_mb_step):
         project_id, store, root, plan_id, pv_id, mb_step_id = plan_with_mb_step
@@ -112,7 +85,6 @@ class TestManualBinningReviews:
         """POST /edit creates a draft, GET /reviews/{id} reads it back."""
         project_id, store, root, plan_id, pv_id, mb_step_id = plan_with_mb_step
 
-        # Submit an edit
         edit_resp = api_client.post(
             f"/projects/{project_id}/manual-binning/edit",
             headers={"X-Project-Path": str(root)},
@@ -130,7 +102,6 @@ class TestManualBinningReviews:
         assert "new_plan_version_id" in edit_data
         assert "review_id" in edit_data
 
-        # Fetch the review
         review_resp = api_client.get(
             f"/projects/{project_id}/manual-binning/reviews/{edit_data['review_id']}",
             headers={"X-Project-Path": str(root)},
@@ -146,7 +117,6 @@ class TestManualBinningReviews:
         """PATCH updates review status."""
         project_id, store, root, plan_id, pv_id, mb_step_id = plan_with_mb_step
 
-        # First create a review via edit
         edit_resp = api_client.post(
             f"/projects/{project_id}/manual-binning/edit",
             headers={"X-Project-Path": str(root)},
@@ -159,7 +129,6 @@ class TestManualBinningReviews:
         )
         review_id = edit_resp.json()["review_id"]
 
-        # Patch to approve
         patch_resp = api_client.patch(
             f"/projects/{project_id}/manual-binning/reviews/{review_id}",
             headers={"X-Project-Path": str(root)},

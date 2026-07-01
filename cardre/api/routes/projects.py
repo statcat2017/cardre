@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
-from cardre.api.schemas import ProjectListResponse, ProjectResponse
 from cardre.api.dependencies import get_project_store
+from cardre.api.errors import CardreApiError, PROJECT_NOT_FOUND
+from cardre.api.schemas import ProjectCreateRequest, ProjectListResponse, ProjectResponse
 from cardre.store.db import ProjectStore
 from cardre.store.project_repo import ProjectRepository
 
@@ -41,13 +42,29 @@ async def get_project(
     repo = ProjectRepository(store)
     project = repo.get(project_id)
     if project is None:
-        raise HTTPException(
+        raise CardreApiError(
+            code=PROJECT_NOT_FOUND,
+            message=f"Project {project_id!r} not found.",
             status_code=404,
-            detail={
-                "code": "PROJECT_NOT_FOUND",
-                "message": f"Project {project_id!r} not found.",
-            },
         )
+    return ProjectResponse(
+        project_id=project["project_id"],
+        name=project["name"],
+        created_at=project["created_at"],
+        cardre_version=project.get("cardre_version", "0.2.0"),
+    )
+
+
+@router.post("", response_model=ProjectResponse, status_code=201)
+async def create_project(
+    body: ProjectCreateRequest,
+    store: ProjectStore = Depends(get_project_store),
+) -> ProjectResponse:
+    """Create a new project."""
+    repo = ProjectRepository(store)
+    project_id = repo.create(name=body.name)
+    project = repo.get(project_id)
+    assert project is not None
     return ProjectResponse(
         project_id=project["project_id"],
         name=project["name"],

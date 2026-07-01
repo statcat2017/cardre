@@ -1,0 +1,40 @@
+"""Artifact endpoints — project-scoped artifact access."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+
+from cardre.api.dependencies import get_project_store
+from cardre.api.errors import CardreApiError, ARTIFACT_NOT_FOUND
+from cardre.api.schemas import ArtifactResponse
+from cardre.store.db import ProjectStore
+from cardre.store.artifact_repo import ArtifactRepository
+
+router = APIRouter(prefix="/projects/{project_id}", tags=["artifacts"])
+
+
+@router.get("/artifacts/{artifact_id}", response_model=ArtifactResponse)
+async def get_artifact(
+    project_id: str,
+    artifact_id: str,
+    store: ProjectStore = Depends(get_project_store),
+) -> ArtifactResponse:
+    """Get a single artifact by ID."""
+    repo = ArtifactRepository(store)
+    artifact = repo.get(artifact_id)
+    if artifact is None:
+        raise CardreApiError(
+            code=ARTIFACT_NOT_FOUND,
+            message=f"Artifact {artifact_id!r} not found.",
+            status_code=404,
+        )
+    return ArtifactResponse(
+        artifact_id=artifact.artifact_id,
+        artifact_type=artifact.artifact_type,
+        role=artifact.role,
+        path=artifact.path,
+        physical_hash=artifact.physical_hash,
+        logical_hash=artifact.logical_hash,
+        media_type=artifact.media_type,
+        created_at=artifact.created_at,
+    )

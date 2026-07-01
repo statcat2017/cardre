@@ -134,8 +134,11 @@ export async function fetchJson<T>(
             response.status,
             detail?.context ?? {},
           );
-        } catch {
-          // re-throw ApiError from above, or fall through
+        } catch (parseErr) {
+          // Re-throw ApiError (thrown above on success), fall through on parse failure
+          if (parseErr instanceof ApiError) {
+            throw parseErr;
+          }
         }
       }
 

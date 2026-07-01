@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
+from cardre.api.errors import GOVERNANCE_DISABLED
+from cardre.config import CardreConfig
+from cardre.services.run_coordinator import RunCoordinator
 from cardre.store.db import ProjectStore
 
 
@@ -59,7 +62,33 @@ def get_project_store_by_root(root: Path) -> ProjectStore:
     return _open_stores[key]
 
 
+def require_governance() -> None:
+    """Raise ``GOVERNANCE_DISABLED`` (403) if governance is not enabled."""
+    config = CardreConfig.from_env()
+    if not config.governance_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": GOVERNANCE_DISABLED,
+                "message": (
+                    "This endpoint requires CARDRE_GOVERNANCE=1. "
+                    "Set the environment variable to enable governance features."
+                ),
+                "context": {},
+            },
+        )
+
+
+def get_run_coordinator(
+    store: ProjectStore = Depends(get_project_store),
+) -> RunCoordinator:
+    """Create a ``RunCoordinator`` for the current project store."""
+    return RunCoordinator(store)
+
+
 __all__ = [
     "get_project_store",
     "get_project_store_by_root",
+    "get_run_coordinator",
+    "require_governance",
 ]

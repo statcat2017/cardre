@@ -21,6 +21,32 @@ from fastapi.responses import JSONResponse
 from cardre.domain.errors import CardreError
 
 
+# ---------------------------------------------------------------------------
+# Error codes
+# ---------------------------------------------------------------------------
+
+GOVERNANCE_DISABLED = "GOVERNANCE_DISABLED"
+PLAN_VERSION_IMMUTABLE = "PLAN_VERSION_IMMUTABLE"
+STORE_VERSION_INCOMPATIBLE = "STORE_VERSION_INCOMPATIBLE"
+RUN_EXECUTION_FAILED = "RUN_EXECUTION_FAILED"
+PROJECT_NOT_FOUND = "PROJECT_NOT_FOUND"
+PLAN_NOT_FOUND = "PLAN_NOT_FOUND"
+PLAN_VERSION_NOT_FOUND = "PLAN_VERSION_NOT_FOUND"
+RUN_NOT_FOUND = "RUN_NOT_FOUND"
+ARTIFACT_NOT_FOUND = "ARTIFACT_NOT_FOUND"
+STEP_NOT_FOUND = "STEP_NOT_FOUND"
+BRANCH_NOT_FOUND = "BRANCH_NOT_FOUND"
+COMPARISON_NOT_FOUND = "COMPARISON_NOT_FOUND"
+REVIEW_NOT_FOUND = "REVIEW_NOT_FOUND"
+MISSING_PROJECT_PATH = "MISSING_PROJECT_PATH"
+CONCURRENT_RUN = "CONCURRENT_RUN"
+
+
+# ---------------------------------------------------------------------------
+# CardreApiError
+# ---------------------------------------------------------------------------
+
+
 class CardreApiError(Exception):
     """API-level error with a fixed error code and HTTP status."""
 
@@ -77,7 +103,22 @@ async def cardre_api_error_handler(request: Request, exc: CardreApiError) -> JSO
 
 
 __all__ = [
+    "ARTIFACT_NOT_FOUND",
+    "BRANCH_NOT_FOUND",
+    "COMPARISON_NOT_FOUND",
+    "CONCURRENT_RUN",
     "CardreApiError",
+    "GOVERNANCE_DISABLED",
+    "MISSING_PROJECT_PATH",
+    "PLAN_NOT_FOUND",
+    "PLAN_VERSION_IMMUTABLE",
+    "PLAN_VERSION_NOT_FOUND",
+    "PROJECT_NOT_FOUND",
+    "REVIEW_NOT_FOUND",
+    "RUN_EXECUTION_FAILED",
+    "RUN_NOT_FOUND",
+    "STEP_NOT_FOUND",
+    "STORE_VERSION_INCOMPATIBLE",
     "error_response",
     "cardre_error_handler",
     "cardre_api_error_handler",

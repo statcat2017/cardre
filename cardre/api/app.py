@@ -1,7 +1,8 @@
-"""Minimal FastAPI application for Cardre v2.
+"""Full FastAPI application for Cardre v2 — Phase 4 surface.
 
-Phase 2 skeleton — only the routes needed for the manual-binning spike.
-Phase 4 expands this with the full API surface.
+All routers are mounted unconditionally. Governance-gated routes return
+``GOVERNANCE_DISABLED`` (403) when ``CARDRE_GOVERNANCE=0`` (handled
+via the ``require_governance`` dependency on those routers).
 """
 
 from __future__ import annotations
@@ -11,7 +12,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from cardre.api.errors import CardreApiError, cardre_api_error_handler, cardre_error_handler
 from cardre.domain.errors import CardreError
-from cardre.api.routes import health, manual_binning, projects
+from cardre.api.routes import (
+    health,
+    projects,
+    plans,
+    runs,
+    evidence,
+    artifacts,
+    manual_binning,
+    branches,
+    comparisons,
+    champion,
+    exports,
+    reports,
+    node_types,
+)
 
 
 def create_app() -> FastAPI:
@@ -35,10 +50,20 @@ def create_app() -> FastAPI:
     app.add_exception_handler(CardreError, cardre_error_handler)
     app.add_exception_handler(CardreApiError, cardre_api_error_handler)
 
-    # Routes
+    # Routes — all mounted unconditionally
     app.include_router(health.router)
     app.include_router(projects.router)
+    app.include_router(plans.router)
+    app.include_router(runs.router)
+    app.include_router(evidence.router)
+    app.include_router(artifacts.router)
     app.include_router(manual_binning.router)
+    app.include_router(branches.router)
+    app.include_router(comparisons.router)
+    app.include_router(champion.router)
+    app.include_router(exports.router)
+    app.include_router(reports.router)
+    app.include_router(node_types.router)
 
     return app
 
