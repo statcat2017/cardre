@@ -52,9 +52,20 @@ def project_with_branch_data(store):
 
 
 class TestBranches:
-    def test_list_branches_governance_disabled(self, api_client, project_with_branch_data):
+    def test_list_branches_governance_disabled(self, api_client, project_with_branch_data, monkeypatch):
         """Without governance, branches return 403."""
         project_id, _, _, _, _, _, root = project_with_branch_data
+        monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
+            "MockConfig", (), {
+                "governance_enabled": False,
+                "launch_mode": True,
+                "stale_heartbeat_seconds": 300,
+                "heartbeat_watchdog_interval_seconds": 75,
+                "api_host": "127.0.0.1",
+                "api_port": 8752,
+                "registry_path": "/tmp",
+            }
+        )())
         resp = api_client.get(
             f"/projects/{project_id}/branches",
             headers={"X-Project-Path": str(root)},

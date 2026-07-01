@@ -53,31 +53,12 @@ EXTENSION_THRESHOLDS: dict[str, str] = {
 # ── Generated / mechanically produced files ──────────────────────────
 
 GENERATED_FILES: set[str] = {
-    "frontend/src/api/schema.d.ts",
+    "frontend/src/api/schema.ts",
 }
 
 # ── Architectural seam watchlist ─────────────────────────────────────
 
 SEAM_WATCHLIST: dict[str, dict[str, Any]] = {
-    "cardre/executor.py": {
-        "threshold": 1400,
-        "owner": "execution seam",
-        "split_only_on": [
-            "ExecutionPlan/action planning becomes reusable",
-            "error classification becomes reusable outside executor",
-            "fingerprinting becomes shared evidence policy",
-            "input resolution becomes a branch/evidence service",
-        ],
-    },
-    "cardre/store/project_store.py": {
-        "threshold": 1400,
-        "owner": "ProjectStore compatibility facade",
-        "split_only_on": [
-            "migration runner extraction",
-            "query/read-model extraction",
-            "remaining direct SQL can move behind repositories",
-        ],
-    },
     "cardre/reporting/collector.py": {
         "threshold": 1400,
         "owner": "report bundle collector",
@@ -117,36 +98,6 @@ LINE_COUNT_DEBT: dict[str, dict[str, Any]] = {
         "current_count": 1073,
         "ceiling": 1300,
         "reason": "node module; candidate for node-family split",
-    },
-    "tests/test_executor.py": {
-        "current_count": 1043,
-        "ceiling": 1200,
-        "reason": "executor integration test; candidate for scenario split",
-    },
-    "tests/test_optbinning.py": {
-        "current_count": 1444,
-        "ceiling": 1700,
-        "reason": "optbinning integration test; pending optbinning path cleanup",
-    },
-    "tests/test_bin_definition_lifecycle.py": {
-        "current_count": 1216,
-        "ceiling": 1400,
-        "reason": "lifecycle test; candidate for scenario split",
-    },
-    "tests/test_nodes.py": {
-        "current_count": 1205,
-        "ceiling": 1400,
-        "reason": "node integration test; candidate for node-family split",
-    },
-    "tests/test_reporting.py": {
-        "current_count": 1055,
-        "ceiling": 1300,
-        "reason": "reporting test; candidate by template split",
-    },
-    "tests/test_woe.py": {
-        "current_count": 1447,
-        "ceiling": 1500,
-        "reason": "WOE test; candidate for scenario split",
     },
 }
 
