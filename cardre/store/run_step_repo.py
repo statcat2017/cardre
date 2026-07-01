@@ -78,16 +78,17 @@ class RunStepRepository:
         return self._row_to_run_step(row)
 
     @staticmethod
-    def _row_to_run_step(row: dict) -> RunStep:
+    def _row_to_run_step(row) -> RunStep:
+        d = dict(row)
         return RunStep(
-            run_step_id=row["run_step_id"],
-            run_id=row["run_id"],
-            step_id=row["step_id"],
-            plan_version_id=row["plan_version_id"],
-            status=RunStepStatus(row["status"]),
-            started_at=row["started_at"],
-            finished_at=row["finished_at"],
-            execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
-            warnings=json.loads(row.get("warnings_json", "[]")),
-            errors=json.loads(row.get("errors_json", "[]")),
+            run_step_id=d["run_step_id"],
+            run_id=d["run_id"],
+            step_id=d["step_id"],
+            plan_version_id=d["plan_version_id"],
+            status=RunStepStatus(d["status"]),
+            started_at=d["started_at"],
+            finished_at=d.get("finished_at"),
+            execution_fingerprint=json.loads(d["execution_fingerprint_json"]),
+            warnings=json.loads(d.get("warnings_json", "[]")),
+            errors=json.loads(d.get("errors_json", "[]")),
         )

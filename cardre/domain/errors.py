@@ -89,6 +89,30 @@ class RunLifecycleError(CardreError):
     status_code = 500
 
 
+class MissingInputArtifactError(CardreError):
+    """Raised when a parent step has no output artifacts for a child to consume."""
+    code = "MISSING_INPUT_ARTIFACT"
+    status_code = 400
+
+
+class ParameterValidationError(CardreError):
+    """Raised when node parameter validation fails."""
+    code = "PARAMETER_VALIDATION_ERROR"
+    status_code = 400
+
+
+class ArtifactReadError(CardreError):
+    """Raised when an artifact file cannot be read (missing or hash mismatch)."""
+    code = "ARTIFACT_READ_ERROR"
+    status_code = 400
+
+
+class ArtifactWriteError(CardreError):
+    """Raised when an artifact file cannot be written."""
+    code = "ARTIFACT_WRITE_ERROR"
+    status_code = 500
+
+
 class NodeNotAvailableForLaunch(CardreError):
     """Raised when a deferred node is instantiated in launch mode."""
     code = "NODE_NOT_AVAILABLE_FOR_LAUNCH"
@@ -112,12 +136,17 @@ class OptionalDependencyNotInstalled(CardreError):
 
 
 __all__ = [
+    "ArtifactReadError",
+    "ArtifactWriteError",
     "CardreError",
+    "ConcurrentRunError",
     "Diagnostic",
     "GovernanceNotEnabled",
     "GraphValidationError",
+    "MissingInputArtifactError",
     "NodeNotAvailableForLaunch",
     "OptionalDependencyNotInstalled",
+    "ParameterValidationError",
     "PlanContainsUnavailableNodesError",
     "RunLifecycleError",
     "SchemaVersionError",
