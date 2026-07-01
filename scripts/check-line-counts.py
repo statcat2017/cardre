@@ -54,6 +54,8 @@ EXTENSION_THRESHOLDS: dict[str, str] = {
 
 GENERATED_FILES: set[str] = {
     "frontend/src/api/schema.ts",
+    "frontend/src/api/schema.d.ts",
+    "frontend/src/api/openapi.json",
 }
 
 # ── Architectural seam watchlist ─────────────────────────────────────
