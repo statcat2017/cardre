@@ -119,6 +119,12 @@ class NodeNotAvailableForLaunch(CardreError):
     status_code = 400
 
 
+class BranchValidationError(CardreError):
+    """Raised when branch creation or management validation fails."""
+    code = "BRANCH_VALIDATION_ERROR"
+    status_code = 400
+
+
 class OptionalDependencyNotInstalled(CardreError):
     """Raised when a node's optional dependency group is not installed."""
     code = "OPTIONAL_DEPENDENCY_NOT_INSTALLED"
@@ -138,6 +144,7 @@ class OptionalDependencyNotInstalled(CardreError):
 __all__ = [
     "ArtifactReadError",
     "ArtifactWriteError",
+    "BranchValidationError",
     "CardreError",
     "ConcurrentRunError",
     "Diagnostic",

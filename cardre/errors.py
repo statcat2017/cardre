@@ -13,6 +13,7 @@ from typing import Any, Generic, TypeVar
 from cardre.domain.errors import (
     ArtifactReadError,
     ArtifactWriteError,
+    BranchValidationError,
     CardreError,
     ConcurrentRunError,
     Diagnostic,
@@ -73,6 +74,7 @@ def is_degraded(result: Result) -> bool:
 __all__ = [
     "ArtifactReadError",
     "ArtifactWriteError",
+    "BranchValidationError",
     "CardreError",
     "ConcurrentRunError",
     "Degraded",
