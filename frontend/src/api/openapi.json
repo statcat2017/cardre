@@ -5250,6 +5250,14 @@
             "type": "string",
             "title": "Created At"
           },
+          "schema_family": {
+            "type": "string",
+            "title": "Schema Family"
+          },
+          "schema_version": {
+            "type": "integer",
+            "title": "Schema Version"
+          },
           "plan_count": {
             "type": "integer",
             "title": "Plan Count",
@@ -5266,7 +5274,9 @@
           "project_id",
           "path",
           "name",
-          "created_at"
+          "created_at",
+          "schema_family",
+          "schema_version"
         ],
         "title": "ProjectDetailResponse"
       },
@@ -5283,6 +5293,44 @@
           "path": {
             "type": "string",
             "title": "Path"
+          },
+          "schema_family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Family"
+          },
+          "schema_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Version"
+          },
+          "schema_compatible": {
+            "type": "boolean",
+            "title": "Schema Compatible",
+            "default": false
+          },
+          "schema_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Error Code"
           },
           "path_exists": {
             "type": "boolean",
@@ -5367,6 +5415,14 @@
           "created_at": {
             "type": "string",
             "title": "Created At"
+          },
+          "schema_family": {
+            "type": "string",
+            "title": "Schema Family"
+          },
+          "schema_version": {
+            "type": "integer",
+            "title": "Schema Version"
           }
         },
         "type": "object",
@@ -5374,7 +5430,9 @@
           "project_id",
           "path",
           "name",
-          "created_at"
+          "created_at",
+          "schema_family",
+          "schema_version"
         ],
         "title": "ProjectResponse"
       },

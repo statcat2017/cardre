@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import threading
 from pathlib import Path
 
 from cardre.store import ProjectStore
+from cardre.store.schema import STORE_SCHEMA_FAMILY, STORE_SCHEMA_VERSION
 
 _DEFAULT_REGISTRY_PATH = Path.home() / ".cardre" / "projects.json"
 
@@ -77,7 +79,42 @@ def get_store_for_project(project_id: str) -> ProjectStore:
         raise ProjectPathMissingError(
             f"Project directory at {project_path} no longer exists or is missing cardre.sqlite"
         )
-    return ProjectStore(project_path)
+    store = ProjectStore(project_path)
+    store._check_schema_version()
+    return store
+
+
+def read_project_schema_identity(project_path: Path) -> tuple[str | None, int | None, bool, str | None]:
+    db_path = project_path / "cardre.sqlite"
+    if not db_path.exists():
+        return None, None, False, "PROJECT_PATH_MISSING"
+
+    conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT key, value FROM store_meta WHERE key IN ('schema_family', 'schema_version')"
+        ).fetchall()
+    except sqlite3.Error:
+        return None, None, False, "SCHEMA_VERSION_ERROR"
+    finally:
+        conn.close()
+
+    meta = {row["key"]: row["value"] for row in rows}
+    family = meta.get("schema_family")
+    version_text = meta.get("schema_version")
+
+    if family != STORE_SCHEMA_FAMILY or version_text is None:
+        version = int(version_text) if version_text and version_text.isdigit() else None
+        return family, version, False, "SCHEMA_VERSION_ERROR"
+
+    try:
+        version = int(version_text)
+    except ValueError:
+        return family, None, False, "SCHEMA_VERSION_ERROR"
+
+    compatible = family == STORE_SCHEMA_FAMILY and version == STORE_SCHEMA_VERSION
+    return family, version, compatible, None if compatible else "SCHEMA_VERSION_ERROR"
 
 
 def get_entry(project_id: str) -> dict | None:

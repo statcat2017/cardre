@@ -11,6 +11,7 @@ from cardre.services.project_registry import (
     ProjectNotFoundError,
     validate_project_path,
 )
+from cardre.errors import SchemaVersionError
 
 pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("_isolated_registry")]
 
@@ -28,6 +29,22 @@ def test_create_and_get_project(tmp_path: Path):
     proj = retrieved_store.get_project(project_id)
     assert proj is not None
     assert proj["name"] == "Test Project"
+
+
+def test_get_store_for_project_rejects_wrong_family(tmp_path: Path):
+    proj_path = tmp_path / "test.cardre"
+    store = ProjectStore(proj_path)
+    store.initialize()
+    project_id = store.create_project("Test Project")
+    with store.transaction() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_family', 'cardre.project_store.v1')"
+        )
+
+    create_project_registry_entry(project_id, proj_path, "Test Project")
+
+    with pytest.raises(SchemaVersionError):
+        get_store_for_project(project_id)
 
 
 def test_get_store_for_missing_project():

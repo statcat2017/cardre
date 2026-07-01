@@ -1918,6 +1918,10 @@ export interface components {
             name: string;
             /** Created At */
             created_at: string;
+            /** Schema Family */
+            schema_family: string;
+            /** Schema Version */
+            schema_version: number;
             /**
              * Plan Count
              * @default 0
@@ -1937,6 +1941,17 @@ export interface components {
             name: string;
             /** Path */
             path: string;
+            /** Schema Family */
+            schema_family?: string | null;
+            /** Schema Version */
+            schema_version?: number | null;
+            /**
+             * Schema Compatible
+             * @default false
+             */
+            schema_compatible: boolean;
+            /** Schema Error Code */
+            schema_error_code?: string | null;
             /**
              * Path Exists
              * @default true
@@ -1980,6 +1995,10 @@ export interface components {
             name: string;
             /** Created At */
             created_at: string;
+            /** Schema Family */
+            schema_family: string;
+            /** Schema Version */
+            schema_version: number;
         };
         /** ProjectRunsResponse */
         ProjectRunsResponse: {

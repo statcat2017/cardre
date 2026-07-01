@@ -38,6 +38,8 @@ class ProjectResponse(BaseModel):
     path: str
     name: str
     created_at: str
+    schema_family: str
+    schema_version: int
 
 
 class ProjectDetailResponse(ProjectResponse):
@@ -49,6 +51,10 @@ class ProjectListItem(BaseModel):
     project_id: str
     name: str
     path: str
+    schema_family: str | None = None
+    schema_version: int | None = None
+    schema_compatible: bool = False
+    schema_error_code: str | None = None
     path_exists: bool = True
     last_accessed: str = ""
 
