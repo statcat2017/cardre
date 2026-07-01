@@ -1942,9 +1942,16 @@ export interface components {
             /** Path */
             path: string;
             /** Schema Family */
-            schema_family: string;
+            schema_family?: string | null;
             /** Schema Version */
-            schema_version: number;
+            schema_version?: number | null;
+            /**
+             * Schema Compatible
+             * @default false
+             */
+            schema_compatible: boolean;
+            /** Schema Error Code */
+            schema_error_code?: string | null;
             /**
              * Path Exists
              * @default true

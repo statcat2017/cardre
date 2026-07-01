@@ -154,28 +154,30 @@ class ProjectStore:
         # Performance indexes for common query patterns (schema v4)
         conn.executescript(INDEXES_SQL)
 
-        # Stamp current schema identity after successful migrations
-        self._ensure_store_meta()
-        conn.execute(
-            "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_family', ?)",
-            (STORE_SCHEMA_FAMILY,),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_version', ?)",
-            (str(STORE_SCHEMA_VERSION),),
-        )
-
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
     def initialize(self) -> None:
+        db_path = self.root / "cardre.sqlite"
+        is_fresh = not db_path.exists()
         self.root.mkdir(parents=True, exist_ok=True)
         for sub in ("datasets", "artifacts", "exports", "logs"):
             (self.root / sub).mkdir(exist_ok=True)
+        if not is_fresh:
+            self._check_schema_version()
+            return
         with self._connect() as conn:
             conn.executescript(SCHEMA_SQL)
             conn.executescript(MIGRATIONS_SQL)
+            conn.execute(
+                "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_family', ?)",
+                (STORE_SCHEMA_FAMILY,),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_version', ?)",
+                (str(STORE_SCHEMA_VERSION),),
+            )
         self._check_schema_version()
         self.run_migrations()
         # recover_interrupted_runs not called automatically — it is a

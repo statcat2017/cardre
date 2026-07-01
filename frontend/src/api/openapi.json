@@ -5295,12 +5295,42 @@
             "title": "Path"
           },
           "schema_family": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Schema Family"
           },
           "schema_version": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Schema Version"
+          },
+          "schema_compatible": {
+            "type": "boolean",
+            "title": "Schema Compatible",
+            "default": false
+          },
+          "schema_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Error Code"
           },
           "path_exists": {
             "type": "boolean",
@@ -5317,9 +5347,7 @@
         "required": [
           "project_id",
           "name",
-          "path",
-          "schema_family",
-          "schema_version"
+          "path"
         ],
         "title": "ProjectListItem"
       },

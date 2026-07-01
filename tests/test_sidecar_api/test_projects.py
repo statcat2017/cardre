@@ -50,8 +50,29 @@ class TestProjects:
         resp = client.get("/projects")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["projects"][0]["schema_family"] == STORE_SCHEMA_FAMILY
-        assert data["projects"][0]["schema_version"] == STORE_SCHEMA_VERSION
+        item = data["projects"][0]
+        assert item["schema_family"] == STORE_SCHEMA_FAMILY
+        assert item["schema_version"] == STORE_SCHEMA_VERSION
+        assert item["schema_compatible"] is True
+        assert item["schema_error_code"] is None
+
+    def test_list_projects_reports_incompatible_schema_identity(self, client, tmp_dir):
+        proj_path = tmp_dir / "test.cardre"
+        create_resp = client.post("/projects", json={"path": str(proj_path), "name": "Test Project"})
+        pid = create_resp.json()["project_id"]
+
+        store = ProjectStore(proj_path)
+        with store.transaction() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('schema_family', 'cardre.project_store.v1')"
+            )
+
+        resp = client.get("/projects")
+        assert resp.status_code == 200
+        item = next(p for p in resp.json()["projects"] if p["project_id"] == pid)
+        assert item["schema_family"] == "cardre.project_store.v1"
+        assert item["schema_compatible"] is False
+        assert item["schema_error_code"] == "SCHEMA_VERSION_ERROR"
 
     def test_get_project_not_found(self, client):
         resp = client.get("/projects/nonexistent-id")

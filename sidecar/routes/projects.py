@@ -11,6 +11,7 @@ from cardre.services.project_registry import (
     get_entry,
     get_store_for_project,
     load_registry,
+    read_project_schema_identity,
     project_path_exists,
     validate_project_path,
 )
@@ -75,15 +76,24 @@ def list_projects():
     items = []
     missing = 0
     for pid, entry in registry.items():
+        project_path = Path(entry.get("path", ""))
         exists = project_path_exists(pid)
         if not exists:
             missing += 1
+            schema_family = None
+            schema_version = None
+            schema_compatible = False
+            schema_error_code = "PROJECT_PATH_MISSING"
+        else:
+            schema_family, schema_version, schema_compatible, schema_error_code = read_project_schema_identity(project_path)
         items.append(ProjectListItem(
             project_id=pid,
             name=entry.get("name", ""),
             path=entry.get("path", ""),
-            schema_family=STORE_SCHEMA_FAMILY,
-            schema_version=STORE_SCHEMA_VERSION,
+            schema_family=schema_family,
+            schema_version=schema_version,
+            schema_compatible=schema_compatible,
+            schema_error_code=schema_error_code,
             path_exists=exists,
         ))
     return ProjectListResponse(

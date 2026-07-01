@@ -194,13 +194,11 @@ CREATE TABLE IF NOT EXISTS artifact_lineage (
 );
 """
 
-MIGRATIONS_SQL = f"""
+MIGRATIONS_SQL = """
 CREATE TABLE IF NOT EXISTS store_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-INSERT OR IGNORE INTO store_meta (key, value) VALUES ('schema_family', '{STORE_SCHEMA_FAMILY}');
-INSERT OR IGNORE INTO store_meta (key, value) VALUES ('schema_version', '{STORE_SCHEMA_VERSION}');
 """
 
 # Performance indexes for common query patterns.

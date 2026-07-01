@@ -666,6 +666,34 @@ class SchemaVersionGuardTests(unittest.TestCase):
         with self.assertRaises(SchemaVersionError):
             store._check_schema_version()
 
+    def test_initialize_rejects_existing_store_missing_schema_family_without_blessing(self) -> None:
+        store, tmp = make_store()
+        with store.transaction() as conn:
+            conn.execute("DELETE FROM store_meta WHERE key = 'schema_family'")
+
+        from cardre.errors import SchemaVersionError
+        with self.assertRaises(SchemaVersionError):
+            store.initialize()
+
+        row = store._connect().execute(
+            "SELECT value FROM store_meta WHERE key = 'schema_family'"
+        ).fetchone()
+        self.assertIsNone(row)
+
+    def test_initialize_rejects_existing_store_missing_schema_version_without_blessing(self) -> None:
+        store, tmp = make_store()
+        with store.transaction() as conn:
+            conn.execute("DELETE FROM store_meta WHERE key = 'schema_version'")
+
+        from cardre.errors import SchemaVersionError
+        with self.assertRaises(SchemaVersionError):
+            store.initialize()
+
+        row = store._connect().execute(
+            "SELECT value FROM store_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        self.assertIsNone(row)
+
 
 # ======================================================================
 # Slice 9: Integrity report
