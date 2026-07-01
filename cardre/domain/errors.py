@@ -72,6 +72,12 @@ class PlanContainsUnavailableNodesError(CardreError):
         super().__init__(message, context={"issues": issues})
 
 
+class ConcurrentRunError(CardreError):
+    """Raised when a run is already in progress for a plan version."""
+    code = "CONCURRENT_RUN"
+    status_code = 409
+
+
 class SchemaVersionError(CardreError):
     """Raised when the store schema identity does not match the app."""
     code = "STORE_VERSION_INCOMPATIBLE"

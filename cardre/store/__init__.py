@@ -10,7 +10,7 @@ from cardre.store.evidence_repo import EvidenceRepository
 from cardre.store.manual_binning_repo import ManualBinningRepository
 from cardre.store.plan_repo import PlanRepository
 from cardre.store.project_repo import ProjectRepository
-from cardre.store.project_store import ProjectStore
+from cardre.store.db import ProjectStore
 from cardre.store.run_repo import RunRepository
 from cardre.store.run_step_repo import RunStepRepository
 from cardre.store.schema import (

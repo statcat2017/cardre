@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import uuid
 
-from cardre.audit import utc_now_iso
+from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.run import RunStep, RunStepStatus
 from cardre.store.db import ProjectStore
 from cardre.store.run_repo import RunRepository

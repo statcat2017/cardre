@@ -9,7 +9,7 @@ from typing import Any, TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
-from cardre.errors import ConcurrentRunError
+from cardre.domain.errors import ConcurrentRunError
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 
 if TYPE_CHECKING:
