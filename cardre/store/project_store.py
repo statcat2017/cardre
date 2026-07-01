@@ -30,13 +30,13 @@ from cardre.audit import (
 
 
 from cardre.store.schema import (
-    BRANCH_TABLES_SQL,
-    INDEXES_SQL,
-    LINEAGE_TABLES_SQL,
-    MIGRATIONS_SQL,
-    SCHEMA_SQL,
-    STORE_SCHEMA_FAMILY,
-    STORE_SCHEMA_VERSION,
+    LEGACY_BRANCH_TABLES_SQL as BRANCH_TABLES_SQL,
+    LEGACY_INDEXES_SQL as INDEXES_SQL,
+    LEGACY_LINEAGE_TABLES_SQL as LINEAGE_TABLES_SQL,
+    LEGACY_MIGRATIONS_SQL as MIGRATIONS_SQL,
+    LEGACY_SCHEMA_SQL as SCHEMA_SQL,
+    LEGACY_STORE_SCHEMA_FAMILY as STORE_SCHEMA_FAMILY,
+    LEGACY_STORE_SCHEMA_VERSION as STORE_SCHEMA_VERSION,
 )
 from cardre.store.artifact_repo import ArtifactRepository
 from cardre.store.plan_repo import PlanRepository
@@ -311,6 +311,15 @@ class ProjectStore:
         except BaseException:
             conn.rollback()
             raise
+
+    def execute(self, sql: str, params=()) -> sqlite3.Cursor:
+        return self._connect().execute(sql, params)
+
+    def execute_script(self, sql: str) -> None:
+        self._connect().executescript(sql)
+
+    def executemany(self, sql: str, seq) -> sqlite3.Cursor:
+        return self._connect().executemany(sql, seq)
 
     @staticmethod
     def _row_to_run_step(row: dict) -> RunStepRecord:
