@@ -22,7 +22,12 @@ from typing import TYPE_CHECKING, Literal
 
 from cardre.config import CardreConfig
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.errors import CardreError, GovernanceNotEnabled, PlanVersionNotCommittedError
+from cardre.domain.errors import (
+    CardreError,
+    GovernanceNotEnabled,
+    PlanVersionNotCommittedError,
+    RunScopeNotAvailableForLaunch,
+)
 from cardre.domain.run import RunStepStatus
 
 if TYPE_CHECKING:
@@ -101,6 +106,9 @@ class RunCoordinator:
                 "Set the environment variable to enable challenger governance."
             )
 
+        if run_scope == "to_node":
+            self._raise_run_scope_not_available(run_scope, target_step_id)
+
         # Preflight short-circuit checks (sync runs fall through to
         # _execute_sync which records the RUN_SHORT_CIRCUITED diagnostic)
         if not force:
@@ -127,30 +135,6 @@ class RunCoordinator:
                             reason="because branch has no stale steps",
                         )
                         return self._build_summary(result.run_id)
-
-            if run_scope == "to_node" and target_step_id:
-                from cardre.services.evidence_resolver import EvidencePolicyService
-                evidence = EvidencePolicyService(self._store)
-                result = evidence.check_to_node_current(
-                    plan_version_id, target_step_id, branch_id=branch_id,
-                )
-                if result.run_id is not None:
-                    placeholder_id = self._create_persisted_run(
-                        plan_version_id=plan_version_id,
-                        run_scope=run_scope, branch_id=branch_id,
-                        target_step_id=target_step_id, force=force,
-                        requested_by=requested_by, request_id=request_id,
-                    )
-                    self._cancel_placeholder_run(
-                        placeholder_id,
-                        plan_version_id=plan_version_id,
-                        execution_mode="to_node",
-                        branch_id=branch_id,
-                        target_step_id=target_step_id,
-                        existing_run_id=result.run_id,
-                        reason=f"for to-node {target_step_id}",
-                    )
-                    return self._build_summary(result.run_id)
 
         # Recover stale runs for this plan_version
         for existing_run in run_repo.list_for_plan_version(plan_version_id=plan_version_id):
@@ -219,6 +203,24 @@ class RunCoordinator:
     # Internal execution
     # ------------------------------------------------------------------
 
+    def _raise_run_scope_not_available(
+        self,
+        run_scope: str,
+        target_step_id: str | None = None,
+    ) -> None:
+        """Raise RunScopeNotAvailableForLaunch with a consistent message and context.
+
+        Suggests ``full_plan`` as the alternative (branch may not be available
+        when governance is disabled).
+        """
+        ctx: dict[str, object] = {"run_scope": run_scope}
+        if target_step_id is not None:
+            ctx["target_step_id"] = target_step_id
+        raise RunScopeNotAvailableForLaunch(
+            f"run_scope={run_scope!r} is currently disabled for launch. Use full_plan instead.",
+            context=ctx,
+        )
+
     def _execute_existing_running_run(
         self,
         run_id: str,
@@ -228,16 +230,20 @@ class RunCoordinator:
         target_step_id: str | None,
         force: bool,
     ) -> RunSummary:
+        execution_mode = {
+            "branch": "branch",
+            "full_plan": "full_plan",
+        }.get(run_scope, "full_plan")
+
+        if run_scope == "to_node":
+            from cardre.store.run_repo import RunRepository
+            RunRepository(self._store).finish(run_id, "failed")
+            self._raise_run_scope_not_available(run_scope, target_step_id)
+
         from cardre.execution.run_lifecycle import RunLifecycle
         from cardre.execution.executor import PlanExecutor
 
         executor = PlanExecutor(self._store)
-
-        execution_mode = {
-            "branch": "branch",
-            "to_node": "to_node",
-            "full_plan": "full_plan",
-        }.get(run_scope, "full_plan")
 
         try:
             with RunLifecycle(
@@ -248,15 +254,9 @@ class RunCoordinator:
                 branch_id=branch_id,
                 target_step_id=target_step_id,
             ) as lifecycle:
-                if run_scope == "to_node" and target_step_id:
-                    executor.run_to_node(
-                        plan_version_id, target_step_id, run_id,
-                        force=force, branch_id=branch_id,
-                    )
-                else:
-                    executor.run_plan_version(
-                        plan_version_id, run_id,
-                        force=force, branch_id=branch_id,
+                executor.run_plan_version(
+                    plan_version_id, run_id,
+                    force=force, branch_id=branch_id,
                 )
                 from cardre.store.run_step_repo import RunStepRepository
                 has_failure = any(

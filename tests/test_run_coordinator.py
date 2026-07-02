@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.errors import CardreError, PlanVersionNotCommittedError
+from cardre.domain.errors import CardreError, PlanVersionNotCommittedError, RunScopeNotAvailableForLaunch
 
 
 def _make_store(project_root: Path):
@@ -189,29 +189,82 @@ class TestExecuteCreatedRun:
             metadata = json.loads(run["metadata_json"]) if isinstance(run["metadata_json"], str) else run["metadata_json"]
             assert metadata.get("run_scope") == "full_plan"
 
+    def test_to_node_in_metadata_raises(self, tmp_path):
+        """Execute-created-run safety net: to_node persisted metadata raises."""
+        store = _make_store(tmp_path)
+        pv_id = _seed_minimal_plan(store)
+
+        run_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        metadata_json = json.dumps({"run_scope": "to_node", "target_step_id": "step-a"})
+        store.execute(
+            "INSERT INTO runs (run_id, plan_version_id, status, started_at, metadata_json) "
+            "VALUES (?, ?, 'running', ?, ?)",
+            (run_id, pv_id, now, metadata_json),
+        )
+
+        from cardre.services.run_coordinator import RunCoordinator
+        coordinator = RunCoordinator(store)
+
+        with pytest.raises(RunScopeNotAvailableForLaunch) as exc_info:
+            coordinator.execute_created_run(run_id)
+        assert exc_info.value.code == "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
+        assert exc_info.value.context.get("run_scope") == "to_node"
+        assert exc_info.value.context.get("target_step_id") == "step-a"
+        from cardre.store.run_repo import RunRepository
+        rejected_run = RunRepository(store).get(run_id)
+        assert rejected_run is not None
+        assert rejected_run["status"] == "failed"
+        assert rejected_run["finished_at"] is not None
+
+    def test_to_node_in_metadata_without_target(self, tmp_path):
+        """Safety net also fires for to_node without target_step_id."""
+        store = _make_store(tmp_path)
+        pv_id = _seed_minimal_plan(store)
+
+        run_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        metadata_json = json.dumps({"run_scope": "to_node"})
+        store.execute(
+            "INSERT INTO runs (run_id, plan_version_id, status, started_at, metadata_json) "
+            "VALUES (?, ?, 'running', ?, ?)",
+            (run_id, pv_id, now, metadata_json),
+        )
+
+        from cardre.services.run_coordinator import RunCoordinator
+        coordinator = RunCoordinator(store)
+
+        with pytest.raises(RunScopeNotAvailableForLaunch) as exc_info:
+            coordinator.execute_created_run(run_id)
+        assert exc_info.value.code == "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
+        assert exc_info.value.context.get("run_scope") == "to_node"
+        # target_step_id should NOT be present in context
+        assert "target_step_id" not in exc_info.value.context
+        from cardre.store.run_repo import RunRepository
+        rejected_run = RunRepository(store).get(run_id)
+        assert rejected_run is not None
+        assert rejected_run["status"] == "failed"
+        assert rejected_run["finished_at"] is not None
+
 
 class TestShortCircuit:
     """Short-circuit logic for branch and to_node scopes."""
 
     def test_to_node_short_circuit(self, tmp_path):
-        """A to_node run that has no stale steps should short-circuit."""
+        """A to_node run is rejected early with RunScopeNotAvailableForLaunch."""
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
-        # First, run the full plan
         from cardre.services.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
-        first = coordinator.run(pv_id, sync=True)
-        assert first.status in ("succeeded", "running")
 
-        # Now running to_node on the same step should short-circuit
-        # (the step has already been run and is not stale)
-        # This validates the flow doesn't crash, even if short-circuit
-        # isn't triggered (because we don't have stale tracking yet)
-        second = coordinator.run(
-            pv_id, run_scope="to_node", target_step_id="step-a", sync=True,
-        )
-        assert second.run_id is not None
+        with pytest.raises(RunScopeNotAvailableForLaunch) as exc_info:
+            coordinator.run(
+                pv_id, run_scope="to_node", target_step_id="step-a", sync=True,
+            )
+        assert exc_info.value.code == "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
+        assert exc_info.value.context.get("run_scope") == "to_node"
+        assert exc_info.value.context.get("target_step_id") == "step-a"
 
 
 class TestStaleRecovery:

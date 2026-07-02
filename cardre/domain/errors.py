@@ -125,6 +125,12 @@ class NodeNotAvailableForLaunch(CardreError):
     status_code = 400
 
 
+class RunScopeNotAvailableForLaunch(CardreError):
+    """Raised when a run scope is disabled for launch (e.g. ``to_node``)."""
+    code = "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
+    status_code = 400
+
+
 class BranchValidationError(CardreError):
     """Raised when branch creation or management validation fails."""
     code = "BRANCH_VALIDATION_ERROR"
@@ -163,5 +169,6 @@ __all__ = [
     "PlanVersionNotCommittedError",
     "PlanContainsUnavailableNodesError",
     "RunLifecycleError",
+    "RunScopeNotAvailableForLaunch",
     "SchemaVersionError",
 ]
