@@ -54,6 +54,15 @@ class TestPlans:
         data = resp.json()
         assert data["plan_id"] == plan_id
 
+    def test_get_plan_wrong_project(self, api_client, project_with_plan):
+        _, plan_id, _, _, root = project_with_plan
+        resp = api_client.get(
+            f"/projects/{uuid.uuid4()}/plans/{plan_id}",
+            headers={"X-Project-Path": str(root)},
+        )
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "PLAN_NOT_FOUND"
+
     def test_get_plan_not_found(self, api_client, project_with_plan):
         project_id, _, _, _, root = project_with_plan
         resp = api_client.get(
@@ -93,6 +102,15 @@ class TestPlans:
         assert resp.status_code == 200
         data = resp.json()
         assert data["plan_version_id"] == pv_id
+
+    def test_get_plan_version_wrong_project(self, api_client, project_with_plan):
+        _, _, pv_id, _, root = project_with_plan
+        resp = api_client.get(
+            f"/projects/{uuid.uuid4()}/plan-versions/{pv_id}",
+            headers={"X-Project-Path": str(root)},
+        )
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "PLAN_VERSION_NOT_FOUND"
 
     def test_commit_immutable_plan_version(self, api_client, project_with_plan):
         """Committing an already-committed version returns 409."""

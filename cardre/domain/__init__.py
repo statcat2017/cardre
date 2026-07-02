@@ -20,6 +20,7 @@ from cardre.domain.errors import (
     NodeNotAvailableForLaunch,
     OptionalDependencyNotInstalled,
     PlanContainsUnavailableNodesError,
+    PlanVersionNotCommittedError,
     RunLifecycleError,
     SchemaVersionError,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "Plan",
     "PlanContainsUnavailableNodesError",
     "PlanVersion",
+    "PlanVersionNotCommittedError",
     "Project",
     "ResolvedEvidence",
     "Run",

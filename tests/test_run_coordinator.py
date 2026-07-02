@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.errors import CardreError
+from cardre.domain.errors import CardreError, PlanVersionNotCommittedError
 
 
 def _make_store(project_root: Path):
@@ -94,6 +94,19 @@ class TestRunCoordinatorSync:
         coordinator = RunCoordinator(store)
         with pytest.raises(CardreError, match="not found"):
             coordinator.run("nonexistent", sync=True)
+
+    def test_draft_plan_version_is_rejected(self, tmp_path):
+        store = _make_store(tmp_path)
+        pv_id = _seed_minimal_plan(store)
+        store.execute(
+            "UPDATE plan_versions SET is_committed = 0 WHERE plan_version_id = ?",
+            (pv_id,),
+        )
+
+        from cardre.services.run_coordinator import RunCoordinator
+        coordinator = RunCoordinator(store)
+        with pytest.raises(PlanVersionNotCommittedError):
+            coordinator.run(pv_id, sync=True)
 
 
 class TestExecuteCreatedRun:
@@ -257,6 +270,37 @@ class TestRunSummary:
         from cardre.services.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         summary = coordinator.run(pv_id, sync=True)
+
+        assert isinstance(summary.run_id, str)
+        assert isinstance(summary.plan_version_id, str)
+        assert isinstance(summary.status, str)
+        assert isinstance(summary.started_at, str)
+        assert isinstance(summary.step_count, int)
+        assert isinstance(summary.executed_step_ids, list)
+
+    def test_failed_step_marks_run_failed(self, tmp_path, monkeypatch):
+        store = _make_store(tmp_path)
+        pv_id = _seed_minimal_plan(store)
+
+        from cardre.execution.executor import PlanExecutor
+        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.domain.run import RunStepStatus
+
+        def fake_run_plan_version(self, plan_version_id, run_id, *, force=False, branch_id=None, precomputed_outputs=None, precomputed_records=None):
+            now = utc_now_iso()
+            store.execute(
+                "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, execution_fingerprint_json, warnings_json, errors_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, '{}', '[]', '[]')",
+                ("rs-failed", run_id, "step-a", plan_version_id, RunStepStatus.FAILED.value, now, now),
+            )
+            return run_id
+
+        monkeypatch.setattr(PlanExecutor, "run_plan_version", fake_run_plan_version)
+
+        coordinator = RunCoordinator(store)
+        summary = coordinator.run(pv_id, sync=True)
+
+        assert summary.status == "failed"
 
         assert isinstance(summary.run_id, str)
         assert isinstance(summary.plan_version_id, str)

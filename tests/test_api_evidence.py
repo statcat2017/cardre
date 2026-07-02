@@ -100,6 +100,16 @@ class TestEvidence:
         assert "upstream_changes" in data
         assert "missing_evidence" in data
 
+    def test_get_step_evidence_wrong_project(self, api_client, project_with_evidence_step):
+        _, _, pv_id, child_step_id, _, root = project_with_evidence_step
+        resp = api_client.get(
+            f"/projects/{uuid.uuid4()}/steps/{child_step_id}/evidence",
+            params={"plan_version_id": pv_id},
+            headers={"X-Project-Path": str(root)},
+        )
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "PLAN_VERSION_NOT_FOUND"
+
     def test_get_step_evidence_missing_plan_version(self, api_client, project_with_evidence_step):
         project_id, _, _, child_step_id, _, root = project_with_evidence_step
         resp = api_client.get(

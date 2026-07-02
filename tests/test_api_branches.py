@@ -117,6 +117,26 @@ class TestBranches:
         data = resp.json()
         assert data["branch_id"] == branch_id
 
+    def test_get_branch_wrong_project(self, api_client, project_with_branch_data, monkeypatch):
+        _, _, branch_id, _, _, _, root = project_with_branch_data
+        monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
+            "MockConfig", (), {
+                "governance_enabled": True,
+                "launch_mode": True,
+                "stale_heartbeat_seconds": 300,
+                "heartbeat_watchdog_interval_seconds": 75,
+                "api_host": "127.0.0.1",
+                "api_port": 8752,
+                "registry_path": "/tmp",
+            }
+        )())
+        resp = api_client.get(
+            f"/projects/{uuid.uuid4()}/branches/{branch_id}",
+            headers={"X-Project-Path": str(root)},
+        )
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "BRANCH_NOT_FOUND"
+
     def test_get_branch_not_found(self, api_client, project_with_branch_data, monkeypatch):
         project_id, _, _, _, _, _, root = project_with_branch_data
         monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(

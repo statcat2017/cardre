@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store, get_run_coordinator
+from cardre.api.errors import CardreApiError, PLAN_VERSION_NOT_FOUND, RUN_NOT_FOUND
 from cardre.api.schemas import (
     RunCreateRequest,
     RunListResponse,
@@ -16,6 +17,7 @@ from cardre.store.db import ProjectStore
 from cardre.store.run_repo import RunRepository
 from cardre.store.run_step_repo import RunStepRepository
 from cardre.store.evidence_repo import EvidenceRepository
+from cardre.api.routes._project_scope import plan_version_belongs_to_project, run_belongs_to_project
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["runs"])
 
@@ -51,6 +53,12 @@ async def get_run(
     coordinator: RunCoordinator = Depends(get_run_coordinator),
 ) -> RunResponse:
     """Get a single run by ID with summary info."""
+    if not run_belongs_to_project(store, project_id, run_id):
+        raise CardreApiError(
+            code=RUN_NOT_FOUND,
+            message=f"Run {run_id!r} not found.",
+            status_code=404,
+        )
     summary = coordinator._build_summary(run_id)
     return RunResponse(
         run_id=summary.run_id,
@@ -68,31 +76,23 @@ async def get_run(
     )
 
 
-@router.post("/runs", response_model=RunResponse, status_code=201)
+@router.post("/runs", response_model=RunResponse, status_code=501)
 async def create_run(
     project_id: str,
     body: RunCreateRequest,
-    coordinator: RunCoordinator = Depends(get_run_coordinator),
+    store: ProjectStore = Depends(get_project_store),
 ) -> RunResponse:
     """Create and optionally execute a run for a plan version."""
-    summary = coordinator.run(
-        plan_version_id=body.plan_version_id,
-        force=body.force,
-        sync=body.sync,
-    )
-    return RunResponse(
-        run_id=summary.run_id,
-        plan_version_id=summary.plan_version_id,
-        status=summary.status,
-        started_at=summary.started_at,
-        finished_at=summary.finished_at,
-        step_count=summary.step_count,
-        branch_id=summary.branch_id,
-        executed_step_ids=summary.executed_step_ids or [],
-        diagnostics=summary.diagnostics or [],
-        latest_error=summary.latest_error,
-        heartbeat_at=summary.heartbeat_at,
-        is_stale=summary.is_stale,
+    if not plan_version_belongs_to_project(store, project_id, body.plan_version_id):
+        raise CardreApiError(
+            code=PLAN_VERSION_NOT_FOUND,
+            message=f"Plan version {body.plan_version_id!r} not found.",
+            status_code=404,
+        )
+    raise CardreApiError(
+        code="RUN_EXECUTION_NOT_IMPLEMENTED",
+        message="Public run execution is not yet wired.",
+        status_code=501,
     )
 
 
@@ -103,6 +103,12 @@ async def list_run_steps(
     store: ProjectStore = Depends(get_project_store),
 ) -> list[RunStepResponse]:
     """List all steps for a run."""
+    if not run_belongs_to_project(store, project_id, run_id):
+        raise CardreApiError(
+            code=RUN_NOT_FOUND,
+            message=f"Run {run_id!r} not found.",
+            status_code=404,
+        )
     rs_repo = RunStepRepository(store)
     steps = rs_repo.get_for_run(run_id)
     return [
@@ -129,6 +135,12 @@ async def list_run_evidence(
     store: ProjectStore = Depends(get_project_store),
 ) -> list[dict]:
     """List all evidence edges for a run."""
+    if not run_belongs_to_project(store, project_id, run_id):
+        raise CardreApiError(
+            code=RUN_NOT_FOUND,
+            message=f"Run {run_id!r} not found.",
+            status_code=404,
+        )
     evidence_repo = EvidenceRepository(store)
     from cardre.store.run_step_repo import RunStepRepository
     rs_repo = RunStepRepository(store)

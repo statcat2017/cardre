@@ -72,6 +72,12 @@ class PlanContainsUnavailableNodesError(CardreError):
         super().__init__(message, context={"issues": issues})
 
 
+class PlanVersionNotCommittedError(CardreError):
+    """Raised when a draft plan version is submitted for execution."""
+    code = "PLAN_VERSION_NOT_COMMITTED"
+    status_code = 409
+
+
 class ConcurrentRunError(CardreError):
     """Raised when a run is already in progress for a plan version."""
     code = "CONCURRENT_RUN"
@@ -154,6 +160,7 @@ __all__ = [
     "NodeNotAvailableForLaunch",
     "OptionalDependencyNotInstalled",
     "ParameterValidationError",
+    "PlanVersionNotCommittedError",
     "PlanContainsUnavailableNodesError",
     "RunLifecycleError",
     "SchemaVersionError",

@@ -23,6 +23,7 @@ from cardre.api.schemas import (
 from cardre.services.plan_service import PlanService, PlanServiceError
 from cardre.store.db import ProjectStore
 from cardre.store.plan_repo import PlanRepository
+from cardre.api.routes._project_scope import plan_belongs_to_project, plan_version_belongs_to_project
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["plans"])
 
@@ -60,6 +61,12 @@ async def get_plan(
     store: ProjectStore = Depends(get_project_store),
 ) -> PlanResponse:
     """Get a single plan by ID."""
+    if not plan_belongs_to_project(store, project_id, plan_id):
+        raise CardreApiError(
+            code=PLAN_NOT_FOUND,
+            message=f"Plan {plan_id!r} not found.",
+            status_code=404,
+        )
     service = PlanService(store)
     plan = service.get_plan(plan_id)
     if plan is None:
@@ -107,6 +114,12 @@ async def list_plan_versions(
     store: ProjectStore = Depends(get_project_store),
 ) -> PlanVersionListResponse:
     """List all versions of a plan."""
+    if not plan_belongs_to_project(store, project_id, plan_id):
+        raise CardreApiError(
+            code=PLAN_NOT_FOUND,
+            message=f"Plan {plan_id!r} not found.",
+            status_code=404,
+        )
     repo = PlanRepository(store)
     versions = repo.list_versions(plan_id)
     return PlanVersionListResponse(
@@ -136,6 +149,12 @@ async def get_plan_version(
     store: ProjectStore = Depends(get_project_store),
 ) -> PlanVersionResponse:
     """Get a single plan version by ID."""
+    if not plan_version_belongs_to_project(store, project_id, plan_version_id):
+        raise CardreApiError(
+            code=PLAN_VERSION_NOT_FOUND,
+            message=f"Plan version {plan_version_id!r} not found.",
+            status_code=404,
+        )
     service = PlanService(store)
     pv = service.get_plan_version(plan_version_id)
     if pv is None:
@@ -165,6 +184,12 @@ async def update_plan_version(
 
     Raises ``PLAN_VERSION_IMMUTABLE`` (409) if the version is already committed.
     """
+    if not plan_version_belongs_to_project(store, project_id, plan_version_id):
+        raise CardreApiError(
+            code=PLAN_VERSION_NOT_FOUND,
+            message=f"Plan version {plan_version_id!r} not found.",
+            status_code=404,
+        )
     service = PlanService(store)
     pv = service.get_plan_version(plan_version_id)
     if pv is None:
@@ -208,6 +233,12 @@ async def commit_plan_version(
 
     Raises ``PLAN_VERSION_IMMUTABLE`` (409) if already committed.
     """
+    if not plan_version_belongs_to_project(store, project_id, plan_version_id):
+        raise CardreApiError(
+            code=PLAN_VERSION_NOT_FOUND,
+            message=f"Plan version {plan_version_id!r} not found.",
+            status_code=404,
+        )
     service = PlanService(store)
     try:
         result = service.commit_plan_version(plan_version_id)

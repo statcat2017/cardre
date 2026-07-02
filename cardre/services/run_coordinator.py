@@ -22,7 +22,8 @@ from typing import TYPE_CHECKING, Literal
 
 from cardre.config import CardreConfig
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.errors import CardreError, GovernanceNotEnabled
+from cardre.domain.errors import CardreError, GovernanceNotEnabled, PlanVersionNotCommittedError
+from cardre.domain.run import RunStepStatus
 
 if TYPE_CHECKING:
     from cardre.domain.diagnostics import JsonDict
@@ -86,6 +87,11 @@ class RunCoordinator:
             raise CardreError(
                 f"Plan version {plan_version_id} not found",
                 code="PLAN_VERSION_NOT_FOUND",
+                context={"plan_version_id": plan_version_id},
+            )
+        if not pv.get("is_committed", False):
+            raise PlanVersionNotCommittedError(
+                f"Plan version {plan_version_id} must be committed before execution.",
                 context={"plan_version_id": plan_version_id},
             )
 
@@ -251,9 +257,14 @@ class RunCoordinator:
                     executor.run_plan_version(
                         plan_version_id, run_id,
                         force=force, branch_id=branch_id,
-                    )
+                )
+                from cardre.store.run_step_repo import RunStepRepository
+                has_failure = any(
+                    rs.status == RunStepStatus.FAILED
+                    for rs in RunStepRepository(self._store).get_for_run(run_id)
+                )
                 lifecycle.finalise(
-                    status="succeeded",
+                    status="failed" if has_failure else "succeeded",
                     execution_mode=execution_mode,
                     branch_id=branch_id,
                     target_step_id=target_step_id,

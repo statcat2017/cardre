@@ -60,6 +60,8 @@ jobs:
         run: npm run lint
       - name: Prettier check
         run: npm run format:check
+      - name: Vite build
+        run: npm run build
 
   test-python:
     runs-on: ubuntu-latest
@@ -76,7 +78,7 @@ jobs:
       - name: Audit artifact reads
         run: make audit-artifact-reads
       - name: Run tests
-        run: python3 -m pytest tests/ -q --tb=short --cov-fail-under=40
+        run: python3 -m pytest tests/ -q --tb=short --cov-fail-under=43
 
   test-python-governance:
     runs-on: ubuntu-latest
@@ -93,7 +95,7 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[sidecar,test]"
       - name: Run governance tests
-        run: python3 -m pytest tests/test_api_branches.py -q --tb=short --no-cov
+        run: python3 -m pytest tests/test_api_*.py -q --tb=short --no-cov
 
   test-frontend:
     runs-on: ubuntu-latest

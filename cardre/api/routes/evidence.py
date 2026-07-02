@@ -5,7 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
-from cardre.api.errors import CardreApiError, STEP_NOT_FOUND
+from cardre.api.errors import CardreApiError, PLAN_VERSION_NOT_FOUND, STEP_NOT_FOUND
+from cardre.api.routes._project_scope import plan_version_belongs_to_project
 from cardre.api.schemas import EvidenceEdgeResponse, StalenessExplanationResponse
 from cardre.services.staleness_service import StalenessService
 from cardre.store.db import ProjectStore
@@ -33,15 +34,19 @@ async def get_step_evidence_staleness(
             status_code=400,
         )
 
+    if not plan_version_belongs_to_project(store, project_id, plan_version_id):
+        raise CardreApiError(
+            code=PLAN_VERSION_NOT_FOUND,
+            message=f"Plan version {plan_version_id!r} not found.",
+            status_code=404,
+        )
     step_repo = StepRepository(store)
-    steps = step_repo.get_steps(plan_version_id)
-    if not any(s.step_id == step_id for s in steps):
+    if not any(step.step_id == step_id for step in step_repo.get_steps(plan_version_id)):
         raise CardreApiError(
             code=STEP_NOT_FOUND,
             message=f"Step {step_id!r} not found in plan version {plan_version_id!r}.",
             status_code=404,
         )
-
     staleness_svc = StalenessService(store)
     explanation = staleness_svc.explain_step(plan_version_id, step_id)
 
@@ -66,6 +71,20 @@ async def get_step_evidence_edges(
             code="MISSING_PARAMETER",
             message="plan_version_id query parameter is required.",
             status_code=400,
+        )
+
+    if not plan_version_belongs_to_project(store, project_id, plan_version_id):
+        raise CardreApiError(
+            code=PLAN_VERSION_NOT_FOUND,
+            message=f"Plan version {plan_version_id!r} not found.",
+            status_code=404,
+        )
+    step_repo = StepRepository(store)
+    if not any(step.step_id == step_id for step in step_repo.get_steps(plan_version_id)):
+        raise CardreApiError(
+            code=STEP_NOT_FOUND,
+            message=f"Step {step_id!r} not found in plan version {plan_version_id!r}.",
+            status_code=404,
         )
 
     evidence_repo = EvidenceRepository(store)
