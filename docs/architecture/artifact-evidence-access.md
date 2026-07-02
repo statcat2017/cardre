@@ -77,10 +77,9 @@ When introducing a new evidence type, update all of these:
 2. Add a `SCHEMA_<KIND>` constant in `cardre/_evidence/schemas.py`.
 3. Add a typed dataclass and `from_json` in `cardre/_evidence/models/` (in the appropriate family module, e.g. `models/binning.py`, `models/model.py`). Re-export it from `cardre/_evidence/models/__init__.py`.
 4. Add an `EVIDENCE_PROFILES` entry in `cardre/_evidence/profiles.py`.
-5. Add reader dispatch in `cardre/_evidence/reader.py::_to_typed`.
-6. Add fixture-backed parse coverage in `tests/test_evidence_reader.py`.
+5. Add an adapter class in `cardre/_evidence/adapters/` (in the appropriate family module) and register it in `EVIDENCE_ADAPTERS`.
+6. Add fixture-backed parse coverage in `tests/test_evidence_adapters.py`.
 7. Add a parametrized profile assertion in `tests/test_evidence_profiles.py`.
-8. Add a convenience method on `ArtifactEvidenceReader` if the kind is used often.
 
 Minimal parser rule: prefer schema/version validation first, then legacy fallback
 inside `cardre/_evidence/`, never in product nodes.
@@ -115,9 +114,9 @@ Report collectors must reuse `ArtifactEvidenceReader`.
 
 For previews and summaries:
 
-- Use `reader.summarise_artifact(artifact_id)`.
-- Use `reader.summarise_step_outputs(run_step)`.
-- Use `reader.summarise_run_artifacts(run_id)`.
+- Use the adapter registry directly: `get_adapter(kind).match()` / `.parse()`.
+- The reader's `summarise_*` methods have been removed; summaries are no longer
+  produced through `ArtifactEvidenceReader`.
 
 The Phase 4 evidence routes at:
 - ``GET /runs/{run_id}/steps/{step_id}/evidence``
