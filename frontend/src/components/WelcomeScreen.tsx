@@ -29,7 +29,10 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
 
   const createMutation = useMutation({
     mutationFn: () =>
-      api.createProject({ projectPath: projectPath.trim() }, { name: projectName.trim() }),
+      api.createProject(
+        { projectPath: projectPath.trim() },
+        { name: projectName.trim(), path: projectPath.trim() },
+      ),
     onSuccess: (project) => {
       setError(null);
       onProjectCreated(project.project_id, projectPath.trim());

@@ -1,3 +1,11 @@
+/**
+ * Hand-written second source for error codes.
+ *
+ * The canonical set lives in `cardre/api/errors.py` (Python). This file
+ * mirrors it manually and must be kept in sync by hand until a generator
+ * is added. The set is small (~21 codes) and changes infrequently, so the
+ * duplication is accepted.
+ */
 export const ErrorCodes = {
   SIDECAR_UNREACHABLE: "SIDECAR_UNREACHABLE",
   REQUEST_TIMEOUT: "REQUEST_TIMEOUT",
