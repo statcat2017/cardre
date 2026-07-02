@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from cardre.audit import ArtifactRef, physical_hash, relative_path
+from cardre.domain.artifacts import ArtifactRef, physical_hash, relative_path
 from cardre.store import ProjectStore
 
 

@@ -6,19 +6,17 @@ It must not become a second modelling execution path.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
-from cardre.audit import RunStepRecord, json_logical_hash
 
-from cardre.errors import Result
 from cardre.store import ProjectStore
-
-from cardre.evidence import (
-    ArtifactEvidenceReader,
-    EvidenceKind,
-)
+from cardre.store.run_repo import RunRepository
+from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.run import RunStep
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre._evidence.kinds import EvidenceKind
 from cardre.reporting.limitation_codes import LimitationCode
-from cardre.step_id import resolve_run_step, resolve_required_steps, resolve_step_for_branch
 from cardre.reporting.schema import (
     AffectedBinDetail,
     ArtifactEntry,
@@ -58,6 +56,125 @@ from cardre.reporting.schema import (
 )
 
 from cardre.reporting.evidence_contract import REQUIRED_STEPS_COLLECTOR
+from cardre.domain.errors import Diagnostic
+
+# ---------------------------------------------------------------------------
+# Inlined v1 Result / Ok / Degraded (previously cardre.errors)
+# ---------------------------------------------------------------------------
+
+T = Any
+
+
+class _Result:
+    """V1-compatible Result wrapper inlined from cardre.errors."""
+    def __init__(self, value: T | None = None, *, ok: bool = True,
+                 degraded: bool = False,
+                 diagnostics: list[Any] | None = None) -> None:
+        self._value = value
+        self._ok = ok
+        self._degraded = degraded
+        self.diagnostics = diagnostics or []
+
+    def is_ok(self) -> bool:
+        return self._ok and not self._degraded
+
+    def is_degraded(self) -> bool:
+        return self._degraded
+
+    def unwrap(self) -> T | None:
+        return self._value
+
+
+def _Ok(value: Any = None) -> _Result:
+    return _Result(value, ok=True)
+
+
+def _Degraded(value: Any = None, diagnostics: list[Any] | None = None) -> _Result:
+    return _Result(value, ok=False, degraded=True, diagnostics=diagnostics)
+
+
+def _is_ok(result: _Result) -> bool:
+    return result.is_ok()
+
+
+def _is_degraded(result: _Result) -> bool:
+    return result.is_degraded()
+
+# ---------------------------------------------------------------------------
+# Inlined step resolution helpers (formerly cardre.step_id)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _ResolvedStepRef:
+    requested_branch_id: str
+    resolved_branch_id: str
+    canonical_step_id: str
+    step_id: str
+    resolution: str  # "exact" or "ancestor"
+    artifact_ids: list[str] = field(default_factory=list)
+
+
+def _resolve_step_for_branch(
+    *,
+    branch_id: str,
+    canonical_step_id: str,
+    branch_step_map: list[dict[str, Any]],
+    allow_ancestor: bool = True,
+) -> _ResolvedStepRef | None:
+    for row in branch_step_map:
+        if row["canonical_step_id"] != canonical_step_id:
+            continue
+        is_shared = bool(row.get("is_shared_upstream", False))
+        is_owned = bool(row.get("is_branch_owned", True))
+        source_branch_id = row.get("source_branch_id")
+        if is_owned and not is_shared:
+            return _ResolvedStepRef(
+                requested_branch_id=branch_id,
+                resolved_branch_id=branch_id,
+                canonical_step_id=canonical_step_id,
+                step_id=row["step_id"],
+                resolution="exact",
+            )
+        if is_shared and source_branch_id:
+            if allow_ancestor:
+                return _ResolvedStepRef(
+                    requested_branch_id=branch_id,
+                    resolved_branch_id=source_branch_id,
+                    canonical_step_id=canonical_step_id,
+                    step_id=row["step_id"],
+                    resolution="ancestor",
+                )
+            return None
+        return _ResolvedStepRef(
+            requested_branch_id=branch_id,
+            resolved_branch_id=branch_id,
+            canonical_step_id=canonical_step_id,
+            step_id=row["step_id"],
+            resolution="exact",
+        )
+    return None
+
+
+def _resolve_required_steps(
+    *,
+    branch_id: str,
+    canonical_step_ids: list[str],
+    branch_step_map: list[dict[str, Any]],
+    allow_ancestor: bool = True,
+) -> dict[str, _ResolvedStepRef]:
+    result: dict[str, _ResolvedStepRef] = {}
+    for cid in canonical_step_ids:
+        ref = _resolve_step_for_branch(
+            branch_id=branch_id,
+            canonical_step_id=cid,
+            branch_step_map=branch_step_map,
+            allow_ancestor=allow_ancestor,
+        )
+        if ref is not None:
+            result[cid] = ref
+    return result
+
 
 CARDRE_VERSION = "0.1.0"
 
@@ -144,14 +261,14 @@ class ReportCollector:
             step_map = self.store.get_branch_step_map(self.target_branch_id, branch_head_pv)
 
         # Resolve required steps
-        resolved = resolve_required_steps(
+        resolved = _resolve_required_steps(
             branch_id=self.target_branch_id,
             canonical_step_ids=REQUIRED_STEPS_COLLECTOR,
             branch_step_map=step_map,
         )
 
         # Modelling metadata (target column, value mapping)
-        modelling_ref = resolve_step_for_branch(
+        modelling_ref = _resolve_step_for_branch(
             branch_id=self.target_branch_id,
             canonical_step_id="define-metadata",
             branch_step_map=step_map,
@@ -295,16 +412,18 @@ class ReportCollector:
 
     def _collect_dataset_roles(self, run: dict[str, Any], plan_version_id: str) -> list[DatasetRole]:
         roles: list[DatasetRole] = []
-        run_steps = self.store.get_run_steps(run["run_id"])
 
-        for rs in run_steps:
-            for aid in rs.output_artifact_ids:
-                art = self.store.get_artifact(aid)
-                if art and art.role in ("train", "test", "oot"):
-                    roles.append(DatasetRole(
-                        role=art.role,
-                        dataset_id=art.artifact_id,
-                        row_count=art.metadata.get("row_count", 0),
+        for row in self.store.execute(
+            "SELECT al.artifact_id FROM artifact_lineage al "
+            "WHERE al.run_id = ? AND al.direction = 'output'",
+            (run["run_id"],),
+        ).fetchall():
+            art = self.store.get_artifact(row["artifact_id"])
+            if art and art.role in ("train", "test", "oot"):
+                roles.append(DatasetRole(
+                    role=art.role,
+                    dataset_id=art.artifact_id,
+                    row_count=art.metadata.get("row_count", 0),
                         column_count=art.metadata.get("column_count", 0),
                     ))
 
@@ -318,7 +437,7 @@ class ReportCollector:
         return roles
 
     def _collect_woe_iv(
-        self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
     ) -> None:
         rs = self._resolve_run_step(ref, plan_version_id)
         if rs is None:
@@ -328,7 +447,7 @@ class ReportCollector:
             ))
             return
 
-        evidence = self.reader.read_step_output_optional(rs, EvidenceKind.WOE_IV_EVIDENCE)
+        evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.WOE_IV_EVIDENCE)
         if evidence is None:
             self.limitations.append(Limitation(
                 severity="warning", code=LimitationCode.LEGACY_WOE_SUMMARY_USED,
@@ -401,7 +520,7 @@ class ReportCollector:
             ))
 
     def _collect_model(
-        self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
     ) -> None:
         rs = self._resolve_run_step(ref, plan_version_id)
         if rs is None:
@@ -411,7 +530,7 @@ class ReportCollector:
             ))
             return
 
-        model_art = self.reader.read_step_output_optional(rs, EvidenceKind.MODEL_ARTIFACT)
+        model_art = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.MODEL_ARTIFACT)
         if model_art is not None:
             target_column = model_art.target_column or str(getattr(model_art, "_raw", {}).get("target_column", ""))
             if target_column and not bundle.summary.target_column:
@@ -441,13 +560,13 @@ class ReportCollector:
             ))
 
     def _collect_modelling_metadata(
-        self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
     ) -> None:
         rs = self._resolve_run_step(ref, plan_version_id)
         if rs is None:
             return
 
-        meta = self.reader.read_step_output_optional(rs, EvidenceKind.MODELLING_METADATA)
+        meta = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.MODELLING_METADATA)
         if meta is None:
             self.limitations.append(Limitation(
                 severity="warning", code=LimitationCode.MISSING_MODELLING_METADATA,
@@ -460,7 +579,7 @@ class ReportCollector:
             bundle.summary.target_column = target_column
 
     def _collect_score_scaling(
-        self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
     ) -> None:
         rs = self._resolve_run_step(ref, plan_version_id)
         if rs is None:
@@ -470,7 +589,7 @@ class ReportCollector:
             ))
             return
 
-        scaling = self.reader.read_step_output_optional(rs, EvidenceKind.SCORE_SCALING)
+        scaling = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.SCORE_SCALING)
         if scaling is not None:
             bundle.score_scaling = ScoreScalingInfo(
                 base_score=scaling.base_score,
@@ -491,7 +610,7 @@ class ReportCollector:
             ))
 
     def _collect_validation(
-        self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
     ) -> None:
         rs = self._resolve_run_step(ref, plan_version_id)
         if rs is None:
@@ -501,9 +620,9 @@ class ReportCollector:
             ))
             return
 
-        val = self.reader.read_step_output_optional(rs, EvidenceKind.VALIDATION_EVIDENCE)
+        val = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.VALIDATION_EVIDENCE)
         if val is None:
-            val = self.reader.read_step_output_optional(rs, EvidenceKind.VALIDATION_METRICS)
+            val = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.VALIDATION_METRICS)
         if val is None:
             self.limitations.append(Limitation(
                 severity="blocker", code=LimitationCode.MISSING_TRAIN_VALIDATION_METRICS,
@@ -529,7 +648,7 @@ class ReportCollector:
         bundle.validation = validation
 
     def _collect_cutoff(
-        self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
     ) -> None:
         rs = self._resolve_run_step(ref, plan_version_id)
         if rs is None:
@@ -539,7 +658,7 @@ class ReportCollector:
             ))
             return
 
-        cutoff = self.reader.read_step_output_optional(rs, EvidenceKind.CUTOFF_ANALYSIS)
+        cutoff = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.CUTOFF_ANALYSIS)
         if cutoff is not None:
             tables = []
             for role_name, rows in cutoff.cutoff_tables.items():
@@ -562,14 +681,12 @@ class ReportCollector:
             ))
 
     def _collect_manual_interventions(
-        self, bundle: ReportBundle, ref: ResolvedStepRef, plan_version_id: str,
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
     ) -> None:
         # Populate review state from step params + annotation
-        from cardre.step_id import resolve_step_for_branch
-
         step_map = self.store.get_branch_step_map(self.target_branch_id, plan_version_id)
         if step_map:
-            mb_ref = resolve_step_for_branch(
+            mb_ref = _resolve_step_for_branch(
                 branch_id=self.target_branch_id,
                 canonical_step_id="manual-binning",
                 branch_step_map=step_map,
@@ -587,12 +704,11 @@ class ReportCollector:
                         annotation_result = self._get_latest_review_annotation(
                             mb_ref.step_id, plan_version_id,
                         )
-                        from cardre.errors import is_ok, is_degraded
-                        if is_ok(annotation_result) or is_degraded(annotation_result):
+                        if _is_ok(annotation_result) or _is_degraded(annotation_result):
                             annotation = annotation_result.value
                         else:
                             annotation = None
-                        if is_degraded(annotation_result):
+                        if _is_degraded(annotation_result):
                             self.limitations.append(Limitation(
                                 severity="warning", code=LimitationCode.MISSING_MANUAL_INTERVENTION_REASON,
                                 message="Review annotation could not be read.",
@@ -613,7 +729,11 @@ class ReportCollector:
         if rs is None:
             return
 
-        for aid in rs.output_artifact_ids:
+        for row in self.store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+            (rs.run_step_id,),
+        ).fetchall():
+            aid = row["artifact_id"]
             art = self.store.get_artifact(aid)
             if art and art.role in ("definition", "report") and "manual" in art.path.lower():
                 data = self.reader.read_optional(aid, EvidenceKind.BIN_DEFINITION)
@@ -653,7 +773,7 @@ class ReportCollector:
         step_map = self.store.get_branch_step_map(self.target_branch_id, plan_version_id)
         if not step_map:
             return
-        for cid, r in resolve_required_steps(
+        for cid, r in _resolve_required_steps(
             branch_id=self.target_branch_id,
             canonical_step_ids=["variable-clustering"],
             branch_step_map=step_map,
@@ -673,7 +793,7 @@ class ReportCollector:
             ))
             return
 
-        evidence = self.reader.read_step_output_optional(rs, EvidenceKind.VARIABLE_CLUSTERING)
+        evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.VARIABLE_CLUSTERING)
         if evidence is None:
             self.limitations.append(Limitation(
                 severity="warning",
@@ -748,30 +868,31 @@ class ReportCollector:
 
     def _collect_artifacts(self, plan_version_id: str) -> list[ArtifactEntry]:
         entries: list[ArtifactEntry] = []
-        run_steps = self.store.get_run_steps(self.run_id)
         seen: set[str] = set()
-        for rs in run_steps:
-            for aid in rs.output_artifact_ids:
-                if aid in seen:
-                    continue
-                seen.add(aid)
-                art = self.store.get_artifact(aid)
-                if art:
-                    entries.append(ArtifactEntry(
-                        artifact_id=art.artifact_id,
-                        artifact_type=art.artifact_type,
-                        role=art.role,
-                        logical_hash=art.logical_hash,
-                        physical_hash=art.physical_hash,
-                        path=art.path,
-                    ))
+        for row in self.store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_id = ? AND direction = 'output'",
+            (self.run_id,),
+        ).fetchall():
+            aid = row["artifact_id"]
+            if aid in seen:
+                continue
+            seen.add(aid)
+            art = self.store.get_artifact(aid)
+            if art:
+                entries.append(ArtifactEntry(
+                    artifact_id=art.artifact_id,
+                    artifact_type=art.artifact_type,
+                    role=art.role,
+                    logical_hash=art.logical_hash,
+                    physical_hash=art.physical_hash,
+                    path=art.path,
+                ))
         return entries
 
-    def _get_latest_review_annotation(self, step_id: str, plan_version_id: str) -> Result[dict | None]:
+    def _get_latest_review_annotation(self, step_id: str, plan_version_id: str) -> _Result:
         """Read the most recent manual_binning_review annotation for a step.
         Returns Ok(dict | None) on success, Degraded(None, ...) on error."""
         import json as _json
-        from cardre.errors import Ok, Degraded, Diagnostic
 
         try:
             with self.store.transaction() as conn:
@@ -782,12 +903,12 @@ class ReportCollector:
                     (step_id, plan_version_id, "manual_binning_review"),
                 ).fetchall()
             if not rows:
-                return Ok(None)
+                return _Ok(None)
             payload = _json.loads(rows[0]["payload_json"])
             payload["created_at"] = rows[0]["created_at"]
-            return Ok(payload)
+            return _Ok(payload)
         except Exception as exc:
-            return Degraded(None, [Diagnostic(
+            return _Degraded(None, [Diagnostic(
                 code="REVIEW_ANNOTATION_UNREADABLE",
                 message="Could not read review annotation.",
                 exception_type=type(exc).__name__,
@@ -884,13 +1005,13 @@ class ReportCollector:
             ))
 
     def _resolve_run_step(
-        self, ref: ResolvedStepRef, plan_version_id: str,
-    ) -> RunStepRecord | None:
-        rs = resolve_run_step(
-            self.store, plan_version_id, ref.step_id,
-            ref.resolved_branch_id, ref.resolution,
-            run_id=self.run_id,
-        )
+        self, ref: _ResolvedStepRef, plan_version_id: str,
+    ) -> RunStep | None:
+        branch_id = ref.resolved_branch_id if ref.resolution == "ancestor" else None
+        repo = RunRepository(self.store)
+        rs = repo.get_latest_successful_step(plan_version_id, ref.step_id, branch_id=branch_id)
+        if rs is None and branch_id is not None:
+            rs = repo.get_latest_successful_step(plan_version_id, ref.step_id, branch_id=None)
         # Disclose when inherited/ancestor evidence is used
         if rs is not None and ref.resolution == "ancestor":
             self.limitations.append(Limitation(

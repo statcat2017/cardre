@@ -8,7 +8,8 @@ from typing import Any
 
 import polars as pl
 
-from cardre.audit import ArtifactRef, JsonDict
+from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.diagnostics import JsonDict
 from cardre._evidence.kinds import (
     EvidenceKind,
     EvidenceNotFoundError,
@@ -176,18 +177,17 @@ class ArtifactEvidenceReader:
     def read_run_manifest(self, artifact_id: str) -> RunManifestEvidence:
         return self.read(artifact_id, EvidenceKind.RUN_MANIFEST)
 
-    def read_required_step_output(self, run_step: Any, kind: EvidenceKind) -> Any:
-        result = self.read_step_output_optional(run_step, kind)
+    def read_required_step_output(self, run_step_id: str, kind: EvidenceKind) -> Any:
+        result = self.read_step_output_optional(run_step_id, kind)
         if result is None:
             raise EvidenceNotFoundError(
                 kind,
-                step_id=getattr(run_step, "step_id", None),
-                candidate_artifact_ids=list(getattr(run_step, "output_artifact_ids", []) or []),
+                step_id=run_step_id,
             )
         return result
 
-    def read_optional_step_output(self, run_step: Any, kind: EvidenceKind) -> Any | None:
-        return self.read_step_output_optional(run_step, kind)
+    def read_optional_step_output(self, run_step_id: str, kind: EvidenceKind) -> Any | None:
+        return self.read_step_output_optional(run_step_id, kind)
 
     def read_all_step_outputs(self, run_step: Any, kind: EvidenceKind) -> list[Any]:
         results: list[Any] = []
@@ -199,12 +199,16 @@ class ArtifactEvidenceReader:
 
     def read_step_output_optional(
         self,
-        run_step: Any,
+        run_step_id: str,
         kind: EvidenceKind,
     ) -> Any | None:
-        """Scan a RunStepRecord's output artifact IDs for the given kind."""
-        for aid in run_step.output_artifact_ids:
-            result = self.read_optional(aid, kind)
+        """Resolve output artifact IDs via artifact_lineage and scan for the given kind."""
+        rows = self._store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+            (run_step_id,),
+        ).fetchall()
+        for row in rows:
+            result = self.read_optional(row["artifact_id"], kind)
             if result is not None:
                 return result
         return None
