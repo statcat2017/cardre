@@ -23,7 +23,7 @@ from cardre.node_parameters import (
 )
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.schemas import SCHEMA_CUTOFF_ANALYSIS, SCHEMA_FROZEN_SCORECARD_BUNDLE, SCHEMA_SCORE_APPLICATION_EVIDENCE, SCHEMA_VALIDATION_EVIDENCE
+from cardre._evidence.schemas import SCHEMA_CUTOFF_ANALYSIS, SCHEMA_FROZEN_SCORECARD_BUNDLE, SCHEMA_SCORE_APPLICATION_EVIDENCE, SCHEMA_VALIDATION_METRICS
 
 
 class ValidationMetricsNode(NodeType):
@@ -422,10 +422,12 @@ class ValidationMetricsNode(NodeType):
         }
 
         payload: JsonDict = {
-            "schema_version": SCHEMA_VALIDATION_EVIDENCE,
+            "schema_version": SCHEMA_VALIDATION_METRICS,
             "target": target_payload,
             "roles": roles_metrics,
+            "metrics": roles_metrics,
             "stability": stability,
+            "psi": stability,
             "gates": gates,
             "warnings": all_psi_warnings,
         }
@@ -438,7 +440,7 @@ class ValidationMetricsNode(NodeType):
             store, artifact_type="report", role="report",
             stem=f"validation-metrics-{context.step_spec.step_id}",
             payload=payload,
-            metadata={"schema_version": SCHEMA_VALIDATION_EVIDENCE},
+            metadata={"schema_version": SCHEMA_VALIDATION_METRICS},
         )
         return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
 

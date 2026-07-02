@@ -17,8 +17,6 @@ from cardre.reporting.collector import generate_report_bundle
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_BRANCH,
     REQUIRED_STEPS_CHAMPION,
-    canonical_alias_candidates,
-    resolve_canonical_step_id,
 )
 from cardre.reporting.renderer_html import render_report_bundle_to_html
 from cardre.services.report_service import ReportGenerationService
@@ -34,24 +32,6 @@ def test_evidence_contract_required_steps():
     assert len(REQUIRED_STEPS_CHAMPION) >= 3
     assert all(isinstance(s, str) for s in REQUIRED_STEPS_BRANCH)
     assert all(isinstance(s, str) for s in REQUIRED_STEPS_CHAMPION)
-
-
-def test_canonical_alias_candidates():
-    """Legacy alias resolution works."""
-    candidates = canonical_alias_candidates("logistic-regression")
-    assert "logistic-regression" in candidates
-    assert "model-fit" in candidates
-
-    candidates = canonical_alias_candidates("model-fit")
-    assert "model-fit" in candidates
-    assert "logistic-regression" in candidates
-
-
-def test_resolve_canonical_step_id():
-    """Legacy canonical step ID resolution."""
-    assert resolve_canonical_step_id("logistic-regression") == "model-fit"
-    assert resolve_canonical_step_id("model-fit") == "model-fit"
-    assert resolve_canonical_step_id("unknown-step") == "unknown-step"
 
 
 # ---------------------------------------------------------------------------

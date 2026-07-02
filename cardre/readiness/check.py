@@ -14,7 +14,6 @@ from cardre.readiness.limitation_codes import LimitationCode
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_BRANCH,
     REQUIRED_STEPS_CHAMPION,
-    canonical_alias_candidates,
 )
 from cardre.store import ProjectStore
 from cardre.store.run_repo import RunRepository
@@ -194,11 +193,7 @@ def check_report_readiness(
     required = REQUIRED_STEPS_CHAMPION if report_mode == "champion" else REQUIRED_STEPS_BRANCH
     step_ids_in_map = {row["canonical_step_id"] for row in step_map}
 
-    resolved_step_ids_in_map: set[str] = set()
-    for sid in step_ids_in_map:
-        resolved_step_ids_in_map.update(canonical_alias_candidates(sid))
-
-    missing_steps = [s for s in required if s not in resolved_step_ids_in_map]
+    missing_steps = [s for s in required if s not in step_ids_in_map]
     if missing_steps:
         blockers.append(ReadinessBlocker(
             LimitationCode.MISSING_REQUIRED_CANONICAL_STEP,
@@ -211,17 +206,6 @@ def check_report_readiness(
         canonical_step_ids=required,
         branch_step_map=step_map,
     )
-
-    # Lazy legacy resolution: if a required step was not found, check all
-    # equivalent current/legacy canonical IDs in the step map.
-    for canonical_step_id in required:
-        ref = resolved.get(canonical_step_id)
-        if ref is None:
-            for candidate in canonical_alias_candidates(canonical_step_id):
-                candidate_ref = resolved.get(candidate)
-                if candidate_ref is not None:
-                    resolved[canonical_step_id] = candidate_ref
-                    break
 
     for canonical_step_id in required:
         ref = resolved.get(canonical_step_id)
@@ -256,7 +240,7 @@ def check_report_readiness(
                     break
             if not has_v1:
                 blockers.append(ReadinessBlocker(
-                    LimitationCode.MISSING_WOE_IV_EVIDENCE_V1,
+                    LimitationCode.MISSING_WOE_IV_EVIDENCE,
                     f"WOE/IV step {ref.step_id} has no cardre.woe_iv_evidence.v1 artifact. "
                     "Phase 5 requires the controlled evidence artifact.",
                     step_id=ref.step_id,

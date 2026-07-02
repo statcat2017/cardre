@@ -431,7 +431,7 @@ class ModelArtifact:
             estimator_reference=dict(data.get("estimator_reference", {})),
         )
 
-    def as_legacy_dict(self) -> JsonDict:
+    def to_model_dict(self) -> JsonDict:
         return {
             "model_family": self.model_family,
             "coefficients": self.coefficients_dict,

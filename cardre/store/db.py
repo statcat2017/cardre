@@ -196,7 +196,7 @@ class ProjectStore:
         return self._connect().executemany(sql, seq)
 
     # ------------------------------------------------------------------
-    # Convenience delegates (for v1-compatible code that calls store.get_*)
+    # Convenience delegates over the repository classes
     # ------------------------------------------------------------------
 
     def get_branch(self, branch_id: str) -> dict | None:

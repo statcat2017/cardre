@@ -10,10 +10,8 @@ The reporting system produces governance-quality report bundles from immutable r
 |--------|------|----------------|
 | `schema.py` | `cardre/reporting/schema.py` | Pydantic models for `ReportBundle` and all sub-sections |
 | `collector.py` | `cardre/reporting/collector.py` | Builds `ReportBundle` from run artifacts via `ArtifactEvidenceReader` |
-| `readiness.py` | `cardre/reporting/readiness.py` | Deprecation shim; actual logic in `cardre/readiness/check.py` |
 | `renderer_html.py` | `cardre/reporting/renderer_html.py` | Renders `ReportBundle` to HTML |
 | `evidence_contract.py` | `cardre/reporting/evidence_contract.py` | Canonical step IDs and evidence resolution rules |
-| `limitation_codes.py` | `cardre/reporting/limitation_codes.py` | Model limitation codes |
 | `templates/` | `cardre/reporting/templates/` | HTML report templates |
 
 ## Report Generation Service

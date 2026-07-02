@@ -8,6 +8,7 @@ from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.contracts import NodeType
 from cardre._evidence.kinds import AmbiguousEvidenceError, EvidenceKind, EvidenceNotFoundError
 from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre._evidence.schemas import SCHEMA_TECHNICAL_MANIFEST_INDEX
 
 
 class TechnicalManifestExportNode(NodeType):
@@ -61,11 +62,7 @@ class TechnicalManifestExportNode(NodeType):
             return dict(raw)
         if hasattr(evidence, "to_dict"):
             return evidence.to_dict()
-        if hasattr(evidence, "as_legacy_dict"):
-            return evidence.as_legacy_dict()
-        if isinstance(evidence, dict):
-            return dict(evidence)
-        raise TypeError(f"Unsupported evidence payload type: {type(evidence)!r}")
+        return evidence.to_model_dict()
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
@@ -244,7 +241,7 @@ class TechnicalManifestExportNode(NodeType):
             store, artifact_type="manifest", role="manifest",
             stem=f"technical-manifest-{context.step_spec.step_id}",
             payload=manifest,
-            metadata={"run_id": run_id, "plan_version_id": plan_version_id},
+            metadata={"run_id": run_id, "plan_version_id": plan_version_id, "schema_version": SCHEMA_TECHNICAL_MANIFEST_INDEX},
         )
 
         return NodeOutput(

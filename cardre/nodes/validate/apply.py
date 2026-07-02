@@ -328,7 +328,7 @@ class ApplyModelNode(NodeType):
                     )
         typed_model = read_typed_evidence(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT, "model")
         model: dict[str, Any] = dict(getattr(typed_model, "_raw", {}))
-        model.update(typed_model.as_legacy_dict())
+        model.update(typed_model.to_model_dict())
 
         # Parse scorecard and ensemble base model artifacts here,
         # not in adapters — adapters receive parsed payloads only.
@@ -352,7 +352,7 @@ class ApplyModelNode(NodeType):
                     "ensemble base model",
                 )
                 base_model: dict[str, Any] = dict(getattr(typed_base_model, "_raw", {}))
-                base_model.update(typed_base_model.as_legacy_dict())
+                base_model.update(typed_base_model.to_model_dict())
                 base_parsed.append(base_model)
             model["_base_models_parsed"] = base_parsed
 

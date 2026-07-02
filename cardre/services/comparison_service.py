@@ -17,7 +17,6 @@ from cardre.domain.diagnostics import utc_now_iso
 from cardre.store.run_repo import RunRepository
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_COMPARISON,
-    canonical_alias_candidates,
 )
 from cardre.services.staleness_service import StalenessService
 from cardre.store.branch_repo import BranchRepository
@@ -52,25 +51,16 @@ def _check_branch_readiness(
 
     missing: list[dict[str, str]] = []
     for cs in required_steps:
-        actual_id = None
-        for candidate in canonical_alias_candidates(cs):
-            actual_id = canon_to_actual.get(candidate)
-            if actual_id is not None:
-                break
-        actual_id = actual_id or cs
+        actual_id = canon_to_actual.get(cs, cs)
         evidence_branch = branch_id if not is_baseline else None
         repo = RunRepository(store)
-        rs = None
-        for candidate in [actual_id, *canonical_alias_candidates(cs)]:
+        rs = repo.get_latest_successful_step(
+            plan_version_id, actual_id, branch_id=evidence_branch,
+        )
+        if rs is None and evidence_branch is not None:
             rs = repo.get_latest_successful_step(
-                plan_version_id, candidate, branch_id=evidence_branch,
+                plan_version_id, actual_id, branch_id=None,
             )
-            if rs is None and evidence_branch is not None:
-                rs = repo.get_latest_successful_step(
-                    plan_version_id, candidate, branch_id=None,
-                )
-            if rs is not None:
-                break
         if rs is None:
             # Use staleness service to determine if stale or not_run
             explanation = staleness_svc.explain_step(
@@ -215,11 +205,6 @@ def _build_comparison_content(
     lr_b = _find_typed_artifact(step_map_b, "model-fit", plan_version_id_baseline, None, (EvidenceKind.MODEL_ARTIFACT, EvidenceKind.ENSEMBLE_MODEL_ARTIFACT)) if spec.get("include_model") else None
     lr_c = _find_typed_artifact(step_map_c, "model-fit", plan_version_id_challenger, branch_id_challenger, (EvidenceKind.MODEL_ARTIFACT, EvidenceKind.ENSEMBLE_MODEL_ARTIFACT)) if spec.get("include_model") else None
 
-    # Fallback to legacy logistic-regression canonical step
-    if lr_b is None and spec.get("include_model"):
-        lr_b = _find_typed_artifact(step_map_b, "logistic-regression", plan_version_id_baseline, None, (EvidenceKind.MODEL_ARTIFACT, EvidenceKind.ENSEMBLE_MODEL_ARTIFACT))
-    if lr_c is None and spec.get("include_model"):
-        lr_c = _find_typed_artifact(step_map_c, "logistic-regression", plan_version_id_challenger, branch_id_challenger, (EvidenceKind.MODEL_ARTIFACT, EvidenceKind.ENSEMBLE_MODEL_ARTIFACT))
 
     if lr_b and lr_c:
         b_family = lr_b.get("model_family", "logistic_regression")
