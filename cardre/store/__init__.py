@@ -18,11 +18,10 @@ from cardre.store.schema import (
     ANNOTATION_TABLES_SQL,
     BRANCH_TABLES_SQL,
     EVIDENCE_TABLES_SQL,
+    EXPORTS_TABLE_SQL,
     INDEXES_SQL,
     REVIEW_TABLES_SQL,
     SCHEMA_SQL,
-    STORE_SCHEMA_FAMILY,
-    STORE_SCHEMA_VERSION,
 )
 from cardre.store.step_repo import StepRepository
 
@@ -35,6 +34,7 @@ __all__ = [
     "ComparisonRepository",
     "EVIDENCE_TABLES_SQL",
     "EvidenceRepository",
+    "EXPORTS_TABLE_SQL",
     "INDEXES_SQL",
     "ManualBinningRepository",
     "PlanRepository",
@@ -44,7 +44,5 @@ __all__ = [
     "RunRepository",
     "RunStepRepository",
     "SCHEMA_SQL",
-    "STORE_SCHEMA_FAMILY",
-    "STORE_SCHEMA_VERSION",
     "StepRepository",
 ]

@@ -8,7 +8,7 @@
 
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { fetchJson, ApiError } from "../client";
-import { ErrorCodes } from "../schema";
+import { ErrorCodes } from "../errorCodes";
 
 // ---------------------------------------------------------------------------
 // Tests

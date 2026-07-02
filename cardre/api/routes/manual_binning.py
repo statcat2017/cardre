@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
+from cardre.api.errors import CardreApiError, REVIEW_NOT_FOUND
 from cardre.api.schemas import (
     ManualBinningEditRequest,
     ManualBinningEditResponse,
@@ -77,12 +78,10 @@ async def get_review(
     repo = ManualBinningRepository(store)
     review = repo.get_review(review_id)
     if review is None:
-        raise HTTPException(
+        raise CardreApiError(
+            code=REVIEW_NOT_FOUND,
+            message=f"Review {review_id!r} not found.",
             status_code=404,
-            detail={
-                "code": "REVIEW_NOT_FOUND",
-                "message": f"Review {review_id!r} not found.",
-            },
         )
     return _review_to_response(review)
 
@@ -98,12 +97,10 @@ async def update_review(
     repo = ManualBinningRepository(store)
     existing = repo.get_review(review_id)
     if existing is None:
-        raise HTTPException(
+        raise CardreApiError(
+            code=REVIEW_NOT_FOUND,
+            message=f"Review {review_id!r} not found.",
             status_code=404,
-            detail={
-                "code": "REVIEW_NOT_FOUND",
-                "message": f"Review {review_id!r} not found.",
-            },
         )
     repo.update_review(
         review_id=review_id,

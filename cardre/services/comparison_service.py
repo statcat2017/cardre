@@ -14,7 +14,7 @@ from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.evidence_locator import latest_successful_run_step
+from cardre.store.run_repo import RunRepository
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_COMPARISON,
     canonical_alias_candidates,
@@ -59,11 +59,16 @@ def _check_branch_readiness(
                 break
         actual_id = actual_id or cs
         evidence_branch = branch_id if not is_baseline else None
+        repo = RunRepository(store)
         rs = None
         for candidate in [actual_id, *canonical_alias_candidates(cs)]:
-            rs = latest_successful_run_step(
-                store, plan_version_id, candidate, branch_id=evidence_branch,
+            rs = repo.get_latest_successful_step(
+                plan_version_id, candidate, branch_id=evidence_branch,
             )
+            if rs is None and evidence_branch is not None:
+                rs = repo.get_latest_successful_step(
+                    plan_version_id, candidate, branch_id=None,
+                )
             if rs is not None:
                 break
         if rs is None:
@@ -147,20 +152,17 @@ def _build_comparison_content(
         """Find the typed evidence for a canonical step."""
         for row in step_map:
             if row["canonical_step_id"] == cs:
-                rs = store.get_latest_successful_run_step_for_step(pv_id, row["step_id"], branch_id=evidence_branch_id)
+                repo = RunRepository(store)
+                rs = repo.get_latest_successful_step(pv_id, row["step_id"], branch_id=evidence_branch_id)
                 if rs is None and evidence_branch_id is not None:
-                    rs = store.get_latest_successful_run_step_for_step(pv_id, row["step_id"], branch_id=None)
+                    rs = repo.get_latest_successful_step(pv_id, row["step_id"], branch_id=None)
                 if rs:
-                    # Handle both RunStepRecord (with .output_artifact_ids) and plain dict
-                    artifact_ids = getattr(rs, "output_artifact_ids", None)
-                    if artifact_ids is None and isinstance(rs, dict):
-                        # Look up artifact IDs from artifact_lineage for dict results
-                        rows = store.execute(
-                            "SELECT artifact_id FROM artifact_lineage "
-                            "WHERE run_id = ? AND direction = 'output'",
-                            (rs.get("run_id", ""),),
-                        ).fetchall()
-                        artifact_ids = [r["artifact_id"] for r in rows]
+                    rows = store.execute(
+                        "SELECT artifact_id FROM artifact_lineage "
+                        "WHERE run_step_id = ? AND direction = 'output'",
+                        (rs.run_step_id,),
+                    ).fetchall()
+                    artifact_ids = [r["artifact_id"] for r in rows]
                     if artifact_ids:
                         for aid in artifact_ids:
                             for kind in kinds:

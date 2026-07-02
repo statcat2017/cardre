@@ -7,7 +7,7 @@
 
 import React, { useState } from "react";
 import { useManualBinningReview } from "../hooks/useManualBinningReview";
-import type { ManualBinningEditRequest } from "../api/schema";
+import type { components } from "../api/schema.d";
 
 export interface ManualBinningEditorSpikeProps {
   baseUrl: string;
@@ -34,7 +34,7 @@ export function ManualBinningEditorSpike({
     clearError();
     setResult(null);
     try {
-      const request: ManualBinningEditRequest = {
+      const request: components["schemas"]["ManualBinningEditRequest"] = {
         plan_version_id: planVersionId,
         step_id: stepId,
         overrides,

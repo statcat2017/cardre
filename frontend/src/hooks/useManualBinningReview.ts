@@ -4,12 +4,7 @@
 
 import { useCallback, useState } from "react";
 import { fetchJson, ApiError } from "../api/client";
-import type {
-  ManualBinningReviewResponse,
-  ManualBinningEditRequest,
-  ManualBinningEditResponse,
-  ManualBinningReviewUpdate,
-} from "../api/schema";
+import type { components } from "../api/schema.d";
 
 export interface UseManualBinningReviewOptions {
   baseUrl: string;
@@ -18,7 +13,7 @@ export interface UseManualBinningReviewOptions {
 
 export interface UseManualBinningReviewReturn {
   /** Currently loaded review, or null. */
-  review: ManualBinningReviewResponse | null;
+  review: components["schemas"]["ManualBinningReviewResponse"] | null;
   /** Loading flag. */
   loading: boolean;
   /** Error string, if any. */
@@ -26,9 +21,9 @@ export interface UseManualBinningReviewReturn {
   /** Load a review by ID. */
   loadReview: (reviewId: string) => Promise<void>;
   /** Submit an atomic manual-binning edit (creates draft + review). */
-  submitEdit: (request: ManualBinningEditRequest) => Promise<ManualBinningEditResponse>;
+  submitEdit: (request: components["schemas"]["ManualBinningEditRequest"]) => Promise<components["schemas"]["ManualBinningEditResponse"]>;
   /** Update an existing review (status, notes). */
-  updateReview: (reviewId: string, update: ManualBinningReviewUpdate) => Promise<void>;
+  updateReview: (reviewId: string, update: components["schemas"]["ManualBinningReviewUpdate"]) => Promise<void>;
   /** Clear error state. */
   clearError: () => void;
 }
@@ -37,7 +32,7 @@ export function useManualBinningReview(
   options: UseManualBinningReviewOptions,
 ): UseManualBinningReviewReturn {
   const { baseUrl, projectId } = options;
-  const [review, setReview] = useState<ManualBinningReviewResponse | null>(null);
+  const [review, setReview] = useState<components["schemas"]["ManualBinningReviewResponse"] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,7 +53,7 @@ export function useManualBinningReview(
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchJson<ManualBinningReviewResponse>(
+        const data = await fetchJson<components["schemas"]["ManualBinningReviewResponse"]>(
           `${baseUrl}/projects/${projectId}/manual-binning/reviews/${reviewId}`,
         );
         setReview(data);
@@ -72,11 +67,11 @@ export function useManualBinningReview(
   );
 
   const submitEdit = useCallback(
-    async (request: ManualBinningEditRequest): Promise<ManualBinningEditResponse> => {
+    async (request: components["schemas"]["ManualBinningEditRequest"]): Promise<components["schemas"]["ManualBinningEditResponse"]> => {
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchJson<ManualBinningEditResponse>(
+        const data = await fetchJson<components["schemas"]["ManualBinningEditResponse"]>(
           `${baseUrl}/projects/${projectId}/manual-binning/edit`,
           {
             method: "POST",
@@ -95,11 +90,11 @@ export function useManualBinningReview(
   );
 
   const updateReview = useCallback(
-    async (reviewId: string, update: ManualBinningReviewUpdate) => {
+    async (reviewId: string, update: components["schemas"]["ManualBinningReviewUpdate"]) => {
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchJson<ManualBinningReviewResponse>(
+        const data = await fetchJson<components["schemas"]["ManualBinningReviewResponse"]>(
           `${baseUrl}/projects/${projectId}/manual-binning/reviews/${reviewId}`,
           {
             method: "PATCH",

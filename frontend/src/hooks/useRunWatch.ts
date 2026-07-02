@@ -8,8 +8,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJson, ApiError } from "../api/client";
-import { ErrorCodes } from "../api/schema";
-import type { RunResponse } from "../api/schema";
+import { ErrorCodes } from "../api/errorCodes";
+import type { components } from "../api/schema.d";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -28,7 +28,7 @@ export type RunWatchStatus =
 
 export interface RunWatchState {
   /** Current run data, or null if not yet loaded. */
-  run: RunResponse | null;
+  run: components["schemas"]["RunResponse"] | null;
   /** High-level status derived from run + error state. */
   status: RunWatchStatus;
   /** Human-readable status message. */
@@ -51,7 +51,7 @@ export interface UseRunWatchOptions {
   /** Maximum number of consecutive error polls before giving up (default 5). */
   maxErrorRetries?: number;
   /** Callback when run reaches a terminal state. */
-  onComplete?: (run: RunResponse) => void;
+  onComplete?: (run: components["schemas"]["RunResponse"]) => void;
   /** Callback on polling error. */
   onError?: (error: ApiError) => void;
 }
@@ -60,7 +60,7 @@ export interface UseRunWatchOptions {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function deriveStatus(run: RunResponse | null, error: string | null): RunWatchStatus {
+function deriveStatus(run: components["schemas"]["RunResponse"] | null, error: string | null): RunWatchStatus {
   if (error) return "error";
   if (!run) return "loading";
   switch (run.status) {
@@ -79,7 +79,7 @@ function deriveStatus(run: RunResponse | null, error: string | null): RunWatchSt
   }
 }
 
-function deriveMessage(status: RunWatchStatus, run: RunResponse | null): string {
+function deriveMessage(status: RunWatchStatus, run: components["schemas"]["RunResponse"] | null): string {
   switch (status) {
     case "loading":
       return "Loading run…";
@@ -119,7 +119,7 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
     onError,
   } = options;
 
-  const [run, setRun] = useState<RunResponse | null>(null);
+  const [run, setRun] = useState<components["schemas"]["RunResponse"] | null>(null);
   const [status, setStatus] = useState<RunWatchStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
@@ -133,7 +133,7 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
     const url = `${baseUrl}/projects/${projectId}/runs/${runId}`;
 
     try {
-      const data = await fetchJson<RunResponse>(url, { timeoutMs: pollIntervalMs - 200 });
+      const data = await fetchJson<components["schemas"]["RunResponse"]>(url, { timeoutMs: pollIntervalMs - 200 });
       errorCountRef.current = 0;
       setRun(data);
       setError(null);
