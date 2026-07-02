@@ -96,3 +96,14 @@ class TestProjects:
         )
         assert resp2.status_code == 200
         assert resp2.json()["project_id"] == pid
+
+    def test_create_project_rejects_relative_path(self, api_client, tmp_path):
+        resp = api_client.post("/projects", json={"name": "X", "path": "relative/path.cardre"})
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "INVALID_PROJECT_PATH"
+
+    def test_create_project_rejects_parent_traversal(self, api_client, tmp_path):
+        traversal = str(tmp_path / "legit.cardre" / ".." / "escape.cardre")
+        resp = api_client.post("/projects", json={"name": "X", "path": traversal})
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "INVALID_PROJECT_PATH"

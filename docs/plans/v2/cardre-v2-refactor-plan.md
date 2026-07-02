@@ -1025,3 +1025,18 @@ The canonical set lives in `cardre/api/errors.py` (Python). The TypeScript
 file mirrors it manually and must be kept in sync by hand until a generator
 is added. This is intentionally documented rather than fixed in this round
 because the set is small (~21 codes) and changes infrequently.
+
+### Coverage threshold lowered from 75 to 43
+
+The preflight `--cov-fail-under` threshold was lowered from 75 to 43 in
+commit `09acda6` ("fix: preflight policy cleanup for v2") on the v2 branch,
+before PR 197. The v2 big-bang delete removed ~76k lines of v1 code and
+the surviving v2 codebase has a different shape (more nodes/engine code
+that requires optional dependencies to cover). The threshold was raised
+from 40 to 43 in PR 197's Phase 7 (`3dd60ff`). Current coverage is ~53%.
+
+This is **temporary v2 debt**. The threshold should be raised back toward
+75 as the v2 test suite matures. The governance test command also changed
+from `pytest -m governance` to `pytest tests/test_api_*.py` — this
+*expands* coverage (all governance tests live in `test_api_branches.py`,
+which is matched by the glob), so no governance tests were lost.

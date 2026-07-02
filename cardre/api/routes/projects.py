@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
-from cardre.api.errors import CardreApiError, PROJECT_NOT_FOUND, STORE_ALREADY_EXISTS
+from cardre.api.errors import CardreApiError, INVALID_PROJECT_PATH, PROJECT_NOT_FOUND, STORE_ALREADY_EXISTS
 from cardre.api.schemas import ProjectCreateRequest, ProjectListResponse, ProjectResponse
 from cardre.domain.errors import SchemaVersionError
 from cardre.store.db import ProjectStore
@@ -64,6 +64,18 @@ async def create_project(
 ) -> ProjectResponse:
     """Create a new project by bootstrapping a fresh v2 store at body.path."""
     root = Path(body.path)
+    if not root.is_absolute():
+        raise CardreApiError(
+            code=INVALID_PROJECT_PATH,
+            message=f"Project path must be absolute, got {body.path!r}.",
+            status_code=400,
+        )
+    if ".." in root.parts:
+        raise CardreApiError(
+            code=INVALID_PROJECT_PATH,
+            message=f"Project path must not contain '..' traversal, got {body.path!r}.",
+            status_code=400,
+        )
     store = ProjectStore(root)
     try:
         store.initialize()
