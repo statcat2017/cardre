@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from cardre.reporting.limitation_codes import LimitationCode  # noqa: F401
+from cardre.readiness.limitation_codes import LimitationCode  # noqa: F401
 
 
 # ---------------------------------------------------------------------------

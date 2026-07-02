@@ -16,7 +16,7 @@ from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.run import RunStep
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.kinds import EvidenceKind
-from cardre.reporting.limitation_codes import LimitationCode
+from cardre.readiness.limitation_codes import LimitationCode
 from cardre.reporting.schema import (
     AffectedBinDetail,
     ArtifactEntry,
@@ -57,48 +57,6 @@ from cardre.reporting.schema import (
 
 from cardre.reporting.evidence_contract import REQUIRED_STEPS_COLLECTOR
 from cardre.domain.errors import Diagnostic
-
-# ---------------------------------------------------------------------------
-# Inlined v1 Result / Ok / Degraded (previously cardre.errors)
-# ---------------------------------------------------------------------------
-
-T = Any
-
-
-class _Result:
-    """V1-compatible Result wrapper inlined from cardre.errors."""
-    def __init__(self, value: T | None = None, *, ok: bool = True,
-                 degraded: bool = False,
-                 diagnostics: list[Any] | None = None) -> None:
-        self._value = value
-        self._ok = ok
-        self._degraded = degraded
-        self.diagnostics = diagnostics or []
-
-    def is_ok(self) -> bool:
-        return self._ok and not self._degraded
-
-    def is_degraded(self) -> bool:
-        return self._degraded
-
-    def unwrap(self) -> T | None:
-        return self._value
-
-
-def _Ok(value: Any = None) -> _Result:
-    return _Result(value, ok=True)
-
-
-def _Degraded(value: Any = None, diagnostics: list[Any] | None = None) -> _Result:
-    return _Result(value, ok=False, degraded=True, diagnostics=diagnostics)
-
-
-def _is_ok(result: _Result) -> bool:
-    return result.is_ok()
-
-
-def _is_degraded(result: _Result) -> bool:
-    return result.is_degraded()
 
 # ---------------------------------------------------------------------------
 # Inlined step resolution helpers (formerly cardre.step_id)
@@ -337,7 +295,7 @@ class ReportCollector:
             self._collect_woe_iv(bundle, woe_ref, plan_version_id)
 
         # Model
-        model_ref = resolved.get("logistic-regression")
+        model_ref = resolved.get("model-fit")
         if model_ref:
             self._collect_model(bundle, model_ref, plan_version_id)
 
@@ -442,7 +400,7 @@ class ReportCollector:
         rs = self._resolve_run_step(ref, plan_version_id)
         if rs is None:
             self.limitations.append(Limitation(
-                severity="blocker", code=LimitationCode.MISSING_WOE_IV_EVIDENCE_V1,
+                severity="blocker",                 code=LimitationCode.MISSING_WOE_IV_EVIDENCE,
                 message=f"WOE/IV step {ref.step_id} has no successful run.",
             ))
             return
@@ -450,7 +408,7 @@ class ReportCollector:
         evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.WOE_IV_EVIDENCE)
         if evidence is None:
             self.limitations.append(Limitation(
-                severity="warning", code=LimitationCode.LEGACY_WOE_SUMMARY_USED,
+                severity="warning",                 code=LimitationCode.WOE_SUMMARY_USED_INSTEAD_OF_EVIDENCE,
                 message=f"WOE/IV step {ref.step_id} has no cardre.woe_iv_evidence.v1 artifact.",
             ))
             return
@@ -701,14 +659,10 @@ class ReportCollector:
                         edited_vars = list({ov.get("variable", "") for ov in overrides if ov.get("variable")})
                         reasons = list({ov.get("reason_code", "") for ov in overrides if ov.get("reason_code")})
                         # Read audit metadata from the latest review annotation
-                        annotation_result = self._get_latest_review_annotation(
+                        annotation, annotation_diags = self._get_latest_review_annotation(
                             mb_ref.step_id, plan_version_id,
                         )
-                        if _is_ok(annotation_result) or _is_degraded(annotation_result):
-                            annotation = annotation_result.value
-                        else:
-                            annotation = None
-                        if _is_degraded(annotation_result):
+                        if annotation_diags:
                             self.limitations.append(Limitation(
                                 severity="warning", code=LimitationCode.MISSING_MANUAL_INTERVENTION_REASON,
                                 message="Review annotation could not be read.",
@@ -889,9 +843,7 @@ class ReportCollector:
                 ))
         return entries
 
-    def _get_latest_review_annotation(self, step_id: str, plan_version_id: str) -> _Result:
-        """Read the most recent manual_binning_review annotation for a step.
-        Returns Ok(dict | None) on success, Degraded(None, ...) on error."""
+    def _get_latest_review_annotation(self, step_id: str, plan_version_id: str) -> tuple[dict | None, list[Diagnostic]]:
         import json as _json
 
         try:
@@ -903,12 +855,12 @@ class ReportCollector:
                     (step_id, plan_version_id, "manual_binning_review"),
                 ).fetchall()
             if not rows:
-                return _Ok(None)
+                return (None, [])
             payload = _json.loads(rows[0]["payload_json"])
             payload["created_at"] = rows[0]["created_at"]
-            return _Ok(payload)
+            return (payload, [])
         except Exception as exc:
-            return _Degraded(None, [Diagnostic(
+            return (None, [Diagnostic(
                 code="REVIEW_ANNOTATION_UNREADABLE",
                 message="Could not read review annotation.",
                 exception_type=type(exc).__name__,

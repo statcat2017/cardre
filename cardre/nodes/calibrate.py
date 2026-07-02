@@ -481,7 +481,7 @@ class CalibrateProbabilitiesNode(NodeType):
 
         # 8. Build updated model artifact from the original
         model: dict[str, Any] = dict(getattr(typed_model, "_raw", {}))
-        model.update(typed_model.as_legacy_dict())
+        model.update(typed_model.to_model_dict())
 
         # 9. Handle serialization and folding
         calibrator_art_ref = None

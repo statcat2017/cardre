@@ -91,21 +91,11 @@ class VariableSelectionNode(NodeType):
 
         cluster_rule = params.get("cluster_representative_rule", "none")
         valid_rules = {"none", "one_per_cluster_highest_iv", "one_per_cluster_lowest_missing", "manual_override"}
-        legacy_aliases = {
-            "highest_iv": "one_per_cluster_highest_iv",
-            "lowest_missing": "one_per_cluster_lowest_missing",
-        }
         if cluster_rule not in valid_rules:
-            if cluster_rule in legacy_aliases:
-                errors.append(
-                    f"cluster_representative_rule {cluster_rule!r} has been renamed to "
-                    f"{legacy_aliases[cluster_rule]!r} — please update your configuration"
-                )
-            else:
-                errors.append(
-                    f"Unknown cluster_representative_rule {cluster_rule!r}; "
-                    f"valid values: {', '.join(sorted(valid_rules))}"
-                )
+            errors.append(
+                f"Unknown cluster_representative_rule {cluster_rule!r}; "
+                f"valid values: {', '.join(sorted(valid_rules))}"
+            )
 
         for key in ("manual_includes", "manual_excludes"):
             for entry in list(params.get(key, [])):
@@ -140,12 +130,6 @@ class VariableSelectionNode(NodeType):
         manual_entries_raw = list(params.get("manual_includes", []))
         manual_excludes_raw = list(params.get("manual_excludes", []))
         cluster_rule = params.get("cluster_representative_rule", "none")
-        _legacy_aliases = {
-            "highest_iv": "one_per_cluster_highest_iv",
-            "lowest_missing": "one_per_cluster_lowest_missing",
-        }
-        if cluster_rule in _legacy_aliases:
-            cluster_rule = _legacy_aliases[cluster_rule]
         cluster_overrides_raw = list(params.get("cluster_representative_overrides", []))
 
         for entry in manual_entries_raw + manual_excludes_raw:

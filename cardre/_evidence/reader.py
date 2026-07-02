@@ -281,8 +281,6 @@ class ArtifactEvidenceReader:
 
         # Phase 1: schema_version exact match
         schema_versions = {profile.schema_version} if profile.schema_version else set()
-        if profile.legacy_schema_versions:
-            schema_versions.update(profile.legacy_schema_versions)
         if schema_versions:
             candidates = [
                 a for a in artifacts
@@ -303,11 +301,6 @@ class ArtifactEvidenceReader:
             if self._candidate_passes_payload_check(candidates[0], profile):
                 return candidates
             candidates = []
-
-        # Phase 3: legacy payload heuristics for ambiguous cases
-        legacy = self._legacy_match(artifacts, kind)
-        if legacy:
-            return legacy
 
         # Last resort: return Phase 2 candidates even if ambiguous
         return candidates
@@ -344,8 +337,6 @@ class ArtifactEvidenceReader:
                 keys = set(data.keys())
                 if profile.required_keys.issubset(keys):
                     return True
-                if profile.legacy_required_keys is not None:
-                    return profile.legacy_required_keys.issubset(keys)
                 return False
             except (json.JSONDecodeError, UnicodeDecodeError):
                 return False
@@ -359,98 +350,6 @@ class ArtifactEvidenceReader:
             return columns.issubset(cols)
         except Exception:
             return False
-
-    def _legacy_match(self, artifacts: list[ArtifactRef], kind: EvidenceKind) -> list[ArtifactRef]:
-        """Legacy payload heuristics for evidence kinds that share role/type."""
-        if kind == EvidenceKind.BIN_DEFINITION:
-            defs = [a for a in artifacts if a.role == "definition" and a.media_type == "application/json"]
-            return self._match_by_payload_key(defs, {"variables"}, exclude_key="selected")
-        if kind == EvidenceKind.SELECTION_DEFINITION:
-            defs = [a for a in artifacts if a.role == "definition" and a.media_type == "application/json"]
-            return self._match_by_payload_key(defs, {"selected"})
-        if kind == EvidenceKind.MODELLING_METADATA:
-            return self._match_by_payload_key(artifacts, {"target_column", "good_values", "bad_values"})
-        if kind == EvidenceKind.WOE_TABLE:
-            return [
-                a for a in artifacts
-                if a.role == "report"
-                and a.media_type == "application/vnd.apache.parquet"
-                and self._parquet_has_columns(a, {"variable", "bin_id", "woe"})
-            ]
-        if kind == EvidenceKind.IV_TABLE:
-            return [
-                a for a in artifacts
-                if a.role == "report"
-                and a.media_type == "application/vnd.apache.parquet"
-                and self._parquet_has_columns(a, {"iv", "variable"})
-            ]
-        if kind == EvidenceKind.VARIABLE_CLUSTERING:
-            return self._match_by_payload_key(artifacts, {"method", "clusters"})
-        if kind == EvidenceKind.SPLIT_SUMMARY:
-            return self._match_by_payload_key(artifacts, {"strategy", "row_counts"})
-        if kind == EvidenceKind.PROFILE_SUMMARY:
-            return self._match_by_payload_key(artifacts, {"profiles"}) or self._match_by_payload_key(
-                artifacts,
-                {"row_count", "column_count", "columns", "dtypes"},
-            )
-        if kind == EvidenceKind.EXCLUSION_SUMMARY:
-            return self._match_by_payload_key(artifacts, {"rows_before", "rows_after", "rules"})
-        if kind == EvidenceKind.WOE_TRANSFORM_EVIDENCE:
-            return self._match_by_payload_key(artifacts, {"target_column", "transformed_variables"})
-        if kind == EvidenceKind.APPLY_WOE_EVIDENCE:
-            return self._match_by_payload_key(artifacts, {"roles", "policy"})
-        if kind == EvidenceKind.APPLY_MODEL_EVIDENCE:
-            return self._match_by_payload_key(artifacts, {"roles", "model_artifact_id"})
-        if kind == EvidenceKind.REPORT_BUNDLE:
-            return self._match_by_payload_key(artifacts, {"project_id", "run_id", "summary", "source"})
-        if kind == EvidenceKind.RUN_MANIFEST:
-            return [
-                a for a in artifacts
-                if a.artifact_type == "run_manifest"
-                and a.media_type == "application/json"
-                and self._match_by_payload_key([a], {"manifest_version", "run_id", "steps"})
-            ]
-        if kind == EvidenceKind.TECHNICAL_MANIFEST_INDEX:
-            return self._match_by_payload_key(artifacts, {"manifests"})
-        if kind == EvidenceKind.COMPARISON_ARTIFACT:
-            return [
-                a for a in artifacts
-                if a.artifact_type == "branch_comparison"
-                and a.media_type == "application/json"
-                and self._match_by_payload_key([a], {"comparison_type", "baseline_branch_id", "challenger_branch_id"})
-            ]
-        if kind == EvidenceKind.FEATURE_SELECTION_EVIDENCE:
-            return self._match_by_payload_key(artifacts, {"selected", "rejected"})
-        if kind == EvidenceKind.RESAMPLING_EVIDENCE:
-            return self._match_by_payload_key(artifacts, {"original", "resampled"})
-        if kind == EvidenceKind.HYPERPARAMETER_TUNING_EVIDENCE:
-            return self._match_by_payload_key(artifacts, {"best_params", "best_score"})
-        if kind == EvidenceKind.ENSEMBLE_MODEL_ARTIFACT:
-            return self._match_by_payload_key(artifacts, {"model_family", "model_payload"})
-        if kind == EvidenceKind.EXPLAINABILITY_REPORT:
-            return self._match_by_payload_key(artifacts, {"model_family", "limitations"})
-        if kind == EvidenceKind.FAIRNESS_REPORT:
-            return self._match_by_payload_key(artifacts, {"roles", "parity_summary"})
-        if kind == EvidenceKind.PROXY_RISK_REPORT:
-            return self._match_by_payload_key(artifacts, {"proxy_flags", "overall_risk"})
-        return []
-
-    def _match_by_payload_key(
-        self,
-        artifacts: list[ArtifactRef],
-        required_keys: set[str],
-        exclude_key: str | None = None,
-    ) -> list[ArtifactRef]:
-        result: list[ArtifactRef] = []
-        for a in artifacts:
-            try:
-                payload = json.loads(self._store.artifact_path(a).read_text())
-            except Exception:
-                continue
-            if required_keys.issubset(payload.keys()):
-                if exclude_key is None or exclude_key not in payload:
-                    result.append(a)
-        return result
 
     # ------------------------------------------------------------------
     # Internal: parsing
@@ -522,7 +421,7 @@ class ArtifactEvidenceReader:
 
         if profile.required_keys:
             missing = profile.required_keys - set(data.keys())
-            if missing and not (profile.legacy_required_keys and profile.legacy_required_keys.issubset(set(data.keys()))):
+            if missing:
                 raise EvidenceParseError(
                     f"Evidence {kind.value} missing required keys: {missing}",
                     kind=kind,

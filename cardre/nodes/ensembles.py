@@ -50,7 +50,7 @@ def _load_model_artifact(reader: ArtifactEvidenceReader, artifact_id: str) -> di
     if typed is None:
         raise ValueError(f"Model artifact {artifact_id!r} not found or not recognized as model evidence")
     model = dict(getattr(typed, "_raw", {}))
-    model.update(typed.as_legacy_dict())
+    model.update(typed.to_model_dict())
     return model
 
 

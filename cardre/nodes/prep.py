@@ -10,7 +10,7 @@ from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.domain.diagnostics import JsonDict
 from cardre.nodes.contracts import NodeType
-from cardre._evidence.schemas import SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION
+from cardre._evidence.schemas import SCHEMA_EXCLUSION_SUMMARY, SCHEMA_MODELLING_METADATA, SCHEMA_PROFILE_SUMMARY, SCHEMA_SAMPLE_DEFINITION, SCHEMA_SPLIT_SUMMARY
 from cardre.nodes._dataset_quality import quality_warnings as _quality_warnings
 from cardre.node_parameters import (
     MethodOption,
@@ -456,13 +456,22 @@ class ProfileDatasetNode(NodeType):
             "recommended_exclude_columns": recommended_exclude,
         }
 
+        report["profiles"] = [{
+            "row_count": report["row_count"],
+            "column_count": report["column_count"],
+            "columns": report["columns"],
+            "dtypes": report["dtypes"],
+            "null_counts": report["null_counts"],
+            "numeric_stats": report["numeric_stats"],
+        }]
+
         artifact = write_json_artifact(
             store,
             artifact_type="report",
             role="report",
             stem=f"profile-{context.step_spec.step_id}",
             payload=report,
-            metadata=metadata,
+            metadata={**metadata, "schema_version": SCHEMA_PROFILE_SUMMARY},
         )
 
         return NodeOutput(
@@ -774,7 +783,7 @@ class SplitTrainTestOotNode(NodeType):
             role="report",
             stem=f"split-report-{context.step_spec.step_id}",
             payload=split_report,
-            metadata={"source_artifact_id": dataset_artifact.artifact_id},
+            metadata={"source_artifact_id": dataset_artifact.artifact_id, "schema_version": SCHEMA_SPLIT_SUMMARY},
         )
         artifacts.append(split_report_artifact)
 
@@ -986,7 +995,7 @@ class ApplyExclusionsNode(NodeType):
             store, artifact_type="report", role="report",
             stem=f"exclusion-report-{context.step_spec.step_id}",
             payload=exclusion_report,
-            metadata={"source_artifact_id": dataset_artifact.artifact_id},
+            metadata={"source_artifact_id": dataset_artifact.artifact_id, "schema_version": SCHEMA_EXCLUSION_SUMMARY},
         )
 
         return NodeOutput(

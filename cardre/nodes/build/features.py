@@ -17,7 +17,7 @@ from cardre.engine.binning.diagnostics import MonotonicStatus, check_pure_bins, 
 from cardre.nodes._bin_mask import build_bin_condition
 from cardre._evidence.kinds import AmbiguousEvidenceError, EvidenceKind, EvidenceNotFoundError
 from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import SCHEMA_WOE_TABLE
+from cardre._evidence.schemas import SCHEMA_IV_TABLE, SCHEMA_WOE_TABLE, SCHEMA_WOE_TRANSFORM_EVIDENCE
 
 
 class CalculateWoeIvNode(NodeType):
@@ -314,7 +314,7 @@ class CalculateWoeIvNode(NodeType):
             store, artifact_type="report", role="report",
             stem=f"iv-ranking-{purpose}-{context.step_spec.step_id}",
             frame=iv_table,
-            metadata={"purpose": purpose, "zero_cell_policy": zero_cell_policy},
+            metadata={"purpose": purpose, "zero_cell_policy": zero_cell_policy, "schema_version": SCHEMA_IV_TABLE},
         )
 
         summary = {
@@ -488,7 +488,7 @@ class WoeTransformTrainNode(NodeType):
             store, artifact_type="report", role="report",
             stem=f"woe-transform-report-{context.step_spec.step_id}",
             payload=transform_report,
-            metadata={},
+            metadata={"schema_version": SCHEMA_WOE_TRANSFORM_EVIDENCE},
         )
 
         dataset_artifact = write_parquet_artifact(

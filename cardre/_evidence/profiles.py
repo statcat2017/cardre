@@ -18,6 +18,7 @@ from cardre._evidence.schemas import (
     SCHEMA_FEATURE_SELECTION_EVIDENCE,
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
     SCHEMA_HYPERPARAMETER_TUNING_EVIDENCE,
+    SCHEMA_IV_TABLE,
     SCHEMA_MANUAL_BINNING_OVERRIDES,
     SCHEMA_MODELLING_METADATA,
     SCHEMA_MODEL_ARTIFACT,
@@ -48,10 +49,8 @@ class _Profile:
     expected_roles: set[str]
     expected_artifact_types: set[str]
     schema_version: str
-    legacy_schema_versions: set[str] | None = None
     expected_media_types: set[str] = field(default_factory=lambda: {"application/json"})
     required_keys: set[str] | None = None
-    legacy_required_keys: set[str] | None = None
     exclude_key: str | None = None
     required_columns: set[str] | None = None
 
@@ -80,7 +79,6 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"report"},
         schema_version=SCHEMA_PROFILE_SUMMARY,
         required_keys={"profiles"},
-        legacy_required_keys={"row_count", "column_count", "columns", "dtypes"},
     ),
     EvidenceKind.EXCLUSION_SUMMARY: _Profile(
         expected_roles={"report"},
@@ -129,7 +127,7 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
     EvidenceKind.IV_TABLE: _Profile(
         expected_roles={"report"},
         expected_artifact_types={"report", "dataset"},
-        schema_version="",
+        schema_version=SCHEMA_IV_TABLE,
         expected_media_types={"application/vnd.apache.parquet"},
         required_columns={"iv", "variable"},
     ),
@@ -156,7 +154,6 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"model", "definition", "report"},
         schema_version=SCHEMA_MODEL_ARTIFACT,
         required_keys={"model_family"},
-        legacy_required_keys={"coefficients", "intercept"},
     ),
     EvidenceKind.ENSEMBLE_MODEL_ARTIFACT: _Profile(
         expected_roles={"model"},
@@ -169,15 +166,12 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"scorecard", "report"},
         schema_version=SCHEMA_SCORE_SCALING,
         required_keys={"factor", "offset"},
-        legacy_required_keys={"base_score", "base_odds", "points_to_double_odds"},
     ),
     EvidenceKind.VALIDATION_METRICS: _Profile(
         expected_roles={"report"},
         expected_artifact_types={"report"},
         schema_version=SCHEMA_VALIDATION_METRICS,
-        legacy_schema_versions={SCHEMA_VALIDATION_EVIDENCE},
         required_keys={"metrics"},
-        legacy_required_keys={"roles", "stability", "gates"},
     ),
     EvidenceKind.CUTOFF_ANALYSIS: _Profile(
         expected_roles={"report"},
