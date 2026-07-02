@@ -7,9 +7,9 @@ their own required-step lists and alias maps.
 
 from __future__ import annotations
 
-from cardre.audit import RunStepRecord
-from cardre.evidence_locator import latest_successful_run_step
+from cardre.domain.run import RunStep
 from cardre.store import ProjectStore
+from cardre.store.run_repo import RunRepository
 
 # ---------------------------------------------------------------------------
 # Required canonical steps per report mode
@@ -83,14 +83,17 @@ def find_evidence_for_canonical_step(
     plan_version_id: str,
     canonical_step_id: str,
     branch_id: str | None = None,
-) -> RunStepRecord | None:
+) -> RunStep | None:
     """Find the latest successful run step for a canonical step.
 
-    Resolves legacy aliases automatically.  Uses the evidence locator's
-    branch-scoped → full-plan → across-plan fallback chain.
+    Resolves legacy aliases automatically.  Uses branch-scoped, then
+    full-plan, then across-plan fallback chain.
     """
+    repo = RunRepository(store)
     for actual in canonical_alias_candidates(canonical_step_id):
-        rs = latest_successful_run_step(store, plan_version_id, actual, branch_id=branch_id)
+        rs = repo.get_latest_successful_step(plan_version_id, actual, branch_id=branch_id)
+        if rs is None and branch_id is not None:
+            rs = repo.get_latest_successful_step(plan_version_id, actual, branch_id=None)
         if rs is not None:
             return rs
     return None

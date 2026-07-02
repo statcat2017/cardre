@@ -1,4 +1,7 @@
-"""Champion assignment service — assign and query champion branches."""
+"""Champion assignment service — assign and query champion branches.
+
+Port from v1 to v2 infrastructure.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +10,10 @@ import sqlite3
 import uuid
 from typing import Any
 
-from cardre.audit import utc_now_iso
-from cardre.store import ProjectStore
+from cardre.domain.diagnostics import utc_now_iso
+from cardre.store.branch_repo import BranchRepository
+from cardre.store.comparison_repo import ComparisonRepository
+from cardre.store.db import ProjectStore
 
 
 def assign_champion(
@@ -31,10 +36,13 @@ def assign_champion(
 
     Supersedes any previous active champion for the same scope.
     """
+    branches_repo = BranchRepository(store)
+    comparison_repo = ComparisonRepository(store)
+
     if not assigned_reason.strip():
         raise ValueError("CHAMPION_REASON_REQUIRED: Champion assignment requires a non-empty rationale.")
 
-    branch = store.get_branch(branch_id)
+    branch = branches_repo.get_branch(branch_id)
     if branch is None:
         raise ValueError(f"CHAMPION_BRANCH_NOT_FOUND: No branch with ID {branch_id}")
     if branch.get("status") != "active":
@@ -43,12 +51,12 @@ def assign_champion(
         raise ValueError(f"CHAMPION_BRANCH_MISMATCH: Branch {branch_id} does not belong to plan {plan_id}.")
 
     # Verify comparison exists
-    comparison = store.get_branch_comparison(comparison_id)
+    comparison = comparison_repo.get_comparison(comparison_id)
     if comparison is None:
         raise ValueError(f"COMPARISON_NOT_FOUND: {comparison_id}")
 
     # Verify snapshot belongs to this comparison
-    snap = store.get_comparison_snapshot(comparison_snapshot_id)
+    snap = branches_repo.get_comparison_snapshot(comparison_snapshot_id)
     if snap is None or snap["comparison_id"] != comparison_id:
         raise ValueError(f"COMPARISON_SNAPSHOT_NOT_FOUND: {comparison_snapshot_id} does not belong to comparison {comparison_id}.")
 
@@ -56,8 +64,9 @@ def assign_champion(
     if not readiness.get("ready", False):
         raise ValueError("COMPARISON_NOT_READY: Comparison snapshot is not ready.")
 
-    # Verify branch's current head plan version matches snapshot source versions
-    source_pv_ids = json.loads(snap["source_plan_version_ids_json"])
+    # Read source plan versions from relational table, not JSON array
+    source_versions = comparison_repo.get_snapshot_plan_versions(comparison_snapshot_id)
+    source_pv_ids = [r["plan_version_id"] for r in source_versions]
     if branch["head_plan_version_id"] not in source_pv_ids:
         raise ValueError(
             f"STALE_SNAPSHOT: Branch {branch_id} head plan version "
@@ -65,8 +74,10 @@ def assign_champion(
             "Refresh the comparison before assigning champion."
         )
 
-    champ_ids = json.loads(comparison["challenger_branch_ids_json"])
-    if branch_id not in champ_ids and comparison["baseline_branch_id"] != branch_id:
+    # Check if the branch is part of this comparison
+    challenger_rows = comparison_repo.get_challenger_branches(comparison_id)
+    challenger_ids = [r["branch_id"] for r in challenger_rows]
+    if branch_id not in challenger_ids and comparison["baseline_branch_id"] != branch_id:
         raise ValueError(f"BRANCH_NOT_IN_COMPARISON: Branch {branch_id} is not included in comparison {comparison_id}.")
 
     # Supersede previous champion
@@ -75,21 +86,7 @@ def assign_champion(
     previous_id: str | None = None
 
     with store.transaction() as conn:
-        prev = conn.execute(
-            "SELECT champion_assignment_id FROM champion_assignments "
-            "WHERE project_id = ? AND plan_id = ? AND scope_type = ? AND scope_key = ? "
-            "AND superseded_at IS NULL ORDER BY assigned_at DESC LIMIT 1",
-            (project_id, plan_id, scope_type, scope_key),
-        ).fetchone()
-
-        if prev is not None:
-            previous_id = prev["champion_assignment_id"]
-            conn.execute(
-                "UPDATE champion_assignments SET superseded_at = ?, superseded_by_assignment_id = ? "
-                "WHERE champion_assignment_id = ?",
-                (now, champ_id, previous_id),
-            )
-
+        # Insert new champion first so FK from previous can reference it
         conn.execute(
             "INSERT INTO champion_assignments "
             "(champion_assignment_id, project_id, plan_id, scope_type, scope_key, "
@@ -102,6 +99,23 @@ def assign_champion(
                 branch["head_plan_version_id"], assigned_reason, now,
             ),
         )
+
+        # Now supersede any previous active champion
+        prev = conn.execute(
+            "SELECT champion_assignment_id FROM champion_assignments "
+            "WHERE project_id = ? AND plan_id = ? AND scope_type = ? AND scope_key = ? "
+            "AND champion_assignment_id != ? AND superseded_at IS NULL "
+            "ORDER BY assigned_at DESC LIMIT 1",
+            (project_id, plan_id, scope_type, scope_key, champ_id),
+        ).fetchone()
+
+        if prev is not None:
+            previous_id = prev["champion_assignment_id"]
+            conn.execute(
+                "UPDATE champion_assignments SET superseded_at = ?, superseded_by_assignment_id = ? "
+                "WHERE champion_assignment_id = ?",
+                (now, champ_id, previous_id),
+            )
 
     return {
         "champion_assignment_id": champ_id,
@@ -132,7 +146,8 @@ def supersede_champion_for_branch(
     If *conn* is provided, the UPDATE runs inside that existing transaction
     (no nested BEGIN).  Otherwise a new transaction is opened.
     """
-    assignment = store.get_champion_assignment_by_branch(branch_id)
+    branches_repo = BranchRepository(store)
+    assignment = branches_repo.get_champion_assignment_by_branch(branch_id)
     if assignment is None:
         return
     if assignment["selected_plan_version_id"] == new_plan_version_id:
@@ -160,7 +175,7 @@ def get_champion(
     scope_key: str = "default",
 ) -> dict[str, Any] | None:
     """Get the active champion assignment for a plan and scope."""
-    row = store._connect().execute(
+    row = store.execute(
         "SELECT * FROM champion_assignments "
         "WHERE plan_id = ? AND scope_type = ? AND scope_key = ? "
         "AND superseded_at IS NULL ORDER BY assigned_at DESC LIMIT 1",

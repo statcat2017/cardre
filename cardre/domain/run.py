@@ -1,0 +1,131 @@
+"""Run and RunStep domain types — run state machine.
+
+Run state machine::
+
+    created → queued → running → succeeded
+                                    → failed
+                                    → cancelled
+                                    → interrupted
+
+``RunStep`` does **not** own ``input_artifact_ids`` or
+``output_artifact_ids`` — those are derived via
+``RunStepEvidenceView`` from ``evidence_artifacts`` +
+``artifact_lineage``.
+"""
+
+from __future__ import annotations
+
+import enum
+from dataclasses import dataclass, field
+
+from cardre.domain.diagnostics import JsonDict
+from cardre.domain.diagnostics import utc_now_iso
+
+
+class RunStepStatus(enum.Enum):
+    """Status values for individual run steps."""
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+_VALID_TRANSITIONS: dict[str, set[str]] = {
+    "created": {"queued"},
+    "queued": {"running"},
+    "running": {"succeeded", "failed", "cancelled", "interrupted"},
+    "succeeded": set(),
+    "failed": set(),
+    "cancelled": set(),
+    "interrupted": set(),
+}
+
+
+def _check_transition(current: str, target: str) -> None:
+    allowed = _VALID_TRANSITIONS.get(current, set())
+    if target not in allowed:
+        raise ValueError(
+            f"Invalid run state transition: {current!r} -> {target!r}. "
+            f"Allowed transitions from {current!r}: {sorted(allowed)}"
+        )
+
+
+@dataclass(frozen=True)
+class RunScope:
+    """Scope of a run — what it targets."""
+    plan_version_id: str
+    branch_id: str | None = None
+    target_step_id: str | None = None
+    force: bool = False
+
+
+@dataclass(frozen=True)
+class Run:
+    """A single execution run of a plan version."""
+    run_id: str
+    plan_version_id: str
+    status: str  # one of the state machine values above
+    started_at: str
+    finished_at: str | None = None
+    branch_id: str | None = None
+    target_step_id: str | None = None
+    force: bool = False
+    metadata: JsonDict = field(default_factory=dict)
+
+    def transition_to(self, new_status: str) -> Run:
+        """Return a new ``Run`` with the given status, or raise."""
+        _check_transition(self.status, new_status)
+        import copy
+
+        terminal_statuses = {"succeeded", "failed", "cancelled", "interrupted"}
+        return Run(
+            run_id=self.run_id,
+            plan_version_id=self.plan_version_id,
+            status=new_status,
+            started_at=self.started_at,
+            finished_at=utc_now_iso() if new_status in terminal_statuses else None,
+            branch_id=self.branch_id,
+            target_step_id=self.target_step_id,
+            force=self.force,
+            metadata=copy.deepcopy(self.metadata),
+        )
+
+
+@dataclass(frozen=True)
+class RunStep:
+    """A single step execution record within a run.
+
+    Does **not** carry ``input_artifact_ids`` or ``output_artifact_ids``.
+    Those are derived from ``evidence_edges`` + ``evidence_artifacts`` +
+    ``artifact_lineage`` at query time (see ``RunStepEvidenceView``).
+    """
+    run_step_id: str
+    run_id: str
+    step_id: str
+    plan_version_id: str
+    status: RunStepStatus
+    started_at: str
+    finished_at: str | None = None
+    execution_fingerprint: JsonDict = field(default_factory=dict)
+    warnings: list[dict] = field(default_factory=list)
+    errors: list[dict] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RunStepEvidenceView:
+    """Aggregate view of a run step with derived artifact references."""
+    run_step: RunStep
+    input_artifacts: list = field(default_factory=list)
+    output_artifacts: list = field(default_factory=list)
+    evidence_edges: list = field(default_factory=list)
+
+
+__all__ = [
+    "Run",
+    "RunScope",
+    "RunStep",
+    "RunStepEvidenceView",
+    "RunStepStatus",
+    "_check_transition",
+]

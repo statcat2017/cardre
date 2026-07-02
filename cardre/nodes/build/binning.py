@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre.audit import ExecutionContext, NodeOutput, NodeType
+from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.nodes.contracts import NodeType
 from cardre.node_parameters import (
     MethodOption,
     NodeParameterSchema,

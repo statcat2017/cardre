@@ -1,6 +1,6 @@
 # Node Registry
 
-The `NodeRegistry` (`cardre/registry.py`) is the central registry of available node types. Nodes are registered by their `node_type` string identifier (e.g. `"cardre.import_dataset"`) and resolved at plan-execution time.
+The `NodeRegistry` (`cardre/nodes/registry.py`) is the central registry of available node types. Nodes are registered by their `node_type` string identifier (e.g. `"cardre.import_dataset"`) and resolved at plan-execution time.
 
 ## Node Tiers
 
@@ -23,7 +23,7 @@ reg.list_deferred_nodes() # returns deferred-tier node type strings
 
 ## Node Interface
 
-Every node type implements the `NodeType` abstract base class (`cardre/audit.py`):
+Every node type implements the `NodeType` abstract base class (`cardre/nodes/contracts.py`):
 
 - `run(context: ExecutionContext) -> NodeOutput`: execute the node.
 - `validate_params(params: dict) -> list[str]`: validate parameter values at run time.

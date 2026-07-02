@@ -1,16 +1,49 @@
 # Cardre Domain Glossary
 
-## Plan vs Pathway vs DAG
+## v2 Domain Model — Five First-Class Concepts
 
-- **Plan**: the versioned document that describes *what* to build — the intended graph of node instances. This is the user-facing concept they save, load, and version.
-- **Pathway**: a fixed template or constrained view of a plan (e.g. "this plan follows the standard scorecard pathway"). A pathway *is a kind of plan*, not a synonym for all plans.
-- **DAG**: internal implementation detail of the plan graph. Not exposed to the user.
+Cardre v2 is organised around five first-class domain concepts:
+
+1. **Project**: A scorecard project root directory (e.g. `example.cardre/`) containing a SQLite metadata store, datasets, artifacts, exports, and logs.
+2. **Plan**: The versioned document describing *what* to build — the intended graph of node instances. Users save, load, and version plans.
+3. **PlanVersion**: An immutable snapshot of a plan at a point in time. May be **draft** (editable, not yet executed) or **committed** (finalised, eligible for execution). Created on save; every run references exactly one plan version.
+4. **Run**: One execution of a committed plan version. Has a status lifecycle (pending → running → succeeded/failed/cancelled). May be sync (blocking) or async (background). Contains per-step execution records.
+5. **Artifact**: An immutable output file produced by a run step. Stored on filesystem by physical hash (SHA-256); carries a logical hash for reproducibility comparison. Referenced by metadata store.
+
+### Plan Version State
+
+- **Draft**: Editable plan version. No runs can reference it. Steps may be added, removed, or reconfigured. Drafts become committed via the mutation service.
+- **Committed**: Frozen plan version. Eligible for execution. Runs reference exactly one committed plan version.
+
+## Two-Level Evidence Model
+
+v2 replaces the v1 `run_steps.input_artifact_ids_json` / `output_artifact_ids_json` columns with a proper two-level evidence model:
+
+- **`evidence_edges`**: One row per parent→child edge at run time. Records the resolution policy (exact, param-only, tolerance), whether the edge is reused or stale, and links to source run steps. The grain is (run_step_id, parent_step_id, source_run_step_id).
+- **`evidence_artifacts`**: One row per artifact attached to an evidence edge. Multiple artifacts (e.g. bin definitions + profile summary) can be attached to the same edge.
+
+This is the **only** lineage source. No JSON arrays on `run_steps`. Staleness is computed from these tables, not written onto historical rows.
+
+## Relational Relationship Tables
+
+JSON relationship arrays from v1 have been replaced by relational join tables:
+
+| v1 (JSON array) | v2 (relational table) |
+|---|---|
+| `plan_steps.parent_step_ids_json` | `plan_step_edges` |
+| `branch_comparisons.challenger_branch_ids_json` | `comparison_challenger_branches` |
+| `branch_comparison_snapshots.source_plan_version_ids_json` | `comparison_snapshot_plan_versions` |
 
 ## Node Type vs Step
 
 - **Node type**: a reusable implementation registered in the node registry (e.g. `cardre.woe_transform`, `cardre.logistic_regression`). Has a `node_type` identifier, input/output contract, and executable code.
-- **Step**: one occurrence of a node type within a plan. Has a `step_id`, params, parent step IDs, status, and run records. A plan is a graph of steps.
+- **Step**: one occurrence of a node type within a plan. Has a `step_id`, params, parent step IDs (via `plan_step_edges`), status, and run records. A plan is a graph of steps.
 - Plan endpoints model `plan_steps` (intended configuration). Run endpoints model `run_steps` (execution evidence).
+
+## Node Tiers
+
+- **Launch**: Nodes executable in the default scorecard journey. Instantiation of a deferred node raises `NodeNotAvailableForLaunch`.
+- **Deferred**: Nodes registered as schemas for UI display but not executable in launch mode (boosting, ensembles, fairness, reject inference, etc.).
 
 ## Plan Version vs Run
 
@@ -50,6 +83,16 @@ The boundary: once score scaling produces the finalized scorecard, the validate 
 - **Selection nodes** (build stream only): consume metrics/rankings and filter which variables proceed downstream. Variable clustering/correlation grouping and variable selection are canonical examples.
 - **Apply nodes** (validate stream only): consume definitions from build stream + test/oot data, produce predictions and metrics. Examples: apply WOE mapping, apply model, calculate validation metrics.
 
+## Branch / Comparison / Champion
+
+- **Branch**: A diverged copy of a plan starting from a permitted branch point. Each challenger branch creates a new plan version with duplicated downstream steps and shared upstream steps.
+- **Comparison**: An intent to compare a baseline branch against one or more challenger branches. Produces immutable comparison snapshots containing WOE/IV, model coefficients, validation metrics, and cutoff analysis.
+- **Champion**: The designated best-performing branch for a given scope. Supersedes previous champions. Assignments require a ready comparison snapshot.
+
+## Governance
+
+Governance features (branching, comparison, champion assignment) are gated behind `CARDRE_GOVERNANCE=1`. The API uses `Depends(require_governance)` to return 403 when governance is not enabled.
+
 ## Licensing
 
 Apache 2.0. Chosen over MIT for its patent grant clause, which is important for adoption in regulated financial institutions. Downstream users get explicit protection from patent claims related to the code.
@@ -65,7 +108,7 @@ These are two different node types: `impute_missing` (data transform) and the `m
 
 ## Storage Model
 
-- **SQLite**: metadata only — step records, plan versions, run records, artifact references (paths + hashes), user annotations, override reasons. No tabular data or binary blobs.
+- **SQLite**: metadata only — step records, plan versions, run records, artifact references (paths + hashes), evidence edges + artifacts, user annotations, override reasons. No tabular data or binary blobs.
 - **Parquet artifacts**: all tabular data — imported datasets, transformed datasets, metric tables, IV rankings, prediction tables.
 - **JSON artifacts**: small non-tabular reports, configuration blobs, definition artifacts (bin maps, model parameters, scorecard specs).
 - This keeps SQLite lean, queryable, and easy to backup while Parquet handles columnar data efficiently.
@@ -78,55 +121,3 @@ These are two different node types: `impute_missing` (data transform) and the `m
 - For tabular artifacts: sort columns by name, serialize to canonical binary format (fixed schema, no compression, deterministic float representation), hash the result.
 - For definition artifacts (bin maps, model coefficients): JSON-sorted-keys canonical serialization, then hash.
 - The artifact store deduplicates by `physical_hash`. Audit/reproducibility compares by `logical_hash`.
-
-## WOE/IV Evaluation vs WOE Transform
-
-- **`calculate_woe_iv`**: a diagnostic/selection node. Consumes bin definitions + train data. Computes WOE and IV per variable. Output is a metrics/report artifact (IV ranking table), not a dataset transformation. Used between fine classing and variable selection to rank variable strength.
-- **`woe_transform`**: a transformative node. Consumes bin definitions + data (train or test/oot). Applies bin definitions to produce a WOE-transformed dataset. In the build stream, applies refined bin definitions to train for LR input. In the validate stream, applies the same definitions to test/oot.
-
-## Train/Test/OOT Split
-
-- The split is a **step** in the pathway, not dataset metadata.
-- The split step takes one input dataset and produces **three output artifacts**, one per role: `train`, `test`, `oot`.
-- Each output artifact carries its role as metadata. Downstream nodes declare which artifact roles they consume.
-- Fitting nodes consume `train`. Apply/transform nodes consume `test` and `oot`.
-- The executor enforces role-based access: a fitting node cannot read test/OOT targets during fitting.
-- Artifact roles are immutable once set by the split step.
-
-## Step Status: Stored vs Computed
-
-- **Stored statuses** (set by the executor): `not_run`, `queued`, `running`, `succeeded`, `failed`, `cancelled`.
-- **`is_stale`**: a computed boolean property, not a stored status. Answers: "does this step's latest run reference the latest upstream run steps?" If an upstream step was re-run with different params/hash, all downstream steps become stale regardless of their stored status.
-- This avoids data inconsistency from stale "stale" records and lets staleness be recomputed on the fly as plan versions change.
-
-## Dataset vs Artifact vs Snapshot
-
-- **Artifact**: any immutable output of a step execution. Includes datasets, models, metrics JSONs, reports, charts. Every artifact is content-addressed (by canonical hash) and stored immutably.
-- **Dataset**: a tabular artifact (Parquet). Has schema, row count, column metadata, split roles. A *kind of* artifact, not a separate concept.
-- **Snapshot**: not a separate entity. "Snapshot" describes an immutability property of artifacts (content-addressed, never mutated), not a distinct storage concept. Every artifact is a snapshot.
-
-## Run Lifecycle
-
-The `PlanExecutor` remains the single execution seam for all run modes
-(full-plan, branch, to-node). A dedicated run lifecycle module
-(`cardre/run_lifecycle.py`) owns generic run mechanics that are the same
-regardless of mode:
-
-- Run creation and `run_id` resolution.
-- Cancellation token registration and guaranteed removal in `finally`.
-- Final status setting (succeeded / failed / cancelled) and manifest
-  artifact writing, combined into one atomic `finalise_run()` call.
-- Manifest payload construction (`build_manifest_payload`) and labelling
-  (`step_action`).
-
-`PlanExecutor` still owns execution semantics: topological ordering, node
-execution, role and leakage enforcement, parent evidence resolution, and
-run-step evidence recording. The lifecycle module does not decide what
-to run or how to execute nodes — it owns how runs start, get cancelled,
-finish, and produce manifests.
-
-### RunScope
-
-`RunScope` is a planning dataclass that captures which mode a run is in
-(full / branch / to-node), which steps are in scope, and whether force
-mode is enabled. It does not carry execution semantics.

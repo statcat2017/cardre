@@ -32,6 +32,10 @@ fn build_sidecar_script_produces_triple_suffixed_name() {
         script.contains("cardre-api-${TARGET}"),
         "build-sidecar.sh must rename to cardre-api-${{TARGET}}"
     );
+    assert!(
+        script.contains("--paths \"$REPO_DIR\""),
+        "build-sidecar.sh must add repo root to PyInstaller paths"
+    );
 }
 
 #[test]

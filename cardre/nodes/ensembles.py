@@ -16,13 +16,11 @@ import numpy as np
 import polars as pl
 
 from cardre.artifacts import write_json_artifact
-from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
-from cardre.audit import (
-    ExecutionContext,
-    NodeOutput,
-    NodeType,
-    json_logical_hash,
-)
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre._evidence.kinds import EvidenceKind
+from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.nodes.contracts import NodeType
+from cardre.domain.artifacts import json_logical_hash
 from cardre.node_parameters import (
     MethodOption, NodeParameterSchema, ParameterConstraint, ParameterDefinition,
 )

@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cardre-api = "sidecar.main:main"
+cardre-api = "sidecar.__main__:main"
 
 [project.optional-dependencies]
 sidecar = ["fastapi", "uvicorn"]

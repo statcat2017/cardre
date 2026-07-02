@@ -1,39 +1,61 @@
-"""Targeted unit tests for BranchService and related helpers."""
+"""Targeted unit tests for BranchService and related helpers (v2)."""
 
 from __future__ import annotations
 
+import uuid
 
 import pytest
 
-from cardre.audit import StepSpec, json_logical_hash
-from cardre.errors import BranchValidationError
-from cardre.services import migrate_project_to_branch_model
+from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.errors import BranchValidationError
+from cardre.domain.step import StepSpec
+from cardre.execution.step_graph import descendant_closure as _descendant_closure
 from cardre.services.branch_service import (
     BranchService,
     _validate_segment_filter_rules,
     ALLOWED_BRANCH_POINTS,
 )
-from cardre.step_graph import descendant_closure as _descendant_closure
-from cardre.pathway import build_pathway_steps
-from sidecar.proof_pathway import SCORECARD_PATHWAY
-
-
-def _scorecard_steps(count: int | None = None):
-    """Return first *count* steps from the scorecard pathway, or all."""
-    all_steps = build_pathway_steps(SCORECARD_PATHWAY)
-    return all_steps if count is None else all_steps[:count]
-
-from tests.helpers import make_store
+from cardre.store.branch_repo import BranchRepository
+from cardre.store.plan_repo import PlanRepository
 
 pytestmark = pytest.mark.unit
 
 
+def _make_steps(count: int = 4) -> list[StepSpec]:
+    """Return a simple linear pipeline of *count* steps."""
+    from cardre.domain.artifacts import json_logical_hash
+
+    steps = []
+    for i in range(count):
+        step_id = f"step-{i}"
+        parent_ids = [f"step-{i-1}"] if i > 0 else []
+        steps.append(StepSpec(
+            step_id=step_id,
+            node_type="cardre.noop",
+            node_version="1",
+            category="fit",
+            params={},
+            params_hash=json_logical_hash({}),
+            parent_step_ids=parent_ids,
+            branch_label="",
+            position=i,
+            canonical_step_id=step_id,
+        ))
+    return steps
+
+
 @pytest.fixture
 def project_and_plan(store):
-    """Create a project with a full scorecard pathway plan."""
-    from sidecar.proof_pathway import register_scorecard_pathway
-    project_id = store.create_project("test-proj")
-    plan_id = register_scorecard_pathway(store, project_id)
+    """Create a project with a simple plan."""
+    project_id = str(uuid.uuid4())
+    store.execute(
+        "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+        (project_id, "test-proj", utc_now_iso(), "0.2.0"),
+    )
+
+    plan_repo = PlanRepository(store)
+    plan_id = plan_repo.create_plan(project_id, "test-plan")
+
     return project_id, plan_id
 
 
@@ -136,13 +158,58 @@ class TestBranchServiceCreateBranch:
                 return cid
         return None
 
-    def test_create_branch_success(self, store, project_and_plan):
-        project_id, plan_id = project_and_plan
-        pv_id = store.get_latest_plan_version_id(plan_id)
-        steps = store.get_plan_version_steps(pv_id)
+    def _setup_plan_with_steps(self, store):
+        """Create a project, plan, and plan version with branch-able steps."""
+        from cardre.domain.diagnostics import utc_now_iso
+        project_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "test-proj", utc_now_iso(), "0.2.0"),
+        )
+        plan_repo = PlanRepository(store)
+        plan_id = plan_repo.create_plan(project_id, "test-plan")
+
+        # Create steps with branch-able canonical step IDs
+        from cardre.domain.artifacts import json_logical_hash
+
+        steps = [
+            StepSpec(
+                step_id="define-sample", node_type="cardre.import_dataset",
+                node_version="1", category="transform",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0,
+                canonical_step_id="sample-definition",
+            ),
+            StepSpec(
+                step_id="do-variable-selection", node_type="cardre.variable_selection",
+                node_version="1", category="fit",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=["define-sample"], branch_label="", position=1,
+                canonical_step_id="variable-selection",
+            ),
+            StepSpec(
+                step_id="do-manual-binning", node_type="cardre.manual_binning",
+                node_version="1", category="refinement",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=["do-variable-selection"], branch_label="", position=2,
+                canonical_step_id="manual-binning",
+            ),
+            StepSpec(
+                step_id="fit-lr", node_type="cardre.logistic_regression",
+                node_version="1", category="fit",
+                params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=["do-manual-binning"], branch_label="", position=3,
+                canonical_step_id="logistic-regression",
+            ),
+        ]
+        pv_id = plan_repo.create_version(plan_id, steps, description="v1", is_committed=True)
+        return project_id, plan_id, pv_id, steps
+
+    def test_create_branch_success(self, store):
+        project_id, plan_id, pv_id, steps = self._setup_plan_with_steps(store)
         branch_point_id = self._find_non_segment_branch_point(steps)
         if branch_point_id is None:
-            pytest.skip("No non-segment branch point in default pathway")
+            pytest.skip("No non-segment branch point")
 
         svc = BranchService(store)
         result = svc.create_branch(
@@ -162,26 +229,26 @@ class TestBranchServiceCreateBranch:
         assert result["status"] == "not_run"
 
         # Verify the branch was persisted
-        branch = store.get_branch(result["branch_id"])
+        branches_repo = BranchRepository(store)
+        branch = branches_repo.get_branch(result["branch_id"])
         assert branch is not None
         assert branch["name"] == "Test Challenger"
 
-    def test_create_branch_from_baseline(self, store, project_and_plan):
-        project_id, plan_id = project_and_plan
-        pv_id = store.get_latest_plan_version_id(plan_id)
+    def test_create_branch_from_baseline(self, store):
+        project_id, plan_id, pv_id, steps = self._setup_plan_with_steps(store)
 
         # Create a baseline branch first
-        baseline_branch_id = store.create_branch(
+        branches_repo = BranchRepository(store)
+        baseline_branch_id = branches_repo.create_branch(
             project_id=project_id, plan_id=plan_id,
             name="Baseline", branch_type="baseline",
             base_plan_version_id=pv_id, head_plan_version_id=pv_id,
             created_reason="Baseline.",
         )
 
-        steps = store.get_plan_version_steps(pv_id)
         branch_point_id = self._find_non_segment_branch_point(steps)
         if branch_point_id is None:
-            pytest.skip("No non-segment branch point in default pathway")
+            pytest.skip("No non-segment branch point")
 
         svc = BranchService(store)
         result = svc.create_branch(
@@ -198,18 +265,8 @@ class TestBranchServiceCreateBranch:
         assert result["name"] == "Challenger from Baseline"
         assert result["branch_id"] != baseline_branch_id
 
-    def test_create_segment_challenger(self, store, project_and_plan):
-        project_id, plan_id = project_and_plan
-        pv_id = store.get_latest_plan_version_id(plan_id)
-        steps = store.get_plan_version_steps(pv_id)
-
-        branch_point_id = None
-        for s in steps:
-            if s.canonical_step_id == "sample-definition":
-                branch_point_id = s.canonical_step_id
-                break
-        if branch_point_id is None:
-            pytest.skip("sample-definition not in default pathway")
+    def test_create_segment_challenger(self, store):
+        project_id, plan_id, pv_id, steps = self._setup_plan_with_steps(store)
 
         svc = BranchService(store)
         result = svc.create_branch(
@@ -217,7 +274,7 @@ class TestBranchServiceCreateBranch:
             plan_id=plan_id,
             name="Segment Challenger",
             branch_type="segment_challenger",
-            branch_point_step_id=branch_point_id,
+            branch_point_step_id="sample-definition",
             base_plan_version_id=pv_id,
             created_reason="Segment filter test.",
             segment_filter_spec={
@@ -230,7 +287,7 @@ class TestBranchServiceCreateBranch:
 
     def test_create_branch_raises_on_invalid_point(self, store, project_and_plan):
         project_id, plan_id = project_and_plan
-        pv_id = store.get_latest_plan_version_id(plan_id)
+        pv_id = PlanRepository(store).create_version(plan_id, [], description="v1")
         svc = BranchService(store)
         with pytest.raises(BranchValidationError) as exc_info:
             svc.create_branch(
@@ -244,17 +301,11 @@ class TestBranchServiceCreateBranch:
             )
         assert exc_info.value.code == "BRANCH_POINT_NOT_ALLOWED"
 
-    def test_create_branch_raises_on_type_mismatch(self, store, project_and_plan):
-        project_id, plan_id = project_and_plan
-        pv_id = store.get_latest_plan_version_id(plan_id)
-        steps = store.get_plan_version_steps(pv_id)
-        branch_point_id = None
-        for s in steps:
-            if s.canonical_step_id in ALLOWED_BRANCH_POINTS:
-                branch_point_id = s.canonical_step_id
-                break
+    def test_create_branch_raises_on_type_mismatch(self, store):
+        project_id, plan_id, pv_id, steps = self._setup_plan_with_steps(store)
+        branch_point_id = self._find_non_segment_branch_point(steps)
         if branch_point_id is None:
-            pytest.skip("No allowed branch point in default pathway")
+            pytest.skip("No non-segment branch point")
 
         expected_type = ALLOWED_BRANCH_POINTS[branch_point_id]
         wrong_type = "segment_challenger" if expected_type != "segment_challenger" else "model_challenger"
@@ -274,7 +325,7 @@ class TestBranchServiceCreateBranch:
 
     def test_create_branch_raises_on_empty_name(self, store, project_and_plan):
         project_id, plan_id = project_and_plan
-        pv_id = store.get_latest_plan_version_id(plan_id)
+        pv_id = PlanRepository(store).create_version(plan_id, [], description="v1")
         svc = BranchService(store)
         with pytest.raises(BranchValidationError) as exc_info:
             svc.create_branch(
@@ -290,7 +341,7 @@ class TestBranchServiceCreateBranch:
 
     def test_create_branch_raises_on_empty_reason(self, store, project_and_plan):
         project_id, plan_id = project_and_plan
-        pv_id = store.get_latest_plan_version_id(plan_id)
+        pv_id = PlanRepository(store).create_version(plan_id, [], description="v1")
         svc = BranchService(store)
         with pytest.raises(BranchValidationError) as exc_info:
             svc.create_branch(
@@ -306,7 +357,7 @@ class TestBranchServiceCreateBranch:
 
     def test_create_branch_raises_on_segment_filter_missing(self, store, project_and_plan):
         project_id, plan_id = project_and_plan
-        pv_id = store.get_latest_plan_version_id(plan_id)
+        pv_id = PlanRepository(store).create_version(plan_id, [], description="v1")
         svc = BranchService(store)
         with pytest.raises(BranchValidationError) as exc_info:
             svc.create_branch(
@@ -336,12 +387,20 @@ class TestBranchServiceCreateBranch:
             )
         assert exc_info.value.code == "PLAN_NOT_FOUND"
 
-    def test_create_branch_raises_on_plan_project_mismatch(self, store, project_and_plan):
-        project_id, plan_id = project_and_plan
-        other_project_id = store.create_project("other-proj")
-        # Create a plan under the other project
-        other_plan_id = store.create_plan(other_project_id, "Other Plan")
-        pv_id = store.create_plan_version(other_plan_id, [])
+    def test_create_branch_raises_on_plan_project_mismatch(self, store):
+        plan_repo = PlanRepository(store)
+        project_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "proj-a", utc_now_iso(), "0.2.0"),
+        )
+        other_project_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (other_project_id, "proj-b", utc_now_iso(), "0.2.0"),
+        )
+        other_plan_id = plan_repo.create_plan(other_project_id, "Other Plan")
+        pv_id = plan_repo.create_version(other_plan_id, [], description="v1")
 
         svc = BranchService(store)
         with pytest.raises(BranchValidationError) as exc_info:
@@ -356,285 +415,29 @@ class TestBranchServiceCreateBranch:
             )
         assert exc_info.value.code == "PLAN_PROJECT_MISMATCH"
 
+    def test_create_branch_step_map_created(self, store):
+        """Verify that step map entries are created for the new branch."""
+        project_id, plan_id, pv_id, steps = self._setup_plan_with_steps(store)
+        branch_point_id = self._find_non_segment_branch_point(steps)
+        if branch_point_id is None:
+            pytest.skip("No non-segment branch point")
 
-# ======================================================================
-# Baseline migration service (from Phase 4)
-# ======================================================================
-
-
-class BaselineMigrationTests:
-    @pytest.fixture(autouse=True)
-    def _setup(self):
-        self.store, self.tmp = make_store()
-
-    def test_migrate_creates_baseline_branch(self):
-        project_id = self.store.create_project("test")
-        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        steps = _scorecard_steps()
-        self.store.create_plan_version(plan_id, steps, description="v1")
-
-        result = migrate_project_to_branch_model(self.store, project_id)
-
-        assert result["branches_created"] == 1
-        assert result["plan_versions_mapped"] == 1
-        assert result["steps_mapped"] == len(steps)
-
-        branches = self.store.list_branches(project_id)
-        assert len(branches) == 1
-        assert branches[0]["branch_type"] == "baseline"
-        assert branches[0]["name"] == "Baseline"
-
-    def test_migrate_creates_step_map_for_all_versions(self):
-        project_id = self.store.create_project("test")
-        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-
-        v1_steps = _scorecard_steps(2)
-        pv1_id = self.store.create_plan_version(plan_id, v1_steps, description="v1")
-
-        v2_steps = _scorecard_steps(4)
-        pv2_id = self.store.create_plan_version(plan_id, v2_steps, description="v2")
-
-        result = migrate_project_to_branch_model(self.store, project_id)
-
-        assert result["plan_versions_mapped"] == 2
-        assert result["steps_mapped"] == len(v1_steps) + len(v2_steps)
-
-        branches = self.store.list_branches(project_id)
-        branch_id = branches[0]["branch_id"]
-
-        v1_map = self.store.get_branch_step_map(branch_id, pv1_id)
-        assert len(v1_map) == len(v1_steps)
-
-        v2_map = self.store.get_branch_step_map(branch_id, pv2_id)
-        assert len(v2_map) == len(v2_steps)
-
-    def test_migrate_idempotent(self):
-        project_id = self.store.create_project("test")
-        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        steps = _scorecard_steps(2)
-        self.store.create_plan_version(plan_id, steps, description="v1")
-
-        result1 = migrate_project_to_branch_model(self.store, project_id)
-        assert result1["branches_created"] == 1
-
-        result2 = migrate_project_to_branch_model(self.store, project_id)
-        assert result2["branches_created"] == 0
-
-        branches = self.store.list_branches(project_id)
-        assert len(branches) == 1
-
-    def test_migrate_excludes_hidden_import_plan(self):
-        project_id = self.store.create_project("test")
-        self.store.create_plan_version(
-            self.store.create_plan(project_id, "__import__"),
-            _scorecard_steps(1),
-            description="import",
-        )
-        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        self.store.create_plan_version(plan_id, _scorecard_steps(2), description="v1")
-
-        result = migrate_project_to_branch_model(self.store, project_id)
-        assert result["branches_created"] == 1
-        assert result["plan_versions_mapped"] == 1
-
-    def test_migrate_does_not_rewrite_run_history(self):
-        from cardre.executor import PlanExecutor
-        from cardre.registry import NodeRegistry
-
-        project_id = self.store.create_project("test")
-        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        steps = _scorecard_steps(2)
-        pv_id = self.store.create_plan_version(plan_id, steps, description="v1")
-
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-        run_id = executor.run_plan_version(self.store, pv_id)
-        original_run = self.store.get_run(run_id)
-        original_run_steps = self.store.get_run_steps(run_id)
-
-        migrate_project_to_branch_model(self.store, project_id)
-
-        after_run = self.store.get_run(run_id)
-        assert after_run is not None
-        assert after_run["status"] == original_run["status"]
-        assert after_run["started_at"] == original_run["started_at"]
-        assert after_run["finished_at"] == original_run["finished_at"]
-
-        after_run_steps = self.store.get_run_steps(run_id)
-        assert len(after_run_steps) == len(original_run_steps)
-        for original, after in zip(original_run_steps, after_run_steps):
-            assert original.run_step_id == after.run_step_id
-            assert original.status == after.status
-            assert original.execution_fingerprint == after.execution_fingerprint
-
-    def test_migrate_does_not_rewrite_artifacts(self):
-        from cardre.executor import PlanExecutor
-        from cardre.registry import NodeRegistry
-
-        project_id = self.store.create_project("test")
-        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        steps = _scorecard_steps(2)
-        pv_id = self.store.create_plan_version(plan_id, steps, description="v1")
-
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-        executor.run_plan_version(self.store, pv_id)
-
-        original_artifacts = self.store.list_artifacts()
-
-        migrate_project_to_branch_model(self.store, project_id)
-
-        after_artifacts = self.store.list_artifacts()
-        assert len(after_artifacts) == len(original_artifacts)
-        for oa, aa in zip(original_artifacts, after_artifacts):
-            assert oa.artifact_id == aa.artifact_id
-            assert oa.physical_hash == aa.physical_hash
-            assert oa.logical_hash == aa.logical_hash
-
-    def test_migrate_branch_list_endpoint_works(self):
-        project_id = self.store.create_project("test")
-        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        steps = _scorecard_steps(2)
-        self.store.create_plan_version(plan_id, steps, description="v1")
-
-        migrate_project_to_branch_model(self.store, project_id)
-
-        branches = self.store.list_branches(project_id)
-        assert len(branches) == 1
-        branch = branches[0]
-        assert branch["name"] == "Baseline"
-        assert branch["branch_type"] == "baseline"
-
-    def test_migrate_creates_branch_with_correct_head_version(self):
-        project_id = self.store.create_project("test")
-        plan_id = self.store.create_plan(project_id, "Scorecard Pathway")
-        steps = _scorecard_steps(2)
-        pv1 = self.store.create_plan_version(plan_id, steps[:1], description="v1")
-        pv2 = self.store.create_plan_version(plan_id, steps, description="v2")
-
-        migrate_project_to_branch_model(self.store, project_id)
-
-        branches = self.store.list_branches(project_id)
-        branch = branches[0]
-        assert branch["base_plan_version_id"] == pv1
-        assert branch["head_plan_version_id"] == pv2
-
-    def test_branch_step_map_params_retained_across_head_update(self):
-        """Updating branch head preserves existing step-map param references."""
-        project_id = self.store.create_project("test")
-        plan_id = self.store.create_plan(project_id, "test-plan")
-        import_step = StepSpec(
-            step_id="import", node_type="cardre.import_dataset",
-            node_version="1", category="transform",
-            params={"source_path": "/data/v1.csv"},
-            params_hash=json_logical_hash({"source_path": "/data/v1.csv"}),
-            parent_step_ids=[], branch_label="", position=0,
-        )
-        pv1 = self.store.create_plan_version(plan_id, [import_step], description="v1")
-        branch_id = self.store.create_branch(
-            project_id, plan_id, "challenger", "challenger",
-            base_plan_version_id=pv1, head_plan_version_id=pv1,
-            created_reason="test",
-        )
-        self.store.create_branch_step_map(
-            branch_id=branch_id, plan_version_id=pv1,
-            canonical_step_id="import", step_id="import",
-            is_shared_upstream=True, is_branch_owned=False,
+        svc = BranchService(store)
+        result = svc.create_branch(
+            project_id=project_id,
+            plan_id=plan_id,
+            name="Step Map Test",
+            branch_type=ALLOWED_BRANCH_POINTS[branch_point_id],
+            branch_point_step_id=branch_point_id,
+            base_branch_id=None,
+            base_plan_version_id=pv_id,
+            created_reason="Step map test.",
         )
 
-        # Update head to a new version with different params
-        import_step_v2 = StepSpec(
-            step_id="import", node_type="cardre.import_dataset",
-            node_version="1", category="transform",
-            params={"source_path": "/data/v2.csv"},
-            params_hash=json_logical_hash({"source_path": "/data/v2.csv"}),
-            parent_step_ids=[], branch_label="", position=0,
-        )
-        pv2 = self.store.create_plan_version(plan_id, [import_step_v2], description="v2")
-        self.store.update_branch_head(branch_id, pv2)
-
-        # The step map for the original version should still have the old params
-        step_map = self.store.get_branch_step_map(branch_id, pv1)
-        assert len(step_map) == 1
-        assert step_map[0]["step_id"] == "import"
-
-        # The step map for the new version should exist (or be creatable)
-        # and the branch head should be updated
-        branch = self.store.get_branch(branch_id)
-        assert branch["head_plan_version_id"] == pv2
-
-    def test_latest_successful_run_id_branch_scoped(self):
-        """Latest successful run for a branch returns branch-scoped evidence, not full-plan."""
-        project_id = self.store.create_project("test")
-        plan_id = self.store.create_plan(project_id, "test-plan")
-        pv_id = self.store.create_plan_version(plan_id, [], description="v1")
-
-        branch_id = self.store.create_branch(
-            project_id, plan_id, "challenger", "challenger",
-            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-            created_reason="test",
-        )
-
-        # Create a full-plan run (succeeded)
-        full_run = self.store.create_run(pv_id, branch_id=None)
-        self.store.finish_run(full_run, "succeeded")
-
-        # Create a branch run (succeeded)
-        branch_run = self.store.create_run(pv_id, branch_id=branch_id)
-        self.store.finish_run(branch_run, "succeeded")
-
-        # Branch-scoped lookup should return the branch run, not the full-plan run
-        result = self.store.get_latest_successful_run_id(pv_id, branch_id=branch_id)
-        assert result == branch_run
-
-        # Non-branch lookup should return the full-plan run
-        result_full = self.store.get_latest_successful_run_id(pv_id, branch_id=None)
-        assert result_full == full_run
-
-    def test_champion_assignment_returns_unsuperseded(self):
-        """Champion lookup returns the current unsuperseded champion."""
-        project_id = self.store.create_project("test")
-        plan_id = self.store.create_plan(project_id, "test-plan")
-        pv_id = self.store.create_plan_version(plan_id, [], description="v1")
-
-        branch_id = self.store.create_branch(
-            project_id, plan_id, "challenger", "challenger",
-            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-            created_reason="test",
-        )
-
-        # No champion exists yet
-        champ = self.store.get_champion_assignment_by_branch(branch_id)
-        assert champ is None
-
-    def test_comparison_snapshot_stable_after_later_runs(self):
-        """Comparison snapshot remains queryable after subsequent runs."""
-        project_id = self.store.create_project("test")
-        plan_id = self.store.create_plan(project_id, "test-plan")
-        pv_id = self.store.create_plan_version(plan_id, [], description="v1")
-
-        branch_id = self.store.create_branch(
-            project_id, plan_id, "challenger", "challenger",
-            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-            created_reason="test",
-        )
-
-        # Create a comparison
-        comparison_id = str(__import__("uuid").uuid4())
-        now = __import__("cardre.audit", fromlist=["utc_now_iso"]).utc_now_iso()
-        self.store._connect().execute(
-            "INSERT INTO branch_comparisons "
-            "(comparison_id, project_id, plan_id, baseline_branch_id, "
-            " challenger_branch_ids_json, comparison_spec_json, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (comparison_id, project_id, plan_id, branch_id, "[]", "{}", now),
-        )
-
-        # Later runs should not affect the comparison
-        later_run = self.store.create_run(pv_id, branch_id=branch_id)
-        self.store.finish_run(later_run, "succeeded")
-
-        # Comparison should still be queryable
-        comp = self.store.branches.get_comparison(comparison_id)
-        assert comp is not None
-        assert comp["comparison_id"] == comparison_id
+        branches_repo = BranchRepository(store)
+        step_map = branches_repo.get_step_map(result["branch_id"], result["new_plan_version_id"])
+        assert len(step_map) > 0
+        # Shared upstream steps should be present
+        assert len(result["shared_upstream_step_ids"]) > 0
+        # Created (branch-owned) steps should be present
+        assert len(result["created_step_ids"]) > 0

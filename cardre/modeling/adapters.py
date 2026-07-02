@@ -15,8 +15,10 @@ import numpy as np
 import polars as pl
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.audit import ArtifactRef, ExecutionContext, JsonDict, NodeOutput
-from cardre.evidence import SCHEMA_SCORE_APPLICATION_EVIDENCE
+from cardre.domain.artifacts import ArtifactRef
+from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.diagnostics import JsonDict
+from cardre._evidence.schemas import SCHEMA_SCORE_APPLICATION_EVIDENCE
 from cardre.modeling.serialization import read_estimator_artifact
 from cardre.store import ProjectStore
 

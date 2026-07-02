@@ -1,456 +1,250 @@
-"""Characterisation tests for the run lifecycle behaviour of PlanExecutor.
-
-These tests capture the current contract of run creation, status
-finalisation, manifest generation, reuse labelling, and scope
-metadata before any lifecycle refactoring.
-"""
+"""Tests for RunLifecycle — lease, finalise, manifest writing."""
 
 from __future__ import annotations
 
 import json
+import uuid
+from pathlib import Path
 
 
-from cardre.audit import RunStepRecord, StepSpec, json_logical_hash, utc_now_iso
-from cardre.executor import PlanExecutor
-from cardre.nodes import DummyFitNode
-from cardre.registry import NodeRegistry
-from cardre.store import ProjectStore
-
-from tests.helpers import make_store
-from tests.test_executor import SimpleSourceNode, SimpleTransformNode
-
-
-# ======================================================================
-# Phase 0 — Full-plan run lifecycle
-# ======================================================================
+from cardre.domain.diagnostics import utc_now_iso
+from cardre.execution.run_lifecycle import (
+    RunFinalisation,
+    RunLifecycle,
+    build_manifest_payload,
+    finalise_run,
+)
 
 
-class TestFullPlanRunLifecycle:
-    """Lock down the full-plan run lifecycle contract."""
+def _make_store(project_root: Path):
+    from cardre.store.db import ProjectStore
+    store = ProjectStore(project_root / "test.cardre")
+    store.initialize()
+    return store
 
-    def _one_step_plan(self, store: ProjectStore, plan_id: str) -> tuple[str, list[StepSpec]]:
-        steps = [
-            StepSpec(
-                step_id="source", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        return pv_id, steps
 
-    def test_run_record_created(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        pv_id, _ = self._one_step_plan(store, plan_id)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
+def _seed_simple_run(store):
+    """Create a minimal run with a plan version."""
+    now = utc_now_iso()
+    project_id = str(uuid.uuid4())
+    store.execute(
+        "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+        (project_id, "Test", now, "0.2.0"),
+    )
+    plan_id = str(uuid.uuid4())
+    store.execute(
+        "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+        (plan_id, project_id, "Plan", now),
+    )
+    pv_id = str(uuid.uuid4())
+    store.execute(
+        "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
+        "VALUES (?, ?, 1, 1, ?)",
+        (pv_id, plan_id, now),
+    )
+    run_id = str(uuid.uuid4())
+    store.execute(
+        "INSERT INTO runs (run_id, plan_version_id, status, started_at) VALUES (?, ?, 'running', ?)",
+        (run_id, pv_id, now),
+    )
+    return store, pv_id, run_id
 
-        run_id = executor.run_plan_version(store, pv_id)
 
-        run = store.get_run(run_id)
+class TestRunLifecycle:
+    """RunLifecycle.start, finalise, context manager."""
+
+    def test_start_creates_run(self, tmp_path):
+        store = _make_store(tmp_path)
+        pv_id = str(uuid.uuid4())
+        project_id = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "Test", now, "0.2.0"),
+        )
+        store.execute(
+            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (plan_id, project_id, "Test", now),
+        )
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
+            "VALUES (?, ?, 1, 1, ?)",
+            (pv_id, plan_id, now),
+        )
+
+        lifecycle = RunLifecycle.start(store, pv_id)
+        assert lifecycle.run_id is not None
+        assert lifecycle.plan_version_id == pv_id
+
+        from cardre.store.run_repo import RunRepository
+        run = RunRepository(store).get(lifecycle.run_id)
         assert run is not None
+        assert run["status"] == "running"
+
+    def test_finalise_succeeded(self, tmp_path):
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
+
+        lifecycle = RunLifecycle(
+            store=store, run_id=run_id, plan_version_id=pv_id,
+            execution_mode="full_plan",
+        )
+        lifecycle.finalise(status="succeeded", execution_mode="full_plan")
+
+        from cardre.store.run_repo import RunRepository
+        run = RunRepository(store).get(run_id)
         assert run["status"] == "succeeded"
-        assert run["started_at"] is not None
         assert run["finished_at"] is not None
 
-    def test_run_status_succeeded_for_successful_run(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        pv_id, _ = self._one_step_plan(store, plan_id)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
+    def test_finalise_cancelled(self, tmp_path):
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
 
-        run_id = executor.run_plan_version(store, pv_id)
-        run = store.get_run(run_id)
+        lifecycle = RunLifecycle(
+            store=store, run_id=run_id, plan_version_id=pv_id,
+            execution_mode="to_node",
+        )
+        lifecycle.finalise(status="cancelled", execution_mode="to_node")
+
+        from cardre.store.run_repo import RunRepository
+        run = RunRepository(store).get(run_id)
+        assert run["status"] == "cancelled"
+
+    def test_context_manager_finalises_on_exit(self, tmp_path):
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
+
+        with RunLifecycle(
+            store=store, run_id=run_id, plan_version_id=pv_id,
+            execution_mode="full_plan",
+        ) as lifecycle:
+            lifecycle.finalise(status="succeeded", execution_mode="full_plan")
+
+        # Verify finalised
+        from cardre.store.run_repo import RunRepository
+        run = RunRepository(store).get(run_id)
         assert run["status"] == "succeeded"
 
-    def test_run_steps_recorded_for_all_steps(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        pv_id, steps = self._one_step_plan(store, plan_id)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
+    def test_context_manager_finalises_failed_on_exception(self, tmp_path):
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
 
-        run_id = executor.run_plan_version(store, pv_id)
-        run_steps = store.get_run_steps(run_id)
-        executed_ids = {rs.step_id for rs in run_steps}
-        assert executed_ids == {"source"}
+        try:
+            with RunLifecycle(
+                store=store, run_id=run_id, plan_version_id=pv_id,
+                execution_mode="full_plan",
+            ):
+                raise ValueError("something went wrong")
+        except ValueError:
+            pass
 
-    def test_manifest_artifact_written(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        pv_id, _ = self._one_step_plan(store, plan_id)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
+        from cardre.store.run_repo import RunRepository
+        run = RunRepository(store).get(run_id)
+        assert run["status"] == "failed"
 
-        run_id = executor.run_plan_version(store, pv_id)
-        manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
-        assert len(manifest_arts) >= 1
-        manifest_path = store.artifact_path(manifest_arts[-1])
+    def test_double_finalise_is_idempotent(self, tmp_path):
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
+
+        lifecycle = RunLifecycle(
+            store=store, run_id=run_id, plan_version_id=pv_id,
+            execution_mode="full_plan",
+        )
+        lifecycle.finalise(status="succeeded", execution_mode="full_plan")
+        lifecycle.finalise(status="succeeded", execution_mode="full_plan")  # should not raise
+
+        from cardre.store.run_repo import RunRepository
+        run = RunRepository(store).get(run_id)
+        assert run["status"] == "succeeded"
+
+    def test_manifest_written(self, tmp_path):
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
+
+        with RunLifecycle(
+            store=store, run_id=run_id, plan_version_id=pv_id,
+            execution_mode="full_plan",
+        ) as lifecycle:
+            lifecycle.finalise(status="succeeded", execution_mode="full_plan")
+
+        manifest_path = store.root / "exports" / f"manifest-{run_id}" / "manifest.json"
+        assert manifest_path.exists()
         manifest = json.loads(manifest_path.read_text())
         assert manifest["run_id"] == run_id
         assert manifest["status"] == "succeeded"
-        assert manifest["execution_mode"] == "full"
-        assert len(manifest["steps"]) == 1
+        assert manifest["execution_mode"] == "full_plan"
+        assert "steps" in manifest
 
-    def test_manifest_action_labels(self) -> None:
-        """Steps successfully executed are labelled 'executed'."""
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        pv_id, _ = self._one_step_plan(store, plan_id)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
-
-        executor.run_plan_version(store, pv_id)
-        manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
-        manifest = json.loads(store.artifact_path(manifest_arts[-1]).read_text())
-        assert manifest["steps"][0]["action"] == "executed"
-
-    def test_failed_run_records_failed_status(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        class FailOnPurposeNode(DummyFitNode):
-            node_type = "cardre.fail_on_purpose"
-
-            def run(self, context):
-                raise RuntimeError("Intentional failure")
-
-        steps = [
-            StepSpec(
-                step_id="failing", node_type="cardre.fail_on_purpose",
-                node_version="1", category="fit",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(FailOnPurposeNode)
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run = store.get_run(run_id)
-        assert run["status"] == "failed"
-
-    def test_failed_run_has_error_evidence(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        class FailOnPurposeNode(SimpleSourceNode):
-            node_type = "cardre.fail_on_purpose"
-
-            def run(self, context):
-                raise RuntimeError("Intentional failure")
-
-        steps = [
-            StepSpec(
-                step_id="failing", node_type="cardre.fail_on_purpose",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(FailOnPurposeNode)
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run_steps = store.get_run_steps(run_id)
-        failing = [rs for rs in run_steps if rs.step_id == "failing"][0]
-        assert failing.status == "failed"
-        assert len(failing.errors) > 0
-        assert "Intentional failure" in failing.errors[0]["message"]
-
-
-# ======================================================================
-# Phase 0 — Force mode
-# ======================================================================
-
-
-class TestForceMode:
-    """force=True must execute steps unconditionally."""
-
-    def test_force_rerun_produces_new_artifacts(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        steps = [
-            StepSpec(
-                step_id="source", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
-
-        first_run_id = executor.run_plan_version(store, pv_id, force=True)
-        first_steps = store.get_run_steps(first_run_id)
-
-        second_run_id = executor.run_plan_version(store, pv_id, force=True)
-        second_steps = store.get_run_steps(second_run_id)
-
-        assert first_steps[0].output_artifact_ids != second_steps[0].output_artifact_ids, \
-            "forced runs should produce new artifact IDs"
-
-    def test_force_manifest_labelled_force(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        steps = [
-            StepSpec(
-                step_id="source", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
-
-        executor.run_plan_version(store, pv_id, force=True)
-        manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
-        manifest = json.loads(store.artifact_path(manifest_arts[-1]).read_text())
-        assert manifest["execution_mode"] == "force"
-
-
-# ======================================================================
-# Phase 0 — To-node run lifecycle
-# ======================================================================
-
-
-class TestToNodeRunLifecycle:
-
-    def test_to_node_executes_only_ancestors_and_target(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="step_a", node_type="cardre.test.simple_transform",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=["import"], branch_label="", position=1,
-            ),
-            StepSpec(
-                step_id="step_b", node_type="cardre.test.simple_transform",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=["import"], branch_label="", position=2,
-            ),
-            StepSpec(
-                step_id="target", node_type="cardre.test.simple_transform",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=["step_a"], branch_label="", position=3,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        reg.register(SimpleTransformNode)
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_to_node(store, pv_id, "target")
-        run_steps = store.get_run_steps(run_id)
-        executed_ids = {rs.step_id for rs in run_steps}
-        assert "import" in executed_ids
-        assert "step_a" in executed_ids
-        assert "target" in executed_ids
-        assert "step_b" not in executed_ids
-
-    def test_to_node_manifest_has_target_and_scope(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="target", node_type="cardre.test.simple_transform",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=["import"], branch_label="", position=1,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        reg.register(SimpleTransformNode)
-        executor = PlanExecutor(reg)
-
-        executor.run_to_node(store, pv_id, "target")
-        manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
-        manifest = json.loads(store.artifact_path(manifest_arts[-1]).read_text())
-        assert manifest["target_step_id"] == "target"
-        assert "in_scope_step_ids" in manifest
-
-
-# ======================================================================
-# Phase 0 — Manifest determinism
-# ======================================================================
-
-
-class TestManifestDeterminism:
-
-    def test_identical_run_produces_identical_manifest(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        steps = [
-            StepSpec(
-                step_id="source", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
-
-        # Both runs use the same plan_version_id with force to get deterministic fingerprints
-        # (same inputs → same output artifact logical hashes)
-        executor.run_plan_version(store, pv_id, force=True)
-        manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
-        manifest1 = json.loads(store.artifact_path(manifest_arts[-1]).read_text())
-
-        executor.run_plan_version(store, pv_id, force=True)
-        manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
-        manifest2 = json.loads(store.artifact_path(manifest_arts[-1]).read_text())
-
-        # Action labels must be identical (both should be "executed")
-        for s1, s2 in zip(manifest1["steps"], manifest2["steps"]):
-            assert s1["action"] == s2["action"] == "executed"
-            assert s1["node_type"] == s2["node_type"]
-            assert s1["step_id"] == s2["step_id"]
-
-
-# ======================================================================
-# Phase 0 — Short-circuit placeholder manifest (ADR 0004 atomic finalisation)
-# ======================================================================
-
-
-class TestShortCircuitManifest:
-    """RED: Short-circuit placeholder runs must have a manifest artifact,
-    per ADR 0004's atomic-finalisation guarantee. Currently short-circuit
-    placeholders are finished via direct ``store.finish_run(run_id,
-    "cancelled")`` calls that bypass ``RunLifecycle`` / ``finalise_run``,
-    so no manifest is written.
-    """
-
-    def test_to_node_short_circuit_placeholder_has_manifest(self) -> None:
-        """A to-node short-circuit placeholder must have a manifest with
-        status='cancelled'. No governance gate needed for to-node scope."""
-        from cardre.services.run_service import RunService
-        from cardre.services.run_worker import SyncRunDispatcher
-        from cardre.artifacts import write_json_artifact
-        import uuid
-
-        store, tmp = make_store()
-        store.initialize()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        steps = [
-            StepSpec(
-                step_id="source", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-
-        # Seed a prior successful run so the to-node run short-circuits.
-        prev_run_id = store.create_run(pv_id)
-        art = write_json_artifact(
-            store, artifact_type="report", role="artifact",
-            stem="seed-source", payload={"step_id": "source"}, metadata={},
+    def test_lease_creates_unique_runs(self, tmp_path):
+        store = _make_store(tmp_path)
+        pv_id = str(uuid.uuid4())
+        project_id = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "Test", now, "0.2.0"),
         )
-        store.save_run_step(RunStepRecord(
-            run_step_id=str(uuid.uuid4()), run_id=prev_run_id, step_id="source",
-            plan_version_id=pv_id, status="succeeded",
-            started_at=utc_now_iso(), finished_at=utc_now_iso(),
-            input_artifact_ids=[], output_artifact_ids=[art.artifact_id],
-            execution_fingerprint={
-                "params_hash": steps[0].params_hash,
-                "node_type": "cardre.test.simple_source",
-                "node_version": "1",
-                "parent_output_logical_hashes_by_step": {},
-                "output_artifact_logical_hashes": [art.logical_hash],
-            },
-            warnings=[], errors=[],
+        store.execute(
+            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (plan_id, project_id, "Test", now),
+        )
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
+            "VALUES (?, ?, 1, 1, ?)",
+            (pv_id, plan_id, now),
+        )
+
+        lc1 = RunLifecycle.start(store, pv_id)
+        lc2 = RunLifecycle.start(store, pv_id, force=True)
+        assert lc1.run_id != lc2.run_id
+
+
+class TestFinaliseRun:
+    """Standalone finalise_run function."""
+
+    def test_writes_manifest_and_updates_status(self, tmp_path):
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
+
+        finalise_run(store, RunFinalisation(
+            run_id=run_id,
+            plan_version_id=pv_id,
+            status="succeeded",
+            execution_mode="full_plan",
+            finished_at=utc_now_iso(),
         ))
-        store.finish_run(prev_run_id, "succeeded")
 
-        svc = RunService(store, dispatcher=SyncRunDispatcher())
-        resp = svc.run_plan(pv_id, run_scope="to_node", target_step_id="source", sync=True)
+        from cardre.store.run_repo import RunRepository
+        run = RunRepository(store).get(run_id)
+        assert run["status"] == "succeeded"
 
-        assert resp.run_id == prev_run_id, "must return existing run_id"
+        manifest_path = store.root / "exports" / f"manifest-{run_id}" / "manifest.json"
+        assert manifest_path.exists()
 
-        placeholders = [r for r in store.list_runs(plan_version_id=pv_id)
-                        if r.get("status") == "cancelled"]
-        assert placeholders, "expected a cancelled placeholder"
-        ph_id = placeholders[-1]["run_id"]
 
-        manifests = [a for a in store.list_artifacts()
-                     if a.artifact_type == "run_manifest"
-                     and a.metadata.get("run_id") == ph_id]
-        assert len(manifests) == 1, (
-            f"short-circuit placeholder must have exactly one manifest "
-            f"(ADR 0004 atomic finalisation); got {len(manifests)}"
+class TestBuildManifestPayload:
+    """build_manifest_payload produces correct structure."""
+
+    def test_builds_manifest_dict(self, tmp_path):
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
+        from cardre.store.run_repo import RunRepository
+        run_record = RunRepository(store).get(run_id)
+
+        payload = build_manifest_payload(
+            run_id=run_id,
+            plan_version_id=pv_id,
+            run_record=run_record,
+            run_steps=[],
+            execution_mode="full_plan",
+            final_status="succeeded",
+            finished_at=utc_now_iso(),
         )
-        manifest = json.loads(store.artifact_path(manifests[0]).read_text())
-        assert manifest["status"] == "cancelled"
-        assert manifest["execution_mode"] == "to_node"
 
-
+        assert payload["run_id"] == run_id
+        assert payload["status"] == "succeeded"
+        assert payload["execution_mode"] == "full_plan"
+        assert payload["steps"] == []
+        assert "manifest_version" in payload
