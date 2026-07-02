@@ -107,3 +107,16 @@ class TestProjects:
         resp = api_client.post("/projects", json={"name": "X", "path": traversal})
         assert resp.status_code == 400
         assert resp.json()["detail"]["code"] == "INVALID_PROJECT_PATH"
+
+    def test_cardre_dirs_are_gitignored(self):
+        import subprocess
+        result = subprocess.run(
+            ["git", "check-ignore", "some/path.cardre/cardre.sqlite"],
+            capture_output=True, text=True, cwd=subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"], capture_output=True,
+                text=True, check=True,
+            ).stdout.strip(),
+        )
+        assert result.returncode == 0, (
+            f"*.cardre/ dirs are not gitignored: {result.stderr}"
+        )
