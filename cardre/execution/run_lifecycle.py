@@ -278,7 +278,7 @@ class RunLifecycle:
         run_repo = RunRepository(store)
 
         if run_id is None:
-            run_id = run_repo.create(plan_version_id, branch_id=branch_id, force=force)
+            run_id = run_repo.create(plan_version_id, branch_id=branch_id)
         else:
             existing_run = run_repo.get(run_id)
             if existing_run is None:

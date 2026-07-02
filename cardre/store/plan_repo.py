@@ -53,76 +53,42 @@ class PlanRepository:
     ) -> str:
         plan_version_id = str(uuid.uuid4())
         now = utc_now_iso()
-        plan_version_cols = self._table_columns("plan_versions")
-        plan_step_cols = self._table_columns("plan_steps")
-        include_committed = "is_committed" in plan_version_cols
-        include_parent_json = "parent_step_ids_json" in plan_step_cols
         max_ver = self._store.execute(
             "SELECT COALESCE(MAX(version_number), 0) + 1 FROM plan_versions WHERE plan_id = ?",
             (plan_id,),
         ).fetchone()[0]
-        if include_committed:
-            self._store.execute(
-                "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (plan_version_id, plan_id, max_ver, 1 if is_committed else 0, now, description),
-            )
-        else:
-            self._store.execute(
-                "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, created_at, description) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (plan_version_id, plan_id, max_ver, now, description),
-            )
+        self._store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (plan_version_id, plan_id, max_ver, 1 if is_committed else 0, now, description),
+        )
         if steps:
             for step in steps:
-                if include_parent_json:
+                self._store.execute(
+                    "INSERT INTO plan_steps "
+                    "(step_id, plan_version_id, node_type, node_version, category, "
+                    " params_json, params_hash, branch_label, position, canonical_step_id, branch_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        step.step_id,
+                        plan_version_id,
+                        step.node_type,
+                        step.node_version,
+                        step.category,
+                        json.dumps(step.params),
+                        step.params_hash,
+                        step.branch_label,
+                        step.position,
+                        step.canonical_step_id,
+                        step.branch_id,
+                    ),
+                )
+                for index, parent_step_id in enumerate(step.parent_step_ids):
                     self._store.execute(
-                        "INSERT INTO plan_steps "
-                        "(step_id, plan_version_id, node_type, node_version, category, "
-                        " params_json, params_hash, parent_step_ids_json, branch_label, position, "
-                        " canonical_step_id, branch_id) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (
-                            step.step_id,
-                            plan_version_id,
-                            step.node_type,
-                            step.node_version,
-                            step.category,
-                            json.dumps(step.params),
-                            step.params_hash,
-                            json.dumps(step.parent_step_ids),
-                            step.branch_label,
-                            step.position,
-                            step.canonical_step_id,
-                            step.branch_id,
-                        ),
+                        "INSERT INTO plan_step_edges (plan_version_id, parent_step_id, child_step_id, edge_order) "
+                        "VALUES (?, ?, ?, ?)",
+                        (plan_version_id, parent_step_id, step.step_id, index),
                     )
-                else:
-                    self._store.execute(
-                        "INSERT INTO plan_steps "
-                        "(step_id, plan_version_id, node_type, node_version, category, "
-                        " params_json, params_hash, branch_label, position, canonical_step_id, branch_id) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (
-                            step.step_id,
-                            plan_version_id,
-                            step.node_type,
-                            step.node_version,
-                            step.category,
-                            json.dumps(step.params),
-                            step.params_hash,
-                            step.branch_label,
-                            step.position,
-                            step.canonical_step_id,
-                            step.branch_id,
-                        ),
-                    )
-                    for index, parent_step_id in enumerate(step.parent_step_ids):
-                        self._store.execute(
-                            "INSERT INTO plan_step_edges (plan_version_id, parent_step_id, child_step_id, edge_order) "
-                            "VALUES (?, ?, ?, ?)",
-                            (plan_version_id, parent_step_id, step.step_id, index),
-                        )
         return plan_version_id
 
     def get_version(self, plan_version_id: str) -> JsonDict | None:
@@ -132,22 +98,17 @@ class PlanRepository:
         return None if row is None else dict(row)
 
     def get_version_steps(self, plan_version_id: str) -> list[StepSpec]:
-        cols = self._table_columns("plan_steps")
         rows = self._store.execute(
             "SELECT * FROM plan_steps WHERE plan_version_id = ? ORDER BY position",
             (plan_version_id,),
         ).fetchall()
         steps: list[StepSpec] = []
         for row in rows:
-            parent_step_ids: list[str]
-            if "parent_step_ids_json" in cols:
-                parent_step_ids = json.loads(row["parent_step_ids_json"])
-            else:
-                parent_rows = self._store.execute(
-                    "SELECT parent_step_id FROM plan_step_edges WHERE plan_version_id = ? AND child_step_id = ? ORDER BY edge_order",
-                    (plan_version_id, row["step_id"]),
-                ).fetchall()
-                parent_step_ids = [r["parent_step_id"] for r in parent_rows]
+            parent_rows = self._store.execute(
+                "SELECT parent_step_id FROM plan_step_edges WHERE plan_version_id = ? AND child_step_id = ? ORDER BY edge_order",
+                (plan_version_id, row["step_id"]),
+            ).fetchall()
+            parent_step_ids = [r["parent_step_id"] for r in parent_rows]
             steps.append(
                 StepSpec(
                     step_id=row["step_id"],

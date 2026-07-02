@@ -5,11 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
-from cardre.domain.errors import ConcurrentRunError
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 
 if TYPE_CHECKING:
@@ -68,7 +67,6 @@ class RunRepository:
         self,
         plan_version_id: str,
         branch_id: str | None = None,
-        force: bool = False,
     ) -> str:
         run_id = str(uuid.uuid4())
         now = utc_now_iso()
@@ -78,32 +76,13 @@ class RunRepository:
         if "branch_id" in columns:
             insert_cols.append("branch_id")
             values.append(branch_id)
-        if "force" in columns:
-            insert_cols.append("force")
-            values.append(1 if force else 0)
         if "heartbeat_at" in columns:
             insert_cols.append("heartbeat_at")
             values.append(now)
-
-        with self._store.transaction("IMMEDIATE") as conn:
-            if not force:
-                sql = "SELECT 1 FROM runs WHERE plan_version_id = ? AND finished_at IS NULL"
-                params: list[object] = [plan_version_id]
-                if branch_id is None:
-                    if "branch_id" in columns:
-                        sql += " AND branch_id IS NULL"
-                elif "branch_id" in columns:
-                    sql += " AND branch_id = ?"
-                    params.append(branch_id)
-                existing = conn.execute(sql, tuple(params)).fetchone()
-                if existing is not None:
-                    raise ConcurrentRunError(
-                        f"A run is already in progress for plan_version_id={plan_version_id!r}"
-                    )
-            conn.execute(
-                f"INSERT INTO runs ({', '.join(insert_cols)}) VALUES ({', '.join(['?'] * len(insert_cols))})",
-                tuple(values),
-            )
+        self._store.execute(
+            f"INSERT INTO runs ({', '.join(insert_cols)}) VALUES ({', '.join(['?'] * len(insert_cols))})",
+            tuple(values),
+        )
         return run_id
 
     def heartbeat(self, run_id: str) -> None:
@@ -160,98 +139,11 @@ class RunRepository:
             (status, run_id),
         )
 
-    def save_step(self, rs: Any) -> None:
-        step_cols = self._step_columns()
-        with self._store.transaction("IMMEDIATE") as conn:
-            run_row = conn.execute(
-                "SELECT * FROM runs WHERE run_id = ?",
-                (rs.run_id,),
-            ).fetchone()
-            branch_id = run_row["branch_id"] if run_row is not None and "branch_id" in run_row.keys() else None
-            if {"input_artifact_ids_json", "output_artifact_ids_json"}.issubset(step_cols):
-                conn.execute(
-                    "INSERT OR REPLACE INTO run_steps "
-                    "(run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, "
-                    " input_artifact_ids_json, output_artifact_ids_json, execution_fingerprint_json, "
-                    " warnings_json, errors_json, is_carried_forward) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        rs.run_step_id,
-                        rs.run_id,
-                        rs.step_id,
-                        rs.plan_version_id,
-                        rs.status.value if hasattr(rs.status, "value") else rs.status,
-                        rs.started_at,
-                        rs.finished_at,
-                        json.dumps(getattr(rs, "input_artifact_ids", [])),
-                        json.dumps(getattr(rs, "output_artifact_ids", [])),
-                        json.dumps(rs.execution_fingerprint),
-                        json.dumps(rs.warnings),
-                        json.dumps(rs.errors),
-                        0,
-                    ),
-                )
-            else:
-                conn.execute(
-                    "INSERT OR REPLACE INTO run_steps "
-                    "(run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, "
-                    " execution_fingerprint_json, warnings_json, errors_json) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        rs.run_step_id,
-                        rs.run_id,
-                        rs.step_id,
-                        rs.plan_version_id,
-                        rs.status.value if hasattr(rs.status, "value") else rs.status,
-                        rs.started_at,
-                        rs.finished_at,
-                        json.dumps(rs.execution_fingerprint),
-                        json.dumps(rs.warnings),
-                        json.dumps(rs.errors),
-                    ),
-                )
-            for artifact_id in getattr(rs, "input_artifact_ids", []):
-                conn.execute(
-                    "INSERT OR IGNORE INTO artifact_lineage "
-                    "(lineage_id, run_id, run_step_id, plan_version_id, step_id, branch_id, artifact_id, direction, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        str(uuid.uuid4()),
-                        rs.run_id,
-                        rs.run_step_id,
-                        rs.plan_version_id,
-                        rs.step_id,
-                        branch_id,
-                        artifact_id,
-                        "input",
-                        rs.started_at,
-                    ),
-                )
-            for artifact_id in getattr(rs, "output_artifact_ids", []):
-                conn.execute(
-                    "INSERT OR IGNORE INTO artifact_lineage "
-                    "(lineage_id, run_id, run_step_id, plan_version_id, step_id, branch_id, artifact_id, direction, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        str(uuid.uuid4()),
-                        rs.run_id,
-                        rs.run_step_id,
-                        rs.plan_version_id,
-                        rs.step_id,
-                        branch_id,
-                        artifact_id,
-                        "output",
-                        rs.started_at,
-                    ),
-                )
-
     def get_steps(self, run_id: str) -> list[JsonDict]:
         rows = self._store.execute(
             "SELECT * FROM run_steps WHERE run_id = ? ORDER BY started_at, run_step_id",
             (run_id,),
         ).fetchall()
-        if hasattr(self._store, "_row_to_run_step"):
-            return [self._store._row_to_run_step(r) for r in rows]  # type: ignore[attr-defined]
         return [dict(r) for r in rows]
 
     def get_step(self, run_step_id: str):
@@ -261,41 +153,7 @@ class RunRepository:
         ).fetchone()
         if row is None:
             return None
-        if hasattr(self._store, "_row_to_run_step"):
-            return self._store._row_to_run_step(row)  # type: ignore[attr-defined]
         return dict(row)
-
-    def get_artifact_ids_for_run(self, run_id: str) -> set[str]:
-        if {"input_artifact_ids_json", "output_artifact_ids_json"}.issubset(self._step_columns()):
-            rows = self._store.execute(
-                "SELECT output_artifact_ids_json FROM run_steps WHERE run_id = ?",
-                (run_id,),
-            ).fetchall()
-            artifact_ids: set[str] = set()
-            for row in rows:
-                artifact_ids.update(json.loads(row["output_artifact_ids_json"]))
-            return artifact_ids
-        rows = self._store.execute(
-            "SELECT artifact_id FROM artifact_lineage WHERE run_id = ? AND direction = 'output'",
-            (run_id,),
-        ).fetchall()
-        return {r["artifact_id"] for r in rows}
-
-    def get_artifact_ids_for_producing_step(self, step_id: str) -> set[str]:
-        if {"output_artifact_ids_json"}.issubset(self._step_columns()):
-            rows = self._store.execute(
-                "SELECT output_artifact_ids_json FROM run_steps WHERE step_id = ?",
-                (step_id,),
-            ).fetchall()
-            artifact_ids: set[str] = set()
-            for row in rows:
-                artifact_ids.update(json.loads(row["output_artifact_ids_json"]))
-            return artifact_ids
-        rows = self._store.execute(
-            "SELECT artifact_id FROM artifact_lineage WHERE step_id = ? AND direction = 'output'",
-            (step_id,),
-        ).fetchall()
-        return {r["artifact_id"] for r in rows}
 
     def get_latest_successful_id(self, plan_version_id: str, branch_id: str | None = None) -> str | None:
         sql = "SELECT run_id FROM runs WHERE plan_version_id = ? AND status = 'succeeded'"
@@ -338,7 +196,7 @@ class RunRepository:
         row = self._store.execute(sql, tuple(params)).fetchone()
         if row is None:
             return None
-        return self._store._row_to_run_step(row) if hasattr(self._store, "_row_to_run_step") else dict(row)  # type: ignore[attr-defined]
+        return dict(row)
 
     def get_latest_successful_step_across_plan(self, plan_id: str, step_id: str, branch_id: str | None = None):
         sql = (
@@ -357,7 +215,7 @@ class RunRepository:
         row = self._store.execute(sql, tuple(params)).fetchone()
         if row is None:
             return None
-        return self._store._row_to_run_step(row) if hasattr(self._store, "_row_to_run_step") else dict(row)  # type: ignore[attr-defined]
+        return dict(row)
 
     def get_any_successful_id_for_plan(self, plan_id: str) -> str | None:
         return self.get_latest_successful_id_for_plan(plan_id)
@@ -386,10 +244,6 @@ class RunRepository:
 
     def _run_columns(self) -> set[str]:
         rows = self._store.execute("PRAGMA table_info(runs)").fetchall()
-        return {r["name"] for r in rows}
-
-    def _step_columns(self) -> set[str]:
-        rows = self._store.execute("PRAGMA table_info(run_steps)").fetchall()
         return {r["name"] for r in rows}
 
     def _table_exists(self, table: str) -> bool:
