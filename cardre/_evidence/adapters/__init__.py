@@ -5,11 +5,9 @@ matching and parsing for a single ``EvidenceKind`` and is independent of
 ``ArtifactEvidenceReader``. The reader will be wired to dispatch through
 ``EVIDENCE_ADAPTERS`` in a subsequent phase.
 
-Phase 2 is parity-preserving: adapters reproduce the current reader's
-three-phase matching (schema-version → role/type/media → legacy payload
-heuristics) so behaviour is identical. Legacy payload-key fallbacks
-exist because the current reader has them; a later phase will remove
-them once all evidence producers emit schema_version consistently.
+Phase 2 is parity-preserving: adapters reproduce the reader's current
+two-phase matching (schema-version → role/type/media + payload check).
+Legacy payload-key fallbacks are not included in the adapter path.
 """
 
 from __future__ import annotations
