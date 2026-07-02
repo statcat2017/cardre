@@ -56,6 +56,15 @@ def _json_ready(value):
         return [_json_ready(v) for v in value]
     if isinstance(value, set):
         return [_json_ready(v) for v in value]
+    import numpy as np
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return float(value)
+    if isinstance(value, (np.ndarray,)):
+        return [_json_ready(v) for v in value.tolist()]
     return value
 
 

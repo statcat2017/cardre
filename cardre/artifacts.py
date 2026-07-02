@@ -89,7 +89,7 @@ def write_parquet_artifact(
         path=relative_path(stored_path, store.root),
         physical_hash=phys,
         logical_hash=logical,
-        media_type="application/octet-stream",
+        media_type="application/vnd.apache.parquet",
         metadata=metadata or {},
     )
     repo = ArtifactRepository(store)

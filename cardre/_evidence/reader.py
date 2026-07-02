@@ -102,10 +102,10 @@ class ArtifactEvidenceReader:
         return self._parse(candidates[0], kind)
 
     def find_optional(self, artifacts: list[ArtifactRef], kind: EvidenceKind) -> Any | None:
-        """Like ``find`` but returns ``None`` when no match exists."""
+        """Like ``find`` but returns ``None`` when no match or ambiguity."""
         try:
             return self.find(artifacts, kind)
-        except EvidenceNotFoundError:
+        except (EvidenceNotFoundError, AmbiguousEvidenceError):
             return None
 
     def find_model_artifact(self, artifacts: list[ArtifactRef]) -> ModelArtifact:
@@ -384,6 +384,8 @@ class ArtifactEvidenceReader:
                 and a.media_type == "application/vnd.apache.parquet"
                 and self._parquet_has_columns(a, {"iv", "variable"})
             ]
+        if kind == EvidenceKind.VARIABLE_CLUSTERING:
+            return self._match_by_payload_key(artifacts, {"method", "clusters"})
         if kind == EvidenceKind.SPLIT_SUMMARY:
             return self._match_by_payload_key(artifacts, {"strategy", "row_counts"})
         if kind == EvidenceKind.PROFILE_SUMMARY:

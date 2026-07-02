@@ -171,6 +171,7 @@ def _deferred(cls: type[NodeType]) -> type[NodeType]:
 
 def _register_launch_nodes(reg: NodeRegistry) -> None:
     from cardre.nodes.prep import (
+        DefineModellingMetadataNode,
         ImportGermanCreditNode,
         ImportTabularDatasetNode,
         ProfileDatasetNode,
@@ -202,6 +203,7 @@ def _register_launch_nodes(reg: NodeRegistry) -> None:
 
     for n in [
         BinningNode,
+        DefineModellingMetadataNode,
         ImportGermanCreditNode,
         ImportTabularDatasetNode,
         ProfileDatasetNode,
