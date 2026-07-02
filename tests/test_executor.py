@@ -181,7 +181,7 @@ class TestPlanExecutor:
         edges = store.execute(
             "SELECT COUNT(*) as cnt FROM evidence_edges WHERE run_id = ?", (run_id,)
         ).fetchone()
-        assert edges["cnt"] == 2  # Two edges: import->profile, profile->binning
+        assert edges["cnt"] == 2  # Two edges: import->profile, profile->export
 
         # Check evidence_artifacts
         artifacts = store.execute(
@@ -189,13 +189,36 @@ class TestPlanExecutor:
             "WHERE evidence_edge_id IN (SELECT evidence_edge_id FROM evidence_edges WHERE run_id = ?)",
             (run_id,),
         ).fetchone()
-        assert artifacts["cnt"] >= 0
+        assert artifacts["cnt"] == 2  # one artifact per parent edge
 
         # Check artifact_lineage
         lineage = store.execute(
             "SELECT COUNT(*) as cnt FROM artifact_lineage WHERE run_id = ?", (run_id,)
         ).fetchone()
-        assert lineage["cnt"] >= 0
+        assert lineage["cnt"] == 5  # import:1 output, profile:1i+1o, export:1i+1o
+
+        # Each evidence edge's artifacts should match its parent step's output lineage
+        edge_rows = store.execute(
+            "SELECT evidence_edge_id, parent_step_id FROM evidence_edges WHERE run_id = ?",
+            (run_id,),
+        ).fetchall()
+        for edge in edge_rows:
+            edge_aids = [
+                r["artifact_id"] for r in store.execute(
+                    "SELECT artifact_id FROM evidence_artifacts WHERE evidence_edge_id = ? ORDER BY artifact_id",
+                    (edge["evidence_edge_id"],),
+                ).fetchall()
+            ]
+            parent_outputs = store.execute(
+                "SELECT artifact_id FROM artifact_lineage "
+                "WHERE run_id = ? AND step_id = ? AND direction = 'output' ORDER BY artifact_id",
+                (run_id, edge["parent_step_id"]),
+            ).fetchall()
+            parent_aids = [r["artifact_id"] for r in parent_outputs]
+            assert edge_aids == parent_aids, (
+                f"Evidence artifacts for parent {edge['parent_step_id']!r} "
+                f"should match its output lineage: got {edge_aids}, expected {parent_aids}"
+            )
 
     def test_run_step_order_matches_topological(self, tmp_path):
         """Run steps are created in the expected order."""
