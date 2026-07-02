@@ -325,10 +325,16 @@ class PlanExecutor:
         ]
         raw_inputs: list[ArtifactRef] = []
         input_artifacts: list[ArtifactRef] = []
+        input_artifact_ids_by_parent: dict[str, list[str]] = {}
 
         try:
             raw_inputs = self._resolve_inputs(spec, step_outputs)
             input_artifacts = raw_inputs
+
+            # Build per-parent input artifact mapping for evidence attribution
+            for pid in spec.parent_step_ids:
+                parent_artifacts = step_outputs.get(pid, [])
+                input_artifact_ids_by_parent[pid] = [a.artifact_id for a in parent_artifacts]
 
             node = self._node_registry.instantiate(spec.node_type)
             validation_errors = node.validate_params(dict(spec.params))
@@ -388,6 +394,7 @@ class PlanExecutor:
                 status=RunStepStatus.SUCCEEDED,
                 errors=[],
                 warnings=list(node_output.warnings or []),
+                input_artifact_ids_by_parent=input_artifact_ids_by_parent,
             )
 
         except Exception:
@@ -415,6 +422,7 @@ class PlanExecutor:
                     status=RunStepStatus.FAILED,
                     errors=[error_entry],
                     warnings=[],
+                    input_artifact_ids_by_parent=input_artifact_ids_by_parent,
                 )
             except Exception as rec_exc:
                 import logging
@@ -475,6 +483,7 @@ class PlanExecutor:
         status: RunStepStatus,
         errors: list[JsonDict],
         warnings: list[JsonDict],
+        input_artifact_ids_by_parent: dict[str, list[str]] | None = None,
     ) -> RunStep:
         """Persist the run_step and evidence inside a transaction.
 
@@ -552,8 +561,13 @@ class PlanExecutor:
                 )
                 evidence_repo.insert_edge(edge, conn)
 
-                # Evidence artifacts for each parent edge
-                for aid in input_artifact_ids:
+                # Evidence artifacts for each parent edge — only that parent's artifacts
+                parent_aids = (
+                    input_artifact_ids_by_parent.get(parent_rs.step_id, input_artifact_ids)
+                    if input_artifact_ids_by_parent is not None
+                    else input_artifact_ids
+                )
+                for aid in parent_aids:
                     art = EvidenceArtifact(
                         evidence_artifact_id=str(uuid.uuid4()),
                         evidence_edge_id=ee_id,

@@ -260,3 +260,120 @@ class TestPlanExecutor:
         rs_repo = RunStepRepository(store)
         steps = rs_repo.get_for_run(run_id)
         assert len(steps) == 3
+
+    def test_multi_parent_evidence_attribution(self, tmp_path):
+        """Two parents each produce one distinct artifact; child consumes both;
+        each parent evidence edge has exactly the artifact from that parent."""
+        store = _make_store(tmp_path)
+
+        csv_a = tmp_path / "input_a.csv"
+        csv_a.write_text("x,y\n1,2\n3,4\n")
+        csv_b = tmp_path / "input_b.csv"
+        csv_b.write_text("a,b\n5,6\n7,8\n")
+
+        now = utc_now_iso()
+        project_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "MP Test", now, "0.2.0"),
+        )
+        plan_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (plan_id, project_id, "MP Plan", now),
+        )
+        pv_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
+            "VALUES (?, ?, 1, 1, ?, ?)",
+            (pv_id, plan_id, now, "Multi-parent evidence test"),
+        )
+
+        step_a = "step-a"
+        step_b = "step-b"
+        step_c = "step-c"
+
+        for sid, params_json, pos in [
+            (step_a, json.dumps({"source_path": str(csv_a)}), 0),
+            (step_b, json.dumps({"source_path": str(csv_b)}), 1),
+            (step_c, json.dumps({}), 2),
+        ]:
+            ntype = "cardre.import_dataset" if sid != step_c else "cardre.noop"
+            store.execute(
+                "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
+                " params_json, params_hash, branch_label, position, canonical_step_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (sid, pv_id, ntype, "1", "transform",
+                 params_json, f"hash-{sid}", "", pos, sid),
+            )
+
+        for parent, child, order in [(step_a, step_c, 0), (step_b, step_c, 1)]:
+            store.execute(
+                "INSERT INTO plan_step_edges (plan_version_id, parent_step_id, child_step_id, edge_order) "
+                "VALUES (?, ?, ?, ?)",
+                (pv_id, parent, child, order),
+            )
+
+        from cardre.store.run_repo import RunRepository
+        run_repo = RunRepository(store)
+        run_id = run_repo.create(pv_id)
+
+        executor = PlanExecutor(store)
+        executor.run_plan_version(pv_id, run_id)
+
+        from cardre.store.run_step_repo import RunStepRepository
+        rs_repo = RunStepRepository(store)
+        steps = rs_repo.get_for_run(run_id)
+        assert len(steps) == 3
+
+        rs_c = next(rs for rs in steps if rs.step_id == step_c)
+
+        # Get output artifact IDs for each parent
+        def _output_artifact_ids(run_step_id: str) -> list[str]:
+            rows = store.execute(
+                "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+                (run_step_id,),
+            ).fetchall()
+            return [r["artifact_id"] for r in rows]
+
+        rs_a = next(rs for rs in steps if rs.step_id == step_a)
+        rs_b = next(rs for rs in steps if rs.step_id == step_b)
+        art_a = _output_artifact_ids(rs_a.run_step_id)
+        art_b = _output_artifact_ids(rs_b.run_step_id)
+        assert len(art_a) == 1
+        assert len(art_b) == 1
+
+        # Fetch evidence edges for step_c
+        edges = store.execute(
+            "SELECT evidence_edge_id, parent_step_id FROM evidence_edges WHERE run_step_id = ?",
+            (rs_c.run_step_id,),
+        ).fetchall()
+        assert len(edges) == 2, f"Expected 2 evidence edges, got {len(edges)}"
+
+        for edge in edges:
+            edge_aids = [
+                r["artifact_id"] for r in store.execute(
+                    "SELECT artifact_id FROM evidence_artifacts WHERE evidence_edge_id = ?",
+                    (edge["evidence_edge_id"],),
+                ).fetchall()
+            ]
+            if edge["parent_step_id"] == step_a:
+                assert edge_aids == art_a, (
+                    f"Edge for parent {step_a!r} should have only its own artifact, got {edge_aids}"
+                )
+            elif edge["parent_step_id"] == step_b:
+                assert edge_aids == art_b, (
+                    f"Edge for parent {step_b!r} should have only its own artifact, got {edge_aids}"
+                )
+            else:
+                pytest.fail(f"Unexpected parent_step_id: {edge['parent_step_id']}")
+
+        # Flat artifact_lineage should still contain every input artifact
+        lineage_rows = store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'input'",
+            (rs_c.run_step_id,),
+        ).fetchall()
+        lineage_aids = {r["artifact_id"] for r in lineage_rows}
+        assert lineage_aids == {art_a[0], art_b[0]}, (
+            f"Lineage should contain both input artifacts, got {lineage_aids}"
+        )
