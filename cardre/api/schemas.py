@@ -49,6 +49,7 @@ class ProjectListResponse(BaseModel):
 
 class ProjectCreateRequest(BaseModel):
     name: str
+    path: str
 
 
 # ---------------------------------------------------------------------------

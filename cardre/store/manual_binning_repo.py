@@ -1,4 +1,14 @@
-"""Manual-binning review repository."""
+"""Manual-binning review repository.
+
+.. note::
+
+    ``affected_downstream_step_ids_json`` is a non-authoritative UI hint.
+    The authoritative answer for "which downstream steps are affected" is
+    ``StalenessService.explain_step`` against the draft plan version. Do not
+    add SQL filters or joins on this column; treat it as opaque display
+    payload. If it ever needs to be queried, promote it to a
+    ``manual_binning_affected_steps`` table first.
+"""
 
 from __future__ import annotations
 

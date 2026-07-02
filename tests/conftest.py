@@ -92,9 +92,9 @@ def store_with_evidence(store):
     # Insert a run with completed steps (simulating an execution)
     run_id = str(uuid.uuid4())
     store.execute(
-        "INSERT INTO runs (run_id, plan_version_id, status, started_at, finished_at) "
-        "VALUES (?, ?, 'succeeded', ?, ?)",
-        (run_id, pv_id, now, now),
+        "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, finished_at) "
+        "VALUES (?, ?, 'succeeded', ?, ?, ?)",
+        (run_id, pv_id, now, now, now),
     )
 
     # Insert run steps

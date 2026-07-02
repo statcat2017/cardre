@@ -39,7 +39,7 @@ export interface paths {
         put?: never;
         /**
          * Create Project
-         * @description Create a new project.
+         * @description Create a new project by bootstrapping a fresh v2 store at body.path.
          */
         post: operations["create_project_projects_post"];
         delete?: never;
@@ -997,6 +997,8 @@ export interface components {
         ProjectCreateRequest: {
             /** Name */
             name: string;
+            /** Path */
+            path: string;
         };
         /** ProjectListResponse */
         ProjectListResponse: {
@@ -1207,9 +1209,7 @@ export interface operations {
     create_project_projects_post: {
         parameters: {
             query?: never;
-            header?: {
-                "X-Project-Path"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };

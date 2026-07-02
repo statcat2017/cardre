@@ -82,9 +82,9 @@ def project_with_branch(store):
     # Run (with branch_id so scoped lookups find it)
     run_id = str(uuid.uuid4())
     store.execute(
-        "INSERT INTO runs (run_id, plan_version_id, branch_id, status, started_at, finished_at) "
-        "VALUES (?, ?, ?, 'succeeded', ?, ?)",
-        (run_id, pv_id, branch_id, now, now),
+        "INSERT INTO runs (run_id, plan_version_id, branch_id, status, created_at, started_at, finished_at) "
+        "VALUES (?, ?, ?, 'succeeded', ?, ?, ?)",
+        (run_id, pv_id, branch_id, now, now, now),
     )
 
     # Run step

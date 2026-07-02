@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
-from cardre.api.errors import CardreApiError, PROJECT_NOT_FOUND
+from cardre.api.errors import CardreApiError, PROJECT_NOT_FOUND, STORE_ALREADY_EXISTS
 from cardre.api.schemas import ProjectCreateRequest, ProjectListResponse, ProjectResponse
+from cardre.domain.errors import SchemaVersionError
 from cardre.store.db import ProjectStore
 from cardre.store.project_repo import ProjectRepository
 
@@ -58,16 +61,28 @@ async def get_project(
 @router.post("", response_model=ProjectResponse, status_code=201)
 async def create_project(
     body: ProjectCreateRequest,
-    store: ProjectStore = Depends(get_project_store),
 ) -> ProjectResponse:
-    """Create a new project."""
-    repo = ProjectRepository(store)
-    project_id = repo.create(name=body.name)
-    project = repo.get(project_id)
-    assert project is not None
-    return ProjectResponse(
-        project_id=project["project_id"],
-        name=project["name"],
-        created_at=project["created_at"],
-        cardre_version=project.get("cardre_version", "0.2.0"),
-    )
+    """Create a new project by bootstrapping a fresh v2 store at body.path."""
+    root = Path(body.path)
+    store = ProjectStore(root)
+    try:
+        store.initialize()
+    except SchemaVersionError as e:
+        raise CardreApiError(
+            code=STORE_ALREADY_EXISTS,
+            message=str(e),
+            status_code=409,
+        )
+    try:
+        repo = ProjectRepository(store)
+        project_id = repo.create(name=body.name)
+        project = repo.get(project_id)
+        assert project is not None
+        return ProjectResponse(
+            project_id=project["project_id"],
+            name=project["name"],
+            created_at=project["created_at"],
+            cardre_version=project.get("cardre_version", "0.2.0"),
+        )
+    finally:
+        store.close()

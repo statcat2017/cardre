@@ -14,8 +14,6 @@ Class renamed to ``RunCoordinator`` (free rename, clearer name).
 
 from __future__ import annotations
 
-import json
-import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal
@@ -159,7 +157,10 @@ class RunCoordinator:
 
         This is the recoverable entrypoint for async dispatch and crash
         recovery. Loads the run record from the database and rebuilds the
-        execution request from persisted fields.
+        execution request from persisted columns.
+
+        ``metadata_json`` holds execution metadata only (active_step_id,
+        runtime warnings, diagnostic payload) — never request fields.
         """
         from cardre.store.run_repo import RunRepository
 
@@ -180,23 +181,13 @@ class RunCoordinator:
 
         plan_version_id = run["plan_version_id"]
 
-        # Recover request fields from metadata_json or top-level columns
-        metadata: JsonDict = {}
-        if run.get("metadata_json"):
-            metadata = json.loads(run["metadata_json"]) if isinstance(run["metadata_json"], str) else run["metadata_json"]
-
-        run_scope = metadata.get("run_scope", "full_plan")
-        branch_id = run.get("branch_id") or metadata.get("branch_id")
-        target_step_id = run.get("target_step_id") or metadata.get("target_step_id")
-        force = run.get("force", False) or metadata.get("force", False)
-
         return self._execute_existing_running_run(
             run_id=run_id,
             plan_version_id=plan_version_id,
-            run_scope=run_scope,
-            branch_id=branch_id,
-            target_step_id=target_step_id,
-            force=force,
+            run_scope=run["run_scope"],
+            branch_id=run["branch_id"],
+            target_step_id=run["target_step_id"],
+            force=bool(run["force"]),
         )
 
     # ------------------------------------------------------------------
@@ -343,39 +334,13 @@ class RunCoordinator:
     ) -> str:
         """Create a run in the database with all request fields persisted.
 
-        Stores extra fields (run_scope, requested_by, request_id) in
-        metadata_json when the runs table lacks dedicated columns.
+        Request fields (run_scope, branch_id, target_step_id, force,
+        requested_by, request_id) are stored in dedicated columns.
+        ``metadata_json`` is reserved for execution metadata only.
         """
-        run_id = str(uuid.uuid4())
-        now = utc_now_iso()
+        from cardre.store.run_repo import RunRepository
 
-        metadata: JsonDict = {"run_scope": run_scope}
-        if requested_by:
-            metadata["requested_by"] = requested_by
-        if request_id:
-            metadata["request_id"] = request_id
-        metadata_json_str = json.dumps(metadata)
-
-        columns = self._get_run_columns()
-
-        insert_cols = ["run_id", "plan_version_id", "status", "started_at"]
-        values: list[object] = [run_id, plan_version_id, "running", now]
-
-        if "branch_id" in columns:
-            insert_cols.append("branch_id")
-            values.append(branch_id)
-        if "target_step_id" in columns:
-            insert_cols.append("target_step_id")
-            values.append(target_step_id)
-        if "force" in columns:
-            insert_cols.append("force")
-            values.append(1 if force else 0)
-        if "heartbeat_at" in columns:
-            insert_cols.append("heartbeat_at")
-            values.append(now)
-        if "metadata_json" in columns:
-            insert_cols.append("metadata_json")
-            values.append(metadata_json_str)
+        run_repo = RunRepository(self._store)
 
         with self._store.transaction("IMMEDIATE") as conn:
             if not force:
@@ -388,16 +353,16 @@ class RunCoordinator:
                         f"A run is already in progress for plan_version_id={plan_version_id!r}",
                         code="CONCURRENT_RUN",
                     )
-            conn.execute(
-                f"INSERT INTO runs ({', '.join(insert_cols)}) "
-                f"VALUES ({', '.join(['?'] * len(insert_cols))})",
-                tuple(values),
+            run_id = run_repo.create(
+                plan_version_id,
+                run_scope=run_scope,
+                branch_id=branch_id,
+                target_step_id=target_step_id,
+                force=force,
+                requested_by=requested_by,
+                request_id=request_id,
             )
         return run_id
-
-    def _get_run_columns(self) -> set[str]:
-        rows = self._store.execute("PRAGMA table_info(runs)").fetchall()
-        return {r["name"] for r in rows}
 
     # ------------------------------------------------------------------
     # Stale-run recovery

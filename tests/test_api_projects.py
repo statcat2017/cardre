@@ -58,14 +58,41 @@ class TestProjects:
         data = resp.json()
         assert data["detail"]["code"] == "MISSING_PROJECT_PATH"
 
-    def test_create_project(self, api_client, store):
-        root = store.root
+    def test_create_project_bootstraps_fresh_store(self, api_client, tmp_path):
+        from cardre.store.db import ProjectStore
+        project_dir = tmp_path / "new-project.cardre"
         resp = api_client.post(
             "/projects",
-            headers={"X-Project-Path": str(root)},
-            json={"name": "New Project"},
+            json={"name": "My Project", "path": str(project_dir)},
         )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["name"] == "My Project"
+        assert body["project_id"]
+        assert (project_dir / "cardre.sqlite").exists()
+        assert (project_dir / "datasets").is_dir()
+        s = ProjectStore(project_dir)
+        s.open()
+        family = s.execute("SELECT value FROM store_meta WHERE key='schema_family'").fetchone()
+        assert family["value"] == "cardre-v2"
+        s.close()
+
+    def test_create_project_rejects_existing_store(self, api_client, tmp_path):
+        from cardre.store.db import ProjectStore
+        p = tmp_path / "exists.cardre"
+        ProjectStore(p).initialize()
+        resp = api_client.post("/projects", json={"name": "X", "path": str(p)})
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["code"] == "STORE_ALREADY_EXISTS"
+
+    def test_get_project_after_create_via_api(self, api_client, tmp_path):
+        project_dir = tmp_path / "roundtrip.cardre"
+        resp = api_client.post("/projects", json={"name": "RT", "path": str(project_dir)})
         assert resp.status_code == 201
-        data = resp.json()
-        assert data["name"] == "New Project"
-        assert "project_id" in data
+        pid = resp.json()["project_id"]
+        resp2 = api_client.get(
+            f"/projects/{pid}",
+            headers={"X-Project-Path": str(project_dir)},
+        )
+        assert resp2.status_code == 200
+        assert resp2.json()["project_id"] == pid

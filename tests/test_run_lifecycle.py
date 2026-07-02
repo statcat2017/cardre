@@ -44,8 +44,8 @@ def _seed_simple_run(store):
     )
     run_id = str(uuid.uuid4())
     store.execute(
-        "INSERT INTO runs (run_id, plan_version_id, status, started_at) VALUES (?, ?, 'running', ?)",
-        (run_id, pv_id, now),
+        "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at) VALUES (?, ?, 'running', ?, ?)",
+        (run_id, pv_id, now, now),
     )
     return store, pv_id, run_id
 

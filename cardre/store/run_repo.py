@@ -66,22 +66,23 @@ class RunRepository:
     def create(
         self,
         plan_version_id: str,
+        run_scope: str = "full_plan",
         branch_id: str | None = None,
+        target_step_id: str | None = None,
+        force: bool = False,
+        requested_by: str | None = None,
+        request_id: str | None = None,
     ) -> str:
         run_id = str(uuid.uuid4())
         now = utc_now_iso()
-        columns = self._run_columns()
-        insert_cols = ["run_id", "plan_version_id", "status", "started_at"]
-        values: list[object] = [run_id, plan_version_id, "running", now]
-        if "branch_id" in columns:
-            insert_cols.append("branch_id")
-            values.append(branch_id)
-        if "heartbeat_at" in columns:
-            insert_cols.append("heartbeat_at")
-            values.append(now)
         self._store.execute(
-            f"INSERT INTO runs ({', '.join(insert_cols)}) VALUES ({', '.join(['?'] * len(insert_cols))})",
-            tuple(values),
+            """INSERT INTO runs
+               (run_id, plan_version_id, status, run_scope, branch_id,
+                target_step_id, force, requested_by, request_id,
+                created_at, started_at, heartbeat_at)
+               VALUES (?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (run_id, plan_version_id, run_scope, branch_id, target_step_id,
+             int(force), requested_by, request_id, now, now, now),
         )
         return run_id
 

@@ -143,9 +143,9 @@ class TestExecuteCreatedRun:
         # Create a run and mark it as succeeded
         run_id = str(uuid.uuid4())
         store.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, started_at, finished_at) "
-            "VALUES (?, ?, 'succeeded', ?, ?)",
-            (run_id, pv_id, utc_now_iso(), utc_now_iso()),
+            "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, finished_at) "
+            "VALUES (?, ?, 'succeeded', ?, ?, ?)",
+            (run_id, pv_id, utc_now_iso(), utc_now_iso(), utc_now_iso()),
         )
 
         from cardre.services.run_coordinator import RunCoordinator
@@ -154,27 +154,23 @@ class TestExecuteCreatedRun:
             coordinator.execute_created_run(run_id)
 
     def test_recovers_request_fields_from_db(self, tmp_path):
-        """execute_created_run recovers run_scope, branch_id, etc. from runs table."""
+        """requested_by is stored in the real column, not metadata."""
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
-        # Create a run via RunCoordinator (which persists metadata)
+        # Create a run via RunCoordinator
         from cardre.services.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         summary = coordinator.run(pv_id, sync=True, requested_by="test-user")
 
-        # Check that request_id was stored
+        # Check that requested_by was stored in the column
         from cardre.store.run_repo import RunRepository
         run = RunRepository(store).get(summary.run_id)
         assert run is not None
-        if run.get("metadata_json"):
-            metadata = json.loads(run["metadata_json"]) if isinstance(run["metadata_json"], str) else run["metadata_json"]
-            # The requested_by goes into metadata_json
-            if "requested_by" in metadata:
-                assert metadata["requested_by"] == "test-user"
+        assert run["requested_by"] == "test-user"
 
-    def test_persists_run_scope_in_metadata(self, tmp_path):
-        """Run scope is persisted and recovered."""
+    def test_persists_run_scope_in_column(self, tmp_path):
+        """Run scope is persisted in the run_scope column."""
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
@@ -185,22 +181,20 @@ class TestExecuteCreatedRun:
         from cardre.store.run_repo import RunRepository
         run = RunRepository(store).get(summary.run_id)
         assert run is not None
-        if run.get("metadata_json"):
-            metadata = json.loads(run["metadata_json"]) if isinstance(run["metadata_json"], str) else run["metadata_json"]
-            assert metadata.get("run_scope") == "full_plan"
+        assert run["run_scope"] == "full_plan"
 
-    def test_to_node_in_metadata_raises(self, tmp_path):
-        """Execute-created-run safety net: to_node persisted metadata raises."""
+    def test_to_node_in_column_raises(self, tmp_path):
+        """Execute-created-run safety net: to_node in column raises."""
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
         run_id = str(uuid.uuid4())
         now = utc_now_iso()
-        metadata_json = json.dumps({"run_scope": "to_node", "target_step_id": "step-a"})
         store.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, started_at, metadata_json) "
-            "VALUES (?, ?, 'running', ?, ?)",
-            (run_id, pv_id, now, metadata_json),
+            "INSERT INTO runs (run_id, plan_version_id, status, run_scope, target_step_id, "
+            " created_at, started_at) "
+            "VALUES (?, ?, 'running', ?, ?, ?, ?)",
+            (run_id, pv_id, "to_node", "step-a", now, now),
         )
 
         from cardre.services.run_coordinator import RunCoordinator
@@ -217,18 +211,18 @@ class TestExecuteCreatedRun:
         assert rejected_run["status"] == "failed"
         assert rejected_run["finished_at"] is not None
 
-    def test_to_node_in_metadata_without_target(self, tmp_path):
+    def test_to_node_in_column_without_target(self, tmp_path):
         """Safety net also fires for to_node without target_step_id."""
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
         run_id = str(uuid.uuid4())
         now = utc_now_iso()
-        metadata_json = json.dumps({"run_scope": "to_node"})
         store.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, started_at, metadata_json) "
-            "VALUES (?, ?, 'running', ?, ?)",
-            (run_id, pv_id, now, metadata_json),
+            "INSERT INTO runs (run_id, plan_version_id, status, run_scope, "
+            " created_at, started_at) "
+            "VALUES (?, ?, 'running', ?, ?, ?)",
+            (run_id, pv_id, "to_node", now, now),
         )
 
         from cardre.services.run_coordinator import RunCoordinator
@@ -245,6 +239,37 @@ class TestExecuteCreatedRun:
         assert rejected_run is not None
         assert rejected_run["status"] == "failed"
         assert rejected_run["finished_at"] is not None
+
+    def test_execute_created_run_reads_column_not_metadata(self, tmp_path):
+        """execute_created_run reads run_scope from real column, not metadata decoy.
+
+        Current code reads ``metadata.get('run_scope')`` which is 'full_plan'
+        (decoy), so no exception.  Fixed code reads the column which is
+        'to_node' -> raises RunScopeNotAvailableForLaunch.
+        """
+        store = _make_store(tmp_path)
+        pv_id = _seed_minimal_plan(store)
+
+        # Column run_scope='to_node' but metadata decoy says 'full_plan'.
+        run_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        metadata_json = json.dumps({"run_scope": "full_plan"})
+        store.execute(
+            "INSERT INTO runs (run_id, plan_version_id, status, run_scope, target_step_id, "
+            " created_at, started_at, metadata_json) "
+            "VALUES (?, ?, 'running', ?, ?, ?, ?, ?)",
+            (run_id, pv_id, "to_node", "step-a", now, now, metadata_json),
+        )
+
+        from cardre.services.run_coordinator import RunCoordinator
+        coordinator = RunCoordinator(store)
+
+        # Current code reads metadata -> no error (WRONG).
+        # After fix reads column 'to_node' -> raises RunScopeNotAvailableForLaunch.
+        with pytest.raises(RunScopeNotAvailableForLaunch) as exc_info:
+            coordinator.execute_created_run(run_id)
+        assert exc_info.value.context.get("target_step_id") == "step-a"
+
 
 
 class TestShortCircuit:
@@ -279,9 +304,9 @@ class TestStaleRecovery:
         old_time = "2020-01-01T00:00:00"
         run_id = str(uuid.uuid4())
         store.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, started_at, heartbeat_at) "
-            "VALUES (?, ?, 'running', ?, ?)",
-            (run_id, pv_id, old_time, old_time),
+            "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, heartbeat_at) "
+            "VALUES (?, ?, 'running', ?, ?, ?)",
+            (run_id, pv_id, old_time, old_time, old_time),
         )
 
         from cardre.services.run_coordinator import RunCoordinator

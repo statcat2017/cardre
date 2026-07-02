@@ -82,26 +82,8 @@
           "projects"
         ],
         "summary": "Create Project",
-        "description": "Create a new project.",
+        "description": "Create a new project by bootstrapping a fresh v2 store at body.path.",
         "operationId": "create_project_projects_post",
-        "parameters": [
-          {
-            "name": "X-Project-Path",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Project-Path"
-            }
-          }
-        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3229,11 +3211,16 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
           }
         },
         "type": "object",
         "required": [
-          "name"
+          "name",
+          "path"
         ],
         "title": "ProjectCreateRequest"
       },

@@ -75,9 +75,9 @@ def _seed_with_run_evidence(store, plan_id: str | None = None):
 
     run_id = str(uuid.uuid4())
     store.execute(
-        "INSERT INTO runs (run_id, plan_version_id, status, started_at, finished_at) "
-        "VALUES (?, ?, 'succeeded', ?, ?)",
-        (run_id, pv_id, now, now),
+    "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, finished_at) "
+    "VALUES (?, ?, 'succeeded', ?, ?, ?)",
+    (run_id, pv_id, now, now, now),
     )
     rs_id = str(uuid.uuid4())
     fp = json.dumps({

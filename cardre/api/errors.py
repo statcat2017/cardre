@@ -40,6 +40,7 @@ COMPARISON_NOT_FOUND = "COMPARISON_NOT_FOUND"
 REVIEW_NOT_FOUND = "REVIEW_NOT_FOUND"
 MISSING_PROJECT_PATH = "MISSING_PROJECT_PATH"
 CONCURRENT_RUN = "CONCURRENT_RUN"
+STORE_ALREADY_EXISTS = "STORE_ALREADY_EXISTS"
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +119,7 @@ __all__ = [
     "RUN_EXECUTION_FAILED",
     "RUN_NOT_FOUND",
     "STEP_NOT_FOUND",
+    "STORE_ALREADY_EXISTS",
     "STORE_VERSION_INCOMPATIBLE",
     "error_response",
     "cardre_error_handler",
