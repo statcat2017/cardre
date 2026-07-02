@@ -22,6 +22,7 @@ cd "$REPO_DIR"
 
 pyinstaller --onefile \
   --name cardre-api \
+  --paths "$REPO_DIR" \
   --distpath frontend/src-tauri/binaries \
   --hidden-import cardre.api.app \
   sidecar/__main__.py
