@@ -1,35 +1,47 @@
-"""Execution fingerprint construction for RunStepRecord.
+"""Execution fingerprint construction for RunStep.
 
-Pure data construction from StepSpec, RunStepRecord, and ArtifactRef.
+Pure data construction from StepSpec, RunStep, and ArtifactRef.
 No ProjectStore, no orchestration.
 """
+
 from __future__ import annotations
 
 import sys
 from typing import Any
 
-from cardre.audit import ArtifactRef, RunStepRecord, StepSpec
+from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.run import RunStep
+from cardre.domain.step import StepSpec
 
-CARDRE_VERSION = "0.1.0"
+CARDRE_VERSION = "0.2.0"
 
 
-def output_logical_hashes(rs: RunStepRecord) -> list[str]:
+def output_logical_hashes(rs: RunStep) -> list[str]:
+    """Extract output logical hashes from a run step's execution fingerprint."""
     return rs.execution_fingerprint.get("output_artifact_logical_hashes", [])
 
 
 def build_parent_output_hashes(
-    parent_run_steps: list[RunStepRecord],
+    parent_run_steps: list[RunStep],
 ) -> dict[str, list[str]]:
+    """Build a mapping of step_id -> output logical hashes for parent steps."""
     return {rs.step_id: output_logical_hashes(rs) for rs in parent_run_steps}
 
 
 def build_execution_fingerprint(
     plan_version_id: str,
     spec: StepSpec,
-    parent_run_steps: list[RunStepRecord],
+    parent_run_steps: list[RunStep],
     input_artifacts: list[ArtifactRef],
     output_artifacts: list[ArtifactRef],
 ) -> dict[str, Any]:
+    """Construct the execution fingerprint dict for a run step.
+
+    This is execution metadata only — node_type, node_version, params_hash,
+    code_version, library_versions. Staleness and lineage read from
+    ``evidence_edges`` + ``evidence_artifacts`` + params hashes, not this
+    column.
+    """
     return {
         "plan_version_id": plan_version_id,
         "step_id": spec.step_id,
@@ -43,3 +55,10 @@ def build_execution_fingerprint(
         "python_version": sys.version.split()[0],
         "cardre_version": CARDRE_VERSION,
     }
+
+
+__all__ = [
+    "build_execution_fingerprint",
+    "build_parent_output_hashes",
+    "output_logical_hashes",
+]

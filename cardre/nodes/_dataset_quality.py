@@ -14,7 +14,7 @@ from datetime import datetime
 
 import polars as pl
 
-from cardre.audit import JsonDict
+from cardre.domain.diagnostics import JsonDict
 
 # ---------------------------------------------------------------------------
 # Thresholds

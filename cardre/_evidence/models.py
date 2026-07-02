@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 import math
 from typing import Any
 
-from cardre.audit import JsonDict
+from cardre.domain.diagnostics import JsonDict
 
 
 @dataclass(frozen=True)

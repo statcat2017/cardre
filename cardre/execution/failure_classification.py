@@ -1,48 +1,41 @@
 """Classify a step-execution exception into the structured error_entry
-dict recorded in RunStepRecord.errors.
+dict recorded in RunStep.errors.
 
 Pure mapping — no ProjectStore, no run/step IDs.
 """
+
 from __future__ import annotations
 
 from typing import Any
 
-from cardre.errors import (
+from cardre.domain.errors import (
     ArtifactReadError,
     ArtifactWriteError,
     CardreError,
-    ContractViolationError,
     GraphValidationError,
-    MissingInputArtifactError,
-    NodeExecutionError,
-    ParameterValidationError,
+    NodeNotAvailableForLaunch,
+    OptionalDependencyNotInstalled,
+    PlanContainsUnavailableNodesError,
 )
-from cardre.execution.validation import LeakageProtectionError, RoleAccessError
 
 # Order matters: more specific subclasses first.
 _CATEGORY_MAP: tuple = (
     (GraphValidationError, "GraphValidationError"),
-    (MissingInputArtifactError, "MissingInputArtifactError"),
-    (ParameterValidationError, "ParameterValidationError"),
+    (PlanContainsUnavailableNodesError, "PlanContainsUnavailableNodesError"),
     (ArtifactReadError, "ArtifactReadError"),
     (ArtifactWriteError, "ArtifactWriteError"),
-    (NodeExecutionError, "NodeExecutionError"),
-    (ContractViolationError, "ContractViolationError"),
-    (RoleAccessError, "RoleAccessError"),
-    (LeakageProtectionError, "LeakageProtectionError"),
+    (NodeNotAvailableForLaunch, "NodeNotAvailableForLaunch"),
+    (OptionalDependencyNotInstalled, "OptionalDependencyNotInstalled"),
     (CardreError, "CardreError"),
 )
 
 _CODE_MAP: dict[str, str] = {
     "GraphValidationError": "GRAPH_VALIDATION_ERROR",
-    "MissingInputArtifactError": "MISSING_INPUT_ARTIFACT",
-    "ParameterValidationError": "PARAMETER_VALIDATION_ERROR",
+    "PlanContainsUnavailableNodesError": "PLAN_CONTAINS_UNAVAILABLE_NODES",
     "ArtifactReadError": "ARTIFACT_READ_ERROR",
     "ArtifactWriteError": "ARTIFACT_WRITE_ERROR",
-    "NodeExecutionError": "NODE_EXECUTION_ERROR",
-    "ContractViolationError": "CONTRACT_VIOLATION_ERROR",
-    "RoleAccessError": "ROLE_ACCESS_ERROR",
-    "LeakageProtectionError": "LEAKAGE_PROTECTION_ERROR",
+    "NodeNotAvailableForLaunch": "NODE_NOT_AVAILABLE_FOR_LAUNCH",
+    "OptionalDependencyNotInstalled": "OPTIONAL_DEPENDENCY_NOT_INSTALLED",
     "CardreError": "CARDRE_ERROR",
 }
 
@@ -69,3 +62,6 @@ def classify_step_failure(exc_value: BaseException | None, traceback_str: str) -
         "traceback": traceback_str,
         "category": category,
     }
+
+
+__all__ = ["classify_step_failure"]

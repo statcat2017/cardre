@@ -8,14 +8,12 @@ import polars as pl
 from sklearn.linear_model import LogisticRegression
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.audit import ExecutionContext, NodeOutput, NodeType
+from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.nodes.contracts import NodeType
 from cardre.node_parameters import NodeParameterSchema
-from cardre.evidence import (
-    ArtifactEvidenceReader,
-    EvidenceKind,
-    SCHEMA_REJECT_INFERENCE_RESULT,
-    SCHEMA_REJECT_POPULATION_CONFIG,
-)
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.schemas import SCHEMA_REJECT_INFERENCE_RESULT, SCHEMA_REJECT_POPULATION_CONFIG
 
 
 _RI_FINANCED = "_ri_financed"

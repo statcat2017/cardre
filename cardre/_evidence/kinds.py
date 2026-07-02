@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from cardre.audit import ArtifactRef
+from cardre.domain.artifacts import ArtifactRef
 
 
 class EvidenceKind(Enum):

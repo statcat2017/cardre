@@ -24,13 +24,13 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold
 
 from cardre.artifacts import write_json_artifact
-from cardre.audit import ArtifactRef, ExecutionContext, JsonDict, NodeOutput, NodeType
-from cardre.evidence import (
-    ArtifactEvidenceReader,
-    EvidenceKind,
-    SCHEMA_CALIBRATION_REPORT,
-    SCHEMA_MODEL_ARTIFACT,
-)
+from cardre.domain.artifacts import ArtifactRef
+from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.diagnostics import JsonDict
+from cardre.nodes.contracts import NodeType
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.schemas import SCHEMA_CALIBRATION_REPORT, SCHEMA_MODEL_ARTIFACT
 from cardre.modeling.serialization import write_estimator_artifact
 from cardre.node_parameters import (
     MethodOption,

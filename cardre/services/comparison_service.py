@@ -1,22 +1,28 @@
-"""Comparison service — intent, readiness, and immutable comparison snapshots."""
+"""Comparison service — intent, readiness, and immutable comparison snapshots.
+
+Port from v1.  Uses relational ``comparison_challenger_branches`` and
+``comparison_snapshot_plan_versions`` tables (not JSON arrays).
+"""
 
 from __future__ import annotations
 
 import json
-import uuid
 from dataclasses import fields, is_dataclass
 from typing import Any
 
+from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
-from cardre.audit import utc_now_iso
-from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
-from cardre.evidence_locator import latest_successful_run_step
+from cardre.domain.diagnostics import utc_now_iso
+from cardre.store.run_repo import RunRepository
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_COMPARISON,
     canonical_alias_candidates,
 )
-from cardre.staleness import compute_staleness
-from cardre.store import ProjectStore
+from cardre.services.staleness_service import StalenessService
+from cardre.store.branch_repo import BranchRepository
+from cardre.store.comparison_repo import ComparisonRepository
+from cardre.store.db import ProjectStore
 
 
 def _check_branch_readiness(
@@ -36,14 +42,13 @@ def _check_branch_readiness(
 
     Returns a list of missing-or-stale entries; empty list = ready.
     """
-    step_map = store.get_branch_step_map(branch_id, plan_version_id)
+    branches_repo = BranchRepository(store)
+    step_map = branches_repo.get_step_map(branch_id, plan_version_id)
     canon_to_actual: dict[str, str] = {}
     for row in step_map:
         canon_to_actual[row["canonical_step_id"]] = row["step_id"]
 
-    staleness = compute_staleness(
-        store, plan_version_id, branch_id=branch_id if not is_baseline else None,
-    )
+    staleness_svc = StalenessService(store)
 
     missing: list[dict[str, str]] = []
     for cs in required_steps:
@@ -54,15 +59,24 @@ def _check_branch_readiness(
                 break
         actual_id = actual_id or cs
         evidence_branch = branch_id if not is_baseline else None
+        repo = RunRepository(store)
         rs = None
         for candidate in [actual_id, *canonical_alias_candidates(cs)]:
-            rs = latest_successful_run_step(
-                store, plan_version_id, candidate, branch_id=evidence_branch,
+            rs = repo.get_latest_successful_step(
+                plan_version_id, candidate, branch_id=evidence_branch,
             )
+            if rs is None and evidence_branch is not None:
+                rs = repo.get_latest_successful_step(
+                    plan_version_id, candidate, branch_id=None,
+                )
             if rs is not None:
                 break
         if rs is None:
-            status = "stale" if staleness.get(actual_id, True) else "not_run"
+            # Use staleness service to determine if stale or not_run
+            explanation = staleness_svc.explain_step(
+                plan_version_id, actual_id, branch_id=evidence_branch,
+            )
+            status = "stale" if explanation.status == "stale" else "not_run"
             missing.append({
                 "branch_id": branch_id,
                 "canonical_step_id": cs,
@@ -123,8 +137,9 @@ def _build_comparison_content(
         "warnings": [],
     }
 
-    step_map_b = store.get_branch_step_map(branch_id_baseline, plan_version_id_baseline)
-    step_map_c = store.get_branch_step_map(branch_id_challenger, plan_version_id_challenger)
+    branches_repo = BranchRepository(store)
+    step_map_b = branches_repo.get_step_map(branch_id_baseline, plan_version_id_baseline)
+    step_map_c = branches_repo.get_step_map(branch_id_challenger, plan_version_id_challenger)
     reader = ArtifactEvidenceReader(store)
 
     def _find_typed_artifact(
@@ -137,15 +152,23 @@ def _build_comparison_content(
         """Find the typed evidence for a canonical step."""
         for row in step_map:
             if row["canonical_step_id"] == cs:
-                rs = store.get_latest_successful_run_step_for_step(pv_id, row["step_id"], branch_id=evidence_branch_id)
+                repo = RunRepository(store)
+                rs = repo.get_latest_successful_step(pv_id, row["step_id"], branch_id=evidence_branch_id)
                 if rs is None and evidence_branch_id is not None:
-                    rs = store.get_latest_successful_run_step_for_step(pv_id, row["step_id"], branch_id=None)
-                if rs and rs.output_artifact_ids:
-                    for aid in rs.output_artifact_ids:
-                        for kind in kinds:
-                            evidence = reader.read_optional(aid, kind)
-                            if evidence is not None:
-                                return _materialize_evidence(evidence)
+                    rs = repo.get_latest_successful_step(pv_id, row["step_id"], branch_id=None)
+                if rs:
+                    rows = store.execute(
+                        "SELECT artifact_id FROM artifact_lineage "
+                        "WHERE run_step_id = ? AND direction = 'output'",
+                        (rs.run_step_id,),
+                    ).fetchall()
+                    artifact_ids = [r["artifact_id"] for r in rows]
+                    if artifact_ids:
+                        for aid in artifact_ids:
+                            for kind in kinds:
+                                evidence = reader.read_optional(aid, kind)
+                                if evidence is not None:
+                                    return _materialize_evidence(evidence)
         return None
 
     woe_b = _find_typed_artifact(step_map_b, "final-woe-iv", plan_version_id_baseline, None, (EvidenceKind.WOE_IV_EVIDENCE,)) if spec.get("include_woe_iv") else None
@@ -339,13 +362,19 @@ def create_comparison(
     comparison_spec: dict[str, Any] | None = None,
     created_reason: str | None = None,
 ) -> dict[str, Any]:
-    """Create comparison intent. Does NOT execute any modelling nodes."""
-    baseline = store.get_branch(baseline_branch_id)
+    """Create comparison intent. Does NOT execute any modelling nodes.
+
+    Uses relational ``comparison_challenger_branches`` table (not JSON array).
+    """
+    branches_repo = BranchRepository(store)
+    comparison_repo = ComparisonRepository(store)
+
+    baseline = branches_repo.get_branch(baseline_branch_id)
     if baseline is None:
         raise ValueError(f"BASELINE_BRANCH_NOT_FOUND: {baseline_branch_id}")
 
     for cid in challenger_branch_ids:
-        if store.get_branch(cid) is None:
+        if branches_repo.get_branch(cid) is None:
             raise ValueError(f"CHALLENGER_BRANCH_NOT_FOUND: {cid}")
 
     spec = comparison_spec or {
@@ -357,21 +386,19 @@ def create_comparison(
         "include_warnings": True,
     }
 
-    comparison_id = str(uuid.uuid4())
-    now = utc_now_iso()
-    with store.transaction() as conn:
-        conn.execute(
-            "INSERT INTO branch_comparisons "
-            "(comparison_id, project_id, plan_id, baseline_branch_id, "
-            " challenger_branch_ids_json, comparison_spec_json, created_at, created_reason) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                comparison_id, project_id, plan_id, baseline_branch_id,
-                json.dumps(challenger_branch_ids), json.dumps(spec),
-                now, created_reason,
-            ),
-        )
+    comparison_id = comparison_repo.create_comparison(
+        project_id=project_id,
+        plan_id=plan_id,
+        baseline_branch_id=baseline_branch_id,
+        comparison_spec=spec,
+        created_reason=created_reason,
+    )
 
+    # Insert challenger branches relationally
+    for idx, cid in enumerate(challenger_branch_ids):
+        comparison_repo.add_challenger_branch(comparison_id, cid, position=idx)
+
+    now = utc_now_iso()
     return {
         "comparison_id": comparison_id,
         "project_id": project_id,
@@ -396,15 +423,22 @@ def refresh_comparison(
     Checks both baseline and all challenger branches.
     Does NOT execute modelling nodes. Does NOT create run records.
     """
-    comparison = store.get_branch_comparison(comparison_id)
+    branches_repo = BranchRepository(store)
+    comparison_repo = ComparisonRepository(store)
+
+    comparison = comparison_repo.get_comparison(comparison_id)
     if comparison is None:
         raise ValueError(f"COMPARISON_NOT_FOUND: {comparison_id}")
 
     baseline_branch_id = comparison["baseline_branch_id"]
-    challenger_ids = json.loads(comparison["challenger_branch_ids_json"])
+
+    # Read challenger branches from relational table, not JSON array
+    challenger_rows = comparison_repo.get_challenger_branches(comparison_id)
+    challenger_ids = [r["branch_id"] for r in challenger_rows]
+
     spec = json.loads(comparison["comparison_spec_json"])
 
-    baseline = store.get_branch(baseline_branch_id)
+    baseline = branches_repo.get_branch(baseline_branch_id)
     if baseline is None:
         raise ValueError(f"BASELINE_BRANCH_NOT_FOUND: {baseline_branch_id}")
 
@@ -418,7 +452,7 @@ def refresh_comparison(
 
     # Check each challenger
     for cid in challenger_ids:
-        challenger = store.get_branch(cid)
+        challenger = branches_repo.get_branch(cid)
         if challenger is None:
             all_missing.append({"branch_id": cid, "canonical_step_id": "", "step_id": "", "status": "not_found"})
             continue
@@ -442,8 +476,10 @@ def refresh_comparison(
     # Build comparison snapshots — one per challenger
     now = utc_now_iso()
     last_snapshot_id = None
+    artifact = None
+
     for cid in challenger_ids:
-        challenger = store.get_branch(cid)
+        challenger = branches_repo.get_branch(cid)
         if challenger is None:
             continue
 
@@ -464,26 +500,32 @@ def refresh_comparison(
             metadata={"comparison_id": comparison_id, "challenger_branch_id": cid},
         )
 
-        snapshot_id = str(uuid.uuid4())
-        source_pv_ids = json.dumps([baseline["head_plan_version_id"], challenger["head_plan_version_id"]])
-        readiness_data = json.dumps({"ready": True, "missing": []})
+        # Create snapshot using repository (relational plan versions)
+        snapshot_id = comparison_repo.create_snapshot(
+            comparison_id=comparison_id,
+            project_id=comparison["project_id"],
+            plan_id=comparison["plan_id"],
+            comparison_artifact_id=artifact.artifact_id,
+            readiness={"ready": True, "missing": []},
+            created_reason="Comparison refresh",
+        )
 
+        # Add source plan versions relationally
+        comparison_repo.add_snapshot_plan_version(
+            snapshot_id,
+            baseline["head_plan_version_id"],
+            branch_id=baseline_branch_id,
+        )
+        comparison_repo.add_snapshot_plan_version(
+            snapshot_id,
+            challenger["head_plan_version_id"],
+            branch_id=cid,
+        )
+
+        # Update comparison with latest snapshot
         with store.transaction() as conn:
             conn.execute(
-                "INSERT INTO branch_comparison_snapshots "
-                "(comparison_snapshot_id, comparison_id, project_id, plan_id, "
-                " comparison_artifact_id, readiness_json, source_plan_version_ids_json, "
-                " created_at, created_reason) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    snapshot_id, comparison_id, comparison["project_id"], comparison["plan_id"],
-                    artifact.artifact_id, readiness_data, source_pv_ids,
-                    now, "Comparison refresh",
-                ),
-            )
-            conn.execute(
-                "UPDATE branch_comparisons SET latest_snapshot_id = ?, latest_ready = 1 "
-                "WHERE comparison_id = ?",
+                "UPDATE branch_comparisons SET latest_snapshot_id = ?, latest_ready = 1 WHERE comparison_id = ?",
                 (snapshot_id, comparison_id),
             )
         last_snapshot_id = snapshot_id
@@ -492,7 +534,7 @@ def refresh_comparison(
         "comparison_id": comparison_id,
         "comparison_snapshot_id": last_snapshot_id,
         "ready": True,
-        "comparison_artifact_id": artifact.artifact_id if challenger_ids else None,
+        "comparison_artifact_id": artifact.artifact_id if artifact else None,
         "refreshed_at": now,
         "blocked_reason": None,
         "missing_or_stale": [],

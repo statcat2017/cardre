@@ -8,21 +8,18 @@ from typing import Any
 import polars as pl
 
 from cardre.artifacts import write_json_artifact
-from cardre.audit import ExecutionContext, NodeOutput, NodeType, json_logical_hash
+from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.nodes.contracts import NodeType
+from cardre.domain.artifacts import json_logical_hash
 from cardre.node_parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.evidence import (
-    ArtifactEvidenceReader,
-    EvidenceKind,
-    EvidenceNotFoundError,
-    EvidenceParseError,
-    SCHEMA_MODEL_ARTIFACT,
-    SCHEMA_SCORE_SCALING,
-)
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre._evidence.kinds import EvidenceKind, EvidenceNotFoundError, EvidenceParseError
+from cardre._evidence.schemas import SCHEMA_MODEL_ARTIFACT, SCHEMA_SCORE_SCALING
 
 
 class LogisticRegressionNode(NodeType):

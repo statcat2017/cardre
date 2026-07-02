@@ -11,28 +11,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Health */
-        get: operations["get_health_health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/binning/engines": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
         /**
-         * List Binning Engines
-         * @description List available binning engines and their capabilities.
+         * Health
+         * @description Return API health status.
          */
-        get: operations["list_binning_engines_binning_engines_get"];
+        get: operations["health_health_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -48,10 +31,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Projects */
+        /**
+         * List Projects
+         * @description List all projects (from the currently opened store).
+         */
         get: operations["list_projects_projects_get"];
         put?: never;
-        /** Create Project */
+        /**
+         * Create Project
+         * @description Create a new project by bootstrapping a fresh v2 store at body.path.
+         */
         post: operations["create_project_projects_post"];
         delete?: never;
         options?: never;
@@ -66,7 +55,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Project */
+        /**
+         * Get Project
+         * @description Get a single project by ID.
+         */
         get: operations["get_project_projects__project_id__get"];
         put?: never;
         post?: never;
@@ -83,10 +75,105 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Project Plans */
-        get: operations["get_project_plans_projects__project_id__plans_get"];
+        /**
+         * List Plans
+         * @description List all plans for a project.
+         */
+        get: operations["list_plans_projects__project_id__plans_get"];
+        put?: never;
+        /**
+         * Create Plan
+         * @description Create a new plan for a project.
+         */
+        post: operations["create_plan_projects__project_id__plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Plan
+         * @description Get a single plan by ID.
+         */
+        get: operations["get_plan_projects__project_id__plans__plan_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/plans/{plan_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Plan Versions
+         * @description List all versions of a plan.
+         */
+        get: operations["list_plan_versions_projects__project_id__plans__plan_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/plan-versions/{plan_version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Plan Version
+         * @description Get a single plan version by ID.
+         */
+        get: operations["get_plan_version_projects__project_id__plan_versions__plan_version_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Plan Version
+         * @description Update a draft plan version's metadata (description).
+         *
+         *     Raises ``PLAN_VERSION_IMMUTABLE`` (409) if the version is already committed.
+         */
+        patch: operations["update_plan_version_projects__project_id__plan_versions__plan_version_id__patch"];
+        trace?: never;
+    };
+    "/projects/{project_id}/plan-versions/{plan_version_id}/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Commit Plan Version
+         * @description Commit a draft plan version, making it read-only.
+         *
+         *     Raises ``PLAN_VERSION_IMMUTABLE`` (409) if already committed.
+         */
+        post: operations["commit_plan_version_projects__project_id__plan_versions__plan_version_id__commit_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -100,25 +187,35 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Project Runs */
-        get: operations["get_project_runs_projects__project_id__runs_get"];
+        /**
+         * List Runs
+         * @description List all runs for a project.
+         */
+        get: operations["list_runs_projects__project_id__runs_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Run
+         * @description Create and optionally execute a run for a plan version.
+         */
+        post: operations["create_run_projects__project_id__runs_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/projects/{project_id}/artifacts": {
+    "/projects/{project_id}/runs/{run_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Project Artifacts */
-        get: operations["get_project_artifacts_projects__project_id__artifacts_get"];
+        /**
+         * Get Run
+         * @description Get a single run by ID with summary info.
+         */
+        get: operations["get_run_projects__project_id__runs__run_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -127,7 +224,153 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/datasets/import": {
+    "/projects/{project_id}/runs/{run_id}/steps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Run Steps
+         * @description List all steps for a run.
+         */
+        get: operations["list_run_steps_projects__project_id__runs__run_id__steps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/runs/{run_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Run Evidence
+         * @description List all evidence edges for a run.
+         */
+        get: operations["list_run_evidence_projects__project_id__runs__run_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/steps/{step_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Step Evidence Staleness
+         * @description Get staleness explanation for a step.
+         *
+         *     Requires ``plan_version_id`` query parameter.  Keyed by step, not run.
+         */
+        get: operations["get_step_evidence_staleness_projects__project_id__steps__step_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/steps/{step_id}/evidence/edges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Step Evidence Edges
+         * @description List evidence edges for a step across plan versions.
+         */
+        get: operations["get_step_evidence_edges_projects__project_id__steps__step_id__evidence_edges_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Artifact
+         * @description Get a single artifact by ID.
+         */
+        get: operations["get_artifact_projects__project_id__artifacts__artifact_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/manual-binning/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Reviews
+         * @description List manual-binning reviews, optionally filtered.
+         */
+        get: operations["list_reviews_projects__project_id__manual_binning_reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/manual-binning/reviews/{review_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Review
+         * @description Get a single manual-binning review.
+         */
+        get: operations["get_review_projects__project_id__manual_binning_reviews__review_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Review
+         * @description Update a manual-binning review (status, notes).
+         */
+        patch: operations["update_review_projects__project_id__manual_binning_reviews__review_id__patch"];
+        trace?: never;
+    };
+    "/projects/{project_id}/manual-binning/edit": {
         parameters: {
             query?: never;
             header?: never;
@@ -136,66 +379,18 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Import Dataset */
-        post: operations["import_dataset_datasets_import_post"];
+        /**
+         * Apply Manual Binning Edit
+         * @description Apply a manual-binning edit (creates new draft version + review).
+         */
+        post: operations["apply_manual_binning_edit_projects__project_id__manual_binning_edit_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/runs/{run_id}/steps/{step_id}/evidence": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Step Evidence */
-        get: operations["get_step_evidence_runs__run_id__steps__step_id__evidence_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/runs/{run_id}/evidence": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Run Evidence */
-        get: operations["get_run_evidence_runs__run_id__evidence_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/plans/{plan_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Plan */
-        get: operations["get_plan_plans__plan_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/plans/{plan_id}/steps/{step_id}/params": {
+    "/projects/{project_id}/manual-binning/preview": {
         parameters: {
             query?: never;
             header?: never;
@@ -204,23 +399,53 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Update Step Params */
-        post: operations["update_step_params_plans__plan_id__steps__step_id__params_post"];
+        /**
+         * Preview Binning
+         * @description Preview WOE/IV/event-rate for a variable's bin data.
+         */
+        post: operations["preview_binning_projects__project_id__manual_binning_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/plans/{plan_id}/steps/{step_id}/editor-state": {
+    "/projects/{project_id}/branches": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Manual Binning Editor State */
-        get: operations["get_manual_binning_editor_state_plans__plan_id__steps__step_id__editor_state_get"];
+        /**
+         * List Branches
+         * @description List all branches for a project, optionally filtered.
+         */
+        get: operations["list_branches_projects__project_id__branches_get"];
+        put?: never;
+        /**
+         * Create Branch
+         * @description Create a new branch for challenger analysis.
+         */
+        post: operations["create_branch_projects__project_id__branches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/branches/{branch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Branch
+         * @description Get a single branch by ID.
+         */
+        get: operations["get_branch_projects__project_id__branches__branch_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -229,49 +454,18 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/plans/{plan_id}/steps/{step_id}/manual-binning/preview": {
+    "/projects/{project_id}/comparisons": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
-        /** Preview Manual Binning Overrides */
-        post: operations["preview_manual_binning_overrides_plans__plan_id__steps__step_id__manual_binning_preview_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/plans/{plan_id}/steps/{step_id}/manual-binning/review": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Review Manual Binning */
-        post: operations["review_manual_binning_plans__plan_id__steps__step_id__manual_binning_review_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/plans/{plan_id}/versions/{plan_version_id}/staleness": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Staleness Detail */
-        get: operations["get_staleness_detail_plans__plan_id__versions__plan_version_id__staleness_get"];
+        /**
+         * List Comparisons
+         * @description List all comparisons for a project.
+         */
+        get: operations["list_comparisons_projects__project_id__comparisons_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -280,15 +474,18 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/plans/{plan_id}/workflow-guidance": {
+    "/projects/{project_id}/comparisons/{comparison_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Workflow Guidance */
-        get: operations["get_workflow_guidance_plans__plan_id__workflow_guidance_get"];
+        /**
+         * Get Comparison
+         * @description Get a single comparison by ID.
+         */
+        get: operations["get_comparison_projects__project_id__comparisons__comparison_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -297,32 +494,18 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/runs": {
+    "/projects/{project_id}/champion": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
-        /** Run Plan */
-        post: operations["run_plan_runs_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/runs/project/{project_id}/runs/{run_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Project Run */
-        get: operations["get_project_run_runs_project__project_id__runs__run_id__get"];
+        /**
+         * Get Champion
+         * @description Get the current champion assignment for a project or plan.
+         */
+        get: operations["get_champion_projects__project_id__champion_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -331,15 +514,18 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/runs/project/{project_id}/runs/{run_id}/steps": {
+    "/projects/{project_id}/exports": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Project Run Steps */
-        get: operations["get_project_run_steps_runs_project__project_id__runs__run_id__steps_get"];
+        /**
+         * List Exports
+         * @description List exports for a project, optionally filtered by run.
+         */
+        get: operations["list_exports_projects__project_id__exports_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -348,102 +534,20 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/runs/project/{project_id}/runs/{run_id}/manifest": {
+    "/projects/{project_id}/reports": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Project Run Manifest */
-        get: operations["get_project_run_manifest_runs_project__project_id__runs__run_id__manifest_get"];
+        /**
+         * List Reports
+         * @description List all reports for a project.
+         */
+        get: operations["list_reports_projects__project_id__reports_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/exports/audit-pack": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Export Audit Pack */
-        post: operations["export_audit_pack_exports_audit_pack_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/artifacts/project/{project_id}/artifacts/{artifact_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Project Artifact */
-        get: operations["get_project_artifact_artifacts_project__project_id__artifacts__artifact_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/artifacts/project/{project_id}/artifacts/{artifact_id}/summary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Project Artifact Summary */
-        get: operations["get_project_artifact_summary_artifacts_project__project_id__artifacts__artifact_id__summary_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/artifacts/project/{project_id}/artifacts/{artifact_id}/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Project Artifact Preview */
-        get: operations["get_project_artifact_preview_artifacts_project__project_id__artifacts__artifact_id__preview_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/projects/{project_id}/runs/{run_id}/report-readiness": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Get Report Readiness */
-        post: operations["get_report_readiness_projects__project_id__runs__run_id__report_readiness_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -459,28 +563,10 @@ export interface paths {
         };
         /**
          * List Run Reports
-         * @description List all generated reports for a given run.
+         * @description List reports for a specific run.
          */
         get: operations["list_run_reports_projects__project_id__runs__run_id__reports_get"];
         put?: never;
-        /** Generate Report */
-        post: operations["generate_report_projects__project_id__runs__run_id__reports_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/projects/{project_id}/runs/{run_id}/reports/{report_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Report Metadata */
-        get: operations["get_report_metadata_projects__project_id__runs__run_id__reports__report_id__get"];
-        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -488,7 +574,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects/{project_id}/reports/serve": {
+    "/projects/{project_id}/node-types": {
         parameters: {
             query?: never;
             header?: never;
@@ -496,250 +582,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Serve Report File
-         * @description Serve a report file (HTML or JSON) from a project's exports directory.
-         *
-         *     Used by the frontend to open generated reports in a browser tab.
-         *     The path is relative to the project's exports directory
-         *     (e.g. 'report_abc123/report/report.html').
+         * List Node Types
+         * @description List all available node types for a project.
          */
-        get: operations["serve_report_file_projects__project_id__reports_serve_get"];
+        get: operations["list_node_types_projects__project_id__node_types_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/node-types": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Node Types */
-        get: operations["list_node_types_node_types_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/node-types/{node_type}/schema": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Node Type Schema
-         * @description Get parameter schema for a specific node type.
-         */
-        get: operations["get_node_type_schema_node_types__node_type__schema_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/branches/{branch_id}/method-summary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Branch Method Summary
-         * @description Get method summary for a branch: model family, metrics, limitations.
-         *
-         *     MVP stub: returns model artifact metadata when available. Evidence
-         *     readiness resolution is not yet wired.
-         */
-        get: operations["get_branch_method_summary_branches__branch_id__method_summary_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/branch-comparison-snapshots/{snapshot_id}/model-ranking": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Model Ranking
-         * @description Rank branches by a selected metric from a comparison snapshot.
-         */
-        get: operations["get_model_ranking_branch_comparison_snapshots__snapshot_id__model_ranking_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/projects/{project_id}/branches": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Branches */
-        get: operations["list_branches_projects__project_id__branches_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/branches/{branch_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Branch */
-        get: operations["get_branch_branches__branch_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/plans/{plan_id}/branches": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create Branch */
-        post: operations["create_branch_plans__plan_id__branches_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/migrations/baseline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Migrate Baseline */
-        post: operations["migrate_baseline_migrations_baseline_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/branch-comparisons": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create Branch Comparison */
-        post: operations["create_branch_comparison_branch_comparisons_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/branch-comparisons/{comparison_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Branch Comparison */
-        get: operations["get_branch_comparison_branch_comparisons__comparison_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/branch-comparisons/{comparison_id}/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Refresh Branch Comparison */
-        post: operations["refresh_branch_comparison_branch_comparisons__comparison_id__refresh_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/branch-comparison-snapshots/{snapshot_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Comparison Snapshot */
-        get: operations["get_comparison_snapshot_branch_comparison_snapshots__snapshot_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/plans/{plan_id}/champion": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Plan Champion */
-        get: operations["get_plan_champion_plans__plan_id__champion_get"];
-        put?: never;
-        /** Assign Plan Champion */
-        post: operations["assign_plan_champion_plans__plan_id__champion_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -750,60 +598,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** ArtifactListItem */
-        ArtifactListItem: {
-            /** Artifact Id */
-            artifact_id: string;
-            /** Artifact Type */
-            artifact_type: string;
-            /** Role */
-            role: string;
-            /** Path */
-            path: string;
-            /** Physical Hash */
-            physical_hash: string;
-            /** Logical Hash */
-            logical_hash: string;
-            /** Media Type */
-            media_type: string;
-            /** Created At */
-            created_at: string;
-            /** Metadata */
-            metadata: {
-                [key: string]: unknown;
-            };
-        };
-        /** ArtifactPreviewResponse */
-        ArtifactPreviewResponse: {
-            /** Artifact Id */
-            artifact_id: string;
-            /** Media Type */
-            media_type: string;
-            /** Row Count */
-            row_count?: number | null;
-            /** Column Count */
-            column_count?: number | null;
-            /** Columns */
-            columns?: components["schemas"]["ColumnInfo"][];
-            /** Rows */
-            rows?: {
-                [key: string]: unknown;
-            }[];
-            /** Json Content */
-            json_content?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Limit
-             * @default 100
-             */
-            limit: number;
-            /**
-             * Offset
-             * @default 0
-             */
-            offset: number;
-        };
         /** ArtifactResponse */
         ArtifactResponse: {
             /** Artifact Id */
@@ -822,109 +616,38 @@ export interface components {
             media_type: string;
             /** Created At */
             created_at: string;
-            /** Metadata */
-            metadata: {
-                [key: string]: unknown;
-            };
         };
-        /** ArtifactSummaryResponse */
-        ArtifactSummaryResponse: {
-            /** Artifact Id */
-            artifact_id: string;
-            /** Artifact Type */
-            artifact_type: string;
-            /** Role */
-            role: string;
-            /** Media Type */
-            media_type: string;
-            /** Logical Hash */
-            logical_hash: string;
-            /** Physical Hash */
-            physical_hash: string;
-            /** Row Count */
-            row_count?: number | null;
-            /** Column Count */
-            column_count?: number | null;
-            /** Summary Preview */
-            summary_preview?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /** AssignChampionRequest */
-        AssignChampionRequest: {
-            /** Project Id */
-            project_id: string;
-            /** Branch Id */
-            branch_id: string;
-            /** Comparison Id */
-            comparison_id: string;
-            /** Comparison Snapshot Id */
-            comparison_snapshot_id: string;
-            /**
-             * Scope Type
-             * @default project
-             */
-            scope_type: string;
-            /**
-             * Scope Key
-             * @default default
-             */
-            scope_key: string;
-            /** Assigned Reason */
-            assigned_reason: string;
-        };
-        /** BinningEngineInfo */
-        BinningEngineInfo: {
-            /** Id */
-            id: string;
-            /** Label */
-            label: string;
-            /** Available */
-            available: boolean;
-            /** Version */
-            version?: string | null;
-            /** Target Types */
-            target_types?: string[];
-            /** Reason */
-            reason?: string | null;
-        };
-        /** BinningEnginesResponse */
-        BinningEnginesResponse: {
-            /** Engines */
-            engines: components["schemas"]["BinningEngineInfo"][];
-        };
-        /** BranchListItem */
-        BranchListItem: {
-            /** Branch Id */
-            branch_id: string;
+        /** BranchCreateRequest */
+        BranchCreateRequest: {
             /** Plan Id */
             plan_id: string;
             /** Name */
             name: string;
-            /** Branch Type */
-            branch_type: string;
             /**
-             * Status
-             * @default active
+             * Branch Type
+             * @default challenger
              */
-            status: string;
-            /** Base Branch Id */
-            base_branch_id?: string | null;
+            branch_type: string;
             /** Base Plan Version Id */
             base_plan_version_id: string;
             /** Head Plan Version Id */
             head_plan_version_id: string;
+            /** Description */
+            description?: string | null;
+            /** Base Branch Id */
+            base_branch_id?: string | null;
             /** Branch Point Step Id */
             branch_point_step_id?: string | null;
-            /** Branch Point Canonical Step Id */
-            branch_point_canonical_step_id?: string | null;
+            /**
+             * Created Reason
+             * @default
+             */
+            created_reason: string;
         };
         /** BranchListResponse */
         BranchListResponse: {
-            /** Project Id */
-            project_id: string;
             /** Branches */
-            branches: components["schemas"]["BranchListItem"][];
+            branches: components["schemas"]["BranchResponse"][];
         };
         /** BranchResponse */
         BranchResponse: {
@@ -960,81 +683,45 @@ export interface components {
              * @default
              */
             created_reason: string;
-            /** Steps */
-            steps?: components["schemas"]["BranchStepItem"][];
             /**
-             * Is Champion
-             * @default false
+             * Created At
+             * @default
              */
-            is_champion: boolean;
-            /** Latest Run Id */
-            latest_run_id?: string | null;
+            created_at: string;
             /**
-             * Readiness
-             * @default not_run
+             * Updated At
+             * @default
              */
-            readiness: string;
-            /**
-             * Warning Count
-             * @default 0
-             */
-            warning_count: number;
-            /**
-             * Error Count
-             * @default 0
-             */
-            error_count: number;
+            updated_at: string;
         };
-        /** BranchStepItem */
-        BranchStepItem: {
-            /** Step Id */
-            step_id: string;
-            /** Canonical Step Id */
-            canonical_step_id: string;
-            /** Branch Id */
-            branch_id?: string | null;
-            /**
-             * Is Shared Upstream
-             * @default false
-             */
-            is_shared_upstream: boolean;
-            /**
-             * Is Branch Owned
-             * @default true
-             */
-            is_branch_owned: boolean;
-        };
-        /** ChampionResponse */
-        ChampionResponse: {
+        /** ChampionAssignmentResponse */
+        ChampionAssignmentResponse: {
             /** Champion Assignment Id */
             champion_assignment_id: string;
+            /** Project Id */
+            project_id: string;
             /** Plan Id */
             plan_id: string;
             /** Champion Branch Id */
             champion_branch_id: string;
-            /** Previous Champion Branch Id */
-            previous_champion_branch_id?: string | null;
-            /** Scope Type */
-            scope_type: string;
-            /** Scope Key */
-            scope_key: string;
+            /** Selected Plan Version Id */
+            selected_plan_version_id: string;
             /**
              * Assigned At
              * @default
              */
             assigned_at: string;
-            /**
-             * Assigned Reason
-             * @default
-             */
-            assigned_reason: string;
+            /** Superseded At */
+            superseded_at?: string | null;
         };
-        /** ColumnInfo */
-        ColumnInfo: {
-            /** Name */
-            name: string;
-            /** Dtype */
-            dtype: string;
+        /** ChampionResponse */
+        ChampionResponse: {
+            assignment?: components["schemas"]["ChampionAssignmentResponse"] | null;
+        };
+        /** ComparisonListResponse */
+        ComparisonListResponse: {
+            /** Comparisons */
+            comparisons: components["schemas"]["ComparisonResponse"][];
         };
         /** ComparisonResponse */
         ComparisonResponse: {
@@ -1046,239 +733,76 @@ export interface components {
             plan_id: string;
             /** Baseline Branch Id */
             baseline_branch_id: string;
-            /** Challenger Branch Ids */
-            challenger_branch_ids: string[];
-            /** Latest Snapshot Id */
-            latest_snapshot_id?: string | null;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
             /** Latest Ready */
             latest_ready?: boolean | null;
-            /** Blocked Reason */
-            blocked_reason?: string | null;
-            /** Missing Or Stale */
-            missing_or_stale?: components["schemas"]["MissingStaleEvidence"][];
-            /** Warnings */
-            warnings?: string[];
+        };
+        /** EvidenceEdgeResponse */
+        EvidenceEdgeResponse: {
+            /** Evidence Edge Id */
+            evidence_edge_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Run Step Id */
+            run_step_id: string;
+            /** Plan Version Id */
+            plan_version_id: string;
+            /** Step Id */
+            step_id: string;
+            /** Parent Step Id */
+            parent_step_id: string;
+            /** Source Run Id */
+            source_run_id: string;
+            /** Source Run Step Id */
+            source_run_step_id: string;
+            /** Policy */
+            policy: string;
+            /** Source Label */
+            source_label: string;
+            /**
+             * Is Reused
+             * @default false
+             */
+            is_reused: boolean;
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
+            /** Stale Reason */
+            stale_reason?: string | null;
             /**
              * Created At
              * @default
              */
             created_at: string;
         };
-        /** ComparisonSnapshotResponse */
-        ComparisonSnapshotResponse: {
-            /** Comparison Snapshot Id */
-            comparison_snapshot_id: string;
-            /** Comparison Id */
-            comparison_id: string;
-            /** Comparison Artifact Id */
-            comparison_artifact_id: string;
-            /**
-             * Ready
-             * @default false
-             */
-            ready: boolean;
-            /**
-             * Created At
-             * @default
-             */
-            created_at: string;
+        /** ExportListResponse */
+        ExportListResponse: {
+            /** Exports */
+            exports: components["schemas"]["ExportResponse"][];
         };
-        /** CreateBranchRequest */
-        CreateBranchRequest: {
-            /** Project Id */
-            project_id: string;
-            /** Base Plan Version Id */
-            base_plan_version_id: string;
-            /** Base Branch Id */
-            base_branch_id?: string | null;
-            /** Branch Point Step Id */
-            branch_point_step_id: string;
-            /** Name */
-            name: string;
-            /** Description */
-            description?: string | null;
-            /** Branch Type */
-            branch_type: string;
-            /** Created Reason */
-            created_reason: string;
-            /** Segment Filter Spec */
-            segment_filter_spec?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /** CreateBranchResponse */
-        CreateBranchResponse: {
-            /** Branch Id */
-            branch_id: string;
-            /** Plan Id */
-            plan_id: string;
-            /** New Plan Version Id */
-            new_plan_version_id: string;
-            /** Name */
-            name: string;
-            /** Branch Type */
-            branch_type: string;
-            /** Branch Point Step Id */
-            branch_point_step_id?: string | null;
-            /** Branch Point Canonical Step Id */
-            branch_point_canonical_step_id?: string | null;
-            /** Created Step Ids */
-            created_step_ids?: {
-                [key: string]: string;
-            };
-            /** Shared Upstream Step Ids */
-            shared_upstream_step_ids?: string[];
-            /**
-             * Status
-             * @default not_run
-             */
-            status: string;
-            /** Warnings */
-            warnings?: string[];
-        };
-        /** CreateComparisonRequest */
-        CreateComparisonRequest: {
-            /** Project Id */
-            project_id: string;
-            /** Plan Id */
-            plan_id: string;
-            /** Baseline Branch Id */
-            baseline_branch_id: string;
-            /** Challenger Branch Ids */
-            challenger_branch_ids: string[];
-            /** Comparison Spec */
-            comparison_spec?: {
-                [key: string]: unknown;
-            };
-            /** Created Reason */
-            created_reason?: string | null;
-        };
-        /** CreateProjectRequest */
-        CreateProjectRequest: {
-            /** Path */
-            path: string;
-            /**
-             * Name
-             * @default Untitled Project
-             */
-            name: string;
-        };
-        /**
-         * EvidenceStatus
-         * @enum {string}
-         */
-        EvidenceStatus: "available" | "partial" | "stale" | "missing" | "unsupported";
-        /** ExportAuditPackRequest */
-        ExportAuditPackRequest: {
-            /** Project Id */
-            project_id: string;
-            /** Plan Id */
-            plan_id: string;
-            /** Branch Id */
-            branch_id: string;
-            /** Comparison Id */
-            comparison_id?: string | null;
-            /** Comparison Snapshot Id */
-            comparison_snapshot_id?: string | null;
-            /**
-             * Include Row Level Data
-             * @default false
-             */
-            include_row_level_data: boolean;
-            /**
-             * Include Report
-             * @default false
-             */
-            include_report: boolean;
-            /**
-             * Report Mode
-             * @default branch
-             */
-            report_mode: string;
-            /** Export Path */
-            export_path?: string | null;
-        };
-        /** ExportAuditPackResponse */
-        ExportAuditPackResponse: {
-            /** Export Path */
-            export_path: string;
+        /** ExportResponse */
+        ExportResponse: {
             /** Export Id */
             export_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Export Type */
+            export_type: string;
+            /** Path */
+            path: string;
+            /** Created At */
+            created_at: string;
             /**
-             * File Count
+             * Size Bytes
              * @default 0
              */
-            file_count: number;
-            /** Warnings */
-            warnings?: string[];
-            /** Diagnostics */
-            diagnostics?: components["schemas"]["ExportDiagnostic"][];
-        };
-        /** ExportDiagnostic */
-        ExportDiagnostic: {
-            /** Code */
-            code: string;
-            /** Message */
-            message: string;
-        };
-        /** GenerateReportRequest */
-        GenerateReportRequest: {
-            /** Target Branch Id */
-            target_branch_id: string;
-            /**
-             * Report Mode
-             * @default branch
-             */
-            report_mode: string;
-            /**
-             * Include Challenger Comparison
-             * @default false
-             */
-            include_challenger_comparison: boolean;
-            /**
-             * Include Supporting Artifacts
-             * @default true
-             */
-            include_supporting_artifacts: boolean;
-            /** Output Formats */
-            output_formats?: string[];
-            /**
-             * Export Zip
-             * @default false
-             */
-            export_zip: boolean;
-        };
-        /** GenerateReportResponse */
-        GenerateReportResponse: {
-            /** Report Id */
-            report_id: string;
-            /**
-             * Status
-             * @default
-             */
-            status: string;
-            /**
-             * Report Bundle Path
-             * @default
-             */
-            report_bundle_path: string;
-            /**
-             * Html Path
-             * @default
-             */
-            html_path: string;
-            /**
-             * Export Path
-             * @default
-             */
-            export_path: string;
-            /**
-             * Zip Path
-             * @default
-             */
-            zip_path: string;
-            /** Warnings */
-            warnings?: components["schemas"]["ReadinessItem"][];
+            size_bytes: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1293,586 +817,142 @@ export interface components {
              */
             status: string;
             /**
-             * Cardre Version
-             * @default 0.1.0
+             * Version
+             * @default 0.2.0
              */
-            cardre_version: string;
-            /**
-             * Registry Accessible
-             * @default false
-             */
-            registry_accessible: boolean;
-            /**
-             * Registered Node Count
-             * @default 0
-             */
-            registered_node_count: number;
-            /**
-             * Launch Node Count
-             * @default 0
-             */
-            launch_node_count: number;
-            /**
-             * Deferred Node Count
-             * @default 0
-             */
-            deferred_node_count: number;
-            /**
-             * Governance Enabled
-             * @default false
-             */
-            governance_enabled: boolean;
-            /**
-             * Checked At
-             * @default
-             */
-            checked_at: string;
-            /**
-             * Diagnostics
-             * @default []
-             */
-            diagnostics: {
-                [key: string]: unknown;
-            }[];
+            version: string;
         };
-        /** ImportDatasetRequest */
-        ImportDatasetRequest: {
-            /** Project Id */
-            project_id: string;
-            /** Source Path */
-            source_path: string;
-            /**
-             * Dataset Id
-             * @default
-             */
-            dataset_id: string;
-            /**
-             * Format
-             * @default auto
-             */
-            format: string;
-            /** Delimiter */
-            delimiter?: string | null;
-            /**
-             * Has Header
-             * @default true
-             */
-            has_header: boolean;
-            /**
-             * Schema Overrides
-             * @default {}
-             */
-            schema_overrides: {
-                [key: string]: string;
-            };
-            /** Max Rows */
-            max_rows?: number | null;
-            /** Encoding */
-            encoding?: string | null;
-            /** Null Values */
-            null_values?: string[] | null;
-        };
-        /** ManualBinningEditorStateResponse */
-        ManualBinningEditorStateResponse: {
-            /** Plan Id */
-            plan_id: string;
+        /** ManualBinningEditRequest */
+        ManualBinningEditRequest: {
             /** Plan Version Id */
             plan_version_id: string;
-            /**
-             * Step Id
-             * @default manual-binning
-             */
+            /** Step Id */
             step_id: string;
-            /**
-             * Ready
-             * @default false
-             */
-            ready: boolean;
-            /** Blocked Reason */
-            blocked_reason?: string | null;
-            /** Required Steps */
-            required_steps?: string[];
-            source?: components["schemas"]["ManualBinningSourceInfo"] | null;
-            /** Selected Variables */
-            selected_variables?: string[];
-            /** Source Bins By Variable */
-            source_bins_by_variable?: {
-                [key: string]: unknown;
-            };
-            /** Current Overrides */
-            current_overrides?: {
+            /** Overrides */
+            overrides?: {
                 [key: string]: unknown;
             }[];
-            /** Warnings */
-            warnings?: {
-                [key: string]: unknown;
-            }[];
-            /** Variable Summaries */
-            variable_summaries?: components["schemas"]["ManualBinningVariableSummary"][];
             /**
-             * Project Id
+             * Reviewer Notes
              * @default
              */
-            project_id: string;
-            /** Branch Id */
-            branch_id?: string | null;
-            /** Run Id */
-            run_id?: string | null;
+            reviewer_notes: string;
             /**
-             * Review Status
-             * @default not_started
+             * Status
+             * @default pending
              */
-            review_status: string;
-            /**
-             * Reviewed
-             * @default false
-             */
-            reviewed: boolean;
-            /**
-             * Accept Automated
-             * @default false
-             */
-            accept_automated: boolean;
-            /** Reviewed At */
-            reviewed_at?: string | null;
-            /** Reviewed By */
-            reviewed_by?: string | null;
-            /** Review Reason */
-            review_reason?: string | null;
-            /** Review Reason Code */
-            review_reason_code?: string | null;
-            /** Blocking Issues */
-            blocking_issues?: {
-                [key: string]: unknown;
-            }[];
-            /** Blocked Code */
-            blocked_code?: string | null;
-            /** Context */
-            context?: {
-                [key: string]: unknown;
-            };
+            status: string;
+            /** Affected Downstream Step Ids */
+            affected_downstream_step_ids?: string[];
+        };
+        /** ManualBinningEditResponse */
+        ManualBinningEditResponse: {
+            /** New Plan Version Id */
+            new_plan_version_id: string;
+            /** Review Id */
+            review_id: string;
+            /** Affected Step Ids */
+            affected_step_ids?: string[];
         };
         /** ManualBinningPreviewRequest */
         ManualBinningPreviewRequest: {
-            /** Project Id */
-            project_id: string;
-            /** Plan Version Id */
-            plan_version_id: string;
-            /** Overrides */
-            overrides?: {
+            /** Variable Data */
+            variable_data: {
                 [key: string]: unknown;
-            }[];
+            };
         };
         /** ManualBinningPreviewResponse */
         ManualBinningPreviewResponse: {
-            /**
-             * Valid
-             * @default false
-             */
-            valid: boolean;
-            /** Refined Bins By Variable */
-            refined_bins_by_variable?: {
+            /** Woe By Bin */
+            woe_by_bin: {
                 [key: string]: unknown;
-            };
-            diagnostics?: components["schemas"]["PreviewDiagnostics"] | null;
-        };
-        /** ManualBinningReviewRequest */
-        ManualBinningReviewRequest: {
-            /** Project Id */
-            project_id: string;
-            /** Plan Version Id */
-            plan_version_id: string;
-            /**
-             * Step Id
-             * @default manual-binning
-             */
-            step_id: string;
-            /**
-             * Reviewed
-             * @default false
-             */
-            reviewed: boolean;
-            /**
-             * Accept Automated
-             * @default false
-             */
-            accept_automated: boolean;
-            /** Overrides */
-            overrides?: {
+            }[];
+            /** Iv */
+            iv: number;
+            /** Event Rate By Bin */
+            event_rate_by_bin: {
                 [key: string]: unknown;
-            }[] | null;
-            /** Reviewed By */
-            reviewed_by?: string | null;
-            /** Reason Code */
-            reason_code?: string | null;
-            /** Review Reason */
-            review_reason?: string | null;
+            }[];
         };
         /** ManualBinningReviewResponse */
         ManualBinningReviewResponse: {
-            /** Plan Id */
-            plan_id: string;
-            /** New Plan Version Id */
-            new_plan_version_id: string;
-            /** Reviewed */
-            reviewed: boolean;
-            /** Accept Automated */
-            accept_automated: boolean;
-        };
-        /** ManualBinningSourceInfo */
-        ManualBinningSourceInfo: {
-            /** Binning Step Id */
-            binning_step_id: string;
-            /** Binning Artifact Id */
-            binning_artifact_id: string;
-            /** Binning Method */
-            binning_method: string;
-            /** Variable Selection Step Id */
-            variable_selection_step_id: string;
-            /** Variable Selection Artifact Id */
-            variable_selection_artifact_id: string;
-        };
-        /** ManualBinningVariableSummary */
-        ManualBinningVariableSummary: {
-            /** Variable */
-            variable: string;
-            /** Iv */
-            iv?: number | null;
-            /** Woe By Bin */
-            woe_by_bin?: {
-                [key: string]: number;
-            } | null;
-            /** Event Rate By Bin */
-            event_rate_by_bin?: {
-                [key: string]: number;
-            } | null;
-            /** Missing Count */
-            missing_count?: number | null;
-            /** Special Bin Count */
-            special_bin_count?: number | null;
-            /**
-             * Sparse Bin Warning
-             * @default false
-             */
-            sparse_bin_warning: boolean;
-            /**
-             * Non Monotonic Warning
-             * @default false
-             */
-            non_monotonic_warning: boolean;
-            /** Variable Type */
-            variable_type?: string | null;
-            /** Bin Count */
-            bin_count?: number | null;
-            /** Missing Rate */
-            missing_rate?: number | null;
-            /** Special Rate */
-            special_rate?: number | null;
-            /**
-             * Zero Cell Warning Count
-             * @default 0
-             */
-            zero_cell_warning_count: number;
-            /**
-             * Sparse Bin Warning Count
-             * @default 0
-             */
-            sparse_bin_warning_count: number;
-            /**
-             * Monotonicity Status
-             * @default insufficient_bins
-             */
-            monotonicity_status: string;
-            /**
-             * Edited
-             * @default false
-             */
-            edited: boolean;
-            /**
-             * Review Required
-             * @default false
-             */
-            review_required: boolean;
-        };
-        /** MethodOptionResponse */
-        MethodOptionResponse: {
-            /** Id */
-            id: string;
-            /** Label */
-            label: string;
-            /**
-             * Status
-             * @default available
-             */
-            status: string;
-            /** Params */
-            params?: components["schemas"]["ParameterDefinitionResponse"][];
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-        };
-        /** MethodSummaryResponse */
-        MethodSummaryResponse: {
-            /** Branch Id */
-            branch_id: string;
-            /** Model Family */
-            model_family?: string | null;
-            /** Feature Strategy */
-            feature_strategy?: string | null;
-            /**
-             * Feature Count
-             * @default 0
-             */
-            feature_count: number;
-            /** Interpretability Level */
-            interpretability_level?: string | null;
-            /** Champion Eligibility */
-            champion_eligibility?: string | null;
-            /** Limitations */
-            limitations?: string[];
-            /** Warnings */
-            warnings?: string[];
-            /** Metrics */
-            metrics?: {
-                [key: string]: unknown;
-            };
-            /** Evidence Readiness */
-            evidence_readiness?: {
-                [key: string]: unknown;
-            };
-        };
-        /** MigrateRequest */
-        MigrateRequest: {
-            /** Project Id */
-            project_id: string;
-        };
-        /** MigrateResponse */
-        MigrateResponse: {
-            /** Project Id */
-            project_id: string;
-            /** Branches Created */
-            branches_created: number;
-            /** Plan Versions Mapped */
-            plan_versions_mapped: number;
-            /** Steps Mapped */
-            steps_mapped: number;
-        };
-        /** MissingStaleEvidence */
-        MissingStaleEvidence: {
-            /** Branch Id */
-            branch_id: string;
-            /** Canonical Step Id */
-            canonical_step_id: string;
+            /** Review Id */
+            review_id: string;
+            /** Plan Version Id */
+            plan_version_id: string;
             /** Step Id */
             step_id: string;
             /** Status */
             status: string;
-        };
-        /** ModelRankingItem */
-        ModelRankingItem: {
-            /** Branch Id */
-            branch_id: string;
             /**
-             * Branch Label
+             * Reviewer Notes
              * @default
              */
-            branch_label: string;
-            /** Model Family */
-            model_family?: string | null;
+            reviewer_notes: string;
+            /** Affected Downstream Step Ids */
+            affected_downstream_step_ids?: string[];
             /**
-             * Rank
-             * @default 0
-             */
-            rank: number;
-            /**
-             * Metric Name
+             * Created At
              * @default
              */
-            metric_name: string;
-            /** Metric Value */
-            metric_value?: number | null;
-            /** Interpretability Level */
-            interpretability_level?: string | null;
+            created_at: string;
             /**
-             * Champion Eligible
-             * @default false
-             */
-            champion_eligible: boolean;
-            /** Limitations Summary */
-            limitations_summary?: string[];
-        };
-        /** ModelRankingResponse */
-        ModelRankingResponse: {
-            /** Comparison Id */
-            comparison_id: string;
-            /** Metric Name */
-            metric_name: string;
-            /** Rankings */
-            rankings: components["schemas"]["ModelRankingItem"][];
-            /**
-             * Total Branches
-             * @default 0
-             */
-            total_branches: number;
-        };
-        /** NodeTypeItem */
-        NodeTypeItem: {
-            /** Node Type */
-            node_type: string;
-            /** Version */
-            version: string;
-            /** Category */
-            category: string;
-            /**
-             * Tier
-             * @default available
-             */
-            tier: string;
-            /**
-             * Available
-             * @default true
-             */
-            available: boolean;
-            /** Disabled Reason */
-            disabled_reason?: string | null;
-            /** Missing Optional Dependencies */
-            missing_optional_dependencies?: string[];
-            /**
-             * Description
+             * Updated At
              * @default
              */
-            description: string;
-            /** Model Family */
-            model_family?: string | null;
-            /** Feature Strategies */
-            feature_strategies?: string[];
-            /** Interpretability Level */
-            interpretability_level?: string | null;
-            /** Champion Eligibility */
-            champion_eligibility?: string | null;
-            /** Optional Dependencies */
-            optional_dependencies?: string[];
-            /** Input Roles */
-            input_roles?: string[];
-            /** Output Roles */
-            output_roles?: string[];
+            updated_at: string;
+        };
+        /** ManualBinningReviewUpdate */
+        ManualBinningReviewUpdate: {
+            /** Status */
+            status?: string | null;
+            /** Reviewer Notes */
+            reviewer_notes?: string | null;
         };
         /** NodeTypeListResponse */
         NodeTypeListResponse: {
             /** Node Types */
-            node_types: components["schemas"]["NodeTypeItem"][];
-            /** Count */
-            count: number;
+            node_types: components["schemas"]["NodeTypeResponse"][];
         };
-        /** NodeTypeSchemaResponse */
-        NodeTypeSchemaResponse: {
+        /** NodeTypeResponse */
+        NodeTypeResponse: {
             /** Node Type */
             node_type: string;
-            /** Version */
-            version: string;
             /**
-             * Title
+             * Display Name
              * @default
              */
-            title: string;
-            /** Methods */
-            methods?: components["schemas"]["MethodOptionResponse"][];
-            /** Params Schema */
-            params_schema?: {
-                [key: string]: unknown;
-            };
-            /** Defaults */
-            defaults?: {
-                [key: string]: unknown;
-            };
+            display_name: string;
             /**
              * Description
              * @default
              */
             description: string;
             /**
-             * Available
-             * @default true
-             */
-            available: boolean;
-            /** Disabled Reason */
-            disabled_reason?: string | null;
-        };
-        /** ParameterConstraintResponse */
-        ParameterConstraintResponse: {
-            /**
-             * Required
-             * @default false
-             */
-            required: boolean;
-            /** Min Value */
-            min_value?: number | null;
-            /** Max Value */
-            max_value?: number | null;
-            /** Exclusive Min */
-            exclusive_min?: number | null;
-            /** Exclusive Max */
-            exclusive_max?: number | null;
-            /** Min Length */
-            min_length?: number | null;
-            /** Max Length */
-            max_length?: number | null;
-            /** Min Items */
-            min_items?: number | null;
-            /** Max Items */
-            max_items?: number | null;
-            /** Enum Values */
-            enum_values?: unknown[] | null;
-            /** Pattern */
-            pattern?: string | null;
-        };
-        /** ParameterDefinitionResponse */
-        ParameterDefinitionResponse: {
-            /** Name */
-            name: string;
-            /** Label */
-            label: string;
-            /** Kind */
-            kind: string;
-            /** Default */
-            default?: unknown;
-            /**
-             * Required
-             * @default false
-             */
-            required: boolean;
-            constraint?: components["schemas"]["ParameterConstraintResponse"] | null;
-            /**
-             * Help Text
+             * Category
              * @default
              */
-            help_text: string;
+            category: string;
             /**
-             * Group
-             * @default
+             * Tier
+             * @default launch
              */
-            group: string;
+            tier: string;
+            /**
+             * Has Params
+             * @default false
+             */
+            has_params: boolean;
         };
-        /** PlanListItem */
-        PlanListItem: {
-            /** Plan Id */
-            plan_id: string;
+        /** PlanCreateRequest */
+        PlanCreateRequest: {
             /** Name */
             name: string;
-            /** Latest Version Id */
-            latest_version_id: string;
-            /**
-             * Is Default
-             * @default false
-             */
-            is_default: boolean;
-            /**
-             * Is Hidden
-             * @default false
-             */
-            is_hidden: boolean;
+        };
+        /** PlanListResponse */
+        PlanListResponse: {
+            /** Plans */
+            plans: components["schemas"]["PlanResponse"][];
         };
         /** PlanResponse */
         PlanResponse: {
@@ -1882,339 +962,97 @@ export interface components {
             project_id: string;
             /** Name */
             name: string;
-            /** Latest Version Id */
-            latest_version_id: string;
-            /** Steps */
-            steps: components["schemas"]["StepStatusItem"][];
-        };
-        /** PreviewDiagnostics */
-        PreviewDiagnostics: {
-            /**
-             * Override Count
-             * @default 0
-             */
-            override_count: number;
-            /** Warnings */
-            warnings?: string[];
-            /** Structured */
-            structured?: {
-                [key: string]: unknown;
-            }[];
-        };
-        /** ProjectArtifactsResponse */
-        ProjectArtifactsResponse: {
-            /** Project Id */
-            project_id: string;
-            /** Artifacts */
-            artifacts: components["schemas"]["ArtifactListItem"][];
-        };
-        /** ProjectDetailResponse */
-        ProjectDetailResponse: {
-            /** Project Id */
-            project_id: string;
-            /** Path */
-            path: string;
-            /** Name */
-            name: string;
             /** Created At */
             created_at: string;
-            /** Schema Family */
-            schema_family: string;
-            /** Schema Version */
-            schema_version: number;
-            /**
-             * Plan Count
-             * @default 0
-             */
-            plan_count: number;
-            /**
-             * Run Count
-             * @default 0
-             */
-            run_count: number;
         };
-        /** ProjectListItem */
-        ProjectListItem: {
-            /** Project Id */
-            project_id: string;
+        /** PlanVersionListResponse */
+        PlanVersionListResponse: {
+            /** Versions */
+            versions: components["schemas"]["PlanVersionResponse"][];
+        };
+        /** PlanVersionResponse */
+        PlanVersionResponse: {
+            /** Plan Version Id */
+            plan_version_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Version Number */
+            version_number: number;
+            /** Is Committed */
+            is_committed: boolean;
+            /** Created At */
+            created_at: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+        };
+        /** PlanVersionUpdate */
+        PlanVersionUpdate: {
+            /** Description */
+            description?: string | null;
+        };
+        /** ProjectCreateRequest */
+        ProjectCreateRequest: {
             /** Name */
             name: string;
             /** Path */
             path: string;
-            /** Schema Family */
-            schema_family?: string | null;
-            /** Schema Version */
-            schema_version?: number | null;
-            /**
-             * Schema Compatible
-             * @default false
-             */
-            schema_compatible: boolean;
-            /** Schema Error Code */
-            schema_error_code?: string | null;
-            /**
-             * Path Exists
-             * @default true
-             */
-            path_exists: boolean;
-            /**
-             * Last Accessed
-             * @default
-             */
-            last_accessed: string;
         };
         /** ProjectListResponse */
         ProjectListResponse: {
             /** Projects */
-            projects: components["schemas"]["ProjectListItem"][];
-            /**
-             * Total Count
-             * @default 0
-             */
-            total_count: number;
-            /**
-             * Missing Path Count
-             * @default 0
-             */
-            missing_path_count: number;
-        };
-        /** ProjectPlansResponse */
-        ProjectPlansResponse: {
-            /** Project Id */
-            project_id: string;
-            /** Plans */
-            plans: components["schemas"]["PlanListItem"][];
+            projects: components["schemas"]["ProjectResponse"][];
         };
         /** ProjectResponse */
         ProjectResponse: {
             /** Project Id */
             project_id: string;
-            /** Path */
-            path: string;
             /** Name */
             name: string;
             /** Created At */
             created_at: string;
-            /** Schema Family */
-            schema_family: string;
-            /** Schema Version */
-            schema_version: number;
+            /** Cardre Version */
+            cardre_version: string;
         };
-        /** ProjectRunsResponse */
-        ProjectRunsResponse: {
-            /** Project Id */
-            project_id: string;
-            /** Runs */
-            runs: components["schemas"]["RunListItem"][];
+        /** ReportListResponse */
+        ReportListResponse: {
+            /** Reports */
+            reports: components["schemas"]["ReportResponse"][];
         };
-        /** ReadinessItem */
-        ReadinessItem: {
-            /** Code */
-            code: string;
-            /** Message */
-            message: string;
-            /** Step Id */
-            step_id?: string | null;
-        };
-        /** RefreshComparisonResponse */
-        RefreshComparisonResponse: {
-            /** Comparison Id */
-            comparison_id: string;
-            /** Comparison Snapshot Id */
-            comparison_snapshot_id?: string | null;
-            /**
-             * Ready
-             * @default false
-             */
-            ready: boolean;
-            /** Comparison Artifact Id */
-            comparison_artifact_id?: string | null;
-            /**
-             * Refreshed At
-             * @default
-             */
-            refreshed_at: string;
-            /** Blocked Reason */
-            blocked_reason?: string | null;
-            /** Missing Or Stale */
-            missing_or_stale?: components["schemas"]["MissingStaleEvidence"][];
-            /** Warnings */
-            warnings?: string[];
-        };
-        /** ReportMetadataResponse */
-        ReportMetadataResponse: {
+        /** ReportResponse */
+        ReportResponse: {
             /** Report Id */
             report_id: string;
-            /**
-             * Created At
-             * @default
-             */
-            created_at: string;
-            /**
-             * Target Branch Id
-             * @default
-             */
-            target_branch_id: string;
-            /**
-             * Report Mode
-             * @default
-             */
-            report_mode: string;
-            /**
-             * Html Path
-             * @default
-             */
-            html_path: string;
-            /**
-             * Bundle Path
-             * @default
-             */
-            bundle_path: string;
-            /**
-             * Export Path
-             * @default
-             */
-            export_path: string;
-            /**
-             * Zip Path
-             * @default
-             */
-            zip_path: string;
-            /**
-             * Status
-             * @default
-             */
-            status: string;
-        };
-        /** ReportReadinessRequest */
-        ReportReadinessRequest: {
-            /** Target Branch Id */
-            target_branch_id: string;
-            /**
-             * Report Mode
-             * @default branch
-             */
-            report_mode: string;
-            /**
-             * Include Challenger Comparison
-             * @default false
-             */
-            include_challenger_comparison: boolean;
-        };
-        /** ReportReadinessResponse */
-        ReportReadinessResponse: {
-            /**
-             * Ready
-             * @default false
-             */
-            ready: boolean;
-            /**
-             * Status
-             * @default
-             */
-            status: string;
-            /** Blockers */
-            blockers?: components["schemas"]["ReadinessItem"][];
-            /** Warnings */
-            warnings?: components["schemas"]["ReadinessItem"][];
-            /**
-             * Project Id
-             * @default
-             */
-            project_id: string;
-            /**
-             * Target Branch Id
-             * @default
-             */
-            target_branch_id: string;
-            /**
-             * Run Id
-             * @default
-             */
-            run_id: string;
-            /**
-             * Report Mode
-             * @default branch
-             */
-            report_mode: string;
-            /**
-             * Plan Version Id
-             * @default
-             */
-            plan_version_id: string;
-            /**
-             * Checked At
-             * @default
-             */
-            checked_at: string;
-        };
-        /** RunDiagnostic */
-        RunDiagnostic: {
-            /** Code */
-            code: string;
-            /** Message */
-            message: string;
-            /**
-             * Severity
-             * @default error
-             */
-            severity: string;
-            /** Category */
-            category?: string | null;
-            /** Exception Type */
-            exception_type?: string | null;
             /** Run Id */
-            run_id: string;
-            /** Plan Version Id */
-            plan_version_id?: string | null;
-            /** Branch Id */
-            branch_id?: string | null;
-            /** Step Id */
-            step_id?: string | null;
-            /** Traceback */
-            traceback?: string | null;
+            run_id?: string | null;
+            /** Report Type */
+            report_type: string;
+            /** Path */
+            path: string;
             /** Created At */
             created_at: string;
         };
-        /** RunListItem */
-        RunListItem: {
-            /** Run Id */
-            run_id: string;
+        /** RunCreateRequest */
+        RunCreateRequest: {
             /** Plan Version Id */
             plan_version_id: string;
-            /** Status */
-            status: string;
-            /** Started At */
-            started_at: string;
-            /** Finished At */
-            finished_at?: string | null;
-            /**
-             * Step Count
-             * @default 0
-             */
-            step_count: number;
-        };
-        /** RunRequest */
-        RunRequest: {
-            /** Project Id */
-            project_id: string;
-            /** Plan Version Id */
-            plan_version_id: string;
-            /**
-             * Run Scope
-             * @default full_plan
-             * @enum {string}
-             */
-            run_scope: "full_plan" | "branch" | "to_node";
-            /** Branch Id */
-            branch_id?: string | null;
-            /** Target Step Id */
-            target_step_id?: string | null;
             /**
              * Force
              * @default false
              */
             force: boolean;
+            /**
+             * Sync
+             * @default false
+             */
+            sync: boolean;
+        };
+        /** RunListResponse */
+        RunListResponse: {
+            /** Runs */
+            runs: components["schemas"]["RunResponse"][];
         };
         /** RunResponse */
         RunResponse: {
@@ -2238,8 +1076,13 @@ export interface components {
             /** Executed Step Ids */
             executed_step_ids?: string[];
             /** Diagnostics */
-            diagnostics?: components["schemas"]["RunDiagnostic"][];
-            latest_error?: components["schemas"]["RunDiagnostic"] | null;
+            diagnostics?: {
+                [key: string]: unknown;
+            }[];
+            /** Latest Error */
+            latest_error?: {
+                [key: string]: unknown;
+            } | null;
             /** Heartbeat At */
             heartbeat_at?: string | null;
             /**
@@ -2248,91 +1091,26 @@ export interface components {
              */
             is_stale: boolean;
         };
-        /** RunStepEvidenceItem */
-        RunStepEvidenceItem: {
-            /** Artifact Id */
-            artifact_id: string;
-            /** Artifact Type */
-            artifact_type: string;
-            /** Role */
-            role?: string | null;
-            /**
-             * Media Type
-             * @default
-             */
-            media_type: string;
-            /** Evidence Kind */
-            evidence_kind?: string | null;
-            /** Logical Hash */
-            logical_hash?: string | null;
-            /**
-             * Created At
-             * @default
-             */
-            created_at: string;
-            /**
-             * Is Stale
-             * @default false
-             */
-            is_stale: boolean;
-            /** Staleness Reason */
-            staleness_reason?: string | null;
-            /** Canonical Step Id */
-            canonical_step_id?: string | null;
-            /** Source Step Id */
-            source_step_id?: string | null;
-            /** Source Branch Id */
-            source_branch_id?: string | null;
-            /** @default available */
-            status: components["schemas"]["EvidenceStatus"];
-            /** Summary */
-            summary?: {
-                [key: string]: unknown;
-            };
-            /** Warnings */
-            warnings?: string[];
-        };
-        /** RunStepEvidenceResponse */
-        RunStepEvidenceResponse: {
+        /** RunStepResponse */
+        RunStepResponse: {
+            /** Run Step Id */
+            run_step_id: string;
             /** Run Id */
             run_id: string;
             /** Step Id */
-            step_id?: string | null;
-            /** Items */
-            items?: components["schemas"]["RunStepEvidenceItem"][];
-            /** @default available */
-            status: components["schemas"]["EvidenceStatus"];
-            /**
-             * Checked At
-             * @default
-             */
-            checked_at: string;
-            /**
-             * Target Branch Id
-             * @default
-             */
-            target_branch_id: string;
-            /** Canonical Step Id */
-            canonical_step_id?: string | null;
-        };
-        /** RunStepItem */
-        RunStepItem: {
-            /** Run Step Id */
-            run_step_id: string;
-            /** Step Id */
             step_id: string;
-            /** Node Type */
-            node_type: string;
+            /** Plan Version Id */
+            plan_version_id: string;
             /** Status */
             status: string;
             /** Started At */
             started_at: string;
             /** Finished At */
             finished_at?: string | null;
-            /** Input Artifact Ids */
-            input_artifact_ids?: string[];
-            /** Output Artifact Ids */
-            output_artifact_ids?: string[];
+            /** Execution Fingerprint */
+            execution_fingerprint?: {
+                [key: string]: unknown;
+            };
             /** Warnings */
             warnings?: {
                 [key: string]: unknown;
@@ -2341,93 +1119,19 @@ export interface components {
             errors?: {
                 [key: string]: unknown;
             }[];
-            /**
-             * Is Carried Forward
-             * @default false
-             */
-            is_carried_forward: boolean;
         };
-        /** RunStepsResponse */
-        RunStepsResponse: {
-            /** Run Id */
-            run_id: string;
-            /** Steps */
-            steps: components["schemas"]["RunStepItem"][];
-        };
-        /** StalenessItem */
-        StalenessItem: {
+        /** StalenessExplanationResponse */
+        StalenessExplanationResponse: {
             /** Step Id */
             step_id: string;
-            /** Is Stale */
-            is_stale: boolean;
-            /** Reason */
-            reason?: string | null;
-        };
-        /** StalenessResponse */
-        StalenessResponse: {
-            /** Plan Version Id */
-            plan_version_id: string;
-            /** Branch Id */
-            branch_id?: string | null;
-            /** Nodes */
-            nodes: components["schemas"]["StalenessItem"][];
-        };
-        /** StepStatusItem */
-        StepStatusItem: {
-            /** Step Id */
-            step_id: string;
-            /** Node Type */
-            node_type: string;
-            /** Category */
-            category: string;
-            /**
-             * Status
-             * @default not_run
-             */
+            /** Status */
             status: string;
-            /**
-             * Is Stale
-             * @default false
-             */
-            is_stale: boolean;
-            /**
-             * Position
-             * @default 0
-             */
-            position: number;
-            /** Params */
-            params?: {
-                [key: string]: unknown;
+            /** Upstream Changes */
+            upstream_changes: {
+                [key: string]: boolean;
             };
-            /**
-             * Canonical Step Id
-             * @default
-             */
-            canonical_step_id: string;
-            /** Branch Id */
-            branch_id?: string | null;
-        };
-        /** UpdateStepParamsRequest */
-        UpdateStepParamsRequest: {
-            /** Project Id */
-            project_id: string;
-            /** Base Plan Version Id */
-            base_plan_version_id: string;
-            /** Params */
-            params: {
-                [key: string]: unknown;
-            };
-        };
-        /** UpdateStepParamsResponse */
-        UpdateStepParamsResponse: {
-            /** Plan Id */
-            plan_id: string;
-            /** New Plan Version Id */
-            new_plan_version_id: string;
-            /** Changed Step Id */
-            changed_step_id: string;
-            /** Stale Step Ids */
-            stale_step_ids: string[];
+            /** Missing Evidence */
+            missing_evidence?: string[];
         };
         /** ValidationError */
         ValidationError: {
@@ -2442,120 +1146,6 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
-        /** WorkflowBlocker */
-        WorkflowBlocker: {
-            /** Code */
-            code: string;
-            /** Message */
-            message: string;
-            /** Step Id */
-            step_id?: string | null;
-            /**
-             * Severity
-             * @default blocker
-             * @enum {string}
-             */
-            severity: "blocker" | "warning";
-        };
-        /** WorkflowDiagnostic */
-        WorkflowDiagnostic: {
-            /** Code */
-            code: string;
-            /** Message */
-            message: string;
-            /**
-             * Severity
-             * @default blocker
-             */
-            severity: string;
-            /** Source */
-            source?: string | null;
-            /**
-             * Context
-             * @default {}
-             */
-            context: {
-                [key: string]: unknown;
-            };
-        };
-        /** WorkflowGuidance */
-        WorkflowGuidance: {
-            /**
-             * Phase
-             * @enum {string}
-             */
-            phase: "setup" | "build" | "validate" | "report" | "ready";
-            next_action: components["schemas"]["WorkflowNextAction"];
-            /** Blockers */
-            blockers?: components["schemas"]["WorkflowBlocker"][];
-            /** Step Guidance */
-            step_guidance?: {
-                [key: string]: components["schemas"]["WorkflowStepGuidance"];
-            };
-            report_readiness?: components["schemas"]["WorkflowReportReadiness"] | null;
-            /** Branch Id */
-            branch_id?: string | null;
-            /** Run Id */
-            run_id?: string | null;
-            /**
-             * Degraded
-             * @default false
-             */
-            degraded: boolean;
-            /** Diagnostics */
-            diagnostics?: components["schemas"]["WorkflowDiagnostic"][];
-        };
-        /** WorkflowNextAction */
-        WorkflowNextAction: {
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "import_dataset" | "configure_step" | "run_pathway" | "review_evidence" | "edit_bins" | "resolve_blocker" | "resolve_diagnostics" | "export_report";
-            /** Label */
-            label: string;
-            /** Description */
-            description: string;
-            /** Run Scope */
-            run_scope?: ("full_plan" | "branch" | "to_node") | null;
-            /** Step Id */
-            step_id?: string | null;
-            /** Action Target */
-            action_target?: string | null;
-        };
-        /** WorkflowReportReadiness */
-        WorkflowReportReadiness: {
-            /**
-             * Ready
-             * @default false
-             */
-            ready: boolean;
-            /**
-             * Status
-             * @default
-             */
-            status: string;
-            /** Blockers */
-            blockers?: components["schemas"]["ReadinessItem"][];
-            /** Warnings */
-            warnings?: components["schemas"]["ReadinessItem"][];
-        };
-        /** WorkflowStepGuidance */
-        WorkflowStepGuidance: {
-            /**
-             * Readiness
-             * @enum {string}
-             */
-            readiness: "ready" | "blocked" | "needs_config" | "stale" | "complete";
-            /** Primary Action */
-            primary_action: string;
-            /** Explanation */
-            explanation: string;
-            /** Evidence Kinds */
-            evidence_kinds?: string[];
-            /** Action Target */
-            action_target?: string | null;
-        };
     };
     responses: never;
     parameters: never;
@@ -2565,7 +1155,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    get_health_health_get: {
+    health_health_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2585,30 +1175,12 @@ export interface operations {
             };
         };
     };
-    list_binning_engines_binning_engines_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BinningEnginesResponse"];
-                };
-            };
-        };
-    };
     list_projects_projects_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2623,6 +1195,15 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectListResponse"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     create_project_projects_post: {
@@ -2634,7 +1215,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateProjectRequest"];
+                "application/json": components["schemas"]["ProjectCreateRequest"];
             };
         };
         responses: {
@@ -2661,7 +1242,9 @@ export interface operations {
     get_project_projects__project_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2675,7 +1258,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectDetailResponse"];
+                    "application/json": components["schemas"]["ProjectResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2689,10 +1272,12 @@ export interface operations {
             };
         };
     };
-    get_project_plans_projects__project_id__plans_get: {
+    list_plans_projects__project_id__plans_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2706,7 +1291,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectPlansResponse"];
+                    "application/json": components["schemas"]["PlanListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2720,85 +1305,20 @@ export interface operations {
             };
         };
     };
-    get_project_runs_projects__project_id__runs_get: {
+    create_plan_projects__project_id__plans_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
             path: {
                 project_id: string;
             };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectRunsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_project_artifacts_projects__project_id__artifacts_get: {
-        parameters: {
-            query?: {
-                role?: string | null;
-                artifact_type?: string | null;
-                producing_step_id?: string | null;
-                run_id?: string | null;
-                limit?: number;
-                offset?: number;
-            };
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectArtifactsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    import_dataset_datasets_import_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ImportDatasetRequest"];
+                "application/json": components["schemas"]["PlanCreateRequest"];
             };
         };
         responses: {
@@ -2808,7 +1328,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ArtifactResponse"];
+                    "application/json": components["schemas"]["PlanResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2822,86 +1342,14 @@ export interface operations {
             };
         };
     };
-    get_step_evidence_runs__run_id__steps__step_id__evidence_get: {
+    get_plan_projects__project_id__plans__plan_id__get: {
         parameters: {
-            query: {
-                /** @description Project ID for store lookup */
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
                 project_id: string;
-                /** @description Optional branch context for display */
-                target_branch_id?: string;
-            };
-            header?: never;
-            path: {
-                run_id: string;
-                step_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RunStepEvidenceResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_run_evidence_runs__run_id__evidence_get: {
-        parameters: {
-            query: {
-                /** @description Project ID for store lookup */
-                project_id: string;
-                /** @description Optional branch context for display */
-                target_branch_id?: string;
-            };
-            header?: never;
-            path: {
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RunStepEvidenceResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_plan_plans__plan_id__get: {
-        parameters: {
-            query?: {
-                project_id?: string | null;
-            };
-            header?: never;
-            path: {
                 plan_id: string;
             };
             cookie?: never;
@@ -2928,21 +1376,19 @@ export interface operations {
             };
         };
     };
-    update_step_params_plans__plan_id__steps__step_id__params_post: {
+    list_plan_versions_projects__project_id__plans__plan_id__versions_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
             path: {
+                project_id: string;
                 plan_id: string;
-                step_id: string;
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateStepParamsRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -2950,7 +1396,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UpdateStepParamsResponse"];
+                    "application/json": components["schemas"]["PlanVersionListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2964,15 +1410,296 @@ export interface operations {
             };
         };
     };
-    get_manual_binning_editor_state_plans__plan_id__steps__step_id__editor_state_get: {
+    get_plan_version_projects__project_id__plan_versions__plan_version_id__get: {
         parameters: {
-            query: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
                 project_id: string;
+                plan_version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_plan_version_projects__project_id__plan_versions__plan_version_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+                plan_version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanVersionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    commit_plan_version_projects__project_id__plan_versions__plan_version_id__commit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+                plan_version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_projects__project_id__runs_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_run_projects__project_id__runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_projects__project_id__runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_run_steps_projects__project_id__runs__run_id__steps_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunStepResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_run_evidence_projects__project_id__runs__run_id__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_step_evidence_staleness_projects__project_id__steps__step_id__evidence_get: {
+        parameters: {
+            query?: {
                 plan_version_id?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
             path: {
-                plan_id: string;
+                project_id: string;
                 step_id: string;
             };
             cookie?: never;
@@ -2985,7 +1712,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ManualBinningEditorStateResponse"];
+                    "application/json": components["schemas"]["StalenessExplanationResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2999,13 +1726,227 @@ export interface operations {
             };
         };
     };
-    preview_manual_binning_overrides_plans__plan_id__steps__step_id__manual_binning_preview_post: {
+    get_step_evidence_edges_projects__project_id__steps__step_id__evidence_edges_get: {
+        parameters: {
+            query?: {
+                plan_version_id?: string | null;
+            };
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+                step_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceEdgeResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_artifact_projects__project_id__artifacts__artifact_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reviews_projects__project_id__manual_binning_reviews_get: {
+        parameters: {
+            query?: {
+                plan_version_id?: string | null;
+                step_id?: string | null;
+            };
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualBinningReviewResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_review_projects__project_id__manual_binning_reviews__review_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualBinningReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_review_projects__project_id__manual_binning_reviews__review_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualBinningReviewUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualBinningReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_manual_binning_edit_projects__project_id__manual_binning_edit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualBinningEditRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualBinningEditResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_binning_projects__project_id__manual_binning_preview_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                plan_id: string;
-                step_id: string;
+                project_id: string;
             };
             cookie?: never;
         };
@@ -3035,687 +1976,15 @@ export interface operations {
             };
         };
     };
-    review_manual_binning_plans__plan_id__steps__step_id__manual_binning_review_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                plan_id: string;
-                step_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ManualBinningReviewRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ManualBinningReviewResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_staleness_detail_plans__plan_id__versions__plan_version_id__staleness_get: {
-        parameters: {
-            query: {
-                project_id: string;
-                branch_id?: string | null;
-            };
-            header?: never;
-            path: {
-                plan_id: string;
-                plan_version_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StalenessResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_workflow_guidance_plans__plan_id__workflow_guidance_get: {
-        parameters: {
-            query?: {
-                project_id?: string | null;
-                branch_id?: string | null;
-                run_id?: string | null;
-            };
-            header?: never;
-            path: {
-                plan_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowGuidance"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    run_plan_runs_post: {
-        parameters: {
-            query?: {
-                /** @description Execute synchronously (for tests) */
-                sync?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RunRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RunResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_project_run_runs_project__project_id__runs__run_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RunResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_project_run_steps_runs_project__project_id__runs__run_id__steps_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RunStepsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_project_run_manifest_runs_project__project_id__runs__run_id__manifest_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    export_audit_pack_exports_audit_pack_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ExportAuditPackRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExportAuditPackResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_project_artifact_artifacts_project__project_id__artifacts__artifact_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                artifact_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ArtifactResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_project_artifact_summary_artifacts_project__project_id__artifacts__artifact_id__summary_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                artifact_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ArtifactSummaryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_project_artifact_preview_artifacts_project__project_id__artifacts__artifact_id__preview_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                offset?: number;
-            };
-            header?: never;
-            path: {
-                project_id: string;
-                artifact_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ArtifactPreviewResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_report_readiness_projects__project_id__runs__run_id__report_readiness_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReportReadinessRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReportReadinessResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_run_reports_projects__project_id__runs__run_id__reports_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReportMetadataResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    generate_report_projects__project_id__runs__run_id__reports_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GenerateReportRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GenerateReportResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_report_metadata_projects__project_id__runs__run_id__reports__report_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                run_id: string;
-                report_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReportMetadataResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    serve_report_file_projects__project_id__reports_serve_get: {
-        parameters: {
-            query: {
-                /** @description Relative path to report file within project exports */
-                path: string;
-            };
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/html": string;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_node_types_node_types_get: {
-        parameters: {
-            query?: {
-                /** @description Exclude unavailable nodes */
-                available_only?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NodeTypeListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_node_type_schema_node_types__node_type__schema_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                node_type: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NodeTypeSchemaResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_branch_method_summary_branches__branch_id__method_summary_get: {
-        parameters: {
-            query: {
-                /** @description Project ID */
-                project_id: string;
-            };
-            header?: never;
-            path: {
-                branch_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MethodSummaryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_model_ranking_branch_comparison_snapshots__snapshot_id__model_ranking_get: {
-        parameters: {
-            query: {
-                /** @description Project ID */
-                project_id: string;
-                metric?: string;
-            };
-            header?: never;
-            path: {
-                snapshot_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ModelRankingResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_branches_projects__project_id__branches_get: {
         parameters: {
             query?: {
                 plan_id?: string | null;
                 branch_type?: string | null;
-                status?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -3743,13 +2012,51 @@ export interface operations {
             };
         };
     };
-    get_branch_branches__branch_id__get: {
+    create_branch_projects__project_id__branches_post: {
         parameters: {
-            query?: {
-                project_id?: string | null;
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
             };
-            header?: never;
             path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BranchCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_branch_projects__project_id__branches__branch_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
                 branch_id: string;
             };
             cookie?: never;
@@ -3776,210 +2083,85 @@ export interface operations {
             };
         };
     };
-    create_branch_plans__plan_id__branches_post: {
+    list_comparisons_projects__project_id__comparisons_get: {
         parameters: {
-            query?: never;
-            header?: never;
+            query?: {
+                plan_id?: string | null;
+            };
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
             path: {
-                plan_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateBranchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CreateBranchResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    migrate_baseline_migrations_baseline_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MigrateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MigrateResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_branch_comparison_branch_comparisons_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateComparisonRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ComparisonResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_branch_comparison_branch_comparisons__comparison_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                comparison_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ComparisonResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    refresh_branch_comparison_branch_comparisons__comparison_id__refresh_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                comparison_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RefreshComparisonResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_comparison_snapshot_branch_comparison_snapshots__snapshot_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                snapshot_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ComparisonSnapshotResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_plan_champion_plans__plan_id__champion_get: {
-        parameters: {
-            query: {
                 project_id: string;
-                scope_type?: string;
-                scope_key?: string;
             };
-            header?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_comparison_projects__project_id__comparisons__comparison_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
             path: {
-                plan_id: string;
+                project_id: string;
+                comparison_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_champion_projects__project_id__champion_get: {
+        parameters: {
+            query?: {
+                plan_id?: string | null;
+            };
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
             };
             cookie?: never;
         };
@@ -4005,28 +2187,128 @@ export interface operations {
             };
         };
     };
-    assign_plan_champion_plans__plan_id__champion_post: {
+    list_exports_projects__project_id__exports_get: {
         parameters: {
-            query?: never;
-            header?: never;
+            query?: {
+                run_id?: string | null;
+            };
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
             path: {
-                plan_id: string;
+                project_id: string;
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AssignChampionRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ChampionResponse"];
+                    "application/json": components["schemas"]["ExportListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reports_projects__project_id__reports_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_run_reports_projects__project_id__runs__run_id__reports_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_node_types_projects__project_id__node_types_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Project-Path"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeTypeListResponse"];
                 };
             };
             /** @description Validation Error */

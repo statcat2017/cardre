@@ -1,10 +1,33 @@
-from cardre.services.migration_service import migrate_project_to_branch_model
-from cardre.services.plan_service import PlanService, PlanValidationError
-from cardre.services.branch_service import BranchService
+"""Cardre v2 services — stateless business logic layer."""
+
+from cardre.services.evidence_resolver import (
+    BranchRunEvidence,
+    EvidencePolicyService,
+    EvidenceResolver,
+    ShortCircuitResult,
+)
+from cardre.services.manual_binning_service import (
+    extract_event_rate_by_bin,
+    extract_iv,
+    extract_woe_by_bin,
+)
+from cardre.services.plan_mutation_service import PlanMutationService
+from cardre.services.plan_service import PlanService
+from cardre.services.run_coordinator import RunCoordinator, RunSummary
+from cardre.services.staleness_service import StalenessExplanation, StalenessService
 
 __all__ = [
-    "BranchService",
+    "BranchRunEvidence",
+    "EvidencePolicyService",
+    "EvidenceResolver",
+    "PlanMutationService",
     "PlanService",
-    "PlanValidationError",
-    "migrate_project_to_branch_model",
+    "RunCoordinator",
+    "RunSummary",
+    "ShortCircuitResult",
+    "StalenessExplanation",
+    "StalenessService",
+    "extract_event_rate_by_bin",
+    "extract_iv",
+    "extract_woe_by_bin",
 ]

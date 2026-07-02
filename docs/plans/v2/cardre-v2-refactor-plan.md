@@ -954,3 +954,89 @@ Cardre v2 is organised around:
 
 The node system is important, but it is not the architecture. The
 architecture is the evidence trail.
+
+---
+
+## Post-merge corrections
+
+The following corrections document what actually happened vs what the plan
+above described. History is not rewritten; these notes are additive so the
+original text remains auditable.
+
+### Phases 7 and 8 were added post-hoc
+
+The original plan specified 6 phases with a merge gate at the end of Phase 6.
+In reality:
+
+- **Phase 7** was added post-hoc (~3 commits) to fix sidecar desktop
+  integration gaps: registry-safety health check, finish-run backstop to
+  prevent double-finish in background exception handlers, policy/architecture
+  doc alignment, and general preflight parity fixes.
+
+- **Phase 8** ("v2 acceptance completion") closes three Phase 3/4 DoD items
+  that slipped past the original build:
+  - `runs`-table request columns stored as real columns (Batch A).
+  - `POST /projects` bootstraps a fresh `.cardre` store from `body.path`
+    (Batch B).
+  - Full manual-binning lifecycle proven via the API (Batch C).
+  - Full scorecard API acceptance test driven through the project-scoped API
+    (Batch D) — the headline deliverable.
+  - Retroactive decision logs (Batch E, this section).
+
+### Principle 12 (decision logs) was not honored during the original build
+
+The plan says "Each phase's agent session reads a decision log first." In
+practice, no logs were written during phases 1–6. This Phase-8 round writes
+`docs/plans/v2/decision-logs/phase-{1..8}.md` retroactively. Each log records
+observable facts (schema shape, files added, routes wired) from commit
+messages and diffs, not speculation about intent.
+
+### Node count: 13 → 15
+
+The original plan's DAG described 13 launch nodes. The actual registry
+(`cardre/nodes/registry.py:203-228`) registers 23 launch-tier nodes, of which
+15 appear in the scorecard pathway test:
+
+- **Added beyond the original 13:** `DefineModellingMetadataNode` (registering
+  modelling metadata as a node) and `FrozenScorecardBundleNode` (bundling the
+  final scorecard for export). The original plan's list at Phase 5 omitted
+  these even though downstream nodes required them.
+
+The 15-node test DAG in `test_api_scorecard_launch_pathway.py` is the
+authoritative list.
+
+### `test_launch_pathway.py` vs `test_api_scorecard_launch_pathway.py`
+
+Two acceptance tests exist and are both kept:
+
+- **`test_launch_pathway.py`** — executor-level smoke test. Fast, tests
+  `PlanExecutor` directly. Preserved as a fast red-green cycle for execution
+  layer work.
+- **`test_api_scorecard_launch_pathway.py`** — API-level acceptance test.
+  Drives the full 15-node pathway through `POST /projects`, `POST
+  /projects/{id}/runs`, etc. This is the running-code acceptance test the
+  original plan's Phase 5 DoD + abort criterion demanded, but driven through
+  the project-scoped API.
+
+### `errorCodes.ts` policy
+
+`frontend/src/api/errorCodes.ts` is an accepted **hand-written second source**.
+The canonical set lives in `cardre/api/errors.py` (Python). The TypeScript
+file mirrors it manually and must be kept in sync by hand until a generator
+is added. This is intentionally documented rather than fixed in this round
+because the set is small (~21 codes) and changes infrequently.
+
+### Coverage threshold lowered from 75 to 43
+
+The preflight `--cov-fail-under` threshold was lowered from 75 to 43 in
+commit `09acda6` ("fix: preflight policy cleanup for v2") on the v2 branch,
+before PR 197. The v2 big-bang delete removed ~76k lines of v1 code and
+the surviving v2 codebase has a different shape (more nodes/engine code
+that requires optional dependencies to cover). The threshold was raised
+from 40 to 43 in PR 197's Phase 7 (`3dd60ff`). Current coverage is ~53%.
+
+This is **temporary v2 debt**. The threshold should be raised back toward
+75 as the v2 test suite matures. The governance test command also changed
+from `pytest -m governance` to `pytest tests/test_api_*.py` — this
+*expands* coverage (all governance tests live in `test_api_branches.py`,
+which is matched by the glob), so no governance tests were lost.
