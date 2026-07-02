@@ -75,7 +75,7 @@ When introducing a new evidence type, update all of these:
 
 1. Add an `EvidenceKind` enum member in `cardre/_evidence/kinds.py`.
 2. Add a `SCHEMA_<KIND>` constant in `cardre/_evidence/schemas.py`.
-3. Add a typed dataclass and `from_json` in `cardre/_evidence/models.py`.
+3. Add a typed dataclass and `from_json` in `cardre/_evidence/models/` (in the appropriate family module, e.g. `models/binning.py`, `models/model.py`). Re-export it from `cardre/_evidence/models/__init__.py`.
 4. Add an `EVIDENCE_PROFILES` entry in `cardre/_evidence/profiles.py`.
 5. Add reader dispatch in `cardre/_evidence/reader.py::_to_typed`.
 6. Add fixture-backed parse coverage in `tests/test_evidence_reader.py`.
