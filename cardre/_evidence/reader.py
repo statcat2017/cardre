@@ -191,7 +191,12 @@ class ArtifactEvidenceReader:
 
     def read_all_step_outputs(self, run_step: Any, kind: EvidenceKind) -> list[Any]:
         results: list[Any] = []
-        for aid in getattr(run_step, "output_artifact_ids", []):
+        rows = self._store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+            (getattr(run_step, "run_step_id", ""),),
+        ).fetchall()
+        for row in rows:
+            aid = row["artifact_id"]
             value = self.read_optional(aid, kind)
             if value is not None:
                 results.append(value)
@@ -238,7 +243,12 @@ class ArtifactEvidenceReader:
 
     def summarise_step_outputs(self, run_step: Any, kind: EvidenceKind | None = None) -> list[ArtifactEvidenceSummary]:
         summaries: list[ArtifactEvidenceSummary] = []
-        for aid in getattr(run_step, "output_artifact_ids", []):
+        rows = self._store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+            (getattr(run_step, "run_step_id", ""),),
+        ).fetchall()
+        for row in rows:
+            aid = row["artifact_id"]
             if self._store.get_artifact(aid) is None:
                 continue
             if kind is not None and self.read_optional(aid, kind) is None:

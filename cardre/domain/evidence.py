@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from cardre.domain.diagnostics import JsonDict
+from cardre.domain.run import RunStep
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class EvidenceArtifact:
 class ResolvedEvidence:
     """Aggregate view of all evidence for one run step."""
     run_step_id: str
+    run_step: RunStep
     edges: list[EvidenceEdge]
     artifacts: list[EvidenceArtifact]
 
@@ -62,6 +64,18 @@ class ResolvedEvidence:
     def to_dict(self) -> JsonDict:
         return {
             "run_step_id": self.run_step_id,
+            "run_step": {
+                "run_step_id": self.run_step.run_step_id,
+                "run_id": self.run_step.run_id,
+                "step_id": self.run_step.step_id,
+                "plan_version_id": self.run_step.plan_version_id,
+                "status": self.run_step.status.value,
+                "started_at": self.run_step.started_at,
+                "finished_at": self.run_step.finished_at,
+                "execution_fingerprint": self.run_step.execution_fingerprint,
+                "warnings": self.run_step.warnings,
+                "errors": self.run_step.errors,
+            },
             "edges": [
                 {
                     "evidence_edge_id": e.evidence_edge_id,

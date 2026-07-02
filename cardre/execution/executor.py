@@ -24,7 +24,7 @@ from cardre.domain.errors import (
     GraphValidationError,
     MissingInputArtifactError,
 )
-from cardre.domain.evidence import EvidenceEdge
+from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge, ResolvedEvidence
 from cardre.domain.run import RunStep, RunStepStatus
 from cardre.execution.action_planner import _StepAction
 from cardre.execution.failure_classification import classify_step_failure
@@ -230,7 +230,7 @@ class PlanExecutor:
             if action.action == "reuse":
                 rs = self._reuse_run_step(
                     plan_version_id, run_id, action.spec, outputs, records,
-                    evidence_source=action.evidence_source, branch_id=branch_id,
+                    evidence=action.evidence_source, branch_id=branch_id,
                 )
                 if rs is not None:
                     records[action.spec.step_id] = rs
@@ -470,7 +470,9 @@ class PlanExecutor:
                 ),
             )
 
-            # 2. Write evidence_edges + evidence_artifacts
+            # 2. Write evidence_edges + evidence_artifacts using repo
+            from cardre.store.evidence_repo import EvidenceRepository
+            evidence_repo = EvidenceRepository(self._store)
             branch_id = self._get_branch_for_run(run_id)
             run_record = self._store.execute(
                 "SELECT branch_id FROM runs WHERE run_id = ?", (run_id,)
@@ -495,39 +497,18 @@ class PlanExecutor:
                     stale_reason=None,
                     created_at=now_dt,
                 )
-                conn.execute(
-                    "INSERT INTO evidence_edges "
-                    "(evidence_edge_id, run_id, run_step_id, plan_version_id, step_id, parent_step_id, "
-                    " source_run_id, source_run_step_id, policy, source_label, is_reused, is_stale, "
-                    " stale_reason, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        edge.evidence_edge_id,
-                        edge.run_id,
-                        edge.run_step_id,
-                        edge.plan_version_id,
-                        edge.step_id,
-                        edge.parent_step_id,
-                        edge.source_run_id,
-                        edge.source_run_step_id,
-                        edge.policy,
-                        edge.source_label,
-                        1 if edge.is_reused else 0,
-                        1 if edge.is_stale else 0,
-                        edge.stale_reason,
-                        edge.created_at,
-                    ),
-                )
+                evidence_repo.insert_edge(edge, conn)
 
                 # Evidence artifacts for each parent edge
                 for aid in input_artifact_ids:
-                    ea_id = str(uuid.uuid4())
-                    conn.execute(
-                        "INSERT INTO evidence_artifacts "
-                        "(evidence_artifact_id, evidence_edge_id, artifact_id, role, created_at) "
-                        "VALUES (?, ?, ?, ?, ?)",
-                        (ea_id, ee_id, aid, "input", now_dt),
+                    art = EvidenceArtifact(
+                        evidence_artifact_id=str(uuid.uuid4()),
+                        evidence_edge_id=ee_id,
+                        artifact_id=aid,
+                        role="input",
+                        created_at=now_dt,
                     )
+                    evidence_repo.insert_artifact(art, conn)
 
             # 3. Write artifact_lineage for inputs
             for aid in input_artifact_ids:
@@ -560,7 +541,7 @@ class PlanExecutor:
         spec: StepSpec,
         step_outputs: dict[str, list[ArtifactRef]],
         run_step_records: dict[str, RunStep],
-        evidence_source: RunStep | None = None,
+        evidence: ResolvedEvidence | None = None,
         branch_id: str | None = None,
     ) -> RunStep | None:
         """Carry forward a prior run step into the current run."""
@@ -568,12 +549,20 @@ class PlanExecutor:
         from cardre.store.evidence_repo import EvidenceRepository
         from cardre.store.artifact_repo import ArtifactRepository
 
-        prev_rs = evidence_source
+        evidence_repo = EvidenceRepository(self._store)
+
+        prev_rs = evidence.run_step if evidence is not None else None
         if prev_rs is None:
             rs_repo = RunStepRepository(self._store)
             prev_rs = rs_repo.get_latest_successful_step(plan_version_id, spec.step_id, branch_id=branch_id)
             if prev_rs is None:
                 return None
+            # Fetch edges/artifacts for fallback
+            edges = evidence_repo.get_edges_for_run_step(prev_rs.run_step_id)
+            all_artifacts = evidence_repo.get_artifacts_for_run_step(prev_rs.run_step_id)
+        else:
+            edges = evidence.edges
+            all_artifacts = evidence.artifacts
 
         copied_fp = dict(prev_rs.execution_fingerprint)
         copied_fp["cardre_step_carried_forward"] = True
@@ -585,14 +574,6 @@ class PlanExecutor:
 
         now = utc_now_iso()
         rs_id = str(uuid.uuid4())
-
-        # Get input/output artifacts from the original run step's evidence
-        evidence_repo = EvidenceRepository(self._store)
-        edges = evidence_repo.get_edges_for_run_step(prev_rs.run_step_id)
-        input_artifact_ids: list[str] = []
-        for edge in edges:
-            artifacts = evidence_repo.get_artifacts_for_edge(edge.evidence_edge_id)
-            input_artifact_ids.extend(a.artifact_id for a in artifacts)
 
         # Get output artifacts from artifact_lineage
         art_repo = ArtifactRepository(self._store)
@@ -633,31 +614,37 @@ class PlanExecutor:
                 ),
             )
 
-            # Copy evidence edges from source
+            # Copy evidence edges from source (using repo with conn)
             for edge in edges:
                 reused_ee_id = str(uuid.uuid4())
-                conn.execute(
-                    "INSERT INTO evidence_edges "
-                    "(evidence_edge_id, run_id, run_step_id, plan_version_id, step_id, parent_step_id, "
-                    " source_run_id, source_run_step_id, policy, source_label, is_reused, is_stale, "
-                    " stale_reason, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        reused_ee_id, run_id, rs_id, plan_version_id, copied_rs.step_id,
-                        edge.parent_step_id, edge.source_run_id, edge.source_run_step_id,
-                        edge.policy, edge.source_label,
-                        1, edge.is_stale, edge.stale_reason, now,
-                    ),
+                reused_edge = EvidenceEdge(
+                    evidence_edge_id=reused_ee_id,
+                    run_id=run_id,
+                    run_step_id=rs_id,
+                    plan_version_id=plan_version_id,
+                    step_id=copied_rs.step_id,
+                    parent_step_id=edge.parent_step_id,
+                    source_run_id=edge.source_run_id,
+                    source_run_step_id=edge.source_run_step_id,
+                    policy=edge.policy,
+                    source_label=edge.source_label,
+                    is_reused=True,
+                    is_stale=edge.is_stale,
+                    stale_reason=edge.stale_reason,
+                    created_at=now,
                 )
-                # Copy evidence artifacts
-                artifacts = evidence_repo.get_artifacts_for_edge(edge.evidence_edge_id)
-                for art in artifacts:
-                    conn.execute(
-                        "INSERT INTO evidence_artifacts "
-                        "(evidence_artifact_id, evidence_edge_id, artifact_id, role, created_at) "
-                        "VALUES (?, ?, ?, ?, ?)",
-                        (str(uuid.uuid4()), reused_ee_id, art.artifact_id, art.role, now),
+                evidence_repo.insert_edge(reused_edge, conn)
+
+                # Copy evidence artifacts for this edge
+                for art in (a for a in all_artifacts if a.evidence_edge_id == edge.evidence_edge_id):
+                    reused_art = EvidenceArtifact(
+                        evidence_artifact_id=str(uuid.uuid4()),
+                        evidence_edge_id=reused_ee_id,
+                        artifact_id=art.artifact_id,
+                        role=art.role,
+                        created_at=now,
                     )
+                    evidence_repo.insert_artifact(reused_art, conn)
 
             # Copy lineage
             for l in lineage:

@@ -113,11 +113,11 @@ class TestEvidenceResolver:
 
         from cardre.services.evidence_resolver import EvidenceResolver
         resolver = EvidenceResolver(store)
-        rs, source, diags = resolver.resolve(
+        resolved, source, diags = resolver.resolve(
             pv_id, step_id, run_id=run_id, policy="run_only",
         )
-        assert rs is not None
-        assert rs.step_id == step_id
+        assert resolved is not None
+        assert resolved.run_step.step_id == step_id
         assert source == "run"
         assert len(diags) == 0
 
@@ -127,10 +127,10 @@ class TestEvidenceResolver:
 
         from cardre.services.evidence_resolver import EvidenceResolver
         resolver = EvidenceResolver(store)
-        rs, source, diags = resolver.resolve(
+        resolved, source, diags = resolver.resolve(
             pv_id, step_id, run_id="nonexistent-run", policy="run_only",
         )
-        assert rs is None
+        assert resolved is None
         assert source == "missing"
 
     def test_branch_then_full_then_plan_finds_branch(self, tmp_path):
@@ -139,11 +139,11 @@ class TestEvidenceResolver:
 
         from cardre.services.evidence_resolver import EvidenceResolver
         resolver = EvidenceResolver(store)
-        rs, source, diags = resolver.resolve(
+        resolved, source, diags = resolver.resolve(
             pv_id, step_id, policy="branch_then_full_then_plan",
         )
-        assert rs is not None
-        assert rs.step_id == step_id
+        assert resolved is not None
+        assert resolved.run_step.step_id == step_id
         assert source in ("branch", "full_plan", "latest_plan_run")
 
     def test_across_plan_policy(self, tmp_path):
@@ -152,10 +152,10 @@ class TestEvidenceResolver:
 
         from cardre.services.evidence_resolver import EvidenceResolver
         resolver = EvidenceResolver(store)
-        rs, source, diags = resolver.resolve(
+        resolved, source, diags = resolver.resolve(
             pv_id, step_id, plan_id=plan_id, policy="across_plan",
         )
-        assert rs is not None
+        assert resolved is not None
         assert source in ("across_plan", "latest_plan_run")
 
     def test_fingerprint_matching(self, tmp_path):
@@ -175,11 +175,11 @@ class TestEvidenceResolver:
 
         from cardre.services.evidence_resolver import EvidenceResolver
         resolver = EvidenceResolver(store)
-        rs, source, diags = resolver.resolve(
+        resolved, source, diags = resolver.resolve(
             pv_id, step_id, require_fingerprint_match=matching_spec,
             policy="branch_then_full_then_plan",
         )
-        assert rs is not None
+        assert resolved is not None
 
         # Non-matching spec
         non_matching_spec = StepSpec(
@@ -192,11 +192,11 @@ class TestEvidenceResolver:
             parent_step_ids=[],
         )
 
-        rs2, source2, diags2 = resolver.resolve(
+        resolved2, source2, diags2 = resolver.resolve(
             pv_id, step_id, require_fingerprint_match=non_matching_spec,
             policy="branch_then_full_then_plan",
         )
-        assert rs2 is None or source2 == "missing"
+        assert resolved2 is None or source2 == "missing"
 
     def test_diagnostic_emission(self, tmp_path):
         store = _make_store(tmp_path)

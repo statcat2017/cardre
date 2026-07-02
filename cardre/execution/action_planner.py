@@ -10,8 +10,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
+from cardre.domain.evidence import ResolvedEvidence
 from cardre.domain.step import StepSpec
-from cardre.domain.run import RunStep
 
 
 @dataclass
@@ -20,7 +20,7 @@ class _StepAction:
 
     spec: StepSpec
     action: Literal["execute", "reuse", "skip"]
-    evidence_source: RunStep | None = None
+    evidence_source: ResolvedEvidence | None = None
     before_execute: Callable[[], None] | None = None
 
 

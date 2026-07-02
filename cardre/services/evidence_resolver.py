@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from cardre.domain.errors import Diagnostic
+from cardre.domain.evidence import ResolvedEvidence
 from cardre.domain.run import RunStep, RunStepStatus
 from cardre.domain.step import StepSpec
 
@@ -67,8 +68,8 @@ class EvidenceResolver:
             "source_branch_then_full_then_plan",
             "across_plan",
         ] = "branch_then_full_then_plan",
-    ) -> tuple[RunStep | None, str, list[Diagnostic]]:
-        """Resolve evidence and return (run_step, source_label, diagnostics).
+    ) -> tuple[ResolvedEvidence | None, str, list[Diagnostic]]:
+        """Resolve evidence and return (resolved_evidence, source_label, diagnostics).
 
         Source labels: ``run``, ``branch``, ``full_plan``, ``across_plan``,
         ``latest_plan_run``, ``missing``.
@@ -95,22 +96,35 @@ class EvidenceResolver:
 
         return None, "missing", diagnostics
 
+    def _build_resolved_evidence(self, rs: RunStep) -> ResolvedEvidence:
+        """Fetch evidence edges/artifacts for a RunStep and bundle as ResolvedEvidence."""
+        from cardre.store.evidence_repo import EvidenceRepository
+        evidence_repo = EvidenceRepository(self._store)
+        edges = evidence_repo.get_edges_for_run_step(rs.run_step_id)
+        artifacts = evidence_repo.get_artifacts_for_run_step(rs.run_step_id)
+        return ResolvedEvidence(
+            run_step_id=rs.run_step_id,
+            run_step=rs,
+            edges=edges,
+            artifacts=artifacts,
+        )
+
     def _resolve_run_only(
         self, run_id: str | None, step_id: str, diagnostics: list[Diagnostic],
-    ) -> tuple[RunStep | None, str, list[Diagnostic]]:
+    ) -> tuple[ResolvedEvidence | None, str, list[Diagnostic]]:
         if run_id is None:
             return None, "missing", diagnostics
         from cardre.store.run_step_repo import RunStepRepository
         rs_repo = RunStepRepository(self._store)
         for rs in rs_repo.get_for_run(run_id):
             if rs.step_id == step_id and rs.status == RunStepStatus.SUCCEEDED:
-                return rs, "run", diagnostics
+                return self._build_resolved_evidence(rs), "run", diagnostics
         return None, "missing", diagnostics
 
     def _resolve_branch_then_full_then_plan(
         self, plan_version_id: str, step_id: str, branch_id: str | None,
         require_fingerprint_match: StepSpec | None, diagnostics: list[Diagnostic],
-    ) -> tuple[RunStep | None, str, list[Diagnostic]]:
+    ) -> tuple[ResolvedEvidence | None, str, list[Diagnostic]]:
         from cardre.store.run_step_repo import RunStepRepository
         rs_repo = RunStepRepository(self._store)
 
@@ -118,18 +132,18 @@ class EvidenceResolver:
             plan_version_id, step_id, branch_id=branch_id,
         )
         if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
-            return rs, "branch", diagnostics
+            return self._build_resolved_evidence(rs), "branch", diagnostics
 
         if branch_id is not None:
             rs = rs_repo.get_latest_successful_step(
                 plan_version_id, step_id, branch_id=None,
             )
             if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
-                return rs, "full_plan", diagnostics
+                return self._build_resolved_evidence(rs), "full_plan", diagnostics
 
         fallback = self._find_run_step_from_plan_level_run(plan_version_id, step_id)
         if fallback is not None and self._matches_fingerprint(fallback, require_fingerprint_match):
-            return fallback, "latest_plan_run", diagnostics
+            return self._build_resolved_evidence(fallback), "latest_plan_run", diagnostics
 
         return None, "missing", diagnostics
 
@@ -137,7 +151,7 @@ class EvidenceResolver:
         self, plan_id: str | None, plan_version_id: str, step_id: str,
         source_branch_id: str | None, require_fingerprint_match: StepSpec | None,
         diagnostics: list[Diagnostic],
-    ) -> tuple[RunStep | None, str, list[Diagnostic]]:
+    ) -> tuple[ResolvedEvidence | None, str, list[Diagnostic]]:
         from cardre.store.run_step_repo import RunStepRepository
         from cardre.store.run_repo import RunRepository
         rs_repo = RunStepRepository(self._store)
@@ -155,7 +169,7 @@ class EvidenceResolver:
                 plan_version_id, step_id, branch_id=lookup_branch,
             )
             if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
-                return rs, "across_plan", diagnostics
+                return self._build_resolved_evidence(rs), "across_plan", diagnostics
 
         if plan_id:
             rs = rs_repo.get_latest_successful_step(
@@ -178,14 +192,14 @@ class EvidenceResolver:
                             "fallback_branch_id": None,
                         },
                     ))
-                return rs, "across_plan", diagnostics
+                return self._build_resolved_evidence(rs), "across_plan", diagnostics
 
             plan_run_id = run_repo.get_latest_successful_id_for_plan(plan_id)
             if plan_run_id is not None:
                 for prs in rs_repo.get_for_run(plan_run_id):
                     if prs.step_id == step_id and prs.status == RunStepStatus.SUCCEEDED:
                         if self._matches_fingerprint(prs, require_fingerprint_match):
-                            return prs, "latest_plan_run", diagnostics
+                            return self._build_resolved_evidence(prs), "latest_plan_run", diagnostics
 
         diagnostics.append(Diagnostic(
             code="REUSE_EVIDENCE_NOT_FOUND",
@@ -204,7 +218,7 @@ class EvidenceResolver:
         self, plan_id: str | None, plan_version_id: str, step_id: str,
         branch_id: str | None, require_fingerprint_match: StepSpec | None,
         diagnostics: list[Diagnostic],
-    ) -> tuple[RunStep | None, str, list[Diagnostic]]:
+    ) -> tuple[ResolvedEvidence | None, str, list[Diagnostic]]:
         from cardre.store.run_step_repo import RunStepRepository
         from cardre.store.run_repo import RunRepository
         rs_repo = RunStepRepository(self._store)
@@ -221,20 +235,20 @@ class EvidenceResolver:
                 plan_version_id, step_id, branch_id=branch_id,
             )
             if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
-                return rs, "across_plan", diagnostics
+                return self._build_resolved_evidence(rs), "across_plan", diagnostics
 
             rs = rs_repo.get_latest_successful_step(
                 plan_version_id, step_id, branch_id=None,
             )
             if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
-                return rs, "across_plan", diagnostics
+                return self._build_resolved_evidence(rs), "across_plan", diagnostics
 
             plan_run_id = run_repo.get_latest_successful_id_for_plan(plan_id)
             if plan_run_id is not None:
                 for prs in rs_repo.get_for_run(plan_run_id):
                     if prs.step_id == step_id and prs.status == RunStepStatus.SUCCEEDED:
                         if self._matches_fingerprint(prs, require_fingerprint_match):
-                            return prs, "latest_plan_run", diagnostics
+                            return self._build_resolved_evidence(prs), "latest_plan_run", diagnostics
 
         return None, "missing", diagnostics
 
