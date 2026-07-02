@@ -22,8 +22,10 @@ cd "$REPO_DIR"
 
 pyinstaller --onefile \
   --name cardre-api \
+  --paths "$REPO_DIR" \
   --distpath frontend/src-tauri/binaries \
-  sidecar/main.py
+  --hidden-import cardre.api.app \
+  sidecar/__main__.py
 
 # PyInstaller outputs to distpath as cardre-api; Tauri expects
 # cardre-api-{target-triple}

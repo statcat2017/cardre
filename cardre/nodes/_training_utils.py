@@ -9,8 +9,9 @@ import joblib
 import numpy as np
 import polars as pl
 
-from cardre.evidence import ArtifactEvidenceReader, EvidenceKind
-from cardre.audit import ExecutionContext
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre._evidence.kinds import EvidenceKind
+from cardre.execution.context import ExecutionContext
 
 
 def _extract_target_metadata(

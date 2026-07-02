@@ -7,13 +7,10 @@ from typing import Any
 import polars as pl
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.audit import (
-    ExecutionContext,
-    JsonDict,
-    NodeOutput,
-    NodeType,
-)
-from cardre.evidence import SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION
+from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.diagnostics import JsonDict
+from cardre.nodes.contracts import NodeType
+from cardre._evidence.schemas import SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION
 from cardre.nodes._dataset_quality import quality_warnings as _quality_warnings
 from cardre.node_parameters import (
     MethodOption,

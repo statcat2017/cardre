@@ -21,14 +21,14 @@ If code only needs bytes, it may stream bytes without interpreting them.
 Only these modules may perform direct artifact I/O:
 
 - `cardre/artifacts.py`
-- `cardre/evidence.py`
+- `cardre/domain/evidence.py`
 - `cardre/_evidence/`
 - `cardre/modeling/serialization.py`
 
 Why:
 
 - `cardre/artifacts.py` owns artifact write helpers and low-level store plumbing.
-- `cardre/evidence.py` exposes typed evidence APIs.
+- `cardre/domain/evidence.py` exposes typed evidence APIs.
 - `cardre/_evidence/` contains the parser, profiles, schemas, and typed models.
 - `cardre/modeling/serialization.py` handles binary estimator IO and integrity checks.
 

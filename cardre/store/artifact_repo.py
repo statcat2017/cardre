@@ -1,36 +1,30 @@
-"""Artifact repository — artifact CRUD operations."""
+"""Artifact repository — CRUD for artifacts and artifact_lineage."""
 
 from __future__ import annotations
 
 import json
-import sqlite3
-from typing import TYPE_CHECKING, Any
+import uuid
+from typing import TYPE_CHECKING
 
-from cardre.audit import ArtifactRef, utc_now_iso
+from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.diagnostics import utc_now_iso
 
 if TYPE_CHECKING:
-    from cardre.store.project_store import ProjectStore
+    from cardre.store.db import ProjectStore
 
 
 class ArtifactRepository:
-    """CRUD for artifacts within a ProjectStore."""
+    """Repository for artifacts."""
 
     def __init__(self, store: ProjectStore) -> None:
         self._store = store
 
-    def _db(self) -> sqlite3.Connection:
-        return self._store._connect()
-
     def register(self, artifact: ArtifactRef) -> str:
-        sql = """
-            INSERT INTO artifacts
-                (artifact_id, artifact_type, role, path, physical_hash,
-                 logical_hash, media_type, created_at, metadata_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        now = utc_now_iso()
-        with self._store.transaction() as conn:
-            conn.execute(sql, (
+        self._store.execute(
+            "INSERT OR REPLACE INTO artifacts "
+            "(artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at, metadata_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
                 artifact.artifact_id,
                 artifact.artifact_type,
                 artifact.role,
@@ -38,24 +32,23 @@ class ArtifactRepository:
                 artifact.physical_hash,
                 artifact.logical_hash,
                 artifact.media_type,
-                now,
+                artifact.created_at,
                 json.dumps(artifact.metadata),
-            ))
+            ),
+        )
         return artifact.artifact_id
 
     def get(self, artifact_id: str) -> ArtifactRef | None:
-        row = self._db().execute(
+        row = self._store.execute(
             "SELECT * FROM artifacts WHERE artifact_id = ?", (artifact_id,)
         ).fetchone()
         if row is None:
             return None
-        return self._store._row_to_artifact_ref(row)
+        return self._row_to_artifact_ref(row)
 
     def list(self) -> list[ArtifactRef]:
-        rows = self._db().execute(
-            "SELECT * FROM artifacts ORDER BY created_at"
-        ).fetchall()
-        return [self._store._row_to_artifact_ref(r) for r in rows]
+        rows = self._store.execute("SELECT * FROM artifacts ORDER BY created_at").fetchall()
+        return [self._row_to_artifact_ref(r) for r in rows]
 
     def list_for_project(
         self,
@@ -68,28 +61,69 @@ class ArtifactRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> list[ArtifactRef]:
-        sql = (
-            "SELECT DISTINCT a.* FROM artifacts a "
-            "JOIN artifact_lineage al ON a.artifact_id = al.artifact_id AND al.direction = 'output' "
-            "JOIN runs r ON al.run_id = r.run_id "
-            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-            "JOIN plans p ON pv.plan_id = p.plan_id "
-            "WHERE p.project_id = ?"
-        )
-        params: list[Any] = [project_id]
+        sql = [
+            "SELECT DISTINCT a.* FROM artifacts a",
+            "JOIN artifact_lineage al ON al.artifact_id = a.artifact_id",
+            "JOIN plan_versions pv ON al.plan_version_id = pv.plan_version_id",
+            "JOIN plans p ON pv.plan_id = p.plan_id",
+            "WHERE p.project_id = ?",
+        ]
+        params: list[object] = [project_id]
         if role is not None:
-            sql += " AND a.role = ?"
+            sql.append("AND a.role = ?")
             params.append(role)
         if artifact_type is not None:
-            sql += " AND a.artifact_type = ?"
+            sql.append("AND a.artifact_type = ?")
             params.append(artifact_type)
         if producing_step_id is not None:
-            sql += " AND al.step_id = ?"
+            sql.append("AND al.step_id = ?")
             params.append(producing_step_id)
         if run_id is not None:
-            sql += " AND al.run_id = ?"
+            sql.append("AND al.run_id = ?")
             params.append(run_id)
-        sql += " ORDER BY a.created_at DESC LIMIT ? OFFSET ?"
+        sql.append("ORDER BY a.created_at LIMIT ? OFFSET ?")
         params.extend([limit, offset])
-        rows = self._db().execute(sql, params).fetchall()
-        return [self._store._row_to_artifact_ref(r) for r in rows]
+        rows = self._store.execute(" ".join(sql), tuple(params)).fetchall()
+        return [self._row_to_artifact_ref(r) for r in rows]
+
+    def register_lineage(
+        self,
+        run_id: str,
+        run_step_id: str,
+        plan_version_id: str,
+        step_id: str,
+        artifact_id: str,
+        direction: str,
+        branch_id: str | None = None,
+    ) -> str:
+        lineage_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        self._store.execute(
+            "INSERT OR IGNORE INTO artifact_lineage "
+            "(lineage_id, run_id, run_step_id, plan_version_id, step_id, branch_id, artifact_id, direction, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (lineage_id, run_id, run_step_id, plan_version_id, step_id, branch_id, artifact_id, direction, now),
+        )
+        return lineage_id
+
+    def get_lineage_for_run_step(self, run_step_id: str) -> list[dict]:
+        rows = self._store.execute(
+            "SELECT * FROM artifact_lineage WHERE run_step_id = ? ORDER BY direction, created_at",
+            (run_step_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    @staticmethod
+    def _row_to_artifact_ref(row: dict) -> ArtifactRef:
+        d = dict(row)
+        return ArtifactRef(
+            artifact_id=d["artifact_id"],
+            artifact_type=d["artifact_type"],
+            role=d["role"],
+            path=d["path"],
+            physical_hash=d["physical_hash"],
+            logical_hash=d["logical_hash"],
+            media_type=d["media_type"],
+            created_at=d["created_at"],
+            metadata=json.loads(d.get("metadata_json", "{}")),
+        )

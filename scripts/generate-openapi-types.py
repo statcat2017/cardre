@@ -14,15 +14,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def main() -> None:
-    import os
-    os.environ["CARDRE_GOVERNANCE"] = "1"
 
     sys.path.insert(0, str(REPO_ROOT))
 
     try:
-        from sidecar.main import app
+        from cardre.api.app import app
     except ImportError as exc:
-        print(f"Cannot import sidecar.main: {exc}")
+        print(f"Cannot import cardre.api.app: {exc}")
         print("Install sidecar deps: pip install -e '.[sidecar]'")
         sys.exit(1)
 

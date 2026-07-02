@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre.audit import ExecutionContext, json_logical_hash
+from cardre.execution.context import ExecutionContext
+from cardre.domain.artifacts import json_logical_hash
 
 
 def build_model_artifact(

@@ -4,13 +4,10 @@ import json  # noqa: F401 — imported for monkeypatch/patch compatibility in te
 from typing import Any
 
 from cardre.artifacts import write_json_artifact
-from cardre.audit import ExecutionContext, NodeOutput, NodeType
-from cardre.evidence import (
-    AmbiguousEvidenceError,
-    ArtifactEvidenceReader,
-    EvidenceKind,
-    EvidenceNotFoundError,
-)
+from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.nodes.contracts import NodeType
+from cardre._evidence.kinds import AmbiguousEvidenceError, EvidenceKind, EvidenceNotFoundError
+from cardre._evidence.reader import ArtifactEvidenceReader
 
 
 class TechnicalManifestExportNode(NodeType):
@@ -28,8 +25,13 @@ class TechnicalManifestExportNode(NodeType):
         kinds: tuple[EvidenceKind, ...],
     ) -> tuple[Any, Any]:
         matches: dict[str, tuple[Any, Any]] = {}
+        rows = store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+            (getattr(run_step, "run_step_id", ""),),
+        ).fetchall()
+        output_artifact_ids = [r["artifact_id"] for r in rows]
         for kind in kinds:
-            for artifact_id in run_step.output_artifact_ids:
+            for artifact_id in output_artifact_ids:
                 if artifact_id in matches:
                     continue
                 evidence = reader.read_optional(artifact_id, kind)
@@ -43,7 +45,7 @@ class TechnicalManifestExportNode(NodeType):
             raise EvidenceNotFoundError(
                 kinds[0],
                 step_id=getattr(run_step, "step_id", None),
-                candidate_artifact_ids=list(getattr(run_step, "output_artifact_ids", []) or []),
+                candidate_artifact_ids=output_artifact_ids,
             )
         if len(matches) > 1:
             raise AmbiguousEvidenceError(
@@ -90,18 +92,23 @@ class TechnicalManifestExportNode(NodeType):
 
         seen_artifact_ids: set[str] = set()
         for rs in all_run_steps:
+            rows = store.execute(
+                "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+                (rs.run_step_id,),
+            ).fetchall()
+            output_artifact_ids = [r["artifact_id"] for r in rows]
             step_info = {
                 "step_id": rs.step_id,
                 "node_type": rs.execution_fingerprint.get("node_type", ""),
                 "node_version": rs.execution_fingerprint.get("node_version", ""),
-                "status": rs.status,
+                "status": rs.status.value if hasattr(rs.status, "value") else rs.status,
                 "params_hash": rs.execution_fingerprint.get("params_hash", ""),
                 "input_artifact_logical_hashes": rs.execution_fingerprint.get("input_artifact_logical_hashes", []),
                 "output_artifact_logical_hashes": rs.execution_fingerprint.get("output_artifact_logical_hashes", []),
             }
             steps_evidence.append(step_info)
 
-            for aid in rs.output_artifact_ids:
+            for aid in output_artifact_ids:
                 if aid in seen_artifact_ids:
                     continue
                 seen_artifact_ids.add(aid)

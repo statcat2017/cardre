@@ -1,7 +1,0 @@
-{
-  "schema_version": "cardre.woe_transform_evidence.v1",
-  "target_column": "target",
-  "transformed_variables": ["age_woe", "income_woe"],
-  "selected_only": true,
-  "row_count": 100
-}

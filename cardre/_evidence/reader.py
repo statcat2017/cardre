@@ -8,7 +8,8 @@ from typing import Any
 
 import polars as pl
 
-from cardre.audit import ArtifactRef, JsonDict
+from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.diagnostics import JsonDict
 from cardre._evidence.kinds import (
     EvidenceKind,
     EvidenceNotFoundError,
@@ -101,10 +102,10 @@ class ArtifactEvidenceReader:
         return self._parse(candidates[0], kind)
 
     def find_optional(self, artifacts: list[ArtifactRef], kind: EvidenceKind) -> Any | None:
-        """Like ``find`` but returns ``None`` when no match exists."""
+        """Like ``find`` but returns ``None`` when no match or ambiguity."""
         try:
             return self.find(artifacts, kind)
-        except EvidenceNotFoundError:
+        except (EvidenceNotFoundError, AmbiguousEvidenceError):
             return None
 
     def find_model_artifact(self, artifacts: list[ArtifactRef]) -> ModelArtifact:
@@ -176,22 +177,26 @@ class ArtifactEvidenceReader:
     def read_run_manifest(self, artifact_id: str) -> RunManifestEvidence:
         return self.read(artifact_id, EvidenceKind.RUN_MANIFEST)
 
-    def read_required_step_output(self, run_step: Any, kind: EvidenceKind) -> Any:
-        result = self.read_step_output_optional(run_step, kind)
+    def read_required_step_output(self, run_step_id: str, kind: EvidenceKind) -> Any:
+        result = self.read_step_output_optional(run_step_id, kind)
         if result is None:
             raise EvidenceNotFoundError(
                 kind,
-                step_id=getattr(run_step, "step_id", None),
-                candidate_artifact_ids=list(getattr(run_step, "output_artifact_ids", []) or []),
+                step_id=run_step_id,
             )
         return result
 
-    def read_optional_step_output(self, run_step: Any, kind: EvidenceKind) -> Any | None:
-        return self.read_step_output_optional(run_step, kind)
+    def read_optional_step_output(self, run_step_id: str, kind: EvidenceKind) -> Any | None:
+        return self.read_step_output_optional(run_step_id, kind)
 
     def read_all_step_outputs(self, run_step: Any, kind: EvidenceKind) -> list[Any]:
         results: list[Any] = []
-        for aid in getattr(run_step, "output_artifact_ids", []):
+        rows = self._store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+            (getattr(run_step, "run_step_id", ""),),
+        ).fetchall()
+        for row in rows:
+            aid = row["artifact_id"]
             value = self.read_optional(aid, kind)
             if value is not None:
                 results.append(value)
@@ -199,12 +204,16 @@ class ArtifactEvidenceReader:
 
     def read_step_output_optional(
         self,
-        run_step: Any,
+        run_step_id: str,
         kind: EvidenceKind,
     ) -> Any | None:
-        """Scan a RunStepRecord's output artifact IDs for the given kind."""
-        for aid in run_step.output_artifact_ids:
-            result = self.read_optional(aid, kind)
+        """Resolve output artifact IDs via artifact_lineage and scan for the given kind."""
+        rows = self._store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+            (run_step_id,),
+        ).fetchall()
+        for row in rows:
+            result = self.read_optional(row["artifact_id"], kind)
             if result is not None:
                 return result
         return None
@@ -234,7 +243,12 @@ class ArtifactEvidenceReader:
 
     def summarise_step_outputs(self, run_step: Any, kind: EvidenceKind | None = None) -> list[ArtifactEvidenceSummary]:
         summaries: list[ArtifactEvidenceSummary] = []
-        for aid in getattr(run_step, "output_artifact_ids", []):
+        rows = self._store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+            (getattr(run_step, "run_step_id", ""),),
+        ).fetchall()
+        for row in rows:
+            aid = row["artifact_id"]
             if self._store.get_artifact(aid) is None:
                 continue
             if kind is not None and self.read_optional(aid, kind) is None:
@@ -370,6 +384,8 @@ class ArtifactEvidenceReader:
                 and a.media_type == "application/vnd.apache.parquet"
                 and self._parquet_has_columns(a, {"iv", "variable"})
             ]
+        if kind == EvidenceKind.VARIABLE_CLUSTERING:
+            return self._match_by_payload_key(artifacts, {"method", "clusters"})
         if kind == EvidenceKind.SPLIT_SUMMARY:
             return self._match_by_payload_key(artifacts, {"strategy", "row_counts"})
         if kind == EvidenceKind.PROFILE_SUMMARY:

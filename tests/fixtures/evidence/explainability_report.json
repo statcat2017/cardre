@@ -1,8 +1,0 @@
-{
-  "schema_version": "cardre.explainability_report.v1",
-  "model_family": "logistic_regression",
-  "limitations": ["No native scorecard points"],
-  "explanation_level": "post_hoc_only",
-  "native_importance_available": true,
-  "global_importance_fields": ["feature_importance"]
-}

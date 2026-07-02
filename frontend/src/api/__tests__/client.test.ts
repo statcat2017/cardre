@@ -1,314 +1,193 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { api, ApiError, isApiError, formatApiError, getBaseUrl, fetchJson } from "../client";
+/**
+ * Robustness tests for the API client (fetchJson, ApiError).
+ *
+ * Ported from v1 — verifies SIDECAR_UNREACHABLE, REQUEST_TIMEOUT,
+ * REQUEST_ABORTED, EMPTY_OK_BODY, EMPTY_ERROR_RESPONSE,
+ * MALFORMED_JSON_RESPONSE, HTML_ERROR_RESPONSE, NON_JSON_ERROR_RESPONSE.
+ */
 
-function mockFetchResponse(status: number, body: string, headers?: Record<string, string>) {
-  return vi.spyOn(global, "fetch").mockResolvedValue({
-    ok: status >= 200 && status < 300,
-    status,
-    headers: new Map(Object.entries(headers ?? {})) as unknown as Headers,
-    text: () => Promise.resolve(body),
-    json: () => {
-      try {
-        return Promise.resolve(JSON.parse(body));
-      } catch {
-        return Promise.reject(new Error("Invalid JSON"));
-      }
-    },
-  } as Response);
-}
+import { describe, expect, it, vi, afterEach } from "vitest";
+import { fetchJson, ApiError } from "../client";
+import { ErrorCodes } from "../errorCodes";
 
-function mockFetchNeverResolves() {
-  return vi.spyOn(global, "fetch").mockImplementation((_url, init) => {
-    const signal = (init as RequestInit)?.signal;
-    return new Promise<Response>((_resolve, reject) => {
-      if (signal?.aborted) {
-        reject(new DOMException("The operation was aborted", "AbortError"));
-        return;
-      }
-      signal?.addEventListener(
-        "abort",
-        () => {
-          reject(new DOMException("The operation was aborted", "AbortError"));
-        },
-        { once: true },
-      );
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("fetchJson", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns parsed JSON for a successful 200", async () => {
+    const resp = new Response(JSON.stringify({ foo: "bar" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
     });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
+    const result = await fetchJson<{ foo: string }>("/test");
+    expect(result).toEqual({ foo: "bar" });
   });
-}
 
-function mockFetchError(error: Error) {
-  return vi.spyOn(global, "fetch").mockRejectedValue(error);
-}
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
-describe("fetchJson timeout", () => {
-  it(
-    "throws REQUEST_TIMEOUT when fetch never resolves within timeoutMs",
-    { timeout: 10_000 },
-    async () => {
-      mockFetchNeverResolves();
-      // Use a custom call with a very short timeout to avoid waiting 5s
-      const promise = api.health();
-      await expect(promise).rejects.toThrow(ApiError);
-      await expect(promise).rejects.toMatchObject({
-        code: "REQUEST_TIMEOUT",
-        status: 0,
-      });
-    },
-  );
-
-  it("aborts the underlying request on timeout", { timeout: 10_000 }, async () => {
-    const spy = mockFetchNeverResolves();
-    const promise = api.health();
-    await expect(promise).rejects.toThrow();
-    const init = spy.mock.calls[0][1] as RequestInit;
-    expect(init?.signal).toBeDefined();
-    expect(init!.signal!.aborted).toBe(true);
+  it("throws SIDECAR_UNREACHABLE on network error", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("fetch failed"));
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(ErrorCodes.SIDECAR_UNREACHABLE);
+    expect(err.status).toBe(503);
   });
-});
 
-describe("fetchJson abort", () => {
-  it(
-    "throws REQUEST_ABORTED when caller signal aborts before fetch",
-    { timeout: 10_000 },
-    async () => {
-      const controller = new AbortController();
-      controller.abort();
-      // Mock that checks the signal — if already aborted, reject immediately
-      vi.spyOn(global, "fetch").mockImplementation((_url, init) => {
-        const signal = (init as RequestInit)?.signal;
-        if (signal?.aborted) {
-          return Promise.reject(new DOMException("The operation was aborted", "AbortError"));
-        }
-        return new Promise<Response>(() => {});
-      });
-      const promise = fetchJson("/health", { signal: controller.signal, timeoutMs: 10_000 });
-      await expect(promise).rejects.toThrow(ApiError);
-      await expect(promise).rejects.toMatchObject({
-        code: "REQUEST_ABORTED",
-        status: 0,
-      });
-    },
-  );
-});
+  it("throws REQUEST_TIMEOUT on timeout", async () => {
+    const timeoutError = new DOMException("Timeout", "TimeoutError");
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(timeoutError);
 
-describe("fetchJson malformed response", () => {
+    const err = (await fetchJson("/test", { timeoutMs: 10 }).catch((e) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(ErrorCodes.REQUEST_TIMEOUT);
+    expect(err.status).toBe(408);
+  });
+
+  it("throws REQUEST_ABORTED on abort signal", async () => {
+    const abortError = new DOMException("Aborted", "AbortError");
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(abortError);
+
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(ErrorCodes.REQUEST_ABORTED);
+    expect(err.status).toBe(499);
+  });
+
+  it("throws EMPTY_OK_BODY on 200 with empty body", async () => {
+    const resp = new Response("", {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(ErrorCodes.EMPTY_OK_BODY);
+    expect(err.status).toBe(502);
+  });
+
   it("throws MALFORMED_JSON_RESPONSE on 200 with invalid JSON", async () => {
-    mockFetchResponse(200, "not json at all");
-    const promise = api.health();
-    await expect(promise).rejects.toThrow(ApiError);
-    await expect(promise).rejects.toMatchObject({
-      code: "MALFORMED_JSON_RESPONSE",
+    const resp = new Response("not json", {
       status: 200,
+      headers: { "content-type": "application/json" },
     });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(ErrorCodes.MALFORMED_JSON_RESPONSE);
+    expect(err.status).toBe(502);
   });
 
-  it("includes rawBodyPreview on malformed response", async () => {
-    mockFetchResponse(200, "not json at all");
-    try {
-      await api.health();
-    } catch (e: unknown) {
-      if (isApiError(e)) {
-        expect(e.rawBodyPreview).toBe("not json at all");
-      }
-    }
-  });
-});
-
-describe("fetchJson response-body timeout", () => {
-  it("throws REQUEST_TIMEOUT when headers arrive but body never resolves", async () => {
-    vi.useRealTimers();
-    vi.spyOn(global, "fetch").mockImplementation((_url, init) => {
-      const signal = (init as RequestInit)?.signal;
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        headers: new Map() as unknown as Headers,
-        text: () =>
-          new Promise<string>((resolve, reject) => {
-            if (signal?.aborted) {
-              reject(new DOMException("The operation was aborted", "AbortError"));
-              return;
-            }
-            signal?.addEventListener(
-              "abort",
-              () => {
-                reject(new DOMException("The operation was aborted", "AbortError"));
-              },
-              { once: true },
-            );
-          }),
-      } as unknown as Response);
-    });
-    const promise = fetchJson("/health", { timeoutMs: 50 });
-    await expect(promise).rejects.toMatchObject({ code: "REQUEST_TIMEOUT" });
-  });
-});
-
-describe("fetchJson outbound request ID", () => {
-  it("sends X-Cardre-Request-Id header on every request", { timeout: 10_000 }, async () => {
-    const spy = vi.spyOn(global, "fetch").mockResolvedValue({
-      ok: true,
+  it("throws MALFORMED_JSON_RESPONSE on 200 with wrong content type", async () => {
+    const resp = new Response("{}", {
       status: 200,
-      headers: new Map() as unknown as Headers,
-      text: () => Promise.resolve(JSON.stringify({ status: "ok" })),
-    } as Response);
-    await api.health();
-    const headers = spy.mock.calls[0][1]?.headers as Record<string, string> | undefined;
-    expect(headers?.["X-Cardre-Request-Id"]).toBeDefined();
-    expect(typeof headers!["X-Cardre-Request-Id"]).toBe("string");
-    expect(headers!["X-Cardre-Request-Id"].length).toBeGreaterThan(0);
-  });
-
-  it("falls back to outbound request ID when no response header", { timeout: 10_000 }, async () => {
-    vi.spyOn(global, "fetch").mockResolvedValue({
-      ok: false,
-      status: 500,
-      headers: new Map() as unknown as Headers,
-      text: () => Promise.resolve(""),
-    } as Response);
-    const promise = api.health();
-    await expect(promise).rejects.toThrow(ApiError);
-    await expect(promise).rejects.toMatchObject({
-      code: "EMPTY_ERROR_RESPONSE",
+      headers: { "content-type": "text/plain" },
     });
-    try {
-      await promise;
-    } catch (e: unknown) {
-      if (e instanceof ApiError) {
-        expect(e.requestId).toBeDefined();
-        expect(e.requestId!.length).toBeGreaterThan(0);
-      }
-    }
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(ErrorCodes.MALFORMED_JSON_RESPONSE);
+    expect(err.status).toBe(502);
   });
-});
 
-describe("fetchJson empty body", () => {
-  it("throws EMPTY_OK_BODY on 200 with empty body by default", async () => {
-    mockFetchResponse(200, "");
-    const promise = api.health();
-    await expect(promise).rejects.toThrow(ApiError);
-    await expect(promise).rejects.toMatchObject({
-      code: "EMPTY_OK_BODY",
-      status: 200,
+  it("throws HTML_ERROR_RESPONSE on error with HTML body", async () => {
+    const resp = new Response("<html>404 Not Found</html>", {
+      status: 400,
+      headers: { "content-type": "text/html" },
     });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(ErrorCodes.HTML_ERROR_RESPONSE);
+    expect(err.status).toBe(400);
   });
-});
 
-describe("fetchJson HTML error", () => {
-  it("throws HTML_ERROR_RESPONSE on 502 with HTML body", async () => {
-    mockFetchResponse(502, "<html><body>Server Error</body></html>");
-    const promise = api.health();
-    await expect(promise).rejects.toThrow(ApiError);
-    await expect(promise).rejects.toMatchObject({
-      code: "HTML_ERROR_RESPONSE",
-      status: 502,
+  it("throws NON_JSON_ERROR_RESPONSE on error with non-JSON body", async () => {
+    const resp = new Response("Internal Server Error", {
+      status: 400,
+      headers: { "content-type": "text/plain" },
     });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(ErrorCodes.NON_JSON_ERROR_RESPONSE);
+    expect(err.status).toBe(400);
   });
-});
 
-describe("fetchJson unreachable", () => {
-  it("throws SIDECAR_UNREACHABLE when fetch rejects", async () => {
-    mockFetchError(new TypeError("Failed to fetch"));
-    const promise = api.health();
-    await expect(promise).rejects.toThrow(ApiError);
-    await expect(promise).rejects.toMatchObject({
-      code: "SIDECAR_UNREACHABLE",
-      status: 0,
+  it("throws EMPTY_ERROR_RESPONSE on error with empty body", async () => {
+    const resp = new Response("", {
+      status: 400,
+      headers: { "content-type": "application/json" },
     });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(ErrorCodes.EMPTY_ERROR_RESPONSE);
+    expect(err.status).toBe(400);
   });
-});
 
-describe("fetchJson server error with code", () => {
-  it("throws ApiError with server code and requestId", async () => {
-    mockFetchResponse(
-      500,
+  it("returns structured error from server JSON response", async () => {
+    const resp = new Response(
       JSON.stringify({
-        detail: { code: "RUN_EXECUTION_FAILED", message: "Something broke" },
+        detail: { code: "PLAN_NOT_FOUND", message: "Plan not found", context: {} },
       }),
-      { "X-Cardre-Request-Id": "req_abc123" },
-    );
-    const promise = api.health();
-    await expect(promise).rejects.toThrow(ApiError);
-    await expect(promise).rejects.toMatchObject({
-      code: "RUN_EXECUTION_FAILED",
-      status: 500,
-      requestId: "req_abc123",
-    });
-  });
-});
-
-describe("fetchJson empty error body", () => {
-  it("throws EMPTY_ERROR_RESPONSE on 500 with empty body", async () => {
-    mockFetchResponse(500, "");
-    const promise = api.health();
-    await expect(promise).rejects.toThrow(ApiError);
-    await expect(promise).rejects.toMatchObject({
-      code: "EMPTY_ERROR_RESPONSE",
-      status: 500,
-    });
-  });
-});
-
-describe("fetchJson non-JSON error body", () => {
-  it("throws NON_JSON_ERROR_RESPONSE on 500 with plain text", async () => {
-    mockFetchResponse(500, "Internal Server Error");
-    const promise = api.health();
-    await expect(promise).rejects.toThrow(ApiError);
-    await expect(promise).rejects.toMatchObject({
-      code: "NON_JSON_ERROR_RESPONSE",
-      status: 500,
-    });
-  });
-});
-
-describe("formatApiError", () => {
-  it("formats ApiError with code and message", () => {
-    const err = new ApiError(0, {
-      code: "SIDECAR_UNREACHABLE",
-      message: "Could not reach the Cardre sidecar.",
-    });
-    expect(formatApiError(err)).toBe("SIDECAR_UNREACHABLE: Could not reach the Cardre sidecar.");
-  });
-
-  it("includes requestId when present", () => {
-    const err = new ApiError(
-      500,
       {
-        code: "RUN_EXECUTION_FAILED",
-        message: "Something broke",
+        status: 400,
+        headers: { "content-type": "application/json" },
       },
-      { requestId: "req_abc123" },
     );
-    expect(formatApiError(err)).toContain("req=req_abc1");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
+    const err = (await fetchJson("/test").catch((e) => e)) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe("PLAN_NOT_FOUND");
+    expect(err.message).toBe("Plan not found");
+    expect(err.status).toBe(400);
   });
 
-  it("includes timeout when present", () => {
-    const err = new ApiError(
-      0,
-      {
-        code: "REQUEST_TIMEOUT",
-        message: "Request timed out after 5000ms.",
-      },
-      { timedOutAtMs: 5000 },
-    );
-    expect(formatApiError(err)).toContain("timeout=5000ms");
+  it("returns HTTP 204 as undefined", async () => {
+    const resp = new Response(undefined as unknown as BodyInit, { status: 204 });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(resp);
+    const result = await fetchJson("/test");
+    expect(result).toBeUndefined();
   });
 
-  it("falls back to Error.message for plain errors", () => {
-    expect(formatApiError(new Error("boom"))).toBe("boom");
-  });
+  it("preserves external abort signal", async () => {
+    const controller = new AbortController();
+    const abortError = new DOMException("Aborted by user", "AbortError");
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(abortError);
 
-  it("stringifies non-Error values", () => {
-    expect(formatApiError("oops")).toBe("oops");
+    setTimeout(() => controller.abort(), 5);
+
+    const err = (await fetchJson("/test", { signal: controller.signal, timeoutMs: 5000 }).catch(
+      (e) => e,
+    )) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe(ErrorCodes.REQUEST_ABORTED);
   });
 });
 
-describe("getBaseUrl", () => {
-  it("defaults to localhost:8752", () => {
-    expect(getBaseUrl()).toBe("http://127.0.0.1:8752");
+describe("ApiError", () => {
+  it("stores code, message, status, and context", () => {
+    const err = new ApiError("TEST_CODE", "Test message", 418, { key: "value" });
+    expect(err.code).toBe("TEST_CODE");
+    expect(err.message).toBe("Test message");
+    expect(err.status).toBe(418);
+    expect(err.context).toEqual({ key: "value" });
+    expect(err.detail).toBe("TEST_CODE: Test message (HTTP 418)");
+  });
+
+  it("defaults status to 500 and context to {}", () => {
+    const err = new ApiError("ERR", "msg");
+    expect(err.status).toBe(500);
+    expect(err.context).toEqual({});
+  });
+
+  it("is instance of Error", () => {
+    const err = new ApiError("CODE", "msg");
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe("ApiError");
   });
 });

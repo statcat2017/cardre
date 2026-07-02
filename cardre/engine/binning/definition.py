@@ -11,7 +11,7 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any
 
-from cardre.audit import JsonDict
+from cardre.domain.diagnostics import JsonDict
 
 # Schema constant lives here, re-exported from evidence.py for backward
 # compatibility.  The lifecycle module is the deeper domain module;

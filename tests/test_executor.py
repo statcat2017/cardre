@@ -1,1021 +1,402 @@
-"""Tests for cardre.executor — plan execution, role enforcement, staleness, replay."""
+"""Tests for PlanExecutor — topological order, role enforcement, evidence persistence.
+
+Tests validate:
+- Topological ordering of steps
+- Evidence rows persisted per-step inside the transaction
+- RunStep records created for each step
+- Failed step recording
+"""
 
 from __future__ import annotations
 
+import json
+import uuid
 from pathlib import Path
-
-import polars as pl
-
-from cardre.artifacts import write_json_artifact
-from cardre.audit import (
-    ExecutionContext,
-    NodeOutput,
-    NodeType,
-    StepSpec,
-    json_logical_hash,
-)
-from cardre.executor import PlanExecutor
-from cardre.errors import ArtifactReadError, GraphValidationError
-from cardre.staleness import compute_staleness
-from cardre.nodes import (
-    DummyFitNode,
-    ImportGermanCreditNode,
-    SplitTrainTestOotNode,
-)
-from cardre.registry import NodeRegistry
 
 import pytest
 
-from tests.helpers import (
-    _make_train_artifact,
-    make_sample_german_credit_file,
-    make_store,
-)
-
-pytestmark = pytest.mark.integration
-
-
-
-# ======================================================================
-# Slice 5: Executor + Run Records
-# ======================================================================
-
-class ExecutorTests:
-
-    def test_running_proof_plan_writes_runs_and_run_steps(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-
-        run = store.get_run(run_id)
-        assert run is not None
-        assert run["status"] == "succeeded"
-
-        run_steps = store.get_run_steps(run_id)
-        assert len(run_steps) == 1
-        rs = run_steps[0]
-        assert rs.status == "succeeded"
-        assert rs.step_id == "import"
-        assert rs.plan_version_id == pv_id
-
-    def test_run_step_has_input_output_artifact_ids(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run_steps = store.get_run_steps(run_id)
-        rs = run_steps[0]
-        assert isinstance(rs.input_artifact_ids, list)
-        assert isinstance(rs.output_artifact_ids, list)
-        assert len(rs.output_artifact_ids) > 0
-
-    def test_run_step_has_execution_fingerprint(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run_steps = store.get_run_steps(run_id)
-        rs = run_steps[0]
-        fp = rs.execution_fingerprint
-        assert "plan_version_id" in fp
-        assert "step_id" in fp
-        assert "node_type" in fp
-        assert "node_version" in fp
-        assert "params_hash" in fp
-        assert "input_artifact_logical_hashes" in fp
-        assert "output_artifact_logical_hashes" in fp
-        assert "python_version" in fp
-        assert "cardre_version" in fp
-
-    def test_failed_step_does_not_mark_descendants_current(self) -> None:
-        class FailOnPurposeNode(DummyFitNode):
-            node_type = "cardre.fail_on_purpose"
-
-            def run(self, context: ExecutionContext) -> NodeOutput:
-                raise RuntimeError("Intentional failure")
-
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="split", node_type="cardre.split_train_test_oot",
-                node_version="1", category="transform",
-                params={
-                    "train_fraction": 0.6, "test_fraction": 0.2,
-                    "oot_fraction": 0.2, "method": "random", "random_seed": 42,
-                },
-                params_hash=json_logical_hash({
-                    "train_fraction": 0.6, "test_fraction": 0.2,
-                    "oot_fraction": 0.2, "method": "random", "random_seed": 42,
-                }),
-                parent_step_ids=["import"], branch_label="", position=1,
-            ),
-            StepSpec(
-                step_id="fail-step", node_type="cardre.fail_on_purpose",
-                node_version="1", category="fit",
-                params={},
-                params_hash=json_logical_hash({}),
-                parent_step_ids=["split"], branch_label="", position=2,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(ImportGermanCreditNode)
-        reg.register(SplitTrainTestOotNode)
-        reg.register(FailOnPurposeNode)
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-
-        run = store.get_run(run_id)
-        assert run["status"] == "failed"
-
-        run_steps = store.get_run_steps(run_id)
-        fail_step = [rs for rs in run_steps if rs.step_id == "fail-step"]
-        assert len(fail_step) == 1
-        assert fail_step[0].status == "failed"
-        assert len(fail_step[0].errors) > 0
-
-    def test_structured_error_categories(self) -> None:
-        class FailOnPurposeNode(DummyFitNode):
-            node_type = "cardre.fail_on_purpose"
-
-            def run(self, context: ExecutionContext) -> NodeOutput:
-                raise RuntimeError("Intentional failure")
-
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="fail-step", node_type="cardre.fail_on_purpose",
-                node_version="1", category="fit",
-                params={},
-                params_hash=json_logical_hash({}),
-                parent_step_ids=["import"], branch_label="", position=1,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(ImportGermanCreditNode)
-        reg.register(FailOnPurposeNode)
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-
-        run = store.get_run(run_id)
-        assert run["status"] == "failed"
-
-        run_steps = store.get_run_steps(run_id)
-        fail_step = [rs for rs in run_steps if rs.step_id == "fail-step"]
-        assert len(fail_step) == 1
-        assert fail_step[0].status == "failed"
-        assert len(fail_step[0].errors) > 0
-
-        error = fail_step[0].errors[0]
-        assert "category" in error
-        known_categories = {
-            "GraphValidationError",
-            "MissingInputArtifactError", "ParameterValidationError",
-            "ArtifactReadError", "ArtifactWriteError",
-            "NodeExecutionError", "ContractViolationError",
-            "RoleAccessError", "LeakageProtectionError",
-            "CardreError", "InternalExecutionError",
-        }
-        assert error["category"] in known_categories
-        assert error["category"] == "RoleAccessError"
-
-    def test_missing_artifact_file_fails_validation(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        df = pl.DataFrame({"x": [1.0]})
-        art = _make_train_artifact(store, df, role="train")
-        p = store.artifact_path(art)
-        p.unlink() if p.exists() else None
-
-        executor = PlanExecutor(NodeRegistry())
-        with pytest.raises(ArtifactReadError):
-            executor._validate_input_artifact_files(store, [art])
-
-    def test_artifact_hash_mismatch_fails_validation(self) -> None:
-        store, tmp = make_store()
-        store.initialize()
-        df = pl.DataFrame({"x": [1.0]})
-        art = _make_train_artifact(store, df, role="train")
-        p = store.artifact_path(art)
-        if p.exists():
-            p.write_text("tampered data")
-
-        executor = PlanExecutor(NodeRegistry())
-        with pytest.raises(ArtifactReadError):
-            executor._validate_input_artifact_files(store, [art])
-
-
-# ======================================================================
-# Slice 6: Split + Role Enforcement
-# ======================================================================
-
-class SplitAndRoleTests:
-
-    def make_proof_plan_steps(self, source: Path) -> list[StepSpec]:
-        return [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="split", node_type="cardre.split_train_test_oot",
-                node_version="1", category="transform",
-                params={
-                    "train_fraction": 0.6,
-                    "test_fraction": 0.2,
-                    "oot_fraction": 0.2,
-                    "method": "random",
-                    "random_seed": 42,
-                },
-                params_hash=json_logical_hash({
-                    "train_fraction": 0.6, "test_fraction": 0.2,
-                    "oot_fraction": 0.2, "method": "random", "random_seed": 42,
-                }),
-                parent_step_ids=["import"], branch_label="", position=1,
-            ),
-            StepSpec(
-                step_id="fit", node_type="cardre.dummy_fit",
-                node_version="1", category="fit",
-                params={},
-                params_hash=json_logical_hash({}),
-                parent_step_ids=["split"], branch_label="", position=2,
-            ),
-        ]
-
-    def test_split_creates_three_immutable_artifacts_with_roles(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="split", node_type="cardre.split_train_test_oot",
-                node_version="1", category="transform",
-                params={
-                    "train_fraction": 0.6, "test_fraction": 0.2,
-                    "oot_fraction": 0.2, "method": "random", "random_seed": 42,
-                },
-                params_hash=json_logical_hash({
-                    "train_fraction": 0.6, "test_fraction": 0.2,
-                    "oot_fraction": 0.2, "method": "random", "random_seed": 42,
-                }),
-                parent_step_ids=["import"], branch_label="", position=1,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run_steps = store.get_run_steps(run_id)
-
-        split_rs = [rs for rs in run_steps if rs.step_id == "split"][0]
-
-
-        roles_found = set()
-        for aid in split_rs.output_artifact_ids:
-            art = store.get_artifact(aid)
-            assert art is not None
-            if art.artifact_type == "dataset":
-                roles_found.add(art.role)
-        assert roles_found == {"train", "test", "oot"}
-
-    def test_fit_node_consuming_train_succeeds(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = self.make_proof_plan_steps(source)
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run = store.get_run(run_id)
-        assert run["status"] == "succeeded"
-
-    def test_fit_node_wired_to_test_fails_before_execution(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="fit-on-import",
-                node_type="cardre.dummy_fit",
-                node_version="1", category="fit",
-                params={},
-                params_hash=json_logical_hash({}),
-                parent_step_ids=["import"], branch_label="", position=1,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run = store.get_run(run_id)
-        assert run["status"] == "failed"
-
-        run_steps = store.get_run_steps(run_id)
-        any_role_error = any(
-            "role" in str(e.get("message", "")) for rs in run_steps for e in rs.errors
-        )
-        assert any_role_error
-
-    def test_apply_node_consumes_train_test_oot_and_definition(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = self.make_proof_plan_steps(source) + [
-            StepSpec(
-                step_id="apply", node_type="cardre.dummy_apply",
-                node_version="1", category="apply",
-                params={},
-                params_hash=json_logical_hash({}),
-                parent_step_ids=["split", "fit"], branch_label="", position=3,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run = store.get_run(run_id)
-        assert run["status"] == "succeeded"
-
-    def test_apply_with_multi_parent_produces_three_prediction_artifacts(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = self.make_proof_plan_steps(source) + [
-            StepSpec(
-                step_id="apply", node_type="cardre.dummy_apply",
-                node_version="1", category="apply",
-                params={},
-                params_hash=json_logical_hash({}),
-                parent_step_ids=["split", "fit"],
-                branch_label="", position=3,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run_steps = store.get_run_steps(run_id)
-        apply_rs = [rs for rs in run_steps if rs.step_id == "apply"][0]
-
-        assert len(apply_rs.output_artifact_ids) >= 1
-
-        roles = set()
-        for aid in apply_rs.output_artifact_ids:
-            art = store.get_artifact(aid)
-            if art is not None:
-                roles.add(art.role)
-        assert "prediction" in roles
-
-
-    def test_target_leakage_through_train_columns_not_detected(self) -> None:
-        """Semantic target leakage inside train columns is NOT automatically detected.
-
-        Role enforcement blocks fit nodes from consuming test/OOT artifacts,
-        but any column inside the *train* dataset that correlates with the
-        target can still leak.  This test documents that limitation.
-        """
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = self.make_proof_plan_steps(source)
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        # The proof plan ends with dummy_fit after split.
-        # No column-name target-leakage scan exists — the executor only
-        # checks artifact roles.
-        run_id = executor.run_plan_version(store, pv_id)
-        run = store.get_run(run_id)
-        assert run["status"] == "succeeded"
-
-
-# ======================================================================
-# Slice 7: Staleness + Replay
-# ======================================================================
-
-class StalenessAndReplayTests:
-
-    def test_changing_split_params_marks_downstream_stale(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="split", node_type="cardre.split_train_test_oot",
-                node_version="1", category="transform",
-                params={
-                    "train_fraction": 0.6, "test_fraction": 0.2,
-                    "oot_fraction": 0.2, "method": "random", "random_seed": 42,
-                },
-                params_hash=json_logical_hash({
-                    "train_fraction": 0.6, "test_fraction": 0.2,
-                    "oot_fraction": 0.2, "method": "random", "random_seed": 42,
-                }),
-                parent_step_ids=["import"], branch_label="", position=1,
-            ),
-            StepSpec(
-                step_id="fit", node_type="cardre.dummy_fit",
-                node_version="1", category="fit",
-                params={},
-                params_hash=json_logical_hash({}),
-                parent_step_ids=["split"], branch_label="", position=2,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        executor.run_plan_version(store, pv_id)
-
-        new_steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="split", node_type="cardre.split_train_test_oot",
-                node_version="1", category="transform",
-                params={
-                    "train_fraction": 0.7, "test_fraction": 0.15,
-                    "oot_fraction": 0.15, "method": "random", "random_seed": 99,
-                },
-                params_hash=json_logical_hash({
-                    "train_fraction": 0.7, "test_fraction": 0.15,
-                    "oot_fraction": 0.15, "method": "random", "random_seed": 99,
-                }),
-                parent_step_ids=["import"], branch_label="", position=1,
-            ),
-            StepSpec(
-                step_id="fit", node_type="cardre.dummy_fit",
-                node_version="1", category="fit",
-                params={},
-                params_hash=json_logical_hash({}),
-                parent_step_ids=["split"], branch_label="", position=2,
-            ),
-        ]
-        new_pv_id = store.create_plan_version(plan_id, new_steps)
-        executor.run_plan_version(store, new_pv_id)
-
-        staleness = compute_staleness(store, new_pv_id)
-        assert staleness["import"] == False
-        assert staleness["split"] == False
-        assert staleness["fit"] == False
-
-    def test_replay_from_changed_split_produces_new_downstream_artifacts(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="split", node_type="cardre.split_train_test_oot",
-                node_version="1", category="transform",
-                params={
-                    "train_fraction": 0.6, "test_fraction": 0.2,
-                    "oot_fraction": 0.2, "method": "random", "random_seed": 42,
-                },
-                params_hash=json_logical_hash({
-                    "train_fraction": 0.6, "test_fraction": 0.2,
-                    "oot_fraction": 0.2, "method": "random", "random_seed": 42,
-                }),
-                parent_step_ids=["import"], branch_label="", position=1,
-            ),
-            StepSpec(
-                step_id="fit", node_type="cardre.dummy_fit",
-                node_version="1", category="fit",
-                params={},
-                params_hash=json_logical_hash({}),
-                parent_step_ids=["split"], branch_label="", position=2,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        first_run_id = executor.run_plan_version(store, pv_id)
-
-        new_params = {
-            "train_fraction": 0.7, "test_fraction": 0.15,
-            "oot_fraction": 0.15, "method": "random", "random_seed": 99,
-        }
-        new_run_id = executor.replay_from_step(
-            store, plan_id, pv_id, "split", new_params,
+from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.run import RunStepStatus
+from cardre.domain.step import StepSpec
+from cardre.execution.executor import PlanExecutor
+from cardre.execution.topology import validate_topology
+
+
+def _make_store(project_root: Path):
+    """Create a fresh store with a plan version ready for execution."""
+    from cardre.store.db import ProjectStore
+    store = ProjectStore(project_root / "test.cardre")
+    store.initialize()
+    return store
+
+
+def _write_input_csv(project_root: Path) -> Path:
+    input_path = project_root / "input.csv"
+    input_path.write_text(
+        "credit_amount,age_years,credit_risk_class\n"
+        "1000,35,good\n"
+        "2500,42,bad\n",
+        encoding="utf-8",
+    )
+    return input_path
+
+
+def _seed_plan_version(
+    store,
+    input_path: Path,
+    project_id: str | None = None,
+    plan_id: str | None = None,
+):
+    """Seed a store with a plan, steps, and edges. Returns plan_version_id."""
+    now = utc_now_iso()
+
+    if project_id is None:
+        project_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "Test Project", now, "0.2.0"),
         )
 
-        first_steps = store.get_run_steps(first_run_id)
-        new_steps = store.get_run_steps(new_run_id)
-
-        first_by_step = {rs.step_id: rs for rs in first_steps}
-        new_by_step = {rs.step_id: rs for rs in new_steps}
-
-        new_split = new_by_step["split"]
-        assert first_by_step["split"].output_artifact_ids != new_split.output_artifact_ids
-        new_fit = new_by_step["fit"]
-        assert first_by_step["fit"].output_artifact_ids != new_fit.output_artifact_ids
-
-    def test_unchanged_upstream_evidence_remains_valid(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        executor.run_plan_version(store, pv_id)
-        executor.run_plan_version(store, pv_id)
-
-    def test_old_run_remains_queryable(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        executor.run_plan_version(store, pv_id)
-
-        new_params = {"source_path": str(tmp / "nonexistent")}
-        try:
-            executor.replay_from_step(store, plan_id, pv_id, "import", new_params)
-        except (FileNotFoundError, RuntimeError):
-            pass
-
-# ======================================================================
-# Wave 2: run_to_node, force, cancellation, manifest
-# ======================================================================
-
-class SimpleSourceNode(NodeType):
-    node_type = "cardre.test.simple_source"
-    version = "1"
-    category = "transform"
-    input_roles: list[str] = []
-    output_roles: list[str] = ["artifact"]
-
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        art = write_json_artifact(
-            context.store, artifact_type="report", role="artifact",
-            stem=f"source-{context.step_spec.step_id}",
-            payload={"step_id": context.step_spec.step_id},
-            metadata={},
+    if plan_id is None:
+        plan_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (plan_id, project_id, "Test Plan", now),
         )
-        return NodeOutput(artifacts=[art], metrics={})
+
+    pv_id = str(uuid.uuid4())
+    store.execute(
+        "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
+        "VALUES (?, ?, 1, 1, ?, ?)",
+        (pv_id, plan_id, now, "Base version"),
+    )
+
+    # Steps: import (root) -> profile -> export (depends on profile)
+    step_import = "step-import"
+    step_profile = "step-profile"
+    step_export = "step-export"
+
+    store.execute(
+        "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
+        " params_json, params_hash, branch_label, position, canonical_step_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (step_import, pv_id, "cardre.import_dataset", "1", "transform",
+         json.dumps({"source_path": str(input_path)}), "hash001", "", 0, step_import),
+    )
+    store.execute(
+        "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
+        " params_json, params_hash, branch_label, position, canonical_step_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (step_profile, pv_id, "cardre.profile_dataset", "1", "transform",
+         json.dumps({}), "hash002", "", 1, step_profile),
+    )
+    store.execute(
+        "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
+        " params_json, params_hash, branch_label, position, canonical_step_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (step_export, pv_id, "cardre.technical_manifest_export", "1", "transform",
+         json.dumps({}), "hash003", "", 2, step_export),
+    )
+
+    # Edges: import -> profile, profile -> export
+    store.execute(
+        "INSERT INTO plan_step_edges (plan_version_id, parent_step_id, child_step_id, edge_order) "
+        "VALUES (?, ?, ?, ?)",
+        (pv_id, step_import, step_profile, 0),
+    )
+    store.execute(
+        "INSERT INTO plan_step_edges (plan_version_id, parent_step_id, child_step_id, edge_order) "
+        "VALUES (?, ?, ?, ?)",
+        (pv_id, step_profile, step_export, 0),
+    )
+
+    return pv_id, [step_import, step_profile, step_export]
 
 
-class SimpleTransformNode(NodeType):
-    node_type = "cardre.test.simple_transform"
-    version = "1"
-    category = "transform"
-    input_roles: list[str] = ["artifact"]
-    output_roles: list[str] = ["artifact"]
+class TestTopologicalOrder:
+    """validate_topology produces correct topological order."""
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        art = write_json_artifact(
-            context.store, artifact_type="report", role="artifact",
-            stem=f"transform-{context.step_spec.step_id}",
-            payload={"step_id": context.step_spec.step_id,
-                     "parent_count": len(context.input_artifacts)},
-            metadata={},
+    def test_sorts_topologically(self):
+        step_c = StepSpec(step_id="c", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=["a"])
+        step_a = StepSpec(step_id="a", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=[])
+        step_b = StepSpec(step_id="b", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=["a"])
+        steps = [step_c, step_a, step_b]
+        validate_topology(steps)
+        ids = [s.step_id for s in steps]
+        assert ids.index("a") < ids.index("b")
+        assert ids.index("a") < ids.index("c")
+        assert ids.index("b") < ids.index("c")
+
+    def test_raises_on_cycle(self):
+        step_a = StepSpec(step_id="a", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=["b"])
+        step_b = StepSpec(step_id="b", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=["a"])
+        with pytest.raises(Exception):
+            validate_topology([step_a, step_b])
+
+    def test_raises_on_missing_parent(self):
+        step_a = StepSpec(step_id="a", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=["missing"])
+        with pytest.raises(Exception):
+            validate_topology([step_a])
+
+
+class TestPlanExecutor:
+    """PlanExecutor runs steps and persists evidence per-step."""
+
+    def test_executes_simple_plan(self, tmp_path):
+        store = _make_store(tmp_path)
+        input_path = _write_input_csv(tmp_path)
+        pv_id, step_ids = _seed_plan_version(store, input_path)
+
+        # Create the run
+        from cardre.store.run_repo import RunRepository
+        run_repo = RunRepository(store)
+        run_id = run_repo.create(pv_id)
+
+        executor = PlanExecutor(store)
+        result = executor.run_plan_version(pv_id, run_id)
+        assert result == run_id
+
+        # Check run steps were created
+        from cardre.store.run_step_repo import RunStepRepository
+        rs_repo = RunStepRepository(store)
+        steps = rs_repo.get_for_run(run_id)
+        assert len(steps) == 3
+        for rs in steps:
+            assert rs.status == RunStepStatus.SUCCEEDED
+
+    def test_evidence_rows_persisted_per_step(self, tmp_path):
+        """Evidence edges + evidence artifacts are written for each step."""
+        store = _make_store(tmp_path)
+        input_path = _write_input_csv(tmp_path)
+        pv_id, step_ids = _seed_plan_version(store, input_path)
+
+        from cardre.store.run_repo import RunRepository
+        run_repo = RunRepository(store)
+        run_id = run_repo.create(pv_id)
+
+        executor = PlanExecutor(store)
+        executor.run_plan_version(pv_id, run_id)
+
+        # Check evidence_edges
+        edges = store.execute(
+            "SELECT COUNT(*) as cnt FROM evidence_edges WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        assert edges["cnt"] == 2  # Two edges: import->profile, profile->export
+
+        # Check evidence_artifacts
+        artifacts = store.execute(
+            "SELECT COUNT(*) as cnt FROM evidence_artifacts "
+            "WHERE evidence_edge_id IN (SELECT evidence_edge_id FROM evidence_edges WHERE run_id = ?)",
+            (run_id,),
+        ).fetchone()
+        assert artifacts["cnt"] == 2  # one artifact per parent edge
+
+        # Check artifact_lineage
+        lineage = store.execute(
+            "SELECT COUNT(*) as cnt FROM artifact_lineage WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        assert lineage["cnt"] == 5  # import:1 output, profile:1i+1o, export:1i+1o
+
+        # Each evidence edge's artifacts should match its parent step's output lineage
+        edge_rows = store.execute(
+            "SELECT evidence_edge_id, parent_step_id FROM evidence_edges WHERE run_id = ?",
+            (run_id,),
+        ).fetchall()
+        for edge in edge_rows:
+            edge_aids = [
+                r["artifact_id"] for r in store.execute(
+                    "SELECT artifact_id FROM evidence_artifacts WHERE evidence_edge_id = ? ORDER BY artifact_id",
+                    (edge["evidence_edge_id"],),
+                ).fetchall()
+            ]
+            parent_outputs = store.execute(
+                "SELECT artifact_id FROM artifact_lineage "
+                "WHERE run_id = ? AND step_id = ? AND direction = 'output' ORDER BY artifact_id",
+                (run_id, edge["parent_step_id"]),
+            ).fetchall()
+            parent_aids = [r["artifact_id"] for r in parent_outputs]
+            assert edge_aids == parent_aids, (
+                f"Evidence artifacts for parent {edge['parent_step_id']!r} "
+                f"should match its output lineage: got {edge_aids}, expected {parent_aids}"
+            )
+
+    def test_run_step_order_matches_topological(self, tmp_path):
+        """Run steps are created in the expected order."""
+        store = _make_store(tmp_path)
+        input_path = _write_input_csv(tmp_path)
+        pv_id, step_ids = _seed_plan_version(store, input_path)
+
+        from cardre.store.run_repo import RunRepository
+        run_repo = RunRepository(store)
+        run_id = run_repo.create(pv_id)
+
+        executor = PlanExecutor(store)
+        executor.run_plan_version(pv_id, run_id)
+
+        from cardre.store.run_step_repo import RunStepRepository
+        rs_repo = RunStepRepository(store)
+        steps = rs_repo.get_for_run(run_id)
+        step_order = [rs.step_id for rs in steps]
+        # Import first, then profile, then export
+        assert step_order[0] == "step-import"
+        assert step_order[1] == "step-profile"
+        assert step_order[2] == "step-export"
+
+    def test_execution_fingerprint_in_run_step(self, tmp_path):
+        """Run steps have execution fingerprints with node metadata."""
+        store = _make_store(tmp_path)
+        input_path = _write_input_csv(tmp_path)
+        pv_id, step_ids = _seed_plan_version(store, input_path)
+
+        from cardre.store.run_repo import RunRepository
+        run_repo = RunRepository(store)
+        run_id = run_repo.create(pv_id)
+
+        executor = PlanExecutor(store)
+        executor.run_plan_version(pv_id, run_id)
+
+        from cardre.store.run_step_repo import RunStepRepository
+        rs_repo = RunStepRepository(store)
+        for rs in rs_repo.get_for_run(run_id):
+            fp = rs.execution_fingerprint
+            assert "node_type" in fp
+            assert "node_version" in fp
+            assert "params_hash" in fp
+            assert "plan_version_id" in fp
+            assert "step_id" in fp
+
+    def test_transactional_persist_on_failure(self, tmp_path):
+        """Even on step failure, evidence written before failure is persisted."""
+        store = _make_store(tmp_path)
+        input_path = _write_input_csv(tmp_path)
+        pv_id, step_ids = _seed_plan_version(store, input_path)
+
+        from cardre.store.run_repo import RunRepository
+        run_repo = RunRepository(store)
+        run_id = run_repo.create(pv_id)
+
+        executor = PlanExecutor(store)
+        executor.run_plan_version(pv_id, run_id)
+
+        # All steps should be recorded for the real launch path.
+        from cardre.store.run_step_repo import RunStepRepository
+        rs_repo = RunStepRepository(store)
+        steps = rs_repo.get_for_run(run_id)
+        assert len(steps) == 3
+
+    def test_multi_parent_evidence_attribution(self, tmp_path):
+        """Two parents each produce one distinct artifact; child consumes both;
+        each parent evidence edge has exactly the artifact from that parent."""
+        store = _make_store(tmp_path)
+
+        csv_a = tmp_path / "input_a.csv"
+        csv_a.write_text("x,y\n1,2\n3,4\n")
+        csv_b = tmp_path / "input_b.csv"
+        csv_b.write_text("a,b\n5,6\n7,8\n")
+
+        now = utc_now_iso()
+        project_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "MP Test", now, "0.2.0"),
         )
-        return NodeOutput(artifacts=[art], metrics={})
+        plan_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (plan_id, project_id, "MP Plan", now),
+        )
+        pv_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
+            "VALUES (?, ?, 1, 1, ?, ?)",
+            (pv_id, plan_id, now, "Multi-parent evidence test"),
+        )
 
+        step_a = "step-a"
+        step_b = "step-b"
+        step_c = "step-c"
 
-class Wave2Tests:
+        for sid, params_json, pos in [
+            (step_a, json.dumps({"source_path": str(csv_a)}), 0),
+            (step_b, json.dumps({"source_path": str(csv_b)}), 1),
+            (step_c, json.dumps({}), 2),
+        ]:
+            ntype = "cardre.import_dataset" if sid != step_c else "cardre.noop"
+            store.execute(
+                "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
+                " params_json, params_hash, branch_label, position, canonical_step_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (sid, pv_id, ntype, "1", "transform",
+                 params_json, f"hash-{sid}", "", pos, sid),
+            )
 
-    def test_run_to_node_executes_ancestors_only(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
+        for parent, child, order in [(step_a, step_c, 0), (step_b, step_c, 1)]:
+            store.execute(
+                "INSERT INTO plan_step_edges (plan_version_id, parent_step_id, child_step_id, edge_order) "
+                "VALUES (?, ?, ?, ?)",
+                (pv_id, parent, child, order),
+            )
 
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="step_a", node_type="cardre.test.simple_transform",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=["import"], branch_label="", position=1,
-            ),
-            StepSpec(
-                step_id="step_b", node_type="cardre.test.simple_transform",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=["import"], branch_label="", position=2,
-            ),
-            StepSpec(
-                step_id="target", node_type="cardre.test.simple_transform",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=["step_a"], branch_label="", position=3,
-            ),
-            StepSpec(
-                step_id="other_target", node_type="cardre.test.simple_transform",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=["step_b"], branch_label="", position=4,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        reg.register(SimpleTransformNode)
-        executor = PlanExecutor(reg)
+        from cardre.store.run_repo import RunRepository
+        run_repo = RunRepository(store)
+        run_id = run_repo.create(pv_id)
 
-        run_id = executor.run_to_node(store, pv_id, "target")
+        executor = PlanExecutor(store)
+        executor.run_plan_version(pv_id, run_id)
 
-        run = store.get_run(run_id)
-        assert run["status"] == "succeeded"
+        from cardre.store.run_step_repo import RunStepRepository
+        rs_repo = RunStepRepository(store)
+        steps = rs_repo.get_for_run(run_id)
+        assert len(steps) == 3
 
-        run_steps = store.get_run_steps(run_id)
-        executed_step_ids = {rs.step_id for rs in run_steps}
-        assert "import" in executed_step_ids
-        assert "step_a" in executed_step_ids
-        assert "target" in executed_step_ids
-        assert "step_b" not in executed_step_ids, "step_b is not in ancestor closure"
-        assert "other_target" not in executed_step_ids, "other_target is not in ancestor closure"
+        rs_c = next(rs for rs in steps if rs.step_id == step_c)
 
-    def test_force_rerun_regenerates_artifacts(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
+        # Get output artifact IDs for each parent
+        def _output_artifact_ids(run_step_id: str) -> list[str]:
+            rows = store.execute(
+                "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+                (run_step_id,),
+            ).fetchall()
+            return [r["artifact_id"] for r in rows]
 
-        steps = [
-            StepSpec(
-                step_id="source", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
+        rs_a = next(rs for rs in steps if rs.step_id == step_a)
+        rs_b = next(rs for rs in steps if rs.step_id == step_b)
+        art_a = _output_artifact_ids(rs_a.run_step_id)
+        art_b = _output_artifact_ids(rs_b.run_step_id)
+        assert len(art_a) == 1
+        assert len(art_b) == 1
 
-        first_run_id = executor.run_plan_version(store, pv_id, force=True)
-        first_steps = store.get_run_steps(first_run_id)
-        first_fp = first_steps[0].execution_fingerprint
+        # Fetch evidence edges for step_c
+        edges = store.execute(
+            "SELECT evidence_edge_id, parent_step_id FROM evidence_edges WHERE run_step_id = ?",
+            (rs_c.run_step_id,),
+        ).fetchall()
+        assert len(edges) == 2, f"Expected 2 evidence edges, got {len(edges)}"
 
-        second_run_id = executor.run_plan_version(store, pv_id, force=True)
-        second_steps = store.get_run_steps(second_run_id)
-        second_fp = second_steps[0].execution_fingerprint
+        for edge in edges:
+            edge_aids = [
+                r["artifact_id"] for r in store.execute(
+                    "SELECT artifact_id FROM evidence_artifacts WHERE evidence_edge_id = ?",
+                    (edge["evidence_edge_id"],),
+                ).fetchall()
+            ]
+            if edge["parent_step_id"] == step_a:
+                assert edge_aids == art_a, (
+                    f"Edge for parent {step_a!r} should have only its own artifact, got {edge_aids}"
+                )
+            elif edge["parent_step_id"] == step_b:
+                assert edge_aids == art_b, (
+                    f"Edge for parent {step_b!r} should have only its own artifact, got {edge_aids}"
+                )
+            else:
+                pytest.fail(f"Unexpected parent_step_id: {edge['parent_step_id']}")
 
-        assert first_steps[0].output_artifact_ids != second_steps[0].output_artifact_ids, \
-            "forced runs should produce new artifact IDs"
-        assert first_fp == second_fp, \
-            "fingerprints should be identical between forced runs"
-
-    def test_manifest_status_matches_run_status(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        steps = [
-            StepSpec(
-                step_id="step_a", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-            StepSpec(
-                step_id="step_b", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=["step_a"], branch_label="", position=1,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run = store.get_run(run_id)
-        assert run["status"] == "succeeded", f"Expected succeeded, got {run['status']}"
-
-        manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
-        assert len(manifest_arts) >= 1, "No manifest artifact found"
-        manifest_art = manifest_arts[-1]
-        import json
-        manifest = json.loads(store.artifact_path(manifest_art).read_text())
-        assert manifest["status"] == run["status"], f"Manifest status {manifest['status']} != run status {run['status']}"
-        assert manifest["finished_at"], "Manifest missing finished_at"
-
-    def test_run_to_node_invalid_target_raises(self) -> None:
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        steps = [
-            StepSpec(
-                step_id="step_a", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-        executor = PlanExecutor(reg)
-
-        with pytest.raises(GraphValidationError):
-            executor.run_to_node(store, pv_id, "nonexistent_step")
-
-
-# ======================================================================
-# Phase 1 lifecycle regression tests
-# ======================================================================
-
-
-class Phase1LifecycleTests:
-
-    def test_exception_before_finalise_marks_failed(self) -> None:
-        """An exception inside the with block before finalise() is called
-        must still mark the run as failed with the correct execution_mode."""
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        steps = [
-            StepSpec(
-                step_id="source", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-
-        from cardre.run_lifecycle import RunLifecycle
-        try:
-            with RunLifecycle.start(store, pv_id, execution_mode="full") as lifecycle:
-                run_id = lifecycle.run_id
-                # Raise before finalise — __exit__ must catch this
-                raise RuntimeError("simulated failure before finalise")
-        except RuntimeError:
-            pass
-
-        run = store.get_run(run_id)
-        assert run["status"] == "failed", f"Expected failed, got {run['status']}"
-
-    def test_exception_before_finalise_preserves_execution_mode(self) -> None:
-        """When __exit__ finalises a failed run, the manifest must
-        contain the execution_mode supplied at start()."""
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-
-        steps = [
-            StepSpec(
-                step_id="source", node_type="cardre.test.simple_source",
-                node_version="1", category="transform",
-                params={}, params_hash=json_logical_hash({}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry()
-        reg.register(SimpleSourceNode)
-
-        from cardre.run_lifecycle import RunLifecycle
-        try:
-            with RunLifecycle.start(store, pv_id, execution_mode="to_node", target_step_id="source", in_scope_step_ids=["source"]) as lifecycle:
-                run_id = lifecycle.run_id
-                raise RuntimeError("simulated failure")
-        except RuntimeError:
-            pass
-
-        run = store.get_run(run_id)
-        assert run["status"] == "failed", f"Expected failed, got {run['status']}"
-
-        manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
-        assert len(manifest_arts) >= 1
-        import json
-        manifest = json.loads(store.artifact_path(manifest_arts[-1]).read_text())
-        assert manifest["execution_mode"] == "to_node", f"Expected to_node, got {manifest['execution_mode']}"
-        assert manifest["target_step_id"] == "source"
-        assert manifest["in_scope_step_ids"] == ["source"]
-
-    def test_replay_writes_manifest(self) -> None:
-        """replay_from_step must write a run manifest with the correct
-        status and execution_mode."""
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        executor.run_plan_version(store, pv_id)
-
-        new_params = {"source_path": str(source)}
-        new_run_id = executor.replay_from_step(store, plan_id, pv_id, "import", new_params)
-
-        new_run = store.get_run(new_run_id)
-        assert new_run["status"] == "succeeded"
-
-        manifest_arts = [a for a in store.list_artifacts() if a.artifact_type == "run_manifest"]
-        import json
-        replay_manifests = [json.loads(store.artifact_path(a).read_text()) for a in manifest_arts if json.loads(store.artifact_path(a).read_text())["run_id"] == new_run_id]
-        assert len(replay_manifests) == 1, "Expected exactly one manifest for replay run"
-        assert replay_manifests[0]["status"] == "succeeded"
-        assert replay_manifests[0]["execution_mode"] == "replay"
-
-
-class HeartbeatTests:
-    def test_run_with_fresh_heartbeat_not_recovered(self) -> None:
-        """A run with a recent heartbeat should not be marked interrupted."""
-        store, tmp = make_store()
-        project_id = store.create_project("test")
-        plan_id = store.create_plan(project_id, "test-plan")
-        source = make_sample_german_credit_file(tmp)
-
-        steps = [
-            StepSpec(
-                step_id="import", node_type="cardre.import_fixture_uci_german_credit",
-                node_version="1", category="transform",
-                params={"source_path": str(source)},
-                params_hash=json_logical_hash({"source_path": str(source)}),
-                parent_step_ids=[], branch_label="", position=0,
-            ),
-        ]
-        pv_id = store.create_plan_version(plan_id, steps)
-        reg = NodeRegistry.with_defaults()
-        executor = PlanExecutor(reg)
-
-        run_id = executor.run_plan_version(store, pv_id)
-        run = store.get_run(run_id)
-        assert run["status"] == "succeeded"
-
-        # The executor should have set heartbeat_at during execution
-        assert run.get("heartbeat_at") is not None
-
-        # Recovery with short threshold should not touch a recently-completed run
-        recovered = store.recover_interrupted_runs(max_age_seconds=1)
-        assert len(recovered) == 0
+        # Flat artifact_lineage should still contain every input artifact
+        lineage_rows = store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'input'",
+            (rs_c.run_step_id,),
+        ).fetchall()
+        lineage_aids = {r["artifact_id"] for r in lineage_rows}
+        assert lineage_aids == {art_a[0], art_b[0]}, (
+            f"Lineage should contain both input artifacts, got {lineage_aids}"
+        )

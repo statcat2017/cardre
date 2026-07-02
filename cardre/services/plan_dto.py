@@ -7,9 +7,6 @@ This is an intentional boundary contract: the dataclasses here are the
 canonical service-layer return types. The Pydantic models in
 ``sidecar.models`` are the API-layer serialisation types. The route
 layer converts between them via ``dataclasses.asdict()``.
-
-When adding a new response type, add it to both modules. Do not import
-``sidecar.models`` from ``cardre.services``.
 """
 
 from __future__ import annotations
@@ -79,7 +76,6 @@ class ManualBinningVariableSummary:
     special_bin_count: int | None = None
     sparse_bin_warning: bool = False
     non_monotonic_warning: bool = False
-    # Phase 1 — widened fields for governed review
     variable_type: str | None = None
     bin_count: int | None = None
     missing_rate: float | None = None
@@ -105,7 +101,6 @@ class ManualBinningEditorStateResponse:
     current_overrides: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[dict[str, Any]] = field(default_factory=list)
     variable_summaries: list[ManualBinningVariableSummary] = field(default_factory=list)
-    # Phase 1 — context and review state
     project_id: str = ""
     branch_id: str | None = None
     run_id: str | None = None
@@ -126,3 +121,20 @@ class ManualBinningPreviewResponse:
     valid: bool = False
     refined_bins_by_variable: dict[str, Any] = field(default_factory=dict)
     diagnostics: PreviewDiagnostics | None = None
+
+
+@dataclass
+class RunStepStatusItem:
+    step_id: str
+    node_type: str
+    category: str
+    status: str = "not_run"
+    is_stale: bool = False
+    position: int = 0
+    params: dict[str, Any] = field(default_factory=dict)
+    canonical_step_id: str = ""
+    branch_id: str | None = None
+    status_source: str = "current_version"
+    source_run_id: str | None = None
+    source_plan_version_id: str | None = None
+    is_carried_forward: bool = False

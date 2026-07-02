@@ -29,7 +29,8 @@ from sklearn.model_selection import StratifiedKFold, cross_validate
 import polars as pl
 
 from cardre.artifacts import write_json_artifact
-from cardre.audit import ExecutionContext, NodeOutput, NodeType
+from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.nodes.contracts import NodeType
 from cardre.modeling.builders import build_model_artifact
 from cardre.nodes._training_utils import _prepare_training_data, _write_estimator
 

@@ -9,23 +9,105 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from cardre.readiness.dto import ReadinessBlocker, ReadinessWarning, ReportReadinessResult
-from cardre.evidence import EvidenceKind
+from cardre._evidence.kinds import EvidenceKind
 from cardre.readiness.limitation_codes import LimitationCode
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_BRANCH,
     REQUIRED_STEPS_CHAMPION,
     canonical_alias_candidates,
 )
-from cardre.step_id import resolve_run_step, resolve_required_steps, resolve_step_for_branch
 from cardre.store import ProjectStore
+from cardre.store.run_repo import RunRepository
+
+# ---------------------------------------------------------------------------
+# Inlined step resolution helpers (formerly cardre.step_id)
+# ---------------------------------------------------------------------------
+
+
+from dataclasses import dataclass, field
+from typing import Any
+
+
+@dataclass
+class ResolvedStepRef:
+    requested_branch_id: str
+    resolved_branch_id: str
+    canonical_step_id: str
+    step_id: str
+    resolution: str  # "exact" or "ancestor"
+    artifact_ids: list[str] = field(default_factory=list)
+
+
+def resolve_step_for_branch(
+    *,
+    branch_id: str,
+    canonical_step_id: str,
+    branch_step_map: list[dict[str, Any]],
+    allow_ancestor: bool = True,
+) -> ResolvedStepRef | None:
+    for row in branch_step_map:
+        if row["canonical_step_id"] != canonical_step_id:
+            continue
+        is_shared = bool(row.get("is_shared_upstream", False))
+        is_owned = bool(row.get("is_branch_owned", True))
+        source_branch_id = row.get("source_branch_id")
+        if is_owned and not is_shared:
+            return ResolvedStepRef(
+                requested_branch_id=branch_id,
+                resolved_branch_id=branch_id,
+                canonical_step_id=canonical_step_id,
+                step_id=row["step_id"],
+                resolution="exact",
+            )
+        if is_shared and source_branch_id:
+            if allow_ancestor:
+                return ResolvedStepRef(
+                    requested_branch_id=branch_id,
+                    resolved_branch_id=source_branch_id,
+                    canonical_step_id=canonical_step_id,
+                    step_id=row["step_id"],
+                    resolution="ancestor",
+                )
+            return None
+        return ResolvedStepRef(
+            requested_branch_id=branch_id,
+            resolved_branch_id=branch_id,
+            canonical_step_id=canonical_step_id,
+            step_id=row["step_id"],
+            resolution="exact",
+        )
+    return None
+
+
+def resolve_required_steps(
+    *,
+    branch_id: str,
+    canonical_step_ids: list[str],
+    branch_step_map: list[dict[str, Any]],
+    allow_ancestor: bool = True,
+) -> dict[str, ResolvedStepRef]:
+    result: dict[str, ResolvedStepRef] = {}
+    for cid in canonical_step_ids:
+        ref = resolve_step_for_branch(
+            branch_id=branch_id,
+            canonical_step_id=cid,
+            branch_step_map=branch_step_map,
+            allow_ancestor=allow_ancestor,
+        )
+        if ref is not None:
+            result[cid] = ref
+    return result
 
 
 def _check_oot_exists(store: ProjectStore, run_id: str) -> bool:
-    for rs in store.get_run_steps(run_id):
-        for aid in rs.output_artifact_ids:
-            art = store.get_artifact(aid)
-            if art and art.role == "oot":
-                return True
+    rows = store.execute(
+        "SELECT artifact_id FROM artifact_lineage WHERE run_id = ? AND direction = 'output'",
+        (run_id,),
+    ).fetchall()
+    for row in rows:
+        art = store.get_artifact(row["artifact_id"])
+        if art and art.role == "oot":
+            return True
     return False
 
 
@@ -146,7 +228,11 @@ def check_report_readiness(
         if ref is None:
             continue
 
-        rs = resolve_run_step(store, plan_version_id, ref.step_id, ref.resolved_branch_id, ref.resolution, run_id)
+        branch_id = ref.resolved_branch_id if ref.resolution == "ancestor" else None
+        repo = RunRepository(store)
+        rs = repo.get_latest_successful_step(plan_version_id, ref.step_id, branch_id=branch_id)
+        if rs is None and branch_id is not None:
+            rs = repo.get_latest_successful_step(plan_version_id, ref.step_id, branch_id=None)
         if rs is None:
             blockers.append(ReadinessBlocker(
                 LimitationCode.MISSING_REQUIRED_CANONICAL_STEP,
@@ -159,8 +245,11 @@ def check_report_readiness(
         if canonical_step_id in ("final-woe-iv", "initial-woe-iv"):
             has_v1 = False
             v1_art = None
-            for aid in rs.output_artifact_ids:
-                art = store.get_artifact(aid)
+            for row in store.execute(
+                "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+                (rs.run_step_id,),
+            ).fetchall():
+                art = store.get_artifact(row["artifact_id"])
                 if art and art.metadata.get("schema_version") == "cardre.woe_iv_evidence.v1":
                     has_v1 = True
                     v1_art = art
@@ -174,7 +263,7 @@ def check_report_readiness(
                 ))
             elif canonical_step_id == "final-woe-iv" and report_mode == "champion" and v1_art is not None:
                 try:
-                    from cardre.evidence import ArtifactEvidenceReader
+                    from cardre._evidence.reader import ArtifactEvidenceReader
                     from cardre.engine.binning.diagnostics import monotonicity_status
                     reader = ArtifactEvidenceReader(store)
                     evidence = reader.read(v1_art.artifact_id, EvidenceKind.WOE_IV_EVIDENCE)
