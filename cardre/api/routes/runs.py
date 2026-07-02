@@ -76,11 +76,12 @@ async def get_run(
     )
 
 
-@router.post("/runs", response_model=RunResponse, status_code=501)
+@router.post("/runs", response_model=RunResponse, status_code=201)
 async def create_run(
     project_id: str,
     body: RunCreateRequest,
     store: ProjectStore = Depends(get_project_store),
+    coordinator: RunCoordinator = Depends(get_run_coordinator),
 ) -> RunResponse:
     """Create and optionally execute a run for a plan version."""
     if not plan_version_belongs_to_project(store, project_id, body.plan_version_id):
@@ -89,10 +90,20 @@ async def create_run(
             message=f"Plan version {body.plan_version_id!r} not found.",
             status_code=404,
         )
-    raise CardreApiError(
-        code="RUN_EXECUTION_NOT_IMPLEMENTED",
-        message="Public run execution is not yet wired.",
-        status_code=501,
+    summary = coordinator.run(body.plan_version_id, sync=body.sync, force=body.force)
+    return RunResponse(
+        run_id=summary.run_id,
+        plan_version_id=summary.plan_version_id,
+        status=summary.status,
+        started_at=summary.started_at,
+        finished_at=summary.finished_at,
+        step_count=summary.step_count,
+        branch_id=summary.branch_id,
+        executed_step_ids=summary.executed_step_ids or [],
+        diagnostics=summary.diagnostics or [],
+        latest_error=summary.latest_error,
+        heartbeat_at=summary.heartbeat_at,
+        is_stale=summary.is_stale,
     )
 
 

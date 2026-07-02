@@ -30,7 +30,23 @@ def _make_store(project_root: Path):
     return store
 
 
-def _seed_plan_version(store, project_id: str | None = None, plan_id: str | None = None):
+def _write_input_csv(project_root: Path) -> Path:
+    input_path = project_root / "input.csv"
+    input_path.write_text(
+        "credit_amount,age_years,credit_risk_class\n"
+        "1000,35,good\n"
+        "2500,42,bad\n",
+        encoding="utf-8",
+    )
+    return input_path
+
+
+def _seed_plan_version(
+    store,
+    input_path: Path,
+    project_id: str | None = None,
+    plan_id: str | None = None,
+):
     """Seed a store with a plan, steps, and edges. Returns plan_version_id."""
     now = utc_now_iso()
 
@@ -55,34 +71,34 @@ def _seed_plan_version(store, project_id: str | None = None, plan_id: str | None
         (pv_id, plan_id, now, "Base version"),
     )
 
-    # Steps: import (root) -> profile -> fine_classing (depends on profile)
+    # Steps: import (root) -> profile -> export (depends on profile)
     step_import = "step-import"
     step_profile = "step-profile"
-    step_binning = "step-binning"
+    step_export = "step-export"
 
     store.execute(
         "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
         " params_json, params_hash, branch_label, position, canonical_step_id) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (step_import, pv_id, "cardre.file_import", "1", "load",
-         json.dumps({"path": "data.csv"}), "hash001", "", 0, step_import),
+        (step_import, pv_id, "cardre.import_dataset", "1", "transform",
+         json.dumps({"source_path": str(input_path)}), "hash001", "", 0, step_import),
     )
     store.execute(
         "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
         " params_json, params_hash, branch_label, position, canonical_step_id) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (step_profile, pv_id, "cardre.profiler", "1", "analysis",
-         json.dumps({"target": "y"}), "hash002", "", 1, step_profile),
+        (step_profile, pv_id, "cardre.profile_dataset", "1", "transform",
+         json.dumps({}), "hash002", "", 1, step_profile),
     )
     store.execute(
         "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
         " params_json, params_hash, branch_label, position, canonical_step_id) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (step_binning, pv_id, "cardre.fine_classing", "1", "fit",
-         json.dumps({"max_bins": 20}), "hash003", "", 2, step_binning),
+        (step_export, pv_id, "cardre.technical_manifest_export", "1", "transform",
+         json.dumps({}), "hash003", "", 2, step_export),
     )
 
-    # Edges: import -> profile, profile -> binning
+    # Edges: import -> profile, profile -> export
     store.execute(
         "INSERT INTO plan_step_edges (plan_version_id, parent_step_id, child_step_id, edge_order) "
         "VALUES (?, ?, ?, ?)",
@@ -91,10 +107,10 @@ def _seed_plan_version(store, project_id: str | None = None, plan_id: str | None
     store.execute(
         "INSERT INTO plan_step_edges (plan_version_id, parent_step_id, child_step_id, edge_order) "
         "VALUES (?, ?, ?, ?)",
-        (pv_id, step_profile, step_binning, 0),
+        (pv_id, step_profile, step_export, 0),
     )
 
-    return pv_id, [step_import, step_profile, step_binning]
+    return pv_id, [step_import, step_profile, step_export]
 
 
 class TestTopologicalOrder:
@@ -128,7 +144,8 @@ class TestPlanExecutor:
 
     def test_executes_simple_plan(self, tmp_path):
         store = _make_store(tmp_path)
-        pv_id, step_ids = _seed_plan_version(store)
+        input_path = _write_input_csv(tmp_path)
+        pv_id, step_ids = _seed_plan_version(store, input_path)
 
         # Create the run
         from cardre.store.run_repo import RunRepository
@@ -150,7 +167,8 @@ class TestPlanExecutor:
     def test_evidence_rows_persisted_per_step(self, tmp_path):
         """Evidence edges + evidence artifacts are written for each step."""
         store = _make_store(tmp_path)
-        pv_id, step_ids = _seed_plan_version(store)
+        input_path = _write_input_csv(tmp_path)
+        pv_id, step_ids = _seed_plan_version(store, input_path)
 
         from cardre.store.run_repo import RunRepository
         run_repo = RunRepository(store)
@@ -182,7 +200,8 @@ class TestPlanExecutor:
     def test_run_step_order_matches_topological(self, tmp_path):
         """Run steps are created in the expected order."""
         store = _make_store(tmp_path)
-        pv_id, step_ids = _seed_plan_version(store)
+        input_path = _write_input_csv(tmp_path)
+        pv_id, step_ids = _seed_plan_version(store, input_path)
 
         from cardre.store.run_repo import RunRepository
         run_repo = RunRepository(store)
@@ -195,15 +214,16 @@ class TestPlanExecutor:
         rs_repo = RunStepRepository(store)
         steps = rs_repo.get_for_run(run_id)
         step_order = [rs.step_id for rs in steps]
-        # Import first, then profile, then binning
+        # Import first, then profile, then export
         assert step_order[0] == "step-import"
         assert step_order[1] == "step-profile"
-        assert step_order[2] == "step-binning"
+        assert step_order[2] == "step-export"
 
     def test_execution_fingerprint_in_run_step(self, tmp_path):
         """Run steps have execution fingerprints with node metadata."""
         store = _make_store(tmp_path)
-        pv_id, step_ids = _seed_plan_version(store)
+        input_path = _write_input_csv(tmp_path)
+        pv_id, step_ids = _seed_plan_version(store, input_path)
 
         from cardre.store.run_repo import RunRepository
         run_repo = RunRepository(store)
@@ -225,7 +245,8 @@ class TestPlanExecutor:
     def test_transactional_persist_on_failure(self, tmp_path):
         """Even on step failure, evidence written before failure is persisted."""
         store = _make_store(tmp_path)
-        pv_id, step_ids = _seed_plan_version(store)
+        input_path = _write_input_csv(tmp_path)
+        pv_id, step_ids = _seed_plan_version(store, input_path)
 
         from cardre.store.run_repo import RunRepository
         run_repo = RunRepository(store)
@@ -234,8 +255,7 @@ class TestPlanExecutor:
         executor = PlanExecutor(store)
         executor.run_plan_version(pv_id, run_id)
 
-        # All steps should be recorded even if some "failed" at the
-        # placeholder execution level (without real nodes, they succeed)
+        # All steps should be recorded for the real launch path.
         from cardre.store.run_step_repo import RunStepRepository
         rs_repo = RunStepRepository(store)
         steps = rs_repo.get_for_run(run_id)

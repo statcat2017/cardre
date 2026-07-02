@@ -80,7 +80,13 @@ class NodeRegistry:
         return list(self._nodes.keys())
 
     def availability(self, node_type: str) -> NodeAvailability:
-        cls = self.resolve(node_type)
+        cls = self._nodes.get(node_type)
+        if cls is None:
+            return NodeAvailability(
+                available=False,
+                tier="unknown",
+                disabled_reason=f"Unknown node type {node_type!r}.",
+            )
         is_deferred = getattr(cls, "_deferred", False)
         tier = "deferred" if is_deferred else "launch"
 
@@ -136,11 +142,7 @@ class NodeRegistry:
 
     @classmethod
     def with_defaults(cls) -> NodeRegistry:
-        """Create a registry pre-loaded with launch-tier nodes.
-
-        Deferred nodes are registered but guarded behind the
-        CARDRE_LAUNCH_MODE flag.
-        """
+        """Create a registry pre-loaded with the built-in node catalog."""
         reg = cls()
         _register_launch_nodes(reg)
         _register_deferred_nodes(reg)
@@ -168,30 +170,34 @@ def _deferred(cls: type[NodeType]) -> type[NodeType]:
 # ---------------------------------------------------------------------------
 
 def _register_launch_nodes(reg: NodeRegistry) -> None:
-    from cardre.nodes import (
-        BuildSummaryReportNode,
-        CalculateWoeIvNode,
-        CutoffAnalysisNode,
-        FineClassingNode,
-        FrozenScorecardBundleNode,
+    from cardre.nodes.prep import (
         ImportGermanCreditNode,
         ImportTabularDatasetNode,
+        ProfileDatasetNode,
+        SplitTrainTestOotNode,
+        ValidateBinaryTargetNode,
+    )
+    from cardre.nodes.build import (
+        BinningNode,
+        BuildSummaryReportNode,
+        CalculateWoeIvNode,
+        FineClassingNode,
+        FrozenScorecardBundleNode,
         LogisticRegressionNode,
         ManualBinningNode,
         NoopNode,
-        ProfileDatasetNode,
         ScoreScalingNode,
-        SplitTrainTestOotNode,
         TechnicalManifestExportNode,
-        ValidateBinaryTargetNode,
-        ValidationMetricsNode,
         VariableClusteringNode,
         VariableSelectionNode,
         WoeTransformTrainNode,
-        BinningNode,
-        ApplyWoeMappingNode,
+    )
+    from cardre.nodes.validate import (
         ApplyModelNode,
+        ApplyWoeMappingNode,
+        CutoffAnalysisNode,
         DummyApplyNode,
+        ValidationMetricsNode,
     )
 
     for n in [

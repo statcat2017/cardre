@@ -50,8 +50,8 @@ def _seed_minimal_plan(store):
         "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
         " params_json, params_hash, branch_label, position, canonical_step_id) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ("step-a", pv_id, "cardre.file_import", "1", "load",
-         json.dumps({"path": "data.csv"}), "hash001", "", 0, "step-a"),
+        ("step-a", pv_id, "cardre.noop", "1", "transform",
+         json.dumps({}), "hash001", "", 0, "step-a"),
     )
     return pv_id
 

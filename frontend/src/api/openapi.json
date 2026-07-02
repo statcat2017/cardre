@@ -772,7 +772,7 @@
           }
         },
         "responses": {
-          "501": {
+          "201": {
             "description": "Successful Response",
             "content": {
               "application/json": {

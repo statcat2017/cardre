@@ -4,6 +4,8 @@
  * Ported from v1's fetchJson<T> + ApiError with canonical error codes.
  */
 
+import type { components } from "./schema.d";
+
 // ---------------------------------------------------------------------------
 // Canonical error codes (mirrors cardre/api/errors.py)
 // ---------------------------------------------------------------------------
@@ -195,3 +197,104 @@ export async function fetchJson<T>(url: string, options: FetchOptions = {}): Pro
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// API wrapper
+// ---------------------------------------------------------------------------
+
+type ProjectScopedOptions = {
+  projectPath: string;
+};
+
+function getBaseUrl(): string {
+  return (
+    (window as unknown as { __API_URL__?: string }).__API_URL__ || "http://127.0.0.1:8752"
+  ).replace(/\/$/, "");
+}
+
+function projectHeaders(projectPath: string): Record<string, string> {
+  return { "X-Project-Path": projectPath };
+}
+
+function url(path: string): string {
+  return `${getBaseUrl()}${path}`;
+}
+
+export const api = {
+  listProjects: (options: ProjectScopedOptions) =>
+    fetchJson<components["schemas"]["ProjectListResponse"]>(url("/projects"), {
+      headers: projectHeaders(options.projectPath),
+    }),
+  createProject: (
+    options: ProjectScopedOptions,
+    body: components["schemas"]["ProjectCreateRequest"],
+  ) =>
+    fetchJson<components["schemas"]["ProjectResponse"]>(url("/projects"), {
+      method: "POST",
+      headers: projectHeaders(options.projectPath),
+      body,
+    }),
+  getProject: (options: ProjectScopedOptions, projectId: string) =>
+    fetchJson<components["schemas"]["ProjectResponse"]>(url(`/projects/${projectId}`), {
+      headers: projectHeaders(options.projectPath),
+    }),
+  listPlans: (options: ProjectScopedOptions, projectId: string) =>
+    fetchJson<components["schemas"]["PlanListResponse"]>(url(`/projects/${projectId}/plans`), {
+      headers: projectHeaders(options.projectPath),
+    }),
+  createPlan: (
+    options: ProjectScopedOptions,
+    projectId: string,
+    body: components["schemas"]["PlanCreateRequest"],
+  ) =>
+    fetchJson<components["schemas"]["PlanResponse"]>(url(`/projects/${projectId}/plans`), {
+      method: "POST",
+      headers: projectHeaders(options.projectPath),
+      body,
+    }),
+  getPlan: (options: ProjectScopedOptions, projectId: string, planId: string) =>
+    fetchJson<components["schemas"]["PlanResponse"]>(
+      url(`/projects/${projectId}/plans/${planId}`),
+      {
+        headers: projectHeaders(options.projectPath),
+      },
+    ),
+  listPlanVersions: (options: ProjectScopedOptions, projectId: string, planId: string) =>
+    fetchJson<components["schemas"]["PlanVersionListResponse"]>(
+      url(`/projects/${projectId}/plans/${planId}/versions`),
+      { headers: projectHeaders(options.projectPath) },
+    ),
+  getPlanVersion: (options: ProjectScopedOptions, projectId: string, planVersionId: string) =>
+    fetchJson<components["schemas"]["PlanVersionResponse"]>(
+      url(`/projects/${projectId}/plan-versions/${planVersionId}`),
+      { headers: projectHeaders(options.projectPath) },
+    ),
+  createRun: (
+    options: ProjectScopedOptions,
+    projectId: string,
+    body: components["schemas"]["RunCreateRequest"],
+  ) =>
+    fetchJson<components["schemas"]["RunResponse"]>(url(`/projects/${projectId}/runs`), {
+      method: "POST",
+      headers: projectHeaders(options.projectPath),
+      body,
+    }),
+  listRuns: (options: ProjectScopedOptions, projectId: string) =>
+    fetchJson<components["schemas"]["RunListResponse"]>(url(`/projects/${projectId}/runs`), {
+      headers: projectHeaders(options.projectPath),
+    }),
+  getRun: (options: ProjectScopedOptions, projectId: string, runId: string) =>
+    fetchJson<components["schemas"]["RunResponse"]>(url(`/projects/${projectId}/runs/${runId}`), {
+      headers: projectHeaders(options.projectPath),
+    }),
+  listRunSteps: (options: ProjectScopedOptions, projectId: string, runId: string) =>
+    fetchJson<components["schemas"]["RunStepResponse"][]>(
+      url(`/projects/${projectId}/runs/${runId}/steps`),
+      { headers: projectHeaders(options.projectPath) },
+    ),
+  listRunEvidence: (options: ProjectScopedOptions, projectId: string, runId: string) =>
+    fetchJson<components["schemas"]["EvidenceEdgeResponse"][]>(
+      url(`/projects/${projectId}/runs/${runId}/evidence`),
+      { headers: projectHeaders(options.projectPath) },
+    ),
+};

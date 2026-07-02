@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from cardre.domain.errors import SchemaVersionError
 from cardre.store.schema import (
@@ -177,6 +178,16 @@ class ProjectStore:
 
     def execute(self, sql: str, params=()) -> sqlite3.Cursor:
         return self._connect().execute(sql, params)
+
+    def artifact_path(self, artifact: Any) -> Path:
+        """Resolve a stored artifact reference to an on-disk path."""
+        if isinstance(artifact, str):
+            path = Path(artifact)
+        elif isinstance(artifact, dict):
+            path = Path(artifact["path"])
+        else:
+            path = Path(getattr(artifact, "path"))
+        return path if path.is_absolute() else self.root / path
 
     def execute_script(self, sql: str) -> None:
         self._connect().executescript(sql)

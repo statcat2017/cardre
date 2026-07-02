@@ -39,15 +39,17 @@ def project_with_run(store):
 
 
 class TestRuns:
-    def test_create_run_disabled(self, api_client, project_with_run):
+    def test_create_run(self, api_client, project_with_run):
         project_id, _, pv_id, _, _, root = project_with_run
         resp = api_client.post(
             f"/projects/{project_id}/runs",
             headers={"X-Project-Path": str(root)},
             json={"plan_version_id": pv_id, "sync": True, "force": False},
         )
-        assert resp.status_code == 501
-        assert resp.json()["detail"]["code"] == "RUN_EXECUTION_NOT_IMPLEMENTED"
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["plan_version_id"] == pv_id
+        assert data["status"] == "succeeded"
 
     def test_list_runs(self, api_client, project_with_run):
         project_id, _, _, run_id, store, root = project_with_run

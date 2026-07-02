@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 
-from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.execution.executor import PlanExecutor
 from cardre.execution.run_lifecycle import RunLifecycle
@@ -32,7 +31,18 @@ def store():
     return s
 
 
-def _seed_launch_plan(store: ProjectStore) -> tuple[str, str, list[dict]]:
+def _write_input_csv(root: Path) -> Path:
+    input_path = root / "launch-input.csv"
+    input_path.write_text(
+        "credit_amount,age_years,credit_risk_class\n"
+        "1000,35,good\n"
+        "2500,42,bad\n",
+        encoding="utf-8",
+    )
+    return input_path
+
+
+def _seed_launch_plan(store: ProjectStore, source_path: Path) -> tuple[str, str]:
     now = utc_now_iso()
     project_id = str(uuid.uuid4())
     store.execute(
@@ -49,20 +59,16 @@ def _seed_launch_plan(store: ProjectStore) -> tuple[str, str, list[dict]]:
     plan_version_id = PlanRepository(store).create_version(
         plan_id,
         steps=[
-            _step("import-data", "cardre.import_fixture_uci_german_credit", 0, []),
+            _step("import-data", "cardre.import_dataset", 0, [], params={"source_path": str(source_path)}),
             _step("profile", "cardre.profile_dataset", 1, ["import-data"]),
             _step("export", "cardre.technical_manifest_export", 2, ["profile"]),
         ],
         is_committed=True,
     )
-    return project_id, plan_version_id, [
-        {"step_id": "import-data", "artifact_id": "art-import"},
-        {"step_id": "profile", "artifact_id": "art-profile"},
-        {"step_id": "export", "artifact_id": "art-export"},
-    ]
+    return project_id, plan_version_id
 
 
-def _step(step_id: str, node_type: str, position: int, parents: list[str]):
+def _step(step_id: str, node_type: str, position: int, parents: list[str], params: dict | None = None):
     from cardre.domain.step import StepSpec
 
     return StepSpec(
@@ -70,53 +76,16 @@ def _step(step_id: str, node_type: str, position: int, parents: list[str]):
         node_type=node_type,
         node_version="1",
         category="transform",
-        params={},
+        params=params or {},
         params_hash="hash",
         parent_step_ids=parents,
         position=position,
     )
 
 
-def test_full_launch_pathway(store, monkeypatch):
-    _project_id, plan_version_id, output_specs = _seed_launch_plan(store)
-
-    now = utc_now_iso()
-    output_map = {}
-    for spec in output_specs:
-        artifact = ArtifactRef(
-            artifact_id=spec["artifact_id"],
-            artifact_type="json",
-            role="output",
-            path=f"artifacts/{spec['step_id']}.json",
-            physical_hash=f"phys-{spec['step_id']}",
-            logical_hash=f"log-{spec['step_id']}",
-            media_type="application/json",
-            created_at=now,
-        )
-        store.execute(
-            "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                artifact.artifact_id,
-                artifact.artifact_type,
-                artifact.role,
-                artifact.path,
-                artifact.physical_hash,
-                artifact.logical_hash,
-                artifact.media_type,
-                artifact.created_at,
-            ),
-        )
-        output_map[spec["step_id"]] = [artifact]
-
-    def resolve_output_artifacts(plan_version_id: str, run_id: str, run_step):
-        return output_map.get(run_step.step_id, [])
-
-    monkeypatch.setattr(
-        PlanExecutor,
-        "_resolve_output_artifacts",
-        staticmethod(resolve_output_artifacts),
-    )
+def test_full_launch_pathway(store):
+    input_path = _write_input_csv(store.root.parent)
+    _project_id, plan_version_id = _seed_launch_plan(store, input_path)
 
     run_id = RunRepository(store).create(plan_version_id)
     executor = PlanExecutor(store)

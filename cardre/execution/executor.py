@@ -12,6 +12,7 @@ evidence was resolved before the failure.
 from __future__ import annotations
 
 import json
+import enum
 import sys
 import threading
 import traceback
@@ -23,13 +24,17 @@ from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import (
     GraphValidationError,
     MissingInputArtifactError,
+    ParameterValidationError,
+    PlanContainsUnavailableNodesError,
 )
 from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge, ResolvedEvidence
 from cardre.domain.run import RunStep, RunStepStatus
+from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.execution.action_planner import _StepAction
 from cardre.execution.failure_classification import classify_step_failure
 from cardre.execution.fingerprints import build_execution_fingerprint
 from cardre.execution.topology import validate_topology
+from cardre.nodes.registry import NodeRegistry
 
 if TYPE_CHECKING:
     from cardre.domain.diagnostics import JsonDict
@@ -38,6 +43,20 @@ if TYPE_CHECKING:
 
 STATUS_SUCCEEDED = "succeeded"
 STATUS_FAILED = "failed"
+
+
+def _json_ready(value):
+    if isinstance(value, enum.Enum):
+        return value.value
+    if isinstance(value, dict):
+        return {str(k): _json_ready(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_ready(v) for v in value]
+    if isinstance(value, tuple):
+        return [_json_ready(v) for v in value]
+    if isinstance(value, set):
+        return [_json_ready(v) for v in value]
+    return value
 
 
 class _HeartbeatWatchdog:
@@ -119,6 +138,7 @@ class PlanExecutor:
 
     def __init__(self, store: ProjectStore) -> None:
         self._store = store
+        self._node_registry = NodeRegistry.with_defaults()
         from cardre.config import CardreConfig
         self._heartbeat_interval = CardreConfig.from_env().heartbeat_watchdog_interval_seconds
 
@@ -299,31 +319,63 @@ class PlanExecutor:
         run_step_records: dict[str, RunStep],
     ) -> RunStep:
         """Execute a single step and persist run_step + evidence."""
+        parent_run_steps: list[RunStep] = [
+            rs for pid in spec.parent_step_ids
+            if (rs := run_step_records.get(pid)) is not None
+        ]
         raw_inputs: list[ArtifactRef] = []
         input_artifacts: list[ArtifactRef] = []
-        parent_run_steps: list[RunStep] = []
 
         try:
             raw_inputs = self._resolve_inputs(spec, step_outputs)
-
-            # In v2 without a full registry, we do lightweight validation
-            # For full node execution, the NodeRegistry would be used here.
-            # TODO: wire NodeRegistry in Phase 5 when nodes are available.
             input_artifacts = raw_inputs
 
-            parent_run_steps = [
-                rs for pid in spec.parent_step_ids
-                if (rs := run_step_records.get(pid)) is not None
-            ]
+            node = self._node_registry.instantiate(spec.node_type)
+            validation_errors = node.validate_params(dict(spec.params))
+            if validation_errors:
+                raise ParameterValidationError(
+                    f"Step {spec.step_id!r} parameter validation failed: {'; '.join(validation_errors)}",
+                    context={
+                        "plan_version_id": plan_version_id,
+                        "step_id": spec.step_id,
+                        "node_type": spec.node_type,
+                        "errors": validation_errors,
+                    },
+                )
 
-            # Node execution — placeholder until Phase 5 nodes are wired.
-            # In a full run, this would instantiate the node and call run().
-            output_artifacts: list[ArtifactRef] = []
+            context = ExecutionContext(
+                store=self._store,
+                run_id=run_id,
+                plan_version_id=plan_version_id,
+                step_spec=spec,
+                parent_run_steps=parent_run_steps,
+                input_artifacts=input_artifacts,
+                validated_params=dict(spec.params),
+                runtime_metadata={
+                    "run_id": run_id,
+                    "plan_version_id": plan_version_id,
+                    "step_id": spec.step_id,
+                    "node_type": spec.node_type,
+                },
+            )
+
+            node_output = node.run(context)
+            if not isinstance(node_output, NodeOutput):
+                raise TypeError(
+                    f"Node {spec.node_type!r} returned {type(node_output)!r} instead of NodeOutput"
+                )
+
+            output_artifacts = list(node_output.artifacts)
 
             fp = build_execution_fingerprint(
                 plan_version_id, spec, parent_run_steps,
                 input_artifacts, output_artifacts,
             )
+            if node_output.execution_fingerprint:
+                fp.update(node_output.execution_fingerprint)
+            if node_output.metrics:
+                fp["node_metrics"] = dict(node_output.metrics)
+            fp = _json_ready(fp)
 
             return self._record_run_step(
                 run_id=run_id,
@@ -335,7 +387,7 @@ class PlanExecutor:
                 parent_run_steps=parent_run_steps,
                 status=RunStepStatus.SUCCEEDED,
                 errors=[],
-                warnings=[],
+                warnings=list(node_output.warnings or []),
             )
 
         except Exception:
@@ -349,6 +401,7 @@ class PlanExecutor:
                 plan_version_id, spec, parent_run_steps,
                 input_artifacts, [],
             )
+            fp = _json_ready(fp)
 
             try:
                 return self._record_run_step(
@@ -668,6 +721,21 @@ class PlanExecutor:
         plan_repo = PlanRepository(self._store)
         steps = plan_repo.get_version_steps(plan_version_id)
         validate_topology(steps)
+        unavailable_issues: list[dict[str, object]] = []
+        for step in steps:
+            availability = self._node_registry.availability(step.node_type)
+            if not availability.available:
+                unavailable_issues.append(
+                    {
+                        "step_id": step.step_id,
+                        "node_type": step.node_type,
+                        "node_version": step.node_version,
+                        "reason": availability.disabled_reason or "Node is unavailable.",
+                        "missing_optional_dependencies": availability.missing_optional_dependencies,
+                    }
+                )
+        if unavailable_issues:
+            raise PlanContainsUnavailableNodesError(unavailable_issues)
         return steps
 
     def _heartbeat(self, run_id: str) -> None:
@@ -684,14 +752,23 @@ class PlanExecutor:
         ).fetchone()
         return row["branch_id"] if row else None
 
-    @staticmethod
     def _resolve_output_artifacts(
+        self,
         plan_version_id: str,
         run_id: str,
         rs: RunStep,
     ) -> list[ArtifactRef]:
         """Resolve output artifact Refs for a run step from artifact_lineage."""
-        return []
+        rows = self._store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output' ORDER BY created_at",
+            (rs.run_step_id,),
+        ).fetchall()
+        artifacts: list[ArtifactRef] = []
+        for row in rows:
+            artifact = self._store.get_artifact(row["artifact_id"])
+            if artifact is not None:
+                artifacts.append(artifact)
+        return artifacts
 
     @staticmethod
     def compute_final_status(has_failure: bool) -> str:

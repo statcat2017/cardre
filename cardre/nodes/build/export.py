@@ -101,7 +101,7 @@ class TechnicalManifestExportNode(NodeType):
                 "step_id": rs.step_id,
                 "node_type": rs.execution_fingerprint.get("node_type", ""),
                 "node_version": rs.execution_fingerprint.get("node_version", ""),
-                "status": rs.status,
+                "status": rs.status.value if hasattr(rs.status, "value") else rs.status,
                 "params_hash": rs.execution_fingerprint.get("params_hash", ""),
                 "input_artifact_logical_hashes": rs.execution_fingerprint.get("input_artifact_logical_hashes", []),
                 "output_artifact_logical_hashes": rs.execution_fingerprint.get("output_artifact_logical_hashes", []),
