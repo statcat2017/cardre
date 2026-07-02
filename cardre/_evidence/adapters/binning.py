@@ -8,7 +8,6 @@ from typing import Any
 from cardre.domain.artifacts import ArtifactRef
 from cardre._evidence.adapters._base import (
     candidate_passes_payload_check,
-    match_by_payload_key,
     match_by_role_type_media,
     match_by_schema_version,
     read_json_payload,
@@ -30,22 +29,11 @@ class BinDefinitionAdapter:
         candidates = match_by_role_type_media(artifacts, self.profile)
         if len(candidates) == 1 and candidate_passes_payload_check(candidates[0], self.profile, store):
             return candidates
-        legacy = match_by_payload_key(
-            [a for a in artifacts if a.role == "definition" and a.media_type == "application/json"],
-            {"variables"},
-            store,
-            exclude_key="selected",
-        )
-        if legacy:
-            return legacy
         return candidates
 
     def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:
         data = read_json_payload(path)
         return BinDefinition.from_json(data, artifact_id=art.artifact_id)
-
-    def summarise(self, artifact_row: dict, typed: Any) -> dict:
-        raise NotImplementedError
 
 
 class SelectionDefinitionAdapter:
@@ -59,21 +47,11 @@ class SelectionDefinitionAdapter:
         candidates = match_by_role_type_media(artifacts, self.profile)
         if len(candidates) == 1 and candidate_passes_payload_check(candidates[0], self.profile, store):
             return candidates
-        legacy = match_by_payload_key(
-            [a for a in artifacts if a.role == "definition" and a.media_type == "application/json"],
-            {"selected"},
-            store,
-        )
-        if legacy:
-            return legacy
         return candidates
 
     def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:
         data = read_json_payload(path)
         return SelectionDefinition.from_json(data, artifact_id=art.artifact_id)
-
-    def summarise(self, artifact_row: dict, typed: Any) -> dict:
-        raise NotImplementedError
 
 
 class ManualBinningOverridesAdapter:
@@ -92,6 +70,3 @@ class ManualBinningOverridesAdapter:
     def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:
         data = read_json_payload(path)
         return data
-
-    def summarise(self, artifact_row: dict, typed: Any) -> dict:
-        raise NotImplementedError

@@ -1,9 +1,15 @@
 """EvidenceAdapter protocol, registry, and factory.
 
 This package defines the ``EvidenceAdapter`` seam. Each adapter owns
-matching, parsing, and summarising for a single ``EvidenceKind`` and is
-independent of ``ArtifactEvidenceReader``. The reader will be wired to
-dispatch through ``EVIDENCE_ADAPTERS`` in a subsequent phase.
+matching and parsing for a single ``EvidenceKind`` and is independent of
+``ArtifactEvidenceReader``. The reader will be wired to dispatch through
+``EVIDENCE_ADAPTERS`` in a subsequent phase.
+
+Phase 2 is parity-preserving: adapters reproduce the current reader's
+three-phase matching (schema-version → role/type/media → legacy payload
+heuristics) so behaviour is identical. Legacy payload-key fallbacks
+exist because the current reader has them; a later phase will remove
+them once all evidence producers emit schema_version consistently.
 """
 
 from __future__ import annotations
@@ -24,7 +30,6 @@ class EvidenceAdapter(Protocol):
 
     def match(self, artifacts: list[ArtifactRef], store: ProjectStore) -> list[ArtifactRef]: ...
     def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any: ...
-    def summarise(self, artifact_row: dict, typed: Any) -> dict: ...
 
 
 from cardre._evidence.adapters.binning import (
