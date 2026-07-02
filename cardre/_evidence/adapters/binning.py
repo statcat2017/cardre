@@ -27,8 +27,10 @@ class BinDefinitionAdapter:
         if schema_matches:
             return schema_matches
         candidates = match_by_role_type_media(artifacts, self.profile)
-        if len(candidates) == 1 and candidate_passes_payload_check(candidates[0], self.profile, store):
-            return candidates
+        if len(candidates) == 1:
+            if candidate_passes_payload_check(candidates[0], self.profile, store):
+                return candidates
+            candidates = []
         return candidates
 
     def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:
@@ -45,8 +47,10 @@ class SelectionDefinitionAdapter:
         if schema_matches:
             return schema_matches
         candidates = match_by_role_type_media(artifacts, self.profile)
-        if len(candidates) == 1 and candidate_passes_payload_check(candidates[0], self.profile, store):
-            return candidates
+        if len(candidates) == 1:
+            if candidate_passes_payload_check(candidates[0], self.profile, store):
+                return candidates
+            candidates = []
         return candidates
 
     def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:
@@ -63,8 +67,10 @@ class ManualBinningOverridesAdapter:
         if schema_matches:
             return schema_matches
         candidates = match_by_role_type_media(artifacts, self.profile)
-        if len(candidates) == 1 and candidate_passes_payload_check(candidates[0], self.profile, store):
-            return candidates
+        if len(candidates) == 1:
+            if candidate_passes_payload_check(candidates[0], self.profile, store):
+                return candidates
+            candidates = []
         return candidates
 
     def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:

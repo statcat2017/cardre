@@ -28,8 +28,10 @@ def _match(artifacts: list[ArtifactRef], profile: _Profile, store: ProjectStore)
     if schema_matches:
         return schema_matches
     candidates = match_by_role_type_media(artifacts, profile)
-    if len(candidates) == 1 and candidate_passes_payload_check(candidates[0], profile, store):
-        return candidates
+    if len(candidates) == 1:
+        if candidate_passes_payload_check(candidates[0], profile, store):
+            return candidates
+        candidates = []
     return candidates
 
 

@@ -24,6 +24,10 @@ v2 replaces the v1 `run_steps.input_artifact_ids_json` / `output_artifact_ids_js
 
 This is the **only** lineage source. No JSON arrays on `run_steps`. Staleness is computed from these tables, not written onto historical rows.
 
+### EvidenceAdapter
+
+- **EvidenceAdapter**: the concrete thing at the evidence seam — one per `EvidenceKind`, owns matching (which artifact in a list is this kind) and parsing (artifact bytes → typed dataclass). Registered in `cardre/_evidence/adapters/` via the `EVIDENCE_ADAPTERS` registry. `ArtifactEvidenceReader` is the thin dispatcher + `artifact_lineage` resolver that delegates to adapters.
+
 ## Relational Relationship Tables
 
 JSON relationship arrays from v1 have been replaced by relational join tables:

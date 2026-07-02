@@ -284,3 +284,160 @@ def test_ambiguous_match_parity(store, tmp_path) -> None:
         artifact_id="amb2",
     )
     _assert_match_parity(store, EvidenceKind.BIN_DEFINITION, [art1, art2])
+
+
+# ---------------------------------------------------------------------------
+# Focused adapter edge-case tests (not parity — direct adapter behavior)
+# ---------------------------------------------------------------------------
+
+def test_schema_version_takes_priority_over_role_type_media(store, tmp_path) -> None:
+    """When schema_version matches, it takes priority even if role/type differ."""
+    art = _write_json_artifact(
+        store, tmp_path, "wrong_type", "wrong_role", "cardre.bin_definition.v1",
+        {"variables": [{"variable": "age", "bins": []}]},
+    )
+    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
+    result = adapter.match([art], store)
+    assert len(result) == 1
+    assert result[0].artifact_id == art.artifact_id
+
+
+def test_schema_version_mismatch_falls_through_to_role_type_media(store, tmp_path) -> None:
+    """When schema_version doesn't match, fall through to role/type/media matching."""
+    art = _write_json_artifact(
+        store, tmp_path, "definition", "definition", "wrong.schema.v1",
+        {"variables": [{"variable": "age", "bins": []}]},
+    )
+    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
+    result = adapter.match([art], store)
+    assert len(result) == 1
+    assert result[0].artifact_id == art.artifact_id
+
+
+def test_single_candidate_fails_payload_check_returns_empty(store, tmp_path) -> None:
+    """Single candidate by role/type/media that fails payload check → []."""
+    art = _write_json_artifact(
+        store, tmp_path, "definition", "definition", "",
+        {"wrong_key": "wrong_value"},
+    )
+    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
+    result = adapter.match([art], store)
+    assert result == []
+
+
+def test_multiple_candidates_skip_payload_check(store, tmp_path) -> None:
+    """Multiple candidates by role/type/media → payload check skipped → return all."""
+    art1 = _write_json_artifact(
+        store, tmp_path, "definition", "definition", "",
+        {"variables": [{"variable": "age", "bins": []}]},
+        artifact_id="cand1",
+    )
+    art2 = _write_json_artifact(
+        store, tmp_path, "definition", "definition", "",
+        {"wrong_key": "wrong"},
+        artifact_id="cand2",
+    )
+    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
+    result = adapter.match([art1, art2], store)
+    assert len(result) == 2
+
+
+def test_exclude_key_filters_artifact(store, tmp_path) -> None:
+    """BIN_DEFINITION profile has exclude_key='selected'; artifacts with that
+    metadata key are excluded from role/type/media matching."""
+    aid = str(uuid.uuid4())
+    art_path = tmp_path / f"{aid}.json"
+    art_path.write_text(json.dumps({"variables": [{"variable": "age", "bins": []}]}))
+    store.execute(
+        "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at, metadata_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (aid, "definition", "definition", str(art_path), "ph", "lh", "application/json", "", json.dumps({"schema_version": "", "selected": True})),
+    )
+    art = store.get_artifact(aid)
+    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
+    result = adapter.match([art], store)
+    assert result == []
+
+
+def test_woe_table_no_schema_wrong_columns_returns_empty(store, tmp_path) -> None:
+    """WOE_TABLE without schema_version and wrong columns: single candidate
+    fails payload check (required_columns) → returns empty."""
+    import polars as pl
+    aid = "woe-no-schema-wrong-cols"
+    art_path = tmp_path / f"{aid}.parquet"
+    pl.DataFrame({"wrong_col": [1, 2]}).write_parquet(art_path)
+    store.execute(
+        "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at, metadata_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (aid, "report", "report", str(art_path), "ph", "lh", "application/vnd.apache.parquet", "", json.dumps({})),
+    )
+    art = store.get_artifact(aid)
+    adapter = get_adapter(EvidenceKind.WOE_TABLE)
+    result = adapter.match([art], store)
+    assert result == []
+
+
+def test_parse_missing_file_raises(store, tmp_path) -> None:
+    """parse() on a non-existent path raises FileNotFoundError (the reader's
+    _parse wrapper checks path existence and raises EvidenceParseError; the
+    adapter's parse() delegates to read_json_payload which raises directly)."""
+    from cardre.domain.artifacts import ArtifactRef as ARef
+
+    fake_art = ARef(
+        artifact_id="fake", artifact_type="definition", role="definition",
+        path="/nonexistent/path.json", physical_hash="x", logical_hash="y",
+        media_type="application/json",
+    )
+    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
+    with pytest.raises(FileNotFoundError):
+        adapter.parse(Path("/nonexistent/path.json"), fake_art, store)
+
+
+def test_parse_invalid_json_raises(store, tmp_path) -> None:
+    """parse() on invalid JSON should raise."""
+    aid = "invalid-json"
+    art_path = tmp_path / f"{aid}.json"
+    art_path.write_text("not valid json {{{")
+    store.execute(
+        "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at, metadata_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (aid, "definition", "definition", str(art_path), "ph", "lh", "application/json", "", json.dumps({"schema_version": "cardre.bin_definition.v1"})),
+    )
+    art = store.get_artifact(aid)
+    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
+    with pytest.raises(Exception):
+        adapter.parse(art_path, art, store)
+
+
+def test_iv_table_empty_schema_skips_schema_phase(store, tmp_path) -> None:
+    """IV_TABLE has empty schema_version; matching skips to role/type/media."""
+    import polars as pl
+    aid = "iv-empty-schema"
+    art_path = tmp_path / f"{aid}.parquet"
+    pl.DataFrame({"iv": [0.5], "variable": ["age"]}).write_parquet(art_path)
+    store.execute(
+        "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at, metadata_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (aid, "report", "report", str(art_path), "ph", "lh", "application/vnd.apache.parquet", "", json.dumps({})),
+    )
+    art = store.get_artifact(aid)
+    adapter = get_adapter(EvidenceKind.IV_TABLE)
+    result = adapter.match([art], store)
+    assert len(result) == 1
+
+
+def test_scored_dataset_role_based_match(store, tmp_path) -> None:
+    """SCORED_DATASET matches by role (train/test/oot) + type + media."""
+    import polars as pl
+    aid = "scored-train-edge"
+    art_path = tmp_path / f"{aid}.parquet"
+    pl.DataFrame({"score": [100], "id": ["a"]}).write_parquet(art_path)
+    store.execute(
+        "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at, metadata_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (aid, "dataset", "train", str(art_path), "ph", "lh", "application/vnd.apache.parquet", "", json.dumps({})),
+    )
+    art = store.get_artifact(aid)
+    adapter = get_adapter(EvidenceKind.SCORED_DATASET)
+    result = adapter.match([art], store)
+    assert len(result) == 1
