@@ -53,7 +53,6 @@ EXTENSION_THRESHOLDS: dict[str, str] = {
 # ── Generated / mechanically produced files ──────────────────────────
 
 GENERATED_FILES: set[str] = {
-    "frontend/src/api/schema.ts",
     "frontend/src/api/schema.d.ts",
     "frontend/src/api/openapi.json",
 }

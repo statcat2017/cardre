@@ -60,7 +60,10 @@ export interface UseRunWatchOptions {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function deriveStatus(run: components["schemas"]["RunResponse"] | null, error: string | null): RunWatchStatus {
+function deriveStatus(
+  run: components["schemas"]["RunResponse"] | null,
+  error: string | null,
+): RunWatchStatus {
   if (error) return "error";
   if (!run) return "loading";
   switch (run.status) {
@@ -79,7 +82,10 @@ function deriveStatus(run: components["schemas"]["RunResponse"] | null, error: s
   }
 }
 
-function deriveMessage(status: RunWatchStatus, run: components["schemas"]["RunResponse"] | null): string {
+function deriveMessage(
+  status: RunWatchStatus,
+  run: components["schemas"]["RunResponse"] | null,
+): string {
   switch (status) {
     case "loading":
       return "Loading run…";
@@ -133,7 +139,9 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
     const url = `${baseUrl}/projects/${projectId}/runs/${runId}`;
 
     try {
-      const data = await fetchJson<components["schemas"]["RunResponse"]>(url, { timeoutMs: pollIntervalMs - 200 });
+      const data = await fetchJson<components["schemas"]["RunResponse"]>(url, {
+        timeoutMs: pollIntervalMs - 200,
+      });
       errorCountRef.current = 0;
       setRun(data);
       setError(null);
