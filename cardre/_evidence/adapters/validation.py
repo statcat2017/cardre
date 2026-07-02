@@ -1,12 +1,20 @@
 """Validation evidence adapters."""
 
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Any
 
 from cardre.domain.artifacts import ArtifactRef
+from cardre._evidence.adapters._base import (
+    candidate_passes_payload_check,
+    match_by_role_type_media,
+    match_by_schema_version,
+    read_json_payload,
+)
 from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.models.validation import CutoffAnalysis, ValidationMetrics
 from cardre._evidence.profiles import EVIDENCE_PROFILES, _Profile
-from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.store import ProjectStore
 
 
@@ -15,13 +23,20 @@ class ValidationMetricsAdapter:
     profile: _Profile = EVIDENCE_PROFILES[EvidenceKind.VALIDATION_METRICS]
 
     def match(self, artifacts: list[ArtifactRef], store: ProjectStore) -> list[ArtifactRef]:
-        return ArtifactEvidenceReader(store)._match(artifacts, self.kind)
+        schema_matches = match_by_schema_version(artifacts, self.profile)
+        if schema_matches:
+            return schema_matches
+        candidates = match_by_role_type_media(artifacts, self.profile)
+        if len(candidates) == 1 and candidate_passes_payload_check(candidates[0], self.profile, store):
+            return candidates
+        return candidates
 
     def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:
-        return ArtifactEvidenceReader(store)._parse(art, self.kind)
+        data = read_json_payload(path)
+        return ValidationMetrics.from_json(data, artifact_id=art.artifact_id)
 
     def summarise(self, artifact_row: dict, typed: Any) -> dict:
-        return {}
+        raise NotImplementedError
 
 
 class ValidationEvidenceAdapter:
@@ -29,13 +44,20 @@ class ValidationEvidenceAdapter:
     profile: _Profile = EVIDENCE_PROFILES[EvidenceKind.VALIDATION_EVIDENCE]
 
     def match(self, artifacts: list[ArtifactRef], store: ProjectStore) -> list[ArtifactRef]:
-        return ArtifactEvidenceReader(store)._match(artifacts, self.kind)
+        schema_matches = match_by_schema_version(artifacts, self.profile)
+        if schema_matches:
+            return schema_matches
+        candidates = match_by_role_type_media(artifacts, self.profile)
+        if len(candidates) == 1 and candidate_passes_payload_check(candidates[0], self.profile, store):
+            return candidates
+        return candidates
 
     def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:
-        return ArtifactEvidenceReader(store)._parse(art, self.kind)
+        data = read_json_payload(path)
+        return ValidationMetrics.from_json(data, artifact_id=art.artifact_id)
 
     def summarise(self, artifact_row: dict, typed: Any) -> dict:
-        return {}
+        raise NotImplementedError
 
 
 class CutoffAnalysisAdapter:
@@ -43,13 +65,20 @@ class CutoffAnalysisAdapter:
     profile: _Profile = EVIDENCE_PROFILES[EvidenceKind.CUTOFF_ANALYSIS]
 
     def match(self, artifacts: list[ArtifactRef], store: ProjectStore) -> list[ArtifactRef]:
-        return ArtifactEvidenceReader(store)._match(artifacts, self.kind)
+        schema_matches = match_by_schema_version(artifacts, self.profile)
+        if schema_matches:
+            return schema_matches
+        candidates = match_by_role_type_media(artifacts, self.profile)
+        if len(candidates) == 1 and candidate_passes_payload_check(candidates[0], self.profile, store):
+            return candidates
+        return candidates
 
     def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:
-        return ArtifactEvidenceReader(store)._parse(art, self.kind)
+        data = read_json_payload(path)
+        return CutoffAnalysis.from_json(data, artifact_id=art.artifact_id)
 
     def summarise(self, artifact_row: dict, typed: Any) -> dict:
-        return {}
+        raise NotImplementedError
 
 
 class CalibrationReportAdapter:
@@ -57,10 +86,17 @@ class CalibrationReportAdapter:
     profile: _Profile = EVIDENCE_PROFILES[EvidenceKind.CALIBRATION_REPORT]
 
     def match(self, artifacts: list[ArtifactRef], store: ProjectStore) -> list[ArtifactRef]:
-        return ArtifactEvidenceReader(store)._match(artifacts, self.kind)
+        schema_matches = match_by_schema_version(artifacts, self.profile)
+        if schema_matches:
+            return schema_matches
+        candidates = match_by_role_type_media(artifacts, self.profile)
+        if len(candidates) == 1 and candidate_passes_payload_check(candidates[0], self.profile, store):
+            return candidates
+        return candidates
 
     def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:
-        return ArtifactEvidenceReader(store)._parse(art, self.kind)
+        data = read_json_payload(path)
+        return data
 
     def summarise(self, artifact_row: dict, typed: Any) -> dict:
-        return {}
+        raise NotImplementedError

@@ -1,4 +1,10 @@
-"""Shared matching helpers for evidence adapters."""
+"""Shared matching helpers for evidence adapters.
+
+These helpers are the building blocks adapter classes compose to implement
+the three-phase match used by ``ArtifactEvidenceReader._match``. They are
+intentionally independent of the reader so adapters can be tested and wired
+into the reader without creating a circular dependency.
+"""
 
 from __future__ import annotations
 
@@ -10,13 +16,10 @@ from cardre.store import ProjectStore
 
 
 def match_by_schema_version(artifacts: list[ArtifactRef], profile: _Profile) -> list[ArtifactRef]:
-    """Phase 1 match: schema_version exact match (including legacy versions)."""
-    schema_versions = {profile.schema_version} if profile.schema_version else set()
-    if hasattr(profile, 'legacy_schema_versions') and profile.legacy_schema_versions:
-        schema_versions.update(profile.legacy_schema_versions)
-    if not schema_versions:
+    """Phase 1 match: exact ``schema_version`` match against the profile."""
+    if not profile.schema_version:
         return []
-    return [a for a in artifacts if a.metadata.get("schema_version") in schema_versions]
+    return [a for a in artifacts if a.metadata.get("schema_version") == profile.schema_version]
 
 
 def match_by_role_type_media(artifacts: list[ArtifactRef], profile: _Profile) -> list[ArtifactRef]:
@@ -30,7 +33,12 @@ def match_by_role_type_media(artifacts: list[ArtifactRef], profile: _Profile) ->
     ]
 
 
-def match_by_payload_key(artifacts: list[ArtifactRef], required_keys: set[str], store: ProjectStore, exclude_key: str | None = None) -> list[ArtifactRef]:
+def match_by_payload_key(
+    artifacts: list[ArtifactRef],
+    required_keys: set[str],
+    store: ProjectStore,
+    exclude_key: str | None = None,
+) -> list[ArtifactRef]:
     """Phase 3 match: payload key heuristics. Reads each artifact's JSON payload."""
     result: list[ArtifactRef] = []
     for a in artifacts:
@@ -42,6 +50,38 @@ def match_by_payload_key(artifacts: list[ArtifactRef], required_keys: set[str], 
             if exclude_key is None or exclude_key not in payload:
                 result.append(a)
     return result
+
+
+def match_by_artifact_type(
+    artifacts: list[ArtifactRef],
+    artifact_type: str,
+    store: ProjectStore,
+    required_keys: set[str],
+) -> list[ArtifactRef]:
+    """Phase 3 match for kinds that key off ``artifact_type`` plus payload keys."""
+    result: list[ArtifactRef] = []
+    for a in artifacts:
+        if a.artifact_type != artifact_type:
+            continue
+        try:
+            payload = json.loads(store.artifact_path(a).read_text())
+        except Exception:
+            continue
+        if required_keys.issubset(payload.keys()):
+            result.append(a)
+    return result
+
+
+def match_by_parquet_columns(
+    artifacts: list[ArtifactRef],
+    role: str,
+    media_type: str,
+    columns: set[str],
+    store: ProjectStore,
+) -> list[ArtifactRef]:
+    """Phase 3 match for parquet kinds that key off role/media/columns."""
+    candidates = [a for a in artifacts if a.role == role and a.media_type == media_type]
+    return [a for a in candidates if parquet_has_columns(a, columns, store)]
 
 
 def parquet_has_columns(art: ArtifactRef, columns: set[str], store: ProjectStore) -> bool:
@@ -69,7 +109,20 @@ def candidate_passes_payload_check(art: ArtifactRef, profile: _Profile, store: P
             keys = set(data.keys())
             if profile.required_keys.issubset(keys):
                 return True
+            if profile.legacy_required_keys is not None:
+                return profile.legacy_required_keys.issubset(keys)
             return False
         except (json.JSONDecodeError, UnicodeDecodeError):
             return False
     return True
+
+
+def read_json_payload(path) -> dict:
+    """Read and parse a JSON artifact payload, returning a dict."""
+    return json.loads(path.read_text())
+
+
+def scan_parquet(path):
+    """Scan a parquet artifact, returning a polars LazyFrame."""
+    import polars as pl
+    return pl.scan_parquet(path)

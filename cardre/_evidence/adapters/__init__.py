@@ -1,9 +1,9 @@
 """EvidenceAdapter protocol, registry, and factory.
 
-This package defines the ``EvidenceAdapter`` seam. Each adapter knows how
-to match, parse, and summarise artifacts for a single ``EvidenceKind``.
-
-Adapters are NOT wired into the reader yet — they are scaffolding only.
+This package defines the ``EvidenceAdapter`` seam. Each adapter owns
+matching, parsing, and summarising for a single ``EvidenceKind`` and is
+independent of ``ArtifactEvidenceReader``. The reader will be wired to
+dispatch through ``EVIDENCE_ADAPTERS`` in a subsequent phase.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from cardre.domain.artifacts import ArtifactRef
-from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
 from cardre._evidence.profiles import _Profile
 from cardre.store import ProjectStore
 
@@ -121,6 +121,5 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, type[EvidenceAdapter]] = {
 def get_adapter(kind: EvidenceKind) -> EvidenceAdapter:
     cls = EVIDENCE_ADAPTERS.get(kind)
     if cls is None:
-        from cardre._evidence.kinds import EvidenceParseError
         raise EvidenceParseError(f"No adapter registered for evidence kind {kind.value}")
     return cls()
