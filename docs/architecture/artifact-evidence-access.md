@@ -81,8 +81,7 @@ When introducing a new evidence type, update all of these:
 6. Add fixture-backed parse coverage in `tests/test_evidence_adapters.py`.
 7. Add a parametrized profile assertion in `tests/test_evidence_profiles.py`.
 
-Minimal parser rule: prefer schema/version validation first, then legacy fallback
-inside `cardre/_evidence/`, never in product nodes.
+Minimal parser rule: prefer schema/version validation first, then role/type/media/profile validation inside `cardre/_evidence/`, never bespoke parsing in product nodes.
 
 ## Writing A Node That Consumes Artifacts
 
@@ -142,8 +141,8 @@ This keeps layout assertions local and keeps production tests focused on typed b
 
 Legacy detection belongs in `cardre/_evidence/`.
 
-- Product code must not know whether an artifact matched current schema or legacy fallback.
-- If a legacy shape exists, teach the reader/profile/model about it.
+- Product code must not know whether an artifact matched by schema or by role/type/media profile.
+- If a legacy shape exists, teach the adapter/profile/model about it.
 - Do not reintroduce raw JSON fallback in nodes or services.
 
 ## Guardrail Link
