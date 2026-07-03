@@ -148,7 +148,7 @@ jobs:
         with:
           cache-workspaces: "frontend/src-tauri"
       - name: Download sidecar binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cardre-api-sidecar
           path: frontend/src-tauri/binaries/
@@ -179,7 +179,7 @@ jobs:
         with:
           cache-workspaces: "frontend/src-tauri"
       - name: Download sidecar binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cardre-api-sidecar
           path: frontend/src-tauri/binaries/
@@ -208,7 +208,7 @@ jobs:
       - name: Install httpx for health check
         run: pip install httpx
       - name: Download sidecar binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cardre-api-sidecar
           path: binaries/
