@@ -34,7 +34,7 @@
           "projects"
         ],
         "summary": "List Projects",
-        "description": "List all registered projects from the registry.",
+        "description": "List all registered projects from the registry.\n\nProjects that cannot be opened (corrupt store, missing root, schema\nmismatch) are reported in ``unavailable_projects`` rather than\nsilently skipped.",
         "operationId": "list_projects_projects_get",
         "responses": {
           "200": {
@@ -3684,6 +3684,13 @@
             },
             "type": "array",
             "title": "Projects"
+          },
+          "unavailable_projects": {
+            "items": {
+              "$ref": "#/components/schemas/UnavailableProjectResponse"
+            },
+            "type": "array",
+            "title": "Unavailable Projects"
           }
         },
         "type": "object",
@@ -3812,6 +3819,10 @@
             "type": "string",
             "title": "Run Step Id"
           },
+          "plan_version_id": {
+            "type": "string",
+            "title": "Plan Version Id"
+          },
           "step_id": {
             "type": "string",
             "title": "Step Id"
@@ -3819,6 +3830,14 @@
           "parent_step_id": {
             "type": "string",
             "title": "Parent Step Id"
+          },
+          "source_run_id": {
+            "type": "string",
+            "title": "Source Run Id"
+          },
+          "source_run_step_id": {
+            "type": "string",
+            "title": "Source Run Step Id"
           },
           "policy": {
             "type": "string",
@@ -3849,6 +3868,11 @@
             ],
             "title": "Stale Reason"
           },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "default": ""
+          },
           "artifacts": {
             "items": {
               "$ref": "#/components/schemas/EvidenceArtifactResponse"
@@ -3862,13 +3886,16 @@
           "evidence_edge_id",
           "run_id",
           "run_step_id",
+          "plan_version_id",
           "step_id",
           "parent_step_id",
+          "source_run_id",
+          "source_run_step_id",
           "policy",
           "source_label"
         ],
         "title": "RunEvidenceEdgeResponse",
-        "description": "Typed response for a single evidence edge in a run (#216).\n\nIncludes nested artifacts so the generated schema and frontend\ntypes match the actual payload shape."
+        "description": "Typed response for a single evidence edge in a run (#216).\n\nIncludes full provenance fields from EvidenceEdgeResponse plus\nnested artifacts so the generated schema and frontend types match\nthe actual payload shape."
       },
       "RunListResponse": {
         "properties": {
@@ -4086,6 +4113,35 @@
           "upstream_changes"
         ],
         "title": "StalenessExplanationResponse"
+      },
+      "UnavailableProjectResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "root": {
+            "type": "string",
+            "title": "Root"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "root",
+          "code",
+          "message"
+        ],
+        "title": "UnavailableProjectResponse",
+        "description": "A registered project that could not be opened (corrupt, missing, etc)."
       },
       "ValidationError": {
         "properties": {

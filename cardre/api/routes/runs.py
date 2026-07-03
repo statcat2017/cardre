@@ -167,13 +167,17 @@ async def list_run_evidence(
                     evidence_edge_id=edge.evidence_edge_id,
                     run_id=edge.run_id,
                     run_step_id=edge.run_step_id,
+                    plan_version_id=edge.plan_version_id,
                     step_id=edge.step_id,
                     parent_step_id=edge.parent_step_id,
+                    source_run_id=edge.source_run_id,
+                    source_run_step_id=edge.source_run_step_id,
                     policy=edge.policy,
                     source_label=edge.source_label,
                     is_reused=edge.is_reused,
                     is_stale=edge.is_stale,
                     stale_reason=edge.stale_reason,
+                    created_at=getattr(edge, "created_at", ""),
                     artifacts=[
                         {
                             "evidence_artifact_id": a.evidence_artifact_id,

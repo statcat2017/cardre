@@ -24,6 +24,10 @@ export type RunWatchStatus =
   | "stale"
   | "stuck"
   | "cancelled"
+  | "sidecar_unreachable"
+  | "timeout"
+  | "malformed_response"
+  | "backend_error"
   | "error";
 
 export interface RunWatchState {
@@ -103,6 +107,14 @@ function deriveMessage(
       return "Run appears stuck — no progress detected.";
     case "cancelled":
       return "Run was cancelled.";
+    case "sidecar_unreachable":
+      return "Sidecar is unreachable — is the backend running?";
+    case "timeout":
+      return "Request timed out.";
+    case "malformed_response":
+      return "Received malformed response from server.";
+    case "backend_error":
+      return "Backend returned an error.";
     case "error":
       return "An error occurred while watching the run.";
   }
@@ -166,16 +178,22 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
         switch (err.code) {
           case ErrorCodes.SIDECAR_UNREACHABLE:
             message = "Sidecar is unreachable — is the backend running?";
+            errStatus = "sidecar_unreachable";
             break;
           case ErrorCodes.REQUEST_TIMEOUT:
             message = "Request timed out.";
+            errStatus = "timeout";
             break;
           case ErrorCodes.MALFORMED_JSON_RESPONSE:
             message = "Received malformed response from server.";
+            errStatus = "malformed_response";
             break;
           case ErrorCodes.REQUEST_ABORTED:
             message = "Request was aborted.";
             errStatus = "cancelled";
+            break;
+          default:
+            errStatus = "backend_error";
             break;
         }
       } else {
@@ -185,11 +203,13 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
       setError(message);
       setStatus(errStatus);
 
-      // Give up after maxErrorRetries
+      // Give up after maxErrorRetries — preserve the specific transport
+      // error status instead of collapsing to "stuck".
       if (errorCountRef.current >= maxErrorRetries) {
         setPolling(false);
-        setStatus("stuck");
-        setError(`Poller gave up after ${maxErrorRetries} consecutive errors.`);
+        setError(
+          `Poller gave up after ${maxErrorRetries} consecutive errors. Last error: ${message}`,
+        );
       } else {
         setPolling(true);
       }

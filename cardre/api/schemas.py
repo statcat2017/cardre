@@ -44,8 +44,17 @@ class ProjectResponse(BaseModel):
     cardre_version: str
 
 
+class UnavailableProjectResponse(BaseModel):
+    """A registered project that could not be opened (corrupt, missing, etc)."""
+    project_id: str
+    root: str
+    code: str
+    message: str
+
+
 class ProjectListResponse(BaseModel):
     projects: list[ProjectResponse]
+    unavailable_projects: list[UnavailableProjectResponse] = Field(default_factory=list)
 
 
 class ProjectCreateRequest(BaseModel):
@@ -184,19 +193,24 @@ class ResolvedEvidenceResponse(BaseModel):
 class RunEvidenceEdgeResponse(BaseModel):
     """Typed response for a single evidence edge in a run (#216).
 
-    Includes nested artifacts so the generated schema and frontend
-    types match the actual payload shape.
+    Includes full provenance fields from EvidenceEdgeResponse plus
+    nested artifacts so the generated schema and frontend types match
+    the actual payload shape.
     """
     evidence_edge_id: str
     run_id: str
     run_step_id: str
+    plan_version_id: str
     step_id: str
     parent_step_id: str
+    source_run_id: str
+    source_run_step_id: str
     policy: str
     source_label: str
     is_reused: bool = False
     is_stale: bool = False
     stale_reason: str | None = None
+    created_at: str = ""
     artifacts: list[EvidenceArtifactResponse] = Field(default_factory=list)
 
 
@@ -429,6 +443,7 @@ __all__ = [
     "ProjectCreateRequest",
     "ProjectListResponse",
     "ProjectResponse",
+    "UnavailableProjectResponse",
     "ReportListResponse",
     "ReportResponse",
     "ResolvedEvidenceResponse",

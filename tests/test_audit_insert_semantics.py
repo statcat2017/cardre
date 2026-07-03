@@ -76,3 +76,80 @@ def test_duplicate_run_step_insert_fails(tmp_path):
 
     with pytest.raises(Exception):
         repo.save(step)
+
+
+def test_executor_record_run_step_duplicate_fails(tmp_path, monkeypatch):
+    """PlanExecutor._record_run_step must fail on duplicate run_step_id, not replace (#213)."""
+    from cardre.execution.executor import PlanExecutor
+    from cardre.domain.step import StepSpec
+    from cardre.domain.run import RunStepStatus
+
+    store = _make_store(tmp_path)
+    pv_id = _seed_minimal_plan(store)
+
+    run_id = str(uuid.uuid4())
+    now = utc_now_iso()
+    store.execute(
+        "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at) "
+        "VALUES (?, ?, 'running', ?, ?)",
+        (run_id, pv_id, now, now),
+    )
+
+    spec = StepSpec(
+        step_id="step-a",
+        node_type="cardre.noop",
+        node_version="1",
+        category="transform",
+        params={},
+        params_hash="hash001",
+        position=0,
+        parent_step_ids=[],
+        canonical_step_id="step-a",
+    )
+
+    executor = PlanExecutor(store)
+
+    executor._record_run_step(
+        run_id=run_id,
+        spec=spec,
+        plan_version_id=pv_id,
+        fp={"node_type": "cardre.noop"},
+        input_artifact_ids=[],
+        output_artifact_ids=[],
+        parent_run_steps=[],
+        status=RunStepStatus.SUCCEEDED,
+        errors=[],
+        warnings=[],
+    )
+
+    # Pre-insert a run_step with the same run_step_id that the next call will generate.
+    # Patch uuid.uuid4 to return a fixed ID that collides with the pre-inserted row.
+    fixed_id = "rs-fixed-duplicate-id"
+
+    def fake_uuid4():
+        return fixed_id
+
+    monkeypatch.setattr("cardre.execution.executor.uuid.uuid4", fake_uuid4)
+
+    # Pre-insert with the fixed ID to force a collision
+    store.execute(
+        "INSERT INTO run_steps"
+        " (run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at,"
+        "  execution_fingerprint_json, warnings_json, errors_json) "
+        "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, '{}', '[]', '[]')",
+        (fixed_id, run_id, "step-a", pv_id, now, now),
+    )
+
+    with pytest.raises(Exception):
+        executor._record_run_step(
+            run_id=run_id,
+            spec=spec,
+            plan_version_id=pv_id,
+            fp={"node_type": "cardre.noop"},
+            input_artifact_ids=[],
+            output_artifact_ids=[],
+            parent_run_steps=[],
+            status=RunStepStatus.SUCCEEDED,
+            errors=[],
+            warnings=[],
+        )

@@ -19,7 +19,12 @@ from cardre.api.errors import (
     STORE_ALREADY_EXISTS,
     CardreApiError,
 )
-from cardre.api.schemas import ProjectCreateRequest, ProjectListResponse, ProjectResponse
+from cardre.api.schemas import (
+    ProjectCreateRequest,
+    ProjectListResponse,
+    ProjectResponse,
+    UnavailableProjectResponse,
+)
 from cardre.config import CardreConfig
 from cardre.domain.errors import SchemaVersionError
 from cardre.services.project_resolver import ProjectResolver
@@ -31,13 +36,27 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 @router.get("", response_model=ProjectListResponse)
 async def list_projects() -> ProjectListResponse:
-    """List all registered projects from the registry."""
+    """List all registered projects from the registry.
+
+    Projects that cannot be opened (corrupt store, missing root, schema
+    mismatch) are reported in ``unavailable_projects`` rather than
+    silently skipped.
+    """
     resolver = ProjectResolver(CardreConfig.from_env().registry_path)
-    registry = resolver._registry.list_all()
+    registry = resolver.list_projects()
     projects = []
+    unavailable = []
     for project_id, root_str in registry.items():
         root = Path(root_str)
         if not root.exists():
+            unavailable.append(
+                UnavailableProjectResponse(
+                    project_id=project_id,
+                    root=root_str,
+                    code="PROJECT_ROOT_MISSING",
+                    message=f"Project root {root_str} does not exist.",
+                )
+            )
             continue
         store = ProjectStore(root)
         try:
@@ -53,11 +72,27 @@ async def list_projects() -> ProjectListResponse:
                         cardre_version=p.get("cardre_version", __version__),
                     )
                 )
-        except Exception:
-            continue
+            else:
+                unavailable.append(
+                    UnavailableProjectResponse(
+                        project_id=project_id,
+                        root=root_str,
+                        code="PROJECT_METADATA_MISSING",
+                        message=f"Project {project_id!r} not found in store at {root_str}.",
+                    )
+                )
+        except Exception as exc:
+            unavailable.append(
+                UnavailableProjectResponse(
+                    project_id=project_id,
+                    root=root_str,
+                    code="PROJECT_OPEN_FAILED",
+                    message=str(exc),
+                )
+            )
         finally:
             store.close()
-    return ProjectListResponse(projects=projects)
+    return ProjectListResponse(projects=projects, unavailable_projects=unavailable)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)

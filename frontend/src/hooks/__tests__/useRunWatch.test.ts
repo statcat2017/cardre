@@ -107,8 +107,7 @@ describe("useRunWatch", () => {
     await waitFor(() => expect(result.current.status).not.toBe("loading"), {
       timeout: 3000,
     });
-    // After maxErrorRetries, the poller gives up with "stuck" status.
-    // The initial error was sidecar_unreachable before the give-up message.
-    expect(result.current.status).toBe("stuck");
+    // The specific transport error status is preserved as the final state.
+    expect(result.current.status).toBe("sidecar_unreachable");
   });
 });

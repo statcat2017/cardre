@@ -34,6 +34,10 @@ export interface paths {
         /**
          * List Projects
          * @description List all registered projects from the registry.
+         *
+         *     Projects that cannot be opened (corrupt store, missing root, schema
+         *     mismatch) are reported in ``unavailable_projects`` rather than
+         *     silently skipped.
          */
         get: operations["list_projects_projects_get"];
         put?: never;
@@ -1020,6 +1024,8 @@ export interface components {
         ProjectListResponse: {
             /** Projects */
             projects: components["schemas"]["ProjectResponse"][];
+            /** Unavailable Projects */
+            unavailable_projects?: components["schemas"]["UnavailableProjectResponse"][];
         };
         /** ProjectResponse */
         ProjectResponse: {
@@ -1069,8 +1075,9 @@ export interface components {
          * RunEvidenceEdgeResponse
          * @description Typed response for a single evidence edge in a run (#216).
          *
-         *     Includes nested artifacts so the generated schema and frontend
-         *     types match the actual payload shape.
+         *     Includes full provenance fields from EvidenceEdgeResponse plus
+         *     nested artifacts so the generated schema and frontend types match
+         *     the actual payload shape.
          */
         RunEvidenceEdgeResponse: {
             /** Evidence Edge Id */
@@ -1079,10 +1086,16 @@ export interface components {
             run_id: string;
             /** Run Step Id */
             run_step_id: string;
+            /** Plan Version Id */
+            plan_version_id: string;
             /** Step Id */
             step_id: string;
             /** Parent Step Id */
             parent_step_id: string;
+            /** Source Run Id */
+            source_run_id: string;
+            /** Source Run Step Id */
+            source_run_step_id: string;
             /** Policy */
             policy: string;
             /** Source Label */
@@ -1099,6 +1112,11 @@ export interface components {
             is_stale: boolean;
             /** Stale Reason */
             stale_reason?: string | null;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
             /** Artifacts */
             artifacts?: components["schemas"]["EvidenceArtifactResponse"][];
         };
@@ -1185,6 +1203,20 @@ export interface components {
             };
             /** Missing Evidence */
             missing_evidence?: string[];
+        };
+        /**
+         * UnavailableProjectResponse
+         * @description A registered project that could not be opened (corrupt, missing, etc).
+         */
+        UnavailableProjectResponse: {
+            /** Project Id */
+            project_id: string;
+            /** Root */
+            root: string;
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
         };
         /** ValidationError */
         ValidationError: {

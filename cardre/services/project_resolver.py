@@ -18,6 +18,10 @@ class ProjectResolver:
     def register_project(self, project_id: str, root: str | Path) -> None:
         self._registry.register(project_id, root)
 
+    def list_projects(self) -> dict[str, str]:
+        """Return all registered project_id -> root mappings."""
+        return self._registry.list_all()
+
     def resolve_root(self, project_id: str) -> Path:
         root = self._registry.resolve_root(project_id)
         if root is None or not root.exists():

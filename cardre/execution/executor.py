@@ -511,7 +511,7 @@ class PlanExecutor:
             # 1. Write run_step
             # Use the raw connection for the transaction-scoped write
             conn.execute(
-                "INSERT OR REPLACE INTO run_steps "
+                "INSERT INTO run_steps "
                 "(run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, "
                 " execution_fingerprint_json, warnings_json, errors_json) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -664,7 +664,7 @@ class PlanExecutor:
 
         with self._store.transaction("IMMEDIATE") as conn:
             conn.execute(
-                "INSERT OR REPLACE INTO run_steps "
+                "INSERT INTO run_steps "
                 "(run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, "
                 " execution_fingerprint_json, warnings_json, errors_json) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
