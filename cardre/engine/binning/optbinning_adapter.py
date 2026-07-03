@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from importlib.metadata import version as _get_version
 from typing import Any
 
+import numpy as np
 import polars as pl
 
 
@@ -72,7 +73,7 @@ def fit_variables(
             f"Target column '{target}' contains values outside good_values "
             f"and bad_values. Found {y.null_count()} unknown value(s)."
         )
-    y_np = y.to_numpy().astype(int)
+    y_np: np.ndarray[Any, Any] = y.to_numpy().astype(int)
 
     results: list[VariableBinningResult] = []
     warnings: list[dict[str, Any]] = []

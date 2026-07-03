@@ -98,7 +98,7 @@ class _CalibratorEnsemble:
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         """Average calibrated probabilities across all fold calibrators."""
-        all_probs = []
+        all_probs: list[np.ndarray[Any, Any]] = []
         for cal in self._calibrators:
             if self._method == "platt":
                 raw = X[:, 1] if X.ndim == 2 and X.shape[1] == 2 else X.ravel()
@@ -108,11 +108,11 @@ class _CalibratorEnsemble:
                 raw = X[:, 1] if X.ndim == 2 and X.shape[1] == 2 else X.ravel()
                 p = cal.predict(raw)
                 all_probs.append(np.column_stack([1.0 - p, p]))
-        return np.asarray(np.mean(all_probs, axis=0), dtype=float)
+        return cast(np.ndarray[Any, Any], np.asarray(np.mean(all_probs, axis=0), dtype=float))
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """Return average prediction across fold calibrators."""
-        all_preds = []
+        all_preds: list[np.ndarray[Any, Any]] = []
         for cal in self._calibrators:
             if self._method == "platt":
                 raw = X[:, 1] if X.ndim == 2 and X.shape[1] == 2 else X.ravel()
@@ -121,7 +121,7 @@ class _CalibratorEnsemble:
             else:
                 raw = X[:, 1] if X.ndim == 2 and X.shape[1] == 2 else X.ravel()
                 all_preds.append(cal.predict(raw))
-        return np.asarray(np.mean(all_preds, axis=0), dtype=float)
+        return cast(np.ndarray[Any, Any], np.asarray(np.mean(all_preds, axis=0), dtype=float))
 
 
 def _fit_platt_cv(

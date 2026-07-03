@@ -155,7 +155,7 @@ class ValidationMetricsNode(NodeType):
                            f"These rows are excluded from metric computation.",
             })
 
-        y_bin_full = df.with_columns(
+        y_bin_full: np.ndarray[Any, Any] = df.with_columns(
             pl.when(target_str.is_in(bad_list))
             .then(pl.lit(1))
             .when(target_str.is_in(good_list))

@@ -396,8 +396,10 @@ class VariableClusteringNode(NodeType):
             max_corr = 0.0
             for i in members:
                 for j in members:
-                    if i < j and arr[i, j] > max_corr:
-                        max_corr = arr[i, j]
+                    if i < j:
+                        corr_val = float(arr[i, j])
+                        if corr_val > max_corr:
+                            max_corr = corr_val
 
             rep = self._pick_representative(
                 var_names, iv_map, missing_map, representative_rule,

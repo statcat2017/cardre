@@ -71,7 +71,7 @@ def _get_predictions(
         log_odds = np.full(X.shape[0], intercept, dtype=np.float64)
         for i, feat in enumerate(features):
             log_odds += float(coefs.get(feat, 0)) * X[:, i]
-        return 1.0 / (1.0 + np.exp(-log_odds))
+        return cast(np.ndarray[Any, Any], 1.0 / (1.0 + np.exp(-log_odds)))
     else:
         estimator_ref = model.get("estimator_reference", {})
         estimator = _load_estimator(store, estimator_ref)

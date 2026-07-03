@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import io
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import joblib
 import numpy as np
@@ -495,7 +495,7 @@ def _apply_calibration(
     else:
         calibrated = calibrator.predict(y_prob)
 
-    return np.asarray(calibrated, dtype=np.float64)
+    return cast(np.ndarray[Any, Any], np.asarray(calibrated, dtype=np.float64))
 
 
 # ---------------------------------------------------------------------------
