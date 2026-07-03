@@ -1,13 +1,41 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { ApiError, api } from "../api/client";
-import { pageCardStyle, theme } from "../styles";
+import { useSelectedEntity } from "../hooks/useSelectedEntity";
+import { theme, pageCardStyle } from "../styles";
+import { PlanSidebar } from "./PlanSidebar";
+import { RunDetailsPanel } from "./RunDetailsPanel";
+import { VersionPanel } from "./VersionPanel";
 
 interface Props {
   projectPath: string;
   projectId: string;
   onBack: () => void;
+}
+
+/**
+ * Returns the first query error together with a human-readable source label.
+ */
+const QUERY_SOURCES = [
+  "project",
+  "plans",
+  "versions",
+  "runs",
+  "run",
+  "runSteps",
+  "runEvidence",
+] as const;
+
+function firstQueryError(
+  ...queries: Array<{ error: Error | null }>
+): { source: string; error: Error } | null {
+  for (let i = 0; i < queries.length; i++) {
+    if (queries[i].error) {
+      return { source: QUERY_SOURCES[i] ?? `query_${i}`, error: queries[i].error as Error };
+    }
+  }
+  return null;
 }
 
 export function ProjectView({ projectPath, projectId, onBack }: Props) {
@@ -18,8 +46,6 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
   const [newPlanName, setNewPlanName] = useState("Scorecard Pathway");
   const [error, setError] = useState<string | null>(null);
 
-  const projectOptions = useMemo(() => ({ projectId }), [projectId]);
-
   const projectQuery = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => api.getProject(projectId),
@@ -27,66 +53,67 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
 
   const plansQuery = useQuery({
     queryKey: ["plans", projectId],
-    queryFn: () => api.listPlans(projectOptions, projectId),
+    queryFn: () => api.listPlans({ projectId }, projectId),
   });
 
-  const effectiveSelectedPlanId =
-    selectedPlanId && plansQuery.data?.plans.some((plan) => plan.plan_id === selectedPlanId)
-      ? selectedPlanId
-      : (plansQuery.data?.plans[0]?.plan_id ?? null);
+  const effectiveSelectedPlanId = useSelectedEntity(
+    selectedPlanId,
+    plansQuery.data?.plans,
+    "plan_id",
+    "first",
+  );
 
   const versionsQuery = useQuery({
     queryKey: ["planVersions", projectId, effectiveSelectedPlanId],
     queryFn: () =>
-      api.listPlanVersions(projectOptions, projectId, effectiveSelectedPlanId as string),
+      api.listPlanVersions({ projectId }, projectId, effectiveSelectedPlanId as string),
     enabled: !!effectiveSelectedPlanId,
   });
 
   const planVersions = versionsQuery.data?.versions ?? [];
 
-  const effectiveSelectedVersionId =
-    selectedVersionId &&
-    planVersions.some((version) => version.plan_version_id === selectedVersionId)
-      ? selectedVersionId
-      : (planVersions[planVersions.length - 1]?.plan_version_id ?? null);
+  const effectiveSelectedVersionId = useSelectedEntity(
+    selectedVersionId,
+    planVersions,
+    "plan_version_id",
+    "last",
+  );
 
   const runsQuery = useQuery({
     queryKey: ["runs", projectId],
-    queryFn: () => api.listRuns(projectOptions, projectId),
+    queryFn: () => api.listRuns({ projectId }, projectId),
   });
 
-  const runsForSelectedVersion = useMemo(
-    () =>
-      runsQuery.data?.runs.filter((run) => run.plan_version_id === effectiveSelectedVersionId) ??
-      [],
-    [runsQuery.data, effectiveSelectedVersionId],
-  );
+  const runsForSelectedVersion =
+    runsQuery.data?.runs.filter((run) => run.plan_version_id === effectiveSelectedVersionId) ?? [];
 
-  const effectiveSelectedRunId =
-    selectedRunId && runsForSelectedVersion.some((run) => run.run_id === selectedRunId)
-      ? selectedRunId
-      : (runsForSelectedVersion[0]?.run_id ?? null);
+  const effectiveSelectedRunId = useSelectedEntity(
+    selectedRunId,
+    runsForSelectedVersion,
+    "run_id",
+    "first",
+  );
 
   const selectedRunQuery = useQuery({
     queryKey: ["run", projectId, effectiveSelectedRunId],
-    queryFn: () => api.getRun(projectOptions, projectId, effectiveSelectedRunId as string),
+    queryFn: () => api.getRun({ projectId }, projectId, effectiveSelectedRunId as string),
     enabled: !!effectiveSelectedRunId,
   });
 
   const runStepsQuery = useQuery({
     queryKey: ["runSteps", projectId, effectiveSelectedRunId],
-    queryFn: () => api.listRunSteps(projectOptions, projectId, effectiveSelectedRunId as string),
+    queryFn: () => api.listRunSteps({ projectId }, projectId, effectiveSelectedRunId as string),
     enabled: !!effectiveSelectedRunId,
   });
 
   const runEvidenceQuery = useQuery({
     queryKey: ["runEvidence", projectId, effectiveSelectedRunId],
-    queryFn: () => api.listRunEvidence(projectOptions, projectId, effectiveSelectedRunId as string),
+    queryFn: () => api.listRunEvidence({ projectId }, projectId, effectiveSelectedRunId as string),
     enabled: !!effectiveSelectedRunId,
   });
 
   const createPlanMutation = useMutation({
-    mutationFn: () => api.createPlan(projectOptions, projectId, { name: newPlanName.trim() }),
+    mutationFn: () => api.createPlan({ projectId }, projectId, { name: newPlanName.trim() }),
     onSuccess: (plan) => {
       setError(null);
       setSelectedPlanId(plan.plan_id);
@@ -103,7 +130,7 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
 
   const runMutation = useMutation({
     mutationFn: () =>
-      api.createRun(projectOptions, projectId, {
+      api.createRun({ projectId }, projectId, {
         plan_version_id: effectiveSelectedVersionId as string,
         force: false,
         sync: false,
@@ -131,25 +158,23 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
     versionsQuery.data?.versions.find(
       (version) => version.plan_version_id === effectiveSelectedVersionId,
     ) ?? null;
-  const latestError = selectedRunQuery.data?.latest_error as
-    | { message?: string; code?: string }
-    | null
-    | undefined;
-  const queryError =
-    projectQuery.error ??
-    plansQuery.error ??
-    versionsQuery.error ??
-    runsQuery.error ??
-    selectedRunQuery.error ??
-    runStepsQuery.error ??
-    runEvidenceQuery.error;
 
-  const queryErrorMessage = queryError
-    ? queryError instanceof ApiError
-      ? queryError.detail
-      : queryError instanceof Error
-        ? queryError.message
-        : String(queryError)
+  const queryErrorInfo = firstQueryError(
+    projectQuery,
+    plansQuery,
+    versionsQuery,
+    runsQuery,
+    selectedRunQuery,
+    runStepsQuery,
+    runEvidenceQuery,
+  );
+
+  const queryErrorMessage = queryErrorInfo
+    ? `[${queryErrorInfo.source}] ${
+        queryErrorInfo.error instanceof ApiError
+          ? queryErrorInfo.error.detail
+          : queryErrorInfo.error.message
+      }`
     : null;
 
   return (
@@ -203,7 +228,12 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
 
         {error && (
           <div
-            style={{ ...pageCardStyle, padding: 14, background: theme.redBg, color: theme.redText }}
+            style={{
+              ...pageCardStyle,
+              padding: 14,
+              background: theme.redBg,
+              color: theme.redText,
+            }}
           >
             {error}
           </div>
@@ -230,324 +260,52 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
             alignItems: "start",
           }}
         >
-          <aside style={{ ...pageCardStyle, padding: 16, display: "grid", gap: 16 }}>
-            <div>
-              <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>Plans</h2>
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (!newPlanName.trim()) return;
-                  createPlanMutation.mutate();
-                }}
-                style={{ display: "grid", gap: 8, marginBottom: 12 }}
-              >
-                <input
-                  value={newPlanName}
-                  onChange={(event) => setNewPlanName(event.target.value)}
-                  placeholder="New plan name"
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: `1px solid ${theme.borderStrong}`,
-                    boxSizing: "border-box",
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={createPlanMutation.isPending}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: 0,
-                    background: theme.text,
-                    color: "#fff",
-                    cursor: createPlanMutation.isPending ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {createPlanMutation.isPending ? "Creating..." : "Create plan"}
-                </button>
-              </form>
-
-              <div style={{ display: "grid", gap: 8 }}>
-                {plansQuery.isLoading ? (
-                  <div style={{ color: theme.muted, fontSize: 14 }}>Loading plans...</div>
-                ) : plansQuery.data?.plans.length ? (
-                  plansQuery.data.plans.map((plan) => (
-                    <button
-                      key={plan.plan_id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedPlanId(plan.plan_id);
-                        setSelectedVersionId(null);
-                        setSelectedRunId(null);
-                      }}
-                      style={{
-                        textAlign: "left",
-                        padding: 12,
-                        borderRadius: 12,
-                        border: `1px solid ${plan.plan_id === effectiveSelectedPlanId ? theme.text : theme.border}`,
-                        background:
-                          plan.plan_id === effectiveSelectedPlanId
-                            ? theme.canvasSoft
-                            : theme.surface,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <div style={{ fontWeight: 600 }}>{plan.name}</div>
-                      <div style={{ color: theme.muted, fontSize: 12 }}>{plan.plan_id}</div>
-                    </button>
-                  ))
-                ) : (
-                  <div style={{ color: theme.muted, fontSize: 14 }}>No plans yet.</div>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>Runs</h2>
-              <div style={{ display: "grid", gap: 8 }}>
-                {(runsForSelectedVersion.length
-                  ? runsForSelectedVersion
-                  : (runsQuery.data?.runs ?? [])
-                ).map((run) => (
-                  <button
-                    key={run.run_id}
-                    type="button"
-                    onClick={() => setSelectedRunId(run.run_id)}
-                    style={{
-                      textAlign: "left",
-                      padding: 12,
-                      borderRadius: 12,
-                      border: `1px solid ${run.run_id === effectiveSelectedRunId ? theme.text : theme.border}`,
-                      background:
-                        run.run_id === effectiveSelectedRunId ? theme.canvasSoft : theme.surface,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div style={{ fontWeight: 600 }}>{run.status}</div>
-                    <div style={{ color: theme.muted, fontSize: 12 }}>{run.run_id}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </aside>
+          <PlanSidebar
+            plans={plansQuery.data?.plans}
+            plansLoading={plansQuery.isLoading}
+            effectiveSelectedPlanId={effectiveSelectedPlanId}
+            onSelectPlan={(planId) => {
+              setSelectedPlanId(planId);
+              setSelectedVersionId(null);
+              setSelectedRunId(null);
+            }}
+            newPlanName={newPlanName}
+            onNewPlanNameChange={setNewPlanName}
+            onCreatePlan={() => {
+              if (!newPlanName.trim()) return;
+              createPlanMutation.mutate();
+            }}
+            createPlanPending={createPlanMutation.isPending}
+            runsForVersion={runsForSelectedVersion}
+            allRuns={runsQuery.data?.runs}
+            effectiveSelectedRunId={effectiveSelectedRunId}
+            onSelectRun={setSelectedRunId}
+          />
 
           <section style={{ display: "grid", gap: 16 }}>
-            <div
-              style={{
-                ...pageCardStyle,
-                padding: 18,
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 16,
-                alignItems: "center",
+            <VersionPanel
+              selectedPlan={selectedPlan}
+              selectedVersion={selectedVersion}
+              versionsLoading={versionsQuery.isLoading}
+              versions={versionsQuery.data?.versions}
+              effectiveSelectedVersionId={effectiveSelectedVersionId}
+              onSelectVersion={(versionId) => {
+                setSelectedVersionId(versionId);
+                setSelectedRunId(null);
               }}
-            >
-              <div>
-                <h2 style={{ margin: 0, fontSize: 18 }}>{selectedPlan?.name ?? "Select a plan"}</h2>
-                <p style={{ margin: "6px 0 0", color: theme.muted, fontSize: 13 }}>
-                  {selectedVersion
-                    ? `Version ${selectedVersion.version_number} · ${selectedVersion.is_committed ? "committed" : "draft"}`
-                    : "Choose a plan version to run."}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => runMutation.mutate()}
-                disabled={!selectedVersion?.is_committed || runMutation.isPending}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: 0,
-                  background:
-                    !selectedVersion?.is_committed || runMutation.isPending
-                      ? theme.mutedSoft
-                      : theme.text,
-                  color: "#fff",
-                  cursor:
-                    !selectedVersion?.is_committed || runMutation.isPending
-                      ? "not-allowed"
-                      : "pointer",
-                }}
-              >
-                {runMutation.isPending
-                  ? "Running..."
-                  : selectedVersion?.is_committed
-                    ? "Run selected version"
-                    : "Commit version to run"}
-              </button>
-            </div>
+              runPending={runMutation.isPending}
+              canRun={!!selectedVersion?.is_committed}
+              onRun={() => runMutation.mutate()}
+            />
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-                gap: 16,
-              }}
-            >
-              <section style={{ ...pageCardStyle, padding: 18 }}>
-                <h3 style={{ marginTop: 0, fontSize: 16 }}>Plan Versions</h3>
-                {versionsQuery.isLoading ? (
-                  <div style={{ color: theme.muted }}>Loading versions...</div>
-                ) : versionsQuery.data?.versions.length ? (
-                  <div style={{ display: "grid", gap: 10 }}>
-                    {versionsQuery.data.versions
-                      .slice()
-                      .reverse()
-                      .map((version) => (
-                        <button
-                          key={version.plan_version_id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedVersionId(version.plan_version_id);
-                            setSelectedRunId(null);
-                          }}
-                          style={{
-                            textAlign: "left",
-                            padding: 12,
-                            borderRadius: 12,
-                            border: `1px solid ${version.plan_version_id === effectiveSelectedVersionId ? theme.text : theme.border}`,
-                            background:
-                              version.plan_version_id === effectiveSelectedVersionId
-                                ? theme.canvasSoft
-                                : theme.surface,
-                            cursor: "pointer",
-                          }}
-                        >
-                          <div
-                            style={{ display: "flex", justifyContent: "space-between", gap: 12 }}
-                          >
-                            <strong>Version {version.version_number}</strong>
-                            <span
-                              style={{
-                                color: version.is_committed ? theme.greenText : theme.yellowText,
-                              }}
-                            >
-                              {version.is_committed ? "Committed" : "Draft"}
-                            </span>
-                          </div>
-                          <div style={{ color: theme.muted, fontSize: 12, marginTop: 4 }}>
-                            {version.description || version.plan_version_id}
-                          </div>
-                        </button>
-                      ))}
-                  </div>
-                ) : (
-                  <div style={{ color: theme.muted }}>No versions found.</div>
-                )}
-              </section>
-
-              <section style={{ ...pageCardStyle, padding: 18 }}>
-                <h3 style={{ marginTop: 0, fontSize: 16 }}>Run Details</h3>
-                {selectedRunQuery.isLoading ? (
-                  <div style={{ color: theme.muted }}>Loading run...</div>
-                ) : selectedRunQuery.data ? (
-                  <div style={{ display: "grid", gap: 10, fontSize: 14 }}>
-                    <div>
-                      <strong>Status:</strong> {selectedRunQuery.data.status}
-                    </div>
-                    <div>
-                      <strong>Started:</strong> {selectedRunQuery.data.started_at}
-                    </div>
-                    <div>
-                      <strong>Finished:</strong> {selectedRunQuery.data.finished_at ?? "-"}
-                    </div>
-                    <div>
-                      <strong>Steps:</strong> {selectedRunQuery.data.step_count}
-                    </div>
-                    <div>
-                      <strong>Executed:</strong>{" "}
-                      {selectedRunQuery.data.executed_step_ids?.length ?? 0}
-                    </div>
-                    {latestError && (
-                      <div
-                        style={{
-                          padding: 12,
-                          borderRadius: 10,
-                          background: theme.redBg,
-                          color: theme.redText,
-                        }}
-                      >
-                        {latestError.message ?? latestError.code ?? "Unknown error"}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div style={{ color: theme.muted }}>Select a run to inspect.</div>
-                )}
-              </section>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-                gap: 16,
-              }}
-            >
-              <section style={{ ...pageCardStyle, padding: 18 }}>
-                <h3 style={{ marginTop: 0, fontSize: 16 }}>Run Steps</h3>
-                {runStepsQuery.isLoading ? (
-                  <div style={{ color: theme.muted }}>Loading run steps...</div>
-                ) : runStepsQuery.data?.length ? (
-                  <div style={{ display: "grid", gap: 10 }}>
-                    {runStepsQuery.data.map((step) => (
-                      <div
-                        key={step.run_step_id}
-                        style={{
-                          padding: 12,
-                          borderRadius: 12,
-                          border: `1px solid ${theme.border}`,
-                          background: theme.canvasSoft,
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                          <strong>{step.step_id}</strong>
-                          <span>{step.status}</span>
-                        </div>
-                        <div style={{ color: theme.muted, fontSize: 12, marginTop: 4 }}>
-                          {step.plan_version_id}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ color: theme.muted }}>No run steps.</div>
-                )}
-              </section>
-
-              <section style={{ ...pageCardStyle, padding: 18 }}>
-                <h3 style={{ marginTop: 0, fontSize: 16 }}>Evidence Edges</h3>
-                {runEvidenceQuery.isLoading ? (
-                  <div style={{ color: theme.muted }}>Loading evidence...</div>
-                ) : runEvidenceQuery.data?.length ? (
-                  <div style={{ display: "grid", gap: 10 }}>
-                    {runEvidenceQuery.data.map((edge) => (
-                      <div
-                        key={edge.evidence_edge_id}
-                        style={{
-                          padding: 12,
-                          borderRadius: 12,
-                          border: `1px solid ${theme.border}`,
-                          background: theme.canvasSoft,
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                          <strong>{edge.step_id}</strong>
-                          <span>{edge.policy}</span>
-                        </div>
-                        <div style={{ color: theme.muted, fontSize: 12, marginTop: 4 }}>
-                          {edge.source_label}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ color: theme.muted }}>No evidence edges.</div>
-                )}
-              </section>
-            </div>
+            <RunDetailsPanel
+              runLoading={selectedRunQuery.isLoading}
+              run={selectedRunQuery.data}
+              stepsLoading={runStepsQuery.isLoading}
+              steps={runStepsQuery.data}
+              evidenceLoading={runEvidenceQuery.isLoading}
+              evidence={runEvidenceQuery.data}
+            />
           </section>
         </section>
       </div>

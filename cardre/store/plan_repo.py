@@ -34,9 +34,6 @@ class PlanRepository:
         ).fetchone()
         return None if row is None else dict(row)
 
-    def get(self, plan_id: str) -> JsonDict | None:
-        return self.get_plan(plan_id)
-
     def list_for_project(self, project_id: str) -> list[JsonDict]:
         rows = self._store.execute(
             "SELECT * FROM plans WHERE project_id = ? ORDER BY created_at", (project_id,)
@@ -146,12 +143,14 @@ class PlanRepository:
         ).fetchone()
         return None if row is None else row["plan_id"]
 
+    def update_version_description(self, plan_version_id: str, description: str) -> None:
+        self._store.execute(
+            "UPDATE plan_versions SET description = ? WHERE plan_version_id = ?",
+            (description, plan_version_id),
+        )
+
     def commit_version(self, plan_version_id: str) -> None:
         self._store.execute(
             "UPDATE plan_versions SET is_committed = 1 WHERE plan_version_id = ?",
             (plan_version_id,),
         )
-
-    def _table_columns(self, table: str) -> set[str]:
-        rows = self._store.execute(f"PRAGMA table_info({table})").fetchall()
-        return {r["name"] for r in rows}

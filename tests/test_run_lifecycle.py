@@ -72,11 +72,12 @@ class TestRunLifecycle:
             (pv_id, plan_id, now),
         )
 
-        lifecycle = RunLifecycle.start(store, pv_id)
-        assert lifecycle.run_id is not None
+        from cardre.store.run_repo import RunRepository
+        run_id = RunRepository(store).create(pv_id)
+        lifecycle = RunLifecycle.start(store, pv_id, run_id=run_id)
+        assert lifecycle.run_id == run_id
         assert lifecycle.plan_version_id == pv_id
 
-        from cardre.store.run_repo import RunRepository
         run = RunRepository(store).get(lifecycle.run_id)
         assert run is not None
         assert run["status"] == "running"
@@ -195,8 +196,12 @@ class TestRunLifecycle:
             (pv_id, plan_id, now),
         )
 
-        lc1 = RunLifecycle.start(store, pv_id)
-        lc2 = RunLifecycle.start(store, pv_id, force=True)
+        from cardre.store.run_repo import RunRepository
+        run_repo = RunRepository(store)
+        run_id1 = run_repo.create(pv_id)
+        run_id2 = run_repo.create(pv_id)
+        lc1 = RunLifecycle.start(store, pv_id, run_id=run_id1)
+        lc2 = RunLifecycle.start(store, pv_id, run_id=run_id2, force=True)
         assert lc1.run_id != lc2.run_id
 
 

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from cardre.api.dependencies import get_project_store
 from cardre.api.schemas import NodeTypeListResponse, NodeTypeResponse
 from cardre.store.db import ProjectStore
+from cardre.store.step_repo import StepRepository
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["node_types"])
 
@@ -17,16 +18,8 @@ async def list_node_types(
     store: ProjectStore = Depends(get_project_store),
 ) -> NodeTypeListResponse:
     """List all available node types for a project."""
-    # Query distinct node types from plan_steps across project plans
-    rows = store.execute(
-        "SELECT DISTINCT ps.node_type, ps.node_version, ps.category "
-        "FROM plan_steps ps "
-        "JOIN plan_versions pv ON ps.plan_version_id = pv.plan_version_id "
-        "JOIN plans p ON pv.plan_id = p.plan_id "
-        "WHERE p.project_id = ? "
-        "ORDER BY ps.node_type",
-        (project_id,),
-    ).fetchall()
+    step_repo = StepRepository(store)
+    rows = step_repo.get_distinct_node_types(project_id)
 
     seen: set[str] = set()
     node_types: list[NodeTypeResponse] = []

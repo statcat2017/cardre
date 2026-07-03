@@ -55,14 +55,24 @@ class ManualBinningRepository:
         ).fetchone()
         if row is None:
             return None
-        return self._row_to_review(row)
+        return self.row_to_review(row)
+
+    def list_for_project(self, project_id: str) -> list[ManualBinningReview]:
+        rows = self._store.execute(
+            "SELECT r.* FROM manual_binning_reviews r "
+            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
+            "JOIN plans p ON pv.plan_id = p.plan_id "
+            "WHERE p.project_id = ? ORDER BY r.created_at",
+            (project_id,),
+        ).fetchall()
+        return [self.row_to_review(r) for r in rows]
 
     def get_reviews_for_step(self, plan_version_id: str, step_id: str) -> list[ManualBinningReview]:
         rows = self._store.execute(
             "SELECT * FROM manual_binning_reviews WHERE plan_version_id = ? AND step_id = ? ORDER BY created_at",
             (plan_version_id, step_id),
         ).fetchall()
-        return [self._row_to_review(r) for r in rows]
+        return [self.row_to_review(r) for r in rows]
 
     def update_review(
         self,
@@ -89,7 +99,7 @@ class ManualBinningRepository:
             )
 
     @staticmethod
-    def _row_to_review(row: dict[str, Any]) -> ManualBinningReview:
+    def row_to_review(row: dict[str, Any]) -> ManualBinningReview:
         d = dict(row)
         return ManualBinningReview(
             review_id=d["review_id"],

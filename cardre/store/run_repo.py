@@ -22,15 +22,6 @@ class RunRepository:
         self._store = store
 
     def append_diagnostic(self, run_id: str, diagnostic: dict[str, Any]) -> None:
-        # Must match diagnostics table in REVIEW_TABLES_SQL (schema.py).
-        # Extra fields (plan_version_id, category, etc.) go into context_json.
-        self._store.execute(
-            "CREATE TABLE IF NOT EXISTS diagnostics ("
-            "diagnostic_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, "
-            "code TEXT NOT NULL, message TEXT NOT NULL, source TEXT, "
-            "severity TEXT NOT NULL DEFAULT 'error', "
-            "context_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL)"
-        )
         extra = {k: v for k, v in diagnostic.items()
                  if k not in {"code", "message", "source", "severity"}}
         self._store.execute(
@@ -49,8 +40,6 @@ class RunRepository:
         )
 
     def get_diagnostics(self, run_id: str) -> list[dict[str, Any]]:
-        if not self._table_exists("diagnostics"):
-            return []
         rows = self._store.execute(
             "SELECT * FROM diagnostics WHERE run_id = ? ORDER BY created_at",
             (run_id,),
@@ -87,13 +76,12 @@ class RunRepository:
         return run_id
 
     def heartbeat(self, run_id: str) -> None:
-        if self._run_columns().intersection({"heartbeat_at"}):
-            cursor = self._store.execute(
-                "UPDATE runs SET heartbeat_at = ? WHERE run_id = ? AND status = 'running'",
-                (utc_now_iso(), run_id),
-            )
-            if cursor.rowcount == 0:
-                logger.warning("heartbeat: no running run found for run_id=%s", run_id)
+        cursor = self._store.execute(
+            "UPDATE runs SET heartbeat_at = ? WHERE run_id = ? AND status = 'running'",
+            (utc_now_iso(), run_id),
+        )
+        if cursor.rowcount == 0:
+            logger.warning("heartbeat: no running run found for run_id=%s", run_id)
 
     def set_active_step(self, run_id: str, step_id: str | None) -> None:
         row = self._store.execute("SELECT metadata_json FROM runs WHERE run_id = ?", (run_id,)).fetchone()
@@ -159,12 +147,11 @@ class RunRepository:
     def get_latest_successful_id(self, plan_version_id: str, branch_id: str | None = None) -> str | None:
         sql = "SELECT run_id FROM runs WHERE plan_version_id = ? AND status = 'succeeded'"
         params: list[object] = [plan_version_id]
-        if "branch_id" in self._run_columns():
-            if branch_id is None:
-                sql += " AND branch_id IS NULL"
-            else:
-                sql += " AND branch_id = ?"
-                params.append(branch_id)
+        if branch_id is None:
+            sql += " AND branch_id IS NULL"
+        else:
+            sql += " AND branch_id = ?"
+            params.append(branch_id)
         sql += " ORDER BY started_at DESC LIMIT 1"
         row = self._store.execute(sql, tuple(params)).fetchone()
         return None if row is None else row["run_id"]
@@ -175,29 +162,28 @@ class RunRepository:
             "WHERE pv.plan_id = ? AND r.status = 'succeeded'"
         )
         params: list[object] = [plan_id]
-        if "branch_id" in self._run_columns():
-            sql += " AND r.branch_id IS NULL"
+        sql += " AND r.branch_id IS NULL"
         sql += " ORDER BY r.started_at DESC LIMIT 1"
         row = self._store.execute(sql, tuple(params)).fetchone()
         return None if row is None else row["run_id"]
 
     def get_latest_successful_step(self, plan_version_id: str, step_id: str, branch_id: str | None = None) -> dict[str, Any] | None:
-        sql = (
-            "SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
-            "WHERE rs.plan_version_id = ? AND rs.step_id = ? AND rs.status = 'succeeded'"
-        )
-        params: list[object] = [plan_version_id, step_id]
-        if "branch_id" in self._run_columns():
-            if branch_id is None:
-                sql += " AND r.branch_id IS NULL"
-            else:
-                sql += " AND r.branch_id = ?"
-                params.append(branch_id)
-        sql += " ORDER BY rs.started_at DESC LIMIT 1"
-        row = self._store.execute(sql, tuple(params)).fetchone()
-        if row is None:
+        from cardre.store.run_step_repo import RunStepRepository
+        rs = RunStepRepository(self._store).get_latest_successful_step(plan_version_id, step_id, branch_id=branch_id)
+        if rs is None:
             return None
-        return dict(row)
+        return {
+            "run_step_id": rs.run_step_id,
+            "run_id": rs.run_id,
+            "step_id": rs.step_id,
+            "plan_version_id": rs.plan_version_id,
+            "status": rs.status.value,
+            "started_at": rs.started_at,
+            "finished_at": rs.finished_at,
+            "execution_fingerprint_json": json.dumps(rs.execution_fingerprint),
+            "warnings_json": json.dumps(rs.warnings),
+            "errors_json": json.dumps(rs.errors),
+        }
 
     def get_latest_successful_step_across_plan(self, plan_id: str, step_id: str, branch_id: str | None = None) -> dict[str, Any] | None:
         sql = (
@@ -206,20 +192,16 @@ class RunRepository:
             "WHERE pv.plan_id = ? AND rs.step_id = ? AND rs.status = 'succeeded'"
         )
         params: list[object] = [plan_id, step_id]
-        if "branch_id" in self._run_columns():
-            if branch_id is None:
-                sql += " AND r.branch_id IS NULL"
-            else:
-                sql += " AND r.branch_id = ?"
-                params.append(branch_id)
+        if branch_id is None:
+            sql += " AND r.branch_id IS NULL"
+        else:
+            sql += " AND r.branch_id = ?"
+            params.append(branch_id)
         sql += " ORDER BY rs.started_at DESC LIMIT 1"
         row = self._store.execute(sql, tuple(params)).fetchone()
         if row is None:
             return None
         return dict(row)
-
-    def get_any_successful_id_for_plan(self, plan_id: str) -> str | None:
-        return self.get_latest_successful_id_for_plan(plan_id)
 
     def list_for_plan_version(self, plan_version_id: str | None = None) -> list[JsonDict]:
         if plan_version_id is None:
@@ -243,13 +225,4 @@ class RunRepository:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def _run_columns(self) -> set[str]:
-        rows = self._store.execute("PRAGMA table_info(runs)").fetchall()
-        return {r["name"] for r in rows}
 
-    def _table_exists(self, table: str) -> bool:
-        row = self._store.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
-            (table,),
-        ).fetchone()
-        return row is not None

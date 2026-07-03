@@ -5,7 +5,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store, require_governance
-from cardre.api.errors import BRANCH_NOT_FOUND, CardreApiError
+from cardre.api.errors import (
+    BRANCH_NOT_FOUND,
+    PLAN_NOT_FOUND,
+    PLAN_VERSION_NOT_FOUND,
+    CardreApiError,
+)
 from cardre.api.routes._project_scope import (
     branch_belongs_to_project,
     plan_belongs_to_project,
@@ -71,7 +76,7 @@ async def get_branch(
             status_code=404,
         )
     repo = BranchRepository(store)
-    branch = repo.get(branch_id)
+    branch = repo.get_branch(branch_id)
     if branch is None:
         raise CardreApiError(
             code=BRANCH_NOT_FOUND,
@@ -106,24 +111,24 @@ async def create_branch(
     """Create a new branch for challenger analysis."""
     if not plan_belongs_to_project(store, project_id, body.plan_id):
         raise CardreApiError(
-            code="PLAN_NOT_FOUND",
+            code=PLAN_NOT_FOUND,
             message=f"Plan {body.plan_id!r} not found.",
             status_code=404,
         )
     if not plan_version_belongs_to_project(store, project_id, body.base_plan_version_id):
         raise CardreApiError(
-            code="PLAN_VERSION_NOT_FOUND",
+            code=PLAN_VERSION_NOT_FOUND,
             message=f"Plan version {body.base_plan_version_id!r} not found.",
             status_code=404,
         )
     if not plan_version_belongs_to_project(store, project_id, body.head_plan_version_id):
         raise CardreApiError(
-            code="PLAN_VERSION_NOT_FOUND",
+            code=PLAN_VERSION_NOT_FOUND,
             message=f"Plan version {body.head_plan_version_id!r} not found.",
             status_code=404,
         )
     repo = BranchRepository(store)
-    branch_id = repo.create(
+    branch_id = repo.create_branch(
         project_id=project_id,
         plan_id=body.plan_id,
         name=body.name,
@@ -135,7 +140,7 @@ async def create_branch(
         base_branch_id=body.base_branch_id,
         branch_point_step_id=body.branch_point_step_id,
     )
-    branch = repo.get(branch_id)
+    branch = repo.get_branch(branch_id)
     assert branch is not None
     return BranchResponse(
         branch_id=branch["branch_id"],

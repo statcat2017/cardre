@@ -17,29 +17,6 @@ class StepRepository:
     def __init__(self, store: ProjectStore) -> None:
         self._store = store
 
-    def insert_steps(self, plan_version_id: str, steps: list[StepSpec]) -> None:
-        for step in steps:
-            self._store.execute(
-                "INSERT INTO plan_steps "
-                "(step_id, plan_version_id, node_type, node_version, category, "
-                " params_json, params_hash, branch_label, position, "
-                " canonical_step_id, branch_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    step.step_id,
-                    plan_version_id,
-                    step.node_type,
-                    step.node_version,
-                    step.category,
-                    json.dumps(step.params),
-                    step.params_hash,
-                    step.branch_label,
-                    step.position,
-                    step.canonical_step_id,
-                    step.branch_id,
-                ),
-            )
-
     def get_steps(self, plan_version_id: str) -> list[StepSpec]:
         rows = self._store.execute(
             "SELECT * FROM plan_steps WHERE plan_version_id = ? ORDER BY position",
@@ -78,6 +55,18 @@ class StepRepository:
         rows = self._store.execute(
             "SELECT * FROM plan_step_edges WHERE plan_version_id = ? ORDER BY edge_order",
             (plan_version_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_distinct_node_types(self, project_id: str) -> list[dict[str, Any]]:
+        rows = self._store.execute(
+            "SELECT DISTINCT ps.node_type, ps.node_version, ps.category "
+            "FROM plan_steps ps "
+            "JOIN plan_versions pv ON ps.plan_version_id = pv.plan_version_id "
+            "JOIN plans p ON pv.plan_id = p.plan_id "
+            "WHERE p.project_id = ? "
+            "ORDER BY ps.node_type",
+            (project_id,),
         ).fetchall()
         return [dict(r) for r in rows]
 

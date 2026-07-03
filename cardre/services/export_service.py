@@ -57,7 +57,7 @@ def export_branch_audit_pack(
     Uses branch-scoped evidence lookup.
     """
     branch_repo = BranchRepository(store)
-    branch = branch_repo.get(branch_id)
+    branch = branch_repo.get_branch(branch_id)
     if branch is None:
         raise ValueError(f"BRANCH_NOT_FOUND: {branch_id}")
 

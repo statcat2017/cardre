@@ -58,15 +58,7 @@ async def list_reviews(
     if step_id and plan_version_id:
         reviews = repo.get_reviews_for_step(plan_version_id, step_id)
     else:
-        # Return all reviews for the project (through plans)
-        rows = store.execute(
-            "SELECT r.* FROM manual_binning_reviews r "
-            "JOIN plan_versions pv ON r.plan_version_id = pv.plan_version_id "
-            "JOIN plans p ON pv.plan_id = p.plan_id "
-            "WHERE p.project_id = ? ORDER BY r.created_at",
-            (project_id,),
-        ).fetchall()
-        reviews = [repo._row_to_review(r) for r in rows]
+        reviews = repo.list_for_project(project_id)
     return [_review_to_response(r) for r in reviews]
 
 

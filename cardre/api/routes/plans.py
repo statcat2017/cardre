@@ -214,10 +214,8 @@ async def update_plan_version(
         )
 
     if body.description is not None:
-        store.execute(
-            "UPDATE plan_versions SET description = ? WHERE plan_version_id = ?",
-            (body.description, plan_version_id),
-        )
+        repo = PlanRepository(store)
+        repo.update_version_description(plan_version_id, body.description)
 
     updated = service.get_plan_version(plan_version_id)
     assert updated is not None

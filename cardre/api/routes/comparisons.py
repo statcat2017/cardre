@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store, require_governance
@@ -22,19 +20,8 @@ async def list_comparisons(
     store: ProjectStore = Depends(get_project_store),
 ) -> ComparisonListResponse:
     """List all comparisons for a project."""
-    # Since ComparisonRepository doesn't have list_for_project, query directly
-    comparisons: list[dict[str, Any]] = []
-    if plan_id:
-        rows = store.execute(
-            "SELECT * FROM branch_comparisons WHERE project_id = ? AND plan_id = ? ORDER BY created_at",
-            (project_id, plan_id),
-        ).fetchall()
-    else:
-        rows = store.execute(
-            "SELECT * FROM branch_comparisons WHERE project_id = ? ORDER BY created_at",
-            (project_id,),
-        ).fetchall()
-    comparisons = [dict(r) for r in rows]
+    repo = ComparisonRepository(store)
+    comparisons = repo.list_for_project(project_id, plan_id=plan_id)
 
     return ComparisonListResponse(
         comparisons=[

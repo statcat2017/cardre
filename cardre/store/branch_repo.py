@@ -18,38 +18,6 @@ class BranchRepository:
     def __init__(self, store: ProjectStore) -> None:
         self._store = store
 
-    def create(
-        self,
-        project_id: str,
-        plan_id: str,
-        name: str,
-        branch_type: str,
-        base_plan_version_id: str,
-        head_plan_version_id: str,
-        created_reason: str,
-        branch_id: str | None = None,
-        description: str | None = None,
-        base_branch_id: str | None = None,
-        branch_point_step_id: str | None = None,
-        branch_point_canonical_step_id: str | None = None,
-        segment_filter_spec_json: str | None = None,
-    ) -> str:
-        return self.create_branch(
-            project_id,
-            plan_id,
-            name,
-            branch_type,
-            base_plan_version_id,
-            head_plan_version_id,
-            created_reason,
-            branch_id=branch_id,
-            description=description,
-            base_branch_id=base_branch_id,
-            branch_point_step_id=branch_point_step_id,
-            branch_point_canonical_step_id=branch_point_canonical_step_id,
-            segment_filter_spec_json=segment_filter_spec_json,
-        )
-
     # ------------------------------------------------------------------
     # Plan branches
     # ------------------------------------------------------------------
@@ -93,9 +61,6 @@ class BranchRepository:
             "SELECT * FROM plan_branches WHERE branch_id = ?", (branch_id,)
         ).fetchone()
         return None if row is None else dict(row)
-
-    def get(self, branch_id: str) -> JsonDict | None:
-        return self.get_branch(branch_id)
 
     def list(
         self,
@@ -171,33 +136,18 @@ class BranchRepository:
         ).fetchall()
         return [r["plan_version_id"] for r in rows]
 
-    def get_output_artifact_ids(self, branch_id: str) -> builtins.list[builtins.list[str]]:
-        rows = self._store.execute(
-            "SELECT rs.run_step_id, al.artifact_id "
-            "FROM artifact_lineage al "
-            "JOIN run_steps rs ON rs.run_step_id = al.run_step_id "
-            "WHERE al.branch_id = ? AND al.direction = 'output' "
-            "ORDER BY rs.started_at, al.created_at",
-            (branch_id,),
-        ).fetchall()
-        grouped: list[list[str]] = []
-        current_step: str | None = None
-        current_ids: list[str] = []
-        for row in rows:
-            step_id = row["run_step_id"]
-            if current_step is None or step_id != current_step:
-                if current_ids:
-                    grouped.append(current_ids)
-                current_step = step_id
-                current_ids = []
-            current_ids.append(row["artifact_id"])
-        if current_ids:
-            grouped.append(current_ids)
-        return grouped
-
     # ------------------------------------------------------------------
     # Champion assignments
     # ------------------------------------------------------------------
+
+    def get_champion_assignment_for_project(self, project_id: str) -> JsonDict | None:
+        row = self._store.execute(
+            "SELECT * FROM champion_assignments "
+            "WHERE project_id = ? AND superseded_at IS NULL "
+            "ORDER BY assigned_at DESC LIMIT 1",
+            (project_id,),
+        ).fetchone()
+        return None if row is None else dict(row)
 
     def get_champion_assignment(self, plan_id: str, champion_branch_id: str | None = None) -> JsonDict | None:
         if champion_branch_id:

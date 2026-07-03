@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from cardre.domain.errors import GraphValidationError
-from cardre.domain.run import RunStepStatus
+from cardre.domain.run import RunStep, RunStepStatus
 from cardre.domain.step import StepSpec
 
 if TYPE_CHECKING:
@@ -146,16 +146,29 @@ class StalenessService:
     ) -> bool:
         """Check if a step is stale by comparing evidence tables to current spec.
 
-        Reads from evidence_edges + evidence_artifacts to determine if
-        params, node_type, node_version, or parent outputs have changed.
+        Discovers the source run-step via ``evidence_edges``, then reads
+        ``params_hash``, ``node_type``, ``node_version`` from the linked
+        run-step's execution fingerprint.  This honours the v2 contract:
+        staleness flows from the two-level evidence tables, not from
+        ``run_steps.execution_fingerprint_json`` directly.
         """
         if spec.step_id in stale_cache:
             return stale_cache[spec.step_id]
 
-        # Get the latest run step for this spec
-        rs = rs_repo.get_latest_successful_step(plan_version_id, spec.step_id, branch_id=branch_id)
+        # Discover source run-step via evidence_edges
+        edges = evidence_repo.get_edges_for_plan_step(plan_version_id, spec.step_id)
+        rs: RunStep | None = None
+        if edges:
+            # Use the most recent edge's source run-step
+            source_run_step_id = edges[-1].source_run_step_id
+            rs = rs_repo.get(source_run_step_id)
+
         if rs is None and branch_id is not None:
-            rs = rs_repo.get_latest_successful_step(plan_version_id, spec.step_id, branch_id=None)
+            edges = evidence_repo.get_edges_for_plan_step(plan_version_id, spec.step_id)
+            if edges:
+                source_run_step_id = edges[-1].source_run_step_id
+                rs = rs_repo.get(source_run_step_id)
+
         if rs is None and plan_id is not None:
             plan_run_id = run_repo.get_latest_successful_id_for_plan(plan_id)
             if plan_run_id is not None:
@@ -194,10 +207,11 @@ class StalenessService:
                 stale_cache[spec.step_id] = True
                 return True
 
-            # Check parent output hashes
-            parent_rs = rs_repo.get_latest_successful_step(plan_version_id, pid, branch_id=branch_id)
-            if parent_rs is None and branch_id is not None:
-                parent_rs = rs_repo.get_latest_successful_step(plan_version_id, pid, branch_id=None)
+            # Check parent output hashes via evidence edges
+            parent_edges = evidence_repo.get_edges_for_plan_step(plan_version_id, pid)
+            parent_rs: RunStep | None = None
+            if parent_edges:
+                parent_rs = rs_repo.get(parent_edges[-1].source_run_step_id)
 
             if parent_rs is not None:
                 stored_parent_outputs = fp.get("parent_output_logical_hashes_by_step", {}).get(pid, [])
@@ -208,7 +222,6 @@ class StalenessService:
                     stale_cache[spec.step_id] = True
                     return True
             else:
-                # Parent has no run step — staleness indeterminate, treat as stale
                 stale_cache[spec.step_id] = True
                 return True
 
