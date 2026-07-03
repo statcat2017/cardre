@@ -23,14 +23,14 @@ cardre-api = "sidecar.__main__:main"
 
 [project.optional-dependencies]
 sidecar = ["fastapi", "uvicorn"]
-test = ["pytest", "pytest-cov", "pytest-mock", "httpx", "starlette"]
+test = ["pytest", "pytest-cov", "pytest-mock", "httpx"]
 dev = ["ruff==0.15.20"]
 boosting = ["xgboost", "lightgbm", "catboost"]
 imbalance = ["imbalanced-learn"]
-explain = ["shap", "lime"]
+explain = ["shap"]
 deep = ["torch"]
 optimal-binning = ["optbinning==0.21.0"]
-all-methods = ["xgboost", "lightgbm", "catboost", "imbalanced-learn", "shap", "lime", "torch", "optbinning==0.21.0"]
+all-methods = ["xgboost", "lightgbm", "catboost", "imbalanced-learn", "shap", "torch", "optbinning==0.21.0"]
 
 [tool.setuptools.packages.find]
 include = ["cardre*", "sidecar*"]
@@ -57,7 +57,7 @@ addopts = [
 markers = [
     "optional_boosting: tests requiring xgboost/lightgbm/catboost",
     "optional_imbalance: tests requiring imbalanced-learn",
-    "optional_explain: tests requiring shap/lime",
+    "optional_explain: tests requiring shap",
     "optional_binning: tests requiring optbinning",
     "optional_deep: tests requiring torch",
     "slow: tests that take longer to run",
