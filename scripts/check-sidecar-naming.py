@@ -4,6 +4,7 @@
 Run locally and in CI. Exits non-zero on drift.
 """
 from __future__ import annotations
+
 import pathlib
 import re
 import sys

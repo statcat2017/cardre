@@ -1,7 +1,12 @@
 """Typed evidence data models — split by family."""
 
 from cardre._evidence.models.apply import ApplyModelEvidence, ApplyWoeEvidence, ScoredDataset
-from cardre._evidence.models.binning import BinDefinition, BinVariable, SelectedVariable, SelectionDefinition
+from cardre._evidence.models.binning import (
+    BinDefinition,
+    BinVariable,
+    SelectedVariable,
+    SelectionDefinition,
+)
 from cardre._evidence.models.governance import (
     ClusterMember,
     ExplainabilityReport,
@@ -30,7 +35,12 @@ from cardre._evidence.models.sample import (
     SplitSummary,
 )
 from cardre._evidence.models.summary import ArtifactEvidenceSummary
-from cardre._evidence.models.validation import CutoffAnalysis, CutoffRow, RoleMetrics, ValidationMetrics
+from cardre._evidence.models.validation import (
+    CutoffAnalysis,
+    CutoffRow,
+    RoleMetrics,
+    ValidationMetrics,
+)
 from cardre._evidence.models.woe import (
     AffectedBin,
     IvTable,

@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from cardre._version import __version__
 from cardre.domain.errors import SchemaVersionError
 from cardre.store.schema import (
     ALL_TABLES_SQL,
@@ -29,6 +30,7 @@ class ProjectStore:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
         self._db: sqlite3.Connection | None = None
+        self._txn_depth = 0
 
     # ------------------------------------------------------------------
     # Initialization / open
@@ -60,7 +62,7 @@ class ProjectStore:
         )
         conn.execute(
             "INSERT OR REPLACE INTO store_meta (key, value) VALUES ('created_by_cardre_version', ?)",
-            ("0.2.0",),
+            (__version__,),
         )
         conn.commit()
 
@@ -146,6 +148,13 @@ class ProjectStore:
             self._db.close()
             self._db = None
 
+    def __enter__(self) -> ProjectStore:
+        self.open()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
     # ------------------------------------------------------------------
     # Transaction
     # ------------------------------------------------------------------
@@ -163,7 +172,10 @@ class ProjectStore:
                 f"Invalid transaction mode {mode!r}; "
                 f"expected one of {sorted(self.VALID_TXN_MODES)}"
             )
+        if self._txn_depth > 0:
+            raise RuntimeError("nested transaction attempts are not supported")
         conn = self._connect()
+        self._txn_depth += 1
         conn.execute(f"BEGIN {mode}")
         try:
             yield conn
@@ -171,6 +183,8 @@ class ProjectStore:
         except BaseException:
             conn.rollback()
             raise
+        finally:
+            self._txn_depth -= 1
 
     # ------------------------------------------------------------------
     # Raw SQL helpers (for repos)
@@ -186,7 +200,7 @@ class ProjectStore:
         elif isinstance(artifact, dict):
             path = Path(artifact["path"])
         else:
-            path = Path(getattr(artifact, "path"))
+            path = Path(artifact.path)
         return path if path.is_absolute() else self.root / path
 
     def execute_script(self, sql: str) -> None:

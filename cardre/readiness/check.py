@@ -6,10 +6,15 @@ branch mode (warns but does not block without champion assignment).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+# ---------------------------------------------------------------------------
+# Inlined step resolution helpers (formerly cardre.step_id)
+# ---------------------------------------------------------------------------
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 
-from cardre.readiness.dto import ReadinessBlocker, ReadinessWarning, ReportReadinessResult
 from cardre._evidence.kinds import EvidenceKind
+from cardre.readiness.dto import ReadinessBlocker, ReadinessWarning, ReportReadinessResult
 from cardre.readiness.limitation_codes import LimitationCode
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_BRANCH,
@@ -17,14 +22,6 @@ from cardre.reporting.evidence_contract import (
 )
 from cardre.store import ProjectStore
 from cardre.store.run_repo import RunRepository
-
-# ---------------------------------------------------------------------------
-# Inlined step resolution helpers (formerly cardre.step_id)
-# ---------------------------------------------------------------------------
-
-
-from dataclasses import dataclass, field
-from typing import Any
 
 
 @dataclass
@@ -138,7 +135,7 @@ def check_report_readiness(
             target_branch_id=target_branch_id,
             run_id=run_id,
             report_mode=report_mode,
-            checked_at=datetime.now(timezone.utc).isoformat(),
+            checked_at=datetime.now(UTC).isoformat(),
         )
 
     if branch.get("status") != "active":
@@ -159,7 +156,7 @@ def check_report_readiness(
             target_branch_id=target_branch_id,
             run_id=run_id,
             report_mode=report_mode,
-            checked_at=datetime.now(timezone.utc).isoformat(),
+            checked_at=datetime.now(UTC).isoformat(),
         )
 
     if run.get("status") != "succeeded":
@@ -356,5 +353,5 @@ def check_report_readiness(
         target_branch_id=target_branch_id,
         run_id=run_id,
         report_mode=report_mode,
-        checked_at=datetime.now(timezone.utc).isoformat(),
+        checked_at=datetime.now(UTC).isoformat(),
     )

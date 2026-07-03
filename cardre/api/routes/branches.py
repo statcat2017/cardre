@@ -5,11 +5,15 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store, require_governance
-from cardre.api.errors import CardreApiError, BRANCH_NOT_FOUND
+from cardre.api.errors import BRANCH_NOT_FOUND, CardreApiError
+from cardre.api.routes._project_scope import (
+    branch_belongs_to_project,
+    plan_belongs_to_project,
+    plan_version_belongs_to_project,
+)
 from cardre.api.schemas import BranchCreateRequest, BranchListResponse, BranchResponse
-from cardre.store.db import ProjectStore
 from cardre.store.branch_repo import BranchRepository
-from cardre.api.routes._project_scope import branch_belongs_to_project, plan_belongs_to_project, plan_version_belongs_to_project
+from cardre.store.db import ProjectStore
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["branches"],
                    dependencies=[Depends(require_governance)])

@@ -157,5 +157,43 @@ def store_with_evidence(store):
 def api_client():
     """FastAPI TestClient bound to the v2 minimal API."""
     from fastapi.testclient import TestClient
+
     from cardre.api.app import app
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _project_resolution_test_env(monkeypatch, tmp_path_factory):
+    """Set up registry path for tests. Raw project path is disabled by default.
+
+    Tests that need the legacy raw-path mode should use the
+    ``raw_project_path`` fixture to opt in.
+    """
+    registry_dir = tmp_path_factory.mktemp("cardre-registry")
+    monkeypatch.setenv("CARDRE_ALLOW_RAW_PROJECT_PATH", "0")
+    monkeypatch.setenv("CARDRE_REGISTRY_PATH", str(registry_dir / "projects.json"))
+
+
+@pytest.fixture
+def raw_project_path(monkeypatch):
+    """Opt-in fixture for tests that need CARDRE_ALLOW_RAW_PROJECT_PATH=1."""
+    monkeypatch.setenv("CARDRE_ALLOW_RAW_PROJECT_PATH", "1")
+
+
+@pytest.fixture
+def registered_store(store):
+    """Register a store's project in the registry and return (store, project_id).
+
+    Tests that need X-Project-Id can use this fixture instead of manually
+    registering the project.
+    """
+    from cardre.services.project_resolver import ProjectResolver
+    from cardre.config import CardreConfig
+
+    rows = store.execute("SELECT project_id FROM projects").fetchall()
+    if not rows:
+        return store, None
+    project_id = rows[0]["project_id"]
+    resolver = ProjectResolver(CardreConfig.from_env().registry_path)
+    resolver.register_project(project_id, store.root)
+    return store, project_id

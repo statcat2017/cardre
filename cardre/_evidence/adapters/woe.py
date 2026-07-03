@@ -7,7 +7,6 @@ from typing import Any
 
 import polars as pl
 
-from cardre.domain.artifacts import ArtifactRef
 from cardre._evidence.adapters._base import (
     candidate_passes_payload_check,
     match_by_role_type_media,
@@ -18,6 +17,7 @@ from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.models.apply import ApplyModelEvidence, ApplyWoeEvidence, ScoredDataset
 from cardre._evidence.models.woe import IvTable, WoeIvEvidence, WoeTable, WoeTransformEvidence
 from cardre._evidence.profiles import EVIDENCE_PROFILES, _Profile
+from cardre.domain.artifacts import ArtifactRef
 from cardre.store import ProjectStore
 
 

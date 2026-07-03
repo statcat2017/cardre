@@ -7,16 +7,16 @@ It must not become a second modelling execution path.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
-from cardre.store import ProjectStore
-from cardre.store.run_repo import RunRepository
-from cardre.domain.artifacts import json_logical_hash
-from cardre.domain.run import RunStep
-from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.errors import Diagnostic
+from cardre.domain.run import RunStep
 from cardre.readiness.limitation_codes import LimitationCode
+from cardre.reporting.evidence_contract import REQUIRED_STEPS_COLLECTOR
 from cardre.reporting.schema import (
     AffectedBinDetail,
     ArtifactEntry,
@@ -54,9 +54,8 @@ from cardre.reporting.schema import (
     VariableInfo,
     WoeSmoothingInfo,
 )
-
-from cardre.reporting.evidence_contract import REQUIRED_STEPS_COLLECTOR
-from cardre.domain.errors import Diagnostic
+from cardre.store import ProjectStore
+from cardre.store.run_repo import RunRepository
 
 # ---------------------------------------------------------------------------
 # Inlined step resolution helpers (formerly cardre.step_id)
@@ -149,7 +148,7 @@ def _to_schema_ref(ref) -> ResolvedStepRef:
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 class ReportCollector:

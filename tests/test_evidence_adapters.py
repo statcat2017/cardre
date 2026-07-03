@@ -24,7 +24,6 @@ from cardre._evidence.profiles import EVIDENCE_PROFILES
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.domain.artifacts import ArtifactRef
 
-
 # ---------------------------------------------------------------------------
 # Registry coverage tests
 # ---------------------------------------------------------------------------

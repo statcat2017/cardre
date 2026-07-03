@@ -10,7 +10,6 @@ from cardre.services.manual_binning_service import (
     extract_woe_by_bin,
 )
 
-
 SAMPLE_VARIABLE = {
     "variable": "income",
     "kind": "numeric",

@@ -5,9 +5,11 @@ from typing import Any
 import numpy as np
 import polars as pl
 
+from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre._evidence.schemas import SCHEMA_VARIABLE_CLUSTERING_EVIDENCE
 from cardre.artifacts import write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
 from cardre.node_parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -15,9 +17,7 @@ from cardre.node_parameters import (
     ParameterDefinition,
 )
 from cardre.nodes._bin_mask import build_bin_condition
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.schemas import SCHEMA_VARIABLE_CLUSTERING_EVIDENCE
+from cardre.nodes.contracts import NodeType
 
 
 class VariableClusteringNode(NodeType):

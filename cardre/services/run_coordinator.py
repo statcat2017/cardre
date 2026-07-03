@@ -15,7 +15,7 @@ Class renamed to ``RunCoordinator`` (free rename, clearer name).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 from cardre.config import CardreConfig
@@ -30,7 +30,20 @@ from cardre.domain.run import RunStepStatus
 
 if TYPE_CHECKING:
     from cardre.domain.diagnostics import JsonDict
+    from cardre.execution.worker import RunDispatcher
     from cardre.store.db import ProjectStore
+
+
+# Module-level singleton dispatcher — app-scoped, not per-request (#4).
+_global_dispatcher: "RunDispatcher | None" = None
+
+
+def _get_global_dispatcher() -> "RunDispatcher":
+    global _global_dispatcher
+    if _global_dispatcher is None:
+        from cardre.execution.worker import ThreadRunDispatcher
+        _global_dispatcher = ThreadRunDispatcher()
+    return _global_dispatcher
 
 
 @dataclass
@@ -50,6 +63,23 @@ class RunSummary:
     is_stale: bool = False
 
 
+@dataclass
+class RunPlanDecision:
+    """Typed plan decision computed before dispatch (#212).
+
+    ``kind`` is one of:
+    - ``execute``: create a run and execute/dispatch it;
+    - ``short_circuit``: return the existing run without new work;
+    - ``reject``: the request is invalid; the caller has already raised.
+
+    Toggling ``sync`` changes only where ``execute`` work runs, never
+    what work is performed.
+    """
+    kind: Literal["execute", "short_circuit", "reject"]
+    existing_run_id: str | None = None
+    diagnostics: list[JsonDict] | None = None
+
+
 class RunCoordinator:
     """Single entrypoint for run creation, execution, and dispatch.
 
@@ -58,9 +88,17 @@ class RunCoordinator:
     executes, enabling async recovery.
     """
 
-    def __init__(self, store: "ProjectStore") -> None:
+    def __init__(
+        self,
+        store: ProjectStore,
+        dispatcher: "RunDispatcher | None" = None,
+    ) -> None:
         self._store = store
         self._config = CardreConfig.from_env()
+        if dispatcher is not None:
+            self._dispatcher = dispatcher
+        else:
+            self._dispatcher = _get_global_dispatcher()
 
     # ------------------------------------------------------------------
     # Public API
@@ -107,32 +145,21 @@ class RunCoordinator:
         if run_scope == "to_node":
             self._raise_run_scope_not_available(run_scope, target_step_id)
 
-        # Preflight short-circuit checks (sync runs fall through to
-        # _execute_sync which records the RUN_SHORT_CIRCUITED diagnostic)
-        if not force:
-            if run_scope == "branch" and branch_id:
-                from cardre.services.evidence_resolver import EvidencePolicyService
-                evidence = EvidencePolicyService(self._store)
-                result = evidence.check_branch_current(plan_version_id, branch_id)
-                if result.run_id is not None:
-                    if sync:
-                        pass  # Fall through to _execute_sync
-                    else:
-                        placeholder_id = self._create_persisted_run(
-                            plan_version_id=plan_version_id,
-                            run_scope=run_scope, branch_id=branch_id,
-                            target_step_id=target_step_id, force=force,
-                            requested_by=requested_by, request_id=request_id,
-                        )
-                        self._cancel_placeholder_run(
-                            placeholder_id,
-                            plan_version_id=plan_version_id,
-                            execution_mode="branch",
-                            branch_id=branch_id,
-                            existing_run_id=result.run_id,
-                            reason="because branch has no stale steps",
-                        )
-                        return self.get_summary(result.run_id)
+        # Compute the plan decision once — sync and async must agree.
+        decision = self._plan_decision(
+            plan_version_id=plan_version_id,
+            run_scope=run_scope,
+            branch_id=branch_id,
+            target_step_id=target_step_id,
+            force=force,
+            requested_by=requested_by,
+            request_id=request_id,
+            run_repo=run_repo,
+        )
+
+        if decision.kind == "short_circuit":
+            assert decision.existing_run_id is not None
+            return self.get_summary(decision.existing_run_id)
 
         # Recover stale runs for this plan_version
         for existing_run in run_repo.list_for_plan_version(plan_version_id=plan_version_id):
@@ -194,6 +221,45 @@ class RunCoordinator:
     # Internal execution
     # ------------------------------------------------------------------
 
+    def _plan_decision(
+        self,
+        *,
+        plan_version_id: str,
+        run_scope: str,
+        branch_id: str | None,
+        target_step_id: str | None,
+        force: bool,
+        requested_by: str | None,
+        request_id: str | None,
+        run_repo: object,
+    ) -> RunPlanDecision:
+        """Compute the run plan decision once, independent of sync/async (#212).
+
+        Sync and async must perform the same work for the same decision.
+        A ``short_circuit`` decision returns the existing run without
+        creating a placeholder.
+        """
+        if not force and run_scope == "branch" and branch_id:
+            from cardre.services.evidence_resolver import EvidencePolicyService
+            evidence = EvidencePolicyService(self._store)
+            result = evidence.check_branch_current(plan_version_id, branch_id)
+            if result.status == "current" and result.run_id is not None:
+                return RunPlanDecision(
+                    kind="short_circuit",
+                    existing_run_id=result.run_id,
+                )
+            if result.status == "error":
+                raise CardreError(
+                    f"Evidence policy check failed for branch {branch_id!r}",
+                    code="EVIDENCE_POLICY_ERROR",
+                    context={
+                        "plan_version_id": plan_version_id,
+                        "branch_id": branch_id,
+                        "diagnostics": result.diagnostics,
+                    },
+                )
+        return RunPlanDecision(kind="execute")
+
     def _raise_run_scope_not_available(
         self,
         run_scope: str,
@@ -231,8 +297,8 @@ class RunCoordinator:
             RunRepository(self._store).finish(run_id, "failed")
             self._raise_run_scope_not_available(run_scope, target_step_id)
 
-        from cardre.execution.run_lifecycle import RunLifecycle
         from cardre.execution.executor import PlanExecutor
+        from cardre.execution.run_lifecycle import RunLifecycle
 
         executor = PlanExecutor(self._store)
 
@@ -292,7 +358,7 @@ class RunCoordinator:
         run_scope: str, branch_id: str | None, target_step_id: str | None,
         force: bool,
     ) -> RunSummary:
-        from cardre.execution.worker import RunRequest, ThreadRunDispatcher
+        from cardre.execution.worker import RunRequest
 
         project_path = str(self._store.root)
         request = RunRequest(
@@ -304,8 +370,20 @@ class RunCoordinator:
             target_step_id=target_step_id,
             force=force,
         )
-        dispatcher = ThreadRunDispatcher()
-        dispatcher.dispatch(request)
+        try:
+            self._dispatcher.dispatch(request)
+        except CardreError:
+            from cardre.store.run_repo import RunRepository
+            RunRepository(self._store).append_diagnostic(run_id, {
+                "code": "RUN_DISPATCH_FAILED",
+                "message": "Dispatch failed; run marked as failed.",
+                "severity": "error",
+                "run_id": run_id,
+                "plan_version_id": plan_version_id,
+                "created_at": utc_now_iso(),
+            })
+            RunRepository(self._store).finish(run_id, "failed")
+            raise
         return self.get_summary(run_id)
 
     # ------------------------------------------------------------------
@@ -388,52 +466,11 @@ class RunCoordinator:
         if hb is None:
             return True
         try:
-            hb_ts = datetime.fromisoformat(hb).replace(tzinfo=timezone.utc).timestamp()
-            now_ts = datetime.now(timezone.utc).timestamp()
+            hb_ts = datetime.fromisoformat(hb).replace(tzinfo=UTC).timestamp()
+            now_ts = datetime.now(UTC).timestamp()
             return (now_ts - hb_ts) > self._config.stale_heartbeat_seconds
         except (ValueError, TypeError):
             return True
-
-    def _cancel_placeholder_run(
-        self,
-        run_id: str,
-        *,
-        plan_version_id: str,
-        execution_mode: str,
-        branch_id: str | None = None,
-        target_step_id: str | None = None,
-        existing_run_id: str,
-        reason: str,
-    ) -> None:
-        from cardre.execution.run_lifecycle import RunLifecycle
-        from cardre.store.run_repo import RunRepository
-
-        RunRepository(self._store).append_diagnostic(run_id, {
-            "code": "RUN_SHORT_CIRCUITED",
-            "message": (
-                f"Run {run_id} short-circuited {reason} "
-                f"(existing run {existing_run_id})"
-            ),
-            "severity": "info",
-            "run_id": run_id,
-            "plan_version_id": plan_version_id,
-            "branch_id": branch_id,
-            "created_at": utc_now_iso(),
-        })
-        lifecycle = RunLifecycle(
-            store=self._store,
-            run_id=run_id,
-            plan_version_id=plan_version_id,
-            execution_mode=execution_mode,
-            branch_id=branch_id,
-            target_step_id=target_step_id,
-        )
-        lifecycle.finalise(
-            status="cancelled",
-            execution_mode=execution_mode,
-            branch_id=branch_id,
-            target_step_id=target_step_id,
-        )
 
     def get_summary(
         self, run_id: str, executed_ids: list[str] | None = None,
@@ -475,4 +512,4 @@ class RunCoordinator:
         )
 
 
-__all__ = ["RunCoordinator", "RunSummary"]
+__all__ = ["RunCoordinator", "RunPlanDecision", "RunSummary"]

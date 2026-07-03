@@ -11,20 +11,25 @@ from cardre.domain.diagnostics import utc_now_iso
 
 @pytest.fixture
 def project_with_store(store):
-    """Create a project in the store and return (project_id, store, root)."""
+    """Create a project in the store and register it. Returns (project_id, store, root)."""
+    from cardre.services.project_resolver import ProjectResolver
+    from cardre.config import CardreConfig
+
     project_id = str(uuid.uuid4())
     now = utc_now_iso()
     store.execute(
         "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
         (project_id, "Test Project", now, "0.2.0"),
     )
+    resolver = ProjectResolver(CardreConfig.from_env().registry_path)
+    resolver.register_project(project_id, store.root)
     return project_id, store, store.root
 
 
 class TestProjects:
     def test_list_projects(self, api_client, project_with_store):
         project_id, store, root = project_with_store
-        resp = api_client.get("/projects", headers={"X-Project-Path": str(root)})
+        resp = api_client.get("/projects")
         assert resp.status_code == 200
         data = resp.json()
         assert "projects" in data
@@ -32,10 +37,7 @@ class TestProjects:
 
     def test_get_project(self, api_client, project_with_store):
         project_id, store, root = project_with_store
-        resp = api_client.get(
-            f"/projects/{project_id}",
-            headers={"X-Project-Path": str(root)},
-        )
+        resp = api_client.get(f"/projects/{project_id}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["project_id"] == project_id
@@ -43,20 +45,19 @@ class TestProjects:
 
     def test_get_project_not_found(self, api_client, project_with_store):
         _, store, root = project_with_store
-        resp = api_client.get(
-            "/projects/nonexistent-id",
-            headers={"X-Project-Path": str(root)},
-        )
+        resp = api_client.get("/projects/nonexistent-id")
         assert resp.status_code == 404
         data = resp.json()
         assert "detail" in data
         assert data["detail"]["code"] == "PROJECT_NOT_FOUND"
 
     def test_get_project_missing_header(self, api_client):
-        resp = api_client.get("/projects/some-id")
-        assert resp.status_code == 400
+        # /projects/{id} now resolves via registry, no header needed.
+        # A missing project returns 404, not 400 MISSING_PROJECT_ID.
+        resp = api_client.get("/projects/nonexistent-id")
+        assert resp.status_code == 404
         data = resp.json()
-        assert data["detail"]["code"] == "MISSING_PROJECT_PATH"
+        assert data["detail"]["code"] == "PROJECT_NOT_FOUND"
 
     def test_create_project_bootstraps_fresh_store(self, api_client, tmp_path):
         from cardre.store.db import ProjectStore
@@ -90,10 +91,7 @@ class TestProjects:
         resp = api_client.post("/projects", json={"name": "RT", "path": str(project_dir)})
         assert resp.status_code == 201
         pid = resp.json()["project_id"]
-        resp2 = api_client.get(
-            f"/projects/{pid}",
-            headers={"X-Project-Path": str(project_dir)},
-        )
+        resp2 = api_client.get(f"/projects/{pid}")
         assert resp2.status_code == 200
         assert resp2.json()["project_id"] == pid
 

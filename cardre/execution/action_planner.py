@@ -7,7 +7,7 @@ execute, reuse from a prior run, or skip.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from cardre.domain.evidence import ResolvedEvidence
@@ -22,6 +22,8 @@ class _StepAction:
     action: Literal["execute", "reuse", "skip"]
     evidence_source: ResolvedEvidence | None = None
     before_execute: Callable[[], None] | None = None
+    reason_code: str = "execute"
+    reason_context: dict | None = field(default_factory=dict)
 
 
 __all__ = ["_StepAction"]

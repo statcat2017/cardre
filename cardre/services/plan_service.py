@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from cardre.domain.errors import CardreError
 from cardre.domain.plan import Plan, PlanVersion
 from cardre.store.plan_repo import PlanRepository
-from cardre.domain.errors import CardreError
 
 if TYPE_CHECKING:
     from cardre.store.db import ProjectStore

@@ -36,10 +36,13 @@ class CardreError(Exception):
         code: str | None = None,
         context: dict[str, Any] | None = None,
         diagnostics: list[Diagnostic] | None = None,
+        status_code: int | None = None,
     ) -> None:
         super().__init__(message or self.code)
         if code is not None:
             self.code = code
+        if status_code is not None:
+            self.status_code = status_code
         self.message = message or self.code
         self.context = context or {}
         self.diagnostics = diagnostics or []
@@ -184,8 +187,8 @@ __all__ = [
     "NodeNotAvailableForLaunch",
     "OptionalDependencyNotInstalled",
     "ParameterValidationError",
-    "PlanVersionNotCommittedError",
     "PlanContainsUnavailableNodesError",
+    "PlanVersionNotCommittedError",
     "RunLifecycleError",
     "RunNotFoundError",
     "RunNotRunningError",

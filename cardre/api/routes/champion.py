@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store, require_governance
 from cardre.api.schemas import ChampionAssignmentResponse, ChampionResponse
-from cardre.store.db import ProjectStore
 from cardre.store.branch_repo import BranchRepository
+from cardre.store.db import ProjectStore
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["champion"],
                    dependencies=[Depends(require_governance)])

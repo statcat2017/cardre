@@ -52,7 +52,7 @@ def project_with_branch_data(store):
 
 
 class TestBranches:
-    def test_list_branches_governance_disabled(self, api_client, project_with_branch_data, monkeypatch):
+    def test_list_branches_governance_disabled(self, raw_project_path, api_client, project_with_branch_data, monkeypatch):
         """Without governance, branches return 403."""
         project_id, _, _, _, _, _, root = project_with_branch_data
         monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
@@ -74,7 +74,7 @@ class TestBranches:
         data = resp.json()
         assert data["detail"]["code"] == "GOVERNANCE_DISABLED"
 
-    def test_list_branches_governance_enabled(self, api_client, project_with_branch_data, monkeypatch):
+    def test_list_branches_governance_enabled(self, raw_project_path, api_client, project_with_branch_data, monkeypatch):
         """With governance enabled, branches list successfully."""
         project_id, _, _, _, _, _, root = project_with_branch_data
         monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
@@ -96,7 +96,7 @@ class TestBranches:
         data = resp.json()
         assert "branches" in data
 
-    def test_get_branch_governance_enabled(self, api_client, project_with_branch_data, monkeypatch):
+    def test_get_branch_governance_enabled(self, raw_project_path, api_client, project_with_branch_data, monkeypatch):
         project_id, _, branch_id, _, _, _, root = project_with_branch_data
         monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
             "MockConfig", (), {
@@ -117,7 +117,7 @@ class TestBranches:
         data = resp.json()
         assert data["branch_id"] == branch_id
 
-    def test_get_branch_wrong_project(self, api_client, project_with_branch_data, monkeypatch):
+    def test_get_branch_wrong_project(self, raw_project_path, api_client, project_with_branch_data, monkeypatch):
         _, _, branch_id, _, _, _, root = project_with_branch_data
         monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
             "MockConfig", (), {
@@ -137,7 +137,7 @@ class TestBranches:
         assert resp.status_code == 404
         assert resp.json()["detail"]["code"] == "BRANCH_NOT_FOUND"
 
-    def test_get_branch_not_found(self, api_client, project_with_branch_data, monkeypatch):
+    def test_get_branch_not_found(self, raw_project_path, api_client, project_with_branch_data, monkeypatch):
         project_id, _, _, _, _, _, root = project_with_branch_data
         monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
             "MockConfig", (), {

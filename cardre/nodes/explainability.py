@@ -11,15 +11,17 @@ from typing import Any
 
 import polars as pl
 
-from cardre.artifacts import write_json_artifact
-from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre.artifacts import write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
 from cardre.node_parameters import (
-    MethodOption, NodeParameterSchema, ParameterConstraint, ParameterDefinition,
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
 )
-
+from cardre.nodes.contracts import NodeType
 
 EXPLAINABILITY_LEVELS = {
     "native_scorecard",
@@ -121,7 +123,7 @@ class ModelExplainabilityNode(NodeType):
         data_role = params.get("permutation_data_role", "train")
         if data_role not in ("train", "test", "oot"):
             errors.append("permutation_data_role must be one of 'train', 'test', 'oot'")
-        random_seeds = params.get("random_seeds", None)
+        random_seeds = params.get("random_seeds")
         if random_seeds is not None:
             if not isinstance(random_seeds, list) or not all(isinstance(s, int) for s in random_seeds):
                 errors.append("random_seeds must be a list of integers or null")
@@ -299,6 +301,7 @@ class ModelExplainabilityNode(NodeType):
                 expected_logical_hash=estimator_ref.get("logical_hash"),
             )
             import io
+
             import joblib
             estimator = joblib.load(io.BytesIO(estimator_bytes))
 
@@ -335,8 +338,8 @@ class ModelExplainabilityNode(NodeType):
         random_seeds: list[int], data_role: str = "train",
     ) -> dict | None:
         try:
-            from scipy.stats import spearmanr
             import numpy as np
+            from scipy.stats import spearmanr
         except ImportError:
             return None
 
@@ -399,6 +402,7 @@ class ModelExplainabilityNode(NodeType):
                 expected_logical_hash=estimator_ref.get("logical_hash"),
             )
             import io
+
             import joblib
             estimator = joblib.load(io.BytesIO(estimator_bytes))
 
@@ -452,6 +456,7 @@ class ModelExplainabilityNode(NodeType):
                 expected_logical_hash=estimator_ref.get("logical_hash"),
             )
             import io
+
             import joblib
             import numpy as np
             estimator = joblib.load(io.BytesIO(estimator_bytes))

@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store, require_governance
 from cardre.api.schemas import ComparisonListResponse, ComparisonResponse
-from cardre.store.db import ProjectStore
 from cardre.store.comparison_repo import ComparisonRepository
+from cardre.store.db import ProjectStore
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["comparisons"],
                    dependencies=[Depends(require_governance)])
@@ -59,7 +59,7 @@ async def get_comparison(
     repo = ComparisonRepository(store)
     comparison = repo.get_comparison(comparison_id)
     if comparison is None:
-        from cardre.api.errors import CardreApiError, COMPARISON_NOT_FOUND
+        from cardre.api.errors import COMPARISON_NOT_FOUND, CardreApiError
         raise CardreApiError(
             code=COMPARISON_NOT_FOUND,
             message=f"Comparison {comparison_id!r} not found.",

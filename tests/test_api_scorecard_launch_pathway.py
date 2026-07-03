@@ -104,7 +104,7 @@ def _build_steps(csv_path: Path) -> list[StepSpec]:
     return result
 
 
-def test_full_scorecard_launch_pathway_via_api(api_client, tmp_path):
+def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp_path):
     """Full 15-node scorecard pathway through the project-scoped API.
 
     Phases:

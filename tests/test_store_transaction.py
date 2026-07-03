@@ -21,3 +21,9 @@ def test_transaction_rolls_back_on_error(store) -> None:
         (project_id,),
     ).fetchone()
     assert row is None
+
+
+def test_nested_transaction_fails_with_clear_error(store) -> None:
+    with store.transaction(), pytest.raises(RuntimeError, match="nested transaction"):
+        with store.transaction():
+            pass

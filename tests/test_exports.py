@@ -16,7 +16,6 @@ from cardre.domain.diagnostics import utc_now_iso
 from cardre.services.export_service import export_branch_audit_pack
 from cardre.store.db import ProjectStore
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

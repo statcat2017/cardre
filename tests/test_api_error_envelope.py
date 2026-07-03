@@ -15,14 +15,13 @@ from __future__ import annotations
 
 import uuid
 
-
 from cardre.api.errors import (
     ARTIFACT_NOT_FOUND,
     BRANCH_NOT_FOUND,
     COMPARISON_NOT_FOUND,
     CONCURRENT_RUN,
     GOVERNANCE_DISABLED,
-    MISSING_PROJECT_PATH,
+    MISSING_PROJECT_ID,
     PLAN_NOT_FOUND,
     PLAN_VERSION_IMMUTABLE,
     PLAN_VERSION_NOT_FOUND,
@@ -40,7 +39,7 @@ ERROR_CODES = [
     COMPARISON_NOT_FOUND,
     CONCURRENT_RUN,
     GOVERNANCE_DISABLED,
-    MISSING_PROJECT_PATH,
+    MISSING_PROJECT_ID,
     PLAN_NOT_FOUND,
     PLAN_VERSION_IMMUTABLE,
     PLAN_VERSION_NOT_FOUND,
@@ -62,7 +61,7 @@ class TestErrorEnvelope:
             "COMPARISON_NOT_FOUND",
             "CONCURRENT_RUN",
             "GOVERNANCE_DISABLED",
-            "MISSING_PROJECT_PATH",
+            "MISSING_PROJECT_ID",
             "PLAN_NOT_FOUND",
             "PLAN_VERSION_IMMUTABLE",
             "PLAN_VERSION_NOT_FOUND",
@@ -110,14 +109,14 @@ class TestErrorEnvelope:
 
     def test_validation_error_envelope(self, api_client):
         """FastAPI validation errors should also produce detail.code."""
-        # Missing X-Project-Path header should produce MISSING_PROJECT_PATH
-        resp = api_client.get("/projects/some-id")
+        # Missing project id on a project-scoped route should produce MISSING_PROJECT_ID
+        resp = api_client.get("/projects/some-id/runs")
         assert resp.status_code == 400
         data = resp.json()
         assert "detail" in data
-        assert data["detail"]["code"] == "MISSING_PROJECT_PATH"
+        assert data["detail"]["code"] == "MISSING_PROJECT_ID"
 
-    def test_404_produces_envelope(self, api_client, store):
+    def test_404_produces_envelope(self, raw_project_path, api_client, store):
         """A 404 error from the API should have the right shape."""
         root = store.root
         resp = api_client.get(

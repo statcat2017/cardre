@@ -18,8 +18,7 @@ from __future__ import annotations
 import enum
 from dataclasses import dataclass, field
 
-from cardre.domain.diagnostics import JsonDict
-from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.diagnostics import JsonDict, utc_now_iso
 
 
 class RunStepStatus(enum.Enum):

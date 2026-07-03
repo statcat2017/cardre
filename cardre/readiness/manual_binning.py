@@ -8,7 +8,6 @@ integration (Phase 4).
 
 from __future__ import annotations
 
-
 from cardre.services.plan_dto import ManualBinningVariableSummary
 
 

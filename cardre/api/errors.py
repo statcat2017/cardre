@@ -20,7 +20,6 @@ from fastapi.responses import JSONResponse
 
 from cardre.domain.errors import CardreError
 
-
 # ---------------------------------------------------------------------------
 # Error codes
 # ---------------------------------------------------------------------------
@@ -38,7 +37,9 @@ STEP_NOT_FOUND = "STEP_NOT_FOUND"
 BRANCH_NOT_FOUND = "BRANCH_NOT_FOUND"
 COMPARISON_NOT_FOUND = "COMPARISON_NOT_FOUND"
 REVIEW_NOT_FOUND = "REVIEW_NOT_FOUND"
+MISSING_PROJECT_ID = "MISSING_PROJECT_ID"
 MISSING_PROJECT_PATH = "MISSING_PROJECT_PATH"
+RAW_PROJECT_PATH_DISABLED = "RAW_PROJECT_PATH_DISABLED"
 CONCURRENT_RUN = "CONCURRENT_RUN"
 STORE_ALREADY_EXISTS = "STORE_ALREADY_EXISTS"
 INVALID_PROJECT_PATH = "INVALID_PROJECT_PATH"
@@ -109,21 +110,23 @@ __all__ = [
     "BRANCH_NOT_FOUND",
     "COMPARISON_NOT_FOUND",
     "CONCURRENT_RUN",
-    "CardreApiError",
     "GOVERNANCE_DISABLED",
     "INVALID_PROJECT_PATH",
+    "MISSING_PROJECT_ID",
     "MISSING_PROJECT_PATH",
     "PLAN_NOT_FOUND",
     "PLAN_VERSION_IMMUTABLE",
     "PLAN_VERSION_NOT_FOUND",
     "PROJECT_NOT_FOUND",
+    "RAW_PROJECT_PATH_DISABLED",
     "REVIEW_NOT_FOUND",
     "RUN_EXECUTION_FAILED",
     "RUN_NOT_FOUND",
     "STEP_NOT_FOUND",
     "STORE_ALREADY_EXISTS",
     "STORE_VERSION_INCOMPATIBLE",
-    "error_response",
-    "cardre_error_handler",
+    "CardreApiError",
     "cardre_api_error_handler",
+    "cardre_error_handler",
+    "error_response",
 ]

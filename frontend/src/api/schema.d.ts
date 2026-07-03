@@ -33,7 +33,11 @@ export interface paths {
         };
         /**
          * List Projects
-         * @description List all projects (from the currently opened store).
+         * @description List all registered projects from the registry.
+         *
+         *     Projects that cannot be opened (corrupt store, missing root, schema
+         *     mismatch) are reported in ``unavailable_projects`` rather than
+         *     silently skipped.
          */
         get: operations["list_projects_projects_get"];
         put?: never;
@@ -57,7 +61,7 @@ export interface paths {
         };
         /**
          * Get Project
-         * @description Get a single project by ID.
+         * @description Get a single project by ID, resolved via the registry.
          */
         get: operations["get_project_projects__project_id__get"];
         put?: never;
@@ -741,6 +745,22 @@ export interface components {
             /** Latest Ready */
             latest_ready?: boolean | null;
         };
+        /** EvidenceArtifactResponse */
+        EvidenceArtifactResponse: {
+            /** Evidence Artifact Id */
+            evidence_artifact_id: string;
+            /** Evidence Edge Id */
+            evidence_edge_id: string;
+            /** Artifact Id */
+            artifact_id: string;
+            /** Role */
+            role: string;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+        };
         /** EvidenceEdgeResponse */
         EvidenceEdgeResponse: {
             /** Evidence Edge Id */
@@ -1004,6 +1024,8 @@ export interface components {
         ProjectListResponse: {
             /** Projects */
             projects: components["schemas"]["ProjectResponse"][];
+            /** Unavailable Projects */
+            unavailable_projects?: components["schemas"]["UnavailableProjectResponse"][];
         };
         /** ProjectResponse */
         ProjectResponse: {
@@ -1048,6 +1070,55 @@ export interface components {
              * @default false
              */
             sync: boolean;
+        };
+        /**
+         * RunEvidenceEdgeResponse
+         * @description Typed response for a single evidence edge in a run (#216).
+         *
+         *     Includes full provenance fields from EvidenceEdgeResponse plus
+         *     nested artifacts so the generated schema and frontend types match
+         *     the actual payload shape.
+         */
+        RunEvidenceEdgeResponse: {
+            /** Evidence Edge Id */
+            evidence_edge_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Run Step Id */
+            run_step_id: string;
+            /** Plan Version Id */
+            plan_version_id: string;
+            /** Step Id */
+            step_id: string;
+            /** Parent Step Id */
+            parent_step_id: string;
+            /** Source Run Id */
+            source_run_id: string;
+            /** Source Run Step Id */
+            source_run_step_id: string;
+            /** Policy */
+            policy: string;
+            /** Source Label */
+            source_label: string;
+            /**
+             * Is Reused
+             * @default false
+             */
+            is_reused: boolean;
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
+            /** Stale Reason */
+            stale_reason?: string | null;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Artifacts */
+            artifacts?: components["schemas"]["EvidenceArtifactResponse"][];
         };
         /** RunListResponse */
         RunListResponse: {
@@ -1133,6 +1204,20 @@ export interface components {
             /** Missing Evidence */
             missing_evidence?: string[];
         };
+        /**
+         * UnavailableProjectResponse
+         * @description A registered project that could not be opened (corrupt, missing, etc).
+         */
+        UnavailableProjectResponse: {
+            /** Project Id */
+            project_id: string;
+            /** Root */
+            root: string;
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1178,9 +1263,7 @@ export interface operations {
     list_projects_projects_get: {
         parameters: {
             query?: never;
-            header?: {
-                "X-Project-Path"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1193,15 +1276,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1242,9 +1316,7 @@ export interface operations {
     get_project_projects__project_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "X-Project-Path"?: string | null;
-            };
+            header?: never;
             path: {
                 project_id: string;
             };
@@ -1276,6 +1348,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1309,6 +1382,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1346,6 +1420,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1380,6 +1455,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1414,6 +1490,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1448,6 +1525,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1486,6 +1564,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1520,6 +1599,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1553,6 +1633,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1590,6 +1671,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1624,6 +1706,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1658,6 +1741,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1674,9 +1758,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["RunEvidenceEdgeResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -1696,6 +1778,7 @@ export interface operations {
                 plan_version_id?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1732,6 +1815,7 @@ export interface operations {
                 plan_version_id?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1766,6 +1850,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1803,6 +1888,7 @@ export interface operations {
                 step_id?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1836,6 +1922,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1870,6 +1957,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1908,6 +1996,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1983,6 +2072,7 @@ export interface operations {
                 branch_type?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2016,6 +2106,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2053,6 +2144,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2089,6 +2181,7 @@ export interface operations {
                 plan_id?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2122,6 +2215,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2158,6 +2252,7 @@ export interface operations {
                 plan_id?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2193,6 +2288,7 @@ export interface operations {
                 run_id?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2226,6 +2322,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2259,6 +2356,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2293,6 +2391,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {

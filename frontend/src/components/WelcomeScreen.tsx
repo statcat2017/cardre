@@ -23,16 +23,12 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
 
   const projectsQuery = useQuery({
     queryKey: ["projects", projectPath],
-    queryFn: () => api.listProjects({ projectPath: projectPath.trim() }),
+    queryFn: () => api.listProjects(),
     enabled: projectPath.trim().length > 0,
   });
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      api.createProject(
-        { projectPath: projectPath.trim() },
-        { name: projectName.trim(), path: projectPath.trim() },
-      ),
+    mutationFn: () => api.createProject({ name: projectName.trim(), path: projectPath.trim() }),
     onSuccess: (project) => {
       setError(null);
       onProjectCreated(project.project_id, projectPath.trim());

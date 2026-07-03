@@ -12,11 +12,12 @@ import numpy as np
 from sklearn.tree import DecisionTreeClassifier
 
 from cardre.node_parameters import (
-    MethodOption, NodeParameterSchema, ParameterConstraint, ParameterDefinition,
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
 )
 from cardre.nodes._classifier_base import BaseClassifierNode, _ClassifierResult
-
-
 
 
 def _extract_rules_from_tree(

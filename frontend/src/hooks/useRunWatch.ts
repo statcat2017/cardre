@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchJson, ApiError } from "../api/client";
+import { ApiError, api } from "../api/client";
 import { ErrorCodes } from "../api/errorCodes";
 import type { components } from "../api/schema.d";
 
@@ -24,6 +24,10 @@ export type RunWatchStatus =
   | "stale"
   | "stuck"
   | "cancelled"
+  | "sidecar_unreachable"
+  | "timeout"
+  | "malformed_response"
+  | "backend_error"
   | "error";
 
 export interface RunWatchState {
@@ -40,8 +44,6 @@ export interface RunWatchState {
 }
 
 export interface UseRunWatchOptions {
-  /** Base URL of the Cardre API (with port). */
-  baseUrl: string;
   /** Project ID. */
   projectId: string;
   /** Run ID to watch. */
@@ -105,6 +107,14 @@ function deriveMessage(
       return "Run appears stuck — no progress detected.";
     case "cancelled":
       return "Run was cancelled.";
+    case "sidecar_unreachable":
+      return "Sidecar is unreachable — is the backend running?";
+    case "timeout":
+      return "Request timed out.";
+    case "malformed_response":
+      return "Received malformed response from server.";
+    case "backend_error":
+      return "Backend returned an error.";
     case "error":
       return "An error occurred while watching the run.";
   }
@@ -116,7 +126,6 @@ function deriveMessage(
 
 export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
   const {
-    baseUrl,
     projectId,
     runId,
     pollIntervalMs = 2000,
@@ -136,12 +145,8 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
   const poll = useCallback(async () => {
     if (!runId) return;
 
-    const url = `${baseUrl}/projects/${projectId}/runs/${runId}`;
-
     try {
-      const data = await fetchJson<components["schemas"]["RunResponse"]>(url, {
-        timeoutMs: pollIntervalMs - 200,
-      });
+      const data = await api.getRun({ projectId }, projectId, runId);
       errorCountRef.current = 0;
       setRun(data);
       setError(null);
@@ -173,16 +178,22 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
         switch (err.code) {
           case ErrorCodes.SIDECAR_UNREACHABLE:
             message = "Sidecar is unreachable — is the backend running?";
+            errStatus = "sidecar_unreachable";
             break;
           case ErrorCodes.REQUEST_TIMEOUT:
             message = "Request timed out.";
+            errStatus = "timeout";
             break;
           case ErrorCodes.MALFORMED_JSON_RESPONSE:
             message = "Received malformed response from server.";
+            errStatus = "malformed_response";
             break;
           case ErrorCodes.REQUEST_ABORTED:
             message = "Request was aborted.";
             errStatus = "cancelled";
+            break;
+          default:
+            errStatus = "backend_error";
             break;
         }
       } else {
@@ -192,16 +203,18 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
       setError(message);
       setStatus(errStatus);
 
-      // Give up after maxErrorRetries
+      // Give up after maxErrorRetries — preserve the specific transport
+      // error status instead of collapsing to "stuck".
       if (errorCountRef.current >= maxErrorRetries) {
         setPolling(false);
-        setStatus("stuck");
-        setError(`Poller gave up after ${maxErrorRetries} consecutive errors.`);
+        setError(
+          `Poller gave up after ${maxErrorRetries} consecutive errors. Last error: ${message}`,
+        );
       } else {
         setPolling(true);
       }
     }
-  }, [baseUrl, projectId, runId, pollIntervalMs, maxErrorRetries, onComplete, onError]);
+  }, [projectId, runId, maxErrorRetries, onComplete, onError]);
 
   // Start / stop polling
   useEffect(() => {

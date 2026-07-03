@@ -28,6 +28,21 @@ class ShortCircuitResult:
 
 
 @dataclass
+class EvidenceCheckResult:
+    """Typed result for evidence policy checks (#215).
+
+    ``status`` is one of:
+    - ``current``: evidence is fresh; short-circuit is possible;
+    - ``stale``: evidence exists but is stale; execution is needed;
+    - ``missing``: no prior evidence; execution is needed;
+    - ``error``: an infrastructure error occurred; do not silently retry.
+    """
+    status: Literal["current", "stale", "missing", "error"]
+    run_id: str | None = None
+    diagnostics: list = field(default_factory=list)
+
+
+@dataclass
 class BranchRunEvidence:
     branch: dict[str, Any]
     plan_version_id: str
@@ -49,7 +64,7 @@ STATUS_SUCCEEDED = "succeeded"
 class EvidenceResolver:
     """Resolve run-step evidence with a named policy and diagnostics."""
 
-    def __init__(self, store: "ProjectStore") -> None:
+    def __init__(self, store: ProjectStore) -> None:
         self._store = store
 
     def resolve(
@@ -152,8 +167,8 @@ class EvidenceResolver:
         source_branch_id: str | None, require_fingerprint_match: StepSpec | None,
         diagnostics: list[Diagnostic],
     ) -> tuple[ResolvedEvidence | None, str, list[Diagnostic]]:
-        from cardre.store.run_step_repo import RunStepRepository
         from cardre.store.run_repo import RunRepository
+        from cardre.store.run_step_repo import RunStepRepository
         rs_repo = RunStepRepository(self._store)
         run_repo = RunRepository(self._store)
 
@@ -219,8 +234,8 @@ class EvidenceResolver:
         branch_id: str | None, require_fingerprint_match: StepSpec | None,
         diagnostics: list[Diagnostic],
     ) -> tuple[ResolvedEvidence | None, str, list[Diagnostic]]:
-        from cardre.store.run_step_repo import RunStepRepository
         from cardre.store.run_repo import RunRepository
+        from cardre.store.run_step_repo import RunStepRepository
         rs_repo = RunStepRepository(self._store)
         run_repo = RunRepository(self._store)
 
@@ -296,23 +311,43 @@ class EvidenceResolver:
 
 class EvidencePolicyService:
 
-    def __init__(self, store: "ProjectStore") -> None:
+    def __init__(self, store: ProjectStore) -> None:
         self._store = store
 
-    def check_branch_current(self, plan_version_id: str, branch_id: str) -> ShortCircuitResult:
-        """Check if a branch run would short-circuit (no stale steps, existing successful run)."""
+    def check_branch_current(self, plan_version_id: str, branch_id: str) -> EvidenceCheckResult:
+        """Check if a branch run would short-circuit (no stale steps, existing successful run).
+
+        Returns a typed EvidenceCheckResult (#215):
+        - ``current`` if an existing run can be reused;
+        - ``missing`` if no prior evidence exists;
+        - ``error`` if an infrastructure error occurs.
+        """
         try:
             ctx = self.prepare_branch_evidence(plan_version_id, branch_id, force=False)
             if ctx.short_circuit_run_id is not None:
-                return ShortCircuitResult(run_id=ctx.short_circuit_run_id, reason="branch_current")
-        except Exception:
-            pass
-        return ShortCircuitResult()
+                return EvidenceCheckResult(
+                    status="current",
+                    run_id=ctx.short_circuit_run_id,
+                    diagnostics=[{"code": "BRANCH_CURRENT", "message": "Branch evidence is current."}],
+                )
+            return EvidenceCheckResult(status="missing")
+        except (KeyError, ValueError, TypeError) as exc:
+            return EvidenceCheckResult(
+                status="error",
+                diagnostics=[{
+                    "code": "EVIDENCE_CHECK_ERROR",
+                    "message": f"Evidence check failed: {exc}",
+                    "severity": "error",
+                }],
+            )
 
     def check_to_node_current(
         self, plan_version_id: str, target_step_id: str, branch_id: str | None = None,
-    ) -> ShortCircuitResult:
-        """Check if a to_node run would short-circuit (all closure steps non-stale)."""
+    ) -> EvidenceCheckResult:
+        """Check if a to_node run would short-circuit (all closure steps non-stale).
+
+        Returns a typed EvidenceCheckResult (#215).
+        """
         from cardre.execution.step_graph import ancestor_closure
         try:
             from cardre.store.step_repo import StepRepository
@@ -320,7 +355,7 @@ class EvidencePolicyService:
             steps = step_repo.get_steps(plan_version_id)
             step_by_id = {s.step_id: s for s in steps}
             if target_step_id not in step_by_id:
-                return ShortCircuitResult()
+                return EvidenceCheckResult(status="missing")
             ancestors = ancestor_closure(target_step_id, steps)
             closure = ancestors | {target_step_id}
             closure_steps = [s for s in steps if s.step_id in closure]
@@ -339,19 +374,30 @@ class EvidencePolicyService:
                     plan_version_id, branch_id=branch_id,
                 )
                 if existing_run_id is not None:
-                    return ShortCircuitResult(run_id=existing_run_id, reason="to_node_current")
-        except Exception:
-            pass
-        return ShortCircuitResult()
+                    return EvidenceCheckResult(
+                        status="current",
+                        run_id=existing_run_id,
+                        diagnostics=[{"code": "TO_NODE_CURRENT", "message": "To-node evidence is current."}],
+                    )
+            return EvidenceCheckResult(status="missing")
+        except (KeyError, ValueError, TypeError) as exc:
+            return EvidenceCheckResult(
+                status="error",
+                diagnostics=[{
+                    "code": "EVIDENCE_CHECK_ERROR",
+                    "message": f"Evidence check failed: {exc}",
+                    "severity": "error",
+                }],
+            )
 
     def prepare_branch_evidence(
         self, plan_version_id: str, branch_id: str, force: bool = False,
     ) -> BranchRunEvidence:
         """Prepare branch evidence for execution."""
-        from cardre.store.step_repo import StepRepository
-        from cardre.store.run_repo import RunRepository
         from cardre.execution.topology import validate_topology
         from cardre.services.staleness_service import StalenessService
+        from cardre.store.run_repo import RunRepository
+        from cardre.store.step_repo import StepRepository
 
         step_repo = StepRepository(self._store)
         run_repo = RunRepository(self._store)
@@ -412,6 +458,7 @@ class EvidencePolicyService:
 
 __all__ = [
     "BranchRunEvidence",
+    "EvidenceCheckResult",
     "EvidencePolicyService",
     "EvidenceResolver",
     "ShortCircuitResult",

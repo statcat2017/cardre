@@ -18,15 +18,15 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
   const [newPlanName, setNewPlanName] = useState("Scorecard Pathway");
   const [error, setError] = useState<string | null>(null);
 
-  const projectOptions = useMemo(() => ({ projectPath }), [projectPath]);
+  const projectOptions = useMemo(() => ({ projectId }), [projectId]);
 
   const projectQuery = useQuery({
-    queryKey: ["project", projectPath, projectId],
-    queryFn: () => api.getProject(projectOptions, projectId),
+    queryKey: ["project", projectId],
+    queryFn: () => api.getProject(projectId),
   });
 
   const plansQuery = useQuery({
-    queryKey: ["plans", projectPath, projectId],
+    queryKey: ["plans", projectId],
     queryFn: () => api.listPlans(projectOptions, projectId),
   });
 
@@ -36,7 +36,7 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
       : (plansQuery.data?.plans[0]?.plan_id ?? null);
 
   const versionsQuery = useQuery({
-    queryKey: ["planVersions", projectPath, projectId, effectiveSelectedPlanId],
+    queryKey: ["planVersions", projectId, effectiveSelectedPlanId],
     queryFn: () =>
       api.listPlanVersions(projectOptions, projectId, effectiveSelectedPlanId as string),
     enabled: !!effectiveSelectedPlanId,
@@ -51,7 +51,7 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
       : (planVersions[planVersions.length - 1]?.plan_version_id ?? null);
 
   const runsQuery = useQuery({
-    queryKey: ["runs", projectPath, projectId],
+    queryKey: ["runs", projectId],
     queryFn: () => api.listRuns(projectOptions, projectId),
   });
 
@@ -68,19 +68,19 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
       : (runsForSelectedVersion[0]?.run_id ?? null);
 
   const selectedRunQuery = useQuery({
-    queryKey: ["run", projectPath, projectId, effectiveSelectedRunId],
+    queryKey: ["run", projectId, effectiveSelectedRunId],
     queryFn: () => api.getRun(projectOptions, projectId, effectiveSelectedRunId as string),
     enabled: !!effectiveSelectedRunId,
   });
 
   const runStepsQuery = useQuery({
-    queryKey: ["runSteps", projectPath, projectId, effectiveSelectedRunId],
+    queryKey: ["runSteps", projectId, effectiveSelectedRunId],
     queryFn: () => api.listRunSteps(projectOptions, projectId, effectiveSelectedRunId as string),
     enabled: !!effectiveSelectedRunId,
   });
 
   const runEvidenceQuery = useQuery({
-    queryKey: ["runEvidence", projectPath, projectId, effectiveSelectedRunId],
+    queryKey: ["runEvidence", projectId, effectiveSelectedRunId],
     queryFn: () => api.listRunEvidence(projectOptions, projectId, effectiveSelectedRunId as string),
     enabled: !!effectiveSelectedRunId,
   });
@@ -92,7 +92,7 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
       setSelectedPlanId(plan.plan_id);
       setSelectedVersionId(null);
       setSelectedRunId(null);
-      queryClient.invalidateQueries({ queryKey: ["plans", projectPath, projectId] });
+      queryClient.invalidateQueries({ queryKey: ["plans", projectId] });
     },
     onError: (err) => {
       setError(
@@ -106,16 +106,16 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
       api.createRun(projectOptions, projectId, {
         plan_version_id: effectiveSelectedVersionId as string,
         force: false,
-        sync: true,
+        sync: false,
       }),
     onSuccess: (run) => {
       setError(null);
       setSelectedRunId(run.run_id);
-      queryClient.invalidateQueries({ queryKey: ["runs", projectPath, projectId] });
-      queryClient.invalidateQueries({ queryKey: ["run", projectPath, projectId, run.run_id] });
-      queryClient.invalidateQueries({ queryKey: ["runSteps", projectPath, projectId, run.run_id] });
+      queryClient.invalidateQueries({ queryKey: ["runs", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["run", projectId, run.run_id] });
+      queryClient.invalidateQueries({ queryKey: ["runSteps", projectId, run.run_id] });
       queryClient.invalidateQueries({
-        queryKey: ["runEvidence", projectPath, projectId, run.run_id],
+        queryKey: ["runEvidence", projectId, run.run_id],
       });
     },
     onError: (err) => {

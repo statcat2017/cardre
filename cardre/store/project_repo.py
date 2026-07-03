@@ -6,6 +6,7 @@ import json
 import uuid
 from typing import TYPE_CHECKING
 
+from cardre._version import __version__
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 
 if TYPE_CHECKING:
@@ -18,11 +19,13 @@ class ProjectRepository:
     def __init__(self, store: ProjectStore) -> None:
         self._store = store
 
-    def create(self, name: str, cardre_version: str = "0.2.0") -> str:
+    def create(self, name: str, cardre_version: str = __version__) -> str:
         project_id = str(uuid.uuid4())
         now = utc_now_iso()
         self._store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            "INSERT INTO projects"
+            " (project_id, name, created_at, cardre_version)"
+            " VALUES (?, ?, ?, ?)",
             (project_id, name, now, cardre_version),
         )
         return project_id

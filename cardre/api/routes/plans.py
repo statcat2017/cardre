@@ -11,7 +11,16 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
-from cardre.api.errors import CardreApiError, PLAN_NOT_FOUND, PLAN_VERSION_IMMUTABLE, PLAN_VERSION_NOT_FOUND
+from cardre.api.errors import (
+    PLAN_NOT_FOUND,
+    PLAN_VERSION_IMMUTABLE,
+    PLAN_VERSION_NOT_FOUND,
+    CardreApiError,
+)
+from cardre.api.routes._project_scope import (
+    plan_belongs_to_project,
+    plan_version_belongs_to_project,
+)
 from cardre.api.schemas import (
     PlanCreateRequest,
     PlanListResponse,
@@ -23,7 +32,6 @@ from cardre.api.schemas import (
 from cardre.services.plan_service import PlanService, PlanServiceError
 from cardre.store.db import ProjectStore
 from cardre.store.plan_repo import PlanRepository
-from cardre.api.routes._project_scope import plan_belongs_to_project, plan_version_belongs_to_project
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["plans"])
 

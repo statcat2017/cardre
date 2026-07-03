@@ -14,12 +14,15 @@ from sklearn.tree import DecisionTreeClassifier
 
 from cardre.artifacts import write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
 from cardre.modeling.builders import build_model_artifact
 from cardre.node_parameters import (
-    MethodOption, NodeParameterSchema, ParameterConstraint, ParameterDefinition,
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
 )
 from cardre.nodes._training_utils import _prepare_training_data, _write_estimator
+from cardre.nodes.contracts import NodeType
 
 ESTIMATOR_MAP = {
     "decision_tree": DecisionTreeClassifier,

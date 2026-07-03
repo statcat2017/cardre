@@ -12,11 +12,11 @@ from typing import Any
 import numpy as np
 import polars as pl
 
+from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.contracts import NodeType
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.kinds import EvidenceKind
 
 
 def _typed_definition_payload(existing_typed: Any | None) -> dict[str, Any]:
@@ -227,7 +227,7 @@ class FeatureSelectionFilterNode(NodeType):
 
         # Remaining columns are selected
         for col in numeric_cols:
-            iv_val = iv_map.get(col, None)
+            iv_val = iv_map.get(col)
             selected.append({
                 "variable": col,
                 "reason": "Passed all filter thresholds",

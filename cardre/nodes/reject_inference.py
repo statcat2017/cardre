@@ -7,14 +7,13 @@ import numpy as np
 import polars as pl
 from sklearn.linear_model import LogisticRegression
 
+from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre._evidence.schemas import SCHEMA_REJECT_INFERENCE_RESULT, SCHEMA_REJECT_POPULATION_CONFIG
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
 from cardre.node_parameters import NodeParameterSchema
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.schemas import SCHEMA_REJECT_INFERENCE_RESULT, SCHEMA_REJECT_POPULATION_CONFIG
-
+from cardre.nodes.contracts import NodeType
 
 _RI_FINANCED = "_ri_financed"
 
@@ -28,7 +27,7 @@ class DefineRejectPopulationNode(NodeType):
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
-        from cardre.node_parameters import NodeParameterSchema, MethodOption
+        from cardre.node_parameters import MethodOption, NodeParameterSchema
         return NodeParameterSchema(
             node_type=cls.node_type,
             node_version=cls.version,
@@ -182,7 +181,7 @@ class RejectInferenceNoneNode(NodeType):
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
-        from cardre.node_parameters import NodeParameterSchema, MethodOption
+        from cardre.node_parameters import MethodOption, NodeParameterSchema
         return NodeParameterSchema(
             node_type=cls.node_type,
             node_version=cls.version,
@@ -273,7 +272,12 @@ class RejectInferenceAugmentationNode(NodeType):
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
-        from cardre.node_parameters import NodeParameterSchema, MethodOption, ParameterDefinition, ParameterConstraint
+        from cardre.node_parameters import (
+            MethodOption,
+            NodeParameterSchema,
+            ParameterConstraint,
+            ParameterDefinition,
+        )
         return NodeParameterSchema(
             node_type=cls.node_type,
             node_version=cls.version,
@@ -541,6 +545,6 @@ class RejectInferenceAugmentationNode(NodeType):
 
 __all__ = [
     "DefineRejectPopulationNode",
-    "RejectInferenceNoneNode",
     "RejectInferenceAugmentationNode",
+    "RejectInferenceNoneNode",
 ]

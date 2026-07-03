@@ -21,7 +21,7 @@ class ArtifactRepository:
 
     def register(self, artifact: ArtifactRef) -> str:
         self._store.execute(
-            "INSERT OR REPLACE INTO artifacts "
+            "INSERT INTO artifacts "
             "(artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at, metadata_json) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (

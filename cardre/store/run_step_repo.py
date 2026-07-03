@@ -19,7 +19,7 @@ class RunStepRepository:
 
     def save(self, run_step: RunStep) -> None:
         self._store.execute(
-            "INSERT OR REPLACE INTO run_steps "
+            "INSERT INTO run_steps "
             "(run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, "
             " execution_fingerprint_json, warnings_json, errors_json) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

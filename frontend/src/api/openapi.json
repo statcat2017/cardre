@@ -34,26 +34,8 @@
           "projects"
         ],
         "summary": "List Projects",
-        "description": "List all projects (from the currently opened store).",
+        "description": "List all registered projects from the registry.\n\nProjects that cannot be opened (corrupt store, missing root, schema\nmismatch) are reported in ``unavailable_projects`` rather than\nsilently skipped.",
         "operationId": "list_projects_projects_get",
-        "parameters": [
-          {
-            "name": "X-Project-Path",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Project-Path"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -61,16 +43,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProjectListResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -85,14 +57,14 @@
         "description": "Create a new project by bootstrapping a fresh v2 store at body.path.",
         "operationId": "create_project_projects_post",
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ProjectCreateRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "201": {
@@ -124,7 +96,7 @@
           "projects"
         ],
         "summary": "Get Project",
-        "description": "Get a single project by ID.",
+        "description": "Get a single project by ID, resolved via the registry.",
         "operationId": "get_project_projects__project_id__get",
         "parameters": [
           {
@@ -134,22 +106,6 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
-            }
-          },
-          {
-            "name": "X-Project-Path",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Project-Path"
             }
           }
         ],
@@ -193,6 +149,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -250,6 +222,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -331,6 +319,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -396,6 +400,22 @@
             "schema": {
               "type": "string",
               "title": "Plan Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -467,6 +487,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -530,6 +566,22 @@
             "schema": {
               "type": "string",
               "title": "Plan Version Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -611,6 +663,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -670,6 +738,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -724,6 +808,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -805,6 +905,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -870,6 +986,22 @@
             "schema": {
               "type": "string",
               "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -945,6 +1077,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -969,8 +1117,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object",
-                    "additionalProperties": true
+                    "$ref": "#/components/schemas/RunEvidenceEdgeResponse"
                   },
                   "title": "Response List Run Evidence Projects  Project Id  Runs  Run Id  Evidence Get"
                 }
@@ -1031,6 +1178,22 @@
                 }
               ],
               "title": "Plan Version Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -1118,6 +1281,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -1187,6 +1366,22 @@
             "schema": {
               "type": "string",
               "title": "Artifact Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -1281,6 +1476,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -1353,6 +1564,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -1416,6 +1643,22 @@
             "schema": {
               "type": "string",
               "title": "Review Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -1485,6 +1728,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -1642,6 +1901,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -1696,6 +1971,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -1777,6 +2068,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -1852,6 +2159,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -1917,6 +2240,22 @@
             "schema": {
               "type": "string",
               "title": "Comparison Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -1995,6 +2334,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -2070,6 +2425,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -2126,6 +2497,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -2197,6 +2584,22 @@
             }
           },
           {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          },
+          {
             "name": "X-Project-Path",
             "in": "header",
             "required": false,
@@ -2253,6 +2656,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           },
           {
@@ -2665,6 +3084,39 @@
           "baseline_branch_id"
         ],
         "title": "ComparisonResponse"
+      },
+      "EvidenceArtifactResponse": {
+        "properties": {
+          "evidence_artifact_id": {
+            "type": "string",
+            "title": "Evidence Artifact Id"
+          },
+          "evidence_edge_id": {
+            "type": "string",
+            "title": "Evidence Edge Id"
+          },
+          "artifact_id": {
+            "type": "string",
+            "title": "Artifact Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_artifact_id",
+          "evidence_edge_id",
+          "artifact_id",
+          "role"
+        ],
+        "title": "EvidenceArtifactResponse"
       },
       "EvidenceEdgeResponse": {
         "properties": {
@@ -3232,6 +3684,13 @@
             },
             "type": "array",
             "title": "Projects"
+          },
+          "unavailable_projects": {
+            "items": {
+              "$ref": "#/components/schemas/UnavailableProjectResponse"
+            },
+            "type": "array",
+            "title": "Unavailable Projects"
           }
         },
         "type": "object",
@@ -3345,6 +3804,98 @@
           "plan_version_id"
         ],
         "title": "RunCreateRequest"
+      },
+      "RunEvidenceEdgeResponse": {
+        "properties": {
+          "evidence_edge_id": {
+            "type": "string",
+            "title": "Evidence Edge Id"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "run_step_id": {
+            "type": "string",
+            "title": "Run Step Id"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "title": "Plan Version Id"
+          },
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "parent_step_id": {
+            "type": "string",
+            "title": "Parent Step Id"
+          },
+          "source_run_id": {
+            "type": "string",
+            "title": "Source Run Id"
+          },
+          "source_run_step_id": {
+            "type": "string",
+            "title": "Source Run Step Id"
+          },
+          "policy": {
+            "type": "string",
+            "title": "Policy"
+          },
+          "source_label": {
+            "type": "string",
+            "title": "Source Label"
+          },
+          "is_reused": {
+            "type": "boolean",
+            "title": "Is Reused",
+            "default": false
+          },
+          "is_stale": {
+            "type": "boolean",
+            "title": "Is Stale",
+            "default": false
+          },
+          "stale_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "default": ""
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceArtifactResponse"
+            },
+            "type": "array",
+            "title": "Artifacts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_edge_id",
+          "run_id",
+          "run_step_id",
+          "plan_version_id",
+          "step_id",
+          "parent_step_id",
+          "source_run_id",
+          "source_run_step_id",
+          "policy",
+          "source_label"
+        ],
+        "title": "RunEvidenceEdgeResponse",
+        "description": "Typed response for a single evidence edge in a run (#216).\n\nIncludes full provenance fields from EvidenceEdgeResponse plus\nnested artifacts so the generated schema and frontend types match\nthe actual payload shape."
       },
       "RunListResponse": {
         "properties": {
@@ -3562,6 +4113,35 @@
           "upstream_changes"
         ],
         "title": "StalenessExplanationResponse"
+      },
+      "UnavailableProjectResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "root": {
+            "type": "string",
+            "title": "Root"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "root",
+          "code",
+          "message"
+        ],
+        "title": "UnavailableProjectResponse",
+        "description": "A registered project that could not be opened (corrupt, missing, etc)."
       },
       "ValidationError": {
         "properties": {

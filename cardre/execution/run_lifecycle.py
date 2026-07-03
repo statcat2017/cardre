@@ -12,8 +12,14 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from cardre._version import __version__
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.errors import RunLifecycleError, RunNotFoundError, RunNotRunningError, RunPlanVersionMismatchError
+from cardre.domain.errors import (
+    RunLifecycleError,
+    RunNotFoundError,
+    RunNotRunningError,
+    RunPlanVersionMismatchError,
+)
 
 if TYPE_CHECKING:
     from cardre.domain.diagnostics import JsonDict
@@ -28,7 +34,7 @@ MANIFEST_VERSION = "1.0.0"
 # ---------------------------------------------------------------------------
 
 
-def step_action(rs: "RunStep") -> str:
+def step_action(rs: RunStep) -> str:
     """Derive the manifest action label for a run-step record."""
     if rs.execution_fingerprint and rs.execution_fingerprint.get("cardre_step_carried_forward"):
         return "reused"
@@ -58,7 +64,7 @@ def build_manifest_payload(
         "finished_at": finished_at,
         "status": final_status,
         "execution_mode": execution_mode,
-        "cardre_version": "0.2.0",
+        "cardre_version": __version__,
         "steps": [
             {
                 "step_id": rs.step_id,
@@ -82,7 +88,7 @@ def build_manifest_payload(
 
 
 def write_manifest(
-    store: "ProjectStore",
+    store: ProjectStore,
     *,
     run_id: str,
     plan_version_id: str,
@@ -149,7 +155,7 @@ class RunFinalisation:
 
 
 def finalise_run(
-    store: "ProjectStore",
+    store: ProjectStore,
     finalisation: RunFinalisation,
 ) -> None:
     """Finish a run with the given status and write its manifest.
@@ -198,7 +204,7 @@ class RunLifecycle:
 
     def __init__(
         self,
-        store: "ProjectStore",
+        store: ProjectStore,
         run_id: str,
         plan_version_id: str,
         execution_mode: str = "unknown",
@@ -219,7 +225,7 @@ class RunLifecycle:
     # Context manager
     # ------------------------------------------------------------------
 
-    def __enter__(self) -> "RunLifecycle":
+    def __enter__(self) -> RunLifecycle:
         return self
 
     def __exit__(
@@ -231,6 +237,7 @@ class RunLifecycle:
         if not self._finalised:
             if exc_val is not None:
                 import traceback
+
                 from cardre.store.run_repo import RunRepository
                 RunRepository(self._store).append_diagnostic(self.run_id, {
                     "code": "RUN_BODY_EXCEPTION",
@@ -258,7 +265,7 @@ class RunLifecycle:
     @classmethod
     def start(
         cls,
-        store: "ProjectStore",
+        store: ProjectStore,
         plan_version_id: str,
         *,
         run_id: str | None = None,
@@ -267,7 +274,7 @@ class RunLifecycle:
         target_step_id: str | None = None,
         in_scope_step_ids: list[str] | None = None,
         force: bool = False,
-    ) -> "RunLifecycle":
+    ) -> RunLifecycle:
         """Create or accept a run.
 
         When *run_id* is provided, the run must already exist in
@@ -339,6 +346,7 @@ class RunLifecycle:
             ))
         except Exception:
             import traceback
+
             from cardre.store.run_repo import RunRepository
             tb = traceback.format_exc()
             RunRepository(self._store).append_diagnostic(self.run_id, {
@@ -356,9 +364,108 @@ class RunLifecycle:
         self._finalised = True
 
 
+def assert_run_audit_integrity(store: ProjectStore, run_id: str) -> None:
+    """Verify the full run audit shape for a completed run (#213).
+
+    Checks that:
+    - the run row exists and is in a terminal state;
+    - every run_step has a persisted row (no phantom in-memory steps);
+    - every evidence_edge has at least one evidence_artifact;
+    - the run manifest exists on disk and contains valid JSON with the
+      expected run_id, plan_version_id, and status.
+
+    Raises ``RunLifecycleError`` if any check fails.
+    """
+    from cardre.store.run_repo import RunRepository
+    from cardre.store.run_step_repo import RunStepRepository
+
+    run = RunRepository(store).get(run_id)
+    if run is None:
+        raise RunNotFoundError(f"Run {run_id} not found", context={"run_id": run_id})
+
+    if run["status"] not in ("succeeded", "failed", "interrupted", "cancelled"):
+        raise RunLifecycleError(
+            f"Run {run_id} is not in a terminal state (status={run['status']!r})",
+            code="RUN_NOT_TERMINAL",
+            context={"run_id": run_id, "status": run["status"]},
+        )
+
+    steps = RunStepRepository(store).get_for_run(run_id)
+    for step in steps:
+        if not step.run_step_id:
+            raise RunLifecycleError(
+                f"Run {run_id} has a phantom run_step for step {step.step_id!r}",
+                code="PHANTOM_RUN_STEP",
+                context={"run_id": run_id, "step_id": step.step_id},
+            )
+
+    edges = store.execute(
+        "SELECT evidence_edge_id FROM evidence_edges WHERE run_id = ?",
+        (run_id,),
+    ).fetchall()
+    for edge in edges:
+        artifacts = store.execute(
+            "SELECT COUNT(*) as cnt FROM evidence_artifacts WHERE evidence_edge_id = ?",
+            (edge["evidence_edge_id"],),
+        ).fetchone()
+        if artifacts["cnt"] == 0:
+            raise RunLifecycleError(
+                f"evidence_edge {edge['evidence_edge_id']!r} has no artifacts",
+                code="EVIDENCE_EDGE_HAS_NO_ARTIFACTS",
+                context={"run_id": run_id, "evidence_edge_id": edge["evidence_edge_id"]},
+            )
+
+    manifest_dir = store.root / "exports" / f"manifest-{run_id}"
+    manifest_path = manifest_dir / "manifest.json"
+    if not manifest_path.exists():
+        raise RunLifecycleError(
+            f"Run {run_id} manifest not found at {manifest_path}",
+            code="MANIFEST_NOT_FOUND",
+            context={"run_id": run_id, "manifest_path": str(manifest_path)},
+        )
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise RunLifecycleError(
+            f"Run {run_id} manifest is not valid JSON: {exc}",
+            code="MANIFEST_INVALID",
+            context={"run_id": run_id, "error": str(exc)},
+        ) from exc
+
+    if manifest.get("run_id") != run_id:
+        raise RunLifecycleError(
+            f"Manifest run_id mismatch: expected {run_id!r}, got {manifest.get('run_id')!r}",
+            code="MANIFEST_RUN_ID_MISMATCH",
+            context={"run_id": run_id, "manifest_run_id": manifest.get("run_id")},
+        )
+    if manifest.get("plan_version_id") != run["plan_version_id"]:
+        raise RunLifecycleError(
+            f"Manifest plan_version_id mismatch: expected {run['plan_version_id']!r}, "
+            f"got {manifest.get('plan_version_id')!r}",
+            code="MANIFEST_PLAN_VERSION_MISMATCH",
+            context={
+                "run_id": run_id,
+                "expected": run["plan_version_id"],
+                "actual": manifest.get("plan_version_id"),
+            },
+        )
+    if manifest.get("status") != run["status"]:
+        raise RunLifecycleError(
+            f"Manifest status mismatch: expected {run['status']!r}, "
+            f"got {manifest.get('status')!r}",
+            code="MANIFEST_STATUS_MISMATCH",
+            context={
+                "run_id": run_id,
+                "expected": run["status"],
+                "actual": manifest.get("status"),
+            },
+        )
+
+
 __all__ = [
     "RunFinalisation",
     "RunLifecycle",
+    "assert_run_audit_integrity",
     "build_manifest_payload",
     "finalise_run",
     "step_action",

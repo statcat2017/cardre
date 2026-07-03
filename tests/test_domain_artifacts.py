@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from hashlib import sha256
 
-from cardre.domain.artifacts import ArtifactRef
-from cardre.domain.artifacts import json_logical_hash
-from cardre.domain.artifacts import params_hash
-from cardre.domain.artifacts import physical_hash
-from cardre.domain.artifacts import relative_path
+from cardre.domain.artifacts import (
+    ArtifactRef,
+    json_logical_hash,
+    params_hash,
+    physical_hash,
+    relative_path,
+)
 
 
 def test_json_logical_hash_is_canonical() -> None:

@@ -95,8 +95,8 @@ class ArtifactRef:
 
 
 __all__ = [
-    "ArtifactRef",
     "CHUNK_SIZE",
+    "ArtifactRef",
     "json_logical_hash",
     "params_hash",
     "physical_hash",

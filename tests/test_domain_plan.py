@@ -4,8 +4,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from cardre.domain.plan import Plan
-from cardre.domain.plan import PlanVersion
+from cardre.domain.plan import Plan, PlanVersion
 
 
 def test_plan_and_plan_version_to_dict() -> None:

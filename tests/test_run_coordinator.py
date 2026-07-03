@@ -16,7 +16,11 @@ from pathlib import Path
 import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.errors import CardreError, PlanVersionNotCommittedError, RunScopeNotAvailableForLaunch
+from cardre.domain.errors import (
+    CardreError,
+    PlanVersionNotCommittedError,
+    RunScopeNotAvailableForLaunch,
+)
 
 
 def _make_store(project_root: Path):
@@ -360,9 +364,9 @@ class TestRunSummary:
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
+        from cardre.domain.run import RunStepStatus
         from cardre.execution.executor import PlanExecutor
         from cardre.services.run_coordinator import RunCoordinator
-        from cardre.domain.run import RunStepStatus
 
         def fake_run_plan_version(self, plan_version_id, run_id, *, force=False, branch_id=None, precomputed_outputs=None, precomputed_records=None):
             now = utc_now_iso()

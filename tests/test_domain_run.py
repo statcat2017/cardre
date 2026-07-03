@@ -3,9 +3,7 @@ from __future__ import annotations
 import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.run import Run
-from cardre.domain.run import RunStep
-from cardre.domain.run import RunStepStatus
+from cardre.domain.run import Run, RunStep, RunStepStatus
 
 
 def test_run_transition_sets_terminal_finished_at() -> None:
