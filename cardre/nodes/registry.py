@@ -36,7 +36,7 @@ _OPTIONAL_DEP_MODULES: dict[str, tuple[str, ...]] = {
     "lightgbm": ("lightgbm",),
     "catboost": ("catboost",),
     "imbalance": ("imblearn",),
-    "explain": ("shap", "lime"),
+    "explain": ("shap",),
     "deep": ("torch",),
     "optimal-binning": ("optbinning",),
 }
