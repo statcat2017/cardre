@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.artifacts import ArtifactRef, json_logical_hash
 from cardre.execution.context import ExecutionContext
 
 
@@ -18,11 +18,11 @@ def build_model_artifact(
     model_family: str,
     target_column: str,
     features: list[str],
-    bad_class,
-    good_class,
+    bad_class: str,
+    good_class: str,
     prob_col_idx: int,
     feature_strategy: str,
-    estimator_art,
+    estimator_art: ArtifactRef,
     training_params: dict[str, Any],
     random_seed: int,
     elapsed: float,

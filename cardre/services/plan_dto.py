@@ -63,7 +63,7 @@ class ManualBinningSourceInfo:
 class PreviewDiagnostics:
     override_count: int = 0
     warnings: list[str] = field(default_factory=list)
-    structured: list[dict] = field(default_factory=list)
+    structured: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclasses.dataclass

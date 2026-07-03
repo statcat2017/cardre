@@ -7,7 +7,7 @@ execution layer, not domain.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from cardre.domain.artifacts import ArtifactRef
@@ -23,7 +23,7 @@ class ExecutionContext:
     run_id: str
     plan_version_id: str
     step_spec: StepSpec
-    parent_run_steps: list
+    parent_run_steps: list[Any]
     input_artifacts: list[ArtifactRef]
     validated_params: JsonDict
     runtime_metadata: JsonDict

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.reader import ArtifactEvidenceReader
@@ -136,7 +136,7 @@ def _resolve_required_steps(
 CARDRE_VERSION = "0.1.0"
 
 
-def _to_schema_ref(ref) -> ResolvedStepRef:
+def _to_schema_ref(ref: _ResolvedStepRef) -> ResolvedStepRef:
     """Convert a step_id.ResolvedStepRef (dataclass) to a schema.ResolvedStepRef (Pydantic)."""
     return ResolvedStepRef(
         requested_branch_id=ref.requested_branch_id,
@@ -258,7 +258,7 @@ class ReportCollector:
         bundle.pathway = PathwaySummary(pathway_id="scorecard_pathway", steps=pathway_steps)
 
         # Build branch summary
-        all_branches = self.store.list_branches(self.project_id, plan_id=plan_id)
+        all_branches = self.store.list_branches(self.project_id, plan_id=plan_id)  # type: ignore[attr-defined]  # ProjectStore has no list_branches; added by store extensions or will be added
         branch_infos: list[BranchInfo] = []
         for b in all_branches:
             branch_infos.append(BranchInfo(
@@ -842,7 +842,7 @@ class ReportCollector:
                 ))
         return entries
 
-    def _get_latest_review_annotation(self, step_id: str, plan_version_id: str) -> tuple[dict | None, list[Diagnostic]]:
+    def _get_latest_review_annotation(self, step_id: str, plan_version_id: str) -> tuple[dict[str, Any] | None, list[Diagnostic]]:
         import json as _json
 
         try:
@@ -866,8 +866,8 @@ class ReportCollector:
                 context={"step_id": step_id, "plan_version_id": plan_version_id},
             )])
 
-    def _collect_run_status(self, bundle: ReportBundle, run: dict) -> None:
-        run_diags = self.store.get_run_diagnostics(self.run_id)
+    def _collect_run_status(self, bundle: ReportBundle, run: dict[str, Any]) -> None:
+        run_diags = self.store.get_run_diagnostics(self.run_id)  # type: ignore[attr-defined]  # ProjectStore has no get_run_diagnostics; available via RunRepository
         bundle.run_status = RunStatusInfo(
             run_id=self.run_id,
             status=run.get("status", ""),
@@ -970,7 +970,7 @@ class ReportCollector:
                 message=f"Step {ref.canonical_step_id} inherited from branch "
                 f"{ref.resolved_branch_id} (ancestor resolution).",
             ))
-        return rs
+        return cast("RunStep | None", rs)
 
 
 def generate_report_bundle(

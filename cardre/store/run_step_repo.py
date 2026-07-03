@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from cardre.domain.run import RunStep, RunStepStatus
 
@@ -78,7 +78,7 @@ class RunStepRepository:
         return self._row_to_run_step(row)
 
     @staticmethod
-    def _row_to_run_step(row) -> RunStep:
+    def _row_to_run_step(row: dict[str, Any]) -> RunStep:
         d = dict(row)
         return RunStep(
             run_step_id=d["run_step_id"],

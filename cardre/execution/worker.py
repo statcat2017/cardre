@@ -23,7 +23,7 @@ import sys
 import threading
 import traceback
 from dataclasses import dataclass
-from typing import Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.store.db import ProjectStore
@@ -98,7 +98,7 @@ class RunWorker:
     def _record_failure(
         store: ProjectStore,
         request: RunRequest,
-        exc_info: tuple,
+        exc_info: tuple[Any, ...],
     ) -> None:
         from cardre.store.run_repo import RunRepository
         exc_type, exc_value, _ = exc_info

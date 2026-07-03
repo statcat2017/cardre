@@ -8,6 +8,7 @@ from cardre.api.dependencies import get_project_store, get_run_coordinator
 from cardre.api.errors import PLAN_VERSION_NOT_FOUND, RUN_NOT_FOUND, CardreApiError
 from cardre.api.routes._project_scope import plan_version_belongs_to_project, run_belongs_to_project
 from cardre.api.schemas import (
+    EvidenceArtifactResponse,
     RunCreateRequest,
     RunEvidenceEdgeResponse,
     RunListResponse,
@@ -179,12 +180,12 @@ async def list_run_evidence(
                     stale_reason=edge.stale_reason,
                     created_at=getattr(edge, "created_at", ""),
                     artifacts=[
-                        {
-                            "evidence_artifact_id": a.evidence_artifact_id,
-                            "evidence_edge_id": edge.evidence_edge_id,
-                            "artifact_id": a.artifact_id,
-                            "role": a.role,
-                        }
+                        EvidenceArtifactResponse(
+                            evidence_artifact_id=a.evidence_artifact_id,
+                            evidence_edge_id=edge.evidence_edge_id,
+                            artifact_id=a.artifact_id,
+                            role=a.role,
+                        )
                         for a in artifacts
                     ],
                 )

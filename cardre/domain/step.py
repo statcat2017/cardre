@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from typing import cast
+
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.diagnostics import JsonDict
 
@@ -63,7 +65,7 @@ class StepSpec:
             parent_step_ids=list(data.get("parent_step_ids", [])),
             branch_label=data.get("branch_label", ""),
             position=data.get("position", 0),
-            canonical_step_id=data.get("canonical_step_id", data["step_id"]),
+            canonical_step_id=cast(str, data.get("canonical_step_id", data["step_id"])),
             branch_id=data.get("branch_id"),
         )
 

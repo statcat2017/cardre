@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import BranchValidationError
@@ -138,7 +138,7 @@ class BranchService:
                 context={"base_branch_id": base_branch_id, "status": base_branch.get("status")},
             )
 
-        steps = self._plans.get_version_steps(head_pv_id)
+        steps = self._plans.get_version_steps(cast("str", head_pv_id))
 
         bp_step = None
         for s in steps:
@@ -299,7 +299,7 @@ class BranchService:
 SUPPORTED_FILTER_OPERATORS = {"==", "!=", "<", "<=", ">", ">=", "in", "not_in", "is_null", "is_not_null"}
 
 
-def _validate_segment_filter_rules(spec: dict) -> None:
+def _validate_segment_filter_rules(spec: dict[str, Any]) -> None:
     """Validate segment filter rules match the ApplyExclusions operator contract."""
     rules = spec.get("rules", [])
     if not rules:
@@ -346,7 +346,7 @@ def _validate_segment_filter_rules(spec: dict) -> None:
             )
 
 
-def _insert_steps_and_edges(conn, plan_version_id: str, steps: list[StepSpec]) -> None:
+def _insert_steps_and_edges(conn: Any, plan_version_id: str, steps: list[StepSpec]) -> None:
     """Insert plan steps and plan_step_edges inside an open transaction."""
     for step in steps:
         conn.execute(

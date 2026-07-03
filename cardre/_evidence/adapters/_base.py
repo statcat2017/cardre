@@ -15,6 +15,8 @@ A later phase may remove the dead ``_legacy_match`` from the reader.
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from typing import Any
 
 from cardre._evidence.profiles import _Profile
 from cardre.domain.artifacts import ArtifactRef
@@ -78,12 +80,12 @@ def candidate_passes_payload_check(art: ArtifactRef, profile: _Profile, store: P
     return True
 
 
-def read_json_payload(path) -> dict:
+def read_json_payload(path: Path) -> dict[str, Any]:
     """Read and parse a JSON artifact payload, returning a dict."""
-    return json.loads(path.read_text())
+    return json.loads(path.read_text())  # type: ignore[no-any-return]  # json.loads returns Any
 
 
-def scan_parquet(path):
+def scan_parquet(path: Path) -> Any:
     """Scan a parquet artifact, returning a polars LazyFrame."""
     import polars as pl
     return pl.scan_parquet(path)

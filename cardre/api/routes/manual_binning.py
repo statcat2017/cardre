@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
@@ -29,7 +31,7 @@ from cardre.store.manual_binning_repo import ManualBinningRepository
 router = APIRouter(prefix="/projects/{project_id}/manual-binning", tags=["manual_binning"])
 
 
-def _review_to_response(review) -> ManualBinningReviewResponse:
+def _review_to_response(review: Any) -> ManualBinningReviewResponse:
     """Convert a ManualBinningReview domain object to a response model."""
     d = review if isinstance(review, dict) else review.to_dict()
     return ManualBinningReviewResponse(

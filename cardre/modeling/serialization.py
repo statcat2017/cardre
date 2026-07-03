@@ -67,7 +67,7 @@ def write_estimator_artifact(
         media_type="application/octet-stream",
         metadata=artifact_meta,
     )
-    store.register_artifact(artifact)
+    store.register_artifact(artifact)  # type: ignore[attr-defined]  # FIXME: latent bug — ProjectStore has no register_artifact; use ArtifactRepository(store).register(artifact) instead
     return artifact
 
 

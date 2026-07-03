@@ -24,7 +24,7 @@ class MonotonicStatus(enum.StrEnum):
 
 
 def check_sparse_bins_ratio(
-    bins: list[dict],
+    bins: list[dict[str, Any]],
     threshold: float = 0.05,
 ) -> bool:
     """Return True if any bin holds fewer than `threshold` of total rows."""
@@ -37,7 +37,7 @@ def check_sparse_bins_ratio(
 
 
 def check_sparse_bins_ratio_count(
-    bins: list[dict],
+    bins: list[dict[str, Any]],
     threshold: float = 0.05,
 ) -> int:
     """Count bins below the sparse threshold."""
@@ -49,7 +49,7 @@ def check_sparse_bins_ratio_count(
     return sum(1 for b in bins if b.get("count", 0) / total < threshold)
 
 
-def check_zero_cell_bins(bins: list[dict]) -> int:
+def check_zero_cell_bins(bins: list[dict[str, Any]]) -> int:
     """Count bins where good_count == 0 or bad_count == 0."""
     count = 0
     for b in bins:
@@ -116,7 +116,7 @@ def check_solver_status(
 
 
 def check_too_few_bins(
-    bins: list[dict],
+    bins: list[dict[str, Any]],
     variable: str = "",
     min_bins: int = 2,
 ) -> list[BinningDiagnostic]:
@@ -135,7 +135,7 @@ def check_too_few_bins(
 
 
 def check_sparse_bins(
-    bins: list[dict],
+    bins: list[dict[str, Any]],
     variable: str = "",
     min_count: int = 30,
 ) -> list[BinningDiagnostic]:
@@ -165,7 +165,7 @@ def check_sparse_bins(
 
 def check_pure_bins(
     variable: str,
-    bins: list[dict],
+    bins: list[dict[str, Any]],
     total_good: int,
     total_bad: int,
 ) -> list[BinningDiagnostic]:
@@ -195,7 +195,7 @@ def check_pure_bins(
 def check_variable_failed(
     variable: str,
     status: str,
-    warnings: list | None = None,
+    warnings: list[Any] | None = None,
 ) -> list[BinningDiagnostic]:
     """Variable failed during optbinning fit."""
     if status == "FAILED":
@@ -220,7 +220,7 @@ def check_variable_failed(
 
 
 def run_all(
-    variable_results: list,
+    variable_results: list[Any],
     min_bins: int = 2,
     min_bin_count: int = 30,
 ) -> list[BinningDiagnostic]:

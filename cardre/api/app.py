@@ -59,8 +59,8 @@ def create_app() -> FastAPI:
     )
 
     # Error handlers
-    app.add_exception_handler(CardreError, cardre_error_handler)
-    app.add_exception_handler(CardreApiError, cardre_api_error_handler)
+    app.add_exception_handler(CardreError, cardre_error_handler)  # type: ignore[arg-type]  # FastAPI exception handler typing accepts Exception but we use specific subclasses
+    app.add_exception_handler(CardreApiError, cardre_api_error_handler)  # type: ignore[arg-type]  # FastAPI exception handler typing accepts Exception but we use specific subclasses
 
     # Routes — all mounted unconditionally
     app.include_router(health.router)

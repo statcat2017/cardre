@@ -56,7 +56,7 @@ class ModelArtifact:
             for c in raw_coeffs:
                 if isinstance(c, dict):
                     coefficients.append(Coefficient(
-                        variable_name=c.get("variable_name", c.get("variable", "")),
+                        variable_name=c.get("variable_name", c.get("variable", "")),  # type: ignore[arg-type]  # .get() on dict[str, Any] returns Any
                         coefficient=c.get("coefficient", 0.0),
                         standard_error=c.get("standard_error"),
                         p_value=c.get("p_value"),
@@ -125,18 +125,18 @@ class ScoreScaling:
             factor = float(data.get("factor", 0))
             offset = float(data.get("offset", 0))
         else:
-            factor = float(pdo) / math.log(2)
+            factor = float(pdo) / math.log(2)  # type: ignore[arg-type]  # pdo is Any from .get()
             odds_ratio = base_odds
             if isinstance(raw_odds, str) and ":" in raw_odds:
                 num, den = raw_odds.split(":", 1)
-                odds_ratio = float(num) / float(den)
+                odds_ratio = float(num) / float(den)  # type: ignore[assignment]  # odds_ratio starts as str, overwritten with float
             else:
-                odds_ratio = float(raw_odds)
-            offset = float(base_score) - factor * math.log(odds_ratio)
+                odds_ratio = float(raw_odds)  # type: ignore[assignment]  # odds_ratio starts as str, overwritten with float
+            offset = float(base_score) - factor * math.log(odds_ratio)  # type: ignore[arg-type]  # odds_ratio is str | float
         return cls(
             base_score=base_score,
             base_odds=base_odds,
-            pdo=pdo,
+            pdo=pdo,  # type: ignore[arg-type]  # pdo is Any from .get()
             factor=factor,
             offset=offset,
             score_direction=(

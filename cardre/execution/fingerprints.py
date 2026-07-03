@@ -7,7 +7,7 @@ No ProjectStore, no orchestration.
 from __future__ import annotations
 
 import sys
-from typing import Any
+from typing import Any, cast
 
 from cardre._version import __version__ as CARDRE_VERSION
 from cardre.domain.artifacts import ArtifactRef
@@ -17,7 +17,7 @@ from cardre.domain.step import StepSpec
 
 def output_logical_hashes(rs: RunStep) -> list[str]:
     """Extract output logical hashes from a run step's execution fingerprint."""
-    return rs.execution_fingerprint.get("output_artifact_logical_hashes", [])
+    return cast("list[str]", rs.execution_fingerprint.get("output_artifact_logical_hashes", []))
 
 
 def build_parent_output_hashes(

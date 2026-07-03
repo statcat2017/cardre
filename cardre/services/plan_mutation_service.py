@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError
@@ -35,7 +35,7 @@ class ManualBinningEditCommand:
     """
     plan_version_id: str
     step_id: str
-    overrides: list[dict] = field(default_factory=list)
+    overrides: list[dict[str, Any]] = field(default_factory=list)
     reviewer_notes: str = ""
     status: str = "pending"
     affected_downstream_step_ids: list[str] = field(default_factory=list)
@@ -284,7 +284,7 @@ class PlanMutationService:
             ))
         return steps
 
-    def _get_version_edges(self, plan_version_id: str) -> list[dict]:
+    def _get_version_edges(self, plan_version_id: str) -> list[dict[str, Any]]:
         """Retrieve all edges for a plan version."""
         rows = self._store.execute(
             "SELECT * FROM plan_step_edges WHERE plan_version_id = ? ORDER BY edge_order",

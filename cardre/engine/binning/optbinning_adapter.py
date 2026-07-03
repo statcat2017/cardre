@@ -138,7 +138,7 @@ def fit_variables(
     )
 
 
-def _resolve_status(optb) -> str:
+def _resolve_status(optb: Any) -> str:
     """Map optbinning status to a stable string."""
     raw = getattr(optb, "status", "")
     # optbinning returns None when it hasn't been fit
@@ -186,7 +186,7 @@ def _build_params(
 def _extract_bins(
     variable: str,
     dtype: str,
-    optb,
+    optb: Any,
 ) -> list[dict[str, Any]]:
     """Convert optbinning output to Cardre SCHEMA_BIN_DEFINITION bin dicts
     with rich per-bin metrics (WOE, IV, bad_rate, row_pct)."""
@@ -266,7 +266,7 @@ def _extract_bins(
 def _extract_variable_metrics(
     variable: str,
     bins: list[dict[str, Any]],
-    optb,
+    optb: Any,
 ) -> dict[str, Any]:
     metrics: dict[str, Any] = {
         "n_bins": len(bins),
@@ -285,15 +285,15 @@ def _extract_variable_metrics(
     metrics["missing_rate"] = missing_count / total
     woe_vals = [b.get("woe") for b in bins if b.get("woe") is not None and not b.get("is_missing_bin") and not b.get("is_special_bin")]
     if len(woe_vals) >= 2:
-        increasing = all(woe_vals[i] <= woe_vals[i + 1] for i in range(len(woe_vals) - 1))
-        decreasing = all(woe_vals[i] >= woe_vals[i + 1] for i in range(len(woe_vals) - 1))
+        increasing = all(woe_vals[i] <= woe_vals[i + 1] for i in range(len(woe_vals) - 1))  # type: ignore[operator]  # woe_vals entries are Any (from dict.get)
+        decreasing = all(woe_vals[i] >= woe_vals[i + 1] for i in range(len(woe_vals) - 1))  # type: ignore[operator]  # woe_vals entries are Any (from dict.get)
         metrics["monotonic_woe"] = increasing or decreasing
     return metrics
 
 
-def _safe_to_dict(optb) -> dict[str, Any] | None:
+def _safe_to_dict(optb: Any) -> dict[str, Any] | None:
     try:
-        return optb.to_dict()
+        return optb.to_dict()  # type: ignore[no-any-return]  # optb.to_dict() returns Any
     except Exception:
         return None
 
@@ -301,7 +301,7 @@ def _safe_to_dict(optb) -> dict[str, Any] | None:
 def _assign_numeric_bounds(
     bin_dict: dict[str, Any],
     bin_idx: int,
-    splits: list,
+    splits: list[Any],
 ) -> None:
     n_splits = len(splits)
     if n_splits == 0:
@@ -328,12 +328,12 @@ def _assign_numeric_bounds(
         bin_dict["upper_inclusive"] = False
 
 
-def _is_missing_bin(row) -> bool:
+def _is_missing_bin(row: Any) -> bool:
     bin_val = str(row.get("Bin", "")).strip().lower()
     return bin_val in ("missing",)
 
 
-def _is_special_bin(row, optb) -> bool:
+def _is_special_bin(row: Any, optb: Any) -> bool:
     sc = getattr(optb, 'special_codes', [])
     if not sc:
         return False

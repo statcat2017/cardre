@@ -9,6 +9,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from cardre.domain.diagnostics import JsonDict
 
@@ -35,7 +36,7 @@ def json_logical_hash(data: JsonDict) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def table_logical_hash(table) -> str:
+def table_logical_hash(table: Any) -> str:
     """SHA-256 of a sorted-column Arrow IPC representation."""
     import io
     sorted_cols = sorted(table.columns)

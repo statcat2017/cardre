@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, List
 
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
@@ -60,7 +60,7 @@ class ArtifactRepository:
         run_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[ArtifactRef]:
+    ) -> List[ArtifactRef]:
         sql = [
             "SELECT DISTINCT a.* FROM artifacts a",
             "JOIN artifact_lineage al ON al.artifact_id = a.artifact_id",
@@ -106,7 +106,7 @@ class ArtifactRepository:
         )
         return lineage_id
 
-    def get_lineage_for_run_step(self, run_step_id: str) -> list[dict]:
+    def get_lineage_for_run_step(self, run_step_id: str) -> List[dict[str, Any]]:
         rows = self._store.execute(
             "SELECT * FROM artifact_lineage WHERE run_step_id = ? ORDER BY direction, created_at",
             (run_step_id,),
@@ -114,7 +114,7 @@ class ArtifactRepository:
         return [dict(r) for r in rows]
 
     @staticmethod
-    def _row_to_artifact_ref(row: dict) -> ArtifactRef:
+    def _row_to_artifact_ref(row: dict[str, Any]) -> ArtifactRef:
         d = dict(row)
         return ArtifactRef(
             artifact_id=d["artifact_id"],

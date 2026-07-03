@@ -207,7 +207,7 @@ class LifecycleBinDefinition:
 
     @classmethod
     def from_payload(cls, payload: JsonDict) -> LifecycleBinDefinition:
-        def _parse_variable_list(raw: list) -> list[LifecycleVariable]:
+        def _parse_variable_list(raw: list[Any]) -> list[LifecycleVariable]:
             return [LifecycleVariable.from_dict(v) for v in raw]
 
         rejected_raw = payload.get("rejected", []) or []

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from cardre.domain.evidence import ResolvedEvidence
 from cardre.domain.step import StepSpec
@@ -23,7 +23,7 @@ class _StepAction:
     evidence_source: ResolvedEvidence | None = None
     before_execute: Callable[[], None] | None = None
     reason_code: str = "execute"
-    reason_context: dict | None = field(default_factory=dict)
+    reason_context: dict[str, Any] | None = field(default_factory=dict[str, Any])
 
 
 __all__ = ["_StepAction"]

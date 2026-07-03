@@ -8,22 +8,24 @@ integration (Phase 4).
 
 from __future__ import annotations
 
+from typing import Any
+
 from cardre.services.plan_dto import ManualBinningVariableSummary
 
 
 def compute_manual_binning_blockers(
     selected_variables: list[str],
     variable_summaries: list[ManualBinningVariableSummary],
-    current_overrides: list[dict],
+    current_overrides: list[dict[str, Any]],
     branch_id: str | None,
     step_id: str,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Compute blocking issues that prevent review completion.
 
     This is the single source of truth for the review-completion gate,
     shared by the editor state, the review endpoint, and evidence/report.
     """
-    blockers: list[dict] = []
+    blockers: list[dict[str, Any]] = []
 
     if selected_variables and not variable_summaries:
         return [{

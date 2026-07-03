@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from cardre._version import __version__
 from cardre.domain.diagnostics import utc_now_iso
@@ -46,7 +46,7 @@ def build_manifest_payload(
     run_id: str,
     plan_version_id: str,
     run_record: JsonDict,
-    run_steps: list,
+    run_steps: list[Any],
     execution_mode: str,
     final_status: str,
     finished_at: str,
@@ -237,6 +237,7 @@ class RunLifecycle:
         if not self._finalised:
             if exc_val is not None:
                 import traceback
+                import types
 
                 from cardre.store.run_repo import RunRepository
                 RunRepository(self._store).append_diagnostic(self.run_id, {
@@ -246,7 +247,7 @@ class RunLifecycle:
                     "run_id": self.run_id,
                     "plan_version_id": self.plan_version_id,
                     "branch_id": self._branch_id,
-                    "traceback": "".join(traceback.format_exception(type(exc_val), exc_val, exc_tb)),
+                    "traceback": "".join(traceback.format_exception(type(exc_val), exc_val, cast("types.TracebackType | None", exc_tb))),
                     "created_at": utc_now_iso(),
                 })
             self.finalise(

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import fields, is_dataclass
-from typing import Any
+from typing import Any, cast
 
 from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.reader import ArtifactEvidenceReader
@@ -133,7 +133,7 @@ def _build_comparison_content(
     reader = ArtifactEvidenceReader(store)
 
     def _find_typed_artifact(
-        step_map: list[dict],
+        step_map: list[dict[str, Any]],
         cs: str,
         pv_id: str,
         evidence_branch_id: str | None,
@@ -150,7 +150,7 @@ def _build_comparison_content(
                     rows = store.execute(
                         "SELECT artifact_id FROM artifact_lineage "
                         "WHERE run_step_id = ? AND direction = 'output'",
-                        (rs.run_step_id,),
+                        (rs.run_step_id,),  # type: ignore[attr-defined]  # RunRepository returns dict, not RunStep object
                     ).fetchall()
                     artifact_ids = [r["artifact_id"] for r in rows]
                     if artifact_ids:
@@ -158,7 +158,7 @@ def _build_comparison_content(
                             for kind in kinds:
                                 evidence = reader.read_optional(aid, kind)
                                 if evidence is not None:
-                                    return _materialize_evidence(evidence)
+                                    return cast("dict[str, Any] | None", _materialize_evidence(evidence))
         return None
 
     woe_b = _find_typed_artifact(step_map_b, "final-woe-iv", plan_version_id_baseline, None, (EvidenceKind.WOE_IV_EVIDENCE,)) if spec.get("include_woe_iv") else None
@@ -303,17 +303,17 @@ def _build_comparison_content(
         co_b = _find_typed_artifact(step_map_b, "cutoff-analysis", plan_version_id_baseline, None, (EvidenceKind.CUTOFF_ANALYSIS,))
         co_c = _find_typed_artifact(step_map_c, "cutoff-analysis", plan_version_id_challenger, branch_id_challenger, (EvidenceKind.CUTOFF_ANALYSIS,))
         for role_name in ("train", "test", "oot"):
-            b_bands = []
+            b_bands: list[dict[str, Any]] = []
             if isinstance(co_b, dict):
                 b_bands = co_b.get(role_name) or co_b.get("bands") or []
-            c_bands = []
+            c_bands: list[dict[str, Any]] = []
             if isinstance(co_c, dict):
                 c_bands = co_c.get(role_name) or co_c.get("bands") or []
 
             # Pair up bands by cutoff value
             b_by_cutoff = {b.get("cutoff"): b for b in b_bands if isinstance(b, dict)}
             c_by_cutoff = {c.get("cutoff"): c for c in c_bands if isinstance(c, dict)}
-            all_cutoffs = sorted(set(b_by_cutoff) | set(c_by_cutoff))
+            all_cutoffs = sorted(set(b_by_cutoff) | set(c_by_cutoff))  # type: ignore[type-var]  # cutoff values from dict may be None
             bands = []
             for cutoff in all_cutoffs[:20]:
                 b_entry = b_by_cutoff.get(cutoff, {})

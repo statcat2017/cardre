@@ -16,6 +16,7 @@ column.
 from __future__ import annotations
 
 import io
+from collections.abc import Callable
 from typing import Any, Protocol
 
 import joblib
@@ -98,15 +99,15 @@ def _role_entry_from_df(
         "required_features": features,
         "missing_features": missing,
         "output_columns": output_cols,
-        "pd_min": round(float(pd_series.min()), 6),
-        "pd_max": round(float(pd_series.max()), 6),
-        "pd_mean": round(float(pd_series.mean()), 6),
+        "pd_min": round(float(pd_series.min()), 6),  # type: ignore[arg-type]  # polars Series.min() returns Any
+        "pd_max": round(float(pd_series.max()), 6),  # type: ignore[arg-type]  # polars Series.max() returns Any
+        "pd_mean": round(float(pd_series.mean()), 6),  # type: ignore[arg-type]  # polars Series.mean() returns Any
     }
     if has_scorecard and "score" in df.columns:
         score_series = df["score"]
-        entry["score_min"] = round(float(score_series.min()), 2)
-        entry["score_max"] = round(float(score_series.max()), 2)
-        entry["score_mean"] = round(float(score_series.mean()), 2)
+        entry["score_min"] = round(float(score_series.min()), 2)  # type: ignore[arg-type]  # polars Series.min() returns Any
+        entry["score_max"] = round(float(score_series.max()), 2)  # type: ignore[arg-type]  # polars Series.max() returns Any
+        entry["score_mean"] = round(float(score_series.mean()), 2)  # type: ignore[arg-type]  # polars Series.mean() returns Any
     return entry
 
 
@@ -130,9 +131,9 @@ def apply_logistic(
     has_scorecard = scorecard_parsed is not None
 
     if has_scorecard:
-        offset = float(scorecard_parsed.get("offset", 0))
-        factor_val = float(scorecard_parsed.get("factor", 1))
-        direction = -1.0 if scorecard_parsed.get("higher_score_is_lower_risk", True) else 1.0
+        offset = float(scorecard_parsed.get("offset", 0))  # type: ignore[union-attr]  # has_scorecard guards None
+        factor_val = float(scorecard_parsed.get("factor", 1))  # type: ignore[union-attr]  # has_scorecard guards None
+        direction = -1.0 if scorecard_parsed.get("higher_score_is_lower_risk", True) else 1.0  # type: ignore[union-attr]  # has_scorecard guards None
     else:
         offset, factor_val, direction = 0.0, 1.0, -1.0
 
@@ -287,9 +288,9 @@ def apply_sklearn_estimator(
             pl.lit(model_family).alias("model_family"),
         ]
         if has_scorecard:
-            offset = float(scorecard_parsed.get("offset", 0))
-            factor = float(scorecard_parsed.get("factor", 1))
-            direction = -1.0 if scorecard_parsed.get("higher_score_is_lower_risk", True) else 1.0
+            offset = float(scorecard_parsed.get("offset", 0))  # type: ignore[union-attr]  # has_scorecard guards None
+            factor = float(scorecard_parsed.get("factor", 1))  # type: ignore[union-attr]  # has_scorecard guards None
+            direction = -1.0 if scorecard_parsed.get("higher_score_is_lower_risk", True) else 1.0  # type: ignore[union-attr]  # has_scorecard guards None
             log_odds = np.log(np.clip(pred_bad / np.maximum(1 - pred_bad, 1e-15), 1e-15, None))
             score_vals = offset + direction * factor * log_odds
             score_series = pl.Series("score", score_vals, dtype=pl.Float64)
@@ -501,7 +502,7 @@ def _apply_calibration(
 # Adapter registry
 # ---------------------------------------------------------------------------
 
-_ADAPTERS: dict[str, Any] = {}
+_ADAPTERS: dict[str, Callable[..., NodeOutput]] = {}
 
 for _fam in ("logistic_regression",):
     _ADAPTERS[_fam] = apply_logistic

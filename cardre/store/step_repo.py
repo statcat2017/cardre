@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from cardre.domain.step import StepSpec
 
@@ -60,21 +60,21 @@ class StepRepository:
             (plan_version_id, parent_step_id, child_step_id, edge_order),
         )
 
-    def get_parent_edges(self, plan_version_id: str, child_step_id: str) -> list[dict]:
+    def get_parent_edges(self, plan_version_id: str, child_step_id: str) -> list[dict[str, Any]]:
         rows = self._store.execute(
             "SELECT * FROM plan_step_edges WHERE plan_version_id = ? AND child_step_id = ? ORDER BY edge_order",
             (plan_version_id, child_step_id),
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_child_edges(self, plan_version_id: str, parent_step_id: str) -> list[dict]:
+    def get_child_edges(self, plan_version_id: str, parent_step_id: str) -> list[dict[str, Any]]:
         rows = self._store.execute(
             "SELECT * FROM plan_step_edges WHERE plan_version_id = ? AND parent_step_id = ? ORDER BY edge_order",
             (plan_version_id, parent_step_id),
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_all_edges(self, plan_version_id: str) -> list[dict]:
+    def get_all_edges(self, plan_version_id: str) -> list[dict[str, Any]]:
         rows = self._store.execute(
             "SELECT * FROM plan_step_edges WHERE plan_version_id = ? ORDER BY edge_order",
             (plan_version_id,),
@@ -82,7 +82,7 @@ class StepRepository:
         return [dict(r) for r in rows]
 
     @staticmethod
-    def _row_to_step_spec(row: dict) -> StepSpec:
+    def _row_to_step_spec(row: dict[str, Any]) -> StepSpec:
         return StepSpec(
             step_id=row["step_id"],
             node_type=row["node_type"],

@@ -7,6 +7,8 @@ their own required-step lists and alias maps.
 
 from __future__ import annotations
 
+from typing import cast
+
 from cardre.domain.run import RunStep
 from cardre.store import ProjectStore
 from cardre.store.run_repo import RunRepository
@@ -59,4 +61,4 @@ def find_evidence_for_canonical_step(
     rs = repo.get_latest_successful_step(plan_version_id, canonical_step_id, branch_id=branch_id)
     if rs is None and branch_id is not None:
         rs = repo.get_latest_successful_step(plan_version_id, canonical_step_id, branch_id=None)
-    return rs
+    return cast("RunStep | None", rs)

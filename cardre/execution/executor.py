@@ -17,7 +17,7 @@ import sys
 import threading
 import traceback
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
@@ -46,7 +46,7 @@ STATUS_SUCCEEDED = "succeeded"
 STATUS_FAILED = "failed"
 
 
-def _json_ready(value):
+def _json_ready(value: Any) -> Any:
     if isinstance(value, enum.Enum):
         return value.value
     if isinstance(value, dict):
@@ -122,12 +122,12 @@ class _HeartbeatWatchdog:
                 hb_repo.heartbeat(self._run_id)
 
     @staticmethod
-    def _store_for_root(root) -> ProjectStore:
+    def _store_for_root(root: Any) -> ProjectStore:
         from cardre.store.db import ProjectStore
         return ProjectStore(root)
 
 
-def _open_store_for_root(root):
+def _open_store_for_root(root: Any) -> ProjectStore:
     """Open a ProjectStore from root for use in a separate thread."""
     from cardre.store.db import ProjectStore
     s = ProjectStore(root)
@@ -625,8 +625,8 @@ class PlanExecutor:
             edges = evidence_repo.get_edges_for_run_step(prev_rs.run_step_id)
             all_artifacts = evidence_repo.get_artifacts_for_run_step(prev_rs.run_step_id)
         else:
-            edges = evidence.edges
-            all_artifacts = evidence.artifacts
+            edges = evidence.edges  # type: ignore[union-attr]  # evidence is guaranteed not None by prev_rs guard above
+            all_artifacts = evidence.artifacts  # type: ignore[union-attr]  # evidence is guaranteed not None by prev_rs guard above
 
         copied_fp = dict(prev_rs.execution_fingerprint)
         copied_fp["cardre_step_carried_forward"] = True
@@ -726,7 +726,7 @@ class PlanExecutor:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _load_and_validate(self, plan_version_id: str) -> list:
+    def _load_and_validate(self, plan_version_id: str) -> list[StepSpec]:
         """Load plan version steps and validate topology."""
         from cardre.store.plan_repo import PlanRepository
         plan_repo = PlanRepository(self._store)
@@ -753,7 +753,7 @@ class PlanExecutor:
         from cardre.store.run_repo import RunRepository
         RunRepository(self._store).heartbeat(run_id)
 
-    def _append_diagnostic(self, run_id: str, diag: dict) -> None:
+    def _append_diagnostic(self, run_id: str, diag: dict[str, Any]) -> None:
         from cardre.store.run_repo import RunRepository
         RunRepository(self._store).append_diagnostic(run_id, diag)
 

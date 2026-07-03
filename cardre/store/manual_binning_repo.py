@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.manual_binning import ManualBinningReview
@@ -89,7 +89,7 @@ class ManualBinningRepository:
             )
 
     @staticmethod
-    def _row_to_review(row) -> ManualBinningReview:
+    def _row_to_review(row: dict[str, Any]) -> ManualBinningReview:
         d = dict(row)
         return ManualBinningReview(
             review_id=d["review_id"],

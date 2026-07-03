@@ -65,7 +65,7 @@ class PlanContainsUnavailableNodesError(CardreError):
     code = "PLAN_CONTAINS_UNAVAILABLE_NODES"
     status_code = 400
 
-    def __init__(self, issues: list[dict]) -> None:
+    def __init__(self, issues: list[dict[str, Any]]) -> None:
         self.issues = issues
         step_ids = ", ".join(i["step_id"] for i in issues)
         message = (

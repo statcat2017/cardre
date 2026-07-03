@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import sqlite3
+from typing import TYPE_CHECKING, Any
 
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge
@@ -17,7 +18,7 @@ class EvidenceRepository:
     def __init__(self, store: ProjectStore) -> None:
         self._store = store
 
-    def insert_edge(self, edge: EvidenceEdge, conn=None) -> str:
+    def insert_edge(self, edge: EvidenceEdge, conn: sqlite3.Connection | None = None) -> str:
         if conn is not None:
             conn.execute(
                 "INSERT INTO evidence_edges "
@@ -68,7 +69,7 @@ class EvidenceRepository:
             )
         return edge.evidence_edge_id
 
-    def insert_artifact(self, artifact: EvidenceArtifact, conn=None) -> str:
+    def insert_artifact(self, artifact: EvidenceArtifact, conn: sqlite3.Connection | None = None) -> str:
         if conn is not None:
             conn.execute(
                 "INSERT INTO evidence_artifacts "
@@ -132,7 +133,7 @@ class EvidenceRepository:
         return [self._row_to_artifact(r) for r in rows]
 
     @staticmethod
-    def _row_to_edge(row) -> EvidenceEdge:
+    def _row_to_edge(row: dict[str, Any]) -> EvidenceEdge:
         d = dict(row)
         return EvidenceEdge(
             evidence_edge_id=d["evidence_edge_id"],
@@ -152,7 +153,7 @@ class EvidenceRepository:
         )
 
     @staticmethod
-    def _row_to_artifact(row) -> EvidenceArtifact:
+    def _row_to_artifact(row: dict[str, Any]) -> EvidenceArtifact:
         return EvidenceArtifact(
             evidence_artifact_id=row["evidence_artifact_id"],
             evidence_edge_id=row["evidence_edge_id"],

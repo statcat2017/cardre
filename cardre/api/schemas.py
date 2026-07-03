@@ -6,6 +6,8 @@ return ``GOVERNANCE_DISABLED`` (403) when ``CARDRE_GOVERNANCE=0``.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from cardre._version import __version__
@@ -17,7 +19,7 @@ from cardre._version import __version__
 class ErrorDetail(BaseModel):
     code: str
     message: str
-    context: dict = Field(default_factory=dict)
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 class ErrorResponse(BaseModel):
@@ -104,7 +106,7 @@ class PlanStepResponse(BaseModel):
     node_type: str
     node_version: str
     category: str
-    params: dict = Field(default_factory=dict)
+    params: dict[str, Any] = Field(default_factory=dict)
     params_hash: str = ""
     parent_step_ids: list[str] = Field(default_factory=list)
     branch_label: str = ""
@@ -126,8 +128,8 @@ class RunResponse(BaseModel):
     step_count: int = 0
     branch_id: str | None = None
     executed_step_ids: list[str] = Field(default_factory=list)
-    diagnostics: list[dict] = Field(default_factory=list)
-    latest_error: dict | None = None
+    diagnostics: list[dict[str, Any]] = Field(default_factory=list)
+    latest_error: dict[str, Any] | None = None
     heartbeat_at: str | None = None
     is_stale: bool = False
 
@@ -150,9 +152,9 @@ class RunStepResponse(BaseModel):
     status: str
     started_at: str
     finished_at: str | None = None
-    execution_fingerprint: dict = Field(default_factory=dict)
-    warnings: list[dict] = Field(default_factory=list)
-    errors: list[dict] = Field(default_factory=list)
+    execution_fingerprint: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+    errors: list[dict[str, Any]] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +265,7 @@ class ManualBinningReviewUpdate(BaseModel):
 class ManualBinningEditRequest(BaseModel):
     plan_version_id: str
     step_id: str
-    overrides: list[dict] = Field(default_factory=list)
+    overrides: list[dict[str, Any]] = Field(default_factory=list)
     reviewer_notes: str = ""
     status: str = "pending"
     affected_downstream_step_ids: list[str] = Field(default_factory=list)
@@ -276,13 +278,13 @@ class ManualBinningEditResponse(BaseModel):
 
 
 class ManualBinningPreviewRequest(BaseModel):
-    variable_data: dict
+    variable_data: dict[str, Any]
 
 
 class ManualBinningPreviewResponse(BaseModel):
-    woe_by_bin: list[dict]
+    woe_by_bin: list[dict[str, Any]]
     iv: float
-    event_rate_by_bin: list[dict]
+    event_rate_by_bin: list[dict[str, Any]]
 
 
 # ---------------------------------------------------------------------------

@@ -42,7 +42,7 @@ class BinDefinition:
 
     def to_dict(self) -> JsonDict:
         if self._lifecycle is not None:
-            return self._lifecycle.to_payload()
+            return self._lifecycle.to_payload()  # type: ignore[no-any-return]  # _lifecycle is Any
         return {"variables": [v.to_dict() for v in self.variables]}
 
     @property
@@ -64,7 +64,7 @@ class BinDefinition:
     @property
     def source(self) -> JsonDict | None:
         if self._lifecycle is not None:
-            return self._lifecycle.source
+            return self._lifecycle.source  # type: ignore[no-any-return]  # _lifecycle is Any
         return None
 
 

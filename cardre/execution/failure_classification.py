@@ -19,7 +19,7 @@ from cardre.domain.errors import (
 )
 
 # Order matters: more specific subclasses first.
-_CATEGORY_MAP: tuple = (
+_CATEGORY_MAP: tuple[tuple[type[CardreError], str], ...] = (
     (GraphValidationError, "GraphValidationError"),
     (PlanContainsUnavailableNodesError, "PlanContainsUnavailableNodesError"),
     (ArtifactReadError, "ArtifactReadError"),

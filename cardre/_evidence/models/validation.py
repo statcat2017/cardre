@@ -33,9 +33,9 @@ class ValidationMetrics:
         if not raw_metrics:
             for key in ("train", "test", "oot"):
                 if key in data and isinstance(data[key], dict):
-                    raw_metrics[key] = data[key]
+                    raw_metrics[key] = data[key]  # type: ignore[index]  # raw_metrics is Any from .get()
 
-        for role, m in raw_metrics.items():
+        for role, m in raw_metrics.items():  # type: ignore[union-attr]  # raw_metrics is Any from .get()
             bad_rate: float | None = m.get("bad_rate")
             if bad_rate is None and "bad_count" in m and "row_count" in m:
                 rc = m.get("row_count", 0)
@@ -82,7 +82,7 @@ class CutoffAnalysis:
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> CutoffAnalysis:
         raw_tables = data.get("cutoff_tables", data.get("tables", {}))
         tables: dict[str, list[CutoffRow]] = {}
-        for role, rows in raw_tables.items():
+        for role, rows in raw_tables.items():  # type: ignore[union-attr]  # raw_tables is Any from .get()
             if isinstance(rows, list):
                 tables[role] = [
                     CutoffRow(

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
+from typing import Any
 
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 
@@ -107,17 +108,17 @@ class RunStep:
     started_at: str
     finished_at: str | None = None
     execution_fingerprint: JsonDict = field(default_factory=dict)
-    warnings: list[dict] = field(default_factory=list)
-    errors: list[dict] = field(default_factory=list)
+    warnings: list[dict[str, Any]] = field(default_factory=list)
+    errors: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class RunStepEvidenceView:
     """Aggregate view of a run step with derived artifact references."""
     run_step: RunStep
-    input_artifacts: list = field(default_factory=list)
-    output_artifacts: list = field(default_factory=list)
-    evidence_edges: list = field(default_factory=list)
+    input_artifacts: list[Any] = field(default_factory=list)
+    output_artifacts: list[Any] = field(default_factory=list)
+    evidence_edges: list[Any] = field(default_factory=list)
 
 
 __all__ = [

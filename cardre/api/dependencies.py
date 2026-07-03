@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from pathlib import Path
 
 from fastapi import Depends, Header, HTTPException
@@ -22,7 +23,7 @@ from cardre.store.db import ProjectStore
 def get_project_store(
     project_id_header: str | None = Header(None, alias="X-Project-Id"),
     project_path: str | None = Header(None, alias="X-Project-Path"),
-) -> ProjectStore:
+) -> Generator[ProjectStore, None, None]:
     """Resolve a ``ProjectStore`` from a trusted project id or a dev-only path."""
     config = CardreConfig.from_env()
     resolver = ProjectResolver(config.registry_path)
