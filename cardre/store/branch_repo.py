@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import builtins
 import uuid
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING
 
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 
@@ -156,21 +157,21 @@ class BranchRepository:
         )
         return row_id
 
-    def get_step_map(self, branch_id: str, plan_version_id: str) -> List[JsonDict]:
+    def get_step_map(self, branch_id: str, plan_version_id: str) -> builtins.list[JsonDict]:
         rows = self._store.execute(
             "SELECT * FROM branch_step_map WHERE branch_id = ? AND plan_version_id = ? ORDER BY created_at",
             (branch_id, plan_version_id),
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_plan_version_ids(self, branch_id: str) -> List[str]:
+    def get_plan_version_ids(self, branch_id: str) -> builtins.list[str]:
         rows = self._store.execute(
             "SELECT DISTINCT plan_version_id FROM branch_step_map WHERE branch_id = ? ORDER BY plan_version_id",
             (branch_id,),
         ).fetchall()
         return [r["plan_version_id"] for r in rows]
 
-    def get_output_artifact_ids(self, branch_id: str) -> List[List[str]]:
+    def get_output_artifact_ids(self, branch_id: str) -> builtins.list[builtins.list[str]]:
         rows = self._store.execute(
             "SELECT rs.run_step_id, al.artifact_id "
             "FROM artifact_lineage al "
@@ -232,7 +233,7 @@ class BranchRepository:
         ).fetchone()
         return None if row is None else dict(row)
 
-    def get_comparison_snapshots(self, comparison_id: str) -> List[JsonDict]:
+    def get_comparison_snapshots(self, comparison_id: str) -> builtins.list[JsonDict]:
         rows = self._store.execute(
             "SELECT * FROM branch_comparison_snapshots WHERE comparison_id = ? ORDER BY created_at",
             (comparison_id,),

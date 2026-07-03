@@ -7,7 +7,7 @@ and class-imbalance controls (resampling, SMOTE, cost-sensitive policy).
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import polars as pl
@@ -144,8 +144,8 @@ class FeatureSelectionFilterNode(NodeType):
                 iv_map[var_name] = iv_val
 
         # Apply filters
-        selected: list[dict] = []
-        rejected: list[dict] = []
+        selected: list[dict[str, Any]] = []
+        rejected: list[dict[str, Any]] = []
 
         # 1. Missingness filter
         n_rows = df.height
@@ -162,7 +162,7 @@ class FeatureSelectionFilterNode(NodeType):
                 numeric_cols.remove(col)
 
         # 2. Variance filter
-        variances = {c: float(df[c].var()) for c in numeric_cols}
+        variances = {c: float(cast(Any, df[c].var())) for c in numeric_cols}
         for col in list(numeric_cols):
             try:
                 variance = variances[col]
@@ -227,12 +227,12 @@ class FeatureSelectionFilterNode(NodeType):
 
         # Remaining columns are selected
         for col in numeric_cols:
-            iv_val = iv_map.get(col)
+            iv_value: float | None = iv_map.get(col)
             selected.append({
                 "variable": col,
                 "reason": "Passed all filter thresholds",
                 "method": "filter",
-                "iv": round(iv_val, 6) if iv_val is not None else None,
+                "iv": round(iv_value, 6) if iv_value is not None else None,
             })
 
         # Apply max_features limit
@@ -404,8 +404,8 @@ class FeatureSelectionEmbeddedNode(NodeType):
         sorted_features = sorted(importance_map.items(), key=lambda x: x[1], reverse=True)
 
         # Select above threshold
-        selected: list[dict] = []
-        rejected: list[dict] = []
+        selected: list[dict[str, Any]] = []
+        rejected: list[dict[str, Any]] = []
 
         for feat, imp in sorted_features:
             if imp >= importance_threshold:

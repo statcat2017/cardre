@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json  # noqa: F401 — imported for monkeypatch/patch compatibility in tests
-from typing import Any
+from typing import Any, cast
 
 from cardre._evidence.kinds import AmbiguousEvidenceError, EvidenceKind, EvidenceNotFoundError
 from cardre._evidence.reader import ArtifactEvidenceReader
@@ -59,10 +59,10 @@ class TechnicalManifestExportNode(NodeType):
     def _evidence_payload(self, evidence: Any) -> dict[str, Any]:
         raw = getattr(evidence, "_raw", None)
         if isinstance(raw, dict):
-            return dict(raw)
+            return cast(dict[str, Any], dict(raw))
         if hasattr(evidence, "to_dict"):
-            return evidence.to_dict()
-        return evidence.to_model_dict()
+            return cast(dict[str, Any], evidence.to_dict())
+        return cast(dict[str, Any], evidence.to_model_dict())
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
@@ -82,10 +82,10 @@ class TechnicalManifestExportNode(NodeType):
 
         all_run_steps = store.get_run_steps(run_id)
 
-        steps_evidence = []
-        artifacts_evidence = []
-        all_warnings: list[dict] = []
-        all_errors: list[dict] = []
+        steps_evidence: list[dict[str, Any]] = []
+        artifacts_evidence: list[dict[str, Any]] = []
+        all_warnings: list[dict[str, Any]] = []
+        all_errors: list[dict[str, Any]] = []
 
         seen_artifact_ids: set[str] = set()
         for rs in all_run_steps:
@@ -124,12 +124,12 @@ class TechnicalManifestExportNode(NodeType):
             for e in rs.errors:
                 all_errors.append(dict(e))
 
-        modelling_metadata = {}
-        selected_variables = []
-        model_artifact_data: dict = {}
-        scorecard_artifact_data: dict = {}
-        validation_metrics_data: dict = {}
-        cutoff_data: dict = {}
+        modelling_metadata: dict[str, Any] = {}
+        selected_variables: list[str] = []
+        model_artifact_data: dict[str, Any] = {}
+        scorecard_artifact_data: dict[str, Any] = {}
+        validation_metrics_data: dict[str, Any] = {}
+        cutoff_data: dict[str, Any] = {}
         found_modelling_metadata = None
         found_selection = None
         found_model = None

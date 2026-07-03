@@ -367,7 +367,7 @@ class ImportTabularDatasetNode(NodeType):
 
     @staticmethod
     def _resolve_format(params: dict[str, Any], src: Path) -> str:
-        fmt = params.get("format", "auto")
+        fmt = str(params.get("format", "auto"))
         if fmt != "auto":
             return fmt
         suffix = src.suffix.lower()
@@ -487,7 +487,7 @@ class ProfileDatasetNode(NodeType):
             warnings=node_warnings or None,
         )
 
-    def _numeric_stats(self, df: pl.DataFrame) -> dict[str, dict[str, float]]:
+    def _numeric_stats(self, df: pl.DataFrame) -> dict[str, dict[str, float | None]]:
         numeric_cols = [c for c in df.columns if df.schema[c].is_numeric()]
         if not numeric_cols:
             return {}
@@ -495,7 +495,7 @@ class ProfileDatasetNode(NodeType):
         empty_cols = {c for c in numeric_cols if df[c].drop_nulls().is_empty()}
         available = [c for c in numeric_cols if c not in empty_cols]
 
-        stats = {c: {"min": None, "max": None, "mean": None, "std": None} for c in numeric_cols}
+        stats: dict[str, dict[str, float | None]] = {c: {"min": None, "max": None, "mean": None, "std": None} for c in numeric_cols}
 
         if available:
             aggs = df.select([
@@ -1098,12 +1098,12 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
         caps = params.get("caps", {})
         floors = params.get("floors", {})
 
-        treatment_report = {"imputations": {}, "caps": {}, "floors": {}}
+        treatment_report: dict[str, Any] = {"imputations": {}, "caps": {}, "floors": {}}
 
         output_artifacts = []
         for input_art in context.input_artifacts:
             df = pl.read_parquet(store.artifact_path(input_art))  # cardre-allow-artifact-read: dataset-frame-input
-            affected = {"imputations": {}, "caps": {}, "floors": {}}
+            affected: dict[str, dict[str, Any]] = {"imputations": {}, "caps": {}, "floors": {}}
 
             for col_name, config in imputations.items():
                 if col_name not in df.columns:

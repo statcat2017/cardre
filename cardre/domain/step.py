@@ -7,7 +7,6 @@ No NodeType here (that is an executable plugin interface in
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-
 from typing import cast
 
 from cardre.domain.artifacts import json_logical_hash

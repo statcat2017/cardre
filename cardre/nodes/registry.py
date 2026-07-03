@@ -227,7 +227,7 @@ def _register_launch_nodes(reg: NodeRegistry) -> None:
         CutoffAnalysisNode,
         DummyApplyNode,
     ]:
-        reg.register(n)
+        reg.register(n)  # type: ignore[type-abstract]  # Protocol subclasses as defaults is intentional
 
 
 # ---------------------------------------------------------------------------
@@ -280,4 +280,4 @@ def _register_deferred_nodes(reg: NodeRegistry) -> None:
         WeightedEnsembleNode,
         DecisionTreeNode,
     ]:
-        reg.register(_deferred(n))
+        reg.register(_deferred(n))  # type: ignore[type-abstract]  # Protocol subclasses as defaults is intentional

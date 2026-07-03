@@ -57,7 +57,7 @@ class BaseClassifierNode(NodeType):
     def _check_dependencies(self) -> None:
         """Optional pre-flight check (import, optional deps, etc.)."""
 
-    def _get_estimator_class(self):
+    def _get_estimator_class(self) -> type[Any]:
         """Return the estimator class to instantiate (e.g. ``DecisionTreeClassifier``)."""
         raise NotImplementedError
 
@@ -67,7 +67,7 @@ class BaseClassifierNode(NodeType):
 
     def _post_fit(
         self,
-        clf,
+        clf: Any,
         features: list[str],
         df: pl.DataFrame,
         params: dict[str, Any],
@@ -88,7 +88,7 @@ class BaseClassifierNode(NodeType):
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         self._check_dependencies()
-        estimator_class = self._get_estimator_class()
+        estimator_class: type[Any] = self._get_estimator_class()
         params = context.validated_params
         step_id = context.step_spec.step_id
 
@@ -147,7 +147,7 @@ class BaseClassifierNode(NodeType):
                 break
 
         # 5. Feature importance
-        feature_importance = {
+        feature_importance: dict[str, float] = {
             fname: round(float(imp), 6)
             for fname, imp in zip(features, clf.feature_importances_, strict=False)
             if imp > 0

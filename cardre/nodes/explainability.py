@@ -268,9 +268,9 @@ class ModelExplainabilityNode(NodeType):
         return NodeOutput(artifacts=[art], metrics={"model_family": model_family})
 
     def _compute_permutation_importance(
-        self, store, model: dict, data_art, features: list[str],
+        self, store: Any, model: dict[str, Any], data_art: Any, features: list[str],
         data_role: str = "train", random_state: int = 42,
-    ) -> dict | None:
+    ) -> dict[str, Any] | None:
         """Compute permutation importance on specified data."""
         try:
             from sklearn.inspection import permutation_importance as sklearn_permutation_importance
@@ -334,16 +334,16 @@ class ModelExplainabilityNode(NodeType):
             return None
 
     def _compute_stability_analysis(
-        self, store, model: dict, data_art, features: list[str],
+        self, store: Any, model: dict[str, Any], data_art: Any, features: list[str],
         random_seeds: list[int], data_role: str = "train",
-    ) -> dict | None:
+    ) -> dict[str, Any] | None:
         try:
             import numpy as np
             from scipy.stats import spearmanr
         except ImportError:
             return None
 
-        seed_importances = {}
+        seed_importances: dict[str, list[str]] = {}
         for seed in random_seeds:
             result = self._compute_permutation_importance(
                 store, model, data_art, features,
@@ -356,7 +356,7 @@ class ModelExplainabilityNode(NodeType):
             seed_importances[str(seed)] = sorted_feats
 
         seeds_list = list(seed_importances.keys())
-        correlations = []
+        correlations: list[float] = []
         for i in range(len(seeds_list)):
             for j in range(i + 1, len(seeds_list)):
                 rank_i = {f: idx for idx, f in enumerate(seed_importances[seeds_list[i]])}
@@ -381,8 +381,8 @@ class ModelExplainabilityNode(NodeType):
         }
 
     def _compute_pdp(
-        self, store, model: dict, data_art, features: list[str],
-    ) -> list | None:
+        self, store: Any, model: dict[str, Any], data_art: Any, features: list[str],
+    ) -> list[dict[str, Any]] | None:
         try:
             from sklearn.inspection import partial_dependence
         except ImportError:
@@ -416,7 +416,7 @@ class ModelExplainabilityNode(NodeType):
             else:
                 top_features = features[:3]
 
-            pdp_results = []
+            pdp_results: list[dict[str, Any]] = []
             for feat in top_features:
                 if feat not in features:
                     continue
@@ -435,8 +435,8 @@ class ModelExplainabilityNode(NodeType):
             return None
 
     def _compute_shap(
-        self, store, model: dict, data_art, features: list[str],
-    ) -> dict | None:
+        self, store: Any, model: dict[str, Any], data_art: Any, features: list[str],
+    ) -> dict[str, Any] | None:
         try:
             import shap
         except ImportError:
@@ -491,7 +491,7 @@ class ModelExplainabilityNode(NodeType):
         except Exception:
             return None
 
-    def _champion_gate(self, explanation_level: str, report: dict) -> dict:
+    def _champion_gate(self, explanation_level: str, report: dict[str, Any]) -> dict[str, str]:
         """Determine champion gate status from explanation level."""
         if explanation_level == "native_scorecard":
             return {
@@ -609,7 +609,7 @@ class ModelLimitationsNode(NodeType):
         dimensionality = self._assess_dimensionality(features, training.get("row_count", 0))
 
         # Build structured limitations
-        limitations: list[dict] = []
+        limitations: list[dict[str, Any]] = []
 
         # Interpretability limitation
         if explanation_level in ("native_semi_transparent", "post_hoc_only", "none"):
@@ -704,10 +704,10 @@ class ModelLimitationsNode(NodeType):
         return NodeOutput(artifacts=[art], metrics={"overall_status": overall_status})
 
     def _check_data_quality(
-        self, store, input_artifacts, features: list[str],
-    ) -> list[dict]:
+        self, store: Any, input_artifacts: Any, features: list[str],
+    ) -> list[dict[str, Any]]:
         """Check training data quality for the model's features."""
-        issues: list[dict] = []
+        issues: list[dict[str, Any]] = []
         train_art = next((a for a in input_artifacts if a.role == "train"), None)
         if train_art is None:
             return issues
@@ -739,7 +739,7 @@ class ModelLimitationsNode(NodeType):
 
         return issues
 
-    def _assess_dimensionality(self, features: list[str], n_rows: int) -> dict:
+    def _assess_dimensionality(self, features: list[str], n_rows: int) -> dict[str, Any]:
         """Assess feature-to-sample ratio."""
         n_features = len(features)
         if n_rows == 0:

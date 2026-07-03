@@ -76,7 +76,7 @@ class FairnessReportNode(NodeType):
             bad = set()
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        report: dict = {
+        report: dict[str, Any] = {
             "sensitive_columns": sensitive_columns,
             "min_group_size": min_group_size,
             "cutoff": cutoff,
@@ -159,7 +159,7 @@ class FairnessReportNode(NodeType):
                     rejected = rec["rejected"]
                     approval_rate = round(1 - rejected / n_group, 4) if n_group > 0 else 0.0
 
-                    score_dist = {}
+                    score_dist: dict[str, Any] = {}
                     if has_score:
                         score_dist = {
                             "mean": round(float(rec.get("score_mean", 0) or 0), 2),
@@ -209,7 +209,7 @@ class FairnessReportNode(NodeType):
         )
         return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
 
-    def _compute_parity_summary(self, roles: dict, sensitive_columns: list[str]) -> dict:
+    def _compute_parity_summary(self, roles: dict[str, Any], sensitive_columns: list[str]) -> dict[str, Any]:
         """Compute approval parity and error parity across groups.
 
         Splits approval parity (always computed when groups exist) from
@@ -301,7 +301,7 @@ class ProxyRiskReportNode(NodeType):
 
         reader = ArtifactEvidenceReader(store)
         train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
-        warnings: list[dict] = []
+        warnings: list[dict[str, Any]] = []
 
         report: dict[str, Any] = {
             "sensitive_columns": sensitive_columns,
@@ -372,7 +372,7 @@ class ProxyRiskReportNode(NodeType):
             sensitive_importance = feature_importance.get(col, 0.0)
 
             # Check if any model feature is highly correlated with sensitive column
-            proxy_features = []
+            proxy_features: list[dict[str, Any]] = []
             for feat in model_features:
                 if feat == col:
                     proxy_features.append({"feature": feat, "reason": "directly_sensitive"})
@@ -474,7 +474,7 @@ class AlternativeDataManifestNode(NodeType):
         store = context.store
         params = context.validated_params
         data_sources = list(params.get("data_sources", []))
-        warnings: list[dict] = []
+        warnings: list[dict[str, Any]] = []
 
         train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
         df = None
@@ -489,7 +489,7 @@ class AlternativeDataManifestNode(NodeType):
                 df = None
 
         # Compute coverage and missingness per source
-        source_evidence: list[dict] = []
+        source_evidence: list[dict[str, Any]] = []
         for src in data_sources:
             columns = list(src.get("columns", []))
             coverage: dict[str, Any] = {}

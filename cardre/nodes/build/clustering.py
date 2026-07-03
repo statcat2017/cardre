@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import polars as pl
@@ -231,7 +231,7 @@ class VariableClusteringNode(NodeType):
             if variable not in df.columns:
                 continue
 
-            woe_expr = None
+            woe_expr: Any = None
             for bin_entry in bins:
                 bin_id = bin_entry["bin_id"]
                 woe_val = woe_table.mapping.get(variable, {}).get(bin_id)
@@ -253,18 +253,18 @@ class VariableClusteringNode(NodeType):
     @staticmethod
     def _tie_aware_rank(values: np.ndarray) -> np.ndarray:
         """Assign average ranks, handling ties correctly."""
-        from scipy.stats import rankdata  # type: ignore[import-untyped]
+        from scipy.stats import rankdata
 
-        return rankdata(values, method="average").astype(float)
+        return cast(np.ndarray[Any, Any], rankdata(values, method="average").astype(float))
 
     def _compute_correlation_matrix(
         self, df: pl.DataFrame, columns: list[str],
         method: str, missing_handling: str,
         absolute: bool, minimum_pair_count: int = 30,
-    ) -> tuple[pl.DataFrame, list[dict]]:
+    ) -> tuple[pl.DataFrame, list[dict[str, Any]]]:
         import numpy as np
 
-        warnings_list: list[dict] = []
+        warnings_list: list[dict[str, Any]] = []
         n = len(columns)
         arr = np.eye(n)
 
@@ -354,7 +354,7 @@ class VariableClusteringNode(NodeType):
         corr_matrix: pl.DataFrame, threshold: float,
         iv_map: dict[str, float], missing_map: dict[str, float],
         representative_rule: str,
-    ) -> tuple[list[dict], list[str], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
 
         arr = corr_matrix.drop("_col").to_numpy()
         n = len(columns)
@@ -383,9 +383,9 @@ class VariableClusteringNode(NodeType):
                         stack.append(nb)
             cluster_list.append(component)
 
-        clusters_out: list[dict] = []
+        clusters_out: list[dict[str, Any]] = []
         singletons: list[str] = []
-        warnings_list: list[dict] = []
+        warnings_list: list[dict[str, Any]] = []
 
         for cid, members in enumerate(cluster_list, 1):
             var_names = [columns[m] for m in members]
@@ -403,7 +403,7 @@ class VariableClusteringNode(NodeType):
                 var_names, iv_map, missing_map, representative_rule,
             )
 
-            enriched_members = []
+            enriched_members: list[dict[str, Any]] = []
             for vn in var_names:
                 enriched_members.append({
                     "variable": vn,
@@ -427,7 +427,7 @@ class VariableClusteringNode(NodeType):
         corr_matrix: pl.DataFrame, linkage: str, cut_threshold: float,
         iv_map: dict[str, float], missing_map: dict[str, float],
         representative_rule: str,
-    ) -> tuple[list[dict], list[str], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
         import numpy as np
 
         arr = 1.0 - corr_matrix.drop("_col").to_numpy()
@@ -438,8 +438,8 @@ class VariableClusteringNode(NodeType):
 
         def cluster_distance(c1: list[int], c2: list[int]) -> float:
             if linkage == "complete":
-                return max(arr[i, j] for i in c1 for j in c2)
-            return sum(arr[i, j] for i in c1 for j in c2) / (len(c1) * len(c2))
+                return float(max(arr[i, j] for i in c1 for j in c2))
+            return float(sum(arr[i, j] for i in c1 for j in c2) / (len(c1) * len(c2)))
 
         while len(clusters) > 1:
             best_i, best_j, best_d = -1, -1, float("inf")
@@ -456,9 +456,9 @@ class VariableClusteringNode(NodeType):
             clusters = [c for k, c in enumerate(clusters) if k not in (best_i, best_j)]
             clusters.append(merged)
 
-        clusters_out: list[dict] = []
+        clusters_out: list[dict[str, Any]] = []
         singletons: list[str] = []
-        warnings_list: list[dict] = []
+        warnings_list: list[dict[str, Any]] = []
 
         arr_sim = 1.0 - arr
         for cid, members in enumerate(clusters, 1):
@@ -517,19 +517,19 @@ class VariableClusteringNode(NodeType):
         reader = ArtifactEvidenceReader(store)
         params = context.validated_params
 
-        method = params.get("method", "correlation_threshold")
-        similarity_metric = params.get("similarity_metric", "pearson")
-        absolute_correlation = params.get("absolute_correlation", True)
+        method = str(params.get("method", "correlation_threshold"))
+        similarity_metric = str(params.get("similarity_metric", "pearson"))
+        absolute_correlation = bool(params.get("absolute_correlation", True))
         candidate_limit = int(params.get("candidate_limit", 50))
-        missing_handling = params.get("missing_handling", "pairwise")
-        representative_rule = params.get("representative_rule", "highest_iv")
+        missing_handling = str(params.get("missing_handling", "pairwise"))
+        representative_rule = str(params.get("representative_rule", "highest_iv"))
         minimum_pair_count = int(params.get("minimum_pair_count", 30))
 
         if method == "correlation_threshold":
-            threshold = float(params.get("threshold", params.get("correlation_threshold", 0.7)))
+            threshold = float(cast(Any, params.get("threshold", params.get("correlation_threshold", 0.7))))
         elif method == "hierarchical":
-            threshold = float(params.get("cut_threshold", 0.3))
-            linkage = params.get("linkage", "average")
+            threshold = float(cast(Any, params.get("cut_threshold", 0.3)))
+            linkage = str(params.get("linkage", "average"))
         else:
             raise ValueError(f"Unknown or unavailable clustering method: {method!r}")
 
@@ -568,7 +568,7 @@ class VariableClusteringNode(NodeType):
                 woe_table = None
 
         if input_representation == "woe_train" and bin_def is not None and woe_table is not None:
-            candidates = []
+            candidates: list[str] = []
             for var_def in bin_def.variables:
                 vname = var_def.variable
                 if vname not in df.columns:
@@ -593,9 +593,9 @@ class VariableClusteringNode(NodeType):
 
         candidates = candidates[:candidate_limit]
 
-        clusters_out: list[dict] = []
+        clusters_out: list[dict[str, Any]] = []
         singleton_variables: list[str] = []
-        warnings_list: list[dict] = []
+        warnings_list: list[dict[str, Any]] = []
 
         if len(candidates) < 2:
             for col in candidates:
@@ -617,7 +617,7 @@ class VariableClusteringNode(NodeType):
                     woe_exprs = self._build_woe_columns(df, bin_def, woe_table)
                     if woe_exprs:
                         woe_df = df.with_columns(woe_exprs)
-                        woe_cols = [e.meta.output_name for e in woe_exprs]
+                        woe_cols = [str(e.meta.output_name) for e in woe_exprs]
                         woe_cols = [c for c in woe_cols if c.replace("_woe", "") in candidates]
                         woe_cols = woe_cols[:candidate_limit]
                         if len(woe_cols) < 2:
@@ -636,9 +636,9 @@ class VariableClusteringNode(NodeType):
                                 minimum_pair_count=minimum_pair_count,
                             )
                             warnings_list.extend(corr_warnings)
-                            woe_candidate_map = {c: c.replace("_woe", "") for c in woe_cols}
-                            iv_map_woe = {wc: iv_map.get(oc, 0.0) for wc, oc in woe_candidate_map.items()}
-                            missing_map_woe = {wc: missing_map.get(oc, 0.0) for wc, oc in woe_candidate_map.items()}
+                            woe_candidate_map: dict[str, str] = {c: c.replace("_woe", "") for c in woe_cols}
+                            iv_map_woe: dict[str, float] = {wc: iv_map.get(oc, 0.0) for wc, oc in woe_candidate_map.items()}
+                            missing_map_woe: dict[str, float] = {wc: missing_map.get(oc, 0.0) for wc, oc in woe_candidate_map.items()}
 
                             if method == "hierarchical":
                                 clusters_out, singleton_variables, cluster_warnings = self._hierarchical_clusters(
@@ -653,7 +653,7 @@ class VariableClusteringNode(NodeType):
                             warnings_list.extend(cluster_warnings)
 
                             for cl in clusters_out:
-                                mapped_vars = []
+                                mapped_vars: list[dict[str, Any]] = []
                                 for mv in cl["variables"]:
                                     orig = mv["variable"].replace("_woe", "")
                                     mapped_vars.append({

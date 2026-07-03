@@ -423,7 +423,7 @@ class RejectInferenceAugmentationNode(NodeType):
         df_banded = df_scored.with_columns(band_col)
 
         band_stats: list[dict[str, Any]] = []
-        weights = pl.Series("_ri_weight", [0.0] * n_total)
+        weights: pl.Series | pl.Expr = pl.Series("_ri_weight", [0.0] * n_total)
 
         for band_idx in range(n_bands):
             in_band = df_banded.filter(pl.col("_ri_band") == band_idx)

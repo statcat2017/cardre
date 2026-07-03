@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import polars as pl
@@ -116,7 +116,7 @@ class ValidationMetricsNode(NodeType):
 
     def _derive_y_bin(
         self, df: pl.DataFrame, target_col: str, good: set[str], bad: set[str],
-    ) -> tuple[np.ndarray | None, np.ndarray | None, list[dict]]:
+    ) -> tuple[np.ndarray | None, np.ndarray | None, list[JsonDict]]:
         """Derive the binary target array for known good/bad rows only.
 
         Returns ``(y_bin, known_mask, warnings)`` where *y_bin* contains only
@@ -125,7 +125,7 @@ class ValidationMetricsNode(NodeType):
         callers can use to filter probability/score arrays to the same rows.
         Returns ``(None, None, warnings)`` when metrics are unavailable.
         """
-        warnings: list[dict] = []
+        warnings: list[JsonDict] = []
         if not target_col or target_col not in df.columns:
             warnings.append({
                 "code": "MISSING_TARGET_COLUMN",
@@ -344,7 +344,7 @@ class ValidationMetricsNode(NodeType):
             else:
                 calib = {"note": "Single class only; metrics skipped"}
 
-            at_cutoffs: dict[str, dict] = {}
+            at_cutoffs: dict[str, dict[str, Any]] = {}
             for cutoff in cutoffs:
                 y_pred = (y_prob >= cutoff).astype(int)
                 tn, fp, fn, tp = confusion_matrix(y_bin, y_pred, labels=[0, 1]).ravel()
@@ -387,7 +387,7 @@ class ValidationMetricsNode(NodeType):
             "psi_train_vs_test": None,
             "psi_train_vs_oot": None,
         }
-        all_psi_warnings: list[dict] = []
+        all_psi_warnings: list[JsonDict] = []
         if "train" in psi_data and "test" in psi_data:
             psi_val, psi_warns = self._psi(psi_data["train"], psi_data["test"])
             stability["psi_train_vs_test"] = psi_val
@@ -451,7 +451,7 @@ class ValidationMetricsNode(NodeType):
 
     def _calibration(
         self, df: pl.DataFrame, target_col: str, bad_list: list[str], n_bins: int = 10,
-    ) -> dict:
+    ) -> JsonDict:
         calib_df = df.with_columns(
             pl.col("predicted_bad_probability").qcut(n_bins, allow_duplicates=True).alias("_calib_bin"),
             pl.when(pl.col(target_col).cast(pl.String).is_in(bad_list))
@@ -465,7 +465,7 @@ class ValidationMetricsNode(NodeType):
             pl.col("actual_bad_rate").round(6),
         )
 
-        bins = []
+        bins: list[JsonDict] = []
         for row in calib_df.iter_rows():
             bins.append({
                 "bin": len(bins),
@@ -475,7 +475,7 @@ class ValidationMetricsNode(NodeType):
             })
         return {"bins": bins}
 
-    def _score_distribution(self, scores: np.ndarray) -> dict:
+    def _score_distribution(self, scores: np.ndarray) -> JsonDict:
         return {
             "mean": round(float(np.mean(scores)), 2),
             "median": round(float(np.median(scores)), 2),
@@ -488,8 +488,8 @@ class ValidationMetricsNode(NodeType):
             "p95": round(float(np.percentile(scores, 95)), 2),
         }
 
-    def _psi(self, expected: pl.Series, actual: pl.Series, n_bins: int = 10) -> tuple[float, list[dict]]:
-        psi_warnings: list[dict] = []
+    def _psi(self, expected: pl.Series, actual: pl.Series, n_bins: int = 10) -> tuple[float, list[JsonDict]]:
+        psi_warnings: list[JsonDict] = []
         if expected.is_empty() or actual.is_empty():
             return 0.0, psi_warnings
 
@@ -637,7 +637,7 @@ class ThresholdOptimizationNode(NodeType):
         bad_list = list(bad)
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        report: dict = {"objective": objective, "cost_fp": cost_fp, "cost_fn": cost_fn, "roles": {}}
+        report: JsonDict = {"objective": objective, "cost_fp": cost_fp, "cost_fn": cost_fn, "roles": {}}
 
         for data_art in data_arts:
             role = data_art.role
@@ -805,8 +805,8 @@ class CutoffAnalysisNode(NodeType):
             if score_series.n_unique() < 2:
                 raise ValueError(f"Score column has zero variance in role {role!r}")
 
-            min_s = score_series.min()
-            max_s = score_series.max()
+            min_s = cast(float, score_series.min())
+            max_s = cast(float, score_series.max())
 
             if cutoffs:
                 band_breaks = sorted(float(c) for c in cutoffs if isinstance(c, (int, float)))

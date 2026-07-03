@@ -24,7 +24,7 @@ cardre-api = "sidecar.__main__:main"
 [project.optional-dependencies]
 sidecar = ["fastapi", "uvicorn"]
 test = ["pytest", "pytest-cov", "pytest-mock", "httpx"]
-dev = ["ruff==0.15.20"]
+dev = ["ruff==0.15.20", "mypy"]
 boosting = ["xgboost", "lightgbm", "catboost"]
 imbalance = ["imbalanced-learn"]
 explain = ["shap"]
@@ -50,6 +50,35 @@ ignore = ["SIM102", "SIM116", "E501"]
 "cardre/api/**" = ["B008"]
 "cardre/_evidence/adapters/__init__.py" = ["E402"]
 "tests/**" = ["ANN001", "ANN101", "ANN201", "ANN202", "S101", "PLR2004", "D100", "D101", "D102", "D103", "D107", "SIM117"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+packages = ["cardre"]
+
+[[tool.mypy.overrides]]
+module = [
+    "polars.*",
+    "pyarrow.*",
+    "sklearn.*",
+    "scipy.*",
+    "joblib.*",
+    "xgboost.*",
+    "lightgbm.*",
+    "catboost.*",
+    "imblearn.*",
+    "shap.*",
+    "torch.*",
+    "optbinning.*",
+]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

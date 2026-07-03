@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 import uuid
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any
 
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
@@ -60,7 +61,7 @@ class ArtifactRepository:
         run_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[ArtifactRef]:
+    ) -> builtins.list[ArtifactRef]:
         sql = [
             "SELECT DISTINCT a.* FROM artifacts a",
             "JOIN artifact_lineage al ON al.artifact_id = a.artifact_id",
@@ -106,7 +107,7 @@ class ArtifactRepository:
         )
         return lineage_id
 
-    def get_lineage_for_run_step(self, run_step_id: str) -> List[dict[str, Any]]:
+    def get_lineage_for_run_step(self, run_step_id: str) -> builtins.list[dict[str, Any]]:
         rows = self._store.execute(
             "SELECT * FROM artifact_lineage WHERE run_step_id = ? ORDER BY direction, created_at",
             (run_step_id,),

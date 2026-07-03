@@ -9,7 +9,7 @@ record full lineage for auditability.
 from __future__ import annotations
 
 import io
-from typing import Any
+from typing import Any, cast
 
 import joblib
 import numpy as np
@@ -29,7 +29,7 @@ from cardre.node_parameters import (
 from cardre.nodes.contracts import NodeType
 
 
-def _load_estimator(store, estimator_ref: dict):
+def _load_estimator(store: Any, estimator_ref: dict[str, Any]) -> Any:
     """Load a fitted estimator from an estimator reference."""
     artifact_id = estimator_ref.get("artifact_id", "")
     if not artifact_id:
@@ -44,10 +44,10 @@ def _load_estimator(store, estimator_ref: dict):
         store, art,
         expected_logical_hash=estimator_ref.get("logical_hash"),
     )
-    return joblib.load(io.BytesIO(estimator_bytes))
+    return cast(Any, joblib.load(io.BytesIO(estimator_bytes)))
 
 
-def _load_model_artifact(reader: ArtifactEvidenceReader, artifact_id: str) -> dict:
+def _load_model_artifact(reader: ArtifactEvidenceReader, artifact_id: str) -> dict[str, Any]:
     """Load a model JSON artifact by ID."""
     typed = reader.read_optional(artifact_id, EvidenceKind.MODEL_ARTIFACT)
     if typed is None:
@@ -58,8 +58,8 @@ def _load_model_artifact(reader: ArtifactEvidenceReader, artifact_id: str) -> di
 
 
 def _get_predictions(
-    store, model: dict, df: pl.DataFrame, features: list[str],
-) -> np.ndarray:
+    store: Any, model: dict[str, Any], df: pl.DataFrame, features: list[str],
+) -> np.ndarray[Any, Any]:
     """Get probability predictions from a model artifact on a dataframe."""
     model_family = model.get("model_family", "")
     prob_col_idx = model.get("probability_column_index", 1)
@@ -79,9 +79,9 @@ def _get_predictions(
         if hasattr(estimator, "predict_proba"):
             proba = estimator.predict_proba(X)
             if proba.shape[1] > prob_col_idx:
-                return proba[:, prob_col_idx]
-            return proba[:, -1]
-        return estimator.predict(X).astype(np.float64)
+                return cast(np.ndarray[Any, Any], proba[:, prob_col_idx])
+            return cast(np.ndarray[Any, Any], proba[:, -1])
+        return cast(np.ndarray[Any, Any], estimator.predict(X).astype(np.float64))
 
 
 class VotingEnsembleNode(NodeType):
@@ -186,8 +186,8 @@ class VotingEnsembleNode(NodeType):
         df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
 
         # Load all models and get predictions
-        models: list[dict] = []
-        model_refs: list[dict] = []
+        models: list[dict[str, Any]] = []
+        model_refs: list[dict[str, Any]] = []
         for aid in model_artifact_ids:
             model = _load_model_artifact(reader, aid)
             models.append(model)
@@ -198,13 +198,13 @@ class VotingEnsembleNode(NodeType):
             })
 
         # Use intersection of all feature sets
-        all_features = set()
+        all_features: set[str] = set()
         for m in models:
             all_features.update(m.get("features", []))
         features = sorted(all_features)
 
         # Get predictions from each model
-        all_probs: list[np.ndarray] = []
+        all_probs: list[np.ndarray[Any, Any]] = []
         for model in models:
             model_features = model.get("features", [])
             missing = [f for f in model_features if f not in df.columns]
@@ -391,8 +391,8 @@ class WeightedEnsembleNode(NodeType):
         df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
 
         # Load models
-        models: list[dict] = []
-        model_refs: list[dict] = []
+        models: list[dict[str, Any]] = []
+        model_refs: list[dict[str, Any]] = []
         for aid in model_artifact_ids:
             model = _load_model_artifact(reader, aid)
             models.append(model)
@@ -403,7 +403,7 @@ class WeightedEnsembleNode(NodeType):
             })
 
         # Get predictions
-        all_probs: list[np.ndarray] = []
+        all_probs: list[np.ndarray[Any, Any]] = []
         for model in models:
             model_features = model.get("features", [])
             probs = _get_predictions(store, model, df, model_features)
@@ -426,7 +426,7 @@ class WeightedEnsembleNode(NodeType):
                 )
             if val_art is not None:
                 val_df = pl.read_parquet(store.artifact_path(val_art))  # cardre-allow-artifact-read: dataset-frame-input
-                val_probs: list[np.ndarray] = []
+                val_probs: list[np.ndarray[Any, Any]] = []
                 for model in models:
                     model_features = model.get("features", [])
                     probs = _get_predictions(store, model, val_df, model_features)
@@ -542,7 +542,7 @@ class WeightedEnsembleNode(NodeType):
             except ValueError:
                 continue
 
-        return best_weights
+        return cast(np.ndarray[Any, Any], best_weights)
 
 # StackingEnsembleNode is deferred until fold-level base-model artifacts and
 # leakage-safe lineage semantics are implemented. The class and apply dispatch

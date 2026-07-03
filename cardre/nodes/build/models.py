@@ -255,12 +255,14 @@ class LogisticRegressionNode(NodeType):
             source_variables = list(sel_def.selected_names)
         else:
             source_variables = [f[:-4] for f in features_list if f.endswith("_woe")] if features_list else []
-        coefficients = {col: round(float(coef), 6) for col, coef in zip(features_list, lr.coef_[0], strict=False)}
+        coefficients: dict[str, float] = {
+            col: round(float(coef), 6) for col, coef in zip(features_list, lr.coef_[0], strict=False)
+        }
 
         fail_on_non_convergence = bool(params.get("fail_on_non_convergence", True))
         has_sklearn_warning = any(issubclass(w.category, ConvergenceWarning) for w in fit_warnings)
         converged = not has_sklearn_warning and bool(lr.n_iter_[0] < max_iter)
-        warnings_list: list[dict] = []
+        warnings_list: list[dict[str, Any]] = []
         if not converged:
             msg = f"Logistic regression did not converge after {max_iter} iterations"
             if fail_on_non_convergence:
@@ -269,7 +271,7 @@ class LogisticRegressionNode(NodeType):
                 "code": "CONVERGENCE_FAILURE",
                 "message": msg,
             })
-        training_params = {}
+        training_params: dict[str, Any] = {}
         for k, v in lr_params.items():
             if isinstance(v, np.bool_):
                 training_params[k] = bool(v)
@@ -477,7 +479,7 @@ class ScoreScalingNode(NodeType):
         direction = -1.0 if higher_is_lower_risk else 1.0
         base_points = round(offset + direction * factor * intercept, 2)
 
-        attributes: list[dict] = []
+        attributes: list[dict[str, Any]] = []
         all_woe_map = woe_table.mapping
 
         for var_def_obj in bin_def.variables:

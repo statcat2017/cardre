@@ -7,7 +7,9 @@ fails with a clear installation message if not available.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
+
+import polars as pl
 
 from cardre.node_parameters import (
     MethodOption,
@@ -107,8 +109,8 @@ class XGBoostClassifierNode(BaseClassifierNode):
         from xgboost import XGBClassifier
         self._Cls = XGBClassifier
 
-    def _get_estimator_class(self):
-        return self._Cls
+    def _get_estimator_class(self) -> type[Any]:
+        return cast(type[Any], self._Cls)
 
     def _build_estimator_kwargs(self, params: dict[str, Any]) -> dict[str, Any]:
         n_estimators = int(params.get("n_estimators", 100))
@@ -128,9 +130,9 @@ class XGBoostClassifierNode(BaseClassifierNode):
 
     def _post_fit(
         self,
-        clf,
+        clf: Any,
         features: list[str],
-        df,
+        df: pl.DataFrame,
         params: dict[str, Any],
         *,
         bad_class: str,
@@ -251,8 +253,8 @@ class LightGBMClassifierNode(BaseClassifierNode):
         from lightgbm import LGBMClassifier
         self._Cls = LGBMClassifier
 
-    def _get_estimator_class(self):
-        return self._Cls
+    def _get_estimator_class(self) -> type[Any]:
+        return cast(type[Any], self._Cls)
 
     def _build_estimator_kwargs(self, params: dict[str, Any]) -> dict[str, Any]:
         n_estimators = int(params.get("n_estimators", 100))
@@ -273,9 +275,9 @@ class LightGBMClassifierNode(BaseClassifierNode):
 
     def _post_fit(
         self,
-        clf,
+        clf: Any,
         features: list[str],
-        df,
+        df: pl.DataFrame,
         params: dict[str, Any],
         *,
         bad_class: str,
@@ -398,8 +400,8 @@ class CatBoostClassifierNode(BaseClassifierNode):
         from catboost import CatBoostClassifier as CatBoostClf
         self._Cls = CatBoostClf
 
-    def _get_estimator_class(self):
-        return self._Cls
+    def _get_estimator_class(self) -> type[Any]:
+        return cast(type[Any], self._Cls)
 
     def _build_estimator_kwargs(self, params: dict[str, Any]) -> dict[str, Any]:
         iterations = int(params.get("iterations", 100))
@@ -418,9 +420,9 @@ class CatBoostClassifierNode(BaseClassifierNode):
 
     def _post_fit(
         self,
-        clf,
+        clf: Any,
         features: list[str],
-        df,
+        df: pl.DataFrame,
         params: dict[str, Any],
         *,
         bad_class: str,
@@ -461,5 +463,3 @@ class CatBoostClassifierNode(BaseClassifierNode):
             },
             extra_metrics={"estimator_count": iterations},
         )
-
-

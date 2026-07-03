@@ -14,6 +14,7 @@ from cardre.node_parameters import (
     ParameterDefinition,
 )
 from cardre.nodes.build.selection_policy import (
+    ClusterPolicy,
     ManualOverridePolicy,
     NoClusterPolicy,
     RepresentativePolicy,
@@ -190,10 +191,10 @@ class VariableSelectionNode(NodeType):
             cluster_overrides.setdefault(cid, {})[entry["variable"]] = entry["reason"]
 
         candidates = sorted(iv_map.keys(), key=lambda v: iv_map[v], reverse=True)
-        selected: list[dict] = []
-        rejected: list[dict] = []
+        selected: list[dict[str, Any]] = []
+        rejected: list[dict[str, Any]] = []
         seen_clusters: set[str] = set()
-        cluster_decisions: list[dict] = []
+        cluster_decisions: list[dict[str, Any]] = []
 
         for var in candidates:
             if var in manual_excludes:
@@ -206,7 +207,7 @@ class VariableSelectionNode(NodeType):
             "one_per_cluster_lowest_missing": RepresentativePolicy("one_per_cluster_lowest_missing"),
             "manual_override": ManualOverridePolicy(),
         }
-        policy = policy_map.get(cluster_rule, NoClusterPolicy())
+        policy: ClusterPolicy = policy_map.get(cluster_rule, NoClusterPolicy())  # type: ignore[assignment]  # dict.get returns Optional, but we have a default
 
         # Cluster preselection: run policy per cluster
         for cl in clusters:

@@ -14,7 +14,7 @@ Score-scaling-compatible modes:
 from __future__ import annotations
 
 import io
-from typing import Any
+from typing import Any, cast
 
 import joblib
 import numpy as np
@@ -43,7 +43,7 @@ from cardre.nodes.contracts import NodeType
 def _safe_logit(probability: np.ndarray, eps: float = 1e-6) -> np.ndarray:
     """Convert probabilities to log-odds with clipping for numerical safety."""
     p = np.clip(np.asarray(probability, dtype=float), eps, 1.0 - eps)
-    return np.log(p / (1.0 - p))
+    return cast(np.ndarray[Any, Any], np.log(p / (1.0 - p)))
 
 
 def _compute_calibration_bins(
@@ -88,7 +88,7 @@ class _CalibratorEnsemble:
     Averages predict_proba (Platt) or predict (isotonic) across folds.
     """
 
-    def __init__(self, calibrators: list, method: str):
+    def __init__(self, calibrators: list[Any], method: str) -> None:
         self._calibrators = calibrators
         self._method = method
         if method == "platt":
@@ -108,7 +108,7 @@ class _CalibratorEnsemble:
                 raw = X[:, 1] if X.ndim == 2 and X.shape[1] == 2 else X.ravel()
                 p = cal.predict(raw)
                 all_probs.append(np.column_stack([1.0 - p, p]))
-        return np.mean(all_probs, axis=0)
+        return np.asarray(np.mean(all_probs, axis=0), dtype=float)
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """Return average prediction across fold calibrators."""
@@ -121,7 +121,7 @@ class _CalibratorEnsemble:
             else:
                 raw = X[:, 1] if X.ndim == 2 and X.shape[1] == 2 else X.ravel()
                 all_preds.append(cal.predict(raw))
-        return np.mean(all_preds, axis=0)
+        return np.asarray(np.mean(all_preds, axis=0), dtype=float)
 
 
 def _fit_platt_cv(
@@ -131,7 +131,7 @@ def _fit_platt_cv(
 ) -> _CalibratorEnsemble:
     """Fit Platt calibrator via CV, averaging calibrator probabilities."""
     skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=42)
-    all_calibrators = []
+    all_calibrators: list[Any] = []
     for train_idx, _ in skf.split(np.zeros(len(y_true)), y_true):
         cal = LogisticRegression(solver="lbfgs")
         X_fold = _safe_logit(y_prob_raw[train_idx]).reshape(-1, 1)

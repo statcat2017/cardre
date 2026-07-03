@@ -15,9 +15,9 @@ from cardre.execution.context import ExecutionContext
 
 
 def _extract_target_metadata(
-    store,
-    input_artifacts,
-) -> tuple[str, set[str], set[str], dict | None]:
+    store: Any,
+    input_artifacts: Any,
+) -> tuple[str, set[str], set[str], dict[str, Any] | None]:
     """Extract target column, good/bad values, and raw metadata from definition artifacts."""
     reader = ArtifactEvidenceReader(store)
     meta = reader.find_optional(input_artifacts, EvidenceKind.MODELLING_METADATA)
@@ -65,7 +65,7 @@ def _resolve_features(
 def _prepare_training_data(
     context: ExecutionContext,
     params: dict[str, Any],
-) -> tuple[pl.DataFrame, list[str], str, set[str], set[str], np.ndarray, dict]:
+) -> tuple[pl.DataFrame, list[str], str, set[str], set[str], np.ndarray, dict[str, Any] | None]:
     """Shared training data preparation for all sklearn model nodes.
 
     Returns (df, features, target_column, good_values, bad_values, y_binary, meta).
@@ -114,7 +114,7 @@ def _prepare_training_data(
     return df, features, target_column, good_values, bad_values, y_binary, meta
 
 
-def _write_estimator(store, clf, step_id: str, run_id: str, model_family: str):
+def _write_estimator(store: Any, clf: Any, step_id: str, run_id: str, model_family: str) -> Any:
     """Serialize a fitted sklearn estimator to a binary artifact."""
     buf = io.BytesIO()
     joblib.dump(clf, buf)

@@ -312,7 +312,7 @@ class AutoBinningFitNode(NodeType):
         rejected_vars: list[dict[str, Any]] = []
         for var_result in result.variables:
             is_failed = var_result.status == "FAILED"
-            var_entry = {
+            var_entry: dict[str, Any] = {
                 "variable": var_result.variable,
                 "dtype": var_result.dtype,
                 "kind": "numeric" if var_result.dtype == "numerical" else "categorical",

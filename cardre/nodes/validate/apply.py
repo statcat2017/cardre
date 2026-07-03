@@ -158,7 +158,7 @@ class ApplyWoeMappingNode(NodeType):
                 if var not in df.columns:
                     continue
                 woe_col = f"{var}_woe"
-                woe_expr = None
+                woe_expr: Any = None
 
                 for be in bins:
                     bid = be["bin_id"]

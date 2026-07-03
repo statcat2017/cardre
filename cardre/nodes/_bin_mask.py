@@ -8,10 +8,10 @@ import polars as pl
 
 
 def build_bin_condition(
-    bin_def: dict,
+    bin_def: dict[str, Any],
     col_ref: pl.Series | pl.Expr,
     kind: str,
-    all_bins: list[dict] | None = None,
+    all_bins: list[dict[str, Any]] | None = None,
     variable: str = "",
     bin_id: str = "",
 ) -> pl.Series | pl.Expr:
@@ -23,7 +23,7 @@ def build_bin_condition(
 
 
 def _build_numeric_mask(
-    bin_def: dict,
+    bin_def: dict[str, Any],
     col_ref: pl.Series | pl.Expr,
     is_missing: bool,
     variable: str = "",
@@ -37,7 +37,7 @@ def _build_numeric_mask(
     if is_missing:
         return col_ref.is_null()
 
-    parts: list[Any] = []
+    parts: list[pl.Series | pl.Expr] = []
     if lower is not None:
         parts.append((col_ref >= lower) if lower_inc else (col_ref > lower))
     if upper is not None:
@@ -53,10 +53,10 @@ def _build_numeric_mask(
 
 
 def _build_categorical_mask(
-    bin_def: dict,
+    bin_def: dict[str, Any],
     col_ref: pl.Series | pl.Expr,
     is_missing: bool,
-    all_bins: list[dict],
+    all_bins: list[dict[str, Any]],
 ) -> pl.Series | pl.Expr:
     categories = bin_def.get("categories", [])
 

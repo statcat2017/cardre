@@ -6,9 +6,10 @@ Phase 3 adds random forest and GBDT using the same contract.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
+import polars as pl
 from sklearn.tree import DecisionTreeClassifier
 
 from cardre.node_parameters import (
@@ -23,12 +24,12 @@ from cardre.nodes._classifier_base import BaseClassifierNode, _ClassifierResult
 def _extract_rules_from_tree(
     classifier: DecisionTreeClassifier,
     feature_names: list[str],
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Extract human-readable rules from a fitted decision tree."""
     tree = classifier.tree_
-    rules: list[dict] = []
+    rules: list[dict[str, Any]] = []
 
-    def _recurse(node_id: int, conditions: list[dict]) -> None:
+    def _recurse(node_id: int, conditions: list[dict[str, Any]]) -> None:
         left_child = tree.children_left[node_id]
         right_child = tree.children_right[node_id]
 
@@ -153,8 +154,8 @@ class DecisionTreeNode(BaseClassifierNode):
 
         return errors
 
-    def _get_estimator_class(self):
-        return DecisionTreeClassifier
+    def _get_estimator_class(self) -> type[Any]:
+        return cast(type[Any], DecisionTreeClassifier)
 
     def _build_estimator_kwargs(self, params: dict[str, Any]) -> dict[str, Any]:
         max_depth = params.get("max_depth")
@@ -175,9 +176,9 @@ class DecisionTreeNode(BaseClassifierNode):
 
     def _post_fit(
         self,
-        clf,
+        clf: Any,
         features: list[str],
-        df,
+        df: pl.DataFrame,
         params: dict[str, Any],
         *,
         bad_class: str,
@@ -196,7 +197,7 @@ class DecisionTreeNode(BaseClassifierNode):
         class_weight = params.get("class_weight")
         random_seed = int(params.get("random_seed", 42))
 
-        warnings: list[dict] = []
+        warnings: list[dict[str, Any]] = []
         if max_depth is not None and tree_depth >= max_depth:
             warnings.append({
                 "code": "TREE_FULL_DEPTH",
@@ -322,9 +323,9 @@ class RandomForestClassifierNode(BaseClassifierNode):
 
         return errors
 
-    def _get_estimator_class(self):
+    def _get_estimator_class(self) -> type[Any]:
         from sklearn.ensemble import RandomForestClassifier
-        return RandomForestClassifier
+        return cast(type[Any], RandomForestClassifier)
 
     def _build_estimator_kwargs(self, params: dict[str, Any]) -> dict[str, Any]:
         max_depth = params.get("max_depth")
@@ -348,9 +349,9 @@ class RandomForestClassifierNode(BaseClassifierNode):
 
     def _post_fit(
         self,
-        clf,
+        clf: Any,
         features: list[str],
-        df,
+        df: pl.DataFrame,
         params: dict[str, Any],
         *,
         bad_class: str,
@@ -478,9 +479,9 @@ class GradientBoostingClassifierNode(BaseClassifierNode):
             default_method="default",
         )
 
-    def _get_estimator_class(self):
+    def _get_estimator_class(self) -> type[Any]:
         from sklearn.ensemble import GradientBoostingClassifier
-        return GradientBoostingClassifier
+        return cast(type[Any], GradientBoostingClassifier)
 
     def _build_estimator_kwargs(self, params: dict[str, Any]) -> dict[str, Any]:
         n_estimators = int(params.get("n_estimators", 100))
@@ -500,9 +501,9 @@ class GradientBoostingClassifierNode(BaseClassifierNode):
 
     def _post_fit(
         self,
-        clf,
+        clf: Any,
         features: list[str],
-        df,
+        df: pl.DataFrame,
         params: dict[str, Any],
         *,
         bad_class: str,

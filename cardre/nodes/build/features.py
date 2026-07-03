@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any, cast
 
 import polars as pl
 
@@ -112,12 +113,12 @@ class CalculateWoeIvNode(NodeType):
             raise ValueError(
                 f"WOE/IV requires at least one good and one bad row; found goods={total_good_all}, bads={total_bad_all}"
             )
-        woe_rows: list[dict] = []
-        iv_rows: dict[str, dict] = {}
-        warnings_list: list[dict] = []
+        woe_rows: list[dict[str, Any]] = []
+        iv_rows: dict[str, dict[str, Any]] = {}
+        warnings_list: list[dict[str, Any]] = []
 
         # Track per-variable smoothing for controlled evidence artifact
-        evidence_variables: list[dict] = []
+        evidence_variables: list[dict[str, Any]] = []
 
         for var_def in bin_def.variables:
             variable = var_def.variable
@@ -132,12 +133,12 @@ class CalculateWoeIvNode(NodeType):
             total_good = total_good_all
             total_bad = total_bad_all
 
-            var_woe_rows = []
+            var_woe_rows: list[dict[str, Any]] = []
             var_iv = 0.0
             zero_cell_count = 0
             smoothing_applied = False
             zero_cell_encountered = False
-            affected_bins: list[dict] = []
+            affected_bins: list[dict[str, Any]] = []
 
             for bin_def in bins:
                 bin_id = bin_def["bin_id"]
@@ -145,7 +146,7 @@ class CalculateWoeIvNode(NodeType):
 
                 bin_mask = build_bin_condition(bin_def, col_values, kind, bins, variable=variable, bin_id=bin_id)
 
-                row_count = int(bin_mask.sum())
+                row_count = int(cast(Any, bin_mask.sum()))
 
                 if target_series is not None and good_values and bad_values:
                     bin_good = int(target_series.filter(bin_mask).is_in(good_values_list).sum())
@@ -164,7 +165,7 @@ class CalculateWoeIvNode(NodeType):
                 if good_dist == 0.0 or bad_dist == 0.0:
                     zero_cell_count += 1
                     zero_cell_encountered = True
-                    if smoothing and smoothing.get("method") == "additive":
+                    if isinstance(smoothing, dict) and smoothing.get("method") == "additive":
                         alpha = float(smoothing.get("alpha", 0.5))
                         if alpha <= 0:
                             raise ValueError("Smoothing alpha must be positive")
@@ -222,7 +223,7 @@ class CalculateWoeIvNode(NodeType):
                     "iv_component": round(iv_comp, 6),
                 })
 
-                if was_smoothed:
+                if was_smoothed and isinstance(smoothing, dict):
                     alpha = float(smoothing.get("alpha", 0.5))
                     affected_bins.append({
                         "bin_id": bin_id,
@@ -244,9 +245,9 @@ class CalculateWoeIvNode(NodeType):
                 "warning_count": sum(1 for w in warnings_list if w["variable"] == variable),
             }
 
-            var_bins_out = []
+            var_bins_out: list[dict[str, Any]] = []
             for i, woe_row in enumerate(var_woe_rows):
-                bd = bins[i] if i < len(bins) else {}
+                bd: dict[str, Any] = bins[i] if i < len(bins) else {}
                 var_bins_out.append({
                     "bin_id": woe_row["bin_id"],
                     "label": woe_row["label"],
@@ -271,7 +272,7 @@ class CalculateWoeIvNode(NodeType):
                 })
 
             var_status = "included"
-            var_warnings: list[dict] = []
+            var_warnings: list[dict[str, Any]] = []
             if enforce_monotonic_woe and purpose == "final" and len(var_woe_rows) >= 2:
                 woe_by_bin = {r["bin_id"]: r["woe"] for r in var_woe_rows}
                 m_status = monotonicity_status(woe_by_bin)
@@ -346,7 +347,7 @@ class CalculateWoeIvNode(NodeType):
             if plan:
                 project_id = plan["project_id"]
 
-        woe_evidence = {
+        woe_evidence: dict[str, Any] = {
             "schema_version": "cardre.woe_iv_evidence.v1",
             "project_id": project_id,
             "run_id": context.run_id,
@@ -439,8 +440,8 @@ class WoeTransformTrainNode(NodeType):
         else:
             selected_vars = list(all_var_defs)
 
-        woe_columns = []
-        woe_exprs = []
+        woe_columns: list[str] = []
+        woe_exprs: list[pl.Expr] = []
         column_variable_map: list[tuple[str, str]] = []
         result_df = df
 
@@ -453,7 +454,7 @@ class WoeTransformTrainNode(NodeType):
             if variable not in df.columns:
                 continue
 
-            woe_expr = None
+            woe_expr: Any = None
             for bin_def_entry in bins:
                 bin_id = bin_def_entry["bin_id"]
 

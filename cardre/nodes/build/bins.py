@@ -159,8 +159,8 @@ class FineClassingNode(NodeType):
 
         feature_cols = [c for c in df.columns if c not in exclude_columns]
 
-        variables = []
-        warnings: list[dict] = []
+        variables: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         for col in feature_cols:
             col_dtype = df.schema[col]
@@ -207,17 +207,17 @@ class FineClassingNode(NodeType):
 
     def _bin_numeric(
         self, df: pl.DataFrame, col: str, target_column: str,
-        good_values: set, bad_values: set,
+        good_values: set[str], bad_values: set[str],
         max_bins: int, min_bin_fraction: float,
-        missing_policy: str, warnings: list[dict],
-    ) -> list[dict]:
+        missing_policy: str, warnings: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         non_null = df.filter(pl.col(col).is_not_null())
         missing = df.filter(pl.col(col).is_null())
 
         good_list = list(good_values)
         bad_list = list(bad_values)
 
-        bins = []
+        bins: list[dict[str, Any]] = []
         bin_counter = 0
 
         if missing.height > 0 and missing_policy == "separate_bin":
@@ -274,8 +274,9 @@ class FineClassingNode(NodeType):
             })
 
         _all_bk = bin_stats["_brk"].to_list()
-        col_min = float(non_null[col].min())
-        prev_upper = col_min
+        col_min_raw: Any = non_null[col].min()
+        col_min = float(col_min_raw) if col_min_raw is not None else 0.0
+        prev_upper: float | None = col_min
 
         for i, rec in enumerate(bin_stats.to_dicts()):
             bin_counter += 1
@@ -337,17 +338,17 @@ class FineClassingNode(NodeType):
 
     def _bin_categorical(
         self, df: pl.DataFrame, col: str, target_column: str,
-        good_values: set, bad_values: set,
+        good_values: set[str], bad_values: set[str],
         max_categorical_levels: int, missing_policy: str,
-        warnings: list[dict],
-    ) -> list[dict]:
+        warnings: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         non_null = df.filter(pl.col(col).is_not_null())
         missing = df.filter(pl.col(col).is_null())
 
         good_list = list(good_values)
         bad_list = list(bad_values)
 
-        bins = []
+        bins: list[dict[str, Any]] = []
         bin_counter = 0
 
         if missing.height > 0 and missing_policy == "separate_bin":
@@ -367,7 +368,7 @@ class FineClassingNode(NodeType):
         vc = non_null[col].value_counts().sort("count", descending=True)
         all_levels = vc[col].to_list()
 
-        other_categories: list = []
+        other_categories: list[Any] = []
         if len(all_levels) > max_categorical_levels:
             other_categories = all_levels[max_categorical_levels:]
             all_levels = all_levels[:max_categorical_levels]
@@ -386,7 +387,10 @@ class FineClassingNode(NodeType):
             pl.col("_tgt_str").is_in(good_list).sum().alias("good_count"),
         ])
 
-        level_map = {str(r[0]): {"row_count": r[1], "bad_count": r[2], "good_count": r[3]} for r in grouped.iter_rows()}
+        level_map: dict[str, dict[str, int]] = {
+            str(r[0]): {"row_count": int(r[1]), "bad_count": int(r[2]), "good_count": int(r[3])}
+            for r in grouped.iter_rows()
+        }
 
         for level in all_levels:
             key = str(level)
@@ -435,8 +439,8 @@ class FineClassingNode(NodeType):
 
     def _make_bin_counts(
         self, bin_df: pl.DataFrame, col: str, target_column: str,
-        good_values: set, bad_values: set,
-    ) -> dict:
+        good_values: set[str], bad_values: set[str],
+    ) -> dict[str, int]:
         row_count = bin_df.height
         if target_column and target_column in bin_df.columns and (good_values or bad_values):
             target_series = bin_df[target_column].cast(pl.String)
@@ -575,12 +579,12 @@ class ManualBinningNode(NodeType):
 
 
 def validate_manual_binning_overrides(
-    bin_def: dict, overrides: list[dict], selected_vars: set[str] | None = None
+    bin_def: dict[str, Any], overrides: list[dict[str, Any]], selected_vars: set[str] | None = None
 ) -> list[str]:
     return LifecycleBinDefinition.validate_overrides(bin_def, overrides, selected_vars)
 
 
 def apply_manual_binning_overrides(
-    bin_def: dict, overrides: list[dict], selected_vars: set[str] | None = None
-) -> dict:
+    bin_def: dict[str, Any], overrides: list[dict[str, Any]], selected_vars: set[str] | None = None
+) -> dict[str, Any]:
     return LifecycleBinDefinition.apply_overrides(bin_def, overrides, selected_vars)

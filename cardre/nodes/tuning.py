@@ -24,21 +24,21 @@ from cardre.node_parameters import (
 from cardre.nodes._training_utils import _prepare_training_data, _write_estimator
 from cardre.nodes.contracts import NodeType
 
-ESTIMATOR_MAP = {
+ESTIMATOR_MAP: dict[str, type[Any]] = {
     "decision_tree": DecisionTreeClassifier,
     "random_forest": RandomForestClassifier,
     "gbdt": GradientBoostingClassifier,
     "logistic_regression": LogisticRegression,
 }
 
-ESTIMATOR_DEFAULT_KWARGS = {
+ESTIMATOR_DEFAULT_KWARGS: dict[str, dict[str, Any]] = {
     "decision_tree": {},
     "random_forest": {"n_jobs": -1},
     "gbdt": {},
     "logistic_regression": {"solver": "lbfgs", "max_iter": 1000},
 }
 
-ESTIMATOR_TO_FAMILY = {
+ESTIMATOR_TO_FAMILY: dict[str, str] = {
     "decision_tree": "decision_tree",
     "random_forest": "random_forest",
     "gbdt": "gbdt",
@@ -205,7 +205,7 @@ class HyperparameterTuningNode(NodeType):
         refit = bool(params.get("refit", True))
 
         estimator_cls = ESTIMATOR_MAP[estimator_type]
-        base_kwargs = dict(ESTIMATOR_DEFAULT_KWARGS.get(estimator_type, {}))
+        base_kwargs: dict[str, Any] = dict(ESTIMATOR_DEFAULT_KWARGS.get(estimator_type, {}))
         base_kwargs["random_state"] = random_seed
 
         start_time = time.monotonic()
