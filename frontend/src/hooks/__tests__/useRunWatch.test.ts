@@ -42,9 +42,7 @@ describe("useRunWatch", () => {
 
     const { result } = renderHook(() =>
       useRunWatch({
-        baseUrl: "http://localhost:8000",
         projectId: "proj-1",
-        projectPath: "/tmp/test.cardre",
         runId: "run-1",
         pollIntervalMs: 100000,
       }),
@@ -57,7 +55,7 @@ describe("useRunWatch", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     const callArgs = vi.mocked(fetch).mock.calls[0];
     const headers = callArgs[1]?.headers as Record<string, string>;
-    expect(headers["X-Project-Path"]).toBe("/tmp/test.cardre");
+    expect(headers["X-Project-Id"]).toBe("proj-1");
   });
 
   it("stops polling on succeeded", async () => {
@@ -65,9 +63,7 @@ describe("useRunWatch", () => {
 
     const { result } = renderHook(() =>
       useRunWatch({
-        baseUrl: "http://localhost:8000",
         projectId: "proj-1",
-        projectPath: "/tmp/test.cardre",
         runId: "run-1",
         pollIntervalMs: 100000,
       }),
@@ -84,9 +80,7 @@ describe("useRunWatch", () => {
 
     const { result } = renderHook(() =>
       useRunWatch({
-        baseUrl: "http://localhost:8000",
         projectId: "proj-1",
-        projectPath: "/tmp/test.cardre",
         runId: "run-1",
         pollIntervalMs: 100000,
       }),
@@ -103,9 +97,7 @@ describe("useRunWatch", () => {
 
     const { result } = renderHook(() =>
       useRunWatch({
-        baseUrl: "http://localhost:8000",
         projectId: "proj-1",
-        projectPath: "/tmp/test.cardre",
         runId: "run-1",
         pollIntervalMs: 100000,
         maxErrorRetries: 1,

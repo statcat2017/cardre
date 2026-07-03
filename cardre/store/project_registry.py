@@ -25,6 +25,10 @@ class ProjectRegistry:
             return None
         return Path(root).resolve()
 
+    def list_all(self) -> dict[str, str]:
+        """Return all registered project_id -> root mappings."""
+        return self._read()
+
     def _read(self) -> dict[str, str]:
         if not self.path.exists():
             return {}

@@ -65,7 +65,7 @@ def plan_with_mb_step(project_and_store):
 
 
 class TestManualBinningReviews:
-    def test_list_reviews_empty(self, api_client, plan_with_mb_step):
+    def test_list_reviews_empty(self, raw_project_path, api_client, plan_with_mb_step):
         project_id, store, root, plan_id, pv_id, mb_step_id = plan_with_mb_step
         resp = api_client.get(
             f"/projects/{project_id}/manual-binning/reviews",
@@ -74,7 +74,7 @@ class TestManualBinningReviews:
         assert resp.status_code == 200
         assert resp.json() == []
 
-    def test_get_review_not_found(self, api_client, plan_with_mb_step):
+    def test_get_review_not_found(self, raw_project_path, api_client, plan_with_mb_step):
         project_id, store, root, plan_id, pv_id, mb_step_id = plan_with_mb_step
         resp = api_client.get(
             f"/projects/{project_id}/manual-binning/reviews/nonexistent",
@@ -82,7 +82,7 @@ class TestManualBinningReviews:
         )
         assert resp.status_code == 404
 
-    def test_edit_review_round_trip(self, api_client, plan_with_mb_step):
+    def test_edit_review_round_trip(self, raw_project_path, api_client, plan_with_mb_step):
         """POST /edit creates a draft, GET /reviews/{id} reads it back."""
         project_id, store, root, plan_id, pv_id, mb_step_id = plan_with_mb_step
 
@@ -114,7 +114,7 @@ class TestManualBinningReviews:
         assert review_data["status"] == "pending"
         assert review_data["reviewer_notes"] == "Test edit"
 
-    def test_patch_review(self, api_client, plan_with_mb_step):
+    def test_patch_review(self, raw_project_path, api_client, plan_with_mb_step):
         """PATCH updates review status."""
         project_id, store, root, plan_id, pv_id, mb_step_id = plan_with_mb_step
 
@@ -140,7 +140,7 @@ class TestManualBinningReviews:
         assert patch_data["status"] == "approved"
         assert patch_data["reviewer_notes"] == "Looks good."
 
-    def test_preview_endpoint(self, api_client, plan_with_mb_step):
+    def test_preview_endpoint(self, raw_project_path, api_client, plan_with_mb_step):
         """POST /preview computes WOE/IV from variable data."""
         project_id, store, root, plan_id, pv_id, mb_step_id = plan_with_mb_step
 
@@ -298,7 +298,7 @@ def _seed_store_with_evidence(store, project_id):
 class TestManualBinningReviewLifecycle:
     """Full manual-binning review lifecycle driven through the API."""
 
-    def test_manual_binning_review_lifecycle(self, api_client, project_and_store):
+    def test_manual_binning_review_lifecycle(self, raw_project_path, api_client, project_and_store):
         project_id, store, root = project_and_store
         plan_id, base_pv_id, mb_step_id, ds_step_id = _seed_store_with_evidence(
             store, project_id,

@@ -109,14 +109,14 @@ class TestErrorEnvelope:
 
     def test_validation_error_envelope(self, api_client):
         """FastAPI validation errors should also produce detail.code."""
-        # Missing project id should produce MISSING_PROJECT_ID
-        resp = api_client.get("/projects/some-id")
+        # Missing project id on a project-scoped route should produce MISSING_PROJECT_ID
+        resp = api_client.get("/projects/some-id/runs")
         assert resp.status_code == 400
         data = resp.json()
         assert "detail" in data
         assert data["detail"]["code"] == "MISSING_PROJECT_ID"
 
-    def test_404_produces_envelope(self, api_client, store):
+    def test_404_produces_envelope(self, raw_project_path, api_client, store):
         """A 404 error from the API should have the right shape."""
         root = store.root
         resp = api_client.get(

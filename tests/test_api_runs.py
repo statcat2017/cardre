@@ -14,6 +14,9 @@ from cardre.domain.diagnostics import utc_now_iso
 @pytest.fixture
 def project_with_run(store):
     """Create a project, plan, plan version, and run."""
+    from cardre.services.project_resolver import ProjectResolver
+    from cardre.config import CardreConfig
+
     project_id = str(uuid.uuid4())
     now = utc_now_iso()
     store.execute(
@@ -37,6 +40,8 @@ def project_with_run(store):
         "VALUES (?, ?, 'succeeded', ?, ?, ?)",
         (run_id, pv_id, now, now, now),
     )
+    resolver = ProjectResolver(CardreConfig.from_env().registry_path)
+    resolver.register_project(project_id, store.root)
     return project_id, plan_id, pv_id, run_id, store, store.root
 
 
@@ -64,7 +69,11 @@ def _seed_plan_version(store, input_path: Path):
     """Seed a committed plan with import→profile→export steps.
 
     Returns (project_id, plan_version_id, step_ids).
+    Also registers the project in the registry for X-Project-Id resolution.
     """
+    from cardre.services.project_resolver import ProjectResolver
+    from cardre.config import CardreConfig
+
     now = utc_now_iso()
     project_id = str(uuid.uuid4())
     store.execute(
@@ -82,6 +91,9 @@ def _seed_plan_version(store, input_path: Path):
         "VALUES (?, ?, 1, 1, ?, ?)",
         (pv_id, plan_id, now, "Base version"),
     )
+
+    resolver = ProjectResolver(CardreConfig.from_env().registry_path)
+    resolver.register_project(project_id, store.root)
 
     step_ids = ["step-import", "step-profile", "step-export"]
     node_types = [
@@ -124,7 +136,7 @@ class TestRuns:
         project_id, _, pv_id, _, _, root = project_with_run
         resp = api_client.post(
             f"/projects/{project_id}/runs",
-            headers={"X-Project-Path": str(root)},
+            headers={"X-Project-Id": project_id},
             json={"plan_version_id": pv_id, "sync": True, "force": False},
         )
         assert resp.status_code == 201
@@ -136,7 +148,7 @@ class TestRuns:
         project_id, _, _, run_id, store, root = project_with_run
         resp = api_client.get(
             f"/projects/{project_id}/runs",
-            headers={"X-Project-Path": str(root)},
+            headers={"X-Project-Id": project_id},
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -147,7 +159,7 @@ class TestRuns:
         project_id, _, _, run_id, store, root = project_with_run
         resp = api_client.get(
             f"/projects/{project_id}/runs/{run_id}",
-            headers={"X-Project-Path": str(root)},
+            headers={"X-Project-Id": project_id},
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -155,10 +167,10 @@ class TestRuns:
         assert data["status"] == "succeeded"
 
     def test_get_run_wrong_project(self, api_client, project_with_run):
-        _, _, _, run_id, store, root = project_with_run
+        project_id, _, _, run_id, store, root = project_with_run
         resp = api_client.get(
             f"/projects/{uuid.uuid4()}/runs/{run_id}",
-            headers={"X-Project-Path": str(root)},
+            headers={"X-Project-Id": project_id},
         )
         assert resp.status_code == 404
         assert resp.json()["detail"]["code"] == "RUN_NOT_FOUND"
@@ -167,7 +179,7 @@ class TestRuns:
         project_id, _, _, _, store, root = project_with_run
         resp = api_client.get(
             f"/projects/{project_id}/runs/nonexistent",
-            headers={"X-Project-Path": str(root)},
+            headers={"X-Project-Id": project_id},
         )
         assert resp.status_code == 404
         data = resp.json()
@@ -193,7 +205,7 @@ class TestRuns:
 
         resp = api_client.get(
             f"/projects/{project_id}/runs/{run_id}/steps",
-            headers={"X-Project-Path": str(root)},
+            headers={"X-Project-Id": project_id},
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -201,10 +213,10 @@ class TestRuns:
         assert len(data) >= 1
 
     def test_list_run_steps_wrong_project(self, api_client, project_with_run):
-        _, _, _, run_id, store, root = project_with_run
+        project_id, _, _, run_id, store, root = project_with_run
         resp = api_client.get(
             f"/projects/{uuid.uuid4()}/runs/{run_id}/steps",
-            headers={"X-Project-Path": str(root)},
+            headers={"X-Project-Id": project_id},
         )
         assert resp.status_code == 404
         assert resp.json()["detail"]["code"] == "RUN_NOT_FOUND"
@@ -213,17 +225,17 @@ class TestRuns:
         project_id, _, _, run_id, store, root = project_with_run
         resp = api_client.get(
             f"/projects/{project_id}/runs/{run_id}/evidence",
-            headers={"X-Project-Path": str(root)},
+            headers={"X-Project-Id": project_id},
         )
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
 
     def test_list_run_evidence_wrong_project(self, api_client, project_with_run):
-        _, _, _, run_id, store, root = project_with_run
+        project_id, _, _, run_id, store, root = project_with_run
         resp = api_client.get(
             f"/projects/{uuid.uuid4()}/runs/{run_id}/evidence",
-            headers={"X-Project-Path": str(root)},
+            headers={"X-Project-Id": project_id},
         )
         assert resp.status_code == 404
         assert resp.json()["detail"]["code"] == "RUN_NOT_FOUND"
@@ -239,7 +251,7 @@ class TestRuns:
         # POST /projects/{project_id}/runs — create and execute synchronously
         resp = api_client.post(
             f"/projects/{project_id}/runs",
-            headers={"X-Project-Path": str(tmp)},
+            headers={"X-Project-Id": project_id},
             json={"plan_version_id": pv_id, "sync": True, "force": True},
         )
         assert resp.status_code == 201, resp.text
@@ -252,7 +264,7 @@ class TestRuns:
         # GET /projects/{project_id}/runs/{run_id}/steps — verify run steps
         resp2 = api_client.get(
             f"/projects/{project_id}/runs/{run_id}/steps",
-            headers={"X-Project-Path": str(tmp)},
+            headers={"X-Project-Id": project_id},
         )
         assert resp2.status_code == 200
         steps = resp2.json()

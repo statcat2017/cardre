@@ -30,7 +30,20 @@ from cardre.domain.run import RunStepStatus
 
 if TYPE_CHECKING:
     from cardre.domain.diagnostics import JsonDict
+    from cardre.execution.worker import RunDispatcher
     from cardre.store.db import ProjectStore
+
+
+# Module-level singleton dispatcher — app-scoped, not per-request (#4).
+_global_dispatcher: "RunDispatcher | None" = None
+
+
+def _get_global_dispatcher() -> "RunDispatcher":
+    global _global_dispatcher
+    if _global_dispatcher is None:
+        from cardre.execution.worker import ThreadRunDispatcher
+        _global_dispatcher = ThreadRunDispatcher()
+    return _global_dispatcher
 
 
 @dataclass
@@ -75,11 +88,17 @@ class RunCoordinator:
     executes, enabling async recovery.
     """
 
-    def __init__(self, store: ProjectStore) -> None:
+    def __init__(
+        self,
+        store: ProjectStore,
+        dispatcher: "RunDispatcher | None" = None,
+    ) -> None:
         self._store = store
         self._config = CardreConfig.from_env()
-        from cardre.execution.worker import ThreadRunDispatcher
-        self._dispatcher = ThreadRunDispatcher()
+        if dispatcher is not None:
+            self._dispatcher = dispatcher
+        else:
+            self._dispatcher = _get_global_dispatcher()
 
     # ------------------------------------------------------------------
     # Public API
@@ -229,6 +248,16 @@ class RunCoordinator:
                     kind="short_circuit",
                     existing_run_id=result.run_id,
                 )
+            if result.status == "error":
+                raise CardreError(
+                    f"Evidence policy check failed for branch {branch_id!r}",
+                    code="EVIDENCE_POLICY_ERROR",
+                    context={
+                        "plan_version_id": plan_version_id,
+                        "branch_id": branch_id,
+                        "diagnostics": result.diagnostics,
+                    },
+                )
         return RunPlanDecision(kind="execute")
 
     def _raise_run_scope_not_available(
@@ -341,7 +370,20 @@ class RunCoordinator:
             target_step_id=target_step_id,
             force=force,
         )
-        self._dispatcher.dispatch(request)
+        try:
+            self._dispatcher.dispatch(request)
+        except CardreError:
+            from cardre.store.run_repo import RunRepository
+            RunRepository(self._store).append_diagnostic(run_id, {
+                "code": "RUN_DISPATCH_FAILED",
+                "message": "Dispatch failed; run marked as failed.",
+                "severity": "error",
+                "run_id": run_id,
+                "plan_version_id": plan_version_id,
+                "created_at": utc_now_iso(),
+            })
+            RunRepository(self._store).finish(run_id, "failed")
+            raise
         return self.get_summary(run_id)
 
     # ------------------------------------------------------------------

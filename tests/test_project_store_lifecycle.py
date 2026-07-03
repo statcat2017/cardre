@@ -8,16 +8,20 @@ import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.store.db import ProjectStore
-from cardre.store.project_repo import ProjectRepository
 
 
-def test_api_request_closes_store_after_dependency_exit(api_client, store, monkeypatch):
+def test_api_request_closes_store_after_dependency_exit(raw_project_path, api_client, store, monkeypatch):
+    from cardre.services.project_resolver import ProjectResolver
+    from cardre.config import CardreConfig
+
     project_id = str(uuid.uuid4())
     now = utc_now_iso()
     store.execute(
         "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
         (project_id, "Lifecycle Project", now, "0.2.0"),
     )
+    resolver = ProjectResolver(CardreConfig.from_env().registry_path)
+    resolver.register_project(project_id, store.root)
     store.close()
 
     close_calls: list[str] = []
@@ -30,8 +34,8 @@ def test_api_request_closes_store_after_dependency_exit(api_client, store, monke
     monkeypatch.setattr(ProjectStore, "close", close_spy)
 
     resp = api_client.get(
-        f"/projects/{project_id}",
-        headers={"X-Project-Path": str(store.root)},
+        f"/projects/{project_id}/runs",
+        headers={"X-Project-Id": project_id},
     )
 
     assert resp.status_code == 200, resp.text
@@ -76,7 +80,7 @@ def test_api_requests_use_distinct_sqlite_connections(api_client, tmp_path, monk
 
     for _ in range(2):
         resp = api_client.get(
-            f"/projects/{project_id}",
+            f"/projects/{project_id}/runs",
             headers={"X-Project-Id": project_id},
         )
         assert resp.status_code == 200, resp.text
@@ -85,6 +89,7 @@ def test_api_requests_use_distinct_sqlite_connections(api_client, tmp_path, monk
 
 
 def test_api_dependency_closes_store_on_handler_error(api_client, tmp_path, monkeypatch):
+
     project_root = tmp_path / "error-path.cardre"
     create_resp = api_client.post(
         "/projects",
@@ -100,15 +105,16 @@ def test_api_dependency_closes_store_on_handler_error(api_client, tmp_path, monk
         close_calls.append(str(self.root))
         return original_close(self)
 
-    def boom(self):
+    def boom(self, *args, **kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(ProjectStore, "close", close_spy)
-    monkeypatch.setattr(ProjectRepository, "list_all", boom)
+    from cardre.store.run_repo import RunRepository
+    monkeypatch.setattr(RunRepository, "list_for_project", boom)
 
     with pytest.raises(RuntimeError, match="boom"):
         api_client.get(
-            "/projects",
+            f"/projects/{project_id}/runs",
             headers={"X-Project-Id": project_id},
         )
 

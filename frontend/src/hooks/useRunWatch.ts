@@ -40,12 +40,8 @@ export interface RunWatchState {
 }
 
 export interface UseRunWatchOptions {
-  /** Base URL of the Cardre API (with port). */
-  baseUrl: string;
   /** Project ID. */
   projectId: string;
-  /** Project path (for X-Project-Path header). */
-  projectPath: string;
   /** Run ID to watch. */
   runId: string | null;
   /** Poll interval in ms (default 2000). */
@@ -119,7 +115,6 @@ function deriveMessage(
 export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
   const {
     projectId,
-    projectPath,
     runId,
     pollIntervalMs = 2000,
     maxErrorRetries = 5,
@@ -139,7 +134,7 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
     if (!runId) return;
 
     try {
-      const data = await api.getRun({ projectPath }, projectId, runId);
+      const data = await api.getRun({ projectId }, projectId, runId);
       errorCountRef.current = 0;
       setRun(data);
       setError(null);
@@ -199,7 +194,7 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
         setPolling(true);
       }
     }
-  }, [projectId, projectPath, runId, maxErrorRetries, onComplete, onError]);
+  }, [projectId, runId, maxErrorRetries, onComplete, onError]);
 
   // Start / stop polling
   useEffect(() => {

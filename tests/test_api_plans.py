@@ -33,7 +33,7 @@ def project_with_plan(store):
 
 
 class TestPlans:
-    def test_list_plans(self, api_client, project_with_plan):
+    def test_list_plans(self, raw_project_path, api_client, project_with_plan):
         project_id, plan_id, pv_id, store, root = project_with_plan
         resp = api_client.get(
             f"/projects/{project_id}/plans",
@@ -44,7 +44,7 @@ class TestPlans:
         assert "plans" in data
         assert len(data["plans"]) >= 1
 
-    def test_get_plan(self, api_client, project_with_plan):
+    def test_get_plan(self, raw_project_path, api_client, project_with_plan):
         project_id, plan_id, pv_id, store, root = project_with_plan
         resp = api_client.get(
             f"/projects/{project_id}/plans/{plan_id}",
@@ -54,7 +54,7 @@ class TestPlans:
         data = resp.json()
         assert data["plan_id"] == plan_id
 
-    def test_get_plan_wrong_project(self, api_client, project_with_plan):
+    def test_get_plan_wrong_project(self, raw_project_path, api_client, project_with_plan):
         _, plan_id, _, _, root = project_with_plan
         resp = api_client.get(
             f"/projects/{uuid.uuid4()}/plans/{plan_id}",
@@ -63,7 +63,7 @@ class TestPlans:
         assert resp.status_code == 404
         assert resp.json()["detail"]["code"] == "PLAN_NOT_FOUND"
 
-    def test_get_plan_not_found(self, api_client, project_with_plan):
+    def test_get_plan_not_found(self, raw_project_path, api_client, project_with_plan):
         project_id, _, _, _, root = project_with_plan
         resp = api_client.get(
             f"/projects/{project_id}/plans/nonexistent",
@@ -71,7 +71,7 @@ class TestPlans:
         )
         assert resp.status_code == 404
 
-    def test_create_plan(self, api_client, project_with_plan):
+    def test_create_plan(self, raw_project_path, api_client, project_with_plan):
         project_id, _, _, store, root = project_with_plan
         resp = api_client.post(
             f"/projects/{project_id}/plans",
@@ -82,7 +82,7 @@ class TestPlans:
         data = resp.json()
         assert data["name"] == "New Plan"
 
-    def test_list_plan_versions(self, api_client, project_with_plan):
+    def test_list_plan_versions(self, raw_project_path, api_client, project_with_plan):
         project_id, plan_id, pv_id, store, root = project_with_plan
         resp = api_client.get(
             f"/projects/{project_id}/plans/{plan_id}/versions",
@@ -93,7 +93,7 @@ class TestPlans:
         assert "versions" in data
         assert len(data["versions"]) >= 1
 
-    def test_get_plan_version(self, api_client, project_with_plan):
+    def test_get_plan_version(self, raw_project_path, api_client, project_with_plan):
         project_id, plan_id, pv_id, store, root = project_with_plan
         resp = api_client.get(
             f"/projects/{project_id}/plan-versions/{pv_id}",
@@ -103,7 +103,7 @@ class TestPlans:
         data = resp.json()
         assert data["plan_version_id"] == pv_id
 
-    def test_get_plan_version_wrong_project(self, api_client, project_with_plan):
+    def test_get_plan_version_wrong_project(self, raw_project_path, api_client, project_with_plan):
         _, _, pv_id, _, root = project_with_plan
         resp = api_client.get(
             f"/projects/{uuid.uuid4()}/plan-versions/{pv_id}",
@@ -112,7 +112,7 @@ class TestPlans:
         assert resp.status_code == 404
         assert resp.json()["detail"]["code"] == "PLAN_VERSION_NOT_FOUND"
 
-    def test_commit_immutable_plan_version(self, api_client, project_with_plan):
+    def test_commit_immutable_plan_version(self, raw_project_path, api_client, project_with_plan):
         """Committing an already-committed version returns 409."""
         project_id, plan_id, pv_id, store, root = project_with_plan
         resp = api_client.post(
@@ -123,7 +123,7 @@ class TestPlans:
         data = resp.json()
         assert data["detail"]["code"] == "PLAN_VERSION_IMMUTABLE"
 
-    def test_update_draft_plan_version(self, api_client, project_with_plan):
+    def test_update_draft_plan_version(self, raw_project_path, api_client, project_with_plan):
         """PATCH description on a draft version."""
         project_id, plan_id, _, store, root = project_with_plan
 
@@ -144,7 +144,7 @@ class TestPlans:
         data = resp.json()
         assert data["description"] == "Updated description"
 
-    def test_patch_immutable_plan_version(self, api_client, project_with_plan):
+    def test_patch_immutable_plan_version(self, raw_project_path, api_client, project_with_plan):
         """PATCH on committed version returns 409."""
         project_id, _, pv_id, _, root = project_with_plan
         resp = api_client.patch(

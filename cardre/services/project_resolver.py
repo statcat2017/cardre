@@ -25,5 +25,6 @@ class ProjectResolver:
                 f"Project {project_id!r} not found",
                 code=PROJECT_NOT_FOUND,
                 context={"project_id": project_id},
+                status_code=404,
             )
         return root

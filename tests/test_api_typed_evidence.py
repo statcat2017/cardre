@@ -35,7 +35,7 @@ def test_run_evidence_endpoint_returns_typed_model():
     assert edge.artifacts[0].artifact_id == "art-1"
 
 
-def test_run_evidence_route_uses_typed_response(api_client, store):
+def test_run_evidence_route_uses_typed_response(raw_project_path, api_client, store):
     """GET /runs/{run_id}/evidence returns a list of typed objects, not raw dicts."""
     project_id = str(uuid.uuid4())
     now = utc_now_iso()

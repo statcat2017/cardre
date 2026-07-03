@@ -86,7 +86,7 @@ def project_with_evidence_step(store):
 
 
 class TestEvidence:
-    def test_get_step_evidence_staleness(self, api_client, project_with_evidence_step):
+    def test_get_step_evidence_staleness(self, raw_project_path, api_client, project_with_evidence_step):
         project_id, _, pv_id, child_step_id, store, root = project_with_evidence_step
         resp = api_client.get(
             f"/projects/{project_id}/steps/{child_step_id}/evidence",
@@ -100,7 +100,7 @@ class TestEvidence:
         assert "upstream_changes" in data
         assert "missing_evidence" in data
 
-    def test_get_step_evidence_wrong_project(self, api_client, project_with_evidence_step):
+    def test_get_step_evidence_wrong_project(self, raw_project_path, api_client, project_with_evidence_step):
         _, _, pv_id, child_step_id, _, root = project_with_evidence_step
         resp = api_client.get(
             f"/projects/{uuid.uuid4()}/steps/{child_step_id}/evidence",
@@ -110,7 +110,7 @@ class TestEvidence:
         assert resp.status_code == 404
         assert resp.json()["detail"]["code"] == "PLAN_VERSION_NOT_FOUND"
 
-    def test_get_step_evidence_missing_plan_version(self, api_client, project_with_evidence_step):
+    def test_get_step_evidence_missing_plan_version(self, raw_project_path, api_client, project_with_evidence_step):
         project_id, _, _, child_step_id, _, root = project_with_evidence_step
         resp = api_client.get(
             f"/projects/{project_id}/steps/{child_step_id}/evidence",
@@ -120,7 +120,7 @@ class TestEvidence:
         data = resp.json()
         assert "MISSING_PARAMETER" in data["detail"]["code"]
 
-    def test_get_step_evidence_not_found(self, api_client, project_with_evidence_step):
+    def test_get_step_evidence_not_found(self, raw_project_path, api_client, project_with_evidence_step):
         project_id, _, pv_id, _, _, root = project_with_evidence_step
         resp = api_client.get(
             f"/projects/{project_id}/steps/nonexistent/evidence",
@@ -131,7 +131,7 @@ class TestEvidence:
         data = resp.json()
         assert data["detail"]["code"] == "STEP_NOT_FOUND"
 
-    def test_get_step_evidence_edges(self, api_client, project_with_evidence_step):
+    def test_get_step_evidence_edges(self, raw_project_path, api_client, project_with_evidence_step):
         project_id, _, pv_id, child_step_id, store, root = project_with_evidence_step
         resp = api_client.get(
             f"/projects/{project_id}/steps/{child_step_id}/evidence/edges",

@@ -371,7 +371,8 @@ def assert_run_audit_integrity(store: ProjectStore, run_id: str) -> None:
     - the run row exists and is in a terminal state;
     - every run_step has a persisted row (no phantom in-memory steps);
     - every evidence_edge has at least one evidence_artifact;
-    - the run manifest exists on disk.
+    - the run manifest exists on disk and contains valid JSON with the
+      expected run_id, plan_version_id, and status.
 
     Raises ``RunLifecycleError`` if any check fails.
     """
@@ -413,6 +414,52 @@ def assert_run_audit_integrity(store: ProjectStore, run_id: str) -> None:
                 code="EVIDENCE_EDGE_HAS_NO_ARTIFACTS",
                 context={"run_id": run_id, "evidence_edge_id": edge["evidence_edge_id"]},
             )
+
+    manifest_dir = store.root / "exports" / f"manifest-{run_id}"
+    manifest_path = manifest_dir / "manifest.json"
+    if not manifest_path.exists():
+        raise RunLifecycleError(
+            f"Run {run_id} manifest not found at {manifest_path}",
+            code="MANIFEST_NOT_FOUND",
+            context={"run_id": run_id, "manifest_path": str(manifest_path)},
+        )
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise RunLifecycleError(
+            f"Run {run_id} manifest is not valid JSON: {exc}",
+            code="MANIFEST_INVALID",
+            context={"run_id": run_id, "error": str(exc)},
+        ) from exc
+
+    if manifest.get("run_id") != run_id:
+        raise RunLifecycleError(
+            f"Manifest run_id mismatch: expected {run_id!r}, got {manifest.get('run_id')!r}",
+            code="MANIFEST_RUN_ID_MISMATCH",
+            context={"run_id": run_id, "manifest_run_id": manifest.get("run_id")},
+        )
+    if manifest.get("plan_version_id") != run["plan_version_id"]:
+        raise RunLifecycleError(
+            f"Manifest plan_version_id mismatch: expected {run['plan_version_id']!r}, "
+            f"got {manifest.get('plan_version_id')!r}",
+            code="MANIFEST_PLAN_VERSION_MISMATCH",
+            context={
+                "run_id": run_id,
+                "expected": run["plan_version_id"],
+                "actual": manifest.get("plan_version_id"),
+            },
+        )
+    if manifest.get("status") != run["status"]:
+        raise RunLifecycleError(
+            f"Manifest status mismatch: expected {run['status']!r}, "
+            f"got {manifest.get('status')!r}",
+            code="MANIFEST_STATUS_MISMATCH",
+            context={
+                "run_id": run_id,
+                "expected": run["status"],
+                "actual": manifest.get("status"),
+            },
+        )
 
 
 __all__ = [

@@ -34,42 +34,8 @@
           "projects"
         ],
         "summary": "List Projects",
-        "description": "List all projects (from the currently opened store).",
+        "description": "List all registered projects from the registry.",
         "operationId": "list_projects_projects_get",
-        "parameters": [
-          {
-            "name": "X-Project-Id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Project-Id"
-            }
-          },
-          {
-            "name": "X-Project-Path",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Project-Path"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -77,16 +43,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProjectListResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -101,14 +57,14 @@
         "description": "Create a new project by bootstrapping a fresh v2 store at body.path.",
         "operationId": "create_project_projects_post",
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ProjectCreateRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "201": {
@@ -140,7 +96,7 @@
           "projects"
         ],
         "summary": "Get Project",
-        "description": "Get a single project by ID.",
+        "description": "Get a single project by ID, resolved via the registry.",
         "operationId": "get_project_projects__project_id__get",
         "parameters": [
           {
@@ -150,38 +106,6 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
-            }
-          },
-          {
-            "name": "X-Project-Id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Project-Id"
-            }
-          },
-          {
-            "name": "X-Project-Path",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Project-Path"
             }
           }
         ],

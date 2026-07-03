@@ -33,7 +33,7 @@ export interface paths {
         };
         /**
          * List Projects
-         * @description List all projects (from the currently opened store).
+         * @description List all registered projects from the registry.
          */
         get: operations["list_projects_projects_get"];
         put?: never;
@@ -57,7 +57,7 @@ export interface paths {
         };
         /**
          * Get Project
-         * @description Get a single project by ID.
+         * @description Get a single project by ID, resolved via the registry.
          */
         get: operations["get_project_projects__project_id__get"];
         put?: never;
@@ -1231,10 +1231,7 @@ export interface operations {
     list_projects_projects_get: {
         parameters: {
             query?: never;
-            header?: {
-                "X-Project-Id"?: string | null;
-                "X-Project-Path"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1247,15 +1244,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1296,10 +1284,7 @@ export interface operations {
     get_project_projects__project_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "X-Project-Id"?: string | null;
-                "X-Project-Path"?: string | null;
-            };
+            header?: never;
             path: {
                 project_id: string;
             };

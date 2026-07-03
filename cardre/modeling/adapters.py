@@ -1,8 +1,16 @@
 """Model family adapters for applying fitted models to score datasets.
 
-All artifact file I/O (reading) must be done by the caller before calling
-these adapters. Adapters receive already-parsed payloads and artifact
-identifiers for metadata purposes only.
+NOTE: The original design intended all artifact file I/O to be done by the
+caller before calling these adapters. In practice, the adapters currently
+read parquet datasets, estimator artifacts, and calibrator artifacts
+directly from the store. This is a known boundary violation (#218); a
+future ModelApplyService extraction will move I/O out of the adapters.
+Until then, callers must pass a store-backed ExecutionContext and the
+adapters will read artifacts from it.
+
+The probability-column-index validation is enforced: an out-of-range
+index raises ValueError instead of silently falling back to the last
+column.
 """
 
 from __future__ import annotations
