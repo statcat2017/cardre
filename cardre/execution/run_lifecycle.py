@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.errors import RunLifecycleError
+from cardre.domain.errors import RunLifecycleError, RunNotFoundError, RunNotRunningError, RunPlanVersionMismatchError
 
 if TYPE_CHECKING:
     from cardre.domain.diagnostics import JsonDict
@@ -282,16 +282,25 @@ class RunLifecycle:
         else:
             existing_run = run_repo.get(run_id)
             if existing_run is None:
-                raise ValueError(f"Run {run_id} not found")
+                raise RunNotFoundError(
+                    f"Run {run_id} not found",
+                    context={"run_id": run_id},
+                )
             if existing_run.get("status") != "running":
-                raise ValueError(
+                raise RunNotRunningError(
                     f"Run {run_id} is not in 'running' state "
-                    f"(status={existing_run.get('status')})"
+                    f"(status={existing_run.get('status')})",
+                    context={"run_id": run_id, "status": existing_run.get("status")},
                 )
             if existing_run.get("plan_version_id") != plan_version_id:
-                raise ValueError(
+                raise RunPlanVersionMismatchError(
                     f"Run {run_id} belongs to plan version "
-                    f"{existing_run.get('plan_version_id')}, expected {plan_version_id}"
+                    f"{existing_run.get('plan_version_id')}, expected {plan_version_id}",
+                    context={
+                        "run_id": run_id,
+                        "expected_plan_version_id": plan_version_id,
+                        "actual_plan_version_id": existing_run.get("plan_version_id"),
+                    },
                 )
         return cls(
             store=store, run_id=run_id, plan_version_id=plan_version_id,

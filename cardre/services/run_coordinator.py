@@ -132,7 +132,7 @@ class RunCoordinator:
                             existing_run_id=result.run_id,
                             reason="because branch has no stale steps",
                         )
-                        return self._build_summary(result.run_id)
+                        return self.get_summary(result.run_id)
 
         # Recover stale runs for this plan_version
         for existing_run in run_repo.list_for_plan_version(plan_version_id=plan_version_id):
@@ -262,16 +262,6 @@ class RunCoordinator:
                 )
         except CardreError:
             raise
-        except ValueError as exc:
-            msg = str(exc)
-            if ":" in msg:
-                code, message = msg.split(":", 1)
-                code = code.strip()
-                message = message.strip()
-            else:
-                code = "RUN_VALIDATION_FAILED"
-                message = msg
-            raise CardreError(message, code=code, context={"plan_version_id": plan_version_id})
         except Exception as exc:
             raise CardreError(
                 f"Run execution failed: {exc}",
@@ -286,7 +276,7 @@ class RunCoordinator:
         from cardre.store.run_step_repo import RunStepRepository
         rs_repo = RunStepRepository(self._store)
         executed_ids = [rs.step_id for rs in rs_repo.get_for_run(run_id)]
-        return self._build_summary(run_id, executed_ids)
+        return self.get_summary(run_id, executed_ids)
 
     def _execute_sync(
         self, run_id: str, plan_version_id: str,
@@ -316,7 +306,7 @@ class RunCoordinator:
         )
         dispatcher = ThreadRunDispatcher()
         dispatcher.dispatch(request)
-        return self._build_summary(run_id)
+        return self.get_summary(run_id)
 
     # ------------------------------------------------------------------
     # Run creation with persisted request fields
@@ -415,7 +405,7 @@ class RunCoordinator:
         existing_run_id: str,
         reason: str,
     ) -> None:
-        from cardre.execution.run_lifecycle import finalise_run, RunFinalisation
+        from cardre.execution.run_lifecycle import RunLifecycle
         from cardre.store.run_repo import RunRepository
 
         RunRepository(self._store).append_diagnostic(run_id, {
@@ -430,17 +420,22 @@ class RunCoordinator:
             "branch_id": branch_id,
             "created_at": utc_now_iso(),
         })
-        finalise_run(self._store, RunFinalisation(
+        lifecycle = RunLifecycle(
+            store=self._store,
             run_id=run_id,
             plan_version_id=plan_version_id,
-            status="cancelled",
             execution_mode=execution_mode,
-            finished_at=utc_now_iso(),
             branch_id=branch_id,
             target_step_id=target_step_id,
-        ))
+        )
+        lifecycle.finalise(
+            status="cancelled",
+            execution_mode=execution_mode,
+            branch_id=branch_id,
+            target_step_id=target_step_id,
+        )
 
-    def _build_summary(
+    def get_summary(
         self, run_id: str, executed_ids: list[str] | None = None,
     ) -> RunSummary:
         from cardre.store.run_repo import RunRepository

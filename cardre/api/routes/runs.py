@@ -59,7 +59,7 @@ async def get_run(
             message=f"Run {run_id!r} not found.",
             status_code=404,
         )
-    summary = coordinator._build_summary(run_id)
+    summary = coordinator.get_summary(run_id)
     return RunResponse(
         run_id=summary.run_id,
         plan_version_id=summary.plan_version_id,

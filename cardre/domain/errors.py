@@ -95,6 +95,24 @@ class RunLifecycleError(CardreError):
     status_code = 500
 
 
+class RunNotFoundError(CardreError):
+    """Raised when a run record does not exist."""
+    code = "RUN_NOT_FOUND"
+    status_code = 404
+
+
+class RunNotRunningError(CardreError):
+    """Raised when a run is not in the 'running' state."""
+    code = "RUN_NOT_RUNNING"
+    status_code = 409
+
+
+class RunPlanVersionMismatchError(CardreError):
+    """Raised when a run's plan version does not match the expected one."""
+    code = "RUN_PLAN_VERSION_MISMATCH"
+    status_code = 409
+
+
 class MissingInputArtifactError(CardreError):
     """Raised when a parent step has no output artifacts for a child to consume."""
     code = "MISSING_INPUT_ARTIFACT"
@@ -169,6 +187,9 @@ __all__ = [
     "PlanVersionNotCommittedError",
     "PlanContainsUnavailableNodesError",
     "RunLifecycleError",
+    "RunNotFoundError",
+    "RunNotRunningError",
+    "RunPlanVersionMismatchError",
     "RunScopeNotAvailableForLaunch",
     "SchemaVersionError",
 ]

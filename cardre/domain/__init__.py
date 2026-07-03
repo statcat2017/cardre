@@ -22,6 +22,9 @@ from cardre.domain.errors import (
     PlanContainsUnavailableNodesError,
     PlanVersionNotCommittedError,
     RunLifecycleError,
+    RunNotFoundError,
+    RunNotRunningError,
+    RunPlanVersionMismatchError,
     SchemaVersionError,
 )
 from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge, ResolvedEvidence
@@ -51,6 +54,9 @@ __all__ = [
     "ResolvedEvidence",
     "Run",
     "RunLifecycleError",
+    "RunNotFoundError",
+    "RunNotRunningError",
+    "RunPlanVersionMismatchError",
     "RunScope",
     "RunStep",
     "RunStepEvidenceView",
