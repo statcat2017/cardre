@@ -18,51 +18,84 @@ class EvidenceRepository:
     def __init__(self, store: ProjectStore) -> None:
         self._store = store
 
-    def _exec(self, conn: sqlite3.Connection | None, sql: str, params: tuple[Any, ...]) -> None:
-        if conn is not None:
-            conn.execute(sql, params)
-        else:
-            self._store.execute(sql, params)
-
     def insert_edge(self, edge: EvidenceEdge, conn: sqlite3.Connection | None = None) -> str:
-        self._exec(conn,
-            "INSERT INTO evidence_edges "
-            "(evidence_edge_id, run_id, run_step_id, plan_version_id, step_id, parent_step_id, "
-            " source_run_id, source_run_step_id, policy, source_label, is_reused, is_stale, "
-            " stale_reason, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                edge.evidence_edge_id,
-                edge.run_id,
-                edge.run_step_id,
-                edge.plan_version_id,
-                edge.step_id,
-                edge.parent_step_id,
-                edge.source_run_id,
-                edge.source_run_step_id,
-                edge.policy,
-                edge.source_label,
-                1 if edge.is_reused else 0,
-                1 if edge.is_stale else 0,
-                edge.stale_reason,
-                edge.created_at or utc_now_iso(),
-            ),
-        )
+        if conn is not None:
+            conn.execute(
+                "INSERT INTO evidence_edges "
+                "(evidence_edge_id, run_id, run_step_id, plan_version_id, step_id, parent_step_id, "
+                " source_run_id, source_run_step_id, policy, source_label, is_reused, is_stale, "
+                " stale_reason, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    edge.evidence_edge_id,
+                    edge.run_id,
+                    edge.run_step_id,
+                    edge.plan_version_id,
+                    edge.step_id,
+                    edge.parent_step_id,
+                    edge.source_run_id,
+                    edge.source_run_step_id,
+                    edge.policy,
+                    edge.source_label,
+                    1 if edge.is_reused else 0,
+                    1 if edge.is_stale else 0,
+                    edge.stale_reason,
+                    edge.created_at or utc_now_iso(),
+                ),
+            )
+        else:
+            self._store.execute(
+                "INSERT INTO evidence_edges "
+                "(evidence_edge_id, run_id, run_step_id, plan_version_id, step_id, parent_step_id, "
+                " source_run_id, source_run_step_id, policy, source_label, is_reused, is_stale, "
+                " stale_reason, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    edge.evidence_edge_id,
+                    edge.run_id,
+                    edge.run_step_id,
+                    edge.plan_version_id,
+                    edge.step_id,
+                    edge.parent_step_id,
+                    edge.source_run_id,
+                    edge.source_run_step_id,
+                    edge.policy,
+                    edge.source_label,
+                    1 if edge.is_reused else 0,
+                    1 if edge.is_stale else 0,
+                    edge.stale_reason,
+                    edge.created_at or utc_now_iso(),
+                ),
+            )
         return edge.evidence_edge_id
 
     def insert_artifact(self, artifact: EvidenceArtifact, conn: sqlite3.Connection | None = None) -> str:
-        self._exec(conn,
-            "INSERT INTO evidence_artifacts "
-            "(evidence_artifact_id, evidence_edge_id, artifact_id, role, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (
-                artifact.evidence_artifact_id,
-                artifact.evidence_edge_id,
-                artifact.artifact_id,
-                artifact.role,
-                artifact.created_at or utc_now_iso(),
-            ),
-        )
+        if conn is not None:
+            conn.execute(
+                "INSERT INTO evidence_artifacts "
+                "(evidence_artifact_id, evidence_edge_id, artifact_id, role, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    artifact.evidence_artifact_id,
+                    artifact.evidence_edge_id,
+                    artifact.artifact_id,
+                    artifact.role,
+                    artifact.created_at or utc_now_iso(),
+                ),
+            )
+        else:
+            self._store.execute(
+                "INSERT INTO evidence_artifacts "
+                "(evidence_artifact_id, evidence_edge_id, artifact_id, role, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    artifact.evidence_artifact_id,
+                    artifact.evidence_edge_id,
+                    artifact.artifact_id,
+                    artifact.role,
+                    artifact.created_at or utc_now_iso(),
+                ),
+            )
         return artifact.evidence_artifact_id
 
     def get_edges_for_run_step(self, run_step_id: str) -> list[EvidenceEdge]:

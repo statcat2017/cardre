@@ -1,9 +1,9 @@
 /**
  * useRunWatch — central polling hook for run progress.
  *
- * Distinguishes 13 states: loading, running, succeeded, failed,
- * interrupted, stale, stuck, cancelled, sidecar_unreachable,
- * timeout, malformed_response, backend_error, error.
+ * Ported from v1 useRunProgress.ts, renamed. Distinguishes 9 states:
+ *   sidecar unreachable, timeout, malformed JSON, run failed,
+ *   interrupted, stale, stuck, user-cancelled, backend-cancelled.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

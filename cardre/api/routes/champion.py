@@ -24,7 +24,14 @@ async def get_champion(
     if plan_id:
         assignment = repo.get_champion_assignment(plan_id)
     else:
-        assignment = repo.get_champion_assignment_for_project(project_id)
+        # Look for any champion assignment in this project
+        rows = store.execute(
+            "SELECT * FROM champion_assignments "
+            "WHERE project_id = ? AND superseded_at IS NULL "
+            "ORDER BY assigned_at DESC LIMIT 1",
+            (project_id,),
+        ).fetchall()
+        assignment = dict(rows[0]) if rows else None
 
     if assignment is None:
         return ChampionResponse(assignment=None)

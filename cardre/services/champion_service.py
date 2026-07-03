@@ -6,6 +6,7 @@ Port from v1 to v2 infrastructure.
 from __future__ import annotations
 
 import json
+import sqlite3
 import uuid
 from typing import Any
 
@@ -132,6 +133,7 @@ def supersede_champion_for_branch(
     store: ProjectStore,
     branch_id: str,
     new_plan_version_id: str,
+    conn: sqlite3.Connection | None = None,
 ) -> None:
     """Supersede any active champion assignment for a branch whose head
     has advanced to *new_plan_version_id*.
@@ -140,6 +142,9 @@ def supersede_champion_for_branch(
     is no longer valid because the evidence it was based on may have
     changed.  This function marks the old assignment as superseded so the
     branch must be re-evaluated before it can be champion again.
+
+    If *conn* is provided, the UPDATE runs inside that existing transaction
+    (no nested BEGIN).  Otherwise a new transaction is opened.
     """
     branches_repo = BranchRepository(store)
     assignment = branches_repo.get_champion_assignment_by_branch(branch_id)
@@ -148,12 +153,19 @@ def supersede_champion_for_branch(
     if assignment["selected_plan_version_id"] == new_plan_version_id:
         return
     now = utc_now_iso()
-    with store.transaction() as txn:
-        txn.execute(
+    if conn is not None:
+        conn.execute(
             "UPDATE champion_assignments SET superseded_at = ? "
             "WHERE champion_assignment_id = ? AND superseded_at IS NULL",
             (now, assignment["champion_assignment_id"]),
         )
+    else:
+        with store.transaction() as txn:
+            txn.execute(
+                "UPDATE champion_assignments SET superseded_at = ? "
+                "WHERE champion_assignment_id = ? AND superseded_at IS NULL",
+                (now, assignment["champion_assignment_id"]),
+            )
 
 
 def get_champion(

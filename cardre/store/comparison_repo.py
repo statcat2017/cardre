@@ -46,19 +46,6 @@ class ComparisonRepository:
         ).fetchone()
         return None if row is None else dict(row)
 
-    def list_for_project(self, project_id: str, plan_id: str | None = None) -> list[JsonDict]:
-        if plan_id:
-            rows = self._store.execute(
-                "SELECT * FROM branch_comparisons WHERE project_id = ? AND plan_id = ? ORDER BY created_at",
-                (project_id, plan_id),
-            ).fetchall()
-        else:
-            rows = self._store.execute(
-                "SELECT * FROM branch_comparisons WHERE project_id = ? ORDER BY created_at",
-                (project_id,),
-            ).fetchall()
-        return [dict(r) for r in rows]
-
     def add_challenger_branch(
         self,
         comparison_id: str,

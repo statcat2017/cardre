@@ -5,7 +5,21 @@
  */
 
 import type { components } from "./schema.d";
-import { ErrorCodes } from "./errorCodes";
+
+// ---------------------------------------------------------------------------
+// Canonical error codes (mirrors cardre/api/errors.py)
+// ---------------------------------------------------------------------------
+
+export const ErrorCodes = {
+  SIDECAR_UNREACHABLE: "SIDECAR_UNREACHABLE",
+  REQUEST_TIMEOUT: "REQUEST_TIMEOUT",
+  REQUEST_ABORTED: "REQUEST_ABORTED",
+  EMPTY_OK_BODY: "EMPTY_OK_BODY",
+  EMPTY_ERROR_RESPONSE: "EMPTY_ERROR_RESPONSE",
+  MALFORMED_JSON_RESPONSE: "MALFORMED_JSON_RESPONSE",
+  HTML_ERROR_RESPONSE: "HTML_ERROR_RESPONSE",
+  NON_JSON_ERROR_RESPONSE: "NON_JSON_ERROR_RESPONSE",
+} as const;
 
 // ---------------------------------------------------------------------------
 // ApiError

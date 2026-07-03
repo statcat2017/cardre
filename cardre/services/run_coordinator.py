@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
-from cardre.api.errors import RUN_EXECUTION_FAILED
 from cardre.config import CardreConfig
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import (
@@ -332,7 +331,7 @@ class RunCoordinator:
         except Exception as exc:
             raise CardreError(
                 f"Run execution failed: {exc}",
-                code=RUN_EXECUTION_FAILED,
+                code="RUN_EXECUTION_FAILED",
                 context={
                     "plan_version_id": plan_version_id,
                     "run_scope": run_scope,
@@ -375,16 +374,15 @@ class RunCoordinator:
             self._dispatcher.dispatch(request)
         except CardreError:
             from cardre.store.run_repo import RunRepository
-            with self._store.transaction("IMMEDIATE"):
-                RunRepository(self._store).append_diagnostic(run_id, {
-                    "code": "RUN_DISPATCH_FAILED",
-                    "message": "Dispatch failed; run marked as failed.",
-                    "severity": "error",
-                    "run_id": run_id,
-                    "plan_version_id": plan_version_id,
-                    "created_at": utc_now_iso(),
-                })
-                RunRepository(self._store).finish(run_id, "failed")
+            RunRepository(self._store).append_diagnostic(run_id, {
+                "code": "RUN_DISPATCH_FAILED",
+                "message": "Dispatch failed; run marked as failed.",
+                "severity": "error",
+                "run_id": run_id,
+                "plan_version_id": plan_version_id,
+                "created_at": utc_now_iso(),
+            })
+            RunRepository(self._store).finish(run_id, "failed")
             raise
         return self.get_summary(run_id)
 
@@ -458,9 +456,8 @@ class RunCoordinator:
                     f"Run {run['run_id']} was stuck in 'running' with stale heartbeat "
                     f"(last active step: {active_step_id}) — recovered as interrupted."
                 )
-            with self._store.transaction("IMMEDIATE"):
-                run_repo.finish(run["run_id"], "interrupted")
-                run_repo.append_diagnostic(run["run_id"], diag)
+            run_repo.finish(run["run_id"], "interrupted")
+            run_repo.append_diagnostic(run["run_id"], diag)
 
     def _is_stale(self, run: JsonDict) -> bool:
         if run.get("status") != "running":

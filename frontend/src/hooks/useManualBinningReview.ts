@@ -1,10 +1,5 @@
 /**
  * React hook for loading and submitting manual-binning review state.
- *
- * Error strategy: all methods (`loadReview`, `submitEdit`, `updateReview`)
- * set the `error` state AND re-throw the original error. This gives
- * callers the choice of reading the `error` state declaratively or
- * wrapping calls in try/catch for imperative error handling.
  */
 
 import { useCallback, useState } from "react";
@@ -71,7 +66,6 @@ export function useManualBinningReview(
         setReview(data);
       } catch (err) {
         handleError(err);
-        throw err;
       } finally {
         setLoading(false);
       }
@@ -119,7 +113,6 @@ export function useManualBinningReview(
         setReview(data);
       } catch (err) {
         handleError(err);
-        throw err;
       } finally {
         setLoading(false);
       }

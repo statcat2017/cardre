@@ -193,7 +193,7 @@ class RunLifecycle:
 
     Can be used as a context manager to guarantee finalisation::
 
-        with RunLifecycle.start(store, pv_id, run_id=run_id) as lifecycle:
+        with RunLifecycle.start(store, pv_id) as lifecycle:
             ...
             lifecycle.finalise(status="succeeded", ...)
 
@@ -268,35 +268,39 @@ class RunLifecycle:
         cls,
         store: ProjectStore,
         plan_version_id: str,
-        run_id: str,
         *,
+        run_id: str | None = None,
         branch_id: str | None = None,
         execution_mode: str = "unknown",
         target_step_id: str | None = None,
         in_scope_step_ids: list[str] | None = None,
         force: bool = False,
     ) -> RunLifecycle:
-        """Accept an existing run in ``running`` state.
+        """Create or accept a run.
 
-        The run must already exist in the database with status ``running``.
+        When *run_id* is provided, the run must already exist in
+        ``running`` state.
         """
         from cardre.store.run_repo import RunRepository
 
         run_repo = RunRepository(store)
 
-        existing_run = run_repo.get(run_id)
-        if existing_run is None:
-            raise RunNotFoundError(
-                f"Run {run_id} not found",
-                context={"run_id": run_id},
-            )
-        if existing_run.get("status") != "running":
-            raise RunNotRunningError(
-                f"Run {run_id} is not in 'running' state "
-                f"(status={existing_run.get('status')})",
-                context={"run_id": run_id, "status": existing_run.get("status")},
-            )
-        if existing_run.get("plan_version_id") != plan_version_id:
+        if run_id is None:
+            run_id = run_repo.create(plan_version_id, branch_id=branch_id)
+        else:
+            existing_run = run_repo.get(run_id)
+            if existing_run is None:
+                raise RunNotFoundError(
+                    f"Run {run_id} not found",
+                    context={"run_id": run_id},
+                )
+            if existing_run.get("status") != "running":
+                raise RunNotRunningError(
+                    f"Run {run_id} is not in 'running' state "
+                    f"(status={existing_run.get('status')})",
+                    context={"run_id": run_id, "status": existing_run.get("status")},
+                )
+            if existing_run.get("plan_version_id") != plan_version_id:
                 raise RunPlanVersionMismatchError(
                     f"Run {run_id} belongs to plan version "
                     f"{existing_run.get('plan_version_id')}, expected {plan_version_id}",

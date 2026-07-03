@@ -265,6 +265,12 @@ class ProjectStore:
         from cardre.store.run_repo import RunRepository
         return RunRepository(self).get_latest_successful_step(plan_version_id, step_id, branch_id=branch_id)
 
+    def get_latest_successful_run_step_for_step(self, plan_version_id: str, step_id: str, branch_id: str | None = None) -> dict[str, Any] | None:
+        return self.get_latest_successful_run_step(plan_version_id, step_id, branch_id=branch_id)
+
+    def get_any_successful_run_id_for_plan(self, plan_id: str) -> str | None:
+        return self.get_latest_successful_run_id_for_plan(plan_id)
+
     def get_plan_id_for_version(self, plan_version_id: str) -> str | None:
         from cardre.store.plan_repo import PlanRepository
         return PlanRepository(self).get_plan_id_for_version(plan_version_id)
