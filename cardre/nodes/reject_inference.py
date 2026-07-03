@@ -447,7 +447,7 @@ class RejectInferenceAugmentationNode(NodeType):
 
         financed_mask = df_resample.select(pl.col(_RI_FINANCED)).to_series().to_list()
         target_known = df_resample.select(pl.col(target_column).cast(pl.Utf8).is_in(all_known)).to_series().to_list()
-        eligible_mask = [f and k for f, k in zip(financed_mask, target_known)]
+        eligible_mask = [f and k for f, k in zip(financed_mask, target_known, strict=False)]
         weight_vals = df_resample.select(pl.col("_ri_weight")).to_series().to_list()
         financed_indices = [i for i, e in enumerate(eligible_mask) if e]
 

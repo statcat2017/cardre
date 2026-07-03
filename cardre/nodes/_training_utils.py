@@ -23,7 +23,7 @@ def _extract_target_metadata(
     meta = reader.find_optional(input_artifacts, EvidenceKind.MODELLING_METADATA)
     if meta is None:
         return "", set(), set(), None
-    return meta.target_column, set(str(v) for v in meta.good_values), set(str(v) for v in meta.bad_values), meta.extra
+    return meta.target_column, {str(v) for v in meta.good_values}, {str(v) for v in meta.bad_values}, meta.extra
 
 
 def _resolve_features(

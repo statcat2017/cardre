@@ -12,8 +12,8 @@ from cardre.domain.diagnostics import utc_now_iso
 @pytest.fixture
 def project_with_store(store):
     """Create a project in the store and register it. Returns (project_id, store, root)."""
-    from cardre.services.project_resolver import ProjectResolver
     from cardre.config import CardreConfig
+    from cardre.services.project_resolver import ProjectResolver
 
     project_id = str(uuid.uuid4())
     now = utc_now_iso()

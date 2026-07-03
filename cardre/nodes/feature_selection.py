@@ -366,7 +366,7 @@ class FeatureSelectionEmbeddedNode(NodeType):
         meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         if not target_column:
             target_column = meta.target_column if meta is not None else ""
-        bad_values = set(str(v) for v in (meta.bad_values if meta is not None else []))
+        bad_values = {str(v) for v in (meta.bad_values if meta is not None else [])}
 
         if not target_column or target_column not in df.columns:
             raise ValueError(f"Target column {target_column!r} not found in training data")
@@ -397,7 +397,7 @@ class FeatureSelectionEmbeddedNode(NodeType):
         importances = clf.feature_importances_
         importance_map = {
             feat: round(float(imp), 6)
-            for feat, imp in zip(features, importances)
+            for feat, imp in zip(features, importances, strict=False)
         }
 
         # Sort by importance descending
@@ -551,7 +551,7 @@ class ResampleTrainingDataNode(NodeType):
         reader = ArtifactEvidenceReader(store)
         meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         target_col = meta.target_column if meta is not None else ""
-        bad_values = set(str(v) for v in (meta.bad_values if meta is not None else []))
+        bad_values = {str(v) for v in (meta.bad_values if meta is not None else [])}
 
         if not target_col:
             raise ValueError("Target column required for resampling")
@@ -706,7 +706,7 @@ class SmoteTrainingDataNode(NodeType):
             raise ImportError(
                 "SMOTE requires the 'imbalanced-learn' package. "
                 "Install it with: pip install imbalanced-learn"
-            )
+            ) from None
 
         store = context.store
         params = context.validated_params
@@ -721,8 +721,8 @@ class SmoteTrainingDataNode(NodeType):
         reader = ArtifactEvidenceReader(store)
         meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         target_col = meta.target_column if meta is not None else ""
-        good_values = set(str(v) for v in (meta.good_values if meta is not None else []))
-        bad_values = set(str(v) for v in (meta.bad_values if meta is not None else []))
+        good_values = {str(v) for v in (meta.good_values if meta is not None else [])}
+        bad_values = {str(v) for v in (meta.bad_values if meta is not None else [])}
 
         if not target_col or not bad_values:
             raise ValueError("Target column and bad_values required for SMOTE")

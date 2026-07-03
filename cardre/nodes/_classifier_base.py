@@ -107,7 +107,7 @@ class BaseClassifierNode(NodeType):
         # 2b. Validate kwargs against constructor signature.
         # Raise on unknown params instead of silently dropping them.
         sig = inspect.signature(estimator_class.__init__)
-        valid_init_params = {p for p in sig.parameters.keys() if p != "self"}
+        valid_init_params = {p for p in sig.parameters if p != "self"}
         has_var_kwargs = any(
             p.kind == inspect.Parameter.VAR_KEYWORD
             for p in sig.parameters.values()
@@ -149,7 +149,7 @@ class BaseClassifierNode(NodeType):
         # 5. Feature importance
         feature_importance = {
             fname: round(float(imp), 6)
-            for fname, imp in zip(features, clf.feature_importances_)
+            for fname, imp in zip(features, clf.feature_importances_, strict=False)
             if imp > 0
         }
 

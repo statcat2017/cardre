@@ -26,7 +26,7 @@ def _check_optional_dependency(package_name: str, install_name: str) -> None:
         raise ImportError(
             f"This node requires the '{install_name}' package. "
             f"Install it with: pip install {install_name}"
-        )
+        ) from None
 
 
 class XGBoostClassifierNode(BaseClassifierNode):

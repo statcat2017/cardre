@@ -299,9 +299,7 @@ class EvidenceResolver:
             return False
         if fp.get("node_type", "") != spec.node_type:
             return False
-        if fp.get("node_version", "") != spec.node_version:
-            return False
-        return True
+        return fp.get("node_version", "") == spec.node_version
 
 
 # ---------------------------------------------------------------------------

@@ -187,8 +187,8 @@ def registered_store(store):
     Tests that need X-Project-Id can use this fixture instead of manually
     registering the project.
     """
-    from cardre.services.project_resolver import ProjectResolver
     from cardre.config import CardreConfig
+    from cardre.services.project_resolver import ProjectResolver
 
     rows = store.execute("SELECT project_id FROM projects").fetchall()
     if not rows:

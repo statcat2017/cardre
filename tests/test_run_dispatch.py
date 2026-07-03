@@ -6,6 +6,7 @@ import threading
 
 import pytest
 
+from cardre.domain.errors import CardreError
 from cardre.execution.worker import (
     RunRequest,
     RunWorker,
@@ -85,7 +86,7 @@ def test_dispatcher_enforces_max_workers_bound(monkeypatch):
     dispatcher.dispatch(_request("run-1"))
     try:
         assert started.wait(timeout=2)
-        with pytest.raises(Exception):
+        with pytest.raises(CardreError):
             dispatcher.dispatch(_request("run-2"))
     finally:
         release.set()

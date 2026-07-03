@@ -14,8 +14,8 @@ from cardre.domain.diagnostics import utc_now_iso
 @pytest.fixture
 def project_with_run(store):
     """Create a project, plan, plan version, and run."""
-    from cardre.services.project_resolver import ProjectResolver
     from cardre.config import CardreConfig
+    from cardre.services.project_resolver import ProjectResolver
 
     project_id = str(uuid.uuid4())
     now = utc_now_iso()
@@ -71,8 +71,8 @@ def _seed_plan_version(store, input_path: Path):
     Returns (project_id, plan_version_id, step_ids).
     Also registers the project in the registry for X-Project-Id resolution.
     """
-    from cardre.services.project_resolver import ProjectResolver
     from cardre.config import CardreConfig
+    from cardre.services.project_resolver import ProjectResolver
 
     now = utc_now_iso()
     project_id = str(uuid.uuid4())
@@ -107,7 +107,7 @@ def _seed_plan_version(store, input_path: Path):
         json.dumps({}),
     ]
 
-    for sid, ntype, params, pos in zip(step_ids, node_types, params_list, [0, 1, 2]):
+    for sid, ntype, params, pos in zip(step_ids, node_types, params_list, [0, 1, 2], strict=False):
         store.execute(
             "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
             " params_json, params_hash, branch_label, position, canonical_step_id) "

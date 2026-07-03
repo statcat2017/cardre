@@ -249,8 +249,8 @@ class AutoBinningFitNode(NodeType):
 
         df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
         target_column = meta_def.target_column
-        good_values = set(str(v) for v in meta_def.good_values)
-        bad_values = set(str(v) for v in meta_def.bad_values)
+        good_values = {str(v) for v in meta_def.good_values}
+        bad_values = {str(v) for v in meta_def.bad_values}
 
         if not target_column or target_column not in df.columns:
             raise ValueError(f"target_column '{target_column}' not found in training data")

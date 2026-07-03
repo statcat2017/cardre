@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.errors import GraphValidationError
 from cardre.domain.run import RunStepStatus
 from cardre.domain.step import StepSpec
 from cardre.execution.executor import PlanExecutor
@@ -130,12 +131,12 @@ class TestTopologicalOrder:
     def test_raises_on_cycle(self):
         step_a = StepSpec(step_id="a", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=["b"])
         step_b = StepSpec(step_id="b", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=["a"])
-        with pytest.raises(Exception):
+        with pytest.raises(GraphValidationError):
             validate_topology([step_a, step_b])
 
     def test_raises_on_missing_parent(self):
         step_a = StepSpec(step_id="a", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=["missing"])
-        with pytest.raises(Exception):
+        with pytest.raises(GraphValidationError):
             validate_topology([step_a])
 
 

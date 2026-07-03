@@ -1026,9 +1026,8 @@ class DevelopmentSampleDefinitionNode(NodeType):
             rejection_source = params.get("rejection_source")
             if rejection_source is not None and rejection_source not in ("flag_column", "target_missing"):
                 errors.append("rejection_source must be 'flag_column', 'target_missing', or None")
-        if domain == "otb":
-            if not params.get("approval_column"):
-                errors.append("approval_column is required for otb sample domain")
+        if domain == "otb" and not params.get("approval_column"):
+            errors.append("approval_column is required for otb sample domain")
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:

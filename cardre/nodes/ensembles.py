@@ -177,8 +177,8 @@ class VotingEnsembleNode(NodeType):
 
         meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         target_col = meta.target_column if meta else ""
-        good_values = set(str(v) for v in (meta.good_values if meta else []))
-        bad_values = set(str(v) for v in (meta.bad_values if meta else []))
+        good_values = {str(v) for v in (meta.good_values if meta else [])}
+        bad_values = {str(v) for v in (meta.bad_values if meta else [])}
 
         if not bad_values:
             raise ValueError("bad_values required for voting ensemble")
@@ -382,8 +382,8 @@ class WeightedEnsembleNode(NodeType):
 
         meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         target_col = meta.target_column if meta else ""
-        good_values = set(str(v) for v in (meta.good_values if meta else []))
-        bad_values = set(str(v) for v in (meta.bad_values if meta else []))
+        good_values = {str(v) for v in (meta.good_values if meta else [])}
+        bad_values = {str(v) for v in (meta.bad_values if meta else [])}
 
         if not bad_values:
             raise ValueError("bad_values required for weighted ensemble")

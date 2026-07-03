@@ -104,10 +104,7 @@ MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 
 def is_historical(filepath: str) -> bool:
     """Check if a file is in a historical docs directory."""
-    for hist_dir in HISTORICAL_DIRS:
-        if filepath.startswith(hist_dir):
-            return True
-    return False
+    return any(filepath.startswith(hist_dir) for hist_dir in HISTORICAL_DIRS)
 
 
 def get_tracked_files() -> set[str]:

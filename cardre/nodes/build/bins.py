@@ -7,7 +7,7 @@ import polars as pl
 from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
-from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION
+from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION, LifecycleBinDefinition
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.node_parameters import (
     MethodOption,
@@ -133,8 +133,8 @@ class FineClassingNode(NodeType):
 
         df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
         target_column = meta_def.target_column
-        good_values = set(str(v) for v in meta_def.good_values)
-        bad_values = set(str(v) for v in meta_def.bad_values)
+        good_values = {str(v) for v in meta_def.good_values}
+        bad_values = {str(v) for v in meta_def.bad_values}
 
         if not target_column:
             raise ValueError("Fine classing requires non-empty target_column in modelling metadata")
@@ -572,9 +572,6 @@ class ManualBinningNode(NodeType):
         return NodeOutput(
             artifacts=[artifact],
             metrics={"override_count": len(overrides)})
-
-
-from cardre.engine.binning.definition import LifecycleBinDefinition
 
 
 def validate_manual_binning_overrides(

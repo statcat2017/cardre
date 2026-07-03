@@ -147,7 +147,7 @@ async def create_project(
             code=STORE_ALREADY_EXISTS,
             message=str(e),
             status_code=409,
-        )
+        ) from e
     try:
         repo = ProjectRepository(store)
         project_id = repo.create(name=body.name)

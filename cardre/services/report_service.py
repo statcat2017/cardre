@@ -169,7 +169,7 @@ class ReportGenerationService:
                     f"Report {label} path is outside the project directory.",
                     code="REPORT_PATH_OUTSIDE_PROJECT",
                     context={"path": path_str, "project_root": str(self.store.root)},
-                )
+                ) from None
 
         bundle_rel = _rel_or_raise(result["bundle_path"], "bundle")
         html_rel = _rel_or_raise(result["html_path"], "HTML")

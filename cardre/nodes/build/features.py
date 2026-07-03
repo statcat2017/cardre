@@ -96,8 +96,8 @@ class CalculateWoeIvNode(NodeType):
         df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
 
         target_column = meta_def.target_column
-        good_values = set(str(v) for v in meta_def.good_values)
-        bad_values = set(str(v) for v in meta_def.bad_values)
+        good_values = {str(v) for v in meta_def.good_values}
+        bad_values = {str(v) for v in meta_def.bad_values}
         good_values_list = list(good_values)
         bad_values_list = list(bad_values)
 

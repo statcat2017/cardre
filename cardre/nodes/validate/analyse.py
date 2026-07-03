@@ -192,8 +192,8 @@ class ValidationMetricsNode(NodeType):
         reader = ArtifactEvidenceReader(store)
         meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         target_col = meta.target_column if meta is not None else ""
-        good = set(str(v) for v in (meta.good_values if meta is not None else []))
-        bad = set(str(v) for v in (meta.bad_values if meta is not None else []))
+        good = {str(v) for v in (meta.good_values if meta is not None else [])}
+        bad = {str(v) for v in (meta.bad_values if meta is not None else [])}
         bad_list = list(bad)
 
         params = context.validated_params
@@ -508,7 +508,7 @@ class ValidationMetricsNode(NodeType):
         psi = 0.0
         n_exp = len(expected_arr)
         n_act = len(actual_arr)
-        for bin_idx, (ec, ac) in enumerate(zip(expected_counts, actual_counts)):
+        for bin_idx, (ec, ac) in enumerate(zip(expected_counts, actual_counts, strict=False)):
             ep = ec / n_exp
             ap = ac / n_act
             if ap == 0 or ep == 0:
@@ -633,7 +633,7 @@ class ThresholdOptimizationNode(NodeType):
 
         meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         target_col = meta.target_column if meta is not None else ""
-        bad = set(str(v) for v in (meta.bad_values if meta is not None else []))
+        bad = {str(v) for v in (meta.bad_values if meta is not None else [])}
         bad_list = list(bad)
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
@@ -787,8 +787,8 @@ class CutoffAnalysisNode(NodeType):
 
         meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         target_col = meta.target_column if meta is not None else ""
-        good = set(str(v) for v in (meta.good_values if meta is not None else []))
-        bad = set(str(v) for v in (meta.bad_values if meta is not None else []))
+        good = {str(v) for v in (meta.good_values if meta is not None else [])}
+        bad = {str(v) for v in (meta.bad_values if meta is not None else [])}
         bad_list = list(bad)
 
         data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]

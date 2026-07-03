@@ -711,13 +711,13 @@ class PlanExecutor:
                     evidence_repo.insert_artifact(reused_art, conn)
 
             # Copy lineage
-            for l in lineage:
+            for lineage_row in lineage:
                 conn.execute(
                     "INSERT OR IGNORE INTO artifact_lineage "
                     "(lineage_id, run_id, run_step_id, plan_version_id, step_id, branch_id, artifact_id, direction, created_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (str(uuid.uuid4()), run_id, rs_id, plan_version_id, copied_rs.step_id,
-                     run_branch_id, l["artifact_id"], l["direction"], now),
+                    run_branch_id, lineage_row["artifact_id"], lineage_row["direction"], now),
                 )
 
         return copied_rs

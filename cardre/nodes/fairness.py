@@ -70,7 +70,7 @@ class FairnessReportNode(NodeType):
         meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
         if meta:
             target_col = meta.target_column
-            bad = set(str(v) for v in meta.bad_values)
+            bad = {str(v) for v in meta.bad_values}
         else:
             target_col = ""
             bad = set()

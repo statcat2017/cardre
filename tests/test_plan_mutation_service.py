@@ -105,9 +105,9 @@ class TestApplyManualBinningEdit:
         # No new plan version should have been created
         # Since the error happens BEFORE the transaction starts (in validation),
         # no new version is created. The key assertion is that base state is intact.
-        assert len([r for r in store.execute(
+        assert len(list(store.execute(
             "SELECT * FROM plan_versions WHERE plan_id = ?", (plan_id,)
-        ).fetchall()]) == 1, "Only the base version should exist"
+        ).fetchall())) == 1, "Only the base version should exist"
 
     def test_does_not_mutate_historical_evidence(self, store_with_evidence):
         """Historical evidence rows are never modified by apply_manual_binning_edit."""

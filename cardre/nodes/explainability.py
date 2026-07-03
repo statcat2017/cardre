@@ -476,10 +476,7 @@ class ModelExplainabilityNode(NodeType):
                 return None
 
             shap_values = explainer.shap_values(X)
-            if isinstance(shap_values, list):
-                shap_values_np = np.array(shap_values)
-            else:
-                shap_values_np = shap_values
+            shap_values_np = np.array(shap_values) if isinstance(shap_values, list) else shap_values
             if shap_values_np.ndim == 3:
                 shap_values_np = shap_values_np[:, 1, :]
             mean_abs_shap = np.abs(shap_values_np).mean(axis=0)

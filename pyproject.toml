@@ -43,7 +43,13 @@ target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["F", "W"]
+select = ["F", "W", "E", "I", "B", "C4", "UP", "SIM"]
+ignore = ["SIM102", "SIM116", "E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"cardre/api/**" = ["B008"]
+"cardre/_evidence/adapters/__init__.py" = ["E402"]
+"tests/**" = ["ANN001", "ANN101", "ANN201", "ANN202", "S101", "PLR2004", "D100", "D101", "D102", "D103", "D107", "SIM117"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

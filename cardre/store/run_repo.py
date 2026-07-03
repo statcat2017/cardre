@@ -7,12 +7,12 @@ import logging
 import uuid
 from typing import TYPE_CHECKING
 
-logger = logging.getLogger(__name__)
-
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 
 if TYPE_CHECKING:
     from cardre.store.db import ProjectStore
+
+logger = logging.getLogger(__name__)
 
 
 class RunRepository:

@@ -6,6 +6,7 @@ INSERT OR REPLACE. A duplicate primary key must fail loudly.
 
 from __future__ import annotations
 
+import sqlite3
 import uuid
 from pathlib import Path
 
@@ -74,15 +75,15 @@ def test_duplicate_run_step_insert_fails(tmp_path):
     repo = RunStepRepository(store)
     repo.save(step)
 
-    with pytest.raises(Exception):
+    with pytest.raises(sqlite3.IntegrityError):
         repo.save(step)
 
 
 def test_executor_record_run_step_duplicate_fails(tmp_path, monkeypatch):
     """PlanExecutor._record_run_step must fail on duplicate run_step_id, not replace (#213)."""
-    from cardre.execution.executor import PlanExecutor
-    from cardre.domain.step import StepSpec
     from cardre.domain.run import RunStepStatus
+    from cardre.domain.step import StepSpec
+    from cardre.execution.executor import PlanExecutor
 
     store = _make_store(tmp_path)
     pv_id = _seed_minimal_plan(store)
@@ -140,7 +141,7 @@ def test_executor_record_run_step_duplicate_fails(tmp_path, monkeypatch):
         (fixed_id, run_id, "step-a", pv_id, now, now),
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(sqlite3.IntegrityError):
         executor._record_run_step(
             run_id=run_id,
             spec=spec,

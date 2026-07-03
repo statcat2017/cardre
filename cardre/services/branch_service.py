@@ -199,7 +199,7 @@ class BranchService:
                 source_of_new_step[new_step_id] = s.step_id
 
                 remapped_parents = [
-                    step_id_map[pid] if pid in step_id_map else pid
+                    step_id_map.get(pid, pid)
                     for pid in s.parent_step_ids
                 ]
 
@@ -262,7 +262,7 @@ class BranchService:
 
             # Insert step maps
             for s in new_steps:
-                was_duplicated = s.step_id in [v for v in created_step_ids.values()]
+                was_duplicated = s.step_id in list(created_step_ids.values())
                 is_shared = not was_duplicated
                 original_step_id = source_of_new_step.get(s.step_id) if was_duplicated else s.step_id
 

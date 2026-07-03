@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-class MonotonicStatus(str, enum.Enum):
+class MonotonicStatus(enum.StrEnum):
     monotonic = "monotonic"
     non_monotonic = "non_monotonic"
     insufficient_bins = "insufficient_bins"

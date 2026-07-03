@@ -188,8 +188,8 @@ class LogisticRegressionNode(NodeType):
         sel_def = reader.find_optional(context.input_artifacts, EvidenceKind.SELECTION_DEFINITION)
 
         target_column = meta.target_column
-        good_values = set(str(v) for v in meta.good_values)
-        bad_values = set(str(v) for v in meta.bad_values)
+        good_values = {str(v) for v in meta.good_values}
+        bad_values = {str(v) for v in meta.bad_values}
 
         if not target_column:
             raise ValueError("Target column is required for logistic regression")
@@ -255,7 +255,7 @@ class LogisticRegressionNode(NodeType):
             source_variables = list(sel_def.selected_names)
         else:
             source_variables = [f[:-4] for f in features_list if f.endswith("_woe")] if features_list else []
-        coefficients = {col: round(float(coef), 6) for col, coef in zip(features_list, lr.coef_[0])}
+        coefficients = {col: round(float(coef), 6) for col, coef in zip(features_list, lr.coef_[0], strict=False)}
 
         fail_on_non_convergence = bool(params.get("fail_on_non_convergence", True))
         has_sklearn_warning = any(issubclass(w.category, ConvergenceWarning) for w in fit_warnings)

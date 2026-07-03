@@ -10,9 +10,9 @@ import json
 import uuid
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pytest
-import joblib
 
 from cardre.domain.diagnostics import utc_now_iso
 

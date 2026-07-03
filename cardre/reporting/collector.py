@@ -241,7 +241,7 @@ class ReportCollector:
         for ps in plan_steps:
             resolution = "exact"
             step_branch_id = ps.branch_id or ""
-            for cid, ref in resolved.items():
+            for _cid, ref in resolved.items():
                 if ref and ref.canonical_step_id == ps.canonical_step_id:
                     resolution = ref.resolution
                     step_branch_id = ref.resolved_branch_id
@@ -726,7 +726,7 @@ class ReportCollector:
         step_map = self.store.get_branch_step_map(self.target_branch_id, plan_version_id)
         if not step_map:
             return
-        for cid, r in _resolve_required_steps(
+        for _cid, r in _resolve_required_steps(
             branch_id=self.target_branch_id,
             canonical_step_ids=["variable-clustering"],
             branch_step_map=step_map,

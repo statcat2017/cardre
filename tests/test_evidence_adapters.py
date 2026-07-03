@@ -404,7 +404,7 @@ def test_parse_invalid_json_raises(store, tmp_path) -> None:
     )
     art = store.get_artifact(aid)
     adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
-    with pytest.raises(Exception):
+    with pytest.raises(json.JSONDecodeError):
         adapter.parse(art_path, art, store)
 
 

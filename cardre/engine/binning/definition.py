@@ -170,24 +170,18 @@ class LifecycleVariable:
         present = self._present_fields
         if present is None or "active" in present:
             d["active"] = self.active
-        if present is None or "dtype" in present:
-            if self.dtype:
-                d["dtype"] = self.dtype
-        if present is None or "status" in present:
-            if self.status:
-                d["status"] = self.status
-        if present is None or "metrics" in present:
-            if self.metrics:
-                d["metrics"] = self.metrics
-        if present is None or "warnings" in present:
-            if self.warnings:
-                d["warnings"] = self.warnings
-        if present is None or "override_history" in present:
-            if self.override_history:
-                d["override_history"] = self.override_history
-        if present is None or "failure_reason" in present:
-            if self.failure_reason:
-                d["failure_reason"] = self.failure_reason
+        if (present is None or "dtype" in present) and self.dtype:
+            d["dtype"] = self.dtype
+        if (present is None or "status" in present) and self.status:
+            d["status"] = self.status
+        if (present is None or "metrics" in present) and self.metrics:
+            d["metrics"] = self.metrics
+        if (present is None or "warnings" in present) and self.warnings:
+            d["warnings"] = self.warnings
+        if (present is None or "override_history" in present) and self.override_history:
+            d["override_history"] = self.override_history
+        if (present is None or "failure_reason" in present) and self.failure_reason:
+            d["failure_reason"] = self.failure_reason
         d.update(self.extra)
         return d
 
@@ -267,9 +261,8 @@ class LifecycleBinDefinition:
             payload["warnings"] = list(self.warnings)
         if present is None or "rejected" in present:
             payload["rejected"] = [r.to_dict() for r in self.rejected]
-        if present is None or "source" in present:
-            if self.source is not None:
-                payload["source"] = copy.deepcopy(self.source)
+        if (present is None or "source" in present) and self.source is not None:
+            payload["source"] = copy.deepcopy(self.source)
         payload.update(self.extra)
         return payload
 
@@ -322,7 +315,7 @@ class LifecycleBinDefinition:
             bins=normalized_bins,
             status=var.status,
             active=var.active,
-            metrics={k: v for k, v in var.metrics.items()},
+            metrics=dict(var.metrics.items()),
             warnings=list(var.warnings),
             override_history=list(var.override_history),
             failure_reason=var.failure_reason,

@@ -257,14 +257,14 @@ class HyperparameterTuningNode(NodeType):
         if hasattr(best_estimator, "feature_importances_"):
             feature_importance = {
                 fname: round(float(imp), 6)
-                for fname, imp in zip(features, best_estimator.feature_importances_)
+                for fname, imp in zip(features, best_estimator.feature_importances_, strict=False)
                 if imp > 0
             }
         elif hasattr(best_estimator, "coef_"):
             coef = best_estimator.coef_.ravel()
             feature_importance = {
                 fname: round(float(c), 6)
-                for fname, c in zip(features, coef)
+                for fname, c in zip(features, coef, strict=False)
                 if abs(c) > 0
             }
 
