@@ -126,3 +126,47 @@ def get_adapter(kind: EvidenceKind) -> EvidenceAdapter:
     if cls is None:
         raise EvidenceParseError(f"No adapter registered for evidence kind {kind.value}")
     return cls()
+
+
+__all__ = [
+    "EVIDENCE_ADAPTERS",
+    "EvidenceAdapter",
+    "get_adapter",
+    # Adapter implementations (registered in EVIDENCE_ADAPTERS).
+    "ApplyModelEvidenceAdapter",
+    "ApplyWoeEvidenceAdapter",
+    "BinDefinitionAdapter",
+    "CalibrationReportAdapter",
+    "ComparisonArtifactAdapter",
+    "CutoffAnalysisAdapter",
+    "EnsembleModelArtifactAdapter",
+    "ExclusionSummaryAdapter",
+    "ExplainabilityReportAdapter",
+    "FairnessReportAdapter",
+    "FeatureSelectionEvidenceAdapter",
+    "FrozenScorecardBundleAdapter",
+    "HyperparameterTuningEvidenceAdapter",
+    "IvTableAdapter",
+    "ManualBinningOverridesAdapter",
+    "ModellingMetadataAdapter",
+    "ModelArtifactAdapter",
+    "ProfileSummaryAdapter",
+    "ProxyRiskReportAdapter",
+    "RejectInferenceResultAdapter",
+    "RejectPopulationConfigAdapter",
+    "ReportBundleAdapter",
+    "ResamplingEvidenceAdapter",
+    "RunManifestAdapter",
+    "SampleDefinitionAdapter",
+    "ScoreScalingAdapter",
+    "ScoredDatasetAdapter",
+    "SelectionDefinitionAdapter",
+    "SplitSummaryAdapter",
+    "TechnicalManifestIndexAdapter",
+    "ValidationEvidenceAdapter",
+    "ValidationMetricsAdapter",
+    "VariableClusteringAdapter",
+    "WoeIvEvidenceAdapter",
+    "WoeTableAdapter",
+    "WoeTransformEvidenceAdapter",
+]
