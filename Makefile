@@ -1,4 +1,4 @@
-.PHONY: test test-cov test-fail-fast test-evidence test-launch-core typecheck lint lint-line-counts lint-artifact-reads audit-artifact-reads preflight v2-phase-check
+.PHONY: test test-cov test-fail-fast test-evidence test-launch-core typecheck typecheck-python lint lint-line-counts lint-artifact-reads audit-artifact-reads preflight v2-phase-check
 
 test:
 	python3 -m pytest tests/ -q --tb=short
@@ -18,10 +18,14 @@ test-launch-core:
 typecheck:
 	cd frontend && npx tsc --noEmit
 
+typecheck-python:
+	python3 -m mypy
+
 lint: lint-line-counts lint-artifact-reads
 
 preflight:
 	ruff check
+	python3 -m mypy
 	python3 scripts/check-line-counts.py
 	python3 scripts/check_doc_references.py
 	python3 scripts/check-sidecar-naming.py

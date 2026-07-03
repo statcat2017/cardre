@@ -13,6 +13,7 @@ from typing import Any
 
 from cardre.domain.artifacts import ArtifactRef, physical_hash, relative_path
 from cardre.store import ProjectStore
+from cardre.store.artifact_repo import ArtifactRepository
 
 
 def _compute_bytes_hash(data: bytes) -> str:
@@ -67,7 +68,7 @@ def write_estimator_artifact(
         media_type="application/octet-stream",
         metadata=artifact_meta,
     )
-    store.register_artifact(artifact)  # type: ignore[attr-defined]  # FIXME: latent bug — ProjectStore has no register_artifact; use ArtifactRepository(store).register(artifact) instead
+    ArtifactRepository(store).register(artifact)
     return artifact
 
 

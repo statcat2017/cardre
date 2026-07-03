@@ -91,6 +91,35 @@ def _write_estimator_artifact(store, estimator):
     )
 
 
+def test_write_estimator_artifact_registers_with_repository(tmp_path):
+    from cardre.modeling.serialization import write_estimator_artifact
+    from cardre.store.artifact_repo import ArtifactRepository
+
+    store = _make_store(tmp_path)
+    try:
+        buf = io.BytesIO()
+        joblib.dump(FakeEstimator(), buf)
+        artifact = write_estimator_artifact(
+            store,
+            estimator_bytes=buf.getvalue(),
+            estimator_format="joblib",
+            stem="test-estimator",
+            creating_run_id="run-1",
+            creating_run_step_id="step-1",
+            metadata={"model_family": "sklearn"},
+        )
+
+        stored = ArtifactRepository(store).get(artifact.artifact_id)
+        assert stored is not None
+        assert stored.artifact_id == artifact.artifact_id
+        assert stored.metadata["creating_run_id"] == "run-1"
+        assert stored.metadata["creating_run_step_id"] == "step-1"
+        assert stored.metadata["model_family"] == "sklearn"
+        assert store.artifact_path(stored).exists()
+    finally:
+        store.close()
+
+
 class FakeEstimator:
     """Minimal estimator with predict_proba returning 2 columns."""
 
