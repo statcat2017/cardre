@@ -14,7 +14,6 @@ from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.store.run_repo import RunRepository
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_COMPARISON,
 )
@@ -22,6 +21,7 @@ from cardre.services.staleness_service import StalenessService
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.comparison_repo import ComparisonRepository
 from cardre.store.db import ProjectStore
+from cardre.store.run_repo import RunRepository
 
 
 def _check_branch_readiness(

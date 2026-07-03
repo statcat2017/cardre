@@ -8,8 +8,8 @@ import pytest
 
 from cardre.services.plan_mutation_service import (
     ManualBinningEditCommand,
-    PlanMutationService,
     PlanMutationError,
+    PlanMutationService,
 )
 
 

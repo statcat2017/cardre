@@ -2,24 +2,23 @@ from __future__ import annotations
 
 from typing import Any
 
-
+from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre._evidence.schemas import SCHEMA_SELECTION_DEFINITION
 from cardre.artifacts import write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
 from cardre.node_parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.schemas import SCHEMA_SELECTION_DEFINITION
 from cardre.nodes.build.selection_policy import (
     ManualOverridePolicy,
     NoClusterPolicy,
     RepresentativePolicy,
 )
+from cardre.nodes.contracts import NodeType
 
 
 class VariableSelectionNode(NodeType):

@@ -15,9 +15,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from cardre.domain.artifacts import ArtifactRef
 from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
 from cardre._evidence.profiles import _Profile
+from cardre.domain.artifacts import ArtifactRef
 from cardre.store import ProjectStore
 
 

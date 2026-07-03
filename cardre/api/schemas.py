@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from cardre._version import __version__
 
 # ---------------------------------------------------------------------------
 # Error envelope
@@ -29,7 +30,7 @@ class ErrorResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "0.2.0"
+    version: str = __version__
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +179,25 @@ class ResolvedEvidenceResponse(BaseModel):
     run_step_id: str
     edges: list[EvidenceEdgeResponse]
     artifacts: list[EvidenceArtifactResponse]
+
+
+class RunEvidenceEdgeResponse(BaseModel):
+    """Typed response for a single evidence edge in a run (#216).
+
+    Includes nested artifacts so the generated schema and frontend
+    types match the actual payload shape.
+    """
+    evidence_edge_id: str
+    run_id: str
+    run_step_id: str
+    step_id: str
+    parent_step_id: str
+    policy: str
+    source_label: str
+    is_reused: bool = False
+    is_stale: bool = False
+    stale_reason: str | None = None
+    artifacts: list[EvidenceArtifactResponse] = Field(default_factory=list)
 
 
 class StalenessExplanationResponse(BaseModel):
@@ -413,6 +433,7 @@ __all__ = [
     "ReportResponse",
     "ResolvedEvidenceResponse",
     "RunCreateRequest",
+    "RunEvidenceEdgeResponse",
     "RunListResponse",
     "RunResponse",
     "RunStepResponse",

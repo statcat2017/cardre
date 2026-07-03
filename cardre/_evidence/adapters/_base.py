@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import json
 
-from cardre.domain.artifacts import ArtifactRef
 from cardre._evidence.profiles import _Profile
+from cardre.domain.artifacts import ArtifactRef
 from cardre.store import ProjectStore
 
 

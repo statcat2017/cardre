@@ -5,19 +5,20 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store, get_run_coordinator
-from cardre.api.errors import CardreApiError, PLAN_VERSION_NOT_FOUND, RUN_NOT_FOUND
+from cardre.api.errors import PLAN_VERSION_NOT_FOUND, RUN_NOT_FOUND, CardreApiError
+from cardre.api.routes._project_scope import plan_version_belongs_to_project, run_belongs_to_project
 from cardre.api.schemas import (
     RunCreateRequest,
+    RunEvidenceEdgeResponse,
     RunListResponse,
     RunResponse,
     RunStepResponse,
 )
 from cardre.services.run_coordinator import RunCoordinator
 from cardre.store.db import ProjectStore
+from cardre.store.evidence_repo import EvidenceRepository
 from cardre.store.run_repo import RunRepository
 from cardre.store.run_step_repo import RunStepRepository
-from cardre.store.evidence_repo import EvidenceRepository
-from cardre.api.routes._project_scope import plan_version_belongs_to_project, run_belongs_to_project
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["runs"])
 
@@ -139,12 +140,12 @@ async def list_run_steps(
     ]
 
 
-@router.get("/runs/{run_id}/evidence", response_model=list[dict])
+@router.get("/runs/{run_id}/evidence", response_model=list[RunEvidenceEdgeResponse])
 async def list_run_evidence(
     project_id: str,
     run_id: str,
     store: ProjectStore = Depends(get_project_store),
-) -> list[dict]:
+) -> list[RunEvidenceEdgeResponse]:
     """List all evidence edges for a run."""
     if not run_belongs_to_project(store, project_id, run_id):
         raise CardreApiError(
@@ -161,24 +162,27 @@ async def list_run_evidence(
         edges = evidence_repo.get_edges_for_run_step(rs.run_step_id)
         for edge in edges:
             artifacts = evidence_repo.get_artifacts_for_edge(edge.evidence_edge_id)
-            all_edges.append({
-                "evidence_edge_id": edge.evidence_edge_id,
-                "run_id": edge.run_id,
-                "run_step_id": edge.run_step_id,
-                "step_id": edge.step_id,
-                "parent_step_id": edge.parent_step_id,
-                "policy": edge.policy,
-                "source_label": edge.source_label,
-                "is_reused": edge.is_reused,
-                "is_stale": edge.is_stale,
-                "stale_reason": edge.stale_reason,
-                "artifacts": [
-                    {
-                        "evidence_artifact_id": a.evidence_artifact_id,
-                        "artifact_id": a.artifact_id,
-                        "role": a.role,
-                    }
-                    for a in artifacts
-                ],
-            })
+            all_edges.append(
+                RunEvidenceEdgeResponse(
+                    evidence_edge_id=edge.evidence_edge_id,
+                    run_id=edge.run_id,
+                    run_step_id=edge.run_step_id,
+                    step_id=edge.step_id,
+                    parent_step_id=edge.parent_step_id,
+                    policy=edge.policy,
+                    source_label=edge.source_label,
+                    is_reused=edge.is_reused,
+                    is_stale=edge.is_stale,
+                    stale_reason=edge.stale_reason,
+                    artifacts=[
+                        {
+                            "evidence_artifact_id": a.evidence_artifact_id,
+                            "evidence_edge_id": edge.evidence_edge_id,
+                            "artifact_id": a.artifact_id,
+                            "role": a.role,
+                        }
+                        for a in artifacts
+                    ],
+                )
+            )
     return all_edges

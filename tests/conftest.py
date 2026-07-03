@@ -157,5 +157,14 @@ def store_with_evidence(store):
 def api_client():
     """FastAPI TestClient bound to the v2 minimal API."""
     from fastapi.testclient import TestClient
+
     from cardre.api.app import app
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _project_resolution_test_env(monkeypatch, tmp_path_factory):
+    """Keep legacy path-based tests working while the ID-based resolver lands."""
+    registry_dir = tmp_path_factory.mktemp("cardre-registry")
+    monkeypatch.setenv("CARDRE_ALLOW_RAW_PROJECT_PATH", "1")
+    monkeypatch.setenv("CARDRE_REGISTRY_PATH", str(registry_dir / "projects.json"))

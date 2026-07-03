@@ -7,9 +7,16 @@ from pathlib import Path
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
-from cardre.api.errors import CardreApiError, INVALID_PROJECT_PATH, PROJECT_NOT_FOUND, STORE_ALREADY_EXISTS
+from cardre.api.errors import (
+    INVALID_PROJECT_PATH,
+    PROJECT_NOT_FOUND,
+    STORE_ALREADY_EXISTS,
+    CardreApiError,
+)
 from cardre.api.schemas import ProjectCreateRequest, ProjectListResponse, ProjectResponse
+from cardre.config import CardreConfig
 from cardre.domain.errors import SchemaVersionError
+from cardre.services.project_resolver import ProjectResolver
 from cardre.store.db import ProjectStore
 from cardre.store.project_repo import ProjectRepository
 
@@ -88,6 +95,7 @@ async def create_project(
     try:
         repo = ProjectRepository(store)
         project_id = repo.create(name=body.name)
+        ProjectResolver(CardreConfig.from_env().registry_path).register_project(project_id, root)
         project = repo.get(project_id)
         assert project is not None
         return ProjectResponse(

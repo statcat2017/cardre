@@ -556,8 +556,8 @@ class LifecycleBinDefinition:
 
 
 __all__ = [
+    "SCHEMA_BIN_DEFINITION",
     "LifecycleBin",
     "LifecycleBinDefinition",
     "LifecycleVariable",
-    "SCHEMA_BIN_DEFINITION",
 ]

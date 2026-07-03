@@ -9,8 +9,8 @@ import joblib
 import numpy as np
 import polars as pl
 
-from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.execution.context import ExecutionContext
 
 

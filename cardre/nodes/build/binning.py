@@ -10,13 +10,13 @@ from __future__ import annotations
 from typing import Any
 
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
 from cardre.node_parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
+from cardre.nodes.contracts import NodeType
 
 
 class BinningNode(NodeType):

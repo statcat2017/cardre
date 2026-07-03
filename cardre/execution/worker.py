@@ -85,6 +85,8 @@ class RunWorker:
             self._invoke_executor(store, request)
         except Exception:
             self._record_failure(store, request, sys.exc_info())
+        finally:
+            store.close()
 
     @staticmethod
     def _invoke_executor(store: ProjectStore, request: RunRequest) -> None:
@@ -159,26 +161,67 @@ class RunDispatcher(Protocol):
 
 
 class ThreadRunDispatcher:
-    """Dispatch a run on a fire-and-forget background thread.
+    """Dispatch a run on a tracked, bounded background thread.
 
     The thread is named ``cardre-run-{run_id_prefix}`` so it is
-    identifiable in thread dumps and logs.
+    identifiable in thread dumps and logs. Dispatched runs are tracked
+    in a locked registry so that:
+
+    * duplicate dispatch for the same ``run_id`` is rejected;
+    * ``get_status(run_id)`` reports ``running`` or ``unknown``;
+    * a ``max_workers`` bound limits concurrent thread creation.
     """
 
-    def __init__(self, worker: RunWorker | None = None) -> None:
+    def __init__(
+        self,
+        worker: RunWorker | None = None,
+        max_workers: int = 1,
+    ) -> None:
         self._worker = worker or RunWorker()
+        self._max_workers = max_workers
+        self._lock = threading.Lock()
+        self._threads: dict[str, threading.Thread] = {}
 
     def dispatch(self, request: RunRequest) -> None:
         from cardre.domain.errors import CardreError
 
         try:
-            thread = threading.Thread(
-                target=self._worker.execute,
-                args=(request,),
-                name=request.worker_name(),
-            )
+            with self._lock:
+                if request.run_id in self._threads:
+                    raise CardreError(
+                        f"Run {request.run_id!r} is already dispatched; "
+                        f"duplicate dispatch is rejected.",
+                        code=DISPATCH_FAILED_CODE,
+                        context={
+                            "plan_version_id": request.plan_version_id,
+                            "run_id": request.run_id,
+                            "run_scope": request.run_scope,
+                        },
+                    )
+                if len(self._threads) >= self._max_workers:
+                    raise CardreError(
+                        f"Dispatcher is at max_workers={self._max_workers} bound; "
+                        f"cannot dispatch run {request.run_id!r}.",
+                        code=DISPATCH_FAILED_CODE,
+                        context={
+                            "plan_version_id": request.plan_version_id,
+                            "run_id": request.run_id,
+                            "run_scope": request.run_scope,
+                            "max_workers": self._max_workers,
+                        },
+                    )
+                thread = threading.Thread(
+                    target=self._run,
+                    args=(request,),
+                    name=request.worker_name(),
+                )
+                self._threads[request.run_id] = thread
             thread.start()
+        except CardreError:
+            raise
         except Exception as exc:
+            with self._lock:
+                self._threads.pop(request.run_id, None)
             self._record_dispatch_failure(request, exc)
             raise CardreError(
                 f"Failed to start background run thread: {exc}",
@@ -189,6 +232,32 @@ class ThreadRunDispatcher:
                     "run_scope": request.run_scope,
                 },
             ) from exc
+
+    def _run(self, request: RunRequest) -> None:
+        try:
+            self._worker.execute(request)
+        finally:
+            with self._lock:
+                self._threads.pop(request.run_id, None)
+
+    def get_status(self, run_id: str) -> str:
+        """Return ``"running"`` if the run is still dispatched, else ``"unknown"``."""
+        with self._lock:
+            thread = self._threads.get(run_id)
+        if thread is None:
+            return "unknown"
+        if thread.is_alive():
+            return "running"
+        with self._lock:
+            self._threads.pop(run_id, None)
+        return "unknown"
+
+    def shutdown(self) -> None:
+        """Wait for all dispatched threads to finish (best-effort)."""
+        with self._lock:
+            threads = list(self._threads.values())
+        for thread in threads:
+            thread.join(timeout=30)
 
     @staticmethod
     def _record_dispatch_failure(request: RunRequest, exc: Exception) -> None:

@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from cardre.domain.artifacts import ArtifactRef
 from cardre._evidence.adapters._base import (
     candidate_passes_payload_check,
     match_by_role_type_media,
@@ -15,6 +14,7 @@ from cardre._evidence.adapters._base import (
 from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.models.binning import BinDefinition, SelectionDefinition
 from cardre._evidence.profiles import EVIDENCE_PROFILES, _Profile
+from cardre.domain.artifacts import ArtifactRef
 from cardre.store import ProjectStore
 
 

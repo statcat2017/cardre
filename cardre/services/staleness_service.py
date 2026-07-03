@@ -32,7 +32,7 @@ class StalenessExplanation:
 class StalenessService:
     """Compute staleness explanations from the two-level evidence tables."""
 
-    def __init__(self, store: "ProjectStore") -> None:
+    def __init__(self, store: ProjectStore) -> None:
         self._store = store
 
     def explain_step(
@@ -53,10 +53,10 @@ class StalenessService:
         Reads from ``evidence_edges`` + ``evidence_artifacts`` and compares
         ``params_hash``, ``node_type``, ``node_version``.
         """
-        from cardre.store.step_repo import StepRepository
         from cardre.store.evidence_repo import EvidenceRepository
         from cardre.store.run_repo import RunRepository
         from cardre.store.run_step_repo import RunStepRepository
+        from cardre.store.step_repo import StepRepository
 
         step_repo = StepRepository(self._store)
         evidence_repo = EvidenceRepository(self._store)
@@ -115,9 +115,7 @@ class StalenessService:
                     missing_evidence.append(pid)
 
         # Determine status
-        if spec and run_id is None:
-            status = "missing"
-        elif step_has_evidence.get(step_id) is False:
+        if (spec and run_id is None) or step_has_evidence.get(step_id) is False:
             status = "missing"
         elif upstream_changes.get(step_id, True):
             status = "stale"

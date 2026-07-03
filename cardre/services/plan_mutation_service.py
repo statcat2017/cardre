@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.step import StepSpec
 from cardre.domain.errors import CardreError
+from cardre.domain.step import StepSpec
 from cardre.store.manual_binning_repo import ManualBinningRepository
 
 if TYPE_CHECKING:

@@ -4,15 +4,18 @@ from typing import Any
 
 import polars as pl
 
-from cardre.artifacts import write_json_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
-from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre.artifacts import write_json_artifact
 from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION
+from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.node_parameters import (
-    MethodOption, NodeParameterSchema, ParameterConstraint, ParameterDefinition,
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
 )
+from cardre.nodes.contracts import NodeType
 
 
 class FineClassingNode(NodeType):

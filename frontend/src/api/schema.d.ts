@@ -741,6 +741,22 @@ export interface components {
             /** Latest Ready */
             latest_ready?: boolean | null;
         };
+        /** EvidenceArtifactResponse */
+        EvidenceArtifactResponse: {
+            /** Evidence Artifact Id */
+            evidence_artifact_id: string;
+            /** Evidence Edge Id */
+            evidence_edge_id: string;
+            /** Artifact Id */
+            artifact_id: string;
+            /** Role */
+            role: string;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+        };
         /** EvidenceEdgeResponse */
         EvidenceEdgeResponse: {
             /** Evidence Edge Id */
@@ -1049,6 +1065,43 @@ export interface components {
              */
             sync: boolean;
         };
+        /**
+         * RunEvidenceEdgeResponse
+         * @description Typed response for a single evidence edge in a run (#216).
+         *
+         *     Includes nested artifacts so the generated schema and frontend
+         *     types match the actual payload shape.
+         */
+        RunEvidenceEdgeResponse: {
+            /** Evidence Edge Id */
+            evidence_edge_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Run Step Id */
+            run_step_id: string;
+            /** Step Id */
+            step_id: string;
+            /** Parent Step Id */
+            parent_step_id: string;
+            /** Policy */
+            policy: string;
+            /** Source Label */
+            source_label: string;
+            /**
+             * Is Reused
+             * @default false
+             */
+            is_reused: boolean;
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
+            /** Stale Reason */
+            stale_reason?: string | null;
+            /** Artifacts */
+            artifacts?: components["schemas"]["EvidenceArtifactResponse"][];
+        };
         /** RunListResponse */
         RunListResponse: {
             /** Runs */
@@ -1179,6 +1232,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path?: never;
@@ -1243,6 +1297,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1276,6 +1331,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1309,6 +1365,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1346,6 +1403,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1380,6 +1438,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1414,6 +1473,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1448,6 +1508,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1486,6 +1547,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1520,6 +1582,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1553,6 +1616,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1590,6 +1654,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1624,6 +1689,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1658,6 +1724,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1674,9 +1741,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["RunEvidenceEdgeResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -1696,6 +1761,7 @@ export interface operations {
                 plan_version_id?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1732,6 +1798,7 @@ export interface operations {
                 plan_version_id?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1766,6 +1833,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1803,6 +1871,7 @@ export interface operations {
                 step_id?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1836,6 +1905,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1870,6 +1940,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1908,6 +1979,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -1983,6 +2055,7 @@ export interface operations {
                 branch_type?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2016,6 +2089,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2053,6 +2127,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2089,6 +2164,7 @@ export interface operations {
                 plan_id?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2122,6 +2198,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2158,6 +2235,7 @@ export interface operations {
                 plan_id?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2193,6 +2271,7 @@ export interface operations {
                 run_id?: string | null;
             };
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2226,6 +2305,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2259,6 +2339,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {
@@ -2293,6 +2374,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "X-Project-Id"?: string | null;
                 "X-Project-Path"?: string | null;
             };
             path: {

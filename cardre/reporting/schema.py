@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 
 from cardre.readiness.limitation_codes import LimitationCode  # noqa: F401
 
-
 # ---------------------------------------------------------------------------
 # Source step reference — tracks exact vs inherited resolution
 # ---------------------------------------------------------------------------

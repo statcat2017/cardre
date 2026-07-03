@@ -14,11 +14,10 @@ import json
 import re
 import subprocess
 import sys
+import tokenize
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-import tokenize
-from typing import Iterable
-
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_APPROVED_MODULES = (

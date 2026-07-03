@@ -2,6 +2,7 @@
 
 from cardre.services.evidence_resolver import (
     BranchRunEvidence,
+    EvidenceCheckResult,
     EvidencePolicyService,
     EvidenceResolver,
     ShortCircuitResult,
@@ -18,6 +19,7 @@ from cardre.services.staleness_service import StalenessExplanation, StalenessSer
 
 __all__ = [
     "BranchRunEvidence",
+    "EvidenceCheckResult",
     "EvidencePolicyService",
     "EvidenceResolver",
     "PlanMutationService",

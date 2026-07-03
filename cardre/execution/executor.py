@@ -11,8 +11,8 @@ evidence was resolved before the failure.
 
 from __future__ import annotations
 
-import json
 import enum
+import json
 import sys
 import threading
 import traceback
@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import (
+    CardreError,
     GraphValidationError,
     MissingInputArtifactError,
     ParameterValidationError,
@@ -29,8 +30,8 @@ from cardre.domain.errors import (
 )
 from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge, ResolvedEvidence
 from cardre.domain.run import RunStep, RunStepStatus
-from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.execution.action_planner import _StepAction
+from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.execution.failure_classification import classify_step_failure
 from cardre.execution.fingerprints import build_execution_fingerprint
 from cardre.execution.topology import validate_topology
@@ -97,9 +98,10 @@ class _HeartbeatWatchdog:
 
     def __enter__(self) -> _HeartbeatWatchdog:
         from cardre.store.run_repo import RunRepository
-        main_repo = RunRepository(self._store_for_root(self._root))
-        main_repo.set_active_step(self._run_id, self._step_id)
-        main_repo.heartbeat(self._run_id)
+        with self._store_for_root(self._root) as main_store:
+            main_repo = RunRepository(main_store)
+            main_repo.set_active_step(self._run_id, self._step_id)
+            main_repo.heartbeat(self._run_id)
         self._stop.clear()
         self._thread.start()
         return self
@@ -108,22 +110,21 @@ class _HeartbeatWatchdog:
         self._stop.set()
         self._thread.join(timeout=self._interval * 2 + 2)
         from cardre.store.run_repo import RunRepository
-        main_repo = RunRepository(self._store_for_root(self._root))
-        main_repo.set_active_step(self._run_id, None)
+        with self._store_for_root(self._root) as main_store:
+            main_repo = RunRepository(main_store)
+            main_repo.set_active_step(self._run_id, None)
 
     def _tick(self) -> None:
         from cardre.store.run_repo import RunRepository
-        hb_store = self._store_for_root(self._root)
-        hb_repo = RunRepository(hb_store)
         while not self._stop.wait(self._interval):
-            hb_repo.heartbeat(self._run_id)
+            with self._store_for_root(self._root) as hb_store:
+                hb_repo = RunRepository(hb_store)
+                hb_repo.heartbeat(self._run_id)
 
     @staticmethod
-    def _store_for_root(root) -> "ProjectStore":
+    def _store_for_root(root) -> ProjectStore:
         from cardre.store.db import ProjectStore
-        s = ProjectStore(root)
-        s.open()
-        return s
+        return ProjectStore(root)
 
 
 def _open_store_for_root(root):
@@ -167,7 +168,7 @@ class PlanExecutor:
     ) -> str:
         """Execute all steps in a plan version. Returns the run_id."""
         steps = self._load_and_validate(plan_version_id)
-        actions = [_StepAction(spec=s, action="execute") for s in steps]
+        actions = [_StepAction(spec=s, action="execute", reason_code="full_plan") for s in steps]
         has_failure, _, _ = self._execute_actions(
             plan_version_id, run_id, actions, branch_id=branch_id,
             precomputed_outputs=precomputed_outputs,
@@ -216,18 +217,16 @@ class PlanExecutor:
         force: bool,
         branch_id: str | None,
     ) -> list[_StepAction]:
-        from cardre.services.staleness_service import StalenessService
-        staleness_svc = StalenessService(self._store)
-        explanation = staleness_svc.explain_step(plan_version_id, closure_steps[0].step_id)
-        staleness = explanation.upstream_changes if explanation else {}
+        """Build actions for a to-node run.
 
-        actions: list[_StepAction] = []
-        for spec in closure_steps:
-            if not force and spec.step_id in staleness and not staleness.get(spec.step_id, True):
-                actions.append(_StepAction(spec=spec, action="execute"))  # still execute if no staleness
-            else:
-                actions.append(_StepAction(spec=spec, action="execute"))
-        return actions
+        All steps in the ancestor closure are marked ``execute`` with
+        reason ``to_node_closure``. Staleness-aware reuse/skip is not
+        implemented yet — pretending it is would be dishonest (#214).
+        """
+        return [
+            _StepAction(spec=s, action="execute", reason_code="to_node_closure")
+            for s in closure_steps
+        ]
 
     # ------------------------------------------------------------------
     # Shared action execution loop
@@ -434,28 +433,17 @@ class PlanExecutor:
                     input_artifact_ids_by_parent=input_artifact_ids_by_parent,
                 )
             except Exception as rec_exc:
-                import logging
-                logging.getLogger(__name__).exception(
-                    "_record_run_step failed for step %s in run %s", spec.step_id, run_id
-                )
-                return RunStep(
-                    run_step_id=str(uuid.uuid4()),
-                    run_id=run_id,
-                    step_id=spec.step_id,
-                    plan_version_id=plan_version_id,
-                    status=RunStepStatus.FAILED,
-                    started_at=utc_now_iso(),
-                    finished_at=utc_now_iso(),
-                    execution_fingerprint=fp,
-                    warnings=[],
-                    errors=[
-                        error_entry,
-                        {
-                            "code": "STEP_RECORDING_FAILED",
-                            "message": f"Recording step result failed: {rec_exc}",
-                        },
-                    ],
-                )
+                raise CardreError(
+                    f"Step recording failed for step {spec.step_id!r} in run {run_id}: {rec_exc}",
+                    code="STEP_RECORDING_FAILED",
+                    context={
+                        "run_id": run_id,
+                        "plan_version_id": plan_version_id,
+                        "step_id": spec.step_id,
+                        "original_error": error_entry,
+                        "recording_error": str(rec_exc),
+                    },
+                ) from rec_exc
 
     def _resolve_inputs(
         self,
@@ -621,9 +609,9 @@ class PlanExecutor:
         branch_id: str | None = None,
     ) -> RunStep | None:
         """Carry forward a prior run step into the current run."""
-        from cardre.store.run_step_repo import RunStepRepository
-        from cardre.store.evidence_repo import EvidenceRepository
         from cardre.store.artifact_repo import ArtifactRepository
+        from cardre.store.evidence_repo import EvidenceRepository
+        from cardre.store.run_step_repo import RunStepRepository
 
         evidence_repo = EvidenceRepository(self._store)
 

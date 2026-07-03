@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
-from cardre.api.errors import CardreApiError, REVIEW_NOT_FOUND
+from cardre.api.errors import REVIEW_NOT_FOUND, CardreApiError
 from cardre.api.schemas import (
     ManualBinningEditRequest,
     ManualBinningEditResponse,

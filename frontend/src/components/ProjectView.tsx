@@ -106,7 +106,7 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
       api.createRun(projectOptions, projectId, {
         plan_version_id: effectiveSelectedVersionId as string,
         force: false,
-        sync: true,
+        sync: false,
       }),
     onSuccess: (run) => {
       setError(null);

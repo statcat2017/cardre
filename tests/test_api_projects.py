@@ -56,7 +56,7 @@ class TestProjects:
         resp = api_client.get("/projects/some-id")
         assert resp.status_code == 400
         data = resp.json()
-        assert data["detail"]["code"] == "MISSING_PROJECT_PATH"
+        assert data["detail"]["code"] == "MISSING_PROJECT_ID"
 
     def test_create_project_bootstraps_fresh_store(self, api_client, tmp_path):
         from cardre.store.db import ProjectStore

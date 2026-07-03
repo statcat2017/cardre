@@ -9,7 +9,6 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.readiness import check_report_readiness
 from cardre.readiness.dto import ReportReadinessResult
@@ -20,7 +19,6 @@ from cardre.reporting.evidence_contract import (
 )
 from cardre.reporting.renderer_html import render_report_bundle_to_html
 from cardre.services.report_service import ReportGenerationService
-
 
 # ---------------------------------------------------------------------------
 # Evidence contract tests
@@ -130,8 +128,9 @@ def test_render_report_bundle_empty():
 
 def test_generate_report_bundle_missing_run():
     """generate_report_bundle should return a minimal bundle even with no data."""
-    from cardre.store.db import ProjectStore
     import tempfile
+
+    from cardre.store.db import ProjectStore
     tmp = Path(tempfile.mkdtemp())
     s = ProjectStore(tmp / "test.cardre")
     s.initialize()

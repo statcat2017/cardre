@@ -10,15 +10,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre.domain.artifacts import ArtifactRef
 from cardre._evidence.adapters import get_adapter
 from cardre._evidence.kinds import (
+    AmbiguousEvidenceError,
     EvidenceKind,
     EvidenceNotFoundError,
-    AmbiguousEvidenceError,
     EvidenceParseError,
 )
 from cardre._evidence.profiles import EVIDENCE_PROFILES
+from cardre.domain.artifacts import ArtifactRef
 from cardre.store import ProjectStore
 
 

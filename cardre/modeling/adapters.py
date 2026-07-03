@@ -14,11 +14,11 @@ import joblib
 import numpy as np
 import polars as pl
 
+from cardre._evidence.schemas import SCHEMA_SCORE_APPLICATION_EVIDENCE
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.domain.artifacts import ArtifactRef
-from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.domain.diagnostics import JsonDict
-from cardre._evidence.schemas import SCHEMA_SCORE_APPLICATION_EVIDENCE
+from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.modeling.serialization import read_estimator_artifact
 from cardre.store import ProjectStore
 
@@ -253,7 +253,12 @@ def apply_sklearn_estimator(
         X = df.select(features).to_numpy()
         if hasattr(estimator, "predict_proba"):
             proba = estimator.predict_proba(X)
-            pred_bad = proba[:, prob_col_idx] if proba.shape[1] > prob_col_idx else proba[:, -1]
+            if prob_col_idx < 0 or prob_col_idx >= proba.shape[1]:
+                raise ValueError(
+                    f"probability_column_index {prob_col_idx} is out of range "
+                    f"for predict_proba output with {proba.shape[1]} columns"
+                )
+            pred_bad = proba[:, prob_col_idx]
         else:
             pred_bad = estimator.predict(X).astype(np.float64)
 
@@ -326,7 +331,7 @@ def apply_ensemble(
     voting = model_payload.get("voting", "soft")
     threshold = model_payload.get("threshold", 0.5)
     features = model.get("features", [])
-    base_parsed = model.get("_base_models_parsed", None) or []
+    base_parsed = model.get("_base_models_parsed") or []
     if not base_parsed:
         raise ValueError("No base model data available for ensemble apply")
 
@@ -372,7 +377,12 @@ def apply_ensemble(
                 X = df.select(bm_features).to_numpy()
                 if hasattr(estimator, "predict_proba"):
                     proba = estimator.predict_proba(X)
-                    probs = proba[:, bm_prob_col] if proba.shape[1] > bm_prob_col else proba[:, -1]
+                    if bm_prob_col < 0 or bm_prob_col >= proba.shape[1]:
+                        raise ValueError(
+                            f"ensemble base model probability_column_index {bm_prob_col} "
+                            f"is out of range for predict_proba output with {proba.shape[1]} columns"
+                        )
+                    probs = proba[:, bm_prob_col]
                 else:
                     probs = estimator.predict(X).astype(np.float64)
             all_probs.append(probs)

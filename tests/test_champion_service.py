@@ -6,8 +6,8 @@ import uuid
 
 import pytest
 
-from cardre.domain.diagnostics import utc_now_iso
 import cardre.services.champion_service as champion_service
+from cardre.domain.diagnostics import utc_now_iso
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.comparison_repo import ComparisonRepository
 from cardre.store.plan_repo import PlanRepository

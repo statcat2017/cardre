@@ -9,11 +9,10 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+from cardre._version import __version__ as CARDRE_VERSION
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.run import RunStep
 from cardre.domain.step import StepSpec
-
-CARDRE_VERSION = "0.2.0"
 
 
 def output_logical_hashes(rs: RunStep) -> list[str]:

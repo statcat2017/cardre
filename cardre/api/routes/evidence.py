@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
-from cardre.api.errors import CardreApiError, PLAN_VERSION_NOT_FOUND, STEP_NOT_FOUND
+from cardre.api.errors import PLAN_VERSION_NOT_FOUND, STEP_NOT_FOUND, CardreApiError
 from cardre.api.routes._project_scope import plan_version_belongs_to_project
 from cardre.api.schemas import EvidenceEdgeResponse, StalenessExplanationResponse
 from cardre.services.staleness_service import StalenessService

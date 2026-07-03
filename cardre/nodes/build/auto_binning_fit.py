@@ -9,19 +9,21 @@ from typing import Any
 
 import polars as pl
 
+from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.domain.artifacts import ArtifactRef
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.kinds import EvidenceKind
-from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION
-from cardre.engine.binning.definition import LifecycleBinDefinition
-from cardre.engine.binning.optbinning_adapter import fit_variables
+from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION, LifecycleBinDefinition
 from cardre.engine.binning.diagnostics import run_all as run_diagnostics
+from cardre.engine.binning.optbinning_adapter import fit_variables
+from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.node_parameters import (
-    MethodOption, NodeParameterSchema, ParameterConstraint, ParameterDefinition,
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
 )
+from cardre.nodes.contracts import NodeType
 
 
 class AutoBinningFitNode(NodeType):

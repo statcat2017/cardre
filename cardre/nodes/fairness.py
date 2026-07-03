@@ -10,9 +10,9 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from cardre.artifacts import write_json_artifact
-from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre.artifacts import write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.contracts import NodeType
 

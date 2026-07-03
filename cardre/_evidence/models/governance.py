@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from cardre.domain.diagnostics import JsonDict
 from cardre._evidence.models.binning import SelectedVariable
+from cardre.domain.diagnostics import JsonDict
 
 
 @dataclass(frozen=True)

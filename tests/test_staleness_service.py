@@ -13,7 +13,6 @@ import json
 import uuid
 from pathlib import Path
 
-
 from cardre.domain.diagnostics import utc_now_iso
 
 

@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchJson, ApiError } from "../api/client";
+import { ApiError, api } from "../api/client";
 import { ErrorCodes } from "../api/errorCodes";
 import type { components } from "../api/schema.d";
 
@@ -44,6 +44,8 @@ export interface UseRunWatchOptions {
   baseUrl: string;
   /** Project ID. */
   projectId: string;
+  /** Project path (for X-Project-Path header). */
+  projectPath: string;
   /** Run ID to watch. */
   runId: string | null;
   /** Poll interval in ms (default 2000). */
@@ -116,8 +118,8 @@ function deriveMessage(
 
 export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
   const {
-    baseUrl,
     projectId,
+    projectPath,
     runId,
     pollIntervalMs = 2000,
     maxErrorRetries = 5,
@@ -136,12 +138,8 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
   const poll = useCallback(async () => {
     if (!runId) return;
 
-    const url = `${baseUrl}/projects/${projectId}/runs/${runId}`;
-
     try {
-      const data = await fetchJson<components["schemas"]["RunResponse"]>(url, {
-        timeoutMs: pollIntervalMs - 200,
-      });
+      const data = await api.getRun({ projectPath }, projectId, runId);
       errorCountRef.current = 0;
       setRun(data);
       setError(null);
@@ -201,7 +199,7 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
         setPolling(true);
       }
     }
-  }, [baseUrl, projectId, runId, pollIntervalMs, maxErrorRetries, onComplete, onError]);
+  }, [projectId, projectPath, runId, maxErrorRetries, onComplete, onError]);
 
   // Start / stop polling
   useEffect(() => {

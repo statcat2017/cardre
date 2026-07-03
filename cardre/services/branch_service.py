@@ -14,10 +14,9 @@ from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import BranchValidationError
 from cardre.domain.step import StepSpec
 from cardre.execution.step_graph import descendant_closure
-from cardre.store.db import ProjectStore
 from cardre.store.branch_repo import BranchRepository
+from cardre.store.db import ProjectStore
 from cardre.store.plan_repo import PlanRepository
-
 
 ALLOWED_BRANCH_POINTS: dict[str, str] = {
     "sample-definition": "segment_challenger",

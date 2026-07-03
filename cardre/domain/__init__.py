@@ -28,11 +28,11 @@ from cardre.domain.errors import (
     SchemaVersionError,
 )
 from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge, ResolvedEvidence
-from cardre.domain.step import StepSpec
 from cardre.domain.manual_binning import ManualBinningReview
 from cardre.domain.plan import Plan, PlanVersion
 from cardre.domain.project import Project
 from cardre.domain.run import Run, RunScope, RunStep, RunStepEvidenceView, RunStepStatus
+from cardre.domain.step import StepSpec
 
 __all__ = [
     "ArtifactRef",

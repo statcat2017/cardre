@@ -6,8 +6,8 @@ import json
 import uuid
 
 import pytest
-from cardre.domain.diagnostics import utc_now_iso
 
+from cardre.domain.diagnostics import utc_now_iso
 
 # ---------------------------------------------------------------------------
 # Fixtures

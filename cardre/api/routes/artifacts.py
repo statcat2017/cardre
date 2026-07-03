@@ -5,10 +5,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
-from cardre.api.errors import CardreApiError, ARTIFACT_NOT_FOUND
+from cardre.api.errors import ARTIFACT_NOT_FOUND, CardreApiError
 from cardre.api.schemas import ArtifactResponse
-from cardre.store.db import ProjectStore
 from cardre.store.artifact_repo import ArtifactRepository
+from cardre.store.db import ProjectStore
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["artifacts"])
 

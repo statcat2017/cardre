@@ -4,7 +4,7 @@ from typing import Any
 
 def get_binning_capabilities() -> dict[str, Any]:
     try:
-        import optbinning  # noqa: F401
+        import optbinning
 
         return {
             "optimal_binning": {

@@ -6,19 +6,24 @@ from typing import Any
 
 import polars as pl
 
+from cardre._evidence.schemas import (
+    SCHEMA_EXCLUSION_SUMMARY,
+    SCHEMA_MODELLING_METADATA,
+    SCHEMA_PROFILE_SUMMARY,
+    SCHEMA_SAMPLE_DEFINITION,
+    SCHEMA_SPLIT_SUMMARY,
+)
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.domain.diagnostics import JsonDict
-from cardre.nodes.contracts import NodeType
-from cardre._evidence.schemas import SCHEMA_EXCLUSION_SUMMARY, SCHEMA_MODELLING_METADATA, SCHEMA_PROFILE_SUMMARY, SCHEMA_SAMPLE_DEFINITION, SCHEMA_SPLIT_SUMMARY
-from cardre.nodes._dataset_quality import quality_warnings as _quality_warnings
+from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.node_parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-
+from cardre.nodes._dataset_quality import quality_warnings as _quality_warnings
+from cardre.nodes.contracts import NodeType
 
 GERMAN_CREDIT_COLUMNS = [
     "checking_account_status",
@@ -385,7 +390,9 @@ class ProfileDatasetNode(NodeType):
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
         from cardre.node_parameters import (
-            MethodOption, NodeParameterSchema, ParameterDefinition,
+            MethodOption,
+            NodeParameterSchema,
+            ParameterDefinition,
         )
         return NodeParameterSchema(
             node_type=cls.node_type,

@@ -19,12 +19,12 @@ if TYPE_CHECKING:
 @dataclass
 class ExecutionContext:
     """Full context passed to a node's run() method."""
-    store: "ProjectStore"
+    store: ProjectStore
     run_id: str
     plan_version_id: str
-    step_spec: "StepSpec"
+    step_spec: StepSpec
     parent_run_steps: list
-    input_artifacts: list["ArtifactRef"]
+    input_artifacts: list[ArtifactRef]
     validated_params: JsonDict
     runtime_metadata: JsonDict
 
@@ -32,7 +32,7 @@ class ExecutionContext:
 @dataclass
 class NodeOutput:
     """Output produced by a single node execution."""
-    artifacts: list["ArtifactRef"]
+    artifacts: list[ArtifactRef]
     metrics: JsonDict
     execution_fingerprint: JsonDict | None = None
     warnings: list[JsonDict] | None = None

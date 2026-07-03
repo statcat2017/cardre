@@ -6,9 +6,9 @@ import uuid
 
 import pytest
 
+import cardre.services.comparison_service as comparison_service
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.step import StepSpec
-import cardre.services.comparison_service as comparison_service
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.comparison_repo import ComparisonRepository
 from cardre.store.plan_repo import PlanRepository
@@ -186,7 +186,8 @@ class TestRefreshComparison:
 class TestBuildComparisonContent:
     def test_build_comparison_content_validation_materialization(self, monkeypatch):
         """Test that _materialize_evidence correctly converts dataclasses."""
-        from cardre._evidence.models import ValidationMetrics as VM, RoleMetrics as RM
+        from cardre._evidence.models import RoleMetrics as RM
+        from cardre._evidence.models import ValidationMetrics as VM
 
         vm = VM(
             metrics_by_role={
