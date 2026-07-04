@@ -172,9 +172,19 @@ class TestStalenessService:
         explanation = svc.explain_step(pv_id, step_b)
 
         assert explanation.step_id == step_b
-        assert explanation.status in ("fresh", "stale")
-        assert isinstance(explanation.upstream_changes, dict)
-        assert isinstance(explanation.missing_evidence, list)
+        assert explanation.status == "fresh", (
+            f"Expected 'fresh', got {explanation.status!r}. "
+            f"upstream_changes={explanation.upstream_changes}, "
+            f"missing_evidence={explanation.missing_evidence}"
+        )
+        assert explanation.missing_evidence == [], (
+            f"Expected no missing evidence, got {explanation.missing_evidence}"
+        )
+        assert explanation.upstream_changes == {
+            "root": False,
+            "step-a": False,
+            "step-b": False,
+        }, f"Got upstream_changes={explanation.upstream_changes}"
 
     def test_returns_missing_for_unrun_step(self, tmp_path):
         store = _make_store(tmp_path)
@@ -227,9 +237,11 @@ class TestStalenessService:
         from cardre.services.staleness_service import StalenessService
         svc = StalenessService(store)
         explanation = svc.explain_step(pv_id, step_b)
-        # step-b has a parent step-a, which should have evidence edges
+        # step-b has a parent step-a, which has an evidence edge from this run
         # So missing_evidence should be empty
-        assert isinstance(explanation.missing_evidence, list)
+        assert explanation.missing_evidence == [], (
+            f"Expected no missing evidence, got {explanation.missing_evidence}"
+        )
 
     def test_stale_when_params_changed(self, tmp_path):
         """A step is stale when its params_hash differs from the fingerprint."""

@@ -145,18 +145,22 @@ class EvidenceResolver:
         evidence_repo = EvidenceRepository(self._store)
         rs_repo = RunStepRepository(self._store)
 
-        # Discover source run-step via evidence_edges
+        # Discover the candidate run-step via evidence_edges.
+        # The edge for "step_b consumed from step_a" has:
+        #   run_step_id = rs_b (the consuming step's run-step)
+        #   source_run_step_id = rs_a (the parent/source run-step)
+        # We want the consuming step's run-step, so we read run_step_id.
         edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
         rs: RunStep | None = None
         if edges:
-            rs = rs_repo.get(edges[-1].source_run_step_id)
+            rs = rs_repo.get(edges[-1].run_step_id)
 
         if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
             return self._build_resolved_evidence(rs), "branch", diagnostics
 
         if branch_id is not None:
             edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
-            rs = rs_repo.get(edges[-1].source_run_step_id) if edges else None
+            rs = rs_repo.get(edges[-1].run_step_id) if edges else None
             if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
                 return self._build_resolved_evidence(rs), "full_plan", diagnostics
 
@@ -189,13 +193,13 @@ class EvidenceResolver:
             edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
             rs: RunStep | None = None
             if edges:
-                rs = rs_repo.get(edges[-1].source_run_step_id)
+                rs = rs_repo.get(edges[-1].run_step_id)
             if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
                 return self._build_resolved_evidence(rs), "across_plan", diagnostics
 
         if plan_id:
             edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
-            rs = rs_repo.get(edges[-1].source_run_step_id) if edges else None
+            rs = rs_repo.get(edges[-1].run_step_id) if edges else None
             if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
                 if lookup_branch is not None:
                     diagnostics.append(Diagnostic(
@@ -257,12 +261,12 @@ class EvidenceResolver:
             edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
             rs: RunStep | None = None
             if edges:
-                rs = rs_repo.get(edges[-1].source_run_step_id)
+                rs = rs_repo.get(edges[-1].run_step_id)
             if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
                 return self._build_resolved_evidence(rs), "across_plan", diagnostics
 
             edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
-            rs = rs_repo.get(edges[-1].source_run_step_id) if edges else None
+            rs = rs_repo.get(edges[-1].run_step_id) if edges else None
             if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
                 return self._build_resolved_evidence(rs), "across_plan", diagnostics
 

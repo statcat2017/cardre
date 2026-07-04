@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from pathlib import Path
 
 import pytest
 
@@ -13,11 +12,13 @@ from cardre.store.db import ProjectStore
 
 
 @pytest.fixture
-def store():
-    """Create an isolated ProjectStore in a temp directory with full schema."""
-    import tempfile
-    tmp = Path(tempfile.mkdtemp())
-    s = ProjectStore(tmp / "test.cardre")
+def store(tmp_path):
+    """Create an isolated ProjectStore in a temp directory with full schema.
+
+    Uses pytest's ``tmp_path`` (auto-cleaned) rather than ``tempfile.mkdtemp``
+    to avoid leaking temp dirs on disk.
+    """
+    s = ProjectStore(tmp_path / "test.cardre")
     s.initialize()
     return s
 

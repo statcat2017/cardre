@@ -78,6 +78,20 @@ def _seed_with_run_evidence(store, plan_id: str | None = None):
     "VALUES (?, ?, 'succeeded', ?, ?, ?)",
     (run_id, pv_id, now, now, now),
     )
+    # Root run-step (the parent/source for the evidence edge)
+    rs_root = str(uuid.uuid4())
+    fp_root = json.dumps({
+        "params_hash": "hash001",
+        "node_type": "cardre.file_import",
+        "node_version": "1",
+        "output_artifact_logical_hashes": ["out1"],
+    })
+    store.execute(
+        "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, "
+        " started_at, finished_at, execution_fingerprint_json) "
+        "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, ?)",
+        (rs_root, run_id, parent_step_id, pv_id, now, now, fp_root),
+    )
     rs_id = str(uuid.uuid4())
     fp = json.dumps({
         "params_hash": "hash002",
@@ -91,14 +105,15 @@ def _seed_with_run_evidence(store, plan_id: str | None = None):
         "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, ?)",
         (rs_id, run_id, step_id, pv_id, now, now, fp),
     )
-    # Evidence edge
+    # Evidence edge — production-shaped: run_step_id is the consuming step,
+    # source_run_step_id is the parent/source run-step.
     ee_id = str(uuid.uuid4())
     store.execute(
         "INSERT INTO evidence_edges "
         "(evidence_edge_id, run_id, run_step_id, plan_version_id, step_id, parent_step_id, "
         " source_run_id, source_run_step_id, policy, source_label, is_reused, is_stale, created_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'exact', 'parent', 0, 0, ?)",
-        (ee_id, run_id, rs_id, pv_id, step_id, parent_step_id, run_id, rs_id, now),
+        (ee_id, run_id, rs_id, pv_id, step_id, parent_step_id, run_id, rs_root, now),
     )
     return project_id, plan_id, pv_id, step_id, run_id, rs_id
 
@@ -142,7 +157,10 @@ class TestEvidenceResolver:
             pv_id, step_id, policy="branch_then_full_then_plan",
         )
         assert resolved is not None
-        assert resolved.run_step.step_id == step_id
+        # Must resolve to the requested step, not its parent
+        assert resolved.run_step.step_id == step_id, (
+            f"Expected step_id={step_id}, got {resolved.run_step.step_id}"
+        )
         assert source in ("branch", "full_plan", "latest_plan_run")
 
     def test_across_plan_policy(self, tmp_path):

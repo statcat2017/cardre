@@ -8,7 +8,6 @@ run manifest.
 from __future__ import annotations
 
 import json
-import tempfile
 import uuid
 from pathlib import Path
 
@@ -24,9 +23,8 @@ from cardre.store.run_step_repo import RunStepRepository
 
 
 @pytest.fixture
-def store():
-    tmp = Path(tempfile.mkdtemp())
-    s = ProjectStore(tmp / "test.cardre")
+def store(tmp_path):
+    s = ProjectStore(tmp_path / "test.cardre")
     s.initialize()
     return s
 

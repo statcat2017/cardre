@@ -141,6 +141,7 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
 
   const errorCountRef = useRef(0);
   const completedRunIdsRef = useRef<Set<string>>(new Set());
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const poll = useCallback(async () => {
     if (!runId) return;
@@ -161,6 +162,10 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
           onComplete?.(data);
         }
         setPolling(false);
+        if (intervalRef.current !== null) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
         return;
       }
 
@@ -210,6 +215,10 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
         setError(
           `Poller gave up after ${maxErrorRetries} consecutive errors. Last error: ${message}`,
         );
+        if (intervalRef.current !== null) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
       } else {
         setPolling(true);
       }
@@ -226,9 +235,12 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     poll();
 
-    const interval = setInterval(poll, pollIntervalMs);
+    intervalRef.current = setInterval(poll, pollIntervalMs);
     return () => {
-      clearInterval(interval);
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
       setPolling(false);
     };
   }, [runId, poll, pollIntervalMs]);

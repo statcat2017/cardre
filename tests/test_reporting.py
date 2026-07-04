@@ -7,7 +7,6 @@ HTML rendering work against the v2 store schema.
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.readiness import check_report_readiness
@@ -126,13 +125,10 @@ def test_render_report_bundle_empty():
     assert "<html" in html.lower() or "<!DOCTYPE" in html
 
 
-def test_generate_report_bundle_missing_run():
+def test_generate_report_bundle_missing_run(tmp_path):
     """generate_report_bundle should return a minimal bundle even with no data."""
-    import tempfile
-
     from cardre.store.db import ProjectStore
-    tmp = Path(tempfile.mkdtemp())
-    s = ProjectStore(tmp / "test.cardre")
+    s = ProjectStore(tmp_path / "test.cardre")
     s.initialize()
 
     # Create minimal project

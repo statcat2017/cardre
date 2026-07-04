@@ -1,15 +1,11 @@
 """Tests that the runs table has all required request columns."""
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 from cardre.store.db import ProjectStore
 
 
-def test_runs_table_has_request_columns():
-    tmp = Path(tempfile.mkdtemp())
-    s = ProjectStore(tmp / "test.cardre")
+def test_runs_table_has_request_columns(tmp_path):
+    s = ProjectStore(tmp_path / "test.cardre")
     s.initialize()
     cols = {r[1] for r in s.execute("PRAGMA table_info(runs)").fetchall()}
     s.close()
