@@ -21,10 +21,8 @@ from cardre.store.db import ProjectStore
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def store():
-    import tempfile
-    tmp = Path(tempfile.mkdtemp())
-    s = ProjectStore(tmp / "test.cardre")
+def store(tmp_path):
+    s = ProjectStore(tmp_path / "test.cardre")
     s.initialize()
     return s
 
