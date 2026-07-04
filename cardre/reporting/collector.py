@@ -55,6 +55,7 @@ from cardre.reporting.schema import (
     WoeSmoothingInfo,
 )
 from cardre.store import ProjectStore
+from cardre.store.run_repo import RunRepository
 
 # ---------------------------------------------------------------------------
 # Inlined step resolution helpers (formerly cardre.step_id)
