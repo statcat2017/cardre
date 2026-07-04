@@ -441,3 +441,39 @@ class TestBranchServiceCreateBranch:
         assert len(result["shared_upstream_step_ids"]) > 0
         # Created (branch-owned) steps should be present
         assert len(result["created_step_ids"]) > 0
+
+    def test_create_branch_preserves_shared_and_duplicated_edges(self, store):
+        project_id, plan_id, pv_id, steps = self._setup_plan_with_steps(store)
+
+        svc = BranchService(store)
+        result = svc.create_branch(
+            project_id=project_id,
+            plan_id=plan_id,
+            name="Manual Binning Challenger",
+            branch_type="binning_challenger",
+            branch_point_step_id="manual-binning",
+            base_branch_id=None,
+            base_plan_version_id=pv_id,
+            created_reason="Edge preservation test.",
+        )
+
+        branches_repo = BranchRepository(store)
+        step_map = branches_repo.get_step_map(result["branch_id"], result["new_plan_version_id"])
+        by_canonical = {row["canonical_step_id"]: row for row in step_map}
+
+        assert by_canonical["sample-definition"]["is_shared_upstream"] == 1
+        assert by_canonical["variable-selection"]["is_shared_upstream"] == 1
+        assert by_canonical["manual-binning"]["is_branch_owned"] == 1
+        assert by_canonical["logistic-regression"]["is_branch_owned"] == 1
+        assert by_canonical["manual-binning"]["source_step_id"] == "do-manual-binning"
+        assert by_canonical["logistic-regression"]["source_step_id"] == "fit-lr"
+
+        new_steps = {
+            step.step_id: step
+            for step in PlanRepository(store).get_version_steps(result["new_plan_version_id"])
+        }
+        manual_binning_new_id = result["created_step_ids"]["manual-binning"]
+        lr_new_id = result["created_step_ids"]["logistic-regression"]
+
+        assert new_steps[manual_binning_new_id].parent_step_ids == ["do-variable-selection"]
+        assert new_steps[lr_new_id].parent_step_ids == [manual_binning_new_id]

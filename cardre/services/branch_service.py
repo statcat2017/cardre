@@ -17,7 +17,6 @@ from cardre.execution.step_graph import descendant_closure
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.db import ProjectStore
 from cardre.store.plan_repo import PlanRepository
-from cardre.store.step_repo import StepRepository
 
 ALLOWED_BRANCH_POINTS: dict[str, str] = {
     "sample-definition": "segment_challenger",
@@ -229,20 +228,14 @@ class BranchService:
         segment_filter_json = json.dumps(segment_filter_spec, sort_keys=True) if segment_filter_spec else None
 
         with self._store.transaction() as conn:
-            # Insert plan version
-            new_pv_id = str(uuid.uuid4())
-            max_ver = conn.execute(
-                "SELECT COALESCE(MAX(version_number), 0) + 1 FROM plan_versions WHERE plan_id = ?",
-                (plan_id,),
-            ).fetchone()[0]
-            conn.execute(
-                "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
-                "VALUES (?, ?, ?, 0, ?, ?)",
-                (new_pv_id, plan_id, max_ver, now, f"Branch '{name}' created from {branch_point_step_id}"),
+            # Insert plan version + steps via the shared plan repository.
+            new_pv_id = self._plans.create_version(
+                plan_id,
+                new_steps,
+                description=f"Branch '{name}' created from {branch_point_step_id}",
+                is_committed=False,
+                conn=conn,
             )
-
-            # Insert plan steps + edges via the shared store helper.
-            StepRepository(self._store).insert_steps_and_edges(conn, new_pv_id, new_steps)
 
             # Insert branch metadata
             conn.execute(

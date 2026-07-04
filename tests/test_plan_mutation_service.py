@@ -65,6 +65,15 @@ class TestApplyManualBinningEdit:
         ).fetchall()
         assert len(edges) == 2, "Should have 2 edges (fine-classing -> mb, mb -> apply-woe)"
 
+        new_edge_tuples = [
+            (edge["parent_step_id"], edge["child_step_id"], edge["edge_order"])
+            for edge in edges
+        ]
+        assert new_edge_tuples == [
+            ("fine-classing", "manual-binning", 0),
+            ("manual-binning", "apply-woe", 0),
+        ]
+
         # 5. Review row exists
         review = store.execute(
             "SELECT * FROM manual_binning_reviews WHERE review_id = ?",

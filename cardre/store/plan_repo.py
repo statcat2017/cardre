@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import uuid
 from typing import TYPE_CHECKING
 
@@ -48,22 +49,28 @@ class PlanRepository:
         description: str = "",
         *,
         is_committed: bool = False,
+        conn: sqlite3.Connection | None = None,
     ) -> str:
         plan_version_id = str(uuid.uuid4())
         now = utc_now_iso()
         step_repo = StepRepository(self._store)
-        with self._store.transaction("IMMEDIATE") as conn:
-            max_ver = conn.execute(
+        def _insert(target: sqlite3.Connection) -> None:
+            max_ver = target.execute(
                 "SELECT COALESCE(MAX(version_number), 0) + 1 FROM plan_versions WHERE plan_id = ?",
                 (plan_id,),
             ).fetchone()[0]
-            conn.execute(
+            target.execute(
                 "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (plan_version_id, plan_id, max_ver, 1 if is_committed else 0, now, description),
             )
             if steps:
-                step_repo.insert_steps_and_edges(conn, plan_version_id, steps)
+                step_repo.insert_steps_and_edges(target, plan_version_id, steps)
+        if conn is None:
+            with self._store.transaction("IMMEDIATE") as txn:
+                _insert(txn)
+        else:
+            _insert(conn)
         return plan_version_id
 
     def get_version(self, plan_version_id: str) -> JsonDict | None:

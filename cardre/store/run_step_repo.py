@@ -58,20 +58,21 @@ class RunStepRepository:
         step_id: str,
         branch_id: str | None = None,
     ) -> RunStep | None:
-        if branch_id:
+        sql = (
+            "SELECT rs.* FROM run_steps rs "
+            "JOIN runs r ON rs.run_id = r.run_id "
+            "WHERE rs.plan_version_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' "
+        )
+        params: list[object] = [plan_version_id, step_id]
+        if branch_id is None:
             row = self._store.execute(
-                "SELECT rs.* FROM run_steps rs "
-                "JOIN runs r ON rs.run_id = r.run_id "
-                "WHERE rs.plan_version_id = ? AND rs.step_id = ? AND r.branch_id = ? "
-                "AND rs.status = 'succeeded' "
-                "ORDER BY rs.started_at DESC LIMIT 1",
-                (plan_version_id, step_id, branch_id),
+                sql + "AND r.branch_id IS NULL ORDER BY rs.started_at DESC LIMIT 1",
+                tuple(params),
             ).fetchone()
         else:
             row = self._store.execute(
-                "SELECT * FROM run_steps WHERE plan_version_id = ? AND step_id = ? "
-                "AND status = 'succeeded' ORDER BY started_at DESC LIMIT 1",
-                (plan_version_id, step_id),
+                sql + "AND r.branch_id = ? ORDER BY rs.started_at DESC LIMIT 1",
+                tuple(params + [branch_id]),
             ).fetchone()
         if row is None:
             return None

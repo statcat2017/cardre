@@ -16,7 +16,7 @@ from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError
 from cardre.domain.step import StepSpec
 from cardre.store.manual_binning_repo import ManualBinningRepository
-from cardre.store.step_repo import StepRepository
+from cardre.store.plan_repo import PlanRepository
 
 if TYPE_CHECKING:
     from cardre.store.db import ProjectStore
@@ -144,24 +144,17 @@ class PlanMutationService:
 
         # 6. Execute all mutations in a single transaction
         with self._store.transaction("IMMEDIATE") as conn:
-            # 6a. Create the new draft plan version
-            new_pv_id = str(uuid.uuid4())
             now = utc_now_iso()
-            new_version_number = version_number + 1
-
-            conn.execute(
-                "INSERT INTO plan_versions "
-                "(plan_version_id, plan_id, version_number, is_committed, "
-                " created_at, description) "
-                "VALUES (?, ?, ?, 0, ?, ?)",
-                (new_pv_id, plan_id, new_version_number, now,
-                 f"Manual-binning edit from version {version_number}"),
+            # 6a. Create the new draft plan version + steps via the shared plan repository.
+            new_pv_id = PlanRepository(self._store).create_version(
+                plan_id,
+                new_steps,
+                description=f"Manual-binning edit from version {version_number}",
+                is_committed=False,
+                conn=conn,
             )
 
-            # 6b. Insert plan steps + edges via the shared store helper.
-            StepRepository(self._store).insert_steps_and_edges(conn, new_pv_id, new_steps)
-
-            # 6c. Persist ManualBinningReview row
+            # 6b. Persist ManualBinningReview row
             review_id = str(uuid.uuid4())
             downstream_json = json.dumps(command.affected_downstream_step_ids)
             conn.execute(
