@@ -513,6 +513,9 @@ class PlanExecutor:
         ).fetchone()
         run_branch_id = run_record["branch_id"] if run_record and run_record["branch_id"] else branch_id
 
+        from cardre.store.evidence_repo import EvidenceRepository
+        evidence_repo = EvidenceRepository(self._store)
+
         # Delegate persistence to the writer module
         with self._store.transaction("IMMEDIATE") as conn:
             write_run_step(
@@ -524,6 +527,7 @@ class PlanExecutor:
                 output_artifact_ids=output_artifact_ids,
                 input_artifact_ids_by_parent=input_artifact_ids_by_parent,
                 run_branch_id=run_branch_id,
+                evidence_repo=evidence_repo,
             )
 
         return run_step
@@ -605,6 +609,7 @@ class PlanExecutor:
                 all_artifacts=all_artifacts,
                 lineage_rows=lineage,
                 run_branch_id=run_branch_id,
+                evidence_repo=evidence_repo,
             )
 
         return copied_rs
