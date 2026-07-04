@@ -12,6 +12,7 @@ from cardre.api.errors import (
     CardreApiError,
 )
 from cardre.api.routes._project_scope import plan_version_belongs_to_project
+from cardre.api.routes._run_mappings import evidence_edge_to_brief_response
 from cardre.api.schemas import EvidenceEdgeResponse, StalenessExplanationResponse
 from cardre.services.staleness_service import StalenessService
 from cardre.store.db import ProjectStore
@@ -95,22 +96,4 @@ async def get_step_evidence_edges(
     evidence_repo = EvidenceRepository(store)
     edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
 
-    return [
-        EvidenceEdgeResponse(
-            evidence_edge_id=e.evidence_edge_id,
-            run_id=e.run_id,
-            run_step_id=e.run_step_id,
-            plan_version_id=e.plan_version_id,
-            step_id=e.step_id,
-            parent_step_id=e.parent_step_id,
-            source_run_id=e.source_run_id,
-            source_run_step_id=e.source_run_step_id,
-            policy=e.policy,
-            source_label=e.source_label,
-            is_reused=e.is_reused,
-            is_stale=e.is_stale,
-            stale_reason=e.stale_reason,
-            created_at=e.created_at,
-        )
-        for e in edges
-    ]
+    return [evidence_edge_to_brief_response(e) for e in edges]
