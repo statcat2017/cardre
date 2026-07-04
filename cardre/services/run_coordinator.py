@@ -35,10 +35,10 @@ if TYPE_CHECKING:
 
 
 # Module-level singleton dispatcher — app-scoped, not per-request (#4).
-_global_dispatcher: RunDispatcher | None = None
+_global_dispatcher: "RunDispatcher | None" = None
 
 
-def _get_global_dispatcher() -> RunDispatcher:
+def _get_global_dispatcher() -> "RunDispatcher":
     global _global_dispatcher
     if _global_dispatcher is None:
         from cardre.execution.worker import ThreadRunDispatcher
@@ -91,7 +91,7 @@ class RunCoordinator:
     def __init__(
         self,
         store: ProjectStore,
-        dispatcher: RunDispatcher | None = None,
+        dispatcher: "RunDispatcher | None" = None,
     ) -> None:
         self._store = store
         self._config = CardreConfig.from_env()

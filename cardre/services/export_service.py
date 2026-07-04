@@ -11,10 +11,7 @@ import json
 import shutil
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
-
-if TYPE_CHECKING:
-    from cardre.domain.run import RunStep
+from typing import Any
 
 from cardre.services.report_service import ReportGenerationService
 from cardre.store import ProjectStore
@@ -72,7 +69,7 @@ def export_branch_audit_pack(
     tmp_dir = export_dir.parent / f".{export_dir.name}.tmp.{uuid.uuid4().hex[:8]}"
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    diagnostics: list[dict[str, Any]] = []
+    diagnostics: list[dict[str, str]] = []
     warnings_list: list[str] = []
     file_count = 0
     partial = False
@@ -121,10 +118,10 @@ def _populate_export(
     include_row_level_data: bool,
     include_report: bool,
     report_mode: str,
-    diagnostics: list[dict[str, Any]],
+    diagnostics: list[dict[str, str]],
     warnings_list: list[str],
-    branch: dict[str, Any],
-    project: dict[str, Any],
+    branch: dict,
+    project: dict,
 ) -> tuple[int, bool]:
     partial = False
     file_count = 0
@@ -157,14 +154,14 @@ def _populate_export(
 
     # 4. Plan version steps
     steps = plan_repo.get_version_steps(head_pv_id) if head_pv_id else []
-    steps_data = [s.to_dict() if hasattr(s, 'to_dict') else dict(s) for s in steps]  # type: ignore[call-overload]  # StepSpec always has to_dict; dict(s) fallback unreachable
+    steps_data = [s.to_dict() if hasattr(s, 'to_dict') else dict(s) for s in steps]
     (export_dir / "plan_steps.json").write_text(json.dumps(steps_data, indent=2))
     file_count += 1
 
     # 5. Run evidence
     run_id = run_repo.get_latest_successful_id(head_pv_id, branch_id=branch_id) if head_pv_id else None
-    runs_data: list[dict[str, Any]] = []
-    run_steps_data: list[dict[str, Any]] = []
+    runs_data: list[dict] = []
+    run_steps_data: list[dict] = []
 
     if run_id:
         run = run_repo.get(run_id)
@@ -177,7 +174,7 @@ def _populate_export(
     for row in step_map:
         if row.get("is_shared_upstream"):
             step_id = row.get("step_id", "")
-            upstream_rs: dict[str, Any] | RunStep | None = run_repo.get_latest_successful_step(head_pv_id, step_id, branch_id=None)
+            upstream_rs = run_repo.get_latest_successful_step(head_pv_id, step_id, branch_id=None)
             if upstream_rs is None:
                 plan_id_val = branch.get("plan_id", "")
                 if plan_id_val:
@@ -334,7 +331,7 @@ def _write_json(path: Path, data: Any) -> None:
 
 def _copy_report_artifacts(
     store: ProjectStore,
-    bundle: dict[str, Any],
+    bundle: dict,
     report_art_dir: Path,
     include_row_level_data: bool,
     artifact_repo: ArtifactRepository,
@@ -360,13 +357,13 @@ def _copy_report_artifacts(
 
 def _get_champion_info(
     store: ProjectStore,
-    branch: dict[str, Any],
+    branch: dict,
     branch_repo: BranchRepository,
-) -> dict[str, Any] | None:
+) -> dict | None:
     """Check for champion assignment metadata on the branch."""
     try:
-        champ = branch_repo.get_champion(branch.get("branch_id", ""))  # type: ignore[attr-defined]  # get_champion may not exist on all repo implementations; fallback to metadata check
-        return cast("dict[str, Any] | None", champ)
+        champ = branch_repo.get_champion(branch.get("branch_id", ""))
+        return champ
     except (AttributeError, NotImplementedError):
         pass
     # Fallback: check metadata
@@ -381,7 +378,7 @@ def _get_champion_info(
     return None
 
 
-def _run_step_to_dict_v2(store: ProjectStore, rs: Any) -> dict[str, Any]:
+def _run_step_to_dict_v2(store: ProjectStore, rs) -> dict:
     """Convert a v2 RunStep to a dict with resolved artifact IDs."""
     input_ids: list[str] = []
     output_ids: list[str] = []

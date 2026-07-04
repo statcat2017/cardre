@@ -3,20 +3,12 @@
 from __future__ import annotations
 
 import sqlite3
-import types
-from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from cardre._version import __version__
 from cardre.domain.errors import SchemaVersionError
-
-if TYPE_CHECKING:
-    from cardre.domain.artifacts import ArtifactRef
-    from cardre.domain.run import RunStep
-    from cardre.domain.step import StepSpec
-
 from cardre.store.schema import (
     ALL_TABLES_SQL,
     V2_STORE_SCHEMA_FAMILY,
@@ -160,7 +152,7 @@ class ProjectStore:
         self.open()
         return self
 
-    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: types.TracebackType | None) -> None:
+    def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
 
     # ------------------------------------------------------------------
@@ -170,7 +162,7 @@ class ProjectStore:
     VALID_TXN_MODES = frozenset({"DEFERRED", "IMMEDIATE", "EXCLUSIVE"})
 
     @contextmanager
-    def transaction(self, mode: str = "DEFERRED") -> Iterator[sqlite3.Connection]:
+    def transaction(self, mode: str = "DEFERRED"):
         """Context manager that yields a connection in an active transaction.
 
         Commits on success, rolls back on any exception.
@@ -198,7 +190,7 @@ class ProjectStore:
     # Raw SQL helpers (for repos)
     # ------------------------------------------------------------------
 
-    def execute(self, sql: str, params: tuple[Any, ...] | list[Any] | dict[str, Any] = ()) -> sqlite3.Cursor:
+    def execute(self, sql: str, params=()) -> sqlite3.Cursor:
         return self._connect().execute(sql, params)
 
     def artifact_path(self, artifact: Any) -> Path:
@@ -214,42 +206,42 @@ class ProjectStore:
     def execute_script(self, sql: str) -> None:
         self._connect().executescript(sql)
 
-    def executemany(self, sql: str, seq: Iterable[tuple[Any, ...] | dict[str, Any]]) -> sqlite3.Cursor:
+    def executemany(self, sql: str, seq) -> sqlite3.Cursor:
         return self._connect().executemany(sql, seq)
 
     # ------------------------------------------------------------------
     # Convenience delegates over the repository classes
     # ------------------------------------------------------------------
 
-    def get_branch(self, branch_id: str) -> dict[str, Any] | None:
+    def get_branch(self, branch_id: str) -> dict | None:
         from cardre.store.branch_repo import BranchRepository
         return BranchRepository(self).get_branch(branch_id)
 
-    def get_branch_step_map(self, branch_id: str, plan_version_id: str) -> list[dict[str, Any]]:
+    def get_branch_step_map(self, branch_id: str, plan_version_id: str) -> list[dict]:
         from cardre.store.branch_repo import BranchRepository
         return BranchRepository(self).get_step_map(branch_id, plan_version_id)
 
-    def get_plan_version(self, plan_version_id: str) -> dict[str, Any] | None:
+    def get_plan_version(self, plan_version_id: str) -> dict | None:
         from cardre.store.plan_repo import PlanRepository
         return PlanRepository(self).get_version(plan_version_id)
 
-    def get_plan_version_steps(self, plan_version_id: str) -> list[StepSpec]:
+    def get_plan_version_steps(self, plan_version_id: str):
         from cardre.store.plan_repo import PlanRepository
         return PlanRepository(self).get_version_steps(plan_version_id)
 
-    def get_plan(self, plan_id: str) -> dict[str, Any] | None:
+    def get_plan(self, plan_id: str) -> dict | None:
         from cardre.store.plan_repo import PlanRepository
         return PlanRepository(self).get_plan(plan_id)
 
-    def get_run(self, run_id: str) -> dict[str, Any] | None:
+    def get_run(self, run_id: str) -> dict | None:
         from cardre.store.run_repo import RunRepository
         return RunRepository(self).get(run_id)
 
-    def get_run_steps(self, run_id: str) -> list[RunStep]:
+    def get_run_steps(self, run_id: str):
         from cardre.store.run_step_repo import RunStepRepository
         return RunStepRepository(self).get_for_run(run_id)
 
-    def get_artifact(self, artifact_id: str) -> ArtifactRef | None:
+    def get_artifact(self, artifact_id: str):
         from cardre.store.artifact_repo import ArtifactRepository
         return ArtifactRepository(self).get(artifact_id)
 
@@ -261,11 +253,11 @@ class ProjectStore:
         from cardre.store.run_repo import RunRepository
         return RunRepository(self).get_latest_successful_id_for_plan(plan_id)
 
-    def get_latest_successful_run_step(self, plan_version_id: str, step_id: str, branch_id: str | None = None) -> dict[str, Any] | None:
+    def get_latest_successful_run_step(self, plan_version_id: str, step_id: str, branch_id: str | None = None):
         from cardre.store.run_repo import RunRepository
         return RunRepository(self).get_latest_successful_step(plan_version_id, step_id, branch_id=branch_id)
 
-    def get_latest_successful_run_step_for_step(self, plan_version_id: str, step_id: str, branch_id: str | None = None) -> dict[str, Any] | None:
+    def get_latest_successful_run_step_for_step(self, plan_version_id: str, step_id: str, branch_id: str | None = None):
         return self.get_latest_successful_run_step(plan_version_id, step_id, branch_id=branch_id)
 
     def get_any_successful_run_id_for_plan(self, plan_id: str) -> str | None:
@@ -275,18 +267,14 @@ class ProjectStore:
         from cardre.store.plan_repo import PlanRepository
         return PlanRepository(self).get_plan_id_for_version(plan_version_id)
 
-    def get_project(self, project_id: str) -> dict[str, Any] | None:
+    def get_project(self, project_id: str) -> dict | None:
         from cardre.store.project_repo import ProjectRepository
         return ProjectRepository(self).get(project_id)
 
-    def get_comparison_snapshot(self, snapshot_id: str) -> dict[str, Any] | None:
+    def get_comparison_snapshot(self, snapshot_id: str) -> dict | None:
         from cardre.store.branch_repo import BranchRepository
         return BranchRepository(self).get_comparison_snapshot(snapshot_id)
 
-    def get_champion_assignment(self, plan_id: str, champion_branch_id: str | None = None) -> dict[str, Any] | None:
-        from cardre.store.branch_repo import BranchRepository
-        return BranchRepository(self).get_champion_assignment(plan_id, champion_branch_id)
-
-    def get_champion_assignment_by_branch(self, branch_id: str) -> dict[str, Any] | None:
+    def get_champion_assignment_by_branch(self, branch_id: str) -> dict | None:
         from cardre.store.branch_repo import BranchRepository
         return BranchRepository(self).get_champion_assignment_by_branch(branch_id)

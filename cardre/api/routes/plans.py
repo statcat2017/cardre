@@ -255,7 +255,7 @@ async def commit_plan_version(
             code=PLAN_VERSION_IMMUTABLE,
             message=str(exc),
             status_code=409,
-        ) from exc
+        )
 
     return PlanVersionResponse(
         plan_version_id=result.plan_version_id,

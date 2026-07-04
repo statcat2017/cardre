@@ -5,14 +5,14 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 
 if TYPE_CHECKING:
     from cardre.store.db import ProjectStore
-
-logger = logging.getLogger(__name__)
 
 
 class RunRepository:
@@ -21,7 +21,7 @@ class RunRepository:
     def __init__(self, store: ProjectStore) -> None:
         self._store = store
 
-    def append_diagnostic(self, run_id: str, diagnostic: dict[str, Any]) -> None:
+    def append_diagnostic(self, run_id: str, diagnostic: dict) -> None:
         # Must match diagnostics table in REVIEW_TABLES_SQL (schema.py).
         # Extra fields (plan_version_id, category, etc.) go into context_json.
         self._store.execute(
@@ -48,14 +48,14 @@ class RunRepository:
             ),
         )
 
-    def get_diagnostics(self, run_id: str) -> list[dict[str, Any]]:
+    def get_diagnostics(self, run_id: str) -> list[dict]:
         if not self._table_exists("diagnostics"):
             return []
         rows = self._store.execute(
             "SELECT * FROM diagnostics WHERE run_id = ? ORDER BY created_at",
             (run_id,),
         ).fetchall()
-        out: list[dict[str, Any]] = []
+        out: list[dict] = []
         for row in rows:
             data = dict(row)
             context = json.loads(data.pop("context_json", "{}")) if data.get("context_json") else {}
@@ -114,7 +114,7 @@ class RunRepository:
         if row is None:
             return None
         metadata = json.loads(row["metadata_json"] or "{}")
-        return cast(str | None, metadata.get("active_step_id"))
+        return metadata.get("active_step_id")
 
     def get(self, run_id: str) -> JsonDict | None:
         row = self._store.execute(
@@ -147,7 +147,7 @@ class RunRepository:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_step(self, run_step_id: str) -> dict[str, Any] | None:
+    def get_step(self, run_step_id: str):
         row = self._store.execute(
             "SELECT * FROM run_steps WHERE run_step_id = ?",
             (run_step_id,),
@@ -181,7 +181,7 @@ class RunRepository:
         row = self._store.execute(sql, tuple(params)).fetchone()
         return None if row is None else row["run_id"]
 
-    def get_latest_successful_step(self, plan_version_id: str, step_id: str, branch_id: str | None = None) -> dict[str, Any] | None:
+    def get_latest_successful_step(self, plan_version_id: str, step_id: str, branch_id: str | None = None):
         sql = (
             "SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
             "WHERE rs.plan_version_id = ? AND rs.step_id = ? AND rs.status = 'succeeded'"
@@ -199,7 +199,7 @@ class RunRepository:
             return None
         return dict(row)
 
-    def get_latest_successful_step_across_plan(self, plan_id: str, step_id: str, branch_id: str | None = None) -> dict[str, Any] | None:
+    def get_latest_successful_step_across_plan(self, plan_id: str, step_id: str, branch_id: str | None = None):
         sql = (
             "SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
             "JOIN plan_versions pv ON rs.plan_version_id = pv.plan_version_id "

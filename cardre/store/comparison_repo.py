@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 
@@ -24,7 +24,7 @@ class ComparisonRepository:
         project_id: str,
         plan_id: str,
         baseline_branch_id: str,
-        comparison_spec: dict[str, Any] | None = None,
+        comparison_spec: dict | None = None,
         created_reason: str | None = None,
     ) -> str:
         comparison_id = str(uuid.uuid4())
@@ -71,7 +71,7 @@ class ComparisonRepository:
         project_id: str,
         plan_id: str,
         comparison_artifact_id: str,
-        readiness: dict[str, Any] | None = None,
+        readiness: dict | None = None,
         created_reason: str | None = None,
     ) -> str:
         snapshot_id = str(uuid.uuid4())

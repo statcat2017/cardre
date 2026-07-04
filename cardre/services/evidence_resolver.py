@@ -11,7 +11,7 @@ Two classes, one module.  Ported from v1 ``evidence_resolver.py`` and
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 from cardre.domain.errors import Diagnostic
 from cardre.domain.evidence import ResolvedEvidence
@@ -39,7 +39,7 @@ class EvidenceCheckResult:
     """
     status: Literal["current", "stale", "missing", "error"]
     run_id: str | None = None
-    diagnostics: list[Any] = field(default_factory=list)
+    diagnostics: list = field(default_factory=list)
 
 
 @dataclass
@@ -299,7 +299,9 @@ class EvidenceResolver:
             return False
         if fp.get("node_type", "") != spec.node_type:
             return False
-        return cast(bool, fp.get("node_version", "") == spec.node_version)
+        if fp.get("node_version", "") != spec.node_version:
+            return False
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +409,7 @@ class EvidencePolicyService:
 
         # Simplified branch evidence: all steps are "owned" in non-governance mode
         branch_owned_step_ids = {s.step_id for s in steps}
-        step_map: list[dict[str, Any]] = []
+        step_map = []
 
         explanation = staleness_svc.explain_step(plan_version_id, list(steps)[0].step_id if steps else "")
 

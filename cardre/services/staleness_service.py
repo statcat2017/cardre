@@ -18,9 +18,6 @@ from cardre.domain.step import StepSpec
 
 if TYPE_CHECKING:
     from cardre.store.db import ProjectStore
-    from cardre.store.evidence_repo import EvidenceRepository
-    from cardre.store.run_repo import RunRepository
-    from cardre.store.run_step_repo import RunStepRepository
 
 
 @dataclass
@@ -136,9 +133,9 @@ class StalenessService:
         self,
         spec: StepSpec,
         all_steps: list[StepSpec],
-        rs_repo: RunStepRepository,
-        evidence_repo: EvidenceRepository,
-        run_repo: RunRepository,
+        rs_repo,
+        evidence_repo,
+        run_repo,
         plan_version_id: str,
         branch_id: str | None,
         plan_id: str | None,
