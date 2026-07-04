@@ -1,10 +1,16 @@
-.PHONY: test test-cov test-fail-fast test-evidence test-launch-core typecheck typecheck-python lint lint-line-counts lint-artifact-reads audit-artifact-reads preflight v2-phase-check
+.PHONY: test test-cov test-fail-fast test-evidence test-launch-core test-python-ci typecheck typecheck-python lint lint-line-counts lint-artifact-reads audit-artifact-reads preflight v2-phase-check
+
+# Next target: 60 after RunCoordinator split lands.
+PYTEST_COV_FAIL_UNDER ?= 55
 
 test:
 	python3 -m pytest tests/ -q --tb=short
 
 test-cov:
 	python3 -m pytest tests/ --cov=cardre --cov=sidecar --cov-report=html
+
+test-python-ci:
+	python3 -m pytest tests/ -q --tb=short --cov-fail-under=$(PYTEST_COV_FAIL_UNDER)
 
 test-fail-fast:
 	python3 -m pytest tests/ -x --tb=long
@@ -29,7 +35,7 @@ preflight:
 	python3 scripts/check-line-counts.py
 	python3 scripts/check_doc_references.py
 	python3 scripts/check-sidecar-naming.py
-	python3 -m pytest tests/ -q --tb=short --cov-fail-under=55  # next target: 60 once RunCoordinator split lands
+	python3 -m pytest tests/ -q --tb=short --cov-fail-under=$(PYTEST_COV_FAIL_UNDER)
 	CARDRE_GOVERNANCE=1 python3 -m pytest tests/test_api_*.py -q --tb=short --no-cov
 	python3 scripts/audit_artifact_reads.py --production --fail-on production_violation
 	cd frontend && npm ci && npm run lint && npm run format:check && npm run build && npx tsc --noEmit && npm test

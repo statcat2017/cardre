@@ -2,6 +2,23 @@
 
 All env-var parsing lives here.  Import ``CardreConfig`` and use its
 properties instead of reading ``os.environ`` directly.
+
+Environment variables
+---------------------
+CARDRE_LAUNCH_MODE : bool, default True
+    If True, deferred nodes raise ``NodeNotAvailableForLaunch``.
+CARDRE_GOVERNANCE : bool, default False
+    If True, governance features (branching, comparison, champion) are enabled.
+CARDRE_STALE_HEARTBEAT_SECONDS : int, default 300
+    Seconds after which a run with no heartbeat is considered stale.
+CARDRE_HEARTBEAT_WATCHDOG_INTERVAL_SECONDS : int, optional
+    Overrides the interval used by the executor watchdog to refresh the run
+    ``heartbeat_at`` while a node is executing.  Must be positive and less
+    than ``CARDRE_STALE_HEARTBEAT_SECONDS``.  Defaults to
+    ``max(1, CARDRE_STALE_HEARTBEAT_SECONDS // 4)``.
+CARDRE_API_HOST : str, default 127.0.0.1
+CARDRE_API_PORT : int, default 8752
+CARDRE_REGISTRY_PATH : str, default ~/.cardre/projects.json
 """
 
 from __future__ import annotations
@@ -26,7 +43,17 @@ class CardreConfig:
         stale = int(os.environ.get("CARDRE_STALE_HEARTBEAT_SECONDS", "300"))
         watchdog_override = os.environ.get("CARDRE_HEARTBEAT_WATCHDOG_INTERVAL_SECONDS")
         if watchdog_override is not None:
-            watchdog = max(1, int(watchdog_override))
+            watchdog = int(watchdog_override)
+            if watchdog < 1:
+                raise ValueError(
+                    f"CARDRE_HEARTBEAT_WATCHDOG_INTERVAL_SECONDS={watchdog_override!r} "
+                    "must be positive"
+                )
+            if watchdog >= stale:
+                raise ValueError(
+                    f"CARDRE_HEARTBEAT_WATCHDOG_INTERVAL_SECONDS={watchdog_override!r} "
+                    f"must be less than CARDRE_STALE_HEARTBEAT_SECONDS={stale}"
+                )
         else:
             watchdog = max(1, stale // 4)
         return cls(
