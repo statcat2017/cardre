@@ -29,7 +29,7 @@ preflight:
 	python3 scripts/check-line-counts.py
 	python3 scripts/check_doc_references.py
 	python3 scripts/check-sidecar-naming.py
-	python3 -m pytest tests/ -q --tb=short --cov-fail-under=43
+	python3 -m pytest tests/ -q --tb=short --cov-fail-under=55  # next target: 60 once RunCoordinator split lands
 	CARDRE_GOVERNANCE=1 python3 -m pytest tests/test_api_*.py -q --tb=short --no-cov
 	python3 scripts/audit_artifact_reads.py --production --fail-on production_violation
 	cd frontend && npm ci && npm run lint && npm run format:check && npm run build && npx tsc --noEmit && npm test
