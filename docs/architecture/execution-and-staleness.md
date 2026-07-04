@@ -32,6 +32,10 @@ The `RunLifecycle` class (`cardre/run_lifecycle.py`) owns generic run mechanics:
 
 `PlanExecutor` still owns execution semantics: topological ordering, node execution, role and leakage enforcement, parent evidence resolution, and run-step evidence recording.
 
+### Run-step writer seam
+
+The `cardre/execution/run_step_writer.py` module coordinates transaction-scoped persistence for ``run_steps``, ``evidence_edges``, ``evidence_artifacts``, and ``artifact_lineage`` rows. Extracted from ``PlanExecutor._record_run_step`` and ``PlanExecutor._reuse_run_step`` (ADR 0002 precedent), it keeps the executor focused on orchestration while the writer handles persistence. The writer owns raw ``INSERT`` SQL for ``run_steps`` and ``artifact_lineage``; evidence edge/artifact inserts are delegated to ``EvidenceRepository.insert_edge`` / ``insert_artifact`` to avoid duplicating the insert SQL owned by the repository layer. The writer exposes two functions: ``write_run_step`` (first-time execution) and ``write_reused_run_step`` (carried-forward run steps). Both require an active ``IMMEDIATE`` connection and use ``INSERT OR IGNORE`` for lineage de-duplication.
+
 ## Staleness Detection
 
 Staleness is computed by `cardre/staleness.py`. A step is stale if its latest run does not reference the latest upstream run steps. This is a computed property, not a stored status, so it can be recomputed on the fly as plan versions change.
