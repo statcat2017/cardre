@@ -63,7 +63,7 @@ def test_step_recording_failure_raises_not_fabricated(tmp_path, monkeypatch):
     def failing_record(self, *args, **kwargs):
         raise RuntimeError("DB write failed")
 
-    monkeypatch.setattr(PlanExecutor, "_record_run_step", failing_record)
+    monkeypatch.setattr(PlanExecutor, "_record_run_step_from_result", failing_record)
 
     with pytest.raises(CardreError) as exc_info:
         executor.run_plan_version(pv_id, "run-1", force=True)
