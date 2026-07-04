@@ -46,7 +46,7 @@ class BranchTransactionWriter:
         """
         now = utc_now_iso()
 
-        with self._store.transaction() as conn:
+        with self._store.transaction("IMMEDIATE") as conn:
             # 1. Insert plan version + steps via the shared plan repository.
             new_pv_id = self._plans.create_version(
                 validated.plan_id,

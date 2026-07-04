@@ -96,6 +96,9 @@ class StepRunner:
     - Persist run steps, evidence, or lineage.
     - Copy evidence for reuse.
     - Decide staleness.
+    Note: *node* execution may still write artifacts to disk via
+    ``context.store`` before returning ``NodeOutput`` — this method
+    does not persist *run-step metadata*.
     """
 
     def __init__(self, store: ProjectStore, node_registry: NodeRegistry) -> None:

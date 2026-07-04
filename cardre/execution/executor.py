@@ -321,10 +321,16 @@ class PlanExecutor:
                         "original_error": result.errors[0] if result.errors else None,
                     },
                 ) from exc_info
-            # Execution succeeded but recording failed — convert to FAILED step
+            # Execution succeeded but recording failed — convert to FAILED step.
+            # Rebuild the fingerprint with empty outputs (matching the original
+            # _execute_step fallback path) so the failed record does not carry
+            # output-artifact-derived hashes or metrics from the successful run.
             tb = traceback.format_exc()
             exc_value = sys.exc_info()[1]
             error_entry = classify_step_failure(exc_value, tb)
+            failure_fp = dict(result.fingerprint)
+            failure_fp["output_artifact_logical_hashes"] = []
+            failure_fp.pop("node_metrics", None)
             failed_result = StepExecutionResult(
                 step_id=result.step_id,
                 node_type=result.node_type,
