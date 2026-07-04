@@ -11,8 +11,10 @@ from cardre.domain.errors import BranchValidationError
 from cardre.domain.step import StepSpec
 from cardre.execution.step_graph import descendant_closure as _descendant_closure
 from cardre.services.branch_service import (
-    ALLOWED_BRANCH_POINTS,
     BranchService,
+)
+from cardre.services.branch_validator import (
+    ALLOWED_BRANCH_POINTS,
     _validate_segment_filter_rules,
 )
 from cardre.store.branch_repo import BranchRepository

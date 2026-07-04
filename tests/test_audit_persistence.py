@@ -63,7 +63,7 @@ def test_step_recording_failure_raises_not_fabricated(tmp_path, monkeypatch):
     def failing_record(self, *args, **kwargs):
         raise RuntimeError("DB write failed")
 
-    monkeypatch.setattr(PlanExecutor, "_record_run_step", failing_record)
+    monkeypatch.setattr(PlanExecutor, "_record_run_step_from_result", failing_record)
 
     with pytest.raises(CardreError) as exc_info:
         executor.run_plan_version(pv_id, "run-1", force=True)
@@ -74,3 +74,51 @@ def test_assert_run_audit_integrity_helper_exists():
     """The integrity helper is importable and callable."""
     from cardre.execution.run_lifecycle import assert_run_audit_integrity
     assert callable(assert_run_audit_integrity)
+
+
+def test_fallback_fingerprint_clears_output_hashes(tmp_path, monkeypatch):
+    """When a successful execution's recording fails and the fallback
+    retry succeeds, the persisted failed step has empty
+    output_artifact_logical_hashes and no node_metrics."""
+    from cardre.domain.run import RunStepStatus
+    from cardre.execution.executor import PlanExecutor
+
+    store = _make_store(tmp_path)
+    pv_id = _seed_minimal_plan(store)
+
+    executor = PlanExecutor(store)
+    original_record = PlanExecutor._record_run_step_from_result
+
+    call_count = 0
+
+    def _controlled_record(self, run_id, spec, plan_version_id, result):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("First write fails")
+        return original_record(self, run_id, spec, plan_version_id, result)
+
+    monkeypatch.setattr(
+        PlanExecutor, "_record_run_step_from_result", _controlled_record,
+    )
+
+    # The step will succeed (noop), then the first record call fails,
+    # the fallback retry succeeds.  The persisted failed step should
+    # have empty output_artifact_logical_hashes.
+    from cardre.store.run_repo import RunRepository
+    from cardre.store.run_step_repo import RunStepRepository
+
+    run_id = RunRepository(store).create(pv_id)
+    executor.run_plan_version(pv_id, run_id, force=True)
+
+    steps = RunStepRepository(store).get_for_run(run_id)
+    assert len(steps) == 1
+    rs = steps[0]
+    assert rs.status == RunStepStatus.FAILED
+    fp = rs.execution_fingerprint
+    assert fp.get("output_artifact_logical_hashes") == [], (
+        f"Expected empty output hashes, got {fp.get('output_artifact_logical_hashes')}"
+    )
+    assert "node_metrics" not in fp, (
+        "node_metrics should be absent from the fallback fingerprint"
+    )

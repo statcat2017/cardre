@@ -84,6 +84,7 @@ def test_executor_record_run_step_duplicate_fails(tmp_path, monkeypatch):
     from cardre.domain.run import RunStepStatus
     from cardre.domain.step import StepSpec
     from cardre.execution.executor import PlanExecutor
+    from cardre.execution.step_runner import StepExecutionResult
 
     store = _make_store(tmp_path)
     pv_id = _seed_minimal_plan(store)
@@ -110,17 +111,16 @@ def test_executor_record_run_step_duplicate_fails(tmp_path, monkeypatch):
 
     executor = PlanExecutor(store)
 
-    executor._record_run_step(
-        run_id=run_id,
-        spec=spec,
-        plan_version_id=pv_id,
-        fp={"node_type": "cardre.noop"},
-        input_artifact_ids=[],
-        output_artifact_ids=[],
-        parent_run_steps=[],
+    result1 = StepExecutionResult(
+        step_id="step-a", node_type="cardre.noop",
         status=RunStepStatus.SUCCEEDED,
-        errors=[],
-        warnings=[],
+        fingerprint={"node_type": "cardre.noop"},
+        input_artifact_ids=[], input_artifact_ids_by_parent={},
+        output_artifact_ids=[], parent_run_steps=[],
+        warnings=[], errors=[],
+    )
+    executor._record_run_step_from_result(
+        run_id=run_id, spec=spec, plan_version_id=pv_id, result=result1,
     )
 
     # Pre-insert a run_step with the same run_step_id that the next call will generate.
@@ -141,16 +141,15 @@ def test_executor_record_run_step_duplicate_fails(tmp_path, monkeypatch):
         (fixed_id, run_id, "step-a", pv_id, now, now),
     )
 
+    result2 = StepExecutionResult(
+        step_id="step-a", node_type="cardre.noop",
+        status=RunStepStatus.SUCCEEDED,
+        fingerprint={"node_type": "cardre.noop"},
+        input_artifact_ids=[], input_artifact_ids_by_parent={},
+        output_artifact_ids=[], parent_run_steps=[],
+        warnings=[], errors=[],
+    )
     with pytest.raises(sqlite3.IntegrityError):
-        executor._record_run_step(
-            run_id=run_id,
-            spec=spec,
-            plan_version_id=pv_id,
-            fp={"node_type": "cardre.noop"},
-            input_artifact_ids=[],
-            output_artifact_ids=[],
-            parent_run_steps=[],
-            status=RunStepStatus.SUCCEEDED,
-            errors=[],
-            warnings=[],
+        executor._record_run_step_from_result(
+            run_id=run_id, spec=spec, plan_version_id=pv_id, result=result2,
         )

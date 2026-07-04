@@ -23,22 +23,18 @@ from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import (
     CardreError,
     GraphValidationError,
-    MissingInputArtifactError,
-    ParameterValidationError,
     PlanContainsUnavailableNodesError,
 )
 from cardre.domain.evidence import ResolvedEvidence
 from cardre.domain.run import RunStep, RunStepStatus
-from cardre.execution.action_planner import _StepAction
-from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.execution.action_planner import ExecutionActionPlanner, _StepAction
 from cardre.execution.failure_classification import classify_step_failure
-from cardre.execution.fingerprints import build_execution_fingerprint
 from cardre.execution.run_step_writer import write_reused_run_step, write_run_step
+from cardre.execution.step_runner import StepExecutionResult, StepRunner
 from cardre.execution.topology import validate_topology
 from cardre.nodes.registry import NodeRegistry
 
 if TYPE_CHECKING:
-    from cardre.domain.diagnostics import JsonDict
     from cardre.domain.step import StepSpec
     from cardre.store.db import ProjectStore
 
@@ -151,6 +147,8 @@ class PlanExecutor:
         self._node_registry = NodeRegistry.with_defaults()
         from cardre.config import CardreConfig
         self._heartbeat_interval = CardreConfig.from_env().heartbeat_watchdog_interval_seconds
+        self._action_planner = ExecutionActionPlanner()
+        self._step_runner = StepRunner(store, self._node_registry)
 
     # ------------------------------------------------------------------
     # Top-level run entrypoints
@@ -168,7 +166,7 @@ class PlanExecutor:
     ) -> str:
         """Execute all steps in a plan version. Returns the run_id."""
         steps = self._load_and_validate(plan_version_id)
-        actions = [_StepAction(spec=s, action="execute", reason_code="full_plan") for s in steps]
+        actions = self._action_planner.plan_full_plan(steps)
         has_failure, _, _ = self._execute_actions(
             plan_version_id, run_id, actions, branch_id=branch_id,
             precomputed_outputs=precomputed_outputs,
@@ -187,7 +185,6 @@ class PlanExecutor:
     ) -> str:
         """Execute only the ancestor closure of *target_step_id*."""
         steps = self._load_and_validate(plan_version_id)
-        from cardre.execution.step_graph import ancestor_closure
 
         step_by_id = {s.step_id: s for s in steps}
         if target_step_id not in step_by_id:
@@ -195,38 +192,11 @@ class PlanExecutor:
                 f"Target step {target_step_id!r} not found in plan version {plan_version_id}"
             )
 
-        ancestors = ancestor_closure(target_step_id, steps)
-        closure = ancestors | {target_step_id}
-        closure_steps = [s for s in steps if s.step_id in closure]
-
-        # Build to_node actions with staleness checks
-        actions = self._build_to_node_actions(plan_version_id, closure_steps, force, branch_id)
+        actions = self._action_planner.plan_to_node(steps, target_step_id)
         has_failure, _, _ = self._execute_actions(
             plan_version_id, run_id, actions, branch_id=branch_id,
         )
         return run_id
-
-    # ------------------------------------------------------------------
-    # Action planning helpers
-    # ------------------------------------------------------------------
-
-    def _build_to_node_actions(
-        self,
-        plan_version_id: str,
-        closure_steps: list[StepSpec],
-        force: bool,
-        branch_id: str | None,
-    ) -> list[_StepAction]:
-        """Build actions for a to-node run.
-
-        All steps in the ancestor closure are marked ``execute`` with
-        reason ``to_node_closure``. Staleness-aware reuse/skip is not
-        implemented yet — pretending it is would be dishonest (#214).
-        """
-        return [
-            _StepAction(spec=s, action="execute", reason_code="to_node_closure")
-            for s in closure_steps
-        ]
 
     # ------------------------------------------------------------------
     # Shared action execution loop
@@ -282,7 +252,7 @@ class PlanExecutor:
                         self._store, run_id, action.spec.step_id,
                         interval_seconds=self._heartbeat_interval,
                     ):
-                        rs = self._execute_step(
+                        rs = self._execute_and_persist(
                             plan_version_id, run_id, action.spec, outputs, records,
                         )
                     records[action.spec.step_id] = rs
@@ -301,7 +271,7 @@ class PlanExecutor:
                     self._store, run_id, action.spec.step_id,
                     interval_seconds=self._heartbeat_interval,
                 ):
-                    rs = self._execute_step(
+                    rs = self._execute_and_persist(
                         plan_version_id, run_id, action.spec, outputs, records,
                     )
                 self._heartbeat(run_id)
@@ -315,10 +285,10 @@ class PlanExecutor:
         return has_failure, outputs, records
 
     # ------------------------------------------------------------------
-    # Step execution
+    # Execute-and-persist: step runner caller + recording error handling
     # ------------------------------------------------------------------
 
-    def _execute_step(
+    def _execute_and_persist(
         self,
         plan_version_id: str,
         run_id: str,
@@ -326,184 +296,98 @@ class PlanExecutor:
         step_outputs: dict[str, list[ArtifactRef]],
         run_step_records: dict[str, RunStep],
     ) -> RunStep:
-        """Execute a single step and persist run_step + evidence."""
-        parent_run_steps: list[RunStep] = [
-            rs for pid in spec.parent_step_ids
-            if (rs := run_step_records.get(pid)) is not None
-        ]
-        raw_inputs: list[ArtifactRef] = []
-        input_artifacts: list[ArtifactRef] = []
-        input_artifact_ids_by_parent: dict[str, list[str]] = {}
+        """Run a step via StepRunner, persist the result, and return the RunStep.
 
+        Handles recording failures: if a *succeeded* execution cannot be
+        persisted, the step is recorded as FAILED with the recording error.
+        If a *failed* execution also cannot be persisted, raises CardreError
+        (double failure — the original step error is logged in context).
+        """
+        result = self._step_runner.run_step(
+            plan_version_id, run_id, spec, step_outputs, run_step_records,
+        )
         try:
-            raw_inputs = self._resolve_inputs(spec, step_outputs)
-            input_artifacts = raw_inputs
-
-            # Build per-parent input artifact mapping for evidence attribution
-            for pid in spec.parent_step_ids:
-                parent_artifacts = step_outputs.get(pid, [])
-                input_artifact_ids_by_parent[pid] = [a.artifact_id for a in parent_artifacts]
-
-            node = self._node_registry.instantiate(spec.node_type)
-            validation_errors = node.validate_params(dict(spec.params))
-            if validation_errors:
-                raise ParameterValidationError(
-                    f"Step {spec.step_id!r} parameter validation failed: {'; '.join(validation_errors)}",
-                    context={
-                        "plan_version_id": plan_version_id,
-                        "step_id": spec.step_id,
-                        "node_type": spec.node_type,
-                        "errors": validation_errors,
-                    },
-                )
-
-            context = ExecutionContext(
-                store=self._store,
-                run_id=run_id,
-                plan_version_id=plan_version_id,
-                step_spec=spec,
-                parent_run_steps=parent_run_steps,
-                input_artifacts=input_artifacts,
-                validated_params=dict(spec.params),
-                runtime_metadata={
-                    "run_id": run_id,
-                    "plan_version_id": plan_version_id,
-                    "step_id": spec.step_id,
-                    "node_type": spec.node_type,
-                },
+            return self._record_run_step_from_result(
+                run_id, spec, plan_version_id, result,
             )
-
-            node_output = node.run(context)
-            if not isinstance(node_output, NodeOutput):
-                raise TypeError(
-                    f"Node {spec.node_type!r} returned {type(node_output)!r} instead of NodeOutput"
-                )
-
-            output_artifacts = list(node_output.artifacts)
-
-            fp = build_execution_fingerprint(
-                plan_version_id, spec, parent_run_steps,
-                input_artifacts, output_artifacts,
-            )
-            if node_output.execution_fingerprint:
-                fp.update(node_output.execution_fingerprint)
-            if node_output.metrics:
-                fp["node_metrics"] = dict(node_output.metrics)
-            fp = _json_ready(fp)
-
-            return self._record_run_step(
-                run_id=run_id,
-                spec=spec,
-                plan_version_id=plan_version_id,
-                fp=fp,
-                input_artifact_ids=[a.artifact_id for a in input_artifacts],
-                output_artifact_ids=[a.artifact_id for a in output_artifacts],
-                parent_run_steps=parent_run_steps,
-                status=RunStepStatus.SUCCEEDED,
-                errors=[],
-                warnings=list(node_output.warnings or []),
-                input_artifact_ids_by_parent=input_artifact_ids_by_parent,
-            )
-
         except Exception:
+            if result.status == RunStepStatus.FAILED:
+                exc_info = sys.exc_info()[1]
+                raise CardreError(
+                    f"Step recording failed for step {spec.step_id!r} "
+                    f"in run {run_id}: {exc_info}",
+                    code="STEP_RECORDING_FAILED",
+                    context={
+                        "original_error": result.errors[0] if result.errors else None,
+                    },
+                ) from exc_info
+            # Execution succeeded but recording failed — convert to FAILED step.
+            # Rebuild the fingerprint with empty outputs (matching the original
+            # _execute_step fallback path) so the failed record does not carry
+            # output-artifact-derived hashes or metrics from the successful run.
             tb = traceback.format_exc()
             exc_value = sys.exc_info()[1]
             error_entry = classify_step_failure(exc_value, tb)
-
-            recorded_input_ids = [a.artifact_id for a in input_artifacts]
-
-            fp = build_execution_fingerprint(
-                plan_version_id, spec, parent_run_steps,
-                input_artifacts, [],
+            failure_fp = dict(result.fingerprint)
+            failure_fp["output_artifact_logical_hashes"] = []
+            failure_fp.pop("node_metrics", None)
+            failed_result = StepExecutionResult(
+                step_id=result.step_id,
+                node_type=result.node_type,
+                status=RunStepStatus.FAILED,
+                fingerprint=failure_fp,
+                input_artifact_ids=result.input_artifact_ids,
+                input_artifact_ids_by_parent=result.input_artifact_ids_by_parent,
+                output_artifact_ids=[],
+                parent_run_steps=result.parent_run_steps,
+                warnings=[],
+                errors=[error_entry],
             )
-            fp = _json_ready(fp)
-
             try:
-                return self._record_run_step(
-                    run_id=run_id,
-                    spec=spec,
-                    plan_version_id=plan_version_id,
-                    fp=fp,
-                    input_artifact_ids=recorded_input_ids,
-                    output_artifact_ids=[],
-                    parent_run_steps=parent_run_steps,
-                    status=RunStepStatus.FAILED,
-                    errors=[error_entry],
-                    warnings=[],
-                    input_artifact_ids_by_parent=input_artifact_ids_by_parent,
+                return self._record_run_step_from_result(
+                    run_id, spec, plan_version_id, failed_result,
                 )
-            except Exception as rec_exc:
+            except Exception as rec_exc2:
                 raise CardreError(
-                    f"Step recording failed for step {spec.step_id!r} in run {run_id}: {rec_exc}",
+                    f"Step recording failed for step {spec.step_id!r} "
+                    f"in run {run_id}: {rec_exc2}",
                     code="STEP_RECORDING_FAILED",
                     context={
-                        "run_id": run_id,
-                        "plan_version_id": plan_version_id,
-                        "step_id": spec.step_id,
                         "original_error": error_entry,
-                        "recording_error": str(rec_exc),
+                        "recording_error": str(rec_exc2),
                     },
-                ) from rec_exc
-
-    def _resolve_inputs(
-        self,
-        spec: StepSpec,
-        step_outputs: dict[str, list[ArtifactRef]],
-    ) -> list[ArtifactRef]:
-        """Resolve input artifacts from parent step outputs."""
-        if not spec.parent_step_ids:
-            return []
-        artifacts = []
-        for pid in spec.parent_step_ids:
-            parent_outputs = step_outputs.get(pid)
-            if parent_outputs is None:
-                raise MissingInputArtifactError(
-                    f"Step {spec.step_id!r}: parent {pid!r} has no outputs "
-                    "(not executed or missing)"
-                )
-            artifacts.extend(parent_outputs)
-        return artifacts
+                ) from rec_exc2
 
     # ------------------------------------------------------------------
-    # Run-step record + evidence persistence
+    # Run-step persistence from StepExecutionResult
     # ------------------------------------------------------------------
 
-    def _record_run_step(
+    def _record_run_step_from_result(
         self,
         run_id: str,
         spec: StepSpec,
         plan_version_id: str,
-        fp: JsonDict,
-        input_artifact_ids: list[str],
-        output_artifact_ids: list[str],
-        parent_run_steps: list[RunStep],
-        status: RunStepStatus,
-        errors: list[JsonDict],
-        warnings: list[JsonDict],
-        input_artifact_ids_by_parent: dict[str, list[str]] | None = None,
+        result: StepExecutionResult,
     ) -> RunStep:
-        """Persist the run_step and evidence inside a transaction.
+        """Persist a StepExecutionResult as a run step with evidence.
 
-        Writes:
-          - run_steps row via RunStepRepository
-          - evidence_edges + evidence_artifacts rows
-          - artifact_lineage rows
+        Writes run_steps, evidence_edges, evidence_artifacts, and
+        artifact_lineage inside a single IMMEDIATE transaction.
         """
         rs_id = str(uuid.uuid4())
         now = utc_now_iso()
-        now_dt = now
 
         run_step = RunStep(
             run_step_id=rs_id,
             run_id=run_id,
             step_id=spec.step_id,
             plan_version_id=plan_version_id,
-            status=status,
-            started_at=now_dt,
-            finished_at=now_dt,
-            execution_fingerprint=fp,
-            warnings=warnings,
-            errors=errors,
+            status=result.status,
+            started_at=now,
+            finished_at=now,
+            execution_fingerprint=result.fingerprint,
+            warnings=result.warnings,
+            errors=result.errors,
         )
 
         # Resolve branch ID for lineage rows
@@ -516,16 +400,15 @@ class PlanExecutor:
         from cardre.store.evidence_repo import EvidenceRepository
         evidence_repo = EvidenceRepository(self._store)
 
-        # Delegate persistence to the writer module
         with self._store.transaction("IMMEDIATE") as conn:
             write_run_step(
                 conn=conn,
                 run_step=run_step,
                 spec=spec,
-                parent_run_steps=parent_run_steps,
-                input_artifact_ids=input_artifact_ids,
-                output_artifact_ids=output_artifact_ids,
-                input_artifact_ids_by_parent=input_artifact_ids_by_parent,
+                parent_run_steps=result.parent_run_steps,
+                input_artifact_ids=result.input_artifact_ids,
+                output_artifact_ids=result.output_artifact_ids,
+                input_artifact_ids_by_parent=result.input_artifact_ids_by_parent,
                 run_branch_id=run_branch_id,
                 evidence_repo=evidence_repo,
             )
