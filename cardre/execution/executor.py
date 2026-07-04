@@ -335,7 +335,7 @@ class PlanExecutor:
                 step_id=result.step_id,
                 node_type=result.node_type,
                 status=RunStepStatus.FAILED,
-                fingerprint=result.fingerprint,
+                fingerprint=failure_fp,
                 input_artifact_ids=result.input_artifact_ids,
                 input_artifact_ids_by_parent=result.input_artifact_ids_by_parent,
                 output_artifact_ids=[],
