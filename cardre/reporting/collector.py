@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
 from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.reader import ArtifactEvidenceReader
@@ -867,7 +867,7 @@ class ReportCollector:
             )])
 
     def _collect_run_status(self, bundle: ReportBundle, run: dict[str, Any]) -> None:
-        run_diags = self.store.get_run_diagnostics(self.run_id)  # type: ignore[attr-defined]  # ProjectStore has no get_run_diagnostics; available via RunRepository
+        run_diags = RunRepository(self.store).get_diagnostics(self.run_id)
         bundle.run_status = RunStatusInfo(
             run_id=self.run_id,
             status=run.get("status", ""),
@@ -959,10 +959,9 @@ class ReportCollector:
         self, ref: _ResolvedStepRef, plan_version_id: str,
     ) -> RunStep | None:
         branch_id = ref.resolved_branch_id if ref.resolution == "ancestor" else None
-        repo = RunRepository(self.store)
-        rs = repo.get_latest_successful_step(plan_version_id, ref.step_id, branch_id=branch_id)
+        rs = self.store.get_latest_successful_run_step(plan_version_id, ref.step_id, branch_id=branch_id)
         if rs is None and branch_id is not None:
-            rs = repo.get_latest_successful_step(plan_version_id, ref.step_id, branch_id=None)
+            rs = self.store.get_latest_successful_run_step(plan_version_id, ref.step_id, branch_id=None)
         # Disclose when inherited/ancestor evidence is used
         if rs is not None and ref.resolution == "ancestor":
             self.limitations.append(Limitation(
@@ -970,7 +969,7 @@ class ReportCollector:
                 message=f"Step {ref.canonical_step_id} inherited from branch "
                 f"{ref.resolved_branch_id} (ancestor resolution).",
             ))
-        return cast("RunStep | None", rs)
+        return rs
 
 
 def generate_report_bundle(

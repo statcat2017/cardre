@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import uuid
 from typing import TYPE_CHECKING
 
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 from cardre.domain.step import StepSpec
+from cardre.store.step_repo import StepRepository
 
 if TYPE_CHECKING:
     from cardre.store.db import ProjectStore
@@ -47,45 +49,28 @@ class PlanRepository:
         description: str = "",
         *,
         is_committed: bool = False,
+        conn: sqlite3.Connection | None = None,
     ) -> str:
         plan_version_id = str(uuid.uuid4())
         now = utc_now_iso()
-        max_ver = self._store.execute(
-            "SELECT COALESCE(MAX(version_number), 0) + 1 FROM plan_versions WHERE plan_id = ?",
-            (plan_id,),
-        ).fetchone()[0]
-        self._store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (plan_version_id, plan_id, max_ver, 1 if is_committed else 0, now, description),
-        )
-        if steps:
-            for step in steps:
-                self._store.execute(
-                    "INSERT INTO plan_steps "
-                    "(step_id, plan_version_id, node_type, node_version, category, "
-                    " params_json, params_hash, branch_label, position, canonical_step_id, branch_id) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        step.step_id,
-                        plan_version_id,
-                        step.node_type,
-                        step.node_version,
-                        step.category,
-                        json.dumps(step.params),
-                        step.params_hash,
-                        step.branch_label,
-                        step.position,
-                        step.canonical_step_id,
-                        step.branch_id,
-                    ),
-                )
-                for index, parent_step_id in enumerate(step.parent_step_ids):
-                    self._store.execute(
-                        "INSERT INTO plan_step_edges (plan_version_id, parent_step_id, child_step_id, edge_order) "
-                        "VALUES (?, ?, ?, ?)",
-                        (plan_version_id, parent_step_id, step.step_id, index),
-                    )
+        step_repo = StepRepository(self._store)
+        def _insert(target: sqlite3.Connection) -> None:
+            max_ver = target.execute(
+                "SELECT COALESCE(MAX(version_number), 0) + 1 FROM plan_versions WHERE plan_id = ?",
+                (plan_id,),
+            ).fetchone()[0]
+            target.execute(
+                "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (plan_version_id, plan_id, max_ver, 1 if is_committed else 0, now, description),
+            )
+            if steps:
+                step_repo.insert_steps_and_edges(target, plan_version_id, steps)
+        if conn is None:
+            with self._store.transaction("IMMEDIATE") as txn:
+                _insert(txn)
+        else:
+            _insert(conn)
         return plan_version_id
 
     def get_version(self, plan_version_id: str) -> JsonDict | None:

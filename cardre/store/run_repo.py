@@ -167,24 +167,6 @@ class RunRepository:
         row = self._store.execute(sql, tuple(params)).fetchone()
         return None if row is None else row["run_id"]
 
-    def get_latest_successful_step(self, plan_version_id: str, step_id: str, branch_id: str | None = None) -> dict[str, Any] | None:
-        from cardre.store.run_step_repo import RunStepRepository
-        rs = RunStepRepository(self._store).get_latest_successful_step(plan_version_id, step_id, branch_id=branch_id)
-        if rs is None:
-            return None
-        return {
-            "run_step_id": rs.run_step_id,
-            "run_id": rs.run_id,
-            "step_id": rs.step_id,
-            "plan_version_id": rs.plan_version_id,
-            "status": rs.status.value,
-            "started_at": rs.started_at,
-            "finished_at": rs.finished_at,
-            "execution_fingerprint_json": json.dumps(rs.execution_fingerprint),
-            "warnings_json": json.dumps(rs.warnings),
-            "errors_json": json.dumps(rs.errors),
-        }
-
     def get_latest_successful_step_across_plan(self, plan_id: str, step_id: str, branch_id: str | None = None) -> dict[str, Any] | None:
         sql = (
             "SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
@@ -224,5 +206,4 @@ class RunRepository:
             (project_id,),
         ).fetchall()
         return [dict(r) for r in rows]
-
 

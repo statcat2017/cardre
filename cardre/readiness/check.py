@@ -21,7 +21,6 @@ from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_CHAMPION,
 )
 from cardre.store import ProjectStore
-from cardre.store.run_repo import RunRepository
 
 
 @dataclass
@@ -210,10 +209,9 @@ def check_report_readiness(
             continue
 
         branch_id = ref.resolved_branch_id if ref.resolution == "ancestor" else None
-        repo = RunRepository(store)
-        rs = repo.get_latest_successful_step(plan_version_id, ref.step_id, branch_id=branch_id)
+        rs = store.get_latest_successful_run_step(plan_version_id, ref.step_id, branch_id=branch_id)
         if rs is None and branch_id is not None:
-            rs = repo.get_latest_successful_step(plan_version_id, ref.step_id, branch_id=None)
+            rs = store.get_latest_successful_run_step(plan_version_id, ref.step_id, branch_id=None)
         if rs is None:
             blockers.append(ReadinessBlocker(
                 LimitationCode.MISSING_REQUIRED_CANONICAL_STEP,
@@ -228,7 +226,7 @@ def check_report_readiness(
             v1_art = None
             for row in store.execute(
                 "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
-                (rs["run_step_id"],),
+                (rs.run_step_id,),
             ).fetchall():
                 art = store.get_artifact(row["artifact_id"])
                 if art and art.metadata.get("schema_version") == "cardre.woe_iv_evidence.v1":

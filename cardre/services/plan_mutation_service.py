@@ -16,6 +16,7 @@ from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError
 from cardre.domain.step import StepSpec
 from cardre.store.manual_binning_repo import ManualBinningRepository
+from cardre.store.plan_repo import PlanRepository
 
 if TYPE_CHECKING:
     from cardre.store.db import ProjectStore
@@ -98,8 +99,6 @@ class PlanMutationService:
 
         # 3. Retrieve the existing steps and edges from the base version
         base_steps = self._get_version_steps(command.plan_version_id)
-        base_edges = self._get_version_edges(command.plan_version_id)
-
         # Find the manual-binning step and downstream steps
         mb_step = None
         downstream_ids: list[str] = []
@@ -145,54 +144,17 @@ class PlanMutationService:
 
         # 6. Execute all mutations in a single transaction
         with self._store.transaction("IMMEDIATE") as conn:
-            # 6a. Create the new draft plan version
-            new_pv_id = str(uuid.uuid4())
             now = utc_now_iso()
-            new_version_number = version_number + 1
-
-            conn.execute(
-                "INSERT INTO plan_versions "
-                "(plan_version_id, plan_id, version_number, is_committed, "
-                " created_at, description) "
-                "VALUES (?, ?, ?, 0, ?, ?)",
-                (new_pv_id, plan_id, new_version_number, now,
-                 f"Manual-binning edit from version {version_number}"),
+            # 6a. Create the new draft plan version + steps via the shared plan repository.
+            new_pv_id = PlanRepository(self._store).create_version(
+                plan_id,
+                new_steps,
+                description=f"Manual-binning edit from version {version_number}",
+                is_committed=False,
+                conn=conn,
             )
 
-            # 6b. Insert plan steps
-            for step in new_steps:
-                conn.execute(
-                    "INSERT INTO plan_steps "
-                    "(step_id, plan_version_id, node_type, node_version, category, "
-                    " params_json, params_hash, branch_label, position, "
-                    " canonical_step_id, branch_id) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        step.step_id,
-                        new_pv_id,
-                        step.node_type,
-                        step.node_version,
-                        step.category,
-                        json.dumps(step.params),
-                        step.params_hash,
-                        step.branch_label,
-                        step.position,
-                        step.canonical_step_id,
-                        step.branch_id,
-                    ),
-                )
-
-            # 6c. Insert plan_step_edges (from base edges, re-keyed to new plan version)
-            for edge in base_edges:
-                conn.execute(
-                    "INSERT INTO plan_step_edges "
-                    "(plan_version_id, parent_step_id, child_step_id, edge_order) "
-                    "VALUES (?, ?, ?, ?)",
-                    (new_pv_id, edge["parent_step_id"], edge["child_step_id"],
-                     edge.get("edge_order", 0)),
-                )
-
-            # 6d. Persist ManualBinningReview row
+            # 6b. Persist ManualBinningReview row
             review_id = str(uuid.uuid4())
             downstream_json = json.dumps(command.affected_downstream_step_ids)
             conn.execute(
@@ -283,15 +245,6 @@ class PlanMutationService:
                 branch_id=row["branch_id"],
             ))
         return steps
-
-    def _get_version_edges(self, plan_version_id: str) -> list[dict[str, Any]]:
-        """Retrieve all edges for a plan version."""
-        rows = self._store.execute(
-            "SELECT * FROM plan_step_edges WHERE plan_version_id = ? ORDER BY edge_order",
-            (plan_version_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
-
 
 __all__ = [
     "ManualBinningEditCommand",

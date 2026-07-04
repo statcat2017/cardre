@@ -21,7 +21,6 @@ from cardre.services.staleness_service import StalenessService
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.comparison_repo import ComparisonRepository
 from cardre.store.db import ProjectStore
-from cardre.store.run_repo import RunRepository
 
 
 def _check_branch_readiness(
@@ -53,14 +52,11 @@ def _check_branch_readiness(
     for cs in required_steps:
         actual_id = canon_to_actual.get(cs, cs)
         evidence_branch = branch_id if not is_baseline else None
-        repo = RunRepository(store)
-        rs = repo.get_latest_successful_step(
+        rs = store.get_latest_successful_run_step(
             plan_version_id, actual_id, branch_id=evidence_branch,
         )
         if rs is None and evidence_branch is not None:
-            rs = repo.get_latest_successful_step(
-                plan_version_id, actual_id, branch_id=None,
-            )
+            rs = store.get_latest_successful_run_step(plan_version_id, actual_id, branch_id=None)
         if rs is None:
             # Use staleness service to determine if stale or not_run
             explanation = staleness_svc.explain_step(
@@ -142,15 +138,14 @@ def _build_comparison_content(
         """Find the typed evidence for a canonical step."""
         for row in step_map:
             if row["canonical_step_id"] == cs:
-                repo = RunRepository(store)
-                rs = repo.get_latest_successful_step(pv_id, row["step_id"], branch_id=evidence_branch_id)
+                rs = store.get_latest_successful_run_step(pv_id, row["step_id"], branch_id=evidence_branch_id)
                 if rs is None and evidence_branch_id is not None:
-                    rs = repo.get_latest_successful_step(pv_id, row["step_id"], branch_id=None)
+                    rs = store.get_latest_successful_run_step(pv_id, row["step_id"], branch_id=None)
                 if rs:
                     rows = store.execute(
                         "SELECT artifact_id FROM artifact_lineage "
                         "WHERE run_step_id = ? AND direction = 'output'",
-                        (rs.run_step_id,),  # type: ignore[attr-defined]  # RunRepository returns dict, not RunStep object
+                        (rs.run_step_id,),
                     ).fetchall()
                     artifact_ids = [r["artifact_id"] for r in rows]
                     if artifact_ids:
