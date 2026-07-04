@@ -8,6 +8,12 @@ import type { components } from "./schema.d";
 import { ErrorCodes } from "./errorCodes";
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
+// ---------------------------------------------------------------------------
 // ApiError
 // ---------------------------------------------------------------------------
 
@@ -48,7 +54,7 @@ export interface FetchOptions extends Omit<RequestInit, "body"> {
 }
 
 export async function fetchJson<T>(url: string, options: FetchOptions = {}): Promise<T> {
-  const { timeoutMs = 30_000, signal: externalSignal, body, ...init } = options;
+  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, signal: externalSignal, body, ...init } = options;
 
   // Build composite signal (external + timeout)
   const controller = new AbortController();

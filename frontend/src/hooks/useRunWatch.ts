@@ -12,6 +12,13 @@ import { ErrorCodes } from "../api/errorCodes";
 import type { components } from "../api/schema.d";
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const DEFAULT_POLL_INTERVAL_MS = 2000;
+const DEFAULT_MAX_ERROR_RETRIES = 5;
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -128,8 +135,8 @@ export function useRunWatch(options: UseRunWatchOptions): RunWatchState {
   const {
     projectId,
     runId,
-    pollIntervalMs = 2000,
-    maxErrorRetries = 5,
+    pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+    maxErrorRetries = DEFAULT_MAX_ERROR_RETRIES,
     onComplete,
     onError,
   } = options;

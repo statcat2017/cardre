@@ -83,7 +83,7 @@ class _HeartbeatWatchdog:
         store: ProjectStore,
         run_id: str,
         step_id: str,
-        interval_seconds: int = 75,
+        interval_seconds: int,
     ) -> None:
         self._root = store.root
         self._run_id = run_id

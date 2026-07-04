@@ -23,14 +23,17 @@ class CardreConfig:
 
     @classmethod
     def from_env(cls) -> CardreConfig:
+        stale = int(os.environ.get("CARDRE_STALE_HEARTBEAT_SECONDS", "300"))
+        watchdog_override = os.environ.get("CARDRE_HEARTBEAT_WATCHDOG_INTERVAL_SECONDS")
+        if watchdog_override is not None:
+            watchdog = max(1, int(watchdog_override))
+        else:
+            watchdog = max(1, stale // 4)
         return cls(
             launch_mode=_env_bool("CARDRE_LAUNCH_MODE", True),
             governance_enabled=_env_bool("CARDRE_GOVERNANCE", False),
-            stale_heartbeat_seconds=int(os.environ.get("CARDRE_STALE_HEARTBEAT_SECONDS", "300")),
-            heartbeat_watchdog_interval_seconds=max(
-                1,
-                int(os.environ.get("CARDRE_STALE_HEARTBEAT_SECONDS", "300")) // 4,
-            ),
+            stale_heartbeat_seconds=stale,
+            heartbeat_watchdog_interval_seconds=watchdog,
             api_host=os.environ.get("CARDRE_API_HOST", "127.0.0.1"),
             api_port=int(os.environ.get("CARDRE_API_PORT", "8752")),
             registry_path=Path(os.environ.get("CARDRE_REGISTRY_PATH", str(Path.home() / ".cardre" / "projects.json"))),
