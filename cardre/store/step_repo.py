@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -23,6 +24,40 @@ class StepRepository:
             (plan_version_id,),
         ).fetchall()
         return [self._row_to_step_spec(r) for r in rows]
+
+    def insert_steps_and_edges(
+        self,
+        conn: sqlite3.Connection,
+        plan_version_id: str,
+        steps: list[StepSpec],
+    ) -> None:
+        """Insert plan steps and edges inside an open transaction."""
+        for step in steps:
+            conn.execute(
+                "INSERT INTO plan_steps "
+                "(step_id, plan_version_id, node_type, node_version, category, "
+                " params_json, params_hash, branch_label, position, canonical_step_id, branch_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    step.step_id,
+                    plan_version_id,
+                    step.node_type,
+                    step.node_version,
+                    step.category,
+                    json.dumps(step.params),
+                    step.params_hash,
+                    step.branch_label,
+                    step.position,
+                    step.canonical_step_id,
+                    step.branch_id,
+                ),
+            )
+            for index, parent_step_id in enumerate(step.parent_step_ids):
+                conn.execute(
+                    "INSERT INTO plan_step_edges (plan_version_id, parent_step_id, child_step_id, edge_order) "
+                    "VALUES (?, ?, ?, ?)",
+                    (plan_version_id, parent_step_id, step.step_id, index),
+                )
 
     def insert_edge(
         self,

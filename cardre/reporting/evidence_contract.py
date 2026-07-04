@@ -11,7 +11,6 @@ from typing import cast
 
 from cardre.domain.run import RunStep
 from cardre.store import ProjectStore
-from cardre.store.run_repo import RunRepository
 
 # ---------------------------------------------------------------------------
 # Required canonical steps per report mode
@@ -57,8 +56,7 @@ def find_evidence_for_canonical_step(
     branch_id: str | None = None,
 ) -> RunStep | None:
     """Find the latest successful run step for a canonical step."""
-    repo = RunRepository(store)
-    rs = repo.get_latest_successful_step(plan_version_id, canonical_step_id, branch_id=branch_id)
+    rs = store.get_latest_successful_run_step(plan_version_id, canonical_step_id, branch_id=branch_id)
     if rs is None and branch_id is not None:
-        rs = repo.get_latest_successful_step(plan_version_id, canonical_step_id, branch_id=None)
+        rs = store.get_latest_successful_run_step(plan_version_id, canonical_step_id, branch_id=None)
     return cast("RunStep | None", rs)

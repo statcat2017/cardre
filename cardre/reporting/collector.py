@@ -55,7 +55,6 @@ from cardre.reporting.schema import (
     WoeSmoothingInfo,
 )
 from cardre.store import ProjectStore
-from cardre.store.run_repo import RunRepository
 
 # ---------------------------------------------------------------------------
 # Inlined step resolution helpers (formerly cardre.step_id)
@@ -867,7 +866,7 @@ class ReportCollector:
             )])
 
     def _collect_run_status(self, bundle: ReportBundle, run: dict[str, Any]) -> None:
-        run_diags = self.store.get_run_diagnostics(self.run_id)  # type: ignore[attr-defined]  # ProjectStore has no get_run_diagnostics; available via RunRepository
+        run_diags = RunRepository(self.store).get_diagnostics(self.run_id)
         bundle.run_status = RunStatusInfo(
             run_id=self.run_id,
             status=run.get("status", ""),
@@ -959,10 +958,9 @@ class ReportCollector:
         self, ref: _ResolvedStepRef, plan_version_id: str,
     ) -> RunStep | None:
         branch_id = ref.resolved_branch_id if ref.resolution == "ancestor" else None
-        repo = RunRepository(self.store)
-        rs = repo.get_latest_successful_step(plan_version_id, ref.step_id, branch_id=branch_id)
+        rs = self.store.get_latest_successful_run_step(plan_version_id, ref.step_id, branch_id=branch_id)
         if rs is None and branch_id is not None:
-            rs = repo.get_latest_successful_step(plan_version_id, ref.step_id, branch_id=None)
+            rs = self.store.get_latest_successful_run_step(plan_version_id, ref.step_id, branch_id=None)
         # Disclose when inherited/ancestor evidence is used
         if rs is not None and ref.resolution == "ancestor":
             self.limitations.append(Limitation(

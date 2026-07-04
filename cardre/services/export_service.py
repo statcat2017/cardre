@@ -177,7 +177,7 @@ def _populate_export(
     for row in step_map:
         if row.get("is_shared_upstream"):
             step_id = row.get("step_id", "")
-            upstream_rs: dict[str, Any] | RunStep | None = run_repo.get_latest_successful_step(head_pv_id, step_id, branch_id=None)
+            upstream_rs: RunStep | None = store.get_latest_successful_run_step(head_pv_id, step_id, branch_id=None)
             if upstream_rs is None:
                 plan_id_val = branch.get("plan_id", "")
                 if plan_id_val:

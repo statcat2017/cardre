@@ -17,6 +17,7 @@ from cardre.execution.step_graph import descendant_closure
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.db import ProjectStore
 from cardre.store.plan_repo import PlanRepository
+from cardre.store.step_repo import StepRepository
 
 ALLOWED_BRANCH_POINTS: dict[str, str] = {
     "sample-definition": "segment_challenger",
@@ -240,8 +241,8 @@ class BranchService:
                 (new_pv_id, plan_id, max_ver, now, f"Branch '{name}' created from {branch_point_step_id}"),
             )
 
-            # Insert plan steps + edges
-            _insert_steps_and_edges(conn, new_pv_id, new_steps)
+            # Insert plan steps + edges via the shared store helper.
+            StepRepository(self._store).insert_steps_and_edges(conn, new_pv_id, new_steps)
 
             # Insert branch metadata
             conn.execute(
@@ -343,34 +344,4 @@ def _validate_segment_filter_rules(spec: dict[str, Any]) -> None:
                 code="SEGMENT_FILTER_VALUE_REQUIRED",
                 message=f"Rule for column '{column}' with operator '{operator}' requires a 'value'.",
                 context={"column": column, "operator": operator},
-            )
-
-
-def _insert_steps_and_edges(conn: Any, plan_version_id: str, steps: list[StepSpec]) -> None:
-    """Insert plan steps and plan_step_edges inside an open transaction."""
-    for step in steps:
-        conn.execute(
-            "INSERT INTO plan_steps "
-            "(step_id, plan_version_id, node_type, node_version, category, "
-            " params_json, params_hash, branch_label, position, canonical_step_id, branch_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                step.step_id,
-                plan_version_id,
-                step.node_type,
-                step.node_version,
-                step.category,
-                json.dumps(step.params),
-                step.params_hash,
-                step.branch_label,
-                step.position,
-                step.canonical_step_id,
-                step.branch_id,
-            ),
-        )
-        for index, parent_step_id in enumerate(step.parent_step_ids):
-            conn.execute(
-                "INSERT INTO plan_step_edges (plan_version_id, parent_step_id, child_step_id, edge_order) "
-                "VALUES (?, ?, ?, ?)",
-                (plan_version_id, parent_step_id, step.step_id, index),
             )
