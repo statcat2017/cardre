@@ -82,7 +82,6 @@ def test_fallback_fingerprint_clears_output_hashes(tmp_path, monkeypatch):
     output_artifact_logical_hashes and no node_metrics."""
     from cardre.domain.run import RunStepStatus
     from cardre.execution.executor import PlanExecutor
-    from cardre.execution.step_runner import StepExecutionResult
 
     store = _make_store(tmp_path)
     pv_id = _seed_minimal_plan(store)
