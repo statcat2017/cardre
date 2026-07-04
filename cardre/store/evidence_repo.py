@@ -83,6 +83,18 @@ class EvidenceRepository:
         ).fetchall()
         return [self._row_to_edge(r) for r in rows]
 
+    def get_edge_for_child_parent(
+        self,
+        plan_version_id: str,
+        child_step_id: str,
+        parent_step_id: str,
+    ) -> EvidenceEdge | None:
+        row = self._store.execute(
+            "SELECT * FROM evidence_edges WHERE plan_version_id = ? AND step_id = ? AND parent_step_id = ? ORDER BY created_at DESC LIMIT 1",
+            (plan_version_id, child_step_id, parent_step_id),
+        ).fetchone()
+        return self._row_to_edge(row) if row else None
+
     def get_artifacts_for_edge(self, evidence_edge_id: str) -> list[EvidenceArtifact]:
         rows = self._store.execute(
             "SELECT * FROM evidence_artifacts WHERE evidence_edge_id = ? ORDER BY role",

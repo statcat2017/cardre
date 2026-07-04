@@ -109,12 +109,13 @@ class StalenessService:
             )
             upstream_changes[s.step_id] = is_stale
 
-        # Check parent evidence
+        # Check parent evidence — for each parent, verify the child has
+        # an evidence edge recording consumption from that parent.
         spec = spec_by_id.get(step_id)
         if spec:
             for pid in spec.parent_step_ids:
-                parent_edges = evidence_repo.get_edges_for_plan_step(plan_version_id, pid)
-                if not parent_edges:
+                edge = evidence_repo.get_edge_for_child_parent(plan_version_id, step_id, pid)
+                if edge is None:
                     missing_evidence.append(pid)
 
         # Determine status
@@ -155,19 +156,20 @@ class StalenessService:
         if spec.step_id in stale_cache:
             return stale_cache[spec.step_id]
 
-        # Discover source run-step via evidence_edges
+        # Discover source run-step via evidence_edges.
+        # The edge for "step_b consumed from step_a" has:
+        #   run_step_id = rs_b (the consuming step's run-step)
+        #   source_run_step_id = rs_a (the parent/source run-step)
+        # We want the consuming step's run-step, so we read run_step_id.
         edges = evidence_repo.get_edges_for_plan_step(plan_version_id, spec.step_id)
         rs: RunStep | None = None
         if edges:
-            # Use the most recent edge's source run-step
-            source_run_step_id = edges[-1].source_run_step_id
-            rs = rs_repo.get(source_run_step_id)
+            rs = rs_repo.get(edges[-1].run_step_id)
 
         if rs is None and branch_id is not None:
             edges = evidence_repo.get_edges_for_plan_step(plan_version_id, spec.step_id)
             if edges:
-                source_run_step_id = edges[-1].source_run_step_id
-                rs = rs_repo.get(source_run_step_id)
+                rs = rs_repo.get(edges[-1].run_step_id)
 
         if rs is None and plan_id is not None:
             plan_run_id = run_repo.get_latest_successful_id_for_plan(plan_id)
@@ -207,11 +209,12 @@ class StalenessService:
                 stale_cache[spec.step_id] = True
                 return True
 
-            # Check parent output hashes via evidence edges
+            # Check parent output hashes via evidence edges.
+            # The parent's own edges have run_step_id = parent's run-step.
             parent_edges = evidence_repo.get_edges_for_plan_step(plan_version_id, pid)
             parent_rs: RunStep | None = None
             if parent_edges:
-                parent_rs = rs_repo.get(parent_edges[-1].source_run_step_id)
+                parent_rs = rs_repo.get(parent_edges[-1].run_step_id)
 
             if parent_rs is not None:
                 stored_parent_outputs = fp.get("parent_output_logical_hashes_by_step", {}).get(pid, [])
