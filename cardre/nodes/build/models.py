@@ -19,6 +19,16 @@ from cardre.node_parameters import (
     ParameterConstraint,
     ParameterDefinition,
 )
+from cardre.nodes.build._logit_helpers import (
+    COEF_ROUND,
+    POINTS_ROUND,
+    WOE_ROUND,
+    build_class_mapping,
+    build_lr_params,
+    build_scorecard_attribute,
+    parse_base_odds,
+    resolve_features,
+)
 from cardre.nodes.contracts import NodeType
 
 
@@ -227,15 +237,7 @@ class LogisticRegressionNode(NodeType):
         if n_good == 0:
             raise ValueError(f"Logistic regression: no good-class rows found (good_values={sorted(good_values)})")
 
-        penalty = params.get("penalty")
-        C = float(params.get("C", 1.0))
-        max_iter = int(params.get("max_iter", 1000))
-        solver = str(params.get("solver", "lbfgs"))
-        random_seed = int(params.get("random_seed", 42))
-
-        if penalty is None:
-            penalty = "l2"
-        lr_params = {"C": C, "max_iter": max_iter, "solver": solver, "random_state": random_seed, "penalty": penalty}
+        lr_params = build_lr_params(params)
 
         lr = SkLearnLR(**lr_params)
         with warnings.catch_warnings(record=True) as fit_warnings:
@@ -244,21 +246,14 @@ class LogisticRegressionNode(NodeType):
 
         bad_class = sorted(bad_values)[0] if bad_values else "1"
         good_class = sorted(good_values)[0] if good_values else "0"
-        bad_class_idx = 1 if len(lr.classes_) > 1 else 0
-        if bad_class_idx == 0:
-            class_mapping = {"good": str(good_class), "bad": str(bad_class)}
-        else:
-            class_mapping = {"good": str(good_class), "bad": str(bad_class)}
+        class_mapping = build_class_mapping(good_class, bad_class)
 
-        features_list = woe_cols
-        if sel_def is not None:
-            source_variables = list(sel_def.selected_names)
-        else:
-            source_variables = [f[:-4] for f in features_list if f.endswith("_woe")] if features_list else []
+        features_list, source_variables = resolve_features(woe_cols, sel_def)
         coefficients: dict[str, float] = {
-            col: round(float(coef), 6) for col, coef in zip(features_list, lr.coef_[0], strict=False)
+            col: round(float(coef), COEF_ROUND) for col, coef in zip(features_list, lr.coef_[0], strict=False)
         }
 
+        max_iter = int(params.get("max_iter", 1000))
         fail_on_non_convergence = bool(params.get("fail_on_non_convergence", True))
         has_sklearn_warning = any(issubclass(w.category, ConvergenceWarning) for w in fit_warnings)
         converged = not has_sklearn_warning and bool(lr.n_iter_[0] < max_iter)
@@ -298,7 +293,7 @@ class LogisticRegressionNode(NodeType):
             "target_column": target_column,
             "features": features_list,
             "source_variables": source_variables,
-            "intercept": round(float(lr.intercept_[0]), 6),
+            "intercept": round(float(lr.intercept_[0]), COEF_ROUND),
             "coefficients": coefficients,
             "class_mapping": class_mapping,
             "bad_class_label": str(bad_class),
@@ -394,16 +389,11 @@ class ScoreScalingNode(NodeType):
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
-        base_odds = params.get("base_odds", 50.0)
         try:
-            if isinstance(base_odds, str) and ":" in base_odds:
-                num, den = base_odds.split(":", 1)
-                base_odds_val = float(num) / float(den)
-            else:
-                base_odds_val = float(base_odds)
+            base_odds_val = parse_base_odds(params.get("base_odds", 50.0))
             if base_odds_val <= 0:
                 errors.append("base_odds must be positive")
-        except (ValueError, TypeError, ZeroDivisionError):
+        except ValueError:
             errors.append("base_odds must be a number or 'N:M' odds ratio string")
         pdo = params.get("points_to_double_odds", 20)
         try:
@@ -457,12 +447,7 @@ class ScoreScalingNode(NodeType):
             raise ValueError("Score scaling received an empty bin definition")
 
         base_score = float(params.get("base_score", 600))
-        raw_odds = params.get("base_odds", 50.0)
-        if isinstance(raw_odds, str) and ":" in raw_odds:
-            num, den = raw_odds.split(":", 1)
-            base_odds = float(num) / float(den)
-        else:
-            base_odds = float(raw_odds)
+        base_odds = parse_base_odds(params.get("base_odds", 50.0))
         pdo = float(params.get("points_to_double_odds", 20))
         higher_is_lower_risk = bool(params.get("higher_score_is_lower_risk", True))
 
@@ -477,7 +462,7 @@ class ScoreScalingNode(NodeType):
         coefficients = model.coefficients_dict
 
         direction = -1.0 if higher_is_lower_risk else 1.0
-        base_points = round(offset + direction * factor * intercept, 2)
+        base_points = round(offset + direction * factor * intercept, POINTS_ROUND)
 
         attributes: list[dict[str, Any]] = []
         all_woe_map = woe_table.mapping
@@ -490,30 +475,21 @@ class ScoreScalingNode(NodeType):
             coef = float(coefficients[woe_key])
 
             for bin_entry in var_def_obj.bins:
-                bin_id = bin_entry["bin_id"]
-                label = bin_entry["label"]
-                woe_val = all_woe_map.get(variable, {}).get(bin_id)
+                woe_val = all_woe_map.get(variable, {}).get(bin_entry["bin_id"])
                 if woe_val is None:
                     raise ValueError(
-                        f"Score scaling: missing WOE value for variable {variable!r} bin {bin_id!r}"
+                        f"Score scaling: missing WOE value for variable {variable!r} bin {bin_entry['bin_id']!r}"
                     )
-                raw_points = direction * factor * coef * woe_val
-                point_value = round(raw_points, 2)
-                attributes.append({
-                    "variable": variable,
-                    "bin_id": bin_id,
-                    "label": label,
-                    "woe": round(woe_val, 6),
-                    "coefficient": coef,
-                    "points": point_value,
-                })
+                attributes.append(
+                    build_scorecard_attribute(variable, bin_entry, woe_val, coef, factor, direction)
+                )
 
         scorecard = {
             "base_score": base_score,
             "base_odds": base_odds,
             "points_to_double_odds": pdo,
-            "factor": round(factor, 6),
-            "offset": round(offset, 6),
+            "factor": round(factor, WOE_ROUND),
+            "offset": round(offset, WOE_ROUND),
             "higher_score_is_lower_risk": higher_is_lower_risk,
             "intercept": intercept,
             "base_points": base_points,
@@ -593,11 +569,7 @@ class BuildSummaryReportNode(NodeType):
 
         scorecard_raw = scorecard._raw
         scorecard_base_odds = scorecard_raw.get("base_odds", scorecard.base_odds)
-        if isinstance(scorecard_base_odds, str) and ":" in scorecard_base_odds:
-            num, den = scorecard_base_odds.split(":", 1)
-            scorecard_base_odds = float(num) / float(den)
-        else:
-            scorecard_base_odds = float(scorecard_base_odds)
+        scorecard_base_odds = parse_base_odds(scorecard_base_odds)
 
         report = {
             "model_summary": {
