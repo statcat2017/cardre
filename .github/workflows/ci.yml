@@ -93,7 +93,7 @@ jobs:
       - name: Audit artifact reads
         run: make audit-artifact-reads
       - name: Run tests
-        run: python3 -m pytest tests/ -q --tb=short --cov-fail-under=55  # next target: 60 once RunCoordinator split lands
+        run: make test-python-ci
 
   test-python-governance:
     runs-on: ubuntu-latest
