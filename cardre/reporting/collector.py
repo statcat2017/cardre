@@ -969,7 +969,7 @@ class ReportCollector:
                 message=f"Step {ref.canonical_step_id} inherited from branch "
                 f"{ref.resolved_branch_id} (ancestor resolution).",
             ))
-        return cast("RunStep | None", rs)
+        return rs
 
 
 def generate_report_bundle(

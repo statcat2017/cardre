@@ -226,7 +226,7 @@ def check_report_readiness(
             v1_art = None
             for row in store.execute(
                 "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
-                (rs["run_step_id"],),
+                (rs.run_step_id,),
             ).fetchall():
                 art = store.get_artifact(row["artifact_id"])
                 if art and art.metadata.get("schema_version") == "cardre.woe_iv_evidence.v1":
