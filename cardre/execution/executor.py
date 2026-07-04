@@ -12,7 +12,6 @@ evidence was resolved before the failure.
 from __future__ import annotations
 
 import enum
-import json
 import sys
 import threading
 import traceback
@@ -28,12 +27,13 @@ from cardre.domain.errors import (
     ParameterValidationError,
     PlanContainsUnavailableNodesError,
 )
-from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge, ResolvedEvidence
+from cardre.domain.evidence import ResolvedEvidence
 from cardre.domain.run import RunStep, RunStepStatus
 from cardre.execution.action_planner import _StepAction
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.execution.failure_classification import classify_step_failure
 from cardre.execution.fingerprints import build_execution_fingerprint
+from cardre.execution.run_step_writer import write_reused_run_step, write_run_step
 from cardre.execution.topology import validate_topology
 from cardre.nodes.registry import NodeRegistry
 
@@ -506,91 +506,25 @@ class PlanExecutor:
             errors=errors,
         )
 
-        # Persist run_step + evidence + lineage in a single transaction
+        # Resolve branch ID for lineage rows
+        branch_id = self._get_branch_for_run(run_id)
+        run_record = self._store.execute(
+            "SELECT branch_id FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        run_branch_id = run_record["branch_id"] if run_record and run_record["branch_id"] else branch_id
+
+        # Delegate persistence to the writer module
         with self._store.transaction("IMMEDIATE") as conn:
-            # 1. Write run_step
-            # Use the raw connection for the transaction-scoped write
-            conn.execute(
-                "INSERT INTO run_steps "
-                "(run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, "
-                " execution_fingerprint_json, warnings_json, errors_json) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    run_step.run_step_id,
-                    run_step.run_id,
-                    run_step.step_id,
-                    run_step.plan_version_id,
-                    run_step.status.value,
-                    run_step.started_at,
-                    run_step.finished_at,
-                    json.dumps(run_step.execution_fingerprint),
-                    json.dumps(run_step.warnings),
-                    json.dumps(run_step.errors),
-                ),
+            write_run_step(
+                conn=conn,
+                run_step=run_step,
+                spec=spec,
+                parent_run_steps=parent_run_steps,
+                input_artifact_ids=input_artifact_ids,
+                output_artifact_ids=output_artifact_ids,
+                input_artifact_ids_by_parent=input_artifact_ids_by_parent,
+                run_branch_id=run_branch_id,
             )
-
-            # 2. Write evidence_edges + evidence_artifacts using repo
-            from cardre.store.evidence_repo import EvidenceRepository
-            evidence_repo = EvidenceRepository(self._store)
-            branch_id = self._get_branch_for_run(run_id)
-            run_record = self._store.execute(
-                "SELECT branch_id FROM runs WHERE run_id = ?", (run_id,)
-            ).fetchone()
-            run_branch_id = run_record["branch_id"] if run_record and run_record["branch_id"] else branch_id
-
-            for idx, parent_rs in enumerate(parent_run_steps):
-                ee_id = str(uuid.uuid4())
-                edge = EvidenceEdge(
-                    evidence_edge_id=ee_id,
-                    run_id=run_id,
-                    run_step_id=rs_id,
-                    plan_version_id=plan_version_id,
-                    step_id=spec.step_id,
-                    parent_step_id=parent_rs.step_id,
-                    source_run_id=run_id,
-                    source_run_step_id=parent_rs.run_step_id,
-                    policy="exact",
-                    source_label=f"parent_{idx}",
-                    is_reused=False,
-                    is_stale=False,
-                    stale_reason=None,
-                    created_at=now_dt,
-                )
-                evidence_repo.insert_edge(edge, conn)
-
-                # Evidence artifacts for each parent edge — only that parent's artifacts
-                parent_aids = (
-                    input_artifact_ids_by_parent.get(parent_rs.step_id, input_artifact_ids)
-                    if input_artifact_ids_by_parent is not None
-                    else input_artifact_ids
-                )
-                for aid in parent_aids:
-                    art = EvidenceArtifact(
-                        evidence_artifact_id=str(uuid.uuid4()),
-                        evidence_edge_id=ee_id,
-                        artifact_id=aid,
-                        role="input",
-                        created_at=now_dt,
-                    )
-                    evidence_repo.insert_artifact(art, conn)
-
-            # 3. Write artifact_lineage for inputs
-            for aid in input_artifact_ids:
-                conn.execute(
-                    "INSERT OR IGNORE INTO artifact_lineage "
-                    "(lineage_id, run_id, run_step_id, plan_version_id, step_id, branch_id, artifact_id, direction, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (str(uuid.uuid4()), run_id, rs_id, plan_version_id, spec.step_id, run_branch_id, aid, "input", now_dt),
-                )
-
-            # 4. Write artifact_lineage for outputs
-            for aid in output_artifact_ids:
-                conn.execute(
-                    "INSERT OR IGNORE INTO artifact_lineage "
-                    "(lineage_id, run_id, run_step_id, plan_version_id, step_id, branch_id, artifact_id, direction, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (str(uuid.uuid4()), run_id, rs_id, plan_version_id, spec.step_id, run_branch_id, aid, "output", now_dt),
-                )
 
         return run_step
 
@@ -656,69 +590,22 @@ class PlanExecutor:
             errors=prev_rs.errors,
         )
 
-        # Persist within a transaction
+        # Resolve branch ID for lineage rows
         run_record = self._store.execute(
             "SELECT branch_id FROM runs WHERE run_id = ?", (run_id,)
         ).fetchone()
         run_branch_id = run_record["branch_id"] if run_record and run_record["branch_id"] else branch_id
 
+        # Delegate persistence to the writer module
         with self._store.transaction("IMMEDIATE") as conn:
-            conn.execute(
-                "INSERT INTO run_steps "
-                "(run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, "
-                " execution_fingerprint_json, warnings_json, errors_json) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    copied_rs.run_step_id, copied_rs.run_id, copied_rs.step_id,
-                    copied_rs.plan_version_id, copied_rs.status.value,
-                    copied_rs.started_at, copied_rs.finished_at,
-                    json.dumps(copied_rs.execution_fingerprint),
-                    json.dumps(copied_rs.warnings),
-                    json.dumps(copied_rs.errors),
-                ),
+            write_reused_run_step(
+                conn=conn,
+                copied_rs=copied_rs,
+                edges=edges,
+                all_artifacts=all_artifacts,
+                lineage_rows=lineage,
+                run_branch_id=run_branch_id,
             )
-
-            # Copy evidence edges from source (using repo with conn)
-            for edge in edges:
-                reused_ee_id = str(uuid.uuid4())
-                reused_edge = EvidenceEdge(
-                    evidence_edge_id=reused_ee_id,
-                    run_id=run_id,
-                    run_step_id=rs_id,
-                    plan_version_id=plan_version_id,
-                    step_id=copied_rs.step_id,
-                    parent_step_id=edge.parent_step_id,
-                    source_run_id=edge.source_run_id,
-                    source_run_step_id=edge.source_run_step_id,
-                    policy=edge.policy,
-                    source_label=edge.source_label,
-                    is_reused=True,
-                    is_stale=edge.is_stale,
-                    stale_reason=edge.stale_reason,
-                    created_at=now,
-                )
-                evidence_repo.insert_edge(reused_edge, conn)
-
-                # Copy evidence artifacts for this edge
-                for art in (a for a in all_artifacts if a.evidence_edge_id == edge.evidence_edge_id):
-                    reused_art = EvidenceArtifact(
-                        evidence_artifact_id=str(uuid.uuid4()),
-                        evidence_edge_id=reused_ee_id,
-                        artifact_id=art.artifact_id,
-                        role=art.role,
-                        created_at=now,
-                    )
-                    evidence_repo.insert_artifact(reused_art, conn)
-
-            # Copy lineage
-            for lineage_row in lineage:
-                conn.execute(
-                    "INSERT OR IGNORE INTO artifact_lineage "
-                    "(lineage_id, run_id, run_step_id, plan_version_id, step_id, branch_id, artifact_id, direction, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (str(uuid.uuid4()), run_id, rs_id, plan_version_id, copied_rs.step_id,
-                    run_branch_id, lineage_row["artifact_id"], lineage_row["direction"], now),
-                )
 
         return copied_rs
 
