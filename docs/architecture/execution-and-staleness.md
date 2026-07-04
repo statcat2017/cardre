@@ -34,7 +34,7 @@ The `RunLifecycle` class (`cardre/run_lifecycle.py`) owns generic run mechanics:
 
 ### Run-step writer seam
 
-The `cardre/execution/run_step_writer.py` module owns all raw ``INSERT`` SQL for ``run_steps``, ``evidence_edges``, ``evidence_artifacts``, and ``artifact_lineage`` rows. Extracted from ``PlanExecutor._record_run_step`` and ``PlanExecutor._reuse_run_step`` (ADR 0002 precedent), it keeps the executor focused on orchestration while the writer handles transaction-scoped persistence. The writer exposes two functions: ``write_run_step`` (first-time execution) and ``write_reused_run_step`` (carried-forward run steps). Both require an active ``IMMEDIATE`` connection and use ``INSERT OR IGNORE`` for lineage de-duplication.
+The `cardre/execution/run_step_writer.py` module coordinates transaction-scoped persistence for ``run_steps``, ``evidence_edges``, ``evidence_artifacts``, and ``artifact_lineage`` rows. Extracted from ``PlanExecutor._record_run_step`` and ``PlanExecutor._reuse_run_step`` (ADR 0002 precedent), it keeps the executor focused on orchestration while the writer handles persistence. The writer owns raw ``INSERT`` SQL for ``run_steps`` and ``artifact_lineage``; evidence edge/artifact inserts are delegated to ``EvidenceRepository.insert_edge`` / ``insert_artifact`` to avoid duplicating the insert SQL owned by the repository layer. The writer exposes two functions: ``write_run_step`` (first-time execution) and ``write_reused_run_step`` (carried-forward run steps). Both require an active ``IMMEDIATE`` connection and use ``INSERT OR IGNORE`` for lineage de-duplication.
 
 ## Staleness Detection
 

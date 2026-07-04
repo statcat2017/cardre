@@ -67,9 +67,10 @@ def write_run_step(
         ``EvidenceRepository`` instance for transaction-scoped edge/artifact
         inserts (avoids duplicating the insert SQL owned by the repo).
     """
-    assert run_step.step_id == spec.step_id, (
-        f"Step ID mismatch: run_step.step_id={run_step.step_id!r} != spec.step_id={spec.step_id!r}"
-    )
+    if run_step.step_id != spec.step_id:
+        raise ValueError(
+            f"Step ID mismatch: run_step.step_id={run_step.step_id!r} != spec.step_id={spec.step_id!r}"
+        )
     now = run_step.started_at or ""
     plan_version_id = run_step.plan_version_id
     run_id = run_step.run_id
