@@ -86,6 +86,7 @@ def evidence_artifact_to_response(
         evidence_edge_id=evidence_edge_id,
         artifact_id=art.artifact_id,
         role=art.role,
+        created_at=art.created_at,
     )
 
 

@@ -309,5 +309,4 @@ class TestRunEvidenceResponseShape:
         assert art["evidence_edge_id"] == ee_id
         assert art["artifact_id"] == "art-001"
         assert art["role"] == "input"
-        # created_at defaults to "" when not explicitly provided
-        assert art["created_at"] == "", f"Expected empty created_at default, got {art['created_at']!r}"
+        assert art["created_at"] == now, f"Expected created_at={now!r}, got {art['created_at']!r}"
