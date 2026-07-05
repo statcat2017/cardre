@@ -32,15 +32,15 @@ class _LockedCursor:
         self._lock = lock
         self._cursor = cursor
 
-    def fetchone(self) -> sqlite3.Row | tuple[Any, ...] | None:
+    def fetchone(self) -> Any:
         with self._lock:
             return self._cursor.fetchone()
 
-    def fetchall(self) -> list[sqlite3.Row] | list[tuple[Any, ...]]:
+    def fetchall(self) -> Any:
         with self._lock:
             return self._cursor.fetchall()
 
-    def fetchmany(self, size: int | None = None) -> list[sqlite3.Row] | list[tuple[Any, ...]]:
+    def fetchmany(self, size: int | None = None) -> Any:
         with self._lock:
             return self._cursor.fetchmany() if size is None else self._cursor.fetchmany(size)
 
@@ -54,7 +54,7 @@ class _LockedCursor:
             return self._cursor.rowcount
 
     @property
-    def lastrowid(self) -> int:
+    def lastrowid(self) -> int | None:
         with self._lock:
             return self._cursor.lastrowid
 
