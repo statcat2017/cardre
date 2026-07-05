@@ -31,7 +31,6 @@ def _seed_branch(store, project_id, plan_id, pv_id, branch_id, name="test-branch
 
 def _seed_comparison_with_snapshot(store, project_id, plan_id, pv_id, branch_id, ready=True):
     from cardre.store.comparison_repo import ComparisonRepository
-    from cardre.store.branch_repo import BranchRepository
 
     comp_id = ComparisonRepository(store).create_comparison(
         project_id=project_id, plan_id=plan_id, baseline_branch_id=branch_id,
@@ -280,7 +279,11 @@ class TestSupersedeChampionForBranch:
         # Should not raise
 
     def test_same_plan_version_does_nothing(self, store):
-        from cardre.services.champion_service import assign_champion, supersede_champion_for_branch, get_champion
+        from cardre.services.champion_service import (
+            assign_champion,
+            get_champion,
+            supersede_champion_for_branch,
+        )
         project_id = str(uuid.uuid4())
         now = utc_now_iso()
         store.execute(
@@ -311,7 +314,11 @@ class TestSupersedeChampionForBranch:
         assert champ is not None  # Still active
 
     def test_different_plan_version_supersedes(self, store):
-        from cardre.services.champion_service import assign_champion, supersede_champion_for_branch, get_champion
+        from cardre.services.champion_service import (
+            assign_champion,
+            get_champion,
+            supersede_champion_for_branch,
+        )
         project_id = str(uuid.uuid4())
         now = utc_now_iso()
         store.execute(

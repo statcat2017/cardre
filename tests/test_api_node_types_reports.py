@@ -270,7 +270,7 @@ class TestArtifactsRoute:
         assert "created_at" in data
 
     def test_get_artifact_wrong_project_returns_404(self, api_client, store):
-        project_id = self._seed_project_with_artifact(store)
+        self._seed_project_with_artifact(store)
         other_project = str(uuid.uuid4())
         now = utc_now_iso()
         store.execute(
