@@ -22,6 +22,7 @@ from cardre._evidence.adapters import EVIDENCE_ADAPTERS, EvidenceAdapter, get_ad
 from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.profiles import EVIDENCE_PROFILES
 from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.domain.artifacts import ArtifactRef
 
 # ---------------------------------------------------------------------------
@@ -164,6 +165,53 @@ def _assert_parse_parity(store, kind: EvidenceKind, artifact: ArtifactRef) -> No
             f"reader source_artifact_id={reader_result.source_artifact_id}, "
             f"adapter source_artifact_id={adapter_result.source_artifact_id}"
         )
+
+
+@pytest.mark.parametrize(
+    "writer,kwargs",
+    [
+        (
+            write_json_artifact,
+            {
+                "artifact_type": "definition",
+                "role": "definition",
+                "payload": {"schema_version": "cardre.test.v1", "value": 1},
+                "metadata": {"schema_version": "cardre.test.v1"},
+            },
+        ),
+        (
+            write_parquet_artifact,
+            {
+                "artifact_type": "dataset",
+                "role": "train",
+                "frame": None,
+                "metadata": {"schema_version": "cardre.test.v1"},
+            },
+        ),
+    ],
+)
+def test_artifact_helpers_deduplicate_physical_hash(store, writer, kwargs):
+    """Duplicate content should reuse the persisted artifact ref."""
+    import polars as pl
+
+    first_kwargs = dict(kwargs)
+    first_kwargs["stem"] = "first"
+    if writer is write_parquet_artifact:
+        first_kwargs["frame"] = pl.DataFrame({"value": [1, 2, 3]})
+    first = writer(store, **first_kwargs)
+
+    second_kwargs = dict(first_kwargs)
+    second_kwargs["stem"] = "second"
+    second = writer(store, **second_kwargs)
+
+    assert first.artifact_id == second.artifact_id
+    assert first.path == second.path
+    assert store.get_artifact(first.artifact_id) is not None
+    count = store.execute(
+        "SELECT COUNT(*) FROM artifacts WHERE physical_hash = ?",
+        (first.physical_hash,),
+    ).fetchone()[0]
+    assert count == 1
 
 
 # JSON evidence kinds with schema_version + required_keys

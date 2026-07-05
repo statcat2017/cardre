@@ -1,4 +1,8 @@
-"""Manual-binning API route tests."""
+"""Manual-binning API route tests — governance-gated.
+
+Tests override the governance dependency by monkeypatching ``CardreConfig``
+(mirroring the pattern in test_api_branches.py / test_api_comparisons.py).
+"""
 
 from __future__ import annotations
 
@@ -8,6 +12,22 @@ import uuid
 import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
+
+
+@pytest.fixture(autouse=True)
+def enable_governance(monkeypatch):
+    """Enable governance for all manual-binning tests (router is gated)."""
+    monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
+        "MockConfig", (), {
+            "governance_enabled": True,
+            "launch_mode": True,
+            "stale_heartbeat_seconds": 300,
+            "heartbeat_watchdog_interval_seconds": 75,
+            "api_host": "127.0.0.1",
+            "api_port": 8752,
+            "registry_path": "/tmp",
+        }
+    )())
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from cardre.api.dependencies import get_project_store
+from cardre.api.dependencies import get_project_store, require_governance
 from cardre.api.errors import REVIEW_NOT_FOUND, CardreApiError
 from cardre.api.schemas import (
     ManualBinningEditRequest,
@@ -28,7 +28,8 @@ from cardre.services.plan_mutation_service import (
 from cardre.store.db import ProjectStore
 from cardre.store.manual_binning_repo import ManualBinningRepository
 
-router = APIRouter(prefix="/projects/{project_id}/manual-binning", tags=["manual_binning"])
+router = APIRouter(prefix="/projects/{project_id}/manual-binning", tags=["manual_binning"],
+                   dependencies=[Depends(require_governance)])
 
 
 def _review_to_response(review: Any) -> ManualBinningReviewResponse:

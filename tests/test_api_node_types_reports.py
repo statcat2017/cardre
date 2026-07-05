@@ -284,7 +284,6 @@ class TestArtifactsRoute:
         assert resp.status_code == 404
         assert resp.json()["detail"]["code"] == "ARTIFACT_NOT_FOUND"
 
-
 class TestExportsRoute:
     @pytest.fixture(autouse=True)
     def _enable_raw_path(self, raw_project_path):

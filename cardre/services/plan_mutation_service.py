@@ -88,6 +88,11 @@ class PlanMutationService:
                 f"Plan version {command.plan_version_id!r} not found."
             )
         base_pv = dict(base_pv)
+        if not base_pv.get("is_committed"):
+            raise PlanMutationError(
+                f"Plan version {command.plan_version_id!r} is not committed; "
+                "only committed plan versions are eligible for mutation."
+            )
 
         plan_id = base_pv["plan_id"]
         version_number = base_pv["version_number"]

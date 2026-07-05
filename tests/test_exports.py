@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.errors import CardreError
 from cardre.services.export_service import export_branch_audit_pack
 from cardre.store.db import ProjectStore
 
@@ -162,7 +163,7 @@ def test_export_branch_audit_pack_minimal(project_with_branch):
 
 def test_export_branch_audit_pack_branch_not_found(store):
     """Export raises error for nonexistent branch."""
-    with pytest.raises(ValueError, match="BRANCH_NOT_FOUND"):
+    with pytest.raises(CardreError, match="BRANCH_NOT_FOUND"):
         export_branch_audit_pack(
             store=store,
             project_id="nonexistent",

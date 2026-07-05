@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store, require_governance
+from cardre.api.routes._project_scope import plan_belongs_to_project
 from cardre.api.schemas import ChampionAssignmentResponse, ChampionResponse
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.db import ProjectStore
@@ -22,6 +23,13 @@ async def get_champion(
     """Get the current champion assignment for a project or plan."""
     repo = BranchRepository(store)
     if plan_id:
+        if not plan_belongs_to_project(store, project_id, plan_id):
+            from cardre.api.errors import PLAN_NOT_FOUND, CardreApiError
+            raise CardreApiError(
+                code=PLAN_NOT_FOUND,
+                message=f"Plan {plan_id!r} not found in project {project_id!r}.",
+                status_code=404,
+            )
         assignment = repo.get_champion_assignment(plan_id)
     else:
         assignment = repo.get_champion_assignment_for_project(project_id)

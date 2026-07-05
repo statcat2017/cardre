@@ -4,6 +4,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import polars as pl
 
 from cardre._evidence.schemas import (
@@ -811,8 +812,7 @@ class SplitTrainTestOotNode(NodeType):
         oot_frac: float,
         seed: int,
     ) -> dict[str, pl.DataFrame]:
-        import random as rng
-        rng.seed(seed)
+        rng = np.random.default_rng(seed)
 
         df_with_idx = df.with_columns(pl.Series("__row_idx__", range(df.height)))
         groups = df_with_idx.group_by(target_column).agg(pl.col("__row_idx__"))

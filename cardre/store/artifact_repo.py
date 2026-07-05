@@ -21,6 +21,16 @@ class ArtifactRepository:
         self._store = store
 
     def register(self, artifact: ArtifactRef) -> str:
+        # Deduplicate by physical_hash: if an artifact with the same
+        # physical_hash already exists, reuse its artifact_id instead of
+        # inserting a duplicate row. CONTEXT.md mandates that the artifact
+        # store deduplicates by physical_hash.
+        existing_id = self._store.execute(
+            "SELECT artifact_id FROM artifacts WHERE physical_hash = ?",
+            (artifact.physical_hash,),
+        ).fetchone()
+        if existing_id is not None:
+            return str(existing_id["artifact_id"])
         self._store.execute(
             "INSERT INTO artifacts "
             "(artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at, metadata_json) "

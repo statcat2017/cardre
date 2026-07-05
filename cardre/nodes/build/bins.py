@@ -295,9 +295,9 @@ class FineClassingNode(NodeType):
                 lo = float(_all_bk[i - 1]) if _all_bk[i - 1] != float("inf") else prev_upper
 
             if lo is not None and hi is not None:
-                label = f"[{lo:.4g}, {hi:.4g}]"
+                label = f"({lo:.4g}, {hi:.4g}]"
             elif lo is not None:
-                label = f"[{lo:.4g}, +inf)"
+                label = f"({lo:.4g}, +inf)"
             elif hi is not None:
                 label = f"(-inf, {hi:.4g}]"
             else:

@@ -55,7 +55,15 @@ def write_json_artifact(
         metadata=metadata or {},
     )
     repo = ArtifactRepository(store)
-    repo.register(artifact)
+    registered_id = repo.register(artifact)
+    if registered_id != artifact.artifact_id:
+        # Dedup hit: an artifact with the same physical_hash already exists.
+        # Return the registered ref so downstream lineage/evidence references
+        # the actual persisted artifact ID, not the freshly-generated UUID
+        # that was never inserted.
+        existing = repo.get(registered_id)
+        if existing is not None:
+            return existing
     return artifact
 
 
@@ -93,7 +101,11 @@ def write_parquet_artifact(
         metadata=metadata or {},
     )
     repo = ArtifactRepository(store)
-    repo.register(artifact)
+    registered_id = repo.register(artifact)
+    if registered_id != artifact.artifact_id:
+        existing = repo.get(registered_id)
+        if existing is not None:
+            return existing
     return artifact
 
 

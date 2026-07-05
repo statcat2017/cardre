@@ -55,6 +55,7 @@ from cardre.reporting.schema import (
     WoeSmoothingInfo,
 )
 from cardre.store import ProjectStore
+from cardre.store.branch_repo import BranchRepository
 from cardre.store.run_repo import RunRepository
 
 # ---------------------------------------------------------------------------
@@ -258,7 +259,7 @@ class ReportCollector:
         bundle.pathway = PathwaySummary(pathway_id="scorecard_pathway", steps=pathway_steps)
 
         # Build branch summary
-        all_branches = self.store.list_branches(self.project_id, plan_id=plan_id)  # type: ignore[attr-defined]  # ProjectStore has no list_branches; added by store extensions or will be added
+        all_branches = BranchRepository(self.store).list(self.project_id, plan_id=plan_id)
         branch_infos: list[BranchInfo] = []
         for b in all_branches:
             branch_infos.append(BranchInfo(
