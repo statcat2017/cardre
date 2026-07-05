@@ -12,13 +12,13 @@ from pathlib import Path
 
 from fastapi import APIRouter
 
-from cardre._version import __version__
 from cardre.api.errors import (
     INVALID_PROJECT_PATH,
     PROJECT_NOT_FOUND,
     STORE_ALREADY_EXISTS,
     CardreApiError,
 )
+from cardre.api.routes._run_mappings import project_to_response
 from cardre.api.schemas import (
     ProjectCreateRequest,
     ProjectListResponse,
@@ -64,14 +64,7 @@ async def list_projects() -> ProjectListResponse:
             repo = ProjectRepository(store)
             p = repo.get(project_id)
             if p is not None:
-                projects.append(
-                    ProjectResponse(
-                        project_id=p["project_id"],
-                        name=p["name"],
-                        created_at=p["created_at"],
-                        cardre_version=p.get("cardre_version", __version__),
-                    )
-                )
+                projects.append(project_to_response(p))
             else:
                 unavailable.append(
                     UnavailableProjectResponse(
@@ -111,12 +104,7 @@ async def get_project(project_id: str) -> ProjectResponse:
                 message=f"Project {project_id!r} not found.",
                 status_code=404,
             )
-        return ProjectResponse(
-            project_id=project["project_id"],
-            name=project["name"],
-            created_at=project["created_at"],
-            cardre_version=project.get("cardre_version", __version__),
-        )
+        return project_to_response(project)
     finally:
         store.close()
 
@@ -154,11 +142,6 @@ async def create_project(
         ProjectResolver(CardreConfig.from_env().registry_path).register_project(project_id, root)
         project = repo.get(project_id)
         assert project is not None
-        return ProjectResponse(
-            project_id=project["project_id"],
-            name=project["name"],
-            created_at=project["created_at"],
-            cardre_version=project.get("cardre_version", "0.2.0"),
-        )
+        return project_to_response(project, cardre_version="0.2.0")
     finally:
         store.close()

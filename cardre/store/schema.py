@@ -367,6 +367,8 @@ CREATE INDEX IF NOT EXISTS idx_evidence_edges_pv_step
     ON evidence_edges(plan_version_id, step_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_edges_parent
     ON evidence_edges(plan_version_id, parent_step_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_edges_run
+    ON evidence_edges(run_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_edges_source_step
     ON evidence_edges(source_run_step_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_artifacts_artifact

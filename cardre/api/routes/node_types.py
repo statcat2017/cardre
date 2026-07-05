@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
+from cardre.api.routes._run_mappings import node_type_to_response
 from cardre.api.schemas import NodeTypeListResponse, NodeTypeResponse
 from cardre.store.db import ProjectStore
 from cardre.store.step_repo import StepRepository
@@ -27,14 +28,7 @@ async def list_node_types(
         nt = r["node_type"]
         if nt not in seen:
             seen.add(nt)
-            node_types.append(NodeTypeResponse(
-                node_type=nt,
-                display_name=nt.split(".")[-1] if "." in nt else nt,
-                description="",
-                category=r.get("category", ""),
-                tier="launch",
-                has_params=True,
-            ))
+            node_types.append(node_type_to_response(nt, category=r.get("category", "")))
 
     if not node_types:
         # Return some well-known defaults if no data yet
@@ -48,13 +42,6 @@ async def list_node_types(
             ("cardre.score_scaling", "transform", True),
         ]
         for nt, cat, _ in defaults:
-            node_types.append(NodeTypeResponse(
-                node_type=nt,
-                display_name=nt.split(".")[-1],
-                description="",
-                category=cat,
-                tier="launch",
-                has_params=True,
-            ))
+            node_types.append(node_type_to_response(nt, category=cat))
 
     return NodeTypeListResponse(node_types=node_types)

@@ -16,6 +16,7 @@ from cardre.api.routes._project_scope import (
     plan_belongs_to_project,
     plan_version_belongs_to_project,
 )
+from cardre.api.routes._run_mappings import branch_to_response
 from cardre.api.schemas import BranchCreateRequest, BranchListResponse, BranchResponse
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.db import ProjectStore
@@ -39,26 +40,7 @@ async def list_branches(
         branch_type=branch_type,
     )
     return BranchListResponse(
-        branches=[
-            BranchResponse(
-                branch_id=b["branch_id"],
-                project_id=b["project_id"],
-                plan_id=b["plan_id"],
-                name=b["name"],
-                description=b.get("description"),
-                branch_type=b["branch_type"],
-                status=b.get("status", "active"),
-                base_branch_id=b.get("base_branch_id"),
-                base_plan_version_id=b["base_plan_version_id"],
-                head_plan_version_id=b["head_plan_version_id"],
-                branch_point_step_id=b.get("branch_point_step_id"),
-                branch_point_canonical_step_id=b.get("branch_point_canonical_step_id"),
-                created_reason=b.get("created_reason", ""),
-                created_at=b.get("created_at", ""),
-                updated_at=b.get("updated_at", ""),
-            )
-            for b in branches
-        ]
+        branches=[branch_to_response(b) for b in branches]
     )
 
 
@@ -83,23 +65,7 @@ async def get_branch(
             message=f"Branch {branch_id!r} not found.",
             status_code=404,
         )
-    return BranchResponse(
-        branch_id=branch["branch_id"],
-        project_id=branch["project_id"],
-        plan_id=branch["plan_id"],
-        name=branch["name"],
-        description=branch.get("description"),
-        branch_type=branch["branch_type"],
-        status=branch.get("status", "active"),
-        base_branch_id=branch.get("base_branch_id"),
-        base_plan_version_id=branch["base_plan_version_id"],
-        head_plan_version_id=branch["head_plan_version_id"],
-        branch_point_step_id=branch.get("branch_point_step_id"),
-        branch_point_canonical_step_id=branch.get("branch_point_canonical_step_id"),
-        created_reason=branch.get("created_reason", ""),
-        created_at=branch.get("created_at", ""),
-        updated_at=branch.get("updated_at", ""),
-    )
+    return branch_to_response(branch)
 
 
 @router.post("/branches", response_model=BranchResponse, status_code=201)
@@ -142,20 +108,4 @@ async def create_branch(
     )
     branch = repo.get_branch(branch_id)
     assert branch is not None
-    return BranchResponse(
-        branch_id=branch["branch_id"],
-        project_id=branch["project_id"],
-        plan_id=branch["plan_id"],
-        name=branch["name"],
-        description=branch.get("description"),
-        branch_type=branch["branch_type"],
-        status=branch.get("status", "active"),
-        base_branch_id=branch.get("base_branch_id"),
-        base_plan_version_id=branch["base_plan_version_id"],
-        head_plan_version_id=branch["head_plan_version_id"],
-        branch_point_step_id=branch.get("branch_point_step_id"),
-        branch_point_canonical_step_id=branch.get("branch_point_canonical_step_id"),
-        created_reason=branch.get("created_reason", ""),
-        created_at=branch.get("created_at", ""),
-        updated_at=branch.get("updated_at", ""),
-    )
+    return branch_to_response(branch)

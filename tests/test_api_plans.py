@@ -33,6 +33,16 @@ def project_with_plan(store):
 
 
 class TestPlans:
+    PLAN_FIELDS = {"plan_id", "project_id", "name", "created_at"}
+    PLAN_VERSION_FIELDS = {
+        "plan_version_id",
+        "plan_id",
+        "version_number",
+        "is_committed",
+        "created_at",
+        "description",
+    }
+
     def test_list_plans(self, raw_project_path, api_client, project_with_plan):
         project_id, plan_id, pv_id, store, root = project_with_plan
         resp = api_client.get(
@@ -43,6 +53,41 @@ class TestPlans:
         data = resp.json()
         assert "plans" in data
         assert len(data["plans"]) >= 1
+
+    def test_list_plans_response_shape(self, raw_project_path, api_client, project_with_plan):
+        project_id, plan_id, pv_id, store, root = project_with_plan
+        resp = api_client.get(
+            f"/projects/{project_id}/plans",
+            headers={"X-Project-Path": str(root)},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data["plans"], list)
+        assert data["plans"]
+        assert set(data["plans"][0].keys()) == self.PLAN_FIELDS
+
+    def test_get_plan_response_shape(self, raw_project_path, api_client, project_with_plan):
+        project_id, plan_id, pv_id, store, root = project_with_plan
+        resp = api_client.get(
+            f"/projects/{project_id}/plans/{plan_id}",
+            headers={"X-Project-Path": str(root)},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert set(data.keys()) == self.PLAN_FIELDS
+        assert data["project_id"] == project_id
+
+    def test_create_plan_response_shape(self, raw_project_path, api_client, project_with_plan):
+        project_id, _, _, store, root = project_with_plan
+        resp = api_client.post(
+            f"/projects/{project_id}/plans",
+            headers={"X-Project-Path": str(root)},
+            json={"name": "New Plan"},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert set(data.keys()) == self.PLAN_FIELDS
+        assert data["name"] == "New Plan"
 
     def test_get_plan(self, raw_project_path, api_client, project_with_plan):
         project_id, plan_id, pv_id, store, root = project_with_plan
@@ -93,6 +138,18 @@ class TestPlans:
         assert "versions" in data
         assert len(data["versions"]) >= 1
 
+    def test_list_plan_versions_response_shape(self, raw_project_path, api_client, project_with_plan):
+        project_id, plan_id, pv_id, store, root = project_with_plan
+        resp = api_client.get(
+            f"/projects/{project_id}/plans/{plan_id}/versions",
+            headers={"X-Project-Path": str(root)},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data["versions"], list)
+        assert data["versions"]
+        assert set(data["versions"][0].keys()) == self.PLAN_VERSION_FIELDS
+
     def test_get_plan_version(self, raw_project_path, api_client, project_with_plan):
         project_id, plan_id, pv_id, store, root = project_with_plan
         resp = api_client.get(
@@ -102,6 +159,17 @@ class TestPlans:
         assert resp.status_code == 200
         data = resp.json()
         assert data["plan_version_id"] == pv_id
+
+    def test_get_plan_version_response_shape(self, raw_project_path, api_client, project_with_plan):
+        project_id, plan_id, pv_id, store, root = project_with_plan
+        resp = api_client.get(
+            f"/projects/{project_id}/plan-versions/{pv_id}",
+            headers={"X-Project-Path": str(root)},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert set(data.keys()) == self.PLAN_VERSION_FIELDS
+        assert data["is_committed"] is True
 
     def test_get_plan_version_wrong_project(self, raw_project_path, api_client, project_with_plan):
         _, _, pv_id, _, root = project_with_plan
@@ -122,6 +190,25 @@ class TestPlans:
         assert resp.status_code == 409
         data = resp.json()
         assert data["detail"]["code"] == "PLAN_VERSION_IMMUTABLE"
+
+    def test_commit_plan_version_response_shape(self, raw_project_path, api_client, project_with_plan):
+        project_id, plan_id, pv_id, store, root = project_with_plan
+        draft_pv_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
+            "VALUES (?, ?, 2, 0, ?, '')",
+            (draft_pv_id, plan_id, utc_now_iso()),
+        )
+
+        resp = api_client.post(
+            f"/projects/{project_id}/plan-versions/{draft_pv_id}/commit",
+            headers={"X-Project-Path": str(root)},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert set(data.keys()) == self.PLAN_VERSION_FIELDS
+        assert data["plan_version_id"] == draft_pv_id
+        assert data["is_committed"] is True
 
     def test_update_draft_plan_version(self, raw_project_path, api_client, project_with_plan):
         """PATCH description on a draft version."""

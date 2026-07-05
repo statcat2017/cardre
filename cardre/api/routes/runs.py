@@ -19,6 +19,7 @@ from cardre.api.schemas import (
     RunResponse,
     RunStepResponse,
 )
+from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge
 from cardre.services.run_coordinator import RunCoordinator, RunSummary
 from cardre.store.db import ProjectStore
 from cardre.store.evidence_repo import EvidenceRepository
@@ -120,15 +121,25 @@ async def list_run_evidence(
             message=f"Run {run_id!r} not found.",
             status_code=404,
         )
-    evidence_repo = EvidenceRepository(store)
     rs_repo = RunStepRepository(store)
-    steps = rs_repo.get_for_run(run_id)
-    all_edges = []
-    for rs in steps:
-        edges = evidence_repo.get_edges_for_run_step(rs.run_step_id)
-        for edge in edges:
-            artifacts = evidence_repo.get_artifacts_for_edge(edge.evidence_edge_id)
-            all_edges.append(
-                evidence_edge_to_response(edge, artifacts)
+    run_step_ids = [rs.run_step_id for rs in rs_repo.get_for_run(run_id)]
+
+    evidence_repo = EvidenceRepository(store)
+    edges = evidence_repo.get_edges_for_run(run_id)
+    artifacts = evidence_repo.get_artifacts_for_run(run_id)
+
+    artifacts_by_edge_id: dict[str, list[EvidenceArtifact]] = {}
+    for artifact in artifacts:
+        artifacts_by_edge_id.setdefault(artifact.evidence_edge_id, []).append(artifact)
+
+    edges_by_step: dict[str, list[EvidenceEdge]] = {}
+    for edge in edges:
+        edges_by_step.setdefault(edge.run_step_id, []).append(edge)
+
+    result: list[RunEvidenceEdgeResponse] = []
+    for run_step_id in run_step_ids:
+        for edge in edges_by_step.get(run_step_id, []):
+            result.append(
+                evidence_edge_to_response(edge, artifacts_by_edge_id.get(edge.evidence_edge_id, []))
             )
-    return all_edges
+    return result

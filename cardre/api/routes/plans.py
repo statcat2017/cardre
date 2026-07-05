@@ -21,6 +21,10 @@ from cardre.api.routes._project_scope import (
     plan_belongs_to_project,
     plan_version_belongs_to_project,
 )
+from cardre.api.routes._run_mappings import (
+    plan_to_response,
+    plan_version_to_response,
+)
 from cardre.api.schemas import (
     PlanCreateRequest,
     PlanListResponse,
@@ -50,15 +54,7 @@ async def list_plans(
     service = PlanService(store)
     plans = service.list_plans(project_id)
     return PlanListResponse(
-        plans=[
-            PlanResponse(
-                plan_id=p.plan_id,
-                project_id=p.project_id,
-                name=p.name,
-                created_at=p.created_at,
-            )
-            for p in plans
-        ]
+        plans=[plan_to_response(p) for p in plans]
     )
 
 
@@ -83,12 +79,7 @@ async def get_plan(
             message=f"Plan {plan_id!r} not found.",
             status_code=404,
         )
-    return PlanResponse(
-        plan_id=plan.plan_id,
-        project_id=plan.project_id,
-        name=plan.name,
-        created_at=plan.created_at,
-    )
+    return plan_to_response(plan)
 
 
 @router.post("/plans", response_model=PlanResponse, status_code=201)
@@ -102,12 +93,7 @@ async def create_plan(
     plan_id = repo.create_plan(project_id=project_id, name=body.name)
     plan = repo.get_plan(plan_id)
     assert plan is not None
-    return PlanResponse(
-        plan_id=plan["plan_id"],
-        project_id=plan["project_id"],
-        name=plan["name"],
-        created_at=plan["created_at"],
-    )
+    return plan_to_response(plan)
 
 
 # ------------------------------------------------------------------
@@ -131,17 +117,7 @@ async def list_plan_versions(
     repo = PlanRepository(store)
     versions = repo.list_versions(plan_id)
     return PlanVersionListResponse(
-        versions=[
-            PlanVersionResponse(
-                plan_version_id=v["plan_version_id"],
-                plan_id=v["plan_id"],
-                version_number=v["version_number"],
-                is_committed=bool(v.get("is_committed", False)),
-                created_at=v["created_at"],
-                description=v.get("description", ""),
-            )
-            for v in versions
-        ]
+        versions=[plan_version_to_response(v) for v in versions]
     )
 
 
@@ -171,14 +147,7 @@ async def get_plan_version(
             message=f"Plan version {plan_version_id!r} not found.",
             status_code=404,
         )
-    return PlanVersionResponse(
-        plan_version_id=pv.plan_version_id,
-        plan_id=pv.plan_id,
-        version_number=pv.version_number,
-        is_committed=pv.is_committed,
-        created_at=pv.created_at,
-        description=pv.description,
-    )
+    return plan_version_to_response(pv)
 
 
 @router.patch("/plan-versions/{plan_version_id}", response_model=PlanVersionResponse)
@@ -219,14 +188,7 @@ async def update_plan_version(
 
     updated = service.get_plan_version(plan_version_id)
     assert updated is not None
-    return PlanVersionResponse(
-        plan_version_id=updated.plan_version_id,
-        plan_id=updated.plan_id,
-        version_number=updated.version_number,
-        is_committed=updated.is_committed,
-        created_at=updated.created_at,
-        description=updated.description,
-    )
+    return plan_version_to_response(updated)
 
 
 @router.post("/plan-versions/{plan_version_id}/commit", response_model=PlanVersionResponse)
@@ -255,11 +217,4 @@ async def commit_plan_version(
             status_code=409,
         ) from exc
 
-    return PlanVersionResponse(
-        plan_version_id=result.plan_version_id,
-        plan_id=result.plan_id,
-        version_number=result.version_number,
-        is_committed=result.is_committed,
-        created_at=result.created_at,
-        description=result.description,
-    )
+    return plan_version_to_response(result)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store, require_governance
+from cardre.api.routes._run_mappings import comparison_to_response
 from cardre.api.schemas import ComparisonListResponse, ComparisonResponse
 from cardre.store.comparison_repo import ComparisonRepository
 from cardre.store.db import ProjectStore
@@ -24,17 +25,7 @@ async def list_comparisons(
     comparisons = repo.list_for_project(project_id, plan_id=plan_id)
 
     return ComparisonListResponse(
-        comparisons=[
-            ComparisonResponse(
-                comparison_id=c["comparison_id"],
-                project_id=c["project_id"],
-                plan_id=c["plan_id"],
-                baseline_branch_id=c["baseline_branch_id"],
-                created_at=c.get("created_at", ""),
-                latest_ready=c.get("latest_ready"),
-            )
-            for c in comparisons
-        ]
+        comparisons=[comparison_to_response(c) for c in comparisons]
     )
 
 
@@ -61,11 +52,4 @@ async def get_comparison(
             message=f"Comparison {comparison_id!r} not found.",
             status_code=404,
         )
-    return ComparisonResponse(
-        comparison_id=comparison["comparison_id"],
-        project_id=comparison["project_id"],
-        plan_id=comparison["plan_id"],
-        baseline_branch_id=comparison["baseline_branch_id"],
-        created_at=comparison.get("created_at", ""),
-        latest_ready=comparison.get("latest_ready"),
-    )
+    return comparison_to_response(comparison)

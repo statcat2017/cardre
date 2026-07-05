@@ -44,6 +44,15 @@ class TestComparisonRoutes:
     def _enable_raw_path(self, raw_project_path):
         pass
 
+    COMPARISON_FIELDS = {
+        "comparison_id",
+        "project_id",
+        "plan_id",
+        "baseline_branch_id",
+        "created_at",
+        "latest_ready",
+    }
+
     def test_list_comparisons_governance_disabled(self, api_client, project_with_comparison, monkeypatch):
         project_id, _, _, _, root = project_with_comparison
         monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
@@ -77,6 +86,25 @@ class TestComparisonRoutes:
         data = resp.json()
         assert "comparisons" in data
 
+    def test_list_comparisons_response_shape(self, api_client, project_with_comparison, monkeypatch):
+        project_id, _, _, _, root = project_with_comparison
+        monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
+            "MockConfig", (), {
+                "governance_enabled": True, "launch_mode": True,
+                "stale_heartbeat_seconds": 300, "heartbeat_watchdog_interval_seconds": 75,
+                "api_host": "127.0.0.1", "api_port": 8752, "registry_path": "/tmp",
+            }
+        )())
+        resp = api_client.get(
+            f"/projects/{project_id}/comparisons",
+            headers={"X-Project-Path": str(root)},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data["comparisons"], list)
+        assert data["comparisons"]
+        assert set(data["comparisons"][0].keys()) == self.COMPARISON_FIELDS
+
     def test_get_comparison_governance_enabled(self, api_client, project_with_comparison, monkeypatch):
         project_id, _, comparison_id, _, root = project_with_comparison
         monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
@@ -92,6 +120,24 @@ class TestComparisonRoutes:
         )
         assert resp.status_code == 200
         data = resp.json()
+        assert data["comparison_id"] == comparison_id
+
+    def test_get_comparison_response_shape(self, api_client, project_with_comparison, monkeypatch):
+        project_id, _, comparison_id, _, root = project_with_comparison
+        monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
+            "MockConfig", (), {
+                "governance_enabled": True, "launch_mode": True,
+                "stale_heartbeat_seconds": 300, "heartbeat_watchdog_interval_seconds": 75,
+                "api_host": "127.0.0.1", "api_port": 8752, "registry_path": "/tmp",
+            }
+        )())
+        resp = api_client.get(
+            f"/projects/{project_id}/comparisons/{comparison_id}",
+            headers={"X-Project-Path": str(root)},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert set(data.keys()) == self.COMPARISON_FIELDS
         assert data["comparison_id"] == comparison_id
 
     def test_get_comparison_not_found(self, api_client, project_with_comparison, monkeypatch):

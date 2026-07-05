@@ -72,6 +72,14 @@ class EvidenceRepository:
         ).fetchall()
         return [self._row_to_edge(r) for r in rows]
 
+    def get_edges_for_run(self, run_id: str) -> list[EvidenceEdge]:
+        rows = self._store.execute(
+            "SELECT * FROM evidence_edges WHERE run_id = ? "
+            "ORDER BY created_at, evidence_edge_id",
+            (run_id,),
+        ).fetchall()
+        return [self._row_to_edge(r) for r in rows]
+
     def get_edges_for_plan_step(
         self,
         plan_version_id: str,
@@ -108,6 +116,16 @@ class EvidenceRepository:
             "JOIN evidence_edges ee ON ea.evidence_edge_id = ee.evidence_edge_id "
             "WHERE ee.run_step_id = ? ORDER BY ea.role",
             (run_step_id,),
+        ).fetchall()
+        return [self._row_to_artifact(r) for r in rows]
+
+    def get_artifacts_for_run(self, run_id: str) -> list[EvidenceArtifact]:
+        rows = self._store.execute(
+            "SELECT ea.* FROM evidence_artifacts ea "
+            "JOIN evidence_edges ee ON ea.evidence_edge_id = ee.evidence_edge_id "
+            "WHERE ee.run_id = ? "
+            "ORDER BY ee.evidence_edge_id, ea.role, ea.created_at, ea.evidence_artifact_id",
+            (run_id,),
         ).fetchall()
         return [self._row_to_artifact(r) for r in rows]
 
