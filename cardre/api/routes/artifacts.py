@@ -19,13 +19,14 @@ async def get_artifact(
     artifact_id: str,
     store: ProjectStore = Depends(get_project_store),
 ) -> ArtifactResponse:
-    """Get a single artifact by ID."""
+    """Get a single artifact by ID, scoped to the project."""
     repo = ArtifactRepository(store)
-    artifact = repo.get(artifact_id)
+    project_artifacts = repo.list_for_project(project_id)
+    artifact = next((a for a in project_artifacts if a.artifact_id == artifact_id), None)
     if artifact is None:
         raise CardreApiError(
             code=ARTIFACT_NOT_FOUND,
-            message=f"Artifact {artifact_id!r} not found.",
+            message=f"Artifact {artifact_id!r} not found in project {project_id!r}.",
             status_code=404,
         )
     return ArtifactResponse(

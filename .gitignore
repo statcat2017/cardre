@@ -33,3 +33,4 @@ package-lock.json
 
 # Generated knowledge graph artifacts
 /graphify-out/
+.warden/

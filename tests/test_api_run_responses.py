@@ -133,12 +133,12 @@ class TestRunResponseContracts:
         data = resp.json()
         assert "runs" in data
         assert isinstance(data["runs"], list)
-        if data["runs"]:
-            run = data["runs"][0]
-            assert "run_id" in run
-            assert "plan_version_id" in run
-            assert "status" in run
-            assert "started_at" in run
+        assert len(data["runs"]) == 1
+        run = data["runs"][0]
+        assert "run_id" in run
+        assert "plan_version_id" in run
+        assert "status" in run
+        assert "started_at" in run
 
     def test_run_steps_response_fields(self, api_client, tmp_path):
         tmp = tmp_path / "steps-resp"
@@ -159,9 +159,11 @@ class TestRunResponseContracts:
         assert resp.status_code == 200
         steps = resp.json()
         assert isinstance(steps, list)
-        if steps:
-            step = steps[0]
-            assert set(step.keys()) == self.STEP_FIELDS
+        assert len(steps) == 3
+        step = steps[0]
+        assert set(step.keys()) == self.STEP_FIELDS
+        assert step["status"] == "succeeded"
+        assert step["step_id"] in ("step-import", "step-profile", "step-export")
 
     def test_run_evidence_response_fields(self, api_client, tmp_path):
         tmp = tmp_path / "evidence-resp"
@@ -182,23 +184,23 @@ class TestRunResponseContracts:
         assert resp.status_code == 200
         edges = resp.json()
         assert isinstance(edges, list)
-        if edges:
-            edge = edges[0]
-            EXPECTED_EVIDENCE_FIELDS = {
-                "evidence_edge_id", "run_id", "run_step_id", "plan_version_id",
-                "step_id", "parent_step_id", "source_run_id", "source_run_step_id",
-                "policy", "source_label", "is_reused", "is_stale",
-                "stale_reason", "created_at", "artifacts",
-            }
-            assert set(edge.keys()) == EXPECTED_EVIDENCE_FIELDS
-            assert isinstance(edge["artifacts"], list)
-            if edge["artifacts"]:
-                art = edge["artifacts"][0]
-                EXPECTED_ARTIFACT_FIELDS = {
-                    "evidence_artifact_id", "evidence_edge_id", "artifact_id",
-                    "role", "created_at",
-                }
-                assert set(art.keys()) == EXPECTED_ARTIFACT_FIELDS
+        assert len(edges) >= 1
+        edge = edges[0]
+        EXPECTED_EVIDENCE_FIELDS = {
+            "evidence_edge_id", "run_id", "run_step_id", "plan_version_id",
+            "step_id", "parent_step_id", "source_run_id", "source_run_step_id",
+            "policy", "source_label", "is_reused", "is_stale",
+            "stale_reason", "created_at", "artifacts",
+        }
+        assert set(edge.keys()) == EXPECTED_EVIDENCE_FIELDS
+        assert isinstance(edge["artifacts"], list)
+        assert len(edge["artifacts"]) >= 1
+        art = edge["artifacts"][0]
+        EXPECTED_ARTIFACT_FIELDS = {
+            "evidence_artifact_id", "evidence_edge_id", "artifact_id",
+            "role", "created_at",
+        }
+        assert set(art.keys()) == EXPECTED_ARTIFACT_FIELDS
 
     def test_get_run_with_diagnostics(self, api_client, tmp_path):
         tmp = tmp_path / "diag-resp"
