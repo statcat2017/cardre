@@ -297,7 +297,7 @@ class FineClassingNode(NodeType):
             if lo is not None and hi is not None:
                 label = f"({lo:.4g}, {hi:.4g}]"
             elif lo is not None:
-                label = f"[{lo:.4g}, +inf)"
+                label = f"({lo:.4g}, +inf)"
             elif hi is not None:
                 label = f"(-inf, {hi:.4g}]"
             else:

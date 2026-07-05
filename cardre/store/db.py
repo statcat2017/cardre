@@ -25,6 +25,43 @@ from cardre.store.schema import (
 )
 
 
+class _LockedCursor:
+    """Cursor wrapper that serializes fetches on the store lock."""
+
+    def __init__(self, lock: threading.RLock, cursor: sqlite3.Cursor) -> None:
+        self._lock = lock
+        self._cursor = cursor
+
+    def fetchone(self) -> sqlite3.Row | tuple[Any, ...] | None:
+        with self._lock:
+            return self._cursor.fetchone()
+
+    def fetchall(self) -> list[sqlite3.Row] | list[tuple[Any, ...]]:
+        with self._lock:
+            return self._cursor.fetchall()
+
+    def fetchmany(self, size: int | None = None) -> list[sqlite3.Row] | list[tuple[Any, ...]]:
+        with self._lock:
+            return self._cursor.fetchmany() if size is None else self._cursor.fetchmany(size)
+
+    def close(self) -> None:
+        with self._lock:
+            self._cursor.close()
+
+    @property
+    def rowcount(self) -> int:
+        with self._lock:
+            return self._cursor.rowcount
+
+    @property
+    def lastrowid(self) -> int:
+        with self._lock:
+            return self._cursor.lastrowid
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._cursor, name)
+
+
 class ProjectStore:
     """SQLite-backed metadata store for a single Cardre v2 project.
 
@@ -206,9 +243,9 @@ class ProjectStore:
     # Raw SQL helpers (for repos)
     # ------------------------------------------------------------------
 
-    def execute(self, sql: str, params: tuple[Any, ...] | list[Any] | dict[str, Any] = ()) -> sqlite3.Cursor:
+    def execute(self, sql: str, params: tuple[Any, ...] | list[Any] | dict[str, Any] = ()) -> Any:
         with self._lock:
-            return self._connect().execute(sql, params)
+            return _LockedCursor(self._lock, self._connect().execute(sql, params))
 
     def artifact_path(self, artifact: Any) -> Path:
         """Resolve a stored artifact reference to an on-disk path."""
@@ -224,9 +261,9 @@ class ProjectStore:
         with self._lock:
             self._connect().executescript(sql)
 
-    def executemany(self, sql: str, seq: Iterable[tuple[Any, ...] | dict[str, Any]]) -> sqlite3.Cursor:
+    def executemany(self, sql: str, seq: Iterable[tuple[Any, ...] | dict[str, Any]]) -> Any:
         with self._lock:
-            return self._connect().executemany(sql, seq)
+            return _LockedCursor(self._lock, self._connect().executemany(sql, seq))
 
     # ------------------------------------------------------------------
     # Convenience delegates over the repository classes
