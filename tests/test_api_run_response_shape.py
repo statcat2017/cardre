@@ -431,3 +431,50 @@ class TestRunEvidenceResponseShape:
         assert [edge["step_id"] for edge in data] == step_ids[1:]
         assert [artifact["role"] for artifact in data[0]["artifacts"]] == ["alpha", "zeta"]
         assert counts == {"evidence_edges": 1, "evidence_artifacts": 1}
+
+    def test_evidence_order_with_same_timestamp_steps(self, api_client, project_with_run):
+        """Regression: evidence order must match run-step iteration order even when
+        multiple steps share the same started_at timestamp and run_step_ids are
+        in non-execution (reverse) order."""
+        project_id, _, pv_id, run_id, store, _ = project_with_run
+
+        now = utc_now_iso()
+
+        for idx in range(3):
+            store.execute(
+                "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
+                " params_json, params_hash, branch_label, position, canonical_step_id) "
+                "VALUES (?, ?, 'test', '1', 'fit', '{}', ?, '', ?, ?)",
+                (f"step-{idx}", pv_id, f"hash-{idx}", idx, f"step-{idx}"),
+            )
+
+        step_info: list[tuple[str, int]] = []
+        for idx in range(3):
+            run_step_id = f"rs-rev-{2 - idx}"
+            store.execute(
+                "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, "
+                " started_at, finished_at, execution_fingerprint_json, warnings_json, errors_json) "
+                "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, '{}', '[]', '[]')",
+                (run_step_id, run_id, f"step-{idx}", pv_id, now, now),
+            )
+            step_info.append((run_step_id, idx))
+
+        for run_step_id, idx in step_info:
+            edge_id = f"ee-same-ts-{idx}"
+            store.execute(
+                "INSERT INTO evidence_edges "
+                "(evidence_edge_id, run_id, run_step_id, plan_version_id, step_id, parent_step_id, "
+                " source_run_id, source_run_step_id, policy, source_label, is_reused, is_stale, "
+                " stale_reason, created_at) "
+                "VALUES (?, ?, ?, ?, ?, '', ?, ?, 'exact', ?, 0, 0, NULL, ?)",
+                (edge_id, run_id, run_step_id, pv_id, f"step-{idx}",
+                 run_id, run_step_id, f"label-{idx}", now),
+            )
+
+        resp = api_client.get(
+            f"/projects/{project_id}/runs/{run_id}/evidence",
+            headers={"X-Project-Id": project_id},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert [e["step_id"] for e in data] == ["step-0", "step-1", "step-2"]
