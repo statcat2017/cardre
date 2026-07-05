@@ -37,7 +37,14 @@ class TestDependencies:
         data = resp.json()
         assert "detail" in data
 
-    def test_governance_disabled_on_branch_route(self, api_client, raw_project_path):
+    def test_governance_disabled_on_branch_route(self, api_client, raw_project_path, monkeypatch):
+        monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
+            "MockConfig", (), {
+                "governance_enabled": False, "launch_mode": True,
+                "stale_heartbeat_seconds": 300, "heartbeat_watchdog_interval_seconds": 75,
+                "api_host": "127.0.0.1", "api_port": 8752, "registry_path": "/tmp",
+            }
+        )())
         project_id = str(uuid.uuid4())
         resp = api_client.get(
             f"/projects/{project_id}/branches",
