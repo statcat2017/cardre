@@ -52,6 +52,24 @@ def project_with_branch_data(store):
 
 
 class TestBranches:
+    BRANCH_FIELDS = {
+        "branch_id",
+        "project_id",
+        "plan_id",
+        "name",
+        "description",
+        "branch_type",
+        "status",
+        "base_branch_id",
+        "base_plan_version_id",
+        "head_plan_version_id",
+        "branch_point_step_id",
+        "branch_point_canonical_step_id",
+        "created_reason",
+        "created_at",
+        "updated_at",
+    }
+
     def test_list_branches_governance_disabled(self, raw_project_path, api_client, project_with_branch_data, monkeypatch):
         """Without governance, branches return 403."""
         project_id, _, _, _, _, _, root = project_with_branch_data
@@ -96,6 +114,29 @@ class TestBranches:
         data = resp.json()
         assert "branches" in data
 
+    def test_list_branches_response_shape(self, raw_project_path, api_client, project_with_branch_data, monkeypatch):
+        project_id, _, _, _, _, _, root = project_with_branch_data
+        monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
+            "MockConfig", (), {
+                "governance_enabled": True,
+                "launch_mode": True,
+                "stale_heartbeat_seconds": 300,
+                "heartbeat_watchdog_interval_seconds": 75,
+                "api_host": "127.0.0.1",
+                "api_port": 8752,
+                "registry_path": "/tmp",
+            }
+        )())
+        resp = api_client.get(
+            f"/projects/{project_id}/branches",
+            headers={"X-Project-Path": str(root)},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data["branches"], list)
+        assert data["branches"]
+        assert set(data["branches"][0].keys()) == self.BRANCH_FIELDS
+
     def test_get_branch_governance_enabled(self, raw_project_path, api_client, project_with_branch_data, monkeypatch):
         project_id, _, branch_id, _, _, _, root = project_with_branch_data
         monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
@@ -115,6 +156,28 @@ class TestBranches:
         )
         assert resp.status_code == 200
         data = resp.json()
+        assert data["branch_id"] == branch_id
+
+    def test_get_branch_response_shape(self, raw_project_path, api_client, project_with_branch_data, monkeypatch):
+        project_id, _, branch_id, _, _, _, root = project_with_branch_data
+        monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
+            "MockConfig", (), {
+                "governance_enabled": True,
+                "launch_mode": True,
+                "stale_heartbeat_seconds": 300,
+                "heartbeat_watchdog_interval_seconds": 75,
+                "api_host": "127.0.0.1",
+                "api_port": 8752,
+                "registry_path": "/tmp",
+            }
+        )())
+        resp = api_client.get(
+            f"/projects/{project_id}/branches/{branch_id}",
+            headers={"X-Project-Path": str(root)},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert set(data.keys()) == self.BRANCH_FIELDS
         assert data["branch_id"] == branch_id
 
     def test_get_branch_wrong_project(self, raw_project_path, api_client, project_with_branch_data, monkeypatch):
@@ -157,3 +220,33 @@ class TestBranches:
         assert resp.status_code == 404
         data = resp.json()
         assert data["detail"]["code"] == "BRANCH_NOT_FOUND"
+
+    def test_create_branch_response_shape(self, raw_project_path, api_client, project_with_branch_data, monkeypatch):
+        project_id, plan_id, _, base_pv_id, head_pv_id, _, root = project_with_branch_data
+        monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
+            "MockConfig", (), {
+                "governance_enabled": True,
+                "launch_mode": True,
+                "stale_heartbeat_seconds": 300,
+                "heartbeat_watchdog_interval_seconds": 75,
+                "api_host": "127.0.0.1",
+                "api_port": 8752,
+                "registry_path": "/tmp",
+            }
+        )())
+        resp = api_client.post(
+            f"/projects/{project_id}/branches",
+            headers={"X-Project-Path": str(root)},
+            json={
+                "plan_id": plan_id,
+                "name": "new-branch",
+                "branch_type": "challenger",
+                "base_plan_version_id": base_pv_id,
+                "head_plan_version_id": head_pv_id,
+                "created_reason": "test",
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert set(data.keys()) == self.BRANCH_FIELDS
+        assert data["name"] == "new-branch"

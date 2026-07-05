@@ -19,6 +19,7 @@ from cardre.api.schemas import (
     RunResponse,
     RunStepResponse,
 )
+from cardre.domain.evidence import EvidenceArtifact
 from cardre.services.run_coordinator import RunCoordinator, RunSummary
 from cardre.store.db import ProjectStore
 from cardre.store.evidence_repo import EvidenceRepository
@@ -121,14 +122,11 @@ async def list_run_evidence(
             status_code=404,
         )
     evidence_repo = EvidenceRepository(store)
-    rs_repo = RunStepRepository(store)
-    steps = rs_repo.get_for_run(run_id)
-    all_edges = []
-    for rs in steps:
-        edges = evidence_repo.get_edges_for_run_step(rs.run_step_id)
-        for edge in edges:
-            artifacts = evidence_repo.get_artifacts_for_edge(edge.evidence_edge_id)
-            all_edges.append(
-                evidence_edge_to_response(edge, artifacts)
-            )
-    return all_edges
+    edges = evidence_repo.get_edges_for_run(run_id)
+    artifacts_by_edge_id: dict[str, list[EvidenceArtifact]] = {}
+    for artifact in evidence_repo.get_artifacts_for_run(run_id):
+        artifacts_by_edge_id.setdefault(artifact.evidence_edge_id, []).append(artifact)
+    return [
+        evidence_edge_to_response(edge, artifacts_by_edge_id.get(edge.evidence_edge_id, []))
+        for edge in edges
+    ]

@@ -68,12 +68,12 @@ def test_api_requests_use_distinct_sqlite_connections(api_client, tmp_path, monk
     assert create_resp.status_code == 201, create_resp.text
     project_id = create_resp.json()["project_id"]
 
-    connections: list[int] = []
+    connections: list[object] = []
     original_connect = ProjectStore._connect
 
     def connect_spy(self):
         conn = original_connect(self)
-        connections.append(id(conn))
+        connections.append(conn)
         return conn
 
     monkeypatch.setattr(ProjectStore, "_connect", connect_spy)
@@ -85,7 +85,7 @@ def test_api_requests_use_distinct_sqlite_connections(api_client, tmp_path, monk
         )
         assert resp.status_code == 200, resp.text
 
-    assert len(set(connections)) == 2
+    assert len({id(conn) for conn in connections}) == 2
 
 
 def test_api_dependency_closes_store_on_handler_error(api_client, tmp_path, monkeypatch):

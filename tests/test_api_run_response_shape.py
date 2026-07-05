@@ -7,6 +7,7 @@ serving as a safety net for the mapper extraction refactor in Slice 1.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -198,6 +199,32 @@ class TestRunStepResponseShape:
 class TestRunEvidenceResponseShape:
     """Pin the exact field set and values of RunEvidenceEdgeResponse."""
 
+    EVIDENCE_EDGE_FIELDS = {
+        "evidence_edge_id",
+        "run_id",
+        "run_step_id",
+        "plan_version_id",
+        "step_id",
+        "parent_step_id",
+        "source_run_id",
+        "source_run_step_id",
+        "policy",
+        "source_label",
+        "is_reused",
+        "is_stale",
+        "stale_reason",
+        "created_at",
+        "artifacts",
+    }
+
+    ARTIFACT_FIELDS = {
+        "evidence_artifact_id",
+        "evidence_edge_id",
+        "artifact_id",
+        "role",
+        "created_at",
+    }
+
     def test_run_evidence_response_shape(self, api_client, project_with_run):
         project_id, _, pv_id, run_id, store, _ = project_with_run
 
@@ -310,3 +337,97 @@ class TestRunEvidenceResponseShape:
         assert art["artifact_id"] == "art-001"
         assert art["role"] == "input"
         assert art["created_at"] == now, f"Expected created_at={now!r}, got {art['created_at']!r}"
+
+    def test_run_evidence_order_and_bulk_queries(self, api_client, project_with_run, monkeypatch):
+        project_id, _, pv_id, run_id, store, root = project_with_run
+
+        from cardre.store.db import ProjectStore
+
+        base = datetime(2026, 7, 5, tzinfo=UTC)
+        step_ids: list[str] = []
+        run_step_ids: list[str] = []
+
+        for idx in range(10):
+            step_id = f"ordered-step-{idx}"
+            run_step_id = f"ordered-run-step-{idx}"
+            step_ids.append(step_id)
+            run_step_ids.append(run_step_id)
+            started_at = (base + timedelta(seconds=idx)).isoformat().replace("+00:00", "Z")
+            store.execute(
+                "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
+                " params_json, params_hash, branch_label, position, canonical_step_id) "
+                "VALUES (?, ?, 'test', '1', 'fit', '{}', ?, '', ?, ?)",
+                (step_id, pv_id, f"hash-{idx}", idx, step_id),
+            )
+            store.execute(
+                "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, "
+                " started_at, finished_at, execution_fingerprint_json, warnings_json, errors_json) "
+                "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, '{}', '[]', '[]')",
+                (run_step_id, run_id, step_id, pv_id, started_at, started_at),
+            )
+            if idx == 0:
+                continue
+            edge_id = f"ordered-edge-{idx}"
+            store.execute(
+                "INSERT INTO evidence_edges "
+                "(evidence_edge_id, run_id, run_step_id, plan_version_id, step_id, parent_step_id, "
+                " source_run_id, source_run_step_id, policy, source_label, is_reused, is_stale, "
+                " stale_reason, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?)",
+                (
+                    edge_id,
+                    run_id,
+                    run_step_id,
+                    pv_id,
+                    step_id,
+                    step_ids[idx - 1],
+                    run_id,
+                    run_step_ids[idx - 1],
+                    "exact",
+                    f"edge-{idx}",
+                    started_at,
+                ),
+            )
+            store.execute(
+                "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (f"art-{idx}-z", "dataset", "zeta", f"/tmp/{idx}-z.csv", "ph-z", "lh-z", "text/csv", started_at),
+            )
+            store.execute(
+                "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (f"art-{idx}-a", "dataset", "alpha", f"/tmp/{idx}-a.csv", "ph-a", "lh-a", "text/csv", started_at),
+            )
+            store.execute(
+                "INSERT INTO evidence_artifacts (evidence_artifact_id, evidence_edge_id, artifact_id, role, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (f"ea-{idx}-z", edge_id, f"art-{idx}-z", "zeta", started_at),
+            )
+            store.execute(
+                "INSERT INTO evidence_artifacts (evidence_artifact_id, evidence_edge_id, artifact_id, role, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (f"ea-{idx}-a", edge_id, f"art-{idx}-a", "alpha", started_at),
+            )
+
+        original_execute = ProjectStore.execute
+        counts = {"evidence_edges": 0, "evidence_artifacts": 0}
+
+        def counted_execute(self, sql, params=()):
+            if sql.lstrip().upper().startswith("SELECT") and "FROM evidence_edges" in sql:
+                counts["evidence_edges"] += 1
+            if sql.lstrip().upper().startswith("SELECT") and "FROM evidence_artifacts" in sql:
+                counts["evidence_artifacts"] += 1
+            return original_execute(self, sql, params)
+
+        monkeypatch.setattr(ProjectStore, "execute", counted_execute)
+
+        resp = api_client.get(
+            f"/projects/{project_id}/runs/{run_id}/evidence",
+            headers={"X-Project-Id": project_id},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 9
+        assert [edge["step_id"] for edge in data] == step_ids[1:]
+        assert [artifact["role"] for artifact in data[0]["artifacts"]] == ["alpha", "zeta"]
+        assert counts == {"evidence_edges": 1, "evidence_artifacts": 1}

@@ -6,16 +6,33 @@ side effects, no I/O, and no dependencies on FastAPI or the store.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
+from cardre._version import __version__
 from cardre.api.schemas import (
+    BranchResponse,
+    ComparisonResponse,
     EvidenceArtifactResponse,
     EvidenceEdgeResponse,
+    NodeTypeResponse,
+    PlanResponse,
+    PlanVersionResponse,
+    ProjectResponse,
     RunEvidenceEdgeResponse,
     RunResponse,
     RunStepResponse,
 )
 from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge
+from cardre.domain.plan import Plan, PlanVersion
 from cardre.domain.run import RunStep
 from cardre.services.run_coordinator import RunSummary
+
+
+def _value(obj: Any, key: str, default: Any = None) -> Any:
+    if isinstance(obj, Mapping):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
 
 
 def run_summary_to_response(summary: RunSummary) -> RunResponse:
@@ -49,6 +66,88 @@ def run_step_to_response(rs: RunStep) -> RunStepResponse:
         execution_fingerprint=rs.execution_fingerprint,
         warnings=rs.warnings,
         errors=rs.errors,
+    )
+
+
+def plan_to_response(plan: Plan | Mapping[str, Any]) -> PlanResponse:
+    return PlanResponse(
+        plan_id=_value(plan, "plan_id"),
+        project_id=_value(plan, "project_id"),
+        name=_value(plan, "name"),
+        created_at=_value(plan, "created_at"),
+    )
+
+
+def plan_version_to_response(plan_version: PlanVersion | Mapping[str, Any]) -> PlanVersionResponse:
+    return PlanVersionResponse(
+        plan_version_id=_value(plan_version, "plan_version_id"),
+        plan_id=_value(plan_version, "plan_id"),
+        version_number=_value(plan_version, "version_number"),
+        is_committed=bool(_value(plan_version, "is_committed", False)),
+        created_at=_value(plan_version, "created_at"),
+        description=_value(plan_version, "description", ""),
+    )
+
+
+def branch_to_response(branch: Mapping[str, Any]) -> BranchResponse:
+    return BranchResponse(
+        branch_id=branch["branch_id"],
+        project_id=branch["project_id"],
+        plan_id=branch["plan_id"],
+        name=branch["name"],
+        description=branch.get("description"),
+        branch_type=branch["branch_type"],
+        status=branch.get("status", "active"),
+        base_branch_id=branch.get("base_branch_id"),
+        base_plan_version_id=branch["base_plan_version_id"],
+        head_plan_version_id=branch["head_plan_version_id"],
+        branch_point_step_id=branch.get("branch_point_step_id"),
+        branch_point_canonical_step_id=branch.get("branch_point_canonical_step_id"),
+        created_reason=branch.get("created_reason", ""),
+        created_at=branch.get("created_at", ""),
+        updated_at=branch.get("updated_at", ""),
+    )
+
+
+def comparison_to_response(comparison: Mapping[str, Any]) -> ComparisonResponse:
+    return ComparisonResponse(
+        comparison_id=comparison["comparison_id"],
+        project_id=comparison["project_id"],
+        plan_id=comparison["plan_id"],
+        baseline_branch_id=comparison["baseline_branch_id"],
+        created_at=comparison.get("created_at", ""),
+        latest_ready=comparison.get("latest_ready"),
+    )
+
+
+def project_to_response(
+    project: Mapping[str, Any],
+    *,
+    cardre_version: str | None = None,
+) -> ProjectResponse:
+    return ProjectResponse(
+        project_id=project["project_id"],
+        name=project["name"],
+        created_at=project["created_at"],
+        cardre_version=project.get("cardre_version", cardre_version or __version__),
+    )
+
+
+def node_type_to_response(
+    node_type: str,
+    *,
+    category: str = "",
+    description: str = "",
+    tier: str = "launch",
+    has_params: bool = True,
+) -> NodeTypeResponse:
+    return NodeTypeResponse(
+        node_type=node_type,
+        display_name=node_type.split(".")[-1] if "." in node_type else node_type,
+        description=description,
+        category=category,
+        tier=tier,
+        has_params=has_params,
     )
 
 

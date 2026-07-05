@@ -27,6 +27,8 @@ def project_with_store(store):
 
 
 class TestProjects:
+    PROJECT_FIELDS = {"project_id", "name", "created_at", "cardre_version"}
+
     def test_list_projects(self, api_client, project_with_store):
         project_id, store, root = project_with_store
         resp = api_client.get("/projects")
@@ -35,6 +37,16 @@ class TestProjects:
         assert "projects" in data
         assert len(data["projects"]) >= 1
 
+    def test_list_projects_response_shape(self, api_client, project_with_store):
+        project_id, store, root = project_with_store
+        resp = api_client.get("/projects")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert set(data.keys()) == {"projects", "unavailable_projects"}
+        assert isinstance(data["projects"], list)
+        assert data["projects"]
+        assert set(data["projects"][0].keys()) == self.PROJECT_FIELDS
+
     def test_get_project(self, api_client, project_with_store):
         project_id, store, root = project_with_store
         resp = api_client.get(f"/projects/{project_id}")
@@ -42,6 +54,14 @@ class TestProjects:
         data = resp.json()
         assert data["project_id"] == project_id
         assert data["name"] == "Test Project"
+
+    def test_get_project_response_shape(self, api_client, project_with_store):
+        project_id, store, root = project_with_store
+        resp = api_client.get(f"/projects/{project_id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert set(data.keys()) == self.PROJECT_FIELDS
+        assert data["project_id"] == project_id
 
     def test_get_project_not_found(self, api_client, project_with_store):
         _, store, root = project_with_store
@@ -60,7 +80,6 @@ class TestProjects:
         assert data["detail"]["code"] == "PROJECT_NOT_FOUND"
 
     def test_create_project_bootstraps_fresh_store(self, api_client, tmp_path):
-        from cardre.store.db import ProjectStore
         project_dir = tmp_path / "new-project.cardre"
         resp = api_client.post(
             "/projects",
@@ -72,6 +91,18 @@ class TestProjects:
         assert body["project_id"]
         assert (project_dir / "cardre.sqlite").exists()
         assert (project_dir / "datasets").is_dir()
+
+    def test_create_project_response_shape(self, api_client, tmp_path):
+        from cardre.store.db import ProjectStore
+
+        project_dir = tmp_path / "new-project-shape.cardre"
+        resp = api_client.post(
+            "/projects",
+            json={"name": "My Project", "path": str(project_dir)},
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        assert set(body.keys()) == self.PROJECT_FIELDS
         s = ProjectStore(project_dir)
         s.open()
         family = s.execute("SELECT value FROM store_meta WHERE key='schema_family'").fetchone()
