@@ -1347,7 +1347,7 @@
           "artifacts"
         ],
         "summary": "Get Artifact",
-        "description": "Get a single artifact by ID.",
+        "description": "Get a single artifact by ID, scoped to the project.",
         "operationId": "get_artifact_projects__project_id__artifacts__artifact_id__get",
         "parameters": [
           {
