@@ -51,6 +51,19 @@ class ArtifactRepository:
         rows = self._store.execute("SELECT * FROM artifacts ORDER BY created_at").fetchall()
         return [self._row_to_artifact_ref(r) for r in rows]
 
+    def get_for_project(self, project_id: str, artifact_id: str) -> ArtifactRef | None:
+        row = self._store.execute(
+            "SELECT DISTINCT a.* FROM artifacts a "
+            "JOIN artifact_lineage al ON al.artifact_id = a.artifact_id "
+            "JOIN plan_versions pv ON al.plan_version_id = pv.plan_version_id "
+            "JOIN plans p ON pv.plan_id = p.plan_id "
+            "WHERE p.project_id = ? AND a.artifact_id = ?",
+            (project_id, artifact_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._row_to_artifact_ref(row)
+
     def list_for_project(
         self,
         project_id: str,

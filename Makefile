@@ -1,7 +1,7 @@
 .PHONY: test test-cov test-fail-fast test-evidence test-launch-core test-python-ci typecheck typecheck-python lint lint-line-counts lint-artifact-reads audit-artifact-reads preflight v2-phase-check
 
-# Next target: 60 after RunCoordinator split lands.
-PYTEST_COV_FAIL_UNDER ?= 55
+# Next target: 65 after more characterization tests land.
+PYTEST_COV_FAIL_UNDER ?= 60
 
 test:
 	python3 -m pytest tests/ -q --tb=short

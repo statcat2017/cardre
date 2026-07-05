@@ -22,6 +22,16 @@ python3 -m pytest tests/ -q
 cd frontend && npm test
 ```
 
+### Coverage Policy
+
+- Python coverage must not decrease.
+- The global coverage floor is **60%** (enforced via `make preflight` and CI).
+- New or materially changed execution, evidence, governance, API, and model-node
+  code must include behavior tests — not just trivial getter or import tests.
+- Coverage increases should prioritize launch-relevant behavior over trivial
+  line coverage.
+- The deferred next-sprint target is 65–70%.
+
 ### Code Style
 
 - Python: follow existing patterns in `cardre/` and `sidecar/`. Use type hints.

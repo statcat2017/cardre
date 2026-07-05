@@ -252,3 +252,18 @@ class TestBuildManifestPayload:
         assert payload["execution_mode"] == "full_plan"
         assert payload["steps"] == []
         assert "manifest_version" in payload
+
+
+class TestStepAction:
+    def test_step_action_reused(self):
+        from cardre.domain.run import RunStep, RunStepStatus
+        from cardre.execution.run_lifecycle import step_action
+        fp = {"cardre_step_carried_forward": True}
+        rs = RunStep("rs1", "r", "s", "pv", RunStepStatus.SUCCEEDED, "now", "now", fp, [], [])
+        assert step_action(rs) == "reused"
+
+    def test_step_action_executed(self):
+        from cardre.domain.run import RunStep, RunStepStatus
+        from cardre.execution.run_lifecycle import step_action
+        rs = RunStep("rs2", "r", "s", "pv", RunStepStatus.SUCCEEDED, "now", "now", {}, [], [])
+        assert step_action(rs) == "executed"

@@ -1,269 +1,355 @@
-"""Tests for champion assignment service (v2)."""
+"""Tests for champion_service — assign, get, supersede champion branches.
+
+Covers:
+- assign_champion: success, empty rationale, missing/inactive/mismatched branch,
+  missing comparison/snapshot, not-ready snapshot, stale snapshot,
+  branch not in comparison, superseding previous champion
+- get_champion: no assignment, active assignment
+- supersede_champion_for_branch: no assignment, same plan version, different plan version
+"""
 
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
 
-import cardre.services.champion_service as champion_service
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.store.branch_repo import BranchRepository
-from cardre.store.comparison_repo import ComparisonRepository
-from cardre.store.plan_repo import PlanRepository
-
-pytestmark = pytest.mark.unit
 
 
-def _setup_basic_fixture(store):
-    """Create project, plan, branches, comparison, and snapshot."""
-    project_id = str(uuid.uuid4())
+def _seed_branch(store, project_id, plan_id, pv_id, branch_id, name="test-branch", status="active"):
     store.execute(
-        "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-        (project_id, "test", utc_now_iso(), "0.2.0"),
-    )
-    plan_repo = PlanRepository(store)
-    plan_id = plan_repo.create_plan(project_id, "test-plan")
-    pv_id = plan_repo.create_version(plan_id, [], description="v1")
-
-    branches_repo = BranchRepository(store)
-    baseline_id = branches_repo.create_branch(
-        project_id, plan_id, "baseline", "baseline",
-        base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-        created_reason="Baseline.",
-    )
-    challenger_id = branches_repo.create_branch(
-        project_id, plan_id, "challenger", "challenger",
-        base_plan_version_id=pv_id, head_plan_version_id=pv_id,
-        created_reason="Challenger.",
+        "INSERT INTO plan_branches "
+        "(branch_id, project_id, plan_id, name, branch_type, status, "
+        " base_plan_version_id, head_plan_version_id, created_reason, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, 'challenger', ?, "
+        " ?, ?, 'test', ?, ?)",
+        (branch_id, project_id, plan_id, name, status, pv_id, pv_id, utc_now_iso(), utc_now_iso()),
     )
 
-    # Create an artifact for the snapshot to reference
-    artifact_id = str(uuid.uuid4())
+
+def _seed_comparison_with_snapshot(store, project_id, plan_id, pv_id, branch_id, ready=True):
+    from cardre.store.comparison_repo import ComparisonRepository
+
+    comp_id = ComparisonRepository(store).create_comparison(
+        project_id=project_id, plan_id=plan_id, baseline_branch_id=branch_id,
+    )
+    ComparisonRepository(store).add_challenger_branch(comp_id, branch_id, position=0)
+
     store.execute(
-        "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (artifact_id, "branch_comparison", "comparison", "/tmp/comp.json",
-         "abc", "def", "application/json", utc_now_iso()),
+        "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, logical_hash, "
+        "media_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("champ-art-1", "comparison", "comparison", "/tmp/comp.json", "ph", "lh", "application/json", utc_now_iso()),
     )
-
-    # Create comparison via repo
-    comparison_repo = ComparisonRepository(store)
-    comparison_id = comparison_repo.create_comparison(
-        project_id=project_id,
-        plan_id=plan_id,
-        baseline_branch_id=baseline_id,
-        created_reason="Test.",
+    snap_id = ComparisonRepository(store).create_snapshot(
+        comparison_id=comp_id, project_id=project_id, plan_id=plan_id,
+        comparison_artifact_id="champ-art-1",
+        readiness={"ready": ready},
     )
-    comparison_repo.add_challenger_branch(comparison_id, challenger_id, position=0)
-
-    # Create snapshot via repo
-    snapshot_id = comparison_repo.create_snapshot(
-        comparison_id=comparison_id,
-        project_id=project_id,
-        plan_id=plan_id,
-        comparison_artifact_id=artifact_id,
-        readiness={"ready": True, "missing": []},
-        created_reason="Test snapshot",
-    )
-
-    # Add source plan versions
-    comparison_repo.add_snapshot_plan_version(snapshot_id, pv_id, branch_id=baseline_id)
-    comparison_repo.add_snapshot_plan_version(snapshot_id, pv_id, branch_id=challenger_id)
-
-    # Update comparison with latest snapshot
-    store.execute(
-        "UPDATE branch_comparisons SET latest_snapshot_id = ?, latest_ready = 1 WHERE comparison_id = ?",
-        (snapshot_id, comparison_id),
-    )
-
-    return {
-        "project_id": project_id,
-        "plan_id": plan_id,
-        "pv_id": pv_id,
-        "baseline_id": baseline_id,
-        "challenger_id": challenger_id,
-        "comparison_id": comparison_id,
-        "snapshot_id": snapshot_id,
-        "artifact_id": artifact_id,
-    }
+    ComparisonRepository(store).add_snapshot_plan_version(snap_id, pv_id, branch_id=branch_id)
+    return comp_id, snap_id
 
 
 class TestAssignChampion:
-    def test_assign_champion_success(self, store):
-        fix = _setup_basic_fixture(store)
-
-        result = champion_service.assign_champion(
-            store,
-            project_id=fix["project_id"],
-            plan_id=fix["plan_id"],
-            branch_id=fix["challenger_id"],
-            comparison_id=fix["comparison_id"],
-            comparison_snapshot_id=fix["snapshot_id"],
-            scope_type="project",
-            scope_key="default",
-            assigned_reason="Best performing model.",
+    def _full_setup(self, store):
+        project_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "Test", now, "0.2.0"),
         )
+        plan_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (plan_id, project_id, "Test Plan", now),
+        )
+        pv_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
+            "VALUES (?, ?, 1, 1, ?)",
+            (pv_id, plan_id, now),
+        )
+        branch_id = str(uuid.uuid4())
+        _seed_branch(store, project_id, plan_id, pv_id, branch_id)
+        comp_id, snap_id = _seed_comparison_with_snapshot(store, project_id, plan_id, pv_id, branch_id)
+        return project_id, plan_id, pv_id, branch_id, comp_id, snap_id
 
-        assert result["champion_assignment_id"] is not None
-        assert result["champion_branch_id"] == fix["challenger_id"]
-        assert result["assigned_reason"] == "Best performing model."
+    def test_assign_champion_success(self, store):
+        from cardre.services.champion_service import assign_champion, get_champion
+        project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
+
+        result = assign_champion(
+            store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
+            comparison_id=comp_id, comparison_snapshot_id=snap_id,
+            assigned_reason="Best performing model",
+        )
+        assert result["champion_branch_id"] == branch_id
+        assert result["plan_id"] == plan_id
         assert result["previous_champion_branch_id"] is None
+        assert result["assigned_reason"] == "Best performing model"
 
-    def test_assign_champion_empty_reason(self, store):
-        fix = _setup_basic_fixture(store)
+        champ = get_champion(store, plan_id)
+        assert champ is not None
+        assert champ["champion_branch_id"] == branch_id
+
+    def test_empty_rationale_raises(self, store):
+        from cardre.services.champion_service import assign_champion
+        project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
         with pytest.raises(ValueError, match="CHAMPION_REASON_REQUIRED"):
-            champion_service.assign_champion(
-                store,
-                project_id=fix["project_id"],
-                plan_id=fix["plan_id"],
-                branch_id=fix["challenger_id"],
-                comparison_id=fix["comparison_id"],
-                comparison_snapshot_id=fix["snapshot_id"],
+            assign_champion(
+                store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
+                comparison_id=comp_id, comparison_snapshot_id=snap_id,
                 assigned_reason="",
             )
 
-    def test_assign_champion_branch_not_found(self, store):
-        fix = _setup_basic_fixture(store)
+    def test_missing_branch_raises(self, store):
+        from cardre.services.champion_service import assign_champion
+        project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
         with pytest.raises(ValueError, match="CHAMPION_BRANCH_NOT_FOUND"):
-            champion_service.assign_champion(
-                store,
-                project_id=fix["project_id"],
-                plan_id=fix["plan_id"],
-                branch_id="nonexistent",
-                comparison_id=fix["comparison_id"],
-                comparison_snapshot_id=fix["snapshot_id"],
-                assigned_reason="Should fail.",
+            assign_champion(
+                store, project_id=project_id, plan_id=plan_id, branch_id="nonexistent",
+                comparison_id=comp_id, comparison_snapshot_id=snap_id,
+                assigned_reason="test",
             )
 
-    def test_assign_champion_branch_inactive(self, store):
-        fix = _setup_basic_fixture(store)
-        # Deactivate the branch
-        store.execute(
-            "UPDATE plan_branches SET status = 'archived' WHERE branch_id = ?",
-            (fix["challenger_id"],),
-        )
+    def test_inactive_branch_raises(self, store):
+        from cardre.services.champion_service import assign_champion
+        project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
+        store.execute("UPDATE plan_branches SET status = 'closed' WHERE branch_id = ?", (branch_id,))
         with pytest.raises(ValueError, match="CHAMPION_BRANCH_INACTIVE"):
-            champion_service.assign_champion(
-                store,
-                project_id=fix["project_id"],
-                plan_id=fix["plan_id"],
-                branch_id=fix["challenger_id"],
-                comparison_id=fix["comparison_id"],
-                comparison_snapshot_id=fix["snapshot_id"],
-                assigned_reason="Should fail.",
+            assign_champion(
+                store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
+                comparison_id=comp_id, comparison_snapshot_id=snap_id,
+                assigned_reason="test",
             )
 
-    def test_assign_champion_comparison_not_found(self, store):
-        fix = _setup_basic_fixture(store)
+    def test_branch_project_mismatch_raises(self, store):
+        from cardre.services.champion_service import assign_champion
+        project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
+        other_project = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (other_project, "Other", utc_now_iso(), "0.2.0"),
+        )
+        with pytest.raises(ValueError, match="CHAMPION_BRANCH_MISMATCH"):
+            assign_champion(
+                store, project_id=other_project, plan_id=plan_id, branch_id=branch_id,
+                comparison_id=comp_id, comparison_snapshot_id=snap_id,
+                assigned_reason="test",
+            )
+
+    def test_missing_comparison_raises(self, store):
+        from cardre.services.champion_service import assign_champion
+        project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
         with pytest.raises(ValueError, match="COMPARISON_NOT_FOUND"):
-            champion_service.assign_champion(
-                store,
-                project_id=fix["project_id"],
-                plan_id=fix["plan_id"],
-                branch_id=fix["challenger_id"],
-                comparison_id="nonexistent",
-                comparison_snapshot_id=fix["snapshot_id"],
-                assigned_reason="Should fail.",
+            assign_champion(
+                store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
+                comparison_id="nonexistent-comp", comparison_snapshot_id=snap_id,
+                assigned_reason="test",
             )
 
-    def test_assign_champion_supersedes_previous(self, store):
-        fix = _setup_basic_fixture(store)
+    def test_missing_snapshot_raises(self, store):
+        from cardre.services.champion_service import assign_champion
+        project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
+        with pytest.raises(ValueError, match="COMPARISON_SNAPSHOT_NOT_FOUND"):
+            assign_champion(
+                store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
+                comparison_id=comp_id, comparison_snapshot_id="nonexistent-snap",
+                assigned_reason="test",
+            )
 
-        # Assign first champion
-        first = champion_service.assign_champion(
-            store,
-            project_id=fix["project_id"],
-            plan_id=fix["plan_id"],
-            branch_id=fix["challenger_id"],
-            comparison_id=fix["comparison_id"],
-            comparison_snapshot_id=fix["snapshot_id"],
-            assigned_reason="First champion.",
+    def test_not_ready_snapshot_raises(self, store):
+        from cardre.services.champion_service import assign_champion
+        project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
+        # Overwrite snapshot with not-ready
+        store.execute(
+            "UPDATE branch_comparison_snapshots SET readiness_json = ? WHERE comparison_snapshot_id = ?",
+            (json.dumps({"ready": False}), snap_id),
         )
+        with pytest.raises(ValueError, match="COMPARISON_NOT_READY"):
+            assign_champion(
+                store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
+                comparison_id=comp_id, comparison_snapshot_id=snap_id,
+                assigned_reason="test",
+            )
 
-        # Assign second champion with baseline branch
-        second = champion_service.assign_champion(
-            store,
-            project_id=fix["project_id"],
-            plan_id=fix["plan_id"],
-            branch_id=fix["baseline_id"],
-            comparison_id=fix["comparison_id"],
-            comparison_snapshot_id=fix["snapshot_id"],
-            assigned_reason="Superseding champion.",
+    def test_stale_snapshot_raises(self, store):
+        from cardre.services.champion_service import assign_champion
+        project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
+        # Advance branch head to a plan version not in the snapshot
+        new_pv_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
+            "VALUES (?, ?, 2, 1, ?)",
+            (new_pv_id, plan_id, utc_now_iso()),
         )
+        store.execute(
+            "UPDATE plan_branches SET head_plan_version_id = ? WHERE branch_id = ?",
+            (new_pv_id, branch_id),
+        )
+        with pytest.raises(ValueError, match="STALE_SNAPSHOT"):
+            assign_champion(
+                store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
+                comparison_id=comp_id, comparison_snapshot_id=snap_id,
+                assigned_reason="test",
+            )
 
-        assert second["previous_champion_branch_id"] == first["champion_assignment_id"]
+    def test_branch_not_in_comparison_raises(self, store):
+        from cardre.services.champion_service import assign_champion
+        project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
+        # Create a different branch not in the comparison
+        other_branch = str(uuid.uuid4())
+        _seed_branch(store, project_id, plan_id, pv_id, other_branch, name="other-branch")
+        with pytest.raises(ValueError, match="BRANCH_NOT_IN_COMPARISON"):
+            assign_champion(
+                store, project_id=project_id, plan_id=plan_id, branch_id=other_branch,
+                comparison_id=comp_id, comparison_snapshot_id=snap_id,
+                assigned_reason="test",
+            )
 
-        # First should be superseded
-        row = store.execute(
-            "SELECT superseded_at FROM champion_assignments WHERE champion_assignment_id = ?",
-            (first["champion_assignment_id"],),
-        ).fetchone()
-        assert row is not None
-        assert row["superseded_at"] is not None
+    def test_supersedes_previous_champion(self, store):
+        from cardre.services.champion_service import assign_champion, get_champion
+        project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
+
+        # First assignment
+        result1 = assign_champion(
+            store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
+            comparison_id=comp_id, comparison_snapshot_id=snap_id,
+            assigned_reason="First champion",
+        )
+        assert result1["previous_champion_branch_id"] is None
+
+        # Second assignment with same branch should supersede
+        result2 = assign_champion(
+            store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
+            comparison_id=comp_id, comparison_snapshot_id=snap_id,
+            assigned_reason="Second champion",
+        )
+        assert result2["previous_champion_branch_id"] is not None
+
+        # Only the latest should be active
+        champ = get_champion(store, plan_id)
+        assert champ is not None
+        assert champ["assigned_reason"] == "Second champion"
 
 
 class TestGetChampion:
-    def test_get_champion_returns_active(self, store):
-        fix = _setup_basic_fixture(store)
-        champion_service.assign_champion(
-            store,
-            project_id=fix["project_id"],
-            plan_id=fix["plan_id"],
-            branch_id=fix["challenger_id"],
-            comparison_id=fix["comparison_id"],
-            comparison_snapshot_id=fix["snapshot_id"],
-            assigned_reason="Get test.",
+    def test_no_assignment_returns_none(self, store):
+        from cardre.services.champion_service import get_champion
+        result = get_champion(store, "nonexistent-plan")
+        assert result is None
+
+    def test_returns_active_assignment(self, store):
+        from cardre.services.champion_service import assign_champion, get_champion
+        project_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "Test", now, "0.2.0"),
         )
-
-        champ = champion_service.get_champion(store, fix["plan_id"])
+        plan_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (plan_id, project_id, "Test Plan", now),
+        )
+        pv_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
+            "VALUES (?, ?, 1, 1, ?)",
+            (pv_id, plan_id, now),
+        )
+        branch_id = str(uuid.uuid4())
+        _seed_branch(store, project_id, plan_id, pv_id, branch_id)
+        comp_id, snap_id = _seed_comparison_with_snapshot(store, project_id, plan_id, pv_id, branch_id)
+        assign_champion(
+            store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
+            comparison_id=comp_id, comparison_snapshot_id=snap_id,
+            assigned_reason="test",
+        )
+        champ = get_champion(store, plan_id)
         assert champ is not None
-        assert champ["champion_branch_id"] == fix["challenger_id"]
-
-    def test_get_champion_no_assignment(self, store):
-        champ = champion_service.get_champion(store, "nonexistent-plan")
-        assert champ is None
+        assert champ["champion_branch_id"] == branch_id
 
 
 class TestSupersedeChampionForBranch:
-    def test_supersedes_when_head_advances(self, store):
-        fix = _setup_basic_fixture(store)
-        champion_service.assign_champion(
-            store,
-            project_id=fix["project_id"],
-            plan_id=fix["plan_id"],
-            branch_id=fix["challenger_id"],
-            comparison_id=fix["comparison_id"],
-            comparison_snapshot_id=fix["snapshot_id"],
-            assigned_reason="Will be superseded.",
+    def test_no_assignment_does_nothing(self, store):
+        from cardre.services.champion_service import supersede_champion_for_branch
+        supersede_champion_for_branch(store, "nonexistent-branch", "new-pv")
+        # Should not raise
+
+    def test_same_plan_version_does_nothing(self, store):
+        from cardre.services.champion_service import (
+            assign_champion,
+            get_champion,
+            supersede_champion_for_branch,
         )
-
-        # Advance branch head to a new plan version
-        new_pv_id = PlanRepository(store).create_version(fix["plan_id"], [], description="v2")
-
-        champion_service.supersede_champion_for_branch(store, fix["challenger_id"], new_pv_id)
-
-        # Champion should be superseded
-        assignment = BranchRepository(store).get_champion_assignment_by_branch(fix["challenger_id"])
-        # Since it's superseded, get_champion_assignment_by_branch returns None
-        # (because it filters WHERE superseded_at IS NULL)
-        assert assignment is None
-
-    def test_noop_when_same_version(self, store):
-        fix = _setup_basic_fixture(store)
-        champion_service.assign_champion(
-            store,
-            project_id=fix["project_id"],
-            plan_id=fix["plan_id"],
-            branch_id=fix["challenger_id"],
-            comparison_id=fix["comparison_id"],
-            comparison_snapshot_id=fix["snapshot_id"],
-            assigned_reason="Will stay.",
+        project_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "Test", now, "0.2.0"),
         )
+        plan_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (plan_id, project_id, "Test Plan", now),
+        )
+        pv_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
+            "VALUES (?, ?, 1, 1, ?)",
+            (pv_id, plan_id, now),
+        )
+        branch_id = str(uuid.uuid4())
+        _seed_branch(store, project_id, plan_id, pv_id, branch_id)
+        comp_id, snap_id = _seed_comparison_with_snapshot(store, project_id, plan_id, pv_id, branch_id)
+        assign_champion(
+            store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
+            comparison_id=comp_id, comparison_snapshot_id=snap_id,
+            assigned_reason="test",
+        )
+        supersede_champion_for_branch(store, branch_id, pv_id)
+        champ = get_champion(store, plan_id)
+        assert champ is not None  # Still active
 
-        # Call with same plan version — should be a no-op
-        champion_service.supersede_champion_for_branch(store, fix["challenger_id"], fix["pv_id"])
-
-        # Champion should still be active
-        assignment = BranchRepository(store).get_champion_assignment_by_branch(fix["challenger_id"])
-        assert assignment is not None
+    def test_different_plan_version_supersedes(self, store):
+        from cardre.services.champion_service import (
+            assign_champion,
+            get_champion,
+            supersede_champion_for_branch,
+        )
+        project_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "Test", now, "0.2.0"),
+        )
+        plan_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (plan_id, project_id, "Test Plan", now),
+        )
+        pv_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
+            "VALUES (?, ?, 1, 1, ?)",
+            (pv_id, plan_id, now),
+        )
+        branch_id = str(uuid.uuid4())
+        _seed_branch(store, project_id, plan_id, pv_id, branch_id)
+        comp_id, snap_id = _seed_comparison_with_snapshot(store, project_id, plan_id, pv_id, branch_id)
+        assign_champion(
+            store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
+            comparison_id=comp_id, comparison_snapshot_id=snap_id,
+            assigned_reason="test",
+        )
+        new_pv_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
+            "VALUES (?, ?, 2, 1, ?)",
+            (new_pv_id, plan_id, now),
+        )
+        supersede_champion_for_branch(store, branch_id, new_pv_id)
+        champ = get_champion(store, plan_id)
+        assert champ is None  # Superseded

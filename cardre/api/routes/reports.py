@@ -5,6 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
+from cardre.api.errors import RUN_NOT_FOUND, CardreApiError
+from cardre.api.routes._project_scope import run_belongs_to_project
 from cardre.api.schemas import ReportListResponse, ReportResponse
 from cardre.store.db import ProjectStore
 
@@ -41,6 +43,12 @@ async def list_run_reports(
     store: ProjectStore = Depends(get_project_store),
 ) -> ReportListResponse:
     """List reports for a specific run."""
+    if not run_belongs_to_project(store, project_id, run_id):
+        raise CardreApiError(
+            code=RUN_NOT_FOUND,
+            message=f"Run {run_id!r} not found.",
+            status_code=404,
+        )
     reports: list[ReportResponse] = []
     exports_dir = store.root / "exports"
     manifest_dir = exports_dir / f"manifest-{run_id}"

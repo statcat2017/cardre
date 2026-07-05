@@ -319,7 +319,7 @@ export interface paths {
         };
         /**
          * Get Artifact
-         * @description Get a single artifact by ID.
+         * @description Get a single artifact by ID, scoped to the project.
          */
         get: operations["get_artifact_projects__project_id__artifacts__artifact_id__get"];
         put?: never;

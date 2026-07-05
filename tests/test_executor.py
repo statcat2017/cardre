@@ -134,10 +134,38 @@ class TestTopologicalOrder:
         with pytest.raises(GraphValidationError):
             validate_topology([step_a, step_b])
 
+    def test_raises_on_duplicate_step_id(self):
+        step_a = StepSpec(step_id="a", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=[])
+        with pytest.raises(GraphValidationError, match="Duplicate"):
+            validate_topology([step_a, step_a])
+
     def test_raises_on_missing_parent(self):
         step_a = StepSpec(step_id="a", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=["missing"])
         with pytest.raises(GraphValidationError):
             validate_topology([step_a])
+
+
+class TestStepGraphEdgeCases:
+    def test_ancestor_closure_missing_raises(self):
+        from cardre.execution.step_graph import ancestor_closure
+        with pytest.raises(KeyError):
+            ancestor_closure("z", [])
+
+    def test_ancestor_closure_duplicate_path(self):
+        from cardre.domain.step import StepSpec
+        from cardre.execution.step_graph import ancestor_closure
+        steps = [
+            StepSpec(step_id="root", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=[], branch_label="", position=0),
+            StepSpec(step_id="a", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=["root"], branch_label="", position=1),
+            StepSpec(step_id="b", node_type="t", node_version="1", category="c", params={}, params_hash="h", parent_step_ids=["root", "a"], branch_label="", position=2),
+        ]
+        assert ancestor_closure("b", steps) == {"root", "a"}
+        assert ancestor_closure("root", steps) == set()
+
+    def test_descendant_closure_missing_raises(self):
+        from cardre.execution.step_graph import descendant_closure
+        with pytest.raises(KeyError):
+            descendant_closure("z", [])
 
 
 class TestPlanExecutor:
