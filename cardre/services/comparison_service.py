@@ -14,6 +14,7 @@ from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
 from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.errors import CardreError
 from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_COMPARISON,
 )
@@ -351,11 +352,21 @@ def create_comparison(
 
     baseline = branches_repo.get_branch(baseline_branch_id)
     if baseline is None:
-        raise ValueError(f"BASELINE_BRANCH_NOT_FOUND: {baseline_branch_id}")
+        raise CardreError(
+            f"BASELINE_BRANCH_NOT_FOUND: {baseline_branch_id}",
+            code="BASELINE_BRANCH_NOT_FOUND",
+            context={"branch_id": baseline_branch_id},
+            status_code=404,
+        )
 
     for cid in challenger_branch_ids:
         if branches_repo.get_branch(cid) is None:
-            raise ValueError(f"CHALLENGER_BRANCH_NOT_FOUND: {cid}")
+            raise CardreError(
+                f"CHALLENGER_BRANCH_NOT_FOUND: {cid}",
+                code="CHALLENGER_BRANCH_NOT_FOUND",
+                context={"branch_id": cid},
+                status_code=404,
+            )
 
     spec = comparison_spec or {
         "roles": ["train", "test", "oot"],
@@ -408,7 +419,12 @@ def refresh_comparison(
 
     comparison = comparison_repo.get_comparison(comparison_id)
     if comparison is None:
-        raise ValueError(f"COMPARISON_NOT_FOUND: {comparison_id}")
+        raise CardreError(
+            f"COMPARISON_NOT_FOUND: {comparison_id}",
+            code="COMPARISON_NOT_FOUND",
+            context={"comparison_id": comparison_id},
+            status_code=404,
+        )
 
     baseline_branch_id = comparison["baseline_branch_id"]
 
@@ -420,7 +436,12 @@ def refresh_comparison(
 
     baseline = branches_repo.get_branch(baseline_branch_id)
     if baseline is None:
-        raise ValueError(f"BASELINE_BRANCH_NOT_FOUND: {baseline_branch_id}")
+        raise CardreError(
+            f"BASELINE_BRANCH_NOT_FOUND: {baseline_branch_id}",
+            code="BASELINE_BRANCH_NOT_FOUND",
+            context={"branch_id": baseline_branch_id},
+            status_code=404,
+        )
 
     required = REQUIRED_STEPS_COMPARISON
 

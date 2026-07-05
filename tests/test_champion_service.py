@@ -16,6 +16,7 @@ import uuid
 import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.errors import CardreError
 
 
 def _seed_branch(store, project_id, plan_id, pv_id, branch_id, name="test-branch", status="active"):
@@ -96,7 +97,7 @@ class TestAssignChampion:
     def test_empty_rationale_raises(self, store):
         from cardre.services.champion_service import assign_champion
         project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
-        with pytest.raises(ValueError, match="CHAMPION_REASON_REQUIRED"):
+        with pytest.raises(CardreError, match="CHAMPION_REASON_REQUIRED"):
             assign_champion(
                 store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
                 comparison_id=comp_id, comparison_snapshot_id=snap_id,
@@ -106,7 +107,7 @@ class TestAssignChampion:
     def test_missing_branch_raises(self, store):
         from cardre.services.champion_service import assign_champion
         project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
-        with pytest.raises(ValueError, match="CHAMPION_BRANCH_NOT_FOUND"):
+        with pytest.raises(CardreError, match="CHAMPION_BRANCH_NOT_FOUND"):
             assign_champion(
                 store, project_id=project_id, plan_id=plan_id, branch_id="nonexistent",
                 comparison_id=comp_id, comparison_snapshot_id=snap_id,
@@ -117,7 +118,7 @@ class TestAssignChampion:
         from cardre.services.champion_service import assign_champion
         project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
         store.execute("UPDATE plan_branches SET status = 'closed' WHERE branch_id = ?", (branch_id,))
-        with pytest.raises(ValueError, match="CHAMPION_BRANCH_INACTIVE"):
+        with pytest.raises(CardreError, match="CHAMPION_BRANCH_INACTIVE"):
             assign_champion(
                 store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
                 comparison_id=comp_id, comparison_snapshot_id=snap_id,
@@ -132,7 +133,7 @@ class TestAssignChampion:
             "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
             (other_project, "Other", utc_now_iso(), "0.2.0"),
         )
-        with pytest.raises(ValueError, match="CHAMPION_BRANCH_MISMATCH"):
+        with pytest.raises(CardreError, match="CHAMPION_BRANCH_MISMATCH"):
             assign_champion(
                 store, project_id=other_project, plan_id=plan_id, branch_id=branch_id,
                 comparison_id=comp_id, comparison_snapshot_id=snap_id,
@@ -142,7 +143,7 @@ class TestAssignChampion:
     def test_missing_comparison_raises(self, store):
         from cardre.services.champion_service import assign_champion
         project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
-        with pytest.raises(ValueError, match="COMPARISON_NOT_FOUND"):
+        with pytest.raises(CardreError, match="COMPARISON_NOT_FOUND"):
             assign_champion(
                 store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
                 comparison_id="nonexistent-comp", comparison_snapshot_id=snap_id,
@@ -152,7 +153,7 @@ class TestAssignChampion:
     def test_missing_snapshot_raises(self, store):
         from cardre.services.champion_service import assign_champion
         project_id, plan_id, pv_id, branch_id, comp_id, snap_id = self._full_setup(store)
-        with pytest.raises(ValueError, match="COMPARISON_SNAPSHOT_NOT_FOUND"):
+        with pytest.raises(CardreError, match="COMPARISON_SNAPSHOT_NOT_FOUND"):
             assign_champion(
                 store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
                 comparison_id=comp_id, comparison_snapshot_id="nonexistent-snap",
@@ -167,7 +168,7 @@ class TestAssignChampion:
             "UPDATE branch_comparison_snapshots SET readiness_json = ? WHERE comparison_snapshot_id = ?",
             (json.dumps({"ready": False}), snap_id),
         )
-        with pytest.raises(ValueError, match="COMPARISON_NOT_READY"):
+        with pytest.raises(CardreError, match="COMPARISON_NOT_READY"):
             assign_champion(
                 store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
                 comparison_id=comp_id, comparison_snapshot_id=snap_id,
@@ -188,7 +189,7 @@ class TestAssignChampion:
             "UPDATE plan_branches SET head_plan_version_id = ? WHERE branch_id = ?",
             (new_pv_id, branch_id),
         )
-        with pytest.raises(ValueError, match="STALE_SNAPSHOT"):
+        with pytest.raises(CardreError, match="STALE_SNAPSHOT"):
             assign_champion(
                 store, project_id=project_id, plan_id=plan_id, branch_id=branch_id,
                 comparison_id=comp_id, comparison_snapshot_id=snap_id,
@@ -201,7 +202,7 @@ class TestAssignChampion:
         # Create a different branch not in the comparison
         other_branch = str(uuid.uuid4())
         _seed_branch(store, project_id, plan_id, pv_id, other_branch, name="other-branch")
-        with pytest.raises(ValueError, match="BRANCH_NOT_IN_COMPARISON"):
+        with pytest.raises(CardreError, match="BRANCH_NOT_IN_COMPARISON"):
             assign_champion(
                 store, project_id=project_id, plan_id=plan_id, branch_id=other_branch,
                 comparison_id=comp_id, comparison_snapshot_id=snap_id,

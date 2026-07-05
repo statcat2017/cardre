@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from cardre.domain.run import RunStep
 
+from cardre.domain.errors import CardreError
 from cardre.services.report_service import ReportGenerationService
 from cardre.store import ProjectStore
 from cardre.store.artifact_repo import ArtifactRepository
@@ -59,12 +60,22 @@ def export_branch_audit_pack(
     branch_repo = BranchRepository(store)
     branch = branch_repo.get_branch(branch_id)
     if branch is None:
-        raise ValueError(f"BRANCH_NOT_FOUND: {branch_id}")
+        raise CardreError(
+            f"BRANCH_NOT_FOUND: {branch_id}",
+            code="BRANCH_NOT_FOUND",
+            context={"branch_id": branch_id},
+            status_code=404,
+        )
 
     project_repo = ProjectRepository(store)
     project = project_repo.get(project_id)
     if project is None:
-        raise ValueError(f"PROJECT_NOT_FOUND: {project_id}")
+        raise CardreError(
+            f"PROJECT_NOT_FOUND: {project_id}",
+            code="PROJECT_NOT_FOUND",
+            context={"project_id": project_id},
+            status_code=404,
+        )
 
     export_dir = Path(export_path) if export_path else store.root / "exports" / f"audit_{branch_id}_{uuid.uuid4().hex[:8]}"
     export_id = str(uuid.uuid4())
@@ -301,7 +312,7 @@ def _populate_export(
                     })
                 else:
                     warnings_list.append(f"Report skipped: {[str(b.code) for b in readiness.blockers]}")
-            except Exception as exc:
+            except CardreError as exc:
                 diagnostics.append({
                     "code": "REPORT_FAILED",
                     "message": f"Report generation failed for branch {branch_id}: {exc}",
@@ -395,8 +406,12 @@ def _run_step_to_dict_v2(store: ProjectStore, rs: Any) -> dict[str, Any]:
                 input_ids.append(r["artifact_id"])
             else:
                 output_ids.append(r["artifact_id"])
-    except Exception:
-        pass
+    except Exception as exc:
+        raise CardreError(
+            f"Could not resolve run-step artifact lineage for {rs.run_step_id}",
+            code="RUN_STEP_LINEAGE_UNREADABLE",
+            context={"run_step_id": rs.run_step_id},
+        ) from exc
     return {
         "run_step_id": rs.run_step_id,
         "run_id": rs.run_id,

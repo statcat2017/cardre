@@ -10,6 +10,7 @@ import uuid
 from typing import Any
 
 from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.errors import CardreError
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.comparison_repo import ComparisonRepository
 from cardre.store.db import ProjectStore
@@ -39,45 +40,87 @@ def assign_champion(
     comparison_repo = ComparisonRepository(store)
 
     if not assigned_reason.strip():
-        raise ValueError("CHAMPION_REASON_REQUIRED: Champion assignment requires a non-empty rationale.")
+        raise CardreError(
+            "CHAMPION_REASON_REQUIRED: Champion assignment requires a non-empty rationale.",
+            code="CHAMPION_REASON_REQUIRED",
+            status_code=400,
+        )
 
     branch = branches_repo.get_branch(branch_id)
     if branch is None:
-        raise ValueError(f"CHAMPION_BRANCH_NOT_FOUND: No branch with ID {branch_id}")
+        raise CardreError(
+            f"CHAMPION_BRANCH_NOT_FOUND: No branch with ID {branch_id}",
+            code="CHAMPION_BRANCH_NOT_FOUND",
+            context={"branch_id": branch_id},
+            status_code=404,
+        )
     if branch.get("status") != "active":
-        raise ValueError(f"CHAMPION_BRANCH_INACTIVE: Branch {branch_id} is not active.")
+        raise CardreError(
+            f"CHAMPION_BRANCH_INACTIVE: Branch {branch_id} is not active.",
+            code="CHAMPION_BRANCH_INACTIVE",
+            context={"branch_id": branch_id},
+            status_code=400,
+        )
     if branch["project_id"] != project_id or branch["plan_id"] != plan_id:
-        raise ValueError(f"CHAMPION_BRANCH_MISMATCH: Branch {branch_id} does not belong to plan {plan_id}.")
+        raise CardreError(
+            f"CHAMPION_BRANCH_MISMATCH: Branch {branch_id} does not belong to plan {plan_id}.",
+            code="CHAMPION_BRANCH_MISMATCH",
+            context={"branch_id": branch_id, "plan_id": plan_id},
+            status_code=400,
+        )
 
     # Verify comparison exists
     comparison = comparison_repo.get_comparison(comparison_id)
     if comparison is None:
-        raise ValueError(f"COMPARISON_NOT_FOUND: {comparison_id}")
+        raise CardreError(
+            f"COMPARISON_NOT_FOUND: {comparison_id}",
+            code="COMPARISON_NOT_FOUND",
+            context={"comparison_id": comparison_id},
+            status_code=404,
+        )
 
     # Verify snapshot belongs to this comparison
     snap = branches_repo.get_comparison_snapshot(comparison_snapshot_id)
     if snap is None or snap["comparison_id"] != comparison_id:
-        raise ValueError(f"COMPARISON_SNAPSHOT_NOT_FOUND: {comparison_snapshot_id} does not belong to comparison {comparison_id}.")
+        raise CardreError(
+            f"COMPARISON_SNAPSHOT_NOT_FOUND: {comparison_snapshot_id} does not belong to comparison {comparison_id}.",
+            code="COMPARISON_SNAPSHOT_NOT_FOUND",
+            context={"comparison_snapshot_id": comparison_snapshot_id, "comparison_id": comparison_id},
+            status_code=404,
+        )
 
     readiness = json.loads(snap["readiness_json"])
     if not readiness.get("ready", False):
-        raise ValueError("COMPARISON_NOT_READY: Comparison snapshot is not ready.")
+        raise CardreError(
+            "COMPARISON_NOT_READY: Comparison snapshot is not ready.",
+            code="COMPARISON_NOT_READY",
+            context={"comparison_snapshot_id": comparison_snapshot_id},
+            status_code=400,
+        )
 
     # Read source plan versions from relational table, not JSON array
     source_versions = comparison_repo.get_snapshot_plan_versions(comparison_snapshot_id)
     source_pv_ids = [r["plan_version_id"] for r in source_versions]
     if branch["head_plan_version_id"] not in source_pv_ids:
-        raise ValueError(
+        raise CardreError(
             f"STALE_SNAPSHOT: Branch {branch_id} head plan version "
             f"{branch['head_plan_version_id']} is not in the snapshot source versions {source_pv_ids}. "
-            "Refresh the comparison before assigning champion."
+            "Refresh the comparison before assigning champion.",
+            code="STALE_SNAPSHOT",
+            context={"branch_id": branch_id, "comparison_id": comparison_id},
+            status_code=409,
         )
 
     # Check if the branch is part of this comparison
     challenger_rows = comparison_repo.get_challenger_branches(comparison_id)
     challenger_ids = [r["branch_id"] for r in challenger_rows]
     if branch_id not in challenger_ids and comparison["baseline_branch_id"] != branch_id:
-        raise ValueError(f"BRANCH_NOT_IN_COMPARISON: Branch {branch_id} is not included in comparison {comparison_id}.")
+        raise CardreError(
+            f"BRANCH_NOT_IN_COMPARISON: Branch {branch_id} is not included in comparison {comparison_id}.",
+            code="BRANCH_NOT_IN_COMPARISON",
+            context={"branch_id": branch_id, "comparison_id": comparison_id},
+            status_code=400,
+        )
 
     # Supersede previous champion
     now = utc_now_iso()

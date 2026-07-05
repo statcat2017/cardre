@@ -8,6 +8,7 @@ import pytest
 
 import cardre.services.comparison_service as comparison_service
 from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.errors import CardreError
 from cardre.domain.step import StepSpec
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.comparison_repo import ComparisonRepository
@@ -107,7 +108,7 @@ class TestCreateComparison:
         assert saved["plan_id"] == plan_id
 
     def test_create_comparison_missing_baseline(self, store):
-        with pytest.raises(ValueError, match="BASELINE_BRANCH_NOT_FOUND"):
+        with pytest.raises(CardreError, match="BASELINE_BRANCH_NOT_FOUND"):
             comparison_service.create_comparison(
                 store,
                 project_id="p1",
@@ -131,7 +132,7 @@ class TestCreateComparison:
             base_plan_version_id=pv_id, head_plan_version_id=pv_id,
             created_reason="Baseline.",
         )
-        with pytest.raises(ValueError, match="CHALLENGER_BRANCH_NOT_FOUND"):
+        with pytest.raises(CardreError, match="CHALLENGER_BRANCH_NOT_FOUND"):
             comparison_service.create_comparison(
                 store,
                 project_id=project_id,
@@ -147,7 +148,7 @@ class TestCreateComparison:
 
 class TestRefreshComparison:
     def test_refresh_missing_comparison(self, store):
-        with pytest.raises(ValueError, match="COMPARISON_NOT_FOUND"):
+        with pytest.raises(CardreError, match="COMPARISON_NOT_FOUND"):
             comparison_service.refresh_comparison(store, "nonexistent")
 
     def test_refresh_not_ready(self, store):

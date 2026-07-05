@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 import types
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
@@ -39,6 +40,10 @@ class ProjectStore:
         self.root = Path(root)
         self._db: sqlite3.Connection | None = None
         self._txn_depth = 0
+        # SQLite connections opened with check_same_thread=False are shared
+        # across threads; every access must hold this lock to avoid
+        # interleaved writes and corrupted transaction state.
+        self._lock = threading.RLock()
 
     # ------------------------------------------------------------------
     # Initialization / open
@@ -140,21 +145,23 @@ class ProjectStore:
     # ------------------------------------------------------------------
 
     def _connect(self) -> sqlite3.Connection:
-        if self._db is not None:
-            return self._db
-        db_path = self.root / "cardre.sqlite"
-        conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.row_factory = sqlite3.Row
-        conn.isolation_level = None
-        self._db = conn
-        return conn
+        with self._lock:
+            if self._db is not None:
+                return self._db
+            db_path = self.root / "cardre.sqlite"
+            conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.row_factory = sqlite3.Row
+            conn.isolation_level = None
+            self._db = conn
+            return conn
 
     def close(self) -> None:
-        if self._db is not None:
-            self._db.close()
-            self._db = None
+        with self._lock:
+            if self._db is not None:
+                self._db.close()
+                self._db = None
 
     def __enter__(self) -> ProjectStore:
         self.open()
@@ -175,31 +182,33 @@ class ProjectStore:
 
         Commits on success, rolls back on any exception.
         """
-        if mode not in self.VALID_TXN_MODES:
-            raise ValueError(
-                f"Invalid transaction mode {mode!r}; "
-                f"expected one of {sorted(self.VALID_TXN_MODES)}"
-            )
-        if self._txn_depth > 0:
-            raise RuntimeError("nested transaction attempts are not supported")
-        conn = self._connect()
-        self._txn_depth += 1
-        conn.execute(f"BEGIN {mode}")
-        try:
-            yield conn
-            conn.commit()
-        except BaseException:
-            conn.rollback()
-            raise
-        finally:
-            self._txn_depth -= 1
+        with self._lock:
+            if mode not in self.VALID_TXN_MODES:
+                raise ValueError(
+                    f"Invalid transaction mode {mode!r}; "
+                    f"expected one of {sorted(self.VALID_TXN_MODES)}"
+                )
+            if self._txn_depth > 0:
+                raise RuntimeError("nested transaction attempts are not supported")
+            conn = self._connect()
+            self._txn_depth += 1
+            conn.execute(f"BEGIN {mode}")
+            try:
+                yield conn
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+            finally:
+                self._txn_depth -= 1
 
     # ------------------------------------------------------------------
     # Raw SQL helpers (for repos)
     # ------------------------------------------------------------------
 
     def execute(self, sql: str, params: tuple[Any, ...] | list[Any] | dict[str, Any] = ()) -> sqlite3.Cursor:
-        return self._connect().execute(sql, params)
+        with self._lock:
+            return self._connect().execute(sql, params)
 
     def artifact_path(self, artifact: Any) -> Path:
         """Resolve a stored artifact reference to an on-disk path."""
@@ -212,10 +221,12 @@ class ProjectStore:
         return path if path.is_absolute() else self.root / path
 
     def execute_script(self, sql: str) -> None:
-        self._connect().executescript(sql)
+        with self._lock:
+            self._connect().executescript(sql)
 
     def executemany(self, sql: str, seq: Iterable[tuple[Any, ...] | dict[str, Any]]) -> sqlite3.Cursor:
-        return self._connect().executemany(sql, seq)
+        with self._lock:
+            return self._connect().executemany(sql, seq)
 
     # ------------------------------------------------------------------
     # Convenience delegates over the repository classes

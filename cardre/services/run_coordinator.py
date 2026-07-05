@@ -162,18 +162,20 @@ class RunCoordinator:
             assert decision.existing_run_id is not None
             return self.get_summary(decision.existing_run_id)
 
-        # Recover stale runs for this plan_version
-        for existing_run in run_repo.list_for_plan_version(plan_version_id=plan_version_id):
-            if existing_run.get("status") == "running":
-                self._maybe_recover_stale_run(existing_run)
-
         # Create run with all request fields persisted
-        run_id = self._create_persisted_run(
-            plan_version_id=plan_version_id,
-            run_scope=run_scope, branch_id=branch_id,
-            target_step_id=target_step_id, force=force,
-            requested_by=requested_by, request_id=request_id,
-        )
+        try:
+            run_id = self._create_persisted_run(
+                plan_version_id=plan_version_id,
+                run_scope=run_scope, branch_id=branch_id,
+                target_step_id=target_step_id, force=force,
+                requested_by=requested_by, request_id=request_id,
+            )
+        except CardreError as exc:
+            if exc.code == "EVIDENCE_POLICY_CURRENT":
+                existing_run_id = exc.context.get("existing_run_id")
+                if isinstance(existing_run_id, str) and existing_run_id:
+                    return self.get_summary(existing_run_id)
+            raise
 
         if sync:
             return self._execute_sync(run_id, plan_version_id, run_scope, branch_id, target_step_id, force)
@@ -413,6 +415,52 @@ class RunCoordinator:
         run_repo = RunRepository(self._store)
 
         with self._store.transaction("IMMEDIATE") as conn:
+            if not force and run_scope == "branch" and branch_id:
+                from cardre.services.evidence_resolver import EvidencePolicyService
+
+                evidence = EvidencePolicyService(self._store)
+                result = evidence.check_branch_current(plan_version_id, branch_id)
+                if result.status == "current" and result.run_id is not None:
+                    raise CardreError(
+                        "Branch already has a current run; short-circuiting.",
+                        code="EVIDENCE_POLICY_CURRENT",
+                        context={
+                            "plan_version_id": plan_version_id,
+                            "branch_id": branch_id,
+                            "existing_run_id": result.run_id,
+                        },
+                    )
+                if result.status == "error":
+                    raise CardreError(
+                        f"Evidence policy check failed for branch {branch_id!r}",
+                        code="EVIDENCE_POLICY_ERROR",
+                        context={
+                            "plan_version_id": plan_version_id,
+                            "branch_id": branch_id,
+                            "diagnostics": result.diagnostics,
+                        },
+                    )
+
+            for existing_run in run_repo.list_for_plan_version(plan_version_id=plan_version_id):
+                if existing_run.get("status") == "running" and self._is_stale(existing_run):
+                    active_step_id = run_repo.get_active_step(existing_run["run_id"])
+                    diag: JsonDict = {
+                        "code": "RUN_RECOVERED_STALE",
+                        "message": f"Run {existing_run['run_id']} was stuck in 'running' with stale heartbeat — recovered as interrupted.",
+                        "severity": "error",
+                        "run_id": existing_run["run_id"],
+                        "plan_version_id": existing_run.get("plan_version_id", ""),
+                        "created_at": utc_now_iso(),
+                    }
+                    if active_step_id is not None:
+                        diag["active_step_id"] = active_step_id
+                        diag["message"] = (
+                            f"Run {existing_run['run_id']} was stuck in 'running' with stale heartbeat "
+                            f"(last active step: {active_step_id}) — recovered as interrupted."
+                        )
+                    run_repo.finish(existing_run["run_id"], "interrupted")
+                    run_repo.append_diagnostic(existing_run["run_id"], diag)
+
             if not force:
                 existing = conn.execute(
                     "SELECT 1 FROM runs WHERE plan_version_id = ? AND finished_at IS NULL",
