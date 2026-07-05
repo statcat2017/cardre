@@ -6,17 +6,21 @@ and class-imbalance controls (resampling, SMOTE, cost-sensitive policy).
 
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 from typing import Any, cast
 
 import numpy as np
 import polars as pl
+from polars.exceptions import ComputeError, SchemaError
 
 from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.contracts import NodeType
+
+logger = logging.getLogger(__name__)
 
 
 def _typed_definition_payload(existing_typed: Any | None) -> dict[str, Any]:
@@ -174,8 +178,8 @@ class FeatureSelectionFilterNode(NodeType):
                         "score": round(variance, 6),
                     })
                     numeric_cols.remove(col)
-            except Exception:
-                pass
+            except (TypeError, ValueError) as exc:
+                logger.warning("Variance filter skipped for column %s: %s", col, exc)
 
         # 3. IV filter
         if iv_map:
@@ -222,8 +226,8 @@ class FeatureSelectionFilterNode(NodeType):
                             "score": 1.0,
                         })
                         numeric_cols.remove(col)
-            except Exception:
-                pass
+            except (ComputeError, SchemaError, ValueError, TypeError) as exc:
+                logger.warning("Correlation filter skipped: %s", exc)
 
         # Remaining columns are selected
         for col in numeric_cols:
@@ -280,8 +284,8 @@ class FeatureSelectionFilterNode(NodeType):
                 existing["selected_count"] = len(selected)
                 existing["rejected_count"] = len(rejected)
                 selection = existing
-            except Exception:
-                pass
+            except (KeyError, TypeError, AttributeError) as exc:
+                logger.warning("Could not merge existing selection definition: %s", exc)
 
         art = write_json_artifact(
             store, artifact_type="definition", role="definition",
@@ -464,8 +468,8 @@ class FeatureSelectionEmbeddedNode(NodeType):
                 existing["selected_count"] = len(selected)
                 existing["rejected_count"] = len(rejected)
                 selection = existing
-            except Exception:
-                pass
+            except (KeyError, TypeError, AttributeError) as exc:
+                logger.warning("Could not merge existing selection definition: %s", exc)
 
         def_art_out = write_json_artifact(
             store, artifact_type="definition", role="definition",

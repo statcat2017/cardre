@@ -256,7 +256,7 @@ class LogisticRegressionNode(NodeType):
         max_iter = int(params.get("max_iter", 1000))
         fail_on_non_convergence = bool(params.get("fail_on_non_convergence", True))
         has_sklearn_warning = any(issubclass(w.category, ConvergenceWarning) for w in fit_warnings)
-        converged = not has_sklearn_warning and bool(lr.n_iter_[0] < max_iter)
+        converged = not has_sklearn_warning and bool(lr.n_iter_[0] <= max_iter)
         warnings_list: list[dict[str, Any]] = []
         if not converged:
             msg = f"Logistic regression did not converge after {max_iter} iterations"

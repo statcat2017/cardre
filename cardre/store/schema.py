@@ -353,6 +353,8 @@ CREATE INDEX IF NOT EXISTS idx_branch_step_map_branch_pv
     ON branch_step_map(branch_id, plan_version_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_type_role
     ON artifacts(artifact_type, role);
+CREATE INDEX IF NOT EXISTS idx_artifacts_physical_hash
+    ON artifacts(physical_hash);
 CREATE INDEX IF NOT EXISTS idx_lineage_artifact ON artifact_lineage(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_lineage_run_direction ON artifact_lineage(run_id, direction);
 CREATE INDEX IF NOT EXISTS idx_lineage_step_direction ON artifact_lineage(step_id, direction);

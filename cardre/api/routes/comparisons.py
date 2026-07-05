@@ -54,6 +54,13 @@ async def get_comparison(
             message=f"Comparison {comparison_id!r} not found.",
             status_code=404,
         )
+    if comparison.get("project_id") != project_id:
+        from cardre.api.errors import COMPARISON_NOT_FOUND, CardreApiError
+        raise CardreApiError(
+            code=COMPARISON_NOT_FOUND,
+            message=f"Comparison {comparison_id!r} not found.",
+            status_code=404,
+        )
     return ComparisonResponse(
         comparison_id=comparison["comparison_id"],
         project_id=comparison["project_id"],
