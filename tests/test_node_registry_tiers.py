@@ -114,3 +114,16 @@ def test_registry_is_available():
     reg = NodeRegistry.with_defaults()
     for nt in reg.list_types():
         assert reg.is_available(nt) == reg.availability(nt).available
+
+
+def test_registry_exposes_issue_273_prep_nodes_as_launch_nodes():
+    reg = NodeRegistry.with_defaults()
+
+    for node_type in [
+        "cardre.apply_exclusions",
+        "cardre.development_sample_definition",
+        "cardre.explicit_missing_outlier_treatment",
+    ]:
+        availability = reg.availability(node_type)
+        assert availability.available, availability
+        assert availability.tier == "launch"

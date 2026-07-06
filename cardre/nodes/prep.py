@@ -891,11 +891,13 @@ class DefineModellingMetadataNode(NodeType):
             "good_values": good_values,
             "bad_values": bad_values,
             "indeterminate_values": indeterminate_values,
+            "purpose": params.get("purpose", ""),
             "population": params.get("population", ""),
             "product": params.get("product", ""),
             "segment": params.get("segment", ""),
             "observation_window": params.get("observation_window"),
             "performance_window": params.get("performance_window"),
+            "reject_inference_position": params.get("reject_inference_position", ""),
         }
 
         metadata["schema_version"] = SCHEMA_MODELLING_METADATA
@@ -1101,7 +1103,12 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
         treatment_report: dict[str, Any] = {"imputations": {}, "caps": {}, "floors": {}}
 
         output_artifacts = []
-        for input_art in context.input_artifacts:
+        data_inputs = [
+            input_art
+            for input_art in context.input_artifacts
+            if input_art.role in ("train", "test", "oot")
+        ]
+        for input_art in data_inputs:
             df = pl.read_parquet(store.artifact_path(input_art))  # cardre-allow-artifact-read: dataset-frame-input
             affected: dict[str, dict[str, Any]] = {"imputations": {}, "caps": {}, "floors": {}}
 

@@ -186,7 +186,10 @@ def _register_launch_nodes(reg: NodeRegistry) -> None:
         WoeTransformTrainNode,
     )
     from cardre.nodes.prep import (
+        ApplyExclusionsNode,
         DefineModellingMetadataNode,
+        DevelopmentSampleDefinitionNode,
+        ExplicitMissingOutlierTreatmentNode,
         ImportGermanCreditNode,
         ImportTabularDatasetNode,
         ProfileDatasetNode,
@@ -203,7 +206,10 @@ def _register_launch_nodes(reg: NodeRegistry) -> None:
 
     for n in [
         BinningNode,
+        ApplyExclusionsNode,
+        DevelopmentSampleDefinitionNode,
         DefineModellingMetadataNode,
+        ExplicitMissingOutlierTreatmentNode,
         ImportGermanCreditNode,
         ImportTabularDatasetNode,
         ProfileDatasetNode,
