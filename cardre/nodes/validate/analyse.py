@@ -260,7 +260,7 @@ class ValidationMetricsNode(NodeType):
                 }
                 if fail_on_missing_score:
                     gates.append({
-                        "code": "NO_MISSING_SCORE",
+                        "code": "PREDICTED_BAD_PROBABILITY_PRESENT",
                         "status": "fail",
                         "message": f"Role {role!r} missing predicted_bad_probability",
                     })
@@ -269,6 +269,12 @@ class ValidationMetricsNode(NodeType):
             y_bin, known_mask, warnings = self._derive_y_bin(df, target_col, good, bad)
             y_prob_all = df["predicted_bad_probability"].to_numpy()
             has_score = "score" in df.columns
+            if fail_on_missing_score and not has_score:
+                gates.append({
+                    "code": "NO_MISSING_SCORE",
+                    "status": "fail",
+                    "message": f"Role {role!r} missing score",
+                })
             scores_series_all = df["score"] if has_score else df["predicted_bad_probability"]
 
             if y_bin is None:
@@ -440,6 +446,16 @@ class ValidationMetricsNode(NodeType):
             payload["frozen_bundle_artifact_id"] = bundle_art.artifact_id
         if score_evidence_art is not None:
             payload["score_application_evidence_artifact_id"] = score_evidence_art.artifact_id
+
+        failing_gates = [gate for gate in gates if gate.get("status") == "fail"]
+        if failing_gates:
+            failing_gate_codes = ", ".join(
+                str(gate.get("code", "UNKNOWN_GATE"))
+                for gate in failing_gates
+            )
+            raise ValueError(
+                f"Validation metrics failed required gate(s): {failing_gate_codes}"
+            )
 
         art = write_json_artifact(
             store, artifact_type="report", role="report",

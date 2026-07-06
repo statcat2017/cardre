@@ -845,6 +845,28 @@ class DefineModellingMetadataNode(NodeType):
     input_roles: list[str] = ["input", "train"]
     output_roles: list[str] = ["definition"]
 
+    VALID_REJECT_INFERENCE_POSITIONS = {
+        "not_applied",
+        "excluded",
+        "ignored",
+        "documented_method",
+    }
+
+    def validate_params(self, params: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        reject_inference_position = params.get("reject_inference_position")
+        if reject_inference_position is None:
+            return errors
+        if not isinstance(reject_inference_position, str) or not reject_inference_position:
+            errors.append("reject_inference_position must be a non-empty string when provided")
+            return errors
+        if reject_inference_position not in self.VALID_REJECT_INFERENCE_POSITIONS:
+            errors.append(
+                "reject_inference_position must be one of "
+                f"{sorted(self.VALID_REJECT_INFERENCE_POSITIONS)}, got {reject_inference_position!r}"
+            )
+        return errors
+
     def run(self, context: ExecutionContext) -> NodeOutput:
 
         store = context.store

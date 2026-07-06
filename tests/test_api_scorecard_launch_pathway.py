@@ -13,7 +13,7 @@ from pathlib import Path
 
 import polars as pl
 
-from cardre.domain.step import StepSpec
+from cardre.workflows import build_canonical_scorecard_steps, canonical_scorecard_step_ids
 
 
 def _write_input_csv(path: Path) -> Path:
@@ -33,120 +33,8 @@ def _write_input_csv(path: Path) -> Path:
     return path
 
 
-# The canonical 24-step scorecard DAG for issue #273. Topological order is
-# computed at plan-build time by PlanRepository.create_version.
-#
-# Parent references follow the rule: a step's parents MUST collectively
-# provide every artifact role and evidence kind that the step's run()
-# method actually consumes.
-SCORECARD_STEPS = [
-    # (step_id, node_type, parents, params)
-    ("import",                 "cardre.import_dataset",             [],
-     {"source_path": "PLACEHOLDER"}),
-    ("define-metadata",        "cardre.define_modelling_metadata",  ["import"],
-     {
-         "target_column": "credit_risk_class",
-         "good_values": ["good"],
-         "bad_values": ["bad"],
-         "purpose": "application_credit_scorecard",
-         "product": "term_loan",
-         "segment": "retail",
-         "observation_window": "2024-01_to_2024-06",
-         "performance_window": "2024-07_to_2024-12",
-         "reject_inference_position": "not_applied",
-     }),
-    ("apply-exclusions",       "cardre.apply_exclusions",          ["import", "define-metadata"],
-     {"rules": []}),
-    ("profile",                "cardre.profile_dataset",            ["apply-exclusions"],
-     {}),
-    ("validate-target",        "cardre.validate_binary_target",     ["apply-exclusions", "define-metadata"],
-     {"target_column": "credit_risk_class"}),
-    ("sample-definition",      "cardre.development_sample_definition", ["apply-exclusions", "define-metadata"],
-     {
-         "sample_method": "full_population",
-         "sample_domain": "ttd",
-         "sample_description": "Full booked population without additional row filtering",
-     }),
-    ("split",                  "cardre.split_train_test_oot",       ["apply-exclusions", "sample-definition"],
-     {"target_column": "credit_risk_class"}),
-    ("explicit-missing-outlier-treatment", "cardre.explicit_missing_outlier_treatment", ["split"],
-     {"imputations": {}, "caps": {}, "floors": {}}),
-    ("fine-classing",          "cardre.fine_classing",              ["explicit-missing-outlier-treatment", "define-metadata"],
-     {}),
-    ("initial-woe-iv",         "cardre.calculate_woe_iv",           ["explicit-missing-outlier-treatment", "fine-classing", "define-metadata"],
-     {"purpose": "initial"}),
-    ("variable-clustering",    "cardre.variable_clustering",        ["explicit-missing-outlier-treatment", "initial-woe-iv"],
-     {}),
-    ("variable-selection",     "cardre.variable_selection",         ["initial-woe-iv", "variable-clustering"],
-     {"min_iv": 0.0}),
-    ("manual-binning",         "cardre.manual_binning",             ["fine-classing", "variable-selection"],
-     {"accept_automated": True}),
-    ("final-woe-iv",           "cardre.calculate_woe_iv",           ["explicit-missing-outlier-treatment", "manual-binning", "define-metadata"],
-     {
-         "purpose": "final",
-         "smoothing": {
-             "method": "additive",
-             "alpha": 0.5,
-             "rationale": "Acceptance fixture uses a tiny synthetic sample with sparse terminal bins",
-         },
-     }),
-    ("woe-transform-train",    "cardre.woe_transform_train",        ["explicit-missing-outlier-treatment", "manual-binning",
-                                                                     "final-woe-iv",
-                                                                     "define-metadata",
-                                                                     "variable-selection"],
-     {}),
-    ("logistic-regression",    "cardre.logistic_regression",        ["woe-transform-train", "define-metadata",
-                                                                     "variable-selection"],
-     {}),
-    ("score-scaling",          "cardre.score_scaling",              ["logistic-regression", "manual-binning",
-                                                                     "final-woe-iv"],
-     {}),
-    ("build-summary-report",   "cardre.build_summary_report",       ["score-scaling", "logistic-regression",
-                                                                     "final-woe-iv"],
-     {}),
-    ("freeze-scorecard-bundle", "cardre.freeze_scorecard_bundle",   ["score-scaling", "logistic-regression",
-                                                                     "manual-binning", "final-woe-iv",
-                                                                     "define-metadata", "variable-selection"],
-     {}),
-    ("apply-woe",              "cardre.apply_woe_mapping",          ["explicit-missing-outlier-treatment", "manual-binning",
-                                                                     "final-woe-iv", "variable-selection",
-                                                                     "freeze-scorecard-bundle"],
-     {}),
-    ("apply-model",            "cardre.apply_model",                ["apply-woe", "logistic-regression",
-                                                                     "score-scaling", "freeze-scorecard-bundle"],
-     {}),
-    ("validation-metrics",     "cardre.validation_metrics",         ["apply-model", "define-metadata"],
-     {"fail_on_missing_score": True, "require_test": True, "require_oot": False}),
-    ("cutoff-analysis",        "cardre.cutoff_analysis",            ["apply-model", "define-metadata"],
-     {}),
-    ("technical-manifest-stub", "cardre.technical_manifest_export", ["define-metadata", "sample-definition",
-                                                                     "final-woe-iv", "build-summary-report",
-                                                                     "validation-metrics", "cutoff-analysis"],
-     {}),
-]
-
-EXPECTED_STEP_COUNT = len(SCORECARD_STEPS)
-
-
-def _build_steps(csv_path: Path) -> list[StepSpec]:
-    """Build StepSpec list from SCORECARD_STEPS, filling in source_path."""
-    result = []
-    for position, (step_id, node_type, parents, params) in enumerate(SCORECARD_STEPS):
-        p = dict(params)
-        if step_id == "import":
-            p["source_path"] = str(csv_path)
-        result.append(StepSpec(
-            step_id=step_id,
-            node_type=node_type,
-            node_version="1",
-            category="transform",
-            params=p,
-            params_hash=f"hash-{step_id}",
-            parent_step_ids=list(parents),
-            position=position,
-            canonical_step_id=step_id,
-        ))
-    return result
+EXPECTED_STEP_IDS = canonical_scorecard_step_ids()
+EXPECTED_STEP_COUNT = len(EXPECTED_STEP_IDS)
 
 
 def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp_path):
@@ -189,7 +77,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
     store = ProjectStore(project_dir)
     store.open()
     try:
-        steps = _build_steps(csv_path)
+        steps = build_canonical_scorecard_steps(csv_path)
         plan_version_id = PlanRepository(store).create_version(
             plan_id, steps=steps, is_committed=True,
         )
@@ -216,8 +104,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
     steps = resp.json()
     assert len(steps) == EXPECTED_STEP_COUNT
     actual_step_ids = [s["step_id"] for s in steps]
-    expected_step_ids = [step_id for step_id, *_ in SCORECARD_STEPS]
-    assert set(actual_step_ids) == set(expected_step_ids)
+    assert set(actual_step_ids) == set(EXPECTED_STEP_IDS)
     for earlier, later in [
         ("manual-binning", "final-woe-iv"),
         ("final-woe-iv", "woe-transform-train"),
