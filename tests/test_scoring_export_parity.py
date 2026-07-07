@@ -87,9 +87,9 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
 
         apply_model_parquet = [
             row for row in artifact_rows
-            if row["step_id"] == "apply-model" and row["role"] in {"train", "test"}
+            if row["step_id"] == "apply-model" and row["role"] in {"train", "test", "oot"}
         ]
-        assert len(apply_model_parquet) >= 2, "apply-model should produce train + test parquet"
+        assert len(apply_model_parquet) >= 2, "apply-model should produce train + test + oot parquet"
 
         python_export = [
             row for row in artifact_rows
@@ -388,5 +388,74 @@ def test_sql_scorer_single_category_bin():
         )
         # 'other_val' should fall into the other bin
         assert scores[2] != scores[0], "Other bin should produce a different score"
+    finally:
+        conn.close()
+
+
+def test_sql_scorer_unmatched_non_null_returns_null():
+    """When a variable has a missing bin but no other bin, an out-of-range
+    non-null value must produce NULL (not silently scored as 0.0)."""
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export import _build_sql_scorer_source
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="age",
+                dtype="int64",
+                kind="numeric",
+                bins=[
+                    {"bin_id": "b1", "label": "missing", "is_missing_bin": True},
+                    {"bin_id": "b2", "label": "18-30", "lower": 18, "upper": 30, "lower_inclusive": True, "upper_inclusive": True},
+                ],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={"age": {"b1": -0.5, "b2": 0.3}},
+        columns=["age", "bin_id", "woe"],
+    )
+    scorecard_raw = {
+        "base_score": 600, "base_odds": 50.0, "points_to_double_odds": 20,
+        "factor": 14.427, "offset": 543.6, "higher_score_is_lower_risk": True,
+        "base_points": 543.6, "attributes": [],
+    }
+    model_raw = {
+        "intercept": 0.0, "coefficients": {"age_woe": 1.0},
+        "model_family": "logistic_regression",
+    }
+    feature_contract = {"missing_policy": "error", "unknown_category_policy": "error"}
+
+    source = _build_sql_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE input_data (age REAL)")
+        conn.execute("INSERT INTO input_data VALUES (NULL)")     # missing bin -> -0.5
+        conn.execute("INSERT INTO input_data VALUES (25)")      # 18-30 bin -> 0.3
+        conn.execute("INSERT INTO input_data VALUES (99)")       # out of range -> NULL
+        conn.commit()
+        full_sql = f"SELECT * FROM (\n{source}\n)"
+        cursor = conn.execute(full_sql)
+        rows = cursor.fetchall()
+        col_names = [desc[0] for desc in cursor.description]
+        woe_idx = col_names.index("woe_age")
+        score_idx = col_names.index("score")
+        woe_vals = [row[woe_idx] for row in rows]
+        score_vals = [row[score_idx] for row in rows]
+        # NULL row: WOE should be -0.5, score should be non-null
+        assert woe_vals[0] == -0.5, f"Expected -0.5 for NULL, got {woe_vals[0]}"
+        assert score_vals[0] is not None, "Score for NULL should be non-null"
+        # 25 row: WOE should be 0.3
+        assert woe_vals[1] == 0.3, f"Expected 0.3 for 25, got {woe_vals[1]}"
+        # 99 row: out of range, WOE should be NULL
+        assert woe_vals[2] is None, (
+            f"Out-of-range value 99 should produce NULL WOE, got {woe_vals[2]}"
+        )
+        assert score_vals[2] is None, (
+            f"Out-of-range value 99 should produce NULL score, got {score_vals[2]}"
+        )
     finally:
         conn.close()

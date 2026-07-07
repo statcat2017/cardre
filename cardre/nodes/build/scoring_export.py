@@ -385,7 +385,6 @@ def _build_sql_scorer_source(
         coef = float(coefficients[woe_key])
         log_odds_parts.append(f"{coef!r} * woe_{var}")
 
-        has_missing_bin = any(be.get("is_missing_bin", False) for be in bins)
         has_other_bin = any(be.get("is_other_bin", False) for be in bins)
 
         case_lines: list[str] = []
@@ -419,9 +418,7 @@ def _build_sql_scorer_source(
                     cats_sql = ", ".join(repr(c) for c in cats)
                     case_lines.append(f"        WHEN {var} IN ({cats_sql}) THEN {wv!r}")
         if not has_other_bin:
-            if has_missing_bin:
-                case_lines.append("        ELSE 0.0")
-            elif missing_policy == "error":
+            if missing_policy == "error":
                 case_lines.append("        ELSE NULL")
             else:
                 case_lines.append("        ELSE 0.0")
