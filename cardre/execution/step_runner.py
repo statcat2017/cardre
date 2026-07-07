@@ -21,6 +21,7 @@ import numpy as np
 
 from cardre.domain.errors import (
     MissingInputArtifactError,
+    NodeFailedWithArtifacts,
     ParameterValidationError,
 )
 from cardre.domain.run import RunStep, RunStepStatus
@@ -198,6 +199,34 @@ class StepRunner:
                 parent_run_steps=parent_run_steps,
                 warnings=list(node_output.warnings or []),
                 errors=[],
+            )
+
+        except NodeFailedWithArtifacts as exc:
+            tb = traceback.format_exc()
+            error_entry = classify_step_failure(exc, tb)
+
+            recorded_input_ids = [a.artifact_id for a in input_artifacts]
+            output_artifact_ids = [a.artifact_id for a in exc.artifacts]
+            fp = build_execution_fingerprint(
+                plan_version_id,
+                spec,
+                parent_run_steps,
+                input_artifacts,
+                exc.artifacts,
+            )
+            fp = _json_ready(fp)
+
+            return StepExecutionResult(
+                step_id=spec.step_id,
+                node_type=spec.node_type,
+                status=RunStepStatus.FAILED,
+                fingerprint=fp,
+                input_artifact_ids=recorded_input_ids,
+                input_artifact_ids_by_parent=input_artifact_ids_by_parent,
+                output_artifact_ids=output_artifact_ids,
+                parent_run_steps=parent_run_steps,
+                warnings=[],
+                errors=[error_entry],
             )
 
         except Exception:

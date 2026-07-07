@@ -8,6 +8,8 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
+from cardre.domain.artifacts import ArtifactRef
+
 
 @dataclasses.dataclass
 class Diagnostic:
@@ -46,6 +48,29 @@ class CardreError(Exception):
         self.message = message or self.code
         self.context = context or {}
         self.diagnostics = diagnostics or []
+
+
+class NodeFailedWithArtifacts(CardreError):
+    """A node failed but produced artifacts that should be linked to the run step.
+
+    The ``artifacts`` list contains the artifacts the node wrote before
+    encountering the failure condition.
+    """
+
+    code: str = "NODE_FAILED_WITH_ARTIFACTS"
+    status_code: int = 500
+
+    def __init__(
+        self,
+        message: str,
+        artifacts: list[ArtifactRef],
+        *,
+        code: str | None = None,
+    ) -> None:
+        self.artifacts = artifacts
+        super().__init__(message)
+        if code is not None:
+            self.code = code
 
 
 class GovernanceNotEnabled(CardreError):

@@ -21,6 +21,7 @@ from cardre._evidence.schemas import (
 )
 from cardre.artifacts import write_json_artifact
 from cardre.domain.diagnostics import JsonDict
+from cardre.domain.errors import NodeFailedWithArtifacts
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.node_parameters import (
     MethodOption,
@@ -432,6 +433,9 @@ class ValidationMetricsNode(NodeType):
             "bad_values": [str(v) for v in bad],
         }
 
+        failing_gates = [gate for gate in gates if gate.get("status") == "fail"]
+        has_failing = bool(failing_gates)
+
         payload: JsonDict = {
             "schema_version": SCHEMA_VALIDATION_METRICS,
             "target": target_payload,
@@ -441,21 +445,12 @@ class ValidationMetricsNode(NodeType):
             "psi": stability,
             "gates": gates,
             "warnings": all_psi_warnings,
+            "status": "failed" if has_failing else "passed",
         }
         if bundle_art is not None:
             payload["frozen_bundle_artifact_id"] = bundle_art.artifact_id
         if score_evidence_art is not None:
             payload["score_application_evidence_artifact_id"] = score_evidence_art.artifact_id
-
-        failing_gates = [gate for gate in gates if gate.get("status") == "fail"]
-        if failing_gates:
-            failing_gate_codes = ", ".join(
-                str(gate.get("code", "UNKNOWN_GATE"))
-                for gate in failing_gates
-            )
-            raise ValueError(
-                f"Validation metrics failed required gate(s): {failing_gate_codes}"
-            )
 
         art = write_json_artifact(
             store, artifact_type="report", role="report",
@@ -463,6 +458,17 @@ class ValidationMetricsNode(NodeType):
             payload=payload,
             metadata={"schema_version": SCHEMA_VALIDATION_METRICS},
         )
+
+        if has_failing:
+            failing_gate_codes = ", ".join(
+                str(gate.get("code", "UNKNOWN_GATE"))
+                for gate in failing_gates
+            )
+            raise NodeFailedWithArtifacts(
+                f"Validation metrics failed required gate(s): {failing_gate_codes}",
+                artifacts=[art],
+            )
+
         return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
 
     def _calibration(
