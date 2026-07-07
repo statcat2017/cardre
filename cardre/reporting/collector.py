@@ -32,6 +32,7 @@ from cardre.reporting.schema import (
     BranchInfo,
     BranchSummary,
     CalibrationBin,
+    CalibrationRole,
     ChampionInfo,
     CoefficientSignEntry,
     CutoffInfo,
@@ -369,8 +370,10 @@ class ReportCollector:
 
         # Implementation artifacts
         table_ref = resolved.get("scorecard-table-export")
-        if table_ref:
-            self._collect_implementation_artifacts(bundle, table_ref, plan_version_id)
+        py_ref = resolved.get("scoring-export-python")
+        sql_ref = resolved.get("scoring-export-sql")
+        if table_ref or py_ref or sql_ref:
+            self._collect_implementation_artifacts(bundle, table_ref, py_ref, sql_ref, plan_version_id)
 
         # Manual interventions
         manual_ref = resolved.get("manual-binning")
@@ -845,10 +848,13 @@ class ReportCollector:
         variables = raw.get("variables", [])
         entries = [
             CoefficientSignEntry(
-                variable=v.get("variable", ""),
+                variable_name=v.get("variable_name", ""),
+                feature_name=v.get("feature_name", ""),
+                coefficient=v.get("coefficient", 0.0),
+                coefficient_is_infinite=v.get("coefficient_is_infinite", False),
                 coefficient_sign=v.get("coefficient_sign", ""),
-                woe_direction=v.get("woe_direction", ""),
-                consistent=v.get("consistent", True),
+                expected_sign=v.get("expected_sign", ""),
+                status=v.get("status", ""),
                 reason=v.get("reason", ""),
             )
             for v in variables
@@ -868,10 +874,14 @@ class ReportCollector:
         variables = raw.get("variables", [])
         entries = [
             SeparationEntry(
-                variable=v.get("variable", ""),
+                feature_name=v.get("feature_name", ""),
                 coefficient=v.get("coefficient", 0.0),
+                coefficient_is_infinite=v.get("coefficient_is_infinite", False),
+                abs_coefficient=v.get("abs_coefficient", 0.0),
                 standard_error=v.get("standard_error"),
-                separated=v.get("separated", False),
+                standard_error_is_infinite=v.get("standard_error_is_infinite", False),
+                status=v.get("status", ""),
+                reason=v.get("reason", ""),
             )
             for v in variables
         ]
@@ -890,9 +900,12 @@ class ReportCollector:
         variables = raw.get("variables", [])
         entries = [
             VifEntry(
-                variable=v.get("variable", ""),
-                vif=v.get("vif", 0.0),
-                flagged=v.get("flagged", False),
+                feature_name=v.get("feature_name", ""),
+                vif=v.get("vif"),
+                vif_is_infinite=v.get("vif_is_infinite", False),
+                r_squared=v.get("r_squared"),
+                status=v.get("status", ""),
+                reason=v.get("reason", ""),
             )
             for v in variables
         ]
@@ -908,17 +921,33 @@ class ReportCollector:
         raw = self._read_raw_json_by_step(rs, SCHEMA_CALIBRATION_DIAGNOSTICS)
         if raw is None:
             return
-        bins = raw.get("bins", [])
-        entries = [
-            CalibrationBin(
-                bin_id=b.get("bin_id", str(i)),
-                observed_rate=b.get("observed_rate", 0.0),
-                predicted_rate=b.get("predicted_rate", 0.0),
-                count=b.get("count", 0),
+        roles = raw.get("roles", {})
+        role_entries: dict[str, CalibrationRole] = {}
+        for role_name, role_data in roles.items():
+            decile_bins = [
+                CalibrationBin(
+                    bin=b.get("bin", i + 1),
+                    count=b.get("count", 0),
+                    observed_events=b.get("observed_events", 0),
+                    expected_events=b.get("expected_events", 0.0),
+                    observed_event_rate=b.get("observed_event_rate", 0.0),
+                    predicted_event_rate=b.get("predicted_event_rate", 0.0),
+                    abs_deviation=b.get("abs_deviation", 0.0),
+                )
+                for i, b in enumerate(role_data.get("decile_bins", []))
+            ]
+            role_entries[role_name] = CalibrationRole(
+                row_count=role_data.get("row_count", 0),
+                known_count=role_data.get("known_count", 0),
+                n_bins=role_data.get("n_bins", 0),
+                hosmer_lemeshow_statistic=role_data.get("hosmer_lemeshow_statistic"),
+                hosmer_lemeshow_p_value=role_data.get("hosmer_lemeshow_p_value"),
+                calibration_error=role_data.get("calibration_error", 0.0),
+                auc=role_data.get("auc"),
+                decile_bins=decile_bins,
+                status=role_data.get("status", ""),
             )
-            for i, b in enumerate(bins)
-        ]
-        bundle.model_diagnostics.calibration_diagnostics = entries
+        bundle.model_diagnostics.calibration_diagnostics = role_entries
         bundle.model_diagnostics.source_step_refs.append(_to_schema_ref(ref))
 
     def _read_raw_json_by_step(self, rs: Any, schema_version: str) -> dict[str, Any] | None:
@@ -953,14 +982,27 @@ class ReportCollector:
         )
 
     def _collect_implementation_artifacts(
-        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
+        self, bundle: ReportBundle,
+        table_ref: _ResolvedStepRef | None,
+        py_ref: _ResolvedStepRef | None,
+        sql_ref: _ResolvedStepRef | None,
+        plan_version_id: str,
     ) -> None:
-        rs = self._resolve_run_step(ref, plan_version_id)
-        if rs is None:
-            return
-        table_art = self._find_artifact_by_step(rs, SCHEMA_SCORE_TABLE)
-        py_art = self._find_artifact_by_step(rs, SCHEMA_SCORING_EXPORT_PYTHON)
-        sql_art = self._find_artifact_by_step(rs, SCHEMA_SCORING_EXPORT_SQL)
+        table_art = None
+        py_art = None
+        sql_art = None
+        if table_ref is not None:
+            rs = self._resolve_run_step(table_ref, plan_version_id)
+            if rs is not None:
+                table_art = self._find_artifact_by_step(rs, SCHEMA_SCORE_TABLE)
+        if py_ref is not None:
+            rs = self._resolve_run_step(py_ref, plan_version_id)
+            if rs is not None:
+                py_art = self._find_artifact_by_step(rs, SCHEMA_SCORING_EXPORT_PYTHON)
+        if sql_ref is not None:
+            rs = self._resolve_run_step(sql_ref, plan_version_id)
+            if rs is not None:
+                sql_art = self._find_artifact_by_step(rs, SCHEMA_SCORING_EXPORT_SQL)
         bundle.implementation_artifacts = ImplementationArtifactsInfo(
             scorecard_table=ImplementationArtifactInfo(
                 artifact_type="scorecard_table",
@@ -980,7 +1022,7 @@ class ReportCollector:
                 artifact_id=sql_art.artifact_id if sql_art else "",
                 description="Standalone SQL scoring query",
             ) if sql_art else None,
-            source_step_refs=[_to_schema_ref(ref)],
+            source_step_refs=[_to_schema_ref(r) for r in [table_ref, py_ref, sql_ref] if r is not None],
         )
 
     def _find_artifact_by_step(self, rs: Any, schema_version: str) -> Any | None:

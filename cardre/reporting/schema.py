@@ -516,38 +516,63 @@ class VariableSelectionInfo(BaseModel):
 # ---------------------------------------------------------------------------
 
 class CoefficientSignEntry(BaseModel):
-    variable: str = ""
+    variable_name: str = ""
+    feature_name: str = ""
+    coefficient: float = 0.0
+    coefficient_is_infinite: bool = False
     coefficient_sign: str = ""
-    woe_direction: str = ""
-    consistent: bool = True
+    expected_sign: str = ""
+    status: str = ""
     reason: str = ""
 
 
 class SeparationEntry(BaseModel):
-    variable: str = ""
+    feature_name: str = ""
     coefficient: float = 0.0
+    coefficient_is_infinite: bool = False
+    abs_coefficient: float = 0.0
     standard_error: float | None = None
-    separated: bool = False
+    standard_error_is_infinite: bool = False
+    status: str = ""
+    reason: str = ""
 
 
 class VifEntry(BaseModel):
-    variable: str = ""
-    vif: float = 0.0
-    flagged: bool = False
+    feature_name: str = ""
+    vif: float | None = None
+    vif_is_infinite: bool = False
+    r_squared: float | None = None
+    status: str = ""
+    reason: str = ""
 
 
 class CalibrationBin(BaseModel):
-    bin_id: str = ""
-    observed_rate: float = 0.0
-    predicted_rate: float = 0.0
+    bin: int = 0
     count: int = 0
+    observed_events: int = 0
+    expected_events: float = 0.0
+    observed_event_rate: float = 0.0
+    predicted_event_rate: float = 0.0
+    abs_deviation: float = 0.0
+
+
+class CalibrationRole(BaseModel):
+    row_count: int = 0
+    known_count: int = 0
+    n_bins: int = 0
+    hosmer_lemeshow_statistic: float | None = None
+    hosmer_lemeshow_p_value: float | None = None
+    calibration_error: float = 0.0
+    auc: float | None = None
+    decile_bins: list[CalibrationBin] = Field(default_factory=list)
+    status: str = ""
 
 
 class ModelDiagnosticsInfo(BaseModel):
     coefficient_sign_check: list[CoefficientSignEntry] = Field(default_factory=list)
     separation_diagnostics: list[SeparationEntry] = Field(default_factory=list)
     vif_diagnostics: list[VifEntry] = Field(default_factory=list)
-    calibration_diagnostics: list[CalibrationBin] = Field(default_factory=list)
+    calibration_diagnostics: dict[str, CalibrationRole] = Field(default_factory=dict)
     source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
 
 

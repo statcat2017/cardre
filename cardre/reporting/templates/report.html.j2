@@ -340,15 +340,16 @@ code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.85em;backgroun
 <h3>Coefficient Sign Check</h3>
 <table>
 <thead><tr>
-<th>Variable</th><th>Coefficient Sign</th><th>WOE Direction</th><th>Consistent</th><th>Reason</th>
+<th>Variable</th><th>Coefficient</th><th>Sign</th><th>Expected</th><th>Status</th><th>Reason</th>
 </tr></thead>
 <tbody>
 {% for e in model_diagnostics.coefficient_sign_check %}
 <tr>
-<td><code>{{ e.variable }}</code></td>
+<td><code>{{ e.variable_name }}</code></td>
+<td>{{ e.coefficient | fmt(".6f") }}</td>
 <td>{{ e.coefficient_sign }}</td>
-<td>{{ e.woe_direction }}</td>
-<td>{{ 'Yes' if e.consistent else 'No' }}</td>
+<td>{{ e.expected_sign }}</td>
+<td>{{ e.status }}</td>
 <td>{{ e.reason }}</td>
 </tr>
 {% endfor %}
@@ -360,15 +361,16 @@ code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.85em;backgroun
 <h3>Separation Diagnostics</h3>
 <table>
 <thead><tr>
-<th>Variable</th><th>Coefficient</th><th>Std Error</th><th>Separated</th>
+<th>Feature</th><th>Coefficient</th><th>Std Error</th><th>Status</th><th>Reason</th>
 </tr></thead>
 <tbody>
 {% for e in model_diagnostics.separation_diagnostics %}
 <tr>
-<td><code>{{ e.variable }}</code></td>
+<td><code>{{ e.feature_name }}</code></td>
 <td>{{ e.coefficient | fmt(".4f") }}</td>
 <td>{{ e.standard_error | fmt(".4f") if e.standard_error is not none else 'N/A' }}</td>
-<td>{{ 'Yes' if e.separated else 'No' }}</td>
+<td>{{ e.status }}</td>
+<td>{{ e.reason }}</td>
 </tr>
 {% endfor %}
 </tbody>
@@ -379,14 +381,15 @@ code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.85em;backgroun
 <h3>Multicollinearity (VIF)</h3>
 <table>
 <thead><tr>
-<th>Variable</th><th>VIF</th><th>Flagged</th>
+<th>Feature</th><th>VIF</th><th>Status</th><th>Reason</th>
 </tr></thead>
 <tbody>
 {% for e in model_diagnostics.vif_diagnostics %}
 <tr>
-<td><code>{{ e.variable }}</code></td>
-<td>{{ e.vif | fmt(".4f") }}</td>
-<td>{{ 'Yes' if e.flagged else 'No' }}</td>
+<td><code>{{ e.feature_name }}</code></td>
+<td>{{ e.vif | fmt(".4f") if e.vif is not none else 'N/A' }}</td>
+<td>{{ e.status }}</td>
+<td>{{ e.reason }}</td>
 </tr>
 {% endfor %}
 </tbody>
@@ -395,21 +398,30 @@ code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.85em;backgroun
 
 {% if model_diagnostics.calibration_diagnostics %}
 <h3>Calibration Diagnostics</h3>
+{% for role_name, role_data in model_diagnostics.calibration_diagnostics.items() %}
+<h4>Role: {{ role_name }}</h4>
+<p>Status: {{ role_data.status }} &middot; HL Statistic: {{ role_data.hosmer_lemeshow_statistic | fmt(".4f") if role_data.hosmer_lemeshow_statistic is not none else 'N/A' }} &middot; Calibration Error: {{ role_data.calibration_error | fmt(".6f") }}</p>
+{% if role_data.decile_bins %}
 <table>
 <thead><tr>
-<th>Bin</th><th>Observed Rate</th><th>Predicted Rate</th><th>Count</th>
+<th>Bin</th><th>Count</th><th>Observed Events</th><th>Expected Events</th><th>Observed Rate</th><th>Predicted Rate</th><th>Deviation</th>
 </tr></thead>
 <tbody>
-{% for e in model_diagnostics.calibration_diagnostics %}
+{% for b in role_data.decile_bins %}
 <tr>
-<td>{{ e.bin_id }}</td>
-<td>{{ e.observed_rate | fmt(".4f") }}</td>
-<td>{{ e.predicted_rate | fmt(".4f") }}</td>
-<td>{{ e.count }}</td>
+<td>{{ b.bin }}</td>
+<td>{{ b.count }}</td>
+<td>{{ b.observed_events }}</td>
+<td>{{ b.expected_events | fmt(".4f") }}</td>
+<td>{{ b.observed_event_rate | fmt(".4f") }}</td>
+<td>{{ b.predicted_event_rate | fmt(".4f") }}</td>
+<td>{{ b.abs_deviation | fmt(".4f") }}</td>
 </tr>
 {% endfor %}
 </tbody>
 </table>
+{% endif %}
+{% endfor %}
 {% endif %}
 
 </section>

@@ -441,6 +441,24 @@ def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_pa
         )
         assert result.ready, f"Readiness should be green: {result.blockers}"
 
+        # Negative readiness test: remove score-scaling evidence artifact
+        store.execute(
+            "DELETE FROM artifact_lineage WHERE run_step_id IN "
+            "(SELECT run_step_id FROM run_steps WHERE run_id = ? AND step_id = 'score-scaling')",
+            (run_id,),
+        )
+        result_no_scaling = check_report_readiness(
+            store=store,
+            project_id=project_id,
+            run_id=run_id,
+            target_branch_id=branch_id,
+            report_mode="branch",
+        )
+        assert not result_no_scaling.ready, "Readiness should block when score-scaling evidence is removed"
+        assert any("MISSING_SCORE_SCALING" in b.code for b in result_no_scaling.blockers), (
+            f"Expected MISSING_SCORE_SCALING blocker, got: {[b.code for b in result_no_scaling.blockers]}"
+        )
+
         # Report renders as HTML without errors
         html = render_report_bundle_to_html(bundle_dict)
         assert isinstance(html, str)
