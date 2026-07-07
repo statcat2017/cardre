@@ -81,3 +81,36 @@ class ComparisonArtifactAdapter:
     def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:
         data = read_json_payload(path)
         return ComparisonArtifact.from_json(data, artifact_id=art.artifact_id)
+
+
+class ScorecardTableExportAdapter:
+    kind: EvidenceKind = EvidenceKind.SCORE_TABLE
+    profile: _Profile = EVIDENCE_PROFILES[EvidenceKind.SCORE_TABLE]
+
+    def match(self, artifacts: list[ArtifactRef], store: ProjectStore) -> list[ArtifactRef]:
+        return _match(artifacts, self.profile, store)
+
+    def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:
+        return read_json_payload(path)
+
+
+class ScoringExportPythonAdapter:
+    kind: EvidenceKind = EvidenceKind.SCORING_EXPORT_PYTHON
+    profile: _Profile = EVIDENCE_PROFILES[EvidenceKind.SCORING_EXPORT_PYTHON]
+
+    def match(self, artifacts: list[ArtifactRef], store: ProjectStore) -> list[ArtifactRef]:
+        return _match(artifacts, self.profile, store)
+
+    def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:
+        return read_json_payload(path)
+
+
+class ScoringExportSqlAdapter:
+    kind: EvidenceKind = EvidenceKind.SCORING_EXPORT_SQL
+    profile: _Profile = EVIDENCE_PROFILES[EvidenceKind.SCORING_EXPORT_SQL]
+
+    def match(self, artifacts: list[ArtifactRef], store: ProjectStore) -> list[ArtifactRef]:
+        return _match(artifacts, self.profile, store)
+
+    def parse(self, path: Path, art: ArtifactRef, store: ProjectStore) -> Any:
+        return read_json_payload(path)

@@ -16,6 +16,9 @@ import polars as pl
 from cardre._evidence.schemas import (
     SCHEMA_CALIBRATION_DIAGNOSTICS,
     SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS,
+    SCHEMA_SCORE_TABLE,
+    SCHEMA_SCORING_EXPORT_PYTHON,
+    SCHEMA_SCORING_EXPORT_SQL,
     SCHEMA_SEPARATION_DIAGNOSTICS,
     SCHEMA_VIF_DIAGNOSTICS,
 )
@@ -126,6 +129,9 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         ("calibration-diagnostics", "validation-metrics"),
         ("apply-model", "validation-metrics"),
         ("apply-model", "cutoff-analysis"),
+        ("cutoff-analysis", "scorecard-table-export"),
+        ("scorecard-table-export", "scoring-export-python"),
+        ("scoring-export-python", "scoring-export-sql"),
     ]:
         assert actual_step_ids.index(earlier) < actual_step_ids.index(later)
     for s in steps:
@@ -283,5 +289,43 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         validation_payload = json.loads((store.root / validation_metrics_reports[0]["path"]).read_text())
         assert "train" in validation_payload["metrics"]
         assert "test" in validation_payload["metrics"]
+
+        scorecard_table_artifacts = [
+            row for row in artifact_rows
+            if row["step_id"] == "scorecard-table-export"
+            and f'"schema_version": "{SCHEMA_SCORE_TABLE}"' in row["metadata_json"]
+        ]
+        assert scorecard_table_artifacts, "scorecard-table-export did not produce scorecard_table.v1"
+        scorecard_table_payload = json.loads(
+            (store.root / scorecard_table_artifacts[0]["path"]).read_text(encoding="utf-8")
+        )
+        assert "rows" in scorecard_table_payload
+        assert len(scorecard_table_payload["rows"]) > 0
+        for row in scorecard_table_payload["rows"]:
+            assert {"variable", "bin_id", "label", "woe", "coefficient", "points"} <= set(row)
+
+        python_export_artifacts = [
+            row for row in artifact_rows
+            if row["step_id"] == "scoring-export-python"
+            and f'"schema_version": "{SCHEMA_SCORING_EXPORT_PYTHON}"' in row["metadata_json"]
+        ]
+        assert python_export_artifacts, "scoring-export-python did not produce scoring_export_python.v1"
+        python_export_payload = json.loads(
+            (store.root / python_export_artifacts[0]["path"]).read_text(encoding="utf-8")
+        )
+        assert "source" in python_export_payload
+        assert "def score_cardre" in python_export_payload["source"]
+
+        sql_export_artifacts = [
+            row for row in artifact_rows
+            if row["step_id"] == "scoring-export-sql"
+            and f'"schema_version": "{SCHEMA_SCORING_EXPORT_SQL}"' in row["metadata_json"]
+        ]
+        assert sql_export_artifacts, "scoring-export-sql did not produce scoring_export_sql.v1"
+        sql_export_payload = json.loads(
+            (store.root / sql_export_artifacts[0]["path"]).read_text(encoding="utf-8")
+        )
+        assert "source" in sql_export_payload
+        assert "CASE" in sql_export_payload["source"]
     finally:
         store.close()

@@ -218,6 +218,24 @@ _CANONICAL_SCORECARD_STEPS: list[tuple[str, str, list[str], dict[str, Any]]] = [
         {},
     ),
     (
+        "scorecard-table-export",
+        "cardre.scorecard_table_export",
+        ["score-scaling", "freeze-scorecard-bundle", "apply-model", "manual-binning", "final-woe-iv"],
+        {},
+    ),
+    (
+        "scoring-export-python",
+        "cardre.scoring_export_python",
+        ["freeze-scorecard-bundle", "logistic-regression", "score-scaling", "apply-model", "manual-binning", "final-woe-iv"],
+        {},
+    ),
+    (
+        "scoring-export-sql",
+        "cardre.scoring_export_sql",
+        ["freeze-scorecard-bundle", "logistic-regression", "score-scaling", "apply-model", "manual-binning", "final-woe-iv"],
+        {},
+    ),
+    (
         "technical-manifest-stub",
         "cardre.technical_manifest_export",
         [

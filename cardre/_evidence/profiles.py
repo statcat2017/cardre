@@ -31,6 +31,9 @@ from cardre._evidence.schemas import (
     SCHEMA_RUN_MANIFEST,
     SCHEMA_SAMPLE_DEFINITION,
     SCHEMA_SCORE_SCALING,
+    SCHEMA_SCORE_TABLE,
+    SCHEMA_SCORING_EXPORT_PYTHON,
+    SCHEMA_SCORING_EXPORT_SQL,
     SCHEMA_SELECTION_DEFINITION,
     SCHEMA_SPLIT_SUMMARY,
     SCHEMA_TECHNICAL_MANIFEST_INDEX,
@@ -273,5 +276,23 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"report"},
         schema_version=SCHEMA_CALIBRATION_REPORT,
         required_keys={"method", "calibration_error", "bins"},
+    ),
+    EvidenceKind.SCORE_TABLE: _Profile(
+        expected_roles={"report"},
+        expected_artifact_types={"report"},
+        schema_version=SCHEMA_SCORE_TABLE,
+        required_keys={"rows"},
+    ),
+    EvidenceKind.SCORING_EXPORT_PYTHON: _Profile(
+        expected_roles={"report"},
+        expected_artifact_types={"report"},
+        schema_version=SCHEMA_SCORING_EXPORT_PYTHON,
+        required_keys={"source", "function_name"},
+    ),
+    EvidenceKind.SCORING_EXPORT_SQL: _Profile(
+        expected_roles={"report"},
+        expected_artifact_types={"report"},
+        schema_version=SCHEMA_SCORING_EXPORT_SQL,
+        required_keys={"source", "dialect"},
     ),
 }

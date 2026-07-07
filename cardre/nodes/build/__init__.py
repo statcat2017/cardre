@@ -23,6 +23,11 @@ from cardre.nodes.build.models import (
     NoopNode,
     ScoreScalingNode,
 )
+from cardre.nodes.build.scoring_export import (
+    PythonScoringExportNode,
+    ScorecardTableExportNode,
+    SqlScoringExportNode,
+)
 from cardre.nodes.build.selection import VariableSelectionNode
 
 __all__ = [
@@ -32,7 +37,8 @@ __all__ = [
     "CalibrationDiagnosticsNode",
     "CoefficientSignCheckNode",
     "FineClassingNode", "FrozenScorecardBundleNode", "LogisticRegressionNode", "ManualBinningNode",
-    "NoopNode", "ScoreScalingNode", "SeparationDiagnosticsNode", "TechnicalManifestExportNode",
+    "NoopNode", "PythonScoringExportNode", "ScoreScalingNode", "ScorecardTableExportNode",
+    "SeparationDiagnosticsNode", "SqlScoringExportNode", "TechnicalManifestExportNode",
     "VariableClusteringNode", "VariableSelectionNode",
     "VifDiagnosticsNode",
     "WoeTransformTrainNode",
