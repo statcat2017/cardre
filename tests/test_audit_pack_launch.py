@@ -6,7 +6,6 @@ and verifies its contents.
 from __future__ import annotations
 
 import csv
-import hashlib
 import json
 from pathlib import Path
 
@@ -46,9 +45,9 @@ def test_audit_pack_launch(raw_project_path, api_client, tmp_path):
     assert resp.status_code == 201, resp.text
     plan_id = resp.json()["plan_id"]
 
+    from cardre.store.branch_repo import BranchRepository
     from cardre.store.db import ProjectStore
     from cardre.store.plan_repo import PlanRepository
-    from cardre.store.branch_repo import BranchRepository
 
     store = ProjectStore(project_dir)
     store.open()
@@ -87,7 +86,6 @@ def test_audit_pack_launch(raw_project_path, api_client, tmp_path):
     )
     assert resp.status_code == 201, resp.text
     run_data = resp.json()
-    run_id = run_data["run_id"]
     assert run_data["status"] == "succeeded", f"Run did not succeed: {run_data}"
 
     store = ProjectStore(project_dir)
