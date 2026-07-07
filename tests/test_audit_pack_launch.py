@@ -125,7 +125,7 @@ def test_audit_pack_launch(raw_project_path, api_client, tmp_path):
         artifacts_data = json.loads((export_path / "artifacts.json").read_text())
         for a in artifacts_data:
             if a.get("artifact_type") in ("dataset", "tabular"):
-                assert False, f"Row-level artifact found in export: {a['artifact_id']} ({a['artifact_type']})"
+                raise AssertionError(f"Row-level artifact found in export: {a['artifact_id']} ({a['artifact_type']})")
 
         # Verify checksums.sha256 is valid
         checksum_path = export_path / "checksums.sha256"
