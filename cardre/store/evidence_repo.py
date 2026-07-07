@@ -114,7 +114,7 @@ class EvidenceRepository:
                 "AND r.branch_id IS NULL "
                 "AND r.status = 'succeeded' "
                 "AND rs.status = 'succeeded' "
-                "ORDER BY ee.created_at",
+                "ORDER BY ee.created_at, ee.evidence_edge_id",
                 (plan_version_id, step_id),
             ).fetchall()
         else:
@@ -126,7 +126,7 @@ class EvidenceRepository:
                 "AND r.branch_id = ? "
                 "AND r.status = 'succeeded' "
                 "AND rs.status = 'succeeded' "
-                "ORDER BY ee.created_at",
+                "ORDER BY ee.created_at, ee.evidence_edge_id",
                 (plan_version_id, step_id, branch_id),
             ).fetchall()
         return [self._row_to_edge(r) for r in rows]
