@@ -99,6 +99,11 @@ def test_validation_failure_writes_evidence_artifact(store):
     assert result.status == RunStepStatus.FAILED
     assert "NO_MISSING_SCORE" in result.errors[0]["message"]
 
+    # Verify the artifact is linked to the failed run step via output_artifact_ids
+    assert len(result.output_artifact_ids) > 0, (
+        "Failed validation step should have output artifact IDs in StepExecutionResult"
+    )
+
     rows = store.execute(
         """SELECT a.artifact_id, a.path, a.metadata_json
            FROM artifacts a

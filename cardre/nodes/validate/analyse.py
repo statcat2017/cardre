@@ -21,6 +21,7 @@ from cardre._evidence.schemas import (
 )
 from cardre.artifacts import write_json_artifact
 from cardre.domain.diagnostics import JsonDict
+from cardre.domain.errors import NodeFailedWithArtifacts
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.node_parameters import (
     MethodOption,
@@ -463,8 +464,9 @@ class ValidationMetricsNode(NodeType):
                 str(gate.get("code", "UNKNOWN_GATE"))
                 for gate in failing_gates
             )
-            raise ValueError(
-                f"Validation metrics failed required gate(s): {failing_gate_codes}"
+            raise NodeFailedWithArtifacts(
+                f"Validation metrics failed required gate(s): {failing_gate_codes}",
+                artifacts=[art],
             )
 
         return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
