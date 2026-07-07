@@ -46,6 +46,9 @@ class EvidenceKind(Enum):
     FAIRNESS_REPORT = "fairness_report"
     PROXY_RISK_REPORT = "proxy_risk_report"
     CALIBRATION_REPORT = "calibration_report"
+    SCORE_TABLE = "scorecard_table"
+    SCORING_EXPORT_PYTHON = "scoring_export_python"
+    SCORING_EXPORT_SQL = "scoring_export_sql"
 
 
 class EvidenceError(Exception):

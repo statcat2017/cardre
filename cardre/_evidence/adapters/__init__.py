@@ -50,6 +50,9 @@ from cardre._evidence.adapters.manifest import (
     ComparisonArtifactAdapter,
     ReportBundleAdapter,
     RunManifestAdapter,
+    ScorecardTableExportAdapter,
+    ScoringExportPythonAdapter,
+    ScoringExportSqlAdapter,
     TechnicalManifestIndexAdapter,
 )
 from cardre._evidence.adapters.model import (
@@ -118,6 +121,9 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, type[EvidenceAdapter]] = {
     EvidenceKind.WOE_TRANSFORM_EVIDENCE: WoeTransformEvidenceAdapter,
     EvidenceKind.APPLY_WOE_EVIDENCE: ApplyWoeEvidenceAdapter,
     EvidenceKind.APPLY_MODEL_EVIDENCE: ApplyModelEvidenceAdapter,
+    EvidenceKind.SCORE_TABLE: ScorecardTableExportAdapter,
+    EvidenceKind.SCORING_EXPORT_PYTHON: ScoringExportPythonAdapter,
+    EvidenceKind.SCORING_EXPORT_SQL: ScoringExportSqlAdapter,
 }
 
 
@@ -159,7 +165,10 @@ __all__ = [
     "RunManifestAdapter",
     "SampleDefinitionAdapter",
     "ScoreScalingAdapter",
+    "ScorecardTableExportAdapter",
     "ScoredDatasetAdapter",
+    "ScoringExportPythonAdapter",
+    "ScoringExportSqlAdapter",
     "SelectionDefinitionAdapter",
     "SplitSummaryAdapter",
     "TechnicalManifestIndexAdapter",
