@@ -31,6 +31,24 @@ class CardreError(Exception):
     code: str = "CARDRE_ERROR"
     status_code: int = 500
 
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        code: str | None = None,
+        context: dict[str, Any] | None = None,
+        diagnostics: list[Diagnostic] | None = None,
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(message or self.code)
+        if code is not None:
+            self.code = code
+        if status_code is not None:
+            self.status_code = status_code
+        self.message = message or self.code
+        self.context = context or {}
+        self.diagnostics = diagnostics or []
+
 
 class NodeFailedWithArtifacts(CardreError):
     """A node failed but produced artifacts that should be linked to the run step.
