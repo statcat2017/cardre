@@ -174,6 +174,8 @@ def _populate_export(
 
     # 5. Run evidence
     run_id = run_repo.get_latest_successful_id(head_pv_id, branch_id=branch_id) if head_pv_id else None
+    if run_id is None and head_pv_id:
+        run_id = run_repo.get_latest_successful_id(head_pv_id, branch_id=None)
     runs_data: list[dict[str, Any]] = []
     run_steps_data: list[dict[str, Any]] = []
 
