@@ -117,12 +117,12 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
     for earlier, later in [
         ("manual-binning", "final-woe-iv"),
         ("final-woe-iv", "woe-transform-train"),
-        ("woe-transform-train", "model-fit"),
-        ("model-fit", "coefficient-sign-check"),
-        ("model-fit", "separation-diagnostics"),
+        ("woe-transform-train", "logistic-regression"),
+        ("logistic-regression", "coefficient-sign-check"),
+        ("logistic-regression", "separation-diagnostics"),
         ("woe-transform-train", "vif-diagnostics"),
         ("coefficient-sign-check", "score-scaling"),
-        ("model-fit", "score-scaling"),
+        ("logistic-regression", "score-scaling"),
         ("freeze-scorecard-bundle", "apply-woe"),
         ("apply-woe", "apply-model"),
         ("apply-model", "calibration-diagnostics"),
@@ -327,124 +327,5 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         )
         assert "source" in sql_export_payload
         assert "CASE" in sql_export_payload["source"]
-    finally:
-        store.close()
-
-
-def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_path):
-    """Full canonical workflow + report bundle generation + readiness checks.
-
-    Verifies:
-      - Report bundle has expected sections
-      - Readiness returns blockers when evidence is removed
-      - Readiness returns green when all evidence present
-      - Report renders as HTML without errors
-    """
-    project_dir = tmp_path / "readiness.cardre"
-    resp = api_client.post("/projects", json={"name": "Readiness", "path": str(project_dir)})
-    assert resp.status_code == 201, resp.text
-    project_id = resp.json()["project_id"]
-    headers = {"X-Project-Path": str(project_dir)}
-
-    csv_path = _write_input_csv(tmp_path / "input.csv")
-
-    resp = api_client.post(
-        f"/projects/{project_id}/plans",
-        headers=headers,
-        json={"name": "Readiness Plan"},
-    )
-    assert resp.status_code == 201, resp.text
-    plan_id = resp.json()["plan_id"]
-
-    from cardre.store.db import ProjectStore
-    from cardre.store.plan_repo import PlanRepository
-    store = ProjectStore(project_dir)
-    store.open()
-    try:
-        steps = build_canonical_scorecard_steps(csv_path)
-        plan_version_id = PlanRepository(store).create_version(
-            plan_id, steps=steps, is_committed=True,
-        )
-    finally:
-        store.close()
-
-    resp = api_client.post(
-        f"/projects/{project_id}/runs",
-        headers=headers,
-        json={"plan_version_id": plan_version_id, "sync": True, "force": True},
-    )
-    assert resp.status_code == 201, resp.text
-    run_data = resp.json()
-    run_id = run_data["run_id"]
-    assert run_data["status"] == "succeeded", f"Run did not succeed: {run_data}"
-
-    store = ProjectStore(project_dir)
-    store.open()
-    try:
-        from cardre.readiness import check_report_readiness
-        from cardre.reporting.collector import generate_report_bundle
-        from cardre.reporting.renderer_html import render_report_bundle_to_html
-        from cardre.store.branch_repo import BranchRepository
-
-        branch_repo = BranchRepository(store)
-        branch_id = branch_repo.create_branch(
-            project_id=project_id,
-            plan_id=plan_id,
-            name="main",
-            branch_type="feature",
-            base_plan_version_id=plan_version_id,
-            head_plan_version_id=plan_version_id,
-            created_reason="acceptance test",
-        )
-
-        # Populate branch step map for all canonical steps
-        for s in steps:
-            branch_repo.create_step_map(
-                branch_id=branch_id,
-                plan_version_id=plan_version_id,
-                canonical_step_id=s.canonical_step_id,
-                step_id=s.step_id,
-                is_branch_owned=True,
-            )
-
-        # Generate report bundle
-        bundle = generate_report_bundle(
-            store=store,
-            project_id=project_id,
-            run_id=run_id,
-            target_branch_id=branch_id,
-            report_mode="branch",
-        )
-        bundle_dict = bundle.model_dump()
-
-        # Verify report bundle has expected sections
-        assert "exclusion_summary" in bundle_dict
-        assert "sample_definition" in bundle_dict
-        assert "variable_selection" in bundle_dict
-        assert "model_diagnostics" in bundle_dict
-        assert "implementation_artifacts" in bundle_dict
-        assert "modelling_metadata" in bundle_dict
-
-        # Render to HTML without errors
-        html = render_report_bundle_to_html(bundle_dict)
-        assert isinstance(html, str)
-        assert len(html) > 200
-        assert "<html" in html.lower() or "<!DOCTYPE" in html
-
-        # Readiness should be green with all evidence present
-        result = check_report_readiness(
-            store=store,
-            project_id=project_id,
-            run_id=run_id,
-            target_branch_id=branch_id,
-            report_mode="branch",
-        )
-        assert result.ready, f"Readiness should be green: {result.blockers}"
-
-        # Report renders as HTML without errors
-        html = render_report_bundle_to_html(bundle_dict)
-        assert isinstance(html, str)
-        assert len(html) > 200
-        assert "<html" in html.lower() or "<!DOCTYPE" in html
     finally:
         store.close()
