@@ -209,9 +209,13 @@ def check_report_readiness(
             continue
 
         branch_id = ref.resolved_branch_id if ref.resolution == "ancestor" else None
-        rs = store.get_latest_successful_run_step(plan_version_id, ref.step_id, branch_id=branch_id)
-        if rs is None and branch_id is not None:
-            rs = store.get_latest_successful_run_step(plan_version_id, ref.step_id, branch_id=None)
+        # Single Locator call — the Locator owns the branch→full→plan
+        # fallback (ADR-0005 §3).  No caller-side retry.
+        from cardre.evidence_locator import EvidenceLocator
+        resolved_evidence = EvidenceLocator(store).resolve(
+            plan_version_id, ref.step_id, branch_id=branch_id,
+        )
+        rs = resolved_evidence.run_step if resolved_evidence is not None else None
         if rs is None:
             blockers.append(ReadinessBlocker(
                 LimitationCode.MISSING_REQUIRED_CANONICAL_STEP,

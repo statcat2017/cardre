@@ -1275,10 +1275,14 @@ class ReportCollector:
     def _resolve_run_step(
         self, ref: _ResolvedStepRef, plan_version_id: str,
     ) -> RunStep | None:
+        from cardre.evidence_locator import EvidenceLocator
         branch_id = ref.resolved_branch_id if ref.resolution == "ancestor" else None
-        rs = self.store.get_latest_successful_run_step(plan_version_id, ref.step_id, branch_id=branch_id)
-        if rs is None and branch_id is not None:
-            rs = self.store.get_latest_successful_run_step(plan_version_id, ref.step_id, branch_id=None)
+        # Single Locator call — the Locator owns the branch→full→plan
+        # fallback (ADR-0005 §3).  No caller-side retry.
+        resolved = EvidenceLocator(self.store).resolve(
+            plan_version_id, ref.step_id, branch_id=branch_id,
+        )
+        rs = resolved.run_step if resolved is not None else None
         # Disclose when inherited/ancestor evidence is used
         if rs is not None and ref.resolution == "ancestor":
             self.limitations.append(Limitation(

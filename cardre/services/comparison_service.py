@@ -57,13 +57,11 @@ def _check_branch_readiness(
     for cs in required_steps:
         actual_id = canon_to_actual.get(cs, cs)
         evidence_branch = branch_id if not is_baseline else None
+        # Single Locator call — the Locator owns the branch→full→plan
+        # fallback (ADR-0005 §3).  No caller-side retry.
         resolved = locator.resolve(
             plan_version_id, actual_id, branch_id=evidence_branch,
         )
-        if resolved is None and evidence_branch is not None:
-            resolved = locator.resolve(
-                plan_version_id, actual_id, branch_id=None,
-            )
         if resolved is None:
             # Use staleness service to determine if stale or not_run
             explanation = staleness_svc.explain_step(
@@ -134,6 +132,8 @@ def _build_comparison_content(
     step_map_b = branches_repo.get_step_map(branch_id_baseline, plan_version_id_baseline)
     step_map_c = branches_repo.get_step_map(branch_id_challenger, plan_version_id_challenger)
     reader = ArtifactEvidenceReader(store)
+    from cardre.evidence_locator import EvidenceLocator
+    locator = EvidenceLocator(store)
 
     def _find_typed_artifact(
         step_map: list[dict[str, Any]],
@@ -145,9 +145,12 @@ def _build_comparison_content(
         """Find the typed evidence for a canonical step."""
         for row in step_map:
             if row["canonical_step_id"] == cs:
-                rs = store.get_latest_successful_run_step(pv_id, row["step_id"], branch_id=evidence_branch_id)
-                if rs is None and evidence_branch_id is not None:
-                    rs = store.get_latest_successful_run_step(pv_id, row["step_id"], branch_id=None)
+                # Single Locator call — the Locator owns the branch→full→plan
+                # fallback (ADR-0005 §3).  No caller-side retry.
+                resolved = locator.resolve(
+                    pv_id, row["step_id"], branch_id=evidence_branch_id,
+                )
+                rs = resolved.run_step if resolved is not None else None
                 if rs:
                     rows = store.execute(
                         "SELECT artifact_id FROM artifact_lineage "

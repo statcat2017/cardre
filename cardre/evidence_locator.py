@@ -54,15 +54,16 @@ class EvidenceLocator:
         Fallback order:
 
         1. ``evidence_edges`` for (``plan_version_id``, ``step_id``) → the
-           consuming step's run-step.  Branch scoping happens at the run
-           level: a branch has its own run with its own run_steps, and
-           ``evidence_edges`` point to those run_steps.  ``evidence_edges``
-           has no ``branch_id`` column, so a single query suffices.
-        2. If no edge exists, fall back to the latest plan-level run for
-           this plan (``branch_id IS NULL``) and scan its run_steps.
-        3. If ``plan_id`` is provided but no plan-level run exists for this
-           ``plan_version_id``, look up the latest successful run for the
-           plan and scan its run_steps.
+           consuming step's run-step, filtered by the run's ``branch_id``.
+           If ``branch_id`` is provided, only edges from that branch's runs
+           are considered; if no branch-scoped edge exists, the fallback
+           continues to step 2.
+        2. Full-plan fallback: the latest successful run for this
+           ``plan_version_id`` with ``branch_id IS NULL`` and scan its
+           run_steps.
+        3. Across-plan fallback: if ``plan_id`` is provided (or resolvable),
+           the latest successful run for the entire plan and scan its
+           run_steps.
 
         The optional ``fingerprint_match`` ``StepSpec`` filters candidates
         by ``params_hash``, ``node_type``, ``node_version``.  Non-matching
@@ -74,28 +75,48 @@ class EvidenceLocator:
         evidence_repo = EvidenceRepository(self._store)
         rs_repo = RunStepRepository(self._store)
 
-        # Step 1: edge-walking.  Query edges ONCE — the evidence_edges
-        # table has no branch_id column, so the "branch then full-plan"
-        # fallback is a single query.
-        edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
+        # Step 1: branch-scoped edge-walking.  If branch_id is provided,
+        # filter edges by the run's branch_id; otherwise look at any edge.
+        if branch_id is not None:
+            edges = evidence_repo.get_edges_for_plan_step_branch(
+                plan_version_id, step_id, branch_id,
+            )
+        else:
+            edges = evidence_repo.get_edges_for_plan_step(
+                plan_version_id, step_id,
+            )
         rs: RunStep | None = None
         if edges:
             rs = rs_repo.get(edges[-1].run_step_id)
 
         if rs is not None and self._matches_fingerprint(rs, fingerprint_match):
-            return self._build_resolved_evidence(rs)
+            return self._build_resolved_evidence(rs, "branch" if branch_id is not None else "full_plan")
 
-        # Step 2: plan-level run fallback.  Find the latest successful run
-        # for this plan_version (branch_id=None) and scan its run_steps.
+        # Step 2: full-plan fallback.  If branch_id was provided, retry
+        # edge-walking without the branch filter (full-plan scope).
+        if branch_id is not None:
+            edges = evidence_repo.get_edges_for_plan_step_branch(
+                plan_version_id, step_id, None,
+            )
+            full_plan_rs: RunStep | None = None
+            if edges:
+                full_plan_rs = rs_repo.get(edges[-1].run_step_id)
+            if full_plan_rs is not None and self._matches_fingerprint(
+                full_plan_rs, fingerprint_match,
+            ):
+                return self._build_resolved_evidence(full_plan_rs, "full_plan")
+
+        # Step 3: plan-level run scan.  Find the latest successful run for
+        # this plan_version (branch_id=None) and scan its run_steps.
         plan_level_rs = self._find_run_step_from_plan_version(
             rs_repo, plan_version_id, step_id,
         )
         if plan_level_rs is not None and self._matches_fingerprint(
             plan_level_rs, fingerprint_match,
         ):
-            return self._build_resolved_evidence(plan_level_rs)
+            return self._build_resolved_evidence(plan_level_rs, "latest_plan_run")
 
-        # Step 3: across-plan fallback.  If plan_id is provided (or can be
+        # Step 4: across-plan fallback.  If plan_id is provided (or can be
         # resolved from the plan_version), find the latest successful run
         # for the entire plan and scan its run_steps.
         resolved_plan_id = plan_id
@@ -109,7 +130,7 @@ class EvidenceLocator:
             if across_plan_rs is not None and self._matches_fingerprint(
                 across_plan_rs, fingerprint_match,
             ):
-                return self._build_resolved_evidence(across_plan_rs)
+                return self._build_resolved_evidence(across_plan_rs, "across_plan")
 
         return None
 
@@ -128,10 +149,12 @@ class EvidenceLocator:
         rs_repo = RunStepRepository(self._store)
         for rs in rs_repo.get_for_run(run_id):
             if rs.step_id == step_id and rs.status == RunStepStatus.SUCCEEDED:
-                return self._build_resolved_evidence(rs)
+                return self._build_resolved_evidence(rs, "run")
         return None
 
-    def _build_resolved_evidence(self, rs: RunStep) -> ResolvedEvidence:
+    def _build_resolved_evidence(
+        self, rs: RunStep, source_label: str = "",
+    ) -> ResolvedEvidence:
         """Fetch evidence edges/artifacts for a RunStep and bundle as ResolvedEvidence."""
         from cardre.store.evidence_repo import EvidenceRepository
         evidence_repo = EvidenceRepository(self._store)
@@ -142,6 +165,7 @@ class EvidenceLocator:
             run_step=rs,
             edges=edges,
             artifacts=artifacts,
+            source_label=source_label,
         )
 
     def _find_run_step_from_plan_version(

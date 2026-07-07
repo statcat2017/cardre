@@ -91,6 +91,37 @@ class EvidenceRepository:
         ).fetchall()
         return [self._row_to_edge(r) for r in rows]
 
+    def get_edges_for_plan_step_branch(
+        self,
+        plan_version_id: str,
+        step_id: str,
+        branch_id: str | None,
+    ) -> list[EvidenceEdge]:
+        """Edges for a plan step, filtered by the run's branch_id.
+
+        ``branch_id=None`` matches runs where ``branch_id IS NULL`` (the
+        full-plan / baseline runs).
+        """
+        if branch_id is None:
+            rows = self._store.execute(
+                "SELECT ee.* FROM evidence_edges ee "
+                "JOIN runs r ON ee.run_id = r.run_id "
+                "WHERE ee.plan_version_id = ? AND ee.step_id = ? "
+                "AND r.branch_id IS NULL "
+                "ORDER BY ee.created_at",
+                (plan_version_id, step_id),
+            ).fetchall()
+        else:
+            rows = self._store.execute(
+                "SELECT ee.* FROM evidence_edges ee "
+                "JOIN runs r ON ee.run_id = r.run_id "
+                "WHERE ee.plan_version_id = ? AND ee.step_id = ? "
+                "AND r.branch_id = ? "
+                "ORDER BY ee.created_at",
+                (plan_version_id, step_id, branch_id),
+            ).fetchall()
+        return [self._row_to_edge(r) for r in rows]
+
     def get_edge_for_child_parent(
         self,
         plan_version_id: str,

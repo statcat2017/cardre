@@ -303,7 +303,54 @@ class TestEvidenceLocatorFallback:
         assert resolved is None
 
 
-class TestEvidenceLocatorResolveForRun:
+class TestEvidenceLocatorBranchScoping:
+    """The Locator filters edges by the run's branch_id when provided."""
+
+    def test_branch_scoped_lookup_respects_branch_id(self, tmp_path):
+        """When branch_id is provided, the Locator only returns edges from
+        that branch's runs, not from other branches."""
+        store = _make_store(tmp_path)
+        _, plan_id, pv_id, step_id, _, _ = _seed_with_run_evidence(store)
+
+        # The seeded run has branch_id=NULL (no branch column set).
+        # Asking for a non-existent branch should return None from the
+        # branch-scoped edge path, then fall back to full-plan.
+        from cardre.evidence_locator import EvidenceLocator
+        locator = EvidenceLocator(store)
+        resolved = locator.resolve(pv_id, step_id, branch_id="nonexistent-branch")
+        # Should still find evidence via the full-plan fallback.
+        assert resolved is not None
+        assert resolved.run_step.step_id == step_id
+        assert resolved.source_label == "full_plan"
+
+    def test_source_label_branch_when_found_via_branch(self, tmp_path):
+        """When evidence is found via branch-scoped edges, the source_label
+        is 'branch'."""
+        store = _make_store(tmp_path)
+        _, _, pv_id, step_id, run_id, rs_id = _seed_with_run_evidence(store)
+
+        # Add a branch_id to the existing run so the branch-scoped path finds it.
+        store.execute(
+            "UPDATE runs SET branch_id = ? WHERE run_id = ?",
+            ("br-1", run_id),
+        )
+
+        from cardre.evidence_locator import EvidenceLocator
+        locator = EvidenceLocator(store)
+        resolved = locator.resolve(pv_id, step_id, branch_id="br-1")
+        assert resolved is not None
+        assert resolved.source_label == "branch"
+
+    def test_source_label_full_plan_when_branch_id_none(self, tmp_path):
+        """When branch_id is None, the source_label is 'full_plan'."""
+        store = _make_store(tmp_path)
+        _, _, pv_id, step_id, _, _ = _seed_with_run_evidence(store)
+
+        from cardre.evidence_locator import EvidenceLocator
+        locator = EvidenceLocator(store)
+        resolved = locator.resolve(pv_id, step_id, branch_id=None)
+        assert resolved is not None
+        assert resolved.source_label == "full_plan"
     """The run_only policy — scoped to a single run, no fallback."""
 
     def test_resolve_for_run_finds_step(self, tmp_path):

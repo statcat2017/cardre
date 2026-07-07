@@ -133,7 +133,7 @@ class EvidenceResolver:
         resolved = locator.resolve_for_run(run_id, step_id)
         if resolved is None:
             return None, "missing", diagnostics
-        return resolved, "run", diagnostics
+        return resolved, resolved.source_label or "run", diagnostics
 
     def _resolve_branch_then_full_then_plan(
         self, locator: EvidenceLocator, plan_version_id: str, step_id: str,
@@ -147,12 +147,7 @@ class EvidenceResolver:
         )
         if resolved is None:
             return None, "missing", diagnostics
-        # Source label: "branch" if a branch_id was provided, else "full_plan".
-        # The Locator's edge-walking path finds the same run-step regardless
-        # of branch_id (evidence_edges has no branch_id column); the label
-        # reflects the caller's intent.
-        label = "branch" if branch_id is not None else "full_plan"
-        return resolved, label, diagnostics
+        return resolved, resolved.source_label or "missing", diagnostics
 
     def _resolve_source_branch_then_full_then_plan(
         self, locator: EvidenceLocator, plan_version_id: str, step_id: str,
@@ -170,7 +165,7 @@ class EvidenceResolver:
             fingerprint_match=require_fingerprint_match,
         )
         if resolved is not None:
-            return resolved, "across_plan", diagnostics
+            return resolved, resolved.source_label or "across_plan", diagnostics
 
         # Fell back to baseline (branch_id=None).
         resolved = locator.resolve(
@@ -195,7 +190,7 @@ class EvidenceResolver:
                         "fallback_branch_id": None,
                     },
                 ))
-            return resolved, "across_plan", diagnostics
+            return resolved, resolved.source_label or "across_plan", diagnostics
 
         diagnostics.append(Diagnostic(
             code="REUSE_EVIDENCE_NOT_FOUND",
@@ -227,7 +222,13 @@ class EvidenceResolver:
         )
         if resolved is None:
             return None, "missing", diagnostics
-        return resolved, "across_plan", diagnostics
+        # The across_plan policy labels branch-scoped and full-plan hits as
+        # "across_plan" (the original behaviour).  Only the plan-level run
+        # scan keeps its distinct label.
+        label = resolved.source_label
+        if label in ("branch", "full_plan", ""):
+            label = "across_plan"
+        return resolved, label, diagnostics
 
     def _plan_id_for_version(self, plan_version_id: str) -> str | None:
         from cardre.store.plan_repo import PlanRepository

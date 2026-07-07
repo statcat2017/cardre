@@ -49,6 +49,7 @@ class ResolvedEvidence:
     run_step: RunStep
     edges: list[EvidenceEdge]
     artifacts: list[EvidenceArtifact]
+    source_label: str = ""  # "branch", "full_plan", "latest_plan_run", "across_plan", "run"
 
     def input_artifact_ids(self) -> list[str]:
         return [ea.artifact_id for ea in self.artifacts]
