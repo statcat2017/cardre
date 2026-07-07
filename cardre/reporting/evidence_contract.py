@@ -19,6 +19,7 @@ REQUIRED_STEPS_BRANCH: list[str] = [
     "model-fit",
     "score-scaling",
     "validation-metrics",
+    "cutoff-analysis",
 ]
 
 REQUIRED_STEPS_CHAMPION: list[str] = [
@@ -26,6 +27,7 @@ REQUIRED_STEPS_CHAMPION: list[str] = [
     "model-fit",
     "score-scaling",
     "validation-metrics",
+    "cutoff-analysis",
 ]
 
 REQUIRED_STEPS_COLLECTOR: list[str] = [
@@ -40,6 +42,16 @@ REQUIRED_STEPS_COLLECTOR: list[str] = [
     "separation-diagnostics",
     "vif-diagnostics",
     "calibration-diagnostics",
+    "apply-exclusions",
+    "sample-definition",
+    "explicit-missing-outlier-treatment",
+    "initial-woe-iv",
+    "freeze-scorecard-bundle",
+    "apply-woe",
+    "apply-model",
+    "scorecard-table-export",
+    "scoring-export-python",
+    "scoring-export-sql",
 ]
 
 REQUIRED_STEPS_COMPARISON: list[str] = [
