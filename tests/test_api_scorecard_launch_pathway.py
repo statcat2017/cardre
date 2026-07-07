@@ -294,8 +294,9 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
             row for row in artifact_rows
             if row["step_id"] == "scorecard-table-export"
             and f'"schema_version": "{SCHEMA_SCORE_TABLE}"' in row["metadata_json"]
+            and row["path"].endswith(".json")
         ]
-        assert scorecard_table_artifacts, "scorecard-table-export did not produce scorecard_table.v1"
+        assert scorecard_table_artifacts, "scorecard-table-export did not produce scorecard_table.v1 JSON"
         scorecard_table_payload = json.loads(
             (store.root / scorecard_table_artifacts[0]["path"]).read_text(encoding="utf-8")
         )
@@ -303,6 +304,14 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         assert len(scorecard_table_payload["rows"]) > 0
         for row in scorecard_table_payload["rows"]:
             assert {"variable", "bin_id", "label", "woe", "coefficient", "points"} <= set(row)
+
+        # Verify CSV artifact also exists
+        csv_artifacts = [
+            row for row in artifact_rows
+            if row["step_id"] == "scorecard-table-export"
+            and row["path"].endswith(".csv")
+        ]
+        assert csv_artifacts, "scorecard-table-export did not produce CSV artifact"
 
         python_export_artifacts = [
             row for row in artifact_rows
