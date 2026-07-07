@@ -81,11 +81,47 @@ class ScorecardTableExportNode(NodeType):
         )
 
 
+def _validate_bundle_components(
+    bundle_art: Any,
+    model_art: Any,
+    scorecard_evidence: Any,
+    bin_def_evidence: Any,
+    woe_table_evidence: Any,
+) -> None:
+    bundle_meta = bundle_art.metadata
+    expected_model = bundle_meta.get("model_artifact_id")
+    expected_scorecard = bundle_meta.get("scorecard_artifact_id")
+    expected_bin_def = bundle_meta.get("bin_definition_artifact_id")
+    expected_woe_table = bundle_meta.get("woe_table_artifact_id")
+
+    if expected_model and model_art and expected_model != model_art.artifact_id:
+        raise ValueError(
+            f"Frozen bundle model_artifact_id ({expected_model}) "
+            f"does not match input model artifact ({model_art.artifact_id})"
+        )
+    if expected_scorecard and scorecard_evidence and expected_scorecard != scorecard_evidence.source_artifact_id:
+        raise ValueError(
+            f"Frozen bundle scorecard_artifact_id ({expected_scorecard}) "
+            f"does not match input scorecard artifact ({scorecard_evidence.source_artifact_id})"
+        )
+    if expected_bin_def and bin_def_evidence and expected_bin_def != bin_def_evidence.source_artifact_id:
+        raise ValueError(
+            f"Frozen bundle bin_definition_artifact_id ({expected_bin_def}) "
+            f"does not match input bin definition artifact ({bin_def_evidence.source_artifact_id})"
+        )
+    if expected_woe_table and woe_table_evidence and expected_woe_table != woe_table_evidence.source_artifact_id:
+        raise ValueError(
+            f"Frozen bundle woe_table_artifact_id ({expected_woe_table}) "
+            f"does not match input WOE table artifact ({woe_table_evidence.source_artifact_id})"
+        )
+
+
 def _build_python_scorer_source(
     bin_def: Any,
     woe_table: Any,
     scorecard_raw: dict[str, Any],
     model_raw: dict[str, Any],
+    feature_contract: dict[str, Any] | None = None,
 ) -> str:
     intercept = float(model_raw.get("intercept", 0))
     coefficients = model_raw.get("coefficients", {})
@@ -96,6 +132,10 @@ def _build_python_scorer_source(
     base_score = scorecard_raw.get("base_score", 600)
     base_odds = scorecard_raw.get("base_odds", 50.0)
     pdo = scorecard_raw.get("points_to_double_odds", 20)
+
+    missing_policy = "error"
+    if feature_contract:
+        missing_policy = feature_contract.get("missing_policy", "error")
 
     woe_map = woe_table.mapping
     var_defs = bin_def.variables
@@ -129,11 +169,33 @@ def _build_python_scorer_source(
         if not var_woe_map:
             continue
 
+        has_missing_bin = any(be.get("is_missing_bin", False) for be in bins)
+
         woe_var_lines.append(f"    # {var} ({kind})")
         woe_var_lines.append(f"    _val = record.get({var!r})")
-        woe_var_lines.append("    if _val is None:")
-        woe_var_lines.append(f"        _woe_{var} = 0.0")
-        woe_var_lines.append("    else:")
+
+        if has_missing_bin:
+            missing_bin_woe = None
+            for be in bins:
+                if be.get("is_missing_bin", False):
+                    missing_bin_woe = var_woe_map.get(be["bin_id"])
+                    break
+            if missing_bin_woe is not None:
+                woe_var_lines.append("    if _val is None:")
+                woe_var_lines.append(f"        _woe_{var} = {missing_bin_woe!r}")
+                woe_var_lines.append("    else:")
+            else:
+                woe_var_lines.append("    if _val is None:")
+                woe_var_lines.append(f"        _woe_{var} = 0.0")
+                woe_var_lines.append("    else:")
+        elif missing_policy == "error":
+            woe_var_lines.append("    if _val is None:")
+            woe_var_lines.append(f'        raise ValueError("score_cardre: missing value for {var}")')
+            woe_var_lines.append("    else:")
+        else:
+            woe_var_lines.append("    if _val is None:")
+            woe_var_lines.append(f"        _woe_{var} = 0.0")
+            woe_var_lines.append("    else:")
 
         conditions: list[str] = []
         for be in bins:
@@ -142,8 +204,8 @@ def _build_python_scorer_source(
             if wv is None:
                 continue
             if be.get("is_missing_bin", False):
-                conditions.append(f"        if _val is None:\n            _woe_{var} = {wv!r}")
-            elif kind == "numeric":
+                continue
+            if kind == "numeric":
                 lower = be.get("lower")
                 upper = be.get("upper")
                 lower_inc = be.get("lower_inclusive", False)
@@ -162,8 +224,7 @@ def _build_python_scorer_source(
                 if be.get("is_other_bin", False):
                     conditions.append(f"        else:\n            _woe_{var} = {wv!r}")
                 elif cats:
-                    cats_repr = ", ".join(repr(c) for c in cats)
-                    conditions.append(f"        if _val in ({cats_repr}):\n            _woe_{var} = {wv!r}")
+                    conditions.append(f"        if _val in {repr(tuple(cats))}:\n            _woe_{var} = {wv!r}")
 
         if conditions:
             woe_var_lines.append(conditions[0])
@@ -240,7 +301,17 @@ class PythonScoringExportNode(NodeType):
         scorecard = reader.find(scorecard_candidates, EvidenceKind.SCORE_SCALING)
         scorecard_raw = getattr(scorecard, "_raw", {})
 
-        source = _build_python_scorer_source(bin_def, woe_table, scorecard_raw, model_raw)
+        _validate_bundle_components(
+            bundle_art, model_art, scorecard, bin_def, woe_table,
+        )
+
+        bundle_raw = reader.read(bundle_art.artifact_id, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
+        bundle_payload = getattr(bundle_raw, "_raw", {})
+        feature_contract = bundle_payload.get("feature_contract", {})
+
+        source = _build_python_scorer_source(
+            bin_def, woe_table, scorecard_raw, model_raw, feature_contract,
+        )
 
         payload: dict[str, Any] = {
             "schema_version": SCHEMA_SCORING_EXPORT_PYTHON,
@@ -277,6 +348,7 @@ def _build_sql_scorer_source(
     woe_table: Any,
     scorecard_raw: dict[str, Any],
     model_raw: dict[str, Any],
+    feature_contract: dict[str, Any] | None = None,
 ) -> str:
     intercept = float(model_raw.get("intercept", 0))
     coefficients = model_raw.get("coefficients", {})
@@ -284,6 +356,10 @@ def _build_sql_scorer_source(
     factor_val = float(scorecard_raw.get("factor", 1))
     higher_is_lower = bool(scorecard_raw.get("higher_score_is_lower_risk", True))
     direction = -1.0 if higher_is_lower else 1.0
+
+    missing_policy = "error"
+    if feature_contract:
+        missing_policy = feature_contract.get("missing_policy", "error")
 
     woe_map = woe_table.mapping
     var_defs = bin_def.variables
@@ -308,6 +384,9 @@ def _build_sql_scorer_source(
 
         coef = float(coefficients[woe_key])
         log_odds_parts.append(f"{coef!r} * woe_{var}")
+
+        has_missing_bin = any(be.get("is_missing_bin", False) for be in bins)
+        has_other_bin = any(be.get("is_other_bin", False) for be in bins)
 
         case_lines: list[str] = []
         case_lines.append("    CASE")
@@ -337,9 +416,15 @@ def _build_sql_scorer_source(
                 if be.get("is_other_bin", False):
                     case_lines.append(f"        ELSE {wv!r}")
                 elif cats:
-                    cats_repr = ", ".join(repr(c) for c in cats)
-                    case_lines.append(f"        WHEN {var} IN ({cats_repr}) THEN {wv!r}")
-        case_lines.append("        ELSE 0.0")
+                    cats_sql = ", ".join(repr(c) for c in cats)
+                    case_lines.append(f"        WHEN {var} IN ({cats_sql}) THEN {wv!r}")
+        if not has_other_bin:
+            if has_missing_bin:
+                case_lines.append("        ELSE 0.0")
+            elif missing_policy == "error":
+                case_lines.append("        ELSE NULL")
+            else:
+                case_lines.append("        ELSE 0.0")
         case_lines.append(f"    END AS woe_{var}")
         woe_case_parts.append("\n".join(case_lines))
 
@@ -410,7 +495,17 @@ class SqlScoringExportNode(NodeType):
         scorecard = reader.find(scorecard_candidates, EvidenceKind.SCORE_SCALING)
         scorecard_raw = getattr(scorecard, "_raw", {})
 
-        source = _build_sql_scorer_source(bin_def, woe_table, scorecard_raw, model_raw)
+        _validate_bundle_components(
+            bundle_art, model_art, scorecard, bin_def, woe_table,
+        )
+
+        bundle_raw = reader.read(bundle_art.artifact_id, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
+        bundle_payload = getattr(bundle_raw, "_raw", {})
+        feature_contract = bundle_payload.get("feature_contract", {})
+
+        source = _build_sql_scorer_source(
+            bin_def, woe_table, scorecard_raw, model_raw, feature_contract,
+        )
 
         payload: dict[str, Any] = {
             "schema_version": SCHEMA_SCORING_EXPORT_SQL,

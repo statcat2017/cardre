@@ -160,3 +160,233 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
 
     finally:
         store.close()
+
+
+def test_python_scorer_missing_value_handling():
+    """Verify the generated Python scorer handles missing bins correctly.
+
+    Builds a synthetic bin definition with a missing bin, generates the
+    scorer source, and checks that a None input maps to the missing-bin WOE
+    rather than 0.0.
+    """
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export import _build_python_scorer_source
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="age",
+                dtype="int64",
+                kind="numeric",
+                bins=[
+                    {"bin_id": "b1", "label": "missing", "is_missing_bin": True},
+                    {"bin_id": "b2", "label": "18-30", "lower": 18, "upper": 30, "lower_inclusive": True, "upper_inclusive": True},
+                    {"bin_id": "b3", "label": "31+", "lower": 31, "upper_inclusive": True, "lower_inclusive": True},
+                ],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={"age": {"b1": -0.5, "b2": 0.3, "b3": 0.7}},
+        columns=["age", "bin_id", "woe"],
+    )
+    scorecard_raw = {
+        "base_score": 600, "base_odds": 50.0, "points_to_double_odds": 20,
+        "factor": 14.427, "offset": 543.6, "higher_score_is_lower_risk": True,
+        "base_points": 543.6, "attributes": [],
+    }
+    model_raw = {
+        "intercept": -0.5, "coefficients": {"age_woe": 0.8},
+        "model_family": "logistic_regression",
+    }
+    feature_contract = {"missing_policy": "separate_bin", "unknown_category_policy": "error"}
+
+    source = _build_python_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    local_ns: dict[str, Any] = {}
+    exec(source, local_ns)
+    scorer = local_ns["score_cardre"]
+
+    # Missing value should use missing-bin WOE (-0.5), not 0.0
+    score_missing = scorer({"age": None})
+    score_known = scorer({"age": 25})
+    assert score_missing != score_known, "Missing and known values should produce different scores"
+    # Verify the missing-bin WOE is actually used by computing expected
+    intercept = -0.5
+    coef = 0.8
+    offset = 543.6
+    factor = 14.427
+    direction = -1.0
+    expected_missing = offset + direction * factor * (intercept + coef * (-0.5))
+    assert abs(score_missing - expected_missing) <= 1e-9, (
+        f"Missing value score {score_missing} != expected {expected_missing}"
+    )
+
+
+def test_python_scorer_single_category_bin():
+    """Verify single-category categorical bins generate correct Python.
+
+    A single-category bin must produce a proper tuple literal, not a
+    parenthesized string that triggers substring matching.
+    """
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export import _build_python_scorer_source
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="product_type",
+                dtype="str",
+                kind="categorical",
+                bins=[
+                    {"bin_id": "b1", "label": "loan", "categories": ["loan"]},
+                    {"bin_id": "b2", "label": "other", "is_other_bin": True},
+                ],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={"product_type": {"b1": 0.5, "b2": -0.3}},
+        columns=["product_type", "bin_id", "woe"],
+    )
+    scorecard_raw = {
+        "base_score": 600, "base_odds": 50.0, "points_to_double_odds": 20,
+        "factor": 14.427, "offset": 543.6, "higher_score_is_lower_risk": True,
+        "base_points": 543.6, "attributes": [],
+    }
+    model_raw = {
+        "intercept": 0.0, "coefficients": {"product_type_woe": 1.0},
+        "model_family": "logistic_regression",
+    }
+    feature_contract = {"missing_policy": "error", "unknown_category_policy": "error"}
+
+    source = _build_python_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    local_ns: dict[str, Any] = {}
+    exec(source, local_ns)
+    scorer = local_ns["score_cardre"]
+
+    # "loan" should match the single-category bin
+    score_loan = scorer({"product_type": "loan"})
+    # "loa" should NOT match (substring trap)
+    score_loa = scorer({"product_type": "loa"})
+    assert score_loan != score_loa, (
+        "Single-category bin must not match substrings: 'loa' should not match 'loan'"
+    )
+
+    # "other_val" should fall into the other bin
+    score_other = scorer({"product_type": "other_val"})
+    assert score_other != score_loan, "Other bin should produce a different score"
+
+
+def test_python_scorer_missing_value_no_missing_bin():
+    """When no missing bin exists and policy is 'error', the scorer must raise."""
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export import _build_python_scorer_source
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="age",
+                dtype="int64",
+                kind="numeric",
+                bins=[
+                    {"bin_id": "b1", "label": "18-30", "lower": 18, "upper": 30, "lower_inclusive": True, "upper_inclusive": True},
+                ],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={"age": {"b1": 0.3}},
+        columns=["age", "bin_id", "woe"],
+    )
+    scorecard_raw = {
+        "base_score": 600, "base_odds": 50.0, "points_to_double_odds": 20,
+        "factor": 14.427, "offset": 543.6, "higher_score_is_lower_risk": True,
+        "base_points": 543.6, "attributes": [],
+    }
+    model_raw = {
+        "intercept": 0.0, "coefficients": {"age_woe": 1.0},
+        "model_family": "logistic_regression",
+    }
+    feature_contract = {"missing_policy": "error", "unknown_category_policy": "error"}
+
+    source = _build_python_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    local_ns: dict[str, Any] = {}
+    exec(source, local_ns)
+    scorer = local_ns["score_cardre"]
+
+    import pytest
+    with pytest.raises(ValueError, match="missing value for age"):
+        scorer({"age": None})
+
+
+def test_sql_scorer_single_category_bin():
+    """Verify single-category categorical bins generate correct SQL.
+
+    A single-category bin must produce a proper tuple literal like
+    IN ('loan') not IN ('loan') — actually IN ('loan') is correct in SQL
+    for a single value. The test verifies the generated SQL is valid
+    and produces correct results.
+    """
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export import _build_sql_scorer_source
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="product_type",
+                dtype="str",
+                kind="categorical",
+                bins=[
+                    {"bin_id": "b1", "label": "loan", "categories": ["loan"]},
+                    {"bin_id": "b2", "label": "other", "is_other_bin": True},
+                ],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={"product_type": {"b1": 0.5, "b2": -0.3}},
+        columns=["product_type", "bin_id", "woe"],
+    )
+    scorecard_raw = {
+        "base_score": 600, "base_odds": 50.0, "points_to_double_odds": 20,
+        "factor": 14.427, "offset": 543.6, "higher_score_is_lower_risk": True,
+        "base_points": 543.6, "attributes": [],
+    }
+    model_raw = {
+        "intercept": 0.0, "coefficients": {"product_type_woe": 1.0},
+        "model_family": "logistic_regression",
+    }
+    feature_contract = {"missing_policy": "error", "unknown_category_policy": "error"}
+
+    source = _build_sql_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE input_data (product_type TEXT)")
+        conn.execute("INSERT INTO input_data VALUES ('loan')")
+        conn.execute("INSERT INTO input_data VALUES ('loa')")
+        conn.execute("INSERT INTO input_data VALUES ('other_val')")
+        conn.commit()
+        full_sql = f"SELECT * FROM (\n{source}\n)"
+        cursor = conn.execute(full_sql)
+        rows = cursor.fetchall()
+        col_names = [desc[0] for desc in cursor.description]
+        score_idx = col_names.index("score")
+        scores = [row[score_idx] for row in rows]
+        # 'loan' and 'loa' should have different scores (no substring matching in SQL)
+        assert scores[0] != scores[1], (
+            f"Single-category SQL bin must not match substrings: "
+            f"loan={scores[0]}, loa={scores[1]}"
+        )
+        # 'other_val' should fall into the other bin
+        assert scores[2] != scores[0], "Other bin should produce a different score"
+    finally:
+        conn.close()
