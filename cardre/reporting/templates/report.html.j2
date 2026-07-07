@@ -110,6 +110,61 @@ code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.85em;backgroun
 </section>
 {% endif %}
 
+{% if modelling_metadata %}
+<section class="section">
+<h2>Project Scope</h2>
+<table>
+<thead><tr><th>Property</th><th>Value</th></tr></thead>
+<tbody>
+{% if modelling_metadata.purpose %}<tr><td>Purpose</td><td>{{ modelling_metadata.purpose }}</td></tr>{% endif %}
+{% if modelling_metadata.product %}<tr><td>Product</td><td>{{ modelling_metadata.product }}</td></tr>{% endif %}
+{% if modelling_metadata.segment %}<tr><td>Segment</td><td>{{ modelling_metadata.segment }}</td></tr>{% endif %}
+{% if modelling_metadata.observation_window %}<tr><td>Observation Window</td><td>{{ modelling_metadata.observation_window }}</td></tr>{% endif %}
+{% if modelling_metadata.performance_window %}<tr><td>Performance Window</td><td>{{ modelling_metadata.performance_window }}</td></tr>{% endif %}
+{% if modelling_metadata.reject_inference_position %}<tr><td>Reject Inference</td><td>{{ modelling_metadata.reject_inference_position }}</td></tr>{% endif %}
+</tbody>
+</table>
+</section>
+{% endif %}
+
+{% if sample_definition and sample_definition.sample_method %}
+<section class="section">
+<h2>Sample Construction</h2>
+<table>
+<thead><tr><th>Property</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>Method</td><td>{{ sample_definition.sample_method }}</td></tr>
+<tr><td>Domain</td><td>{{ sample_definition.sample_domain }}</td></tr>
+{% if sample_definition.sample_description %}<tr><td>Description</td><td>{{ sample_definition.sample_description }}</td></tr>{% endif %}
+</tbody>
+</table>
+</section>
+{% endif %}
+
+{% if exclusion_summary and exclusion_summary.rows_before > 0 %}
+<section class="section">
+<h2>Exclusions</h2>
+<table>
+<thead><tr><th>Property</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>Rows Before</td><td>{{ exclusion_summary.rows_before }}</td></tr>
+<tr><td>Rows After</td><td>{{ exclusion_summary.rows_after }}</td></tr>
+</tbody>
+</table>
+{% if exclusion_summary.rules %}
+<h3>Exclusion Rules</h3>
+<table>
+<thead><tr><th>Rule</th><th>Reason</th><th>Rows Removed</th></tr></thead>
+<tbody>
+{% for r in exclusion_summary.rules %}
+<tr><td>{{ r.rule_id }}</td><td>{{ r.reason }}</td><td>{{ r.rows_removed }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+</section>
+{% endif %}
+
 {% if branches.branches %}
 <section class="section">
 <h2>Branches and Champion Selection</h2>
@@ -149,6 +204,28 @@ code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.85em;backgroun
 {% if variables %}
 <section class="section">
 <h2>Variable Information and WOE / IV Evidence</h2>
+
+{% set initial_vars = variables | selectattr('role', 'equalto', 'initial') | list %}
+{% set final_vars = variables | selectattr('role', 'ne', 'initial') | list %}
+
+{% if initial_vars %}
+<h3>Initial WOE / IV (Pre-Selection)</h3>
+<table>
+<thead><tr>
+<th>Variable</th><th>IV</th>
+</tr></thead>
+<tbody>
+{% for v in initial_vars %}
+<tr>
+<td><code>{{ v.variable_name }}</code></td>
+<td>{{ v.iv | fmt(".4f") }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+
+<h3>Final WOE / IV (Post-Manual Binning)</h3>
 <table>
 <thead><tr>
 <th>Variable</th><th>IV</th><th>Bins</th><th>Monotonicity</th><th>Smoothing</th><th>Zero Cells</th>
@@ -255,6 +332,89 @@ code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.85em;backgroun
 </section>
 {% endif %}
 
+{% if model_diagnostics %}
+<section class="section">
+<h2>Model Diagnostics</h2>
+
+{% if model_diagnostics.coefficient_sign_check %}
+<h3>Coefficient Sign Check</h3>
+<table>
+<thead><tr>
+<th>Variable</th><th>Coefficient Sign</th><th>WOE Direction</th><th>Consistent</th><th>Reason</th>
+</tr></thead>
+<tbody>
+{% for e in model_diagnostics.coefficient_sign_check %}
+<tr>
+<td><code>{{ e.variable }}</code></td>
+<td>{{ e.coefficient_sign }}</td>
+<td>{{ e.woe_direction }}</td>
+<td>{{ 'Yes' if e.consistent else 'No' }}</td>
+<td>{{ e.reason }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+
+{% if model_diagnostics.separation_diagnostics %}
+<h3>Separation Diagnostics</h3>
+<table>
+<thead><tr>
+<th>Variable</th><th>Coefficient</th><th>Std Error</th><th>Separated</th>
+</tr></thead>
+<tbody>
+{% for e in model_diagnostics.separation_diagnostics %}
+<tr>
+<td><code>{{ e.variable }}</code></td>
+<td>{{ e.coefficient | fmt(".4f") }}</td>
+<td>{{ e.standard_error | fmt(".4f") if e.standard_error is not none else 'N/A' }}</td>
+<td>{{ 'Yes' if e.separated else 'No' }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+
+{% if model_diagnostics.vif_diagnostics %}
+<h3>Multicollinearity (VIF)</h3>
+<table>
+<thead><tr>
+<th>Variable</th><th>VIF</th><th>Flagged</th>
+</tr></thead>
+<tbody>
+{% for e in model_diagnostics.vif_diagnostics %}
+<tr>
+<td><code>{{ e.variable }}</code></td>
+<td>{{ e.vif | fmt(".4f") }}</td>
+<td>{{ 'Yes' if e.flagged else 'No' }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+
+{% if model_diagnostics.calibration_diagnostics %}
+<h3>Calibration Diagnostics</h3>
+<table>
+<thead><tr>
+<th>Bin</th><th>Observed Rate</th><th>Predicted Rate</th><th>Count</th>
+</tr></thead>
+<tbody>
+{% for e in model_diagnostics.calibration_diagnostics %}
+<tr>
+<td>{{ e.bin_id }}</td>
+<td>{{ e.observed_rate | fmt(".4f") }}</td>
+<td>{{ e.predicted_rate | fmt(".4f") }}</td>
+<td>{{ e.count }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+
+</section>
+{% endif %}
+
 {% if score_scaling and score_scaling.factor %}
 <section class="section">
 <h2>Score Scaling</h2>
@@ -333,6 +493,38 @@ code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.85em;backgroun
 <p><strong>Selected cutoff:</strong> {{ cutoffs.selected_cutoff.score }} &middot;
 <em>{{ cutoffs.selected_cutoff.selection_reason }}</em></p>
 {% endif %}
+</section>
+{% endif %}
+
+{% if variable_selection and variable_selection.selected_variables %}
+<section class="section">
+<h2>Variable Selection</h2>
+<h3>Selected Variables</h3>
+<p>{{ variable_selection.selected_variables | join(', ') }}</p>
+{% if variable_selection.rejected_variables %}
+<h3>Rejected Variables</h3>
+<p>{{ variable_selection.rejected_variables | join(', ') }}</p>
+{% endif %}
+</section>
+{% endif %}
+
+{% if implementation_artifacts %}
+<section class="section">
+<h2>Implementation Artifacts</h2>
+<table>
+<thead><tr><th>Artifact</th><th>Type</th><th>ID</th></tr></thead>
+<tbody>
+{% if implementation_artifacts.scorecard_table %}
+<tr><td>Scorecard Points Table</td><td>{{ implementation_artifacts.scorecard_table.schema_version }}</td><td><code>{{ implementation_artifacts.scorecard_table.artifact_id[:16] }}&hellip;</code></td></tr>
+{% endif %}
+{% if implementation_artifacts.scoring_export_python %}
+<tr><td>Python Scoring Function</td><td>{{ implementation_artifacts.scoring_export_python.schema_version }}</td><td><code>{{ implementation_artifacts.scoring_export_python.artifact_id[:16] }}&hellip;</code></td></tr>
+{% endif %}
+{% if implementation_artifacts.scoring_export_sql %}
+<tr><td>SQL Scoring Query</td><td>{{ implementation_artifacts.scoring_export_sql.schema_version }}</td><td><code>{{ implementation_artifacts.scoring_export_sql.artifact_id[:16] }}&hellip;</code></td></tr>
+{% endif %}
+</tbody>
+</table>
 </section>
 {% endif %}
 
