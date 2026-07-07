@@ -116,7 +116,8 @@ class CoefficientSignCheckNode(NodeType):
                 {
                     "variable_name": variable_name,
                     "feature_name": feature_name,
-                    "coefficient": coefficient,
+                    "coefficient": _json_float(coefficient),
+                    "coefficient_is_infinite": math.isinf(coefficient) or math.isnan(coefficient),
                     "coefficient_sign": "positive" if coefficient > 0 else "negative" if coefficient < 0 else "zero",
                     "expected_sign": "negative",
                     "status": status,
@@ -557,6 +558,8 @@ class CalibrationDiagnosticsNode(NodeType):
             except Exception:
                 hl_p_value = None
 
+            hl_stat_json = _json_float(hl_stat)
+            hl_stat_is_infinite = math.isinf(hl_stat) or math.isnan(hl_stat)
             calibration_error = float(np.mean([b["abs_deviation"] for b in decile_bins])) if decile_bins else 0.0
 
             try:
@@ -568,7 +571,8 @@ class CalibrationDiagnosticsNode(NodeType):
                 "row_count": df.height,
                 "known_count": int(known_mask.sum()),
                 "n_bins": actual_min_bins,
-                "hosmer_lemeshow_statistic": round(hl_stat, 6),
+                "hosmer_lemeshow_statistic": round(hl_stat_json, 6) if hl_stat_json is not None else None,
+                "hosmer_lemeshow_statistic_is_infinite": hl_stat_is_infinite,
                 "hosmer_lemeshow_degrees_of_freedom": dof,
                 "hosmer_lemeshow_p_value": hl_p_value,
                 "calibration_error": round(calibration_error, 6),

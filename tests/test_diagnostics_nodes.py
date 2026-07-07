@@ -326,8 +326,15 @@ class TestCalibrationDiagnostics:
 
         assert hl_original == hl_shuffled
 
+    def _assert_json_safe(self, text: str) -> None:
+        assert "Infinity" not in text
+        assert "NaN" not in text
+        assert "Inf" not in text
+        json.loads(text)  # round-trips cleanly
+
     def test_payload_is_json_safe(self, store):
-        """Artifact payload serializes without Infinity or NaN values."""
+        """All diagnostic artifact payloads serialize without Infinity or NaN."""
+        # --- Separation diagnostics ---
         model = _make_model_artifact(
             store,
             features=["age_woe"],
@@ -338,12 +345,51 @@ class TestCalibrationDiagnostics:
         ctx = _make_context(store, "separation-diagnostics", "cardre.separation_diagnostics", [model])
         output = SeparationDiagnosticsNode().run(ctx)
         text = (store.root / output.artifacts[0].path).read_text()
-        assert "Infinity" not in text
-        assert "NaN" not in text
-        assert "Inf" not in text
-        # Should round-trip cleanly
+        self._assert_json_safe(text)
         payload = json.loads(text)
         assert payload["variables"][0]["coefficient"] is None
         assert payload["variables"][0]["coefficient_is_infinite"] is True
         assert payload["variables"][0]["standard_error"] is None
         assert payload["variables"][0]["standard_error_is_infinite"] is True
+
+        # --- Calibration diagnostics (infinite HL stat) ---
+        meta = self._make_metadata(store)
+        y_bin = np.array([1, 0, 1, 0, 0, 0, 0, 0, 0, 0])
+        y_prob = np.array([1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        train = self._make_scored_dataset(
+            store, "train",
+            y_prob.tolist(),
+            ["bad" if y == 1 else "good" for y in y_bin.tolist()],
+        )
+        cal_model = _make_model_artifact(store, features=["age_woe"], coefficients={"age_woe": -1.0})
+        ctx2 = _make_context(store, "calibration-diagnostics", "cardre.calibration_diagnostics", [train, cal_model, meta])
+        output2 = CalibrationDiagnosticsNode().run(ctx2)
+        text2 = (store.root / output2.artifacts[0].path).read_text()
+        self._assert_json_safe(text2)
+        payload2 = json.loads(text2)
+        hl = payload2["roles"]["train"]["hosmer_lemeshow_statistic"]
+        assert hl is None or isinstance(hl, float)
+
+        # --- Coefficient sign diagnostics ---
+        coeff_model = _make_model_artifact(
+            store,
+            features=["age_woe"],
+            coefficients={"age_woe": float("inf")},
+        )
+        from cardre.nodes.build.diagnostics import CoefficientSignCheckNode
+        woe_art = write_json_artifact(
+            store, artifact_type="report", role="report", stem="woe-evidence",
+            payload={
+                "schema_version": "cardre.woe_iv_evidence.v1",
+                "purpose": "final",
+                "variables": [{"variable_name": "age", "status": "acceptable"}],
+            },
+            metadata={"schema_version": "cardre.woe_iv_evidence.v1", "purpose": "final"},
+        )
+        ctx3 = _make_context(store, "coeff-sign", "cardre.coefficient_sign_check", [coeff_model, woe_art])
+        output3 = CoefficientSignCheckNode().run(ctx3)
+        text3 = (store.root / output3.artifacts[0].path).read_text()
+        self._assert_json_safe(text3)
+        payload3 = json.loads(text3)
+        assert payload3["variables"][0]["coefficient"] is None
+        assert payload3["variables"][0]["coefficient_is_infinite"] is True
