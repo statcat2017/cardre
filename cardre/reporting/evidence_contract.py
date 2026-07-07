@@ -36,6 +36,10 @@ REQUIRED_STEPS_COLLECTOR: list[str] = [
     "cutoff-analysis",
     "manual-binning",
     "variable-clustering",
+    "coefficient-sign-check",
+    "separation-diagnostics",
+    "vif-diagnostics",
+    "calibration-diagnostics",
 ]
 
 REQUIRED_STEPS_COMPARISON: list[str] = [
