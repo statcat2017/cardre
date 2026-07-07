@@ -121,12 +121,11 @@ def test_audit_pack_launch(raw_project_path, api_client, tmp_path):
             assert (export_path / fname).exists(), f"Missing expected file: {fname}"
 
         # Verify no row-level dataset artifacts in artifacts/ subdirectory
-        artifacts_dir = export_path / "artifacts"
-        if artifacts_dir.exists():
-            for f in artifacts_dir.iterdir():
-                assert f.suffix != ".parquet", (
-                    f"Row-level parquet artifact found in export: {f.name}"
-                )
+        # (WOE tables are parquet but are evidence, not row-level data)
+        artifacts_data = json.loads((export_path / "artifacts.json").read_text())
+        for a in artifacts_data:
+            if a.get("artifact_type") in ("dataset", "tabular"):
+                assert False, f"Row-level artifact found in export: {a['artifact_id']} ({a['artifact_type']})"
 
         # Verify checksums.sha256 is valid
         checksum_path = export_path / "checksums.sha256"
@@ -150,9 +149,26 @@ def test_audit_pack_launch(raw_project_path, api_client, tmp_path):
         branch_data = json.loads((export_path / "branch.json").read_text())
         assert branch_data.get("branch_id") == branch_id
 
-        # Verify artifacts.json exists (may be empty if all artifacts are row-level)
+        # Verify artifacts.json has non-row-level evidence artifacts
         artifacts_data = json.loads((export_path / "artifacts.json").read_text())
-        assert isinstance(artifacts_data, list)
+        assert len(artifacts_data) > 0, "artifacts.json should contain evidence artifacts"
+        artifact_types = {a["artifact_type"] for a in artifacts_data}
+        # Should include non-row-level evidence like reports, manifests, scorecards
+        assert "report" in artifact_types or "scorecard" in artifact_types or "manifest" in artifact_types, (
+            f"Expected evidence artifacts, got types: {artifact_types}"
+        )
+
+        # Verify runs.json has the run
+        runs_data = json.loads((export_path / "runs.json").read_text())
+        assert len(runs_data) == 1, f"Expected 1 run, got {len(runs_data)}"
+        assert runs_data[0]["status"] == "succeeded"
+
+        # Verify run_steps.json has canonical steps
+        run_steps_data = json.loads((export_path / "run_steps.json").read_text())
+        assert len(run_steps_data) > 0, "run_steps.json should contain run steps"
+        step_ids = {rs["step_id"] for rs in run_steps_data}
+        for key_step in ("apply-model", "validation-metrics", "cutoff-analysis", "scorecard-table-export"):
+            assert key_step in step_ids, f"Missing key step {key_step} in run_steps.json"
 
         # Verify report was generated
         report_dir = export_path / "report"
