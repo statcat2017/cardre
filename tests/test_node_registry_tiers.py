@@ -123,6 +123,10 @@ def test_registry_exposes_issue_273_prep_nodes_as_launch_nodes():
         "cardre.apply_exclusions",
         "cardre.development_sample_definition",
         "cardre.explicit_missing_outlier_treatment",
+        "cardre.coefficient_sign_check",
+        "cardre.separation_diagnostics",
+        "cardre.vif_diagnostics",
+        "cardre.calibration_diagnostics",
     ]:
         availability = reg.availability(node_type)
         assert availability.available, availability

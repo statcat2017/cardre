@@ -13,6 +13,12 @@ from pathlib import Path
 
 import polars as pl
 
+from cardre._evidence.schemas import (
+    SCHEMA_CALIBRATION_DIAGNOSTICS,
+    SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS,
+    SCHEMA_SEPARATION_DIAGNOSTICS,
+    SCHEMA_VIF_DIAGNOSTICS,
+)
 from cardre.workflows import build_canonical_scorecard_steps, canonical_scorecard_step_ids
 
 
@@ -109,9 +115,15 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         ("manual-binning", "final-woe-iv"),
         ("final-woe-iv", "woe-transform-train"),
         ("woe-transform-train", "logistic-regression"),
+        ("logistic-regression", "coefficient-sign-check"),
+        ("logistic-regression", "separation-diagnostics"),
+        ("woe-transform-train", "vif-diagnostics"),
+        ("coefficient-sign-check", "score-scaling"),
         ("logistic-regression", "score-scaling"),
         ("freeze-scorecard-bundle", "apply-woe"),
         ("apply-woe", "apply-model"),
+        ("apply-model", "calibration-diagnostics"),
+        ("calibration-diagnostics", "validation-metrics"),
         ("apply-model", "validation-metrics"),
         ("apply-model", "cutoff-analysis"),
     ]:
@@ -175,6 +187,50 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
             and '"schema_version": "cardre.woe_iv_evidence.v1"' in row["metadata_json"]
         ]
         assert final_woe_artifacts, "final-woe-iv did not produce cardre.woe_iv_evidence.v1"
+
+        coefficient_sign_artifacts = [
+            row for row in artifact_rows
+            if row["step_id"] == "coefficient-sign-check"
+            and f'"schema_version": "{SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS}"' in row["metadata_json"]
+        ]
+        assert coefficient_sign_artifacts, "coefficient-sign-check did not produce structured diagnostics"
+        coefficient_sign_payload = json.loads(
+            (store.root / coefficient_sign_artifacts[0]["path"]).read_text(encoding="utf-8")
+        )
+        assert {"conventions", "summary", "variables"} <= set(coefficient_sign_payload)
+
+        separation_artifacts = [
+            row for row in artifact_rows
+            if row["step_id"] == "separation-diagnostics"
+            and f'"schema_version": "{SCHEMA_SEPARATION_DIAGNOSTICS}"' in row["metadata_json"]
+        ]
+        assert separation_artifacts, "separation-diagnostics did not produce structured diagnostics"
+        separation_payload = json.loads(
+            (store.root / separation_artifacts[0]["path"]).read_text(encoding="utf-8")
+        )
+        assert {"summary", "variables", "threshold"} <= set(separation_payload)
+
+        vif_artifacts = [
+            row for row in artifact_rows
+            if row["step_id"] == "vif-diagnostics"
+            and f'"schema_version": "{SCHEMA_VIF_DIAGNOSTICS}"' in row["metadata_json"]
+        ]
+        assert vif_artifacts, "vif-diagnostics did not produce structured diagnostics"
+        vif_payload = json.loads(
+            (store.root / vif_artifacts[0]["path"]).read_text(encoding="utf-8")
+        )
+        assert {"summary", "variables", "threshold"} <= set(vif_payload)
+
+        calibration_artifacts = [
+            row for row in artifact_rows
+            if row["step_id"] == "calibration-diagnostics"
+            and f'"schema_version": "{SCHEMA_CALIBRATION_DIAGNOSTICS}"' in row["metadata_json"]
+        ]
+        assert calibration_artifacts, "calibration-diagnostics did not produce structured diagnostics"
+        calibration_payload = json.loads(
+            (store.root / calibration_artifacts[0]["path"]).read_text(encoding="utf-8")
+        )
+        assert {"conventions", "roles", "summary"} <= set(calibration_payload)
 
         exclusion_summary = [
             row for row in artifact_rows

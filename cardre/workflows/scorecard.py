@@ -132,9 +132,34 @@ _CANONICAL_SCORECARD_STEPS: list[tuple[str, str, list[str], dict[str, Any]]] = [
         {},
     ),
     (
+        "coefficient-sign-check",
+        "cardre.coefficient_sign_check",
+        ["logistic-regression", "final-woe-iv"],
+        {},
+    ),
+    (
+        "separation-diagnostics",
+        "cardre.separation_diagnostics",
+        ["logistic-regression"],
+        {},
+    ),
+    (
+        "vif-diagnostics",
+        "cardre.vif_diagnostics",
+        ["woe-transform-train", "logistic-regression"],
+        {},
+    ),
+    (
         "score-scaling",
         "cardre.score_scaling",
-        ["logistic-regression", "manual-binning", "final-woe-iv"],
+        [
+            "logistic-regression",
+            "manual-binning",
+            "final-woe-iv",
+            "coefficient-sign-check",
+            "separation-diagnostics",
+            "vif-diagnostics",
+        ],
         {},
     ),
     (
@@ -172,6 +197,12 @@ _CANONICAL_SCORECARD_STEPS: list[tuple[str, str, list[str], dict[str, Any]]] = [
         "apply-model",
         "cardre.apply_model",
         ["apply-woe", "logistic-regression", "score-scaling", "freeze-scorecard-bundle"],
+        {},
+    ),
+    (
+        "calibration-diagnostics",
+        "cardre.calibration_diagnostics",
+        ["apply-model", "logistic-regression", "define-metadata"],
         {},
     ),
     (
