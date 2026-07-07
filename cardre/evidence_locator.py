@@ -79,15 +79,18 @@ class EvidenceLocator:
         # helper: branch_id=None means full-plan/baseline scope (runs where
         # branch_id IS NULL), not "any edge".  The helper also filters by
         # run + run-step success status (ADR-0005 §3).
+        # Iterate edges newest-first: the fingerprint of the run-step each
+        # edge points to may not match, so we try every candidate before
+        # falling through to the next fallback stage.
         edges = evidence_repo.get_edges_for_plan_step_branch(
             plan_version_id, step_id, branch_id,
         )
-        rs: RunStep | None = None
-        if edges:
-            rs = rs_repo.get(edges[-1].run_step_id)
-
-        if rs is not None and self._matches_fingerprint(rs, fingerprint_match):
-            return self._build_resolved_evidence(rs, "branch" if branch_id is not None else "full_plan")
+        for edge in reversed(edges):
+            rs = rs_repo.get(edge.run_step_id)
+            if rs is not None and self._matches_fingerprint(rs, fingerprint_match):
+                return self._build_resolved_evidence(
+                    rs, "branch" if branch_id is not None else "full_plan",
+                )
 
         # Step 2: full-plan fallback.  If branch_id was provided, retry
         # edge-walking with branch_id=None (full-plan scope).
@@ -95,13 +98,10 @@ class EvidenceLocator:
             edges = evidence_repo.get_edges_for_plan_step_branch(
                 plan_version_id, step_id, None,
             )
-            full_plan_rs: RunStep | None = None
-            if edges:
-                full_plan_rs = rs_repo.get(edges[-1].run_step_id)
-            if full_plan_rs is not None and self._matches_fingerprint(
-                full_plan_rs, fingerprint_match,
-            ):
-                return self._build_resolved_evidence(full_plan_rs, "full_plan")
+            for edge in reversed(edges):
+                rs = rs_repo.get(edge.run_step_id)
+                if rs is not None and self._matches_fingerprint(rs, fingerprint_match):
+                    return self._build_resolved_evidence(rs, "full_plan")
 
         # Step 3: plan-level run scan.  Find the latest successful run for
         # this plan_version (branch_id=None) and scan its run_steps.

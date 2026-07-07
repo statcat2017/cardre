@@ -481,13 +481,13 @@ class TestEvidenceLocatorBranchAndPlanRegression:
         assert resolved is not None
         assert resolved.run_step.status == RunStepStatus.SUCCEEDED
 
-    # --- Regression test for fix 3: fingerprint mismatch skips edge ---
+    # --- Regression test for fix 3: fingerprint mismatch iterates edges ---
     def test_fingerprint_mismatch_skips_latest_edge_falls_to_older(self, tmp_path):
         """When the latest edge's run-step has a mismatched fingerprint,
-        but an older edge's run-step matches, the Locator picks the
-        older matching one via the plan-level fallback."""
+        the Locator iterates older edges in the same scope instead of
+        immediately falling through to the next fallback stage."""
         store = _make_store(tmp_path)
-        _, _, pv_id, step_id, _, _ = _seed_with_run_evidence(store)
+        _, _, pv_id, step_id, _, seed_rs_id = _seed_with_run_evidence(store)
 
         # The seeded run-step has params_hash "hash002" and node_type
         # "cardre.profiler".  Add a newer run-step with a different
@@ -518,12 +518,13 @@ class TestEvidenceLocatorBranchAndPlanRegression:
 
         from cardre.evidence_locator import EvidenceLocator
         locator = EvidenceLocator(store)
-        # The newest edge has fingerprint mismatch; Locator should skip it
-        # and the edge-walking path returns None (no matching edges).
-        # Then the plan-level run scan should find the seeded matching run-step.
+        # The newest edge has fingerprint mismatch; the Locator must
+        # iterate to the older edge in the same scope and find the
+        # matching run-step there (not fall through to plan-level scan).
         resolved = locator.resolve(pv_id, step_id, fingerprint_match=_matching_spec(step_id))
         assert resolved is not None
-        assert resolved.source_label in ("full_plan", "latest_plan_run")
+        assert resolved.run_step_id == seed_rs_id
+        assert resolved.source_label == "full_plan"
 
     # --- Regression test for fix 4: source_label diagnostic ---
     def test_branch_missing_full_plan_exists_source_label_diagnostic(self, tmp_path):
