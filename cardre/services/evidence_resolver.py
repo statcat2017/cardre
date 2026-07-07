@@ -1,24 +1,27 @@
 """EvidenceResolver + EvidencePolicyService — evidence resolution and policy.
 
-``EvidenceResolver`` resolves run-step evidence with a named policy and
-diagnostics. ``EvidencePolicyService`` is the policy single-source-of-truth.
+``EvidenceResolver`` is a thin policy dispatcher around ``EvidenceLocator``
+(ADR-0005 §3).  It maps the four named policies to Locator calls and wraps
+results with diagnostics.  The Locator owns the edge-walking fallback and
+fingerprint comparison; the Resolver owns policy dispatch and diagnostic
+emission.
 
-Two classes, one module.  Ported from v1 ``evidence_resolver.py`` and
-``services/evidence_policy.py``, return type extended to populate
-``EvidenceEdge`` + ``EvidenceArtifact`` domain objects.
+``EvidencePolicyService`` is the policy single-source-of-truth for
+short-circuit checks consumed by ``RunCoordinator``.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 from cardre.domain.errors import Diagnostic
 from cardre.domain.evidence import ResolvedEvidence
-from cardre.domain.run import RunStep, RunStepStatus
+from cardre.domain.run import RunStep
 from cardre.domain.step import StepSpec
 
 if TYPE_CHECKING:
+    from cardre.evidence_locator import EvidenceLocator
     from cardre.store.db import ProjectStore
 
 @dataclass
@@ -62,7 +65,12 @@ STATUS_SUCCEEDED = "succeeded"
 
 
 class EvidenceResolver:
-    """Resolve run-step evidence with a named policy and diagnostics."""
+    """Resolve run-step evidence with a named policy and diagnostics.
+
+    Thin policy dispatcher around ``EvidenceLocator``.  The Locator owns
+    the edge-walking fallback and fingerprint comparison; this class maps
+    the four named policies to Locator calls and emits diagnostics.
+    """
 
     def __init__(self, store: ProjectStore) -> None:
         self._store = store
@@ -89,146 +97,109 @@ class EvidenceResolver:
         Source labels: ``run``, ``branch``, ``full_plan``, ``across_plan``,
         ``latest_plan_run``, ``missing``.
         """
+        from cardre.evidence_locator import EvidenceLocator
+        locator = EvidenceLocator(self._store)
         diagnostics: list[Diagnostic] = []
 
         if policy == "run_only":
-            return self._resolve_run_only(run_id, step_id, diagnostics)
+            return self._resolve_run_only(locator, run_id, step_id, diagnostics)
 
         if policy == "branch_then_full_then_plan":
             return self._resolve_branch_then_full_then_plan(
-                plan_version_id, step_id, branch_id, require_fingerprint_match, diagnostics,
+                locator, plan_version_id, step_id, branch_id,
+                require_fingerprint_match, diagnostics,
             )
 
         if policy == "source_branch_then_full_then_plan":
             return self._resolve_source_branch_then_full_then_plan(
-                plan_id, plan_version_id, step_id, source_branch_id, require_fingerprint_match, diagnostics,
+                locator, plan_version_id, step_id, source_branch_id,
+                require_fingerprint_match, diagnostics,
             )
 
         if policy == "across_plan":
             return self._resolve_across_plan(
-                plan_id, plan_version_id, step_id, branch_id, require_fingerprint_match, diagnostics,
+                locator, plan_version_id, step_id, branch_id, plan_id,
+                require_fingerprint_match, diagnostics,
             )
 
         return None, "missing", diagnostics
 
-    def _build_resolved_evidence(self, rs: RunStep) -> ResolvedEvidence:
-        """Fetch evidence edges/artifacts for a RunStep and bundle as ResolvedEvidence."""
-        from cardre.store.evidence_repo import EvidenceRepository
-        evidence_repo = EvidenceRepository(self._store)
-        edges = evidence_repo.get_edges_for_run_step(rs.run_step_id)
-        artifacts = evidence_repo.get_artifacts_for_run_step(rs.run_step_id)
-        return ResolvedEvidence(
-            run_step_id=rs.run_step_id,
-            run_step=rs,
-            edges=edges,
-            artifacts=artifacts,
-        )
-
     def _resolve_run_only(
-        self, run_id: str | None, step_id: str, diagnostics: list[Diagnostic],
+        self, locator: EvidenceLocator, run_id: str | None, step_id: str,
+        diagnostics: list[Diagnostic],
     ) -> tuple[ResolvedEvidence | None, str, list[Diagnostic]]:
         if run_id is None:
             return None, "missing", diagnostics
-        from cardre.store.run_step_repo import RunStepRepository
-        rs_repo = RunStepRepository(self._store)
-        for rs in rs_repo.get_for_run(run_id):
-            if rs.step_id == step_id and rs.status == RunStepStatus.SUCCEEDED:
-                return self._build_resolved_evidence(rs), "run", diagnostics
-        return None, "missing", diagnostics
+        resolved = locator.resolve_for_run(run_id, step_id)
+        if resolved is None:
+            return None, "missing", diagnostics
+        return resolved, "run", diagnostics
 
     def _resolve_branch_then_full_then_plan(
-        self, plan_version_id: str, step_id: str, branch_id: str | None,
-        require_fingerprint_match: StepSpec | None, diagnostics: list[Diagnostic],
+        self, locator: EvidenceLocator, plan_version_id: str, step_id: str,
+        branch_id: str | None, require_fingerprint_match: StepSpec | None,
+        diagnostics: list[Diagnostic],
     ) -> tuple[ResolvedEvidence | None, str, list[Diagnostic]]:
-        from cardre.store.evidence_repo import EvidenceRepository
-        from cardre.store.run_step_repo import RunStepRepository
-        evidence_repo = EvidenceRepository(self._store)
-        rs_repo = RunStepRepository(self._store)
-
-        # Discover the candidate run-step via evidence_edges.
-        # The edge for "step_b consumed from step_a" has:
-        #   run_step_id = rs_b (the consuming step's run-step)
-        #   source_run_step_id = rs_a (the parent/source run-step)
-        # We want the consuming step's run-step, so we read run_step_id.
-        edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
-        rs: RunStep | None = None
-        if edges:
-            rs = rs_repo.get(edges[-1].run_step_id)
-
-        if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
-            return self._build_resolved_evidence(rs), "branch", diagnostics
-
-        if branch_id is not None:
-            edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
-            rs = rs_repo.get(edges[-1].run_step_id) if edges else None
-            if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
-                return self._build_resolved_evidence(rs), "full_plan", diagnostics
-
-        fallback = self._find_run_step_from_plan_level_run(plan_version_id, step_id)
-        if fallback is not None and self._matches_fingerprint(fallback, require_fingerprint_match):
-            return self._build_resolved_evidence(fallback), "latest_plan_run", diagnostics
-
-        return None, "missing", diagnostics
+        resolved = locator.resolve(
+            plan_version_id, step_id,
+            branch_id=branch_id,
+            fingerprint_match=require_fingerprint_match,
+        )
+        if resolved is None:
+            return None, "missing", diagnostics
+        # Source label: "branch" if a branch_id was provided, else "full_plan".
+        # The Locator's edge-walking path finds the same run-step regardless
+        # of branch_id (evidence_edges has no branch_id column); the label
+        # reflects the caller's intent.
+        label = "branch" if branch_id is not None else "full_plan"
+        return resolved, label, diagnostics
 
     def _resolve_source_branch_then_full_then_plan(
-        self, plan_id: str | None, plan_version_id: str, step_id: str,
+        self, locator: EvidenceLocator, plan_version_id: str, step_id: str,
         source_branch_id: str | None, require_fingerprint_match: StepSpec | None,
         diagnostics: list[Diagnostic],
     ) -> tuple[ResolvedEvidence | None, str, list[Diagnostic]]:
-        from cardre.store.evidence_repo import EvidenceRepository
-        from cardre.store.run_repo import RunRepository
-        from cardre.store.run_step_repo import RunStepRepository
-        evidence_repo = EvidenceRepository(self._store)
-        rs_repo = RunStepRepository(self._store)
-        run_repo = RunRepository(self._store)
+        # Resolve plan_id if not provided (needed for across-plan fallback).
+        plan_id = self._plan_id_for_version(plan_version_id)
 
-        if plan_id is None:
-            from cardre.store.plan_repo import PlanRepository
-            pv = PlanRepository(self._store).get_version(plan_version_id)
-            if pv is not None:
-                plan_id = pv.get("plan_id")
+        # Try with source_branch_id first.
+        resolved = locator.resolve(
+            plan_version_id, step_id,
+            branch_id=source_branch_id,
+            plan_id=plan_id,
+            fingerprint_match=require_fingerprint_match,
+        )
+        if resolved is not None:
+            return resolved, "across_plan", diagnostics
 
-        lookup_branch = source_branch_id or None
-        if plan_id:
-            edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
-            rs: RunStep | None = None
-            if edges:
-                rs = rs_repo.get(edges[-1].run_step_id)
-            if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
-                return self._build_resolved_evidence(rs), "across_plan", diagnostics
-
-        if plan_id:
-            edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
-            rs = rs_repo.get(edges[-1].run_step_id) if edges else None
-            if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
-                if lookup_branch is not None:
-                    diagnostics.append(Diagnostic(
-                        code="INHERITED_BASELINE_EVIDENCE",
-                        message=(
-                            f"Step {step_id}: source branch {source_branch_id} "
-                            "has no evidence; fell back to baseline (branch_id=None)."
-                        ),
-                        source="EvidenceResolver._resolve_source_branch_then_full_then_plan",
-                        severity="warning",
-                        context={
-                            "step_id": step_id,
-                            "plan_id": plan_id,
-                            "source_branch_id": source_branch_id,
-                            "fallback_branch_id": None,
-                        },
-                    ))
-                return self._build_resolved_evidence(rs), "across_plan", diagnostics
-
-            plan_run_id = run_repo.get_latest_successful_id_for_plan(plan_id)
-            if plan_run_id is not None:
-                for prs in rs_repo.get_for_run(plan_run_id):
-                    if prs.step_id == step_id and prs.status == RunStepStatus.SUCCEEDED:
-                        if self._matches_fingerprint(prs, require_fingerprint_match):
-                            return self._build_resolved_evidence(prs), "latest_plan_run", diagnostics
+        # Fell back to baseline (branch_id=None).
+        resolved = locator.resolve(
+            plan_version_id, step_id,
+            branch_id=None,
+            plan_id=plan_id,
+            fingerprint_match=require_fingerprint_match,
+        )
+        if resolved is not None:
+            if source_branch_id is not None:
+                diagnostics.append(Diagnostic(
+                    code="INHERITED_BASELINE_EVIDENCE",
+                    message=(
+                        f"Step {step_id}: source branch {source_branch_id} "
+                        "has no evidence; fell back to baseline (branch_id=None)."
+                    ),
+                    source="EvidenceResolver._resolve_source_branch_then_full_then_plan",
+                    severity="warning",
+                    context={
+                        "step_id": step_id,
+                        "source_branch_id": source_branch_id,
+                        "fallback_branch_id": None,
+                    },
+                ))
+            return resolved, "across_plan", diagnostics
 
         diagnostics.append(Diagnostic(
             code="REUSE_EVIDENCE_NOT_FOUND",
-            message=f"No shared evidence found for step {step_id} in plan {plan_id}",
+            message=f"No shared evidence found for step {step_id}",
             source="EvidenceResolver._resolve_source_branch_then_full_then_plan",
             severity="warning",
             context={
@@ -240,78 +211,30 @@ class EvidenceResolver:
         return None, "missing", diagnostics
 
     def _resolve_across_plan(
-        self, plan_id: str | None, plan_version_id: str, step_id: str,
-        branch_id: str | None, require_fingerprint_match: StepSpec | None,
+        self, locator: EvidenceLocator, plan_version_id: str, step_id: str,
+        branch_id: str | None, plan_id: str | None,
+        require_fingerprint_match: StepSpec | None,
         diagnostics: list[Diagnostic],
     ) -> tuple[ResolvedEvidence | None, str, list[Diagnostic]]:
-        from cardre.store.evidence_repo import EvidenceRepository
-        from cardre.store.run_repo import RunRepository
-        from cardre.store.run_step_repo import RunStepRepository
-        evidence_repo = EvidenceRepository(self._store)
-        rs_repo = RunStepRepository(self._store)
-        run_repo = RunRepository(self._store)
-
         if plan_id is None:
-            from cardre.store.plan_repo import PlanRepository
-            pv = PlanRepository(self._store).get_version(plan_version_id)
-            if pv is not None:
-                plan_id = pv.get("plan_id")
+            plan_id = self._plan_id_for_version(plan_version_id)
 
-        if plan_id:
-            edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
-            rs: RunStep | None = None
-            if edges:
-                rs = rs_repo.get(edges[-1].run_step_id)
-            if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
-                return self._build_resolved_evidence(rs), "across_plan", diagnostics
+        resolved = locator.resolve(
+            plan_version_id, step_id,
+            branch_id=branch_id,
+            plan_id=plan_id,
+            fingerprint_match=require_fingerprint_match,
+        )
+        if resolved is None:
+            return None, "missing", diagnostics
+        return resolved, "across_plan", diagnostics
 
-            edges = evidence_repo.get_edges_for_plan_step(plan_version_id, step_id)
-            rs = rs_repo.get(edges[-1].run_step_id) if edges else None
-            if rs is not None and self._matches_fingerprint(rs, require_fingerprint_match):
-                return self._build_resolved_evidence(rs), "across_plan", diagnostics
-
-            plan_run_id = run_repo.get_latest_successful_id_for_plan(plan_id)
-            if plan_run_id is not None:
-                for prs in rs_repo.get_for_run(plan_run_id):
-                    if prs.step_id == step_id and prs.status == RunStepStatus.SUCCEEDED:
-                        if self._matches_fingerprint(prs, require_fingerprint_match):
-                            return self._build_resolved_evidence(prs), "latest_plan_run", diagnostics
-
-        return None, "missing", diagnostics
-
-    def _find_run_step_from_plan_level_run(
-        self, plan_version_id: str, step_id: str,
-    ) -> RunStep | None:
+    def _plan_id_for_version(self, plan_version_id: str) -> str | None:
         from cardre.store.plan_repo import PlanRepository
-        from cardre.store.run_repo import RunRepository
-        from cardre.store.run_step_repo import RunStepRepository
-        plan_repo = PlanRepository(self._store)
-        run_repo = RunRepository(self._store)
-        rs_repo = RunStepRepository(self._store)
-
-        pv = plan_repo.get_version(plan_version_id)
+        pv = PlanRepository(self._store).get_version(plan_version_id)
         if pv is None:
             return None
-        plan_run_id = run_repo.get_latest_successful_id_for_plan(pv["plan_id"])
-        if plan_run_id is None:
-            return None
-        for prs in rs_repo.get_for_run(plan_run_id):
-            if prs.step_id == step_id and prs.status == RunStepStatus.SUCCEEDED:
-                return prs
-        return None
-
-    @staticmethod
-    def _matches_fingerprint(
-        rs: RunStep | None, spec: StepSpec | None,
-    ) -> bool:
-        if spec is None or rs is None:
-            return True
-        fp = rs.execution_fingerprint
-        if fp.get("params_hash", "") != spec.params_hash:
-            return False
-        if fp.get("node_type", "") != spec.node_type:
-            return False
-        return cast(bool, fp.get("node_version", "") == spec.node_version)
+        return pv.get("plan_id")
 
 
 # ---------------------------------------------------------------------------

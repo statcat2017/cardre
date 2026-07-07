@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from cardre.domain.run import RunStep
+    pass
 
 from cardre.domain.errors import CardreError
 from cardre.services.report_service import ReportGenerationService
@@ -187,21 +187,19 @@ def _populate_export(
                 run_steps_data.append(_run_step_to_dict_v2(store, rs))
 
     # Shared upstream run steps
+    from cardre.evidence_locator import EvidenceLocator
+    locator = EvidenceLocator(store)
     for row in step_map:
         if row.get("is_shared_upstream"):
             step_id = row.get("step_id", "")
-            upstream_rs: RunStep | None = store.get_latest_successful_run_step(head_pv_id, step_id, branch_id=None)
-            if upstream_rs is None:
-                plan_id_val = branch.get("plan_id", "")
-                if plan_id_val:
-                    plan_run_id = run_repo.get_latest_successful_id_for_plan(plan_id_val)
-                    if plan_run_id:
-                        for prs in run_step_repo.get_for_run(plan_run_id):
-                            if prs.step_id == step_id and prs.status.value == "succeeded":
-                                upstream_rs = prs
-                                break
-            if upstream_rs is not None:
-                run_steps_data.append(_run_step_to_dict_v2(store, upstream_rs))
+            # Use the Locator (ADR-0005 §3) for the branch→full→plan fallback.
+            plan_id_val = branch.get("plan_id", "")
+            resolved = locator.resolve(
+                head_pv_id, step_id,
+                branch_id=None, plan_id=plan_id_val or None,
+            )
+            if resolved is not None:
+                run_steps_data.append(_run_step_to_dict_v2(store, resolved.run_step))
 
     (export_dir / "runs.json").write_text(json.dumps(runs_data, indent=2))
     file_count += 1
