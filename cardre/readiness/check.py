@@ -268,6 +268,74 @@ def check_report_readiness(
                         step_id=ref.step_id,
                     ))
 
+        # For score-scaling, check evidence artifact
+        elif canonical_step_id == "score-scaling":
+            has_artifact = any(
+                art and art.metadata.get("schema_version") == "cardre.score_scaling.v1"
+                for row in store.execute(
+                    "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+                    (rs.run_step_id,),
+                ).fetchall()
+                if (art := store.get_artifact(row["artifact_id"]))
+            )
+            if not has_artifact:
+                blockers.append(ReadinessBlocker(
+                    LimitationCode.MISSING_SCORE_SCALING,
+                    f"Score scaling step {ref.step_id} has no cardre.score_scaling.v1 artifact.",
+                    step_id=ref.step_id,
+                ))
+
+        # For validation-metrics, check evidence artifact
+        elif canonical_step_id == "validation-metrics":
+            has_artifact = any(
+                art and art.metadata.get("schema_version") in ("cardre.validation_metrics.v1", "cardre.validation_evidence.v1")
+                for row in store.execute(
+                    "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+                    (rs.run_step_id,),
+                ).fetchall()
+                if (art := store.get_artifact(row["artifact_id"]))
+            )
+            if not has_artifact:
+                blockers.append(ReadinessBlocker(
+                    LimitationCode.MISSING_TRAIN_VALIDATION_METRICS,
+                    f"Validation metrics step {ref.step_id} has no cardre.validation_metrics.v1 artifact.",
+                    step_id=ref.step_id,
+                ))
+
+        # For cutoff-analysis, check evidence artifact
+        elif canonical_step_id == "cutoff-analysis":
+            has_artifact = any(
+                art and art.metadata.get("schema_version") == "cardre.cutoff_analysis.v1"
+                for row in store.execute(
+                    "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+                    (rs.run_step_id,),
+                ).fetchall()
+                if (art := store.get_artifact(row["artifact_id"]))
+            )
+            if not has_artifact:
+                blockers.append(ReadinessBlocker(
+                    LimitationCode.NO_CUTOFF_ANALYSIS,
+                    f"Cutoff analysis step {ref.step_id} has no cardre.cutoff_analysis.v1 artifact.",
+                    step_id=ref.step_id,
+                ))
+
+        # For model-fit, check evidence artifact
+        elif canonical_step_id == "model-fit":
+            has_artifact = any(
+                art and art.metadata.get("schema_version") == "cardre.model_artifact.v1"
+                for row in store.execute(
+                    "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+                    (rs.run_step_id,),
+                ).fetchall()
+                if (art := store.get_artifact(row["artifact_id"]))
+            )
+            if not has_artifact:
+                blockers.append(ReadinessBlocker(
+                    LimitationCode.MISSING_MODEL_COEFFICIENTS,
+                    f"Model step {ref.step_id} has no cardre.model_artifact.v1 artifact.",
+                    step_id=ref.step_id,
+                ))
+
     # Champion mode checks
     if plan_id:
         if report_mode == "champion":

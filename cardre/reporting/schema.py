@@ -473,6 +473,128 @@ class RunStatusInfo(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Exclusion summary
+# ---------------------------------------------------------------------------
+
+class ExclusionRuleInfo(BaseModel):
+    rule_id: str = ""
+    reason: str = ""
+    rows_removed: int = 0
+
+
+class ExclusionSummaryInfo(BaseModel):
+    rows_before: int = 0
+    rows_after: int = 0
+    rules: list[ExclusionRuleInfo] = Field(default_factory=list)
+    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Sample definition
+# ---------------------------------------------------------------------------
+
+class SampleDefinitionInfo(BaseModel):
+    sample_method: str = ""
+    sample_domain: str = ""
+    sample_description: str = ""
+    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Variable selection
+# ---------------------------------------------------------------------------
+
+class VariableSelectionInfo(BaseModel):
+    selected_variables: list[str] = Field(default_factory=list)
+    rejected_variables: list[str] = Field(default_factory=list)
+    min_iv: float = 0.0
+    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Model diagnostics
+# ---------------------------------------------------------------------------
+
+class CoefficientSignEntry(BaseModel):
+    variable_name: str = ""
+    feature_name: str = ""
+    coefficient: float = 0.0
+    coefficient_is_infinite: bool = False
+    coefficient_sign: str = ""
+    expected_sign: str = ""
+    status: str = ""
+    reason: str = ""
+
+
+class SeparationEntry(BaseModel):
+    feature_name: str = ""
+    coefficient: float = 0.0
+    coefficient_is_infinite: bool = False
+    abs_coefficient: float = 0.0
+    standard_error: float | None = None
+    standard_error_is_infinite: bool = False
+    status: str = ""
+    reason: str = ""
+
+
+class VifEntry(BaseModel):
+    feature_name: str = ""
+    vif: float | None = None
+    vif_is_infinite: bool = False
+    r_squared: float | None = None
+    status: str = ""
+    reason: str = ""
+
+
+class CalibrationBin(BaseModel):
+    bin: int = 0
+    count: int = 0
+    observed_events: int = 0
+    expected_events: float = 0.0
+    observed_event_rate: float = 0.0
+    predicted_event_rate: float = 0.0
+    abs_deviation: float = 0.0
+
+
+class CalibrationRole(BaseModel):
+    row_count: int = 0
+    known_count: int = 0
+    n_bins: int = 0
+    hosmer_lemeshow_statistic: float | None = None
+    hosmer_lemeshow_p_value: float | None = None
+    calibration_error: float = 0.0
+    auc: float | None = None
+    decile_bins: list[CalibrationBin] = Field(default_factory=list)
+    status: str = ""
+
+
+class ModelDiagnosticsInfo(BaseModel):
+    coefficient_sign_check: list[CoefficientSignEntry] = Field(default_factory=list)
+    separation_diagnostics: list[SeparationEntry] = Field(default_factory=list)
+    vif_diagnostics: list[VifEntry] = Field(default_factory=list)
+    calibration_diagnostics: dict[str, CalibrationRole] = Field(default_factory=dict)
+    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Implementation artifacts
+# ---------------------------------------------------------------------------
+
+class ImplementationArtifactInfo(BaseModel):
+    artifact_type: str = ""
+    schema_version: str = ""
+    artifact_id: str = ""
+    description: str = ""
+
+
+class ImplementationArtifactsInfo(BaseModel):
+    scorecard_table: ImplementationArtifactInfo | None = None
+    scoring_export_python: ImplementationArtifactInfo | None = None
+    scoring_export_sql: ImplementationArtifactInfo | None = None
+    source_step_refs: list[ResolvedStepRef] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Top-level ReportBundle
 # ---------------------------------------------------------------------------
 
@@ -506,3 +628,9 @@ class ReportBundle(BaseModel):
     reproducibility: ReproducibilityInfo = Field(default_factory=ReproducibilityInfo)
     artifacts: list[ArtifactEntry] = Field(default_factory=list)
     run_status: RunStatusInfo = Field(default_factory=RunStatusInfo)
+    modelling_metadata: dict[str, Any] = Field(default_factory=dict)
+    exclusion_summary: ExclusionSummaryInfo = Field(default_factory=ExclusionSummaryInfo)
+    sample_definition: SampleDefinitionInfo = Field(default_factory=SampleDefinitionInfo)
+    variable_selection: VariableSelectionInfo = Field(default_factory=VariableSelectionInfo)
+    model_diagnostics: ModelDiagnosticsInfo = Field(default_factory=ModelDiagnosticsInfo)
+    implementation_artifacts: ImplementationArtifactsInfo = Field(default_factory=ImplementationArtifactsInfo)

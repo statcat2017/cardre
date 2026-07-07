@@ -12,6 +12,15 @@ from typing import Any
 
 from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre._evidence.schemas import (
+    SCHEMA_CALIBRATION_DIAGNOSTICS,
+    SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS,
+    SCHEMA_SCORE_TABLE,
+    SCHEMA_SCORING_EXPORT_PYTHON,
+    SCHEMA_SCORING_EXPORT_SQL,
+    SCHEMA_SEPARATION_DIAGNOSTICS,
+    SCHEMA_VIF_DIAGNOSTICS,
+)
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.errors import Diagnostic
 from cardre.domain.run import RunStep
@@ -22,14 +31,21 @@ from cardre.reporting.schema import (
     ArtifactEntry,
     BranchInfo,
     BranchSummary,
+    CalibrationBin,
+    CalibrationRole,
     ChampionInfo,
+    CoefficientSignEntry,
     CutoffInfo,
     CutoffRow,
     CutoffTable,
     DatasetRole,
     DiagnosticEntry,
+    ExclusionRuleInfo,
+    ExclusionSummaryInfo,
     ExecutionFingerprint,
     GeneratedBy,
+    ImplementationArtifactInfo,
+    ImplementationArtifactsInfo,
     Limitation,
     ManualBinningReviewState,
     ManualIntervention,
@@ -48,10 +64,14 @@ from cardre.reporting.schema import (
     ResolvedStepRef,
     RunManifest,
     RunStatusInfo,
+    SampleDefinitionInfo,
     ScoreScalingInfo,
+    SeparationEntry,
     ValidationInfo,
     VariableBin,
     VariableInfo,
+    VariableSelectionInfo,
+    VifEntry,
     WoeSmoothingInfo,
 )
 from cardre.store import ProjectStore
@@ -289,6 +309,21 @@ class ReportCollector:
         # Dataset roles
         bundle.dataset_roles = self._collect_dataset_roles(run, plan_version_id)
 
+        # Exclusion summary
+        excl_ref = resolved.get("apply-exclusions")
+        if excl_ref:
+            self._collect_exclusion_summary(bundle, excl_ref, plan_version_id)
+
+        # Sample definition
+        sample_ref = resolved.get("sample-definition")
+        if sample_ref:
+            self._collect_sample_definition(bundle, sample_ref, plan_version_id)
+
+        # Initial WOE/IV
+        init_woe_ref = resolved.get("initial-woe-iv")
+        if init_woe_ref:
+            self._collect_initial_woe_iv(bundle, init_woe_ref, plan_version_id)
+
         # WOE/IV evidence
         woe_ref = resolved.get("final-woe-iv")
         if woe_ref:
@@ -298,6 +333,25 @@ class ReportCollector:
         model_ref = resolved.get("model-fit")
         if model_ref:
             self._collect_model(bundle, model_ref, plan_version_id)
+
+        # Model diagnostics
+        sign_ref = resolved.get("coefficient-sign-check")
+        if sign_ref:
+            self._collect_coefficient_sign_check(bundle, sign_ref, plan_version_id)
+        sep_ref = resolved.get("separation-diagnostics")
+        if sep_ref:
+            self._collect_separation_diagnostics(bundle, sep_ref, plan_version_id)
+        vif_ref = resolved.get("vif-diagnostics")
+        if vif_ref:
+            self._collect_vif_diagnostics(bundle, vif_ref, plan_version_id)
+        cal_ref = resolved.get("calibration-diagnostics")
+        if cal_ref:
+            self._collect_calibration_diagnostics(bundle, cal_ref, plan_version_id)
+
+        # Variable selection
+        sel_ref = resolved.get("variable-selection")
+        if sel_ref:
+            self._collect_variable_selection(bundle, sel_ref, plan_version_id)
 
         # Score scaling
         scaling_ref = resolved.get("score-scaling")
@@ -313,6 +367,13 @@ class ReportCollector:
         cutoff_ref = resolved.get("cutoff-analysis")
         if cutoff_ref:
             self._collect_cutoff(bundle, cutoff_ref, plan_version_id)
+
+        # Implementation artifacts
+        table_ref = resolved.get("scorecard-table-export")
+        py_ref = resolved.get("scoring-export-python")
+        sql_ref = resolved.get("scoring-export-sql")
+        if table_ref or py_ref or sql_ref:
+            self._collect_implementation_artifacts(bundle, table_ref, py_ref, sql_ref, plan_version_id)
 
         # Manual interventions
         manual_ref = resolved.get("manual-binning")
@@ -535,6 +596,7 @@ class ReportCollector:
         target_column = meta.target_column or str(getattr(meta, "_raw", {}).get("target_column", ""))
         if target_column and not bundle.summary.target_column:
             bundle.summary.target_column = target_column
+        bundle.modelling_metadata = getattr(meta, "_raw", {})
 
     def _collect_score_scaling(
         self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
@@ -718,6 +780,260 @@ class ReportCollector:
                         reason=ov.get("reason", ""),
                         created_at=ov.get("created_at", ""),
                     ))
+
+    def _collect_exclusion_summary(
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
+    ) -> None:
+        rs = self._resolve_run_step(ref, plan_version_id)
+        if rs is None:
+            return
+        evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.EXCLUSION_SUMMARY)
+        if evidence is None:
+            return
+        raw = getattr(evidence, "_raw", {})
+        rules = [
+            ExclusionRuleInfo(rule_id=str(i), reason=r.get("reason", ""), rows_removed=r.get("rows_removed", 0))
+            for i, r in enumerate(raw.get("rules", []))
+        ]
+        bundle.exclusion_summary = ExclusionSummaryInfo(
+            rows_before=raw.get("rows_before", 0),
+            rows_after=raw.get("rows_after", 0),
+            rules=rules,
+            source_step_refs=[_to_schema_ref(ref)],
+        )
+
+    def _collect_sample_definition(
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
+    ) -> None:
+        rs = self._resolve_run_step(ref, plan_version_id)
+        if rs is None:
+            return
+        evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.SAMPLE_DEFINITION)
+        if evidence is None:
+            return
+        raw = getattr(evidence, "_raw", {})
+        bundle.sample_definition = SampleDefinitionInfo(
+            sample_method=raw.get("sample_method", ""),
+            sample_domain=raw.get("sample_domain", ""),
+            sample_description=raw.get("sample_description", ""),
+            source_step_refs=[_to_schema_ref(ref)],
+        )
+
+    def _collect_initial_woe_iv(
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
+    ) -> None:
+        rs = self._resolve_run_step(ref, plan_version_id)
+        if rs is None:
+            return
+        evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.WOE_IV_EVIDENCE)
+        if evidence is None:
+            return
+        for var in evidence.variables:
+            bundle.variables.append(VariableInfo(
+                variable_name=var.variable_name,
+                role="initial",
+                iv=var.iv,
+                source_step_refs=[_to_schema_ref(ref)],
+            ))
+
+    def _collect_coefficient_sign_check(
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
+    ) -> None:
+        rs = self._resolve_run_step(ref, plan_version_id)
+        if rs is None:
+            return
+        raw = self._read_raw_json_by_step(rs, SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS)
+        if raw is None:
+            return
+        variables = raw.get("variables", [])
+        entries = [
+            CoefficientSignEntry(
+                variable_name=v.get("variable_name", ""),
+                feature_name=v.get("feature_name", ""),
+                coefficient=v.get("coefficient", 0.0),
+                coefficient_is_infinite=v.get("coefficient_is_infinite", False),
+                coefficient_sign=v.get("coefficient_sign", ""),
+                expected_sign=v.get("expected_sign", ""),
+                status=v.get("status", ""),
+                reason=v.get("reason", ""),
+            )
+            for v in variables
+        ]
+        bundle.model_diagnostics.coefficient_sign_check = entries
+        bundle.model_diagnostics.source_step_refs.append(_to_schema_ref(ref))
+
+    def _collect_separation_diagnostics(
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
+    ) -> None:
+        rs = self._resolve_run_step(ref, plan_version_id)
+        if rs is None:
+            return
+        raw = self._read_raw_json_by_step(rs, SCHEMA_SEPARATION_DIAGNOSTICS)
+        if raw is None:
+            return
+        variables = raw.get("variables", [])
+        entries = [
+            SeparationEntry(
+                feature_name=v.get("feature_name", ""),
+                coefficient=v.get("coefficient", 0.0),
+                coefficient_is_infinite=v.get("coefficient_is_infinite", False),
+                abs_coefficient=v.get("abs_coefficient", 0.0),
+                standard_error=v.get("standard_error"),
+                standard_error_is_infinite=v.get("standard_error_is_infinite", False),
+                status=v.get("status", ""),
+                reason=v.get("reason", ""),
+            )
+            for v in variables
+        ]
+        bundle.model_diagnostics.separation_diagnostics = entries
+        bundle.model_diagnostics.source_step_refs.append(_to_schema_ref(ref))
+
+    def _collect_vif_diagnostics(
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
+    ) -> None:
+        rs = self._resolve_run_step(ref, plan_version_id)
+        if rs is None:
+            return
+        raw = self._read_raw_json_by_step(rs, SCHEMA_VIF_DIAGNOSTICS)
+        if raw is None:
+            return
+        variables = raw.get("variables", [])
+        entries = [
+            VifEntry(
+                feature_name=v.get("feature_name", ""),
+                vif=v.get("vif"),
+                vif_is_infinite=v.get("vif_is_infinite", False),
+                r_squared=v.get("r_squared"),
+                status=v.get("status", ""),
+                reason=v.get("reason", ""),
+            )
+            for v in variables
+        ]
+        bundle.model_diagnostics.vif_diagnostics = entries
+        bundle.model_diagnostics.source_step_refs.append(_to_schema_ref(ref))
+
+    def _collect_calibration_diagnostics(
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
+    ) -> None:
+        rs = self._resolve_run_step(ref, plan_version_id)
+        if rs is None:
+            return
+        raw = self._read_raw_json_by_step(rs, SCHEMA_CALIBRATION_DIAGNOSTICS)
+        if raw is None:
+            return
+        roles = raw.get("roles", {})
+        role_entries: dict[str, CalibrationRole] = {}
+        for role_name, role_data in roles.items():
+            decile_bins = [
+                CalibrationBin(
+                    bin=b.get("bin", i + 1),
+                    count=b.get("count", 0),
+                    observed_events=b.get("observed_events", 0),
+                    expected_events=b.get("expected_events", 0.0),
+                    observed_event_rate=b.get("observed_event_rate", 0.0),
+                    predicted_event_rate=b.get("predicted_event_rate", 0.0),
+                    abs_deviation=b.get("abs_deviation", 0.0),
+                )
+                for i, b in enumerate(role_data.get("decile_bins", []))
+            ]
+            role_entries[role_name] = CalibrationRole(
+                row_count=role_data.get("row_count", 0),
+                known_count=role_data.get("known_count", 0),
+                n_bins=role_data.get("n_bins", 0),
+                hosmer_lemeshow_statistic=role_data.get("hosmer_lemeshow_statistic"),
+                hosmer_lemeshow_p_value=role_data.get("hosmer_lemeshow_p_value"),
+                calibration_error=role_data.get("calibration_error", 0.0),
+                auc=role_data.get("auc"),
+                decile_bins=decile_bins,
+                status=role_data.get("status", ""),
+            )
+        bundle.model_diagnostics.calibration_diagnostics = role_entries
+        bundle.model_diagnostics.source_step_refs.append(_to_schema_ref(ref))
+
+    def _read_raw_json_by_step(self, rs: Any, schema_version: str) -> dict[str, Any] | None:
+        import json
+        for row in self.store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+            (rs.run_step_id,),
+        ).fetchall():
+            art = self.store.get_artifact(row["artifact_id"])
+            if art and art.metadata.get("schema_version") == schema_version:
+                path = self.store.artifact_path(art)  # cardre-allow-artifact-read: low-level-evidence-parser
+                if path.exists():
+                    data = json.loads(path.read_text())  # cardre-allow-artifact-read: low-level-evidence-parser
+                    return dict(data) if isinstance(data, dict) else None
+        return None
+
+    def _collect_variable_selection(
+        self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
+    ) -> None:
+        rs = self._resolve_run_step(ref, plan_version_id)
+        if rs is None:
+            return
+        evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.SELECTION_DEFINITION)
+        if evidence is None:
+            return
+        raw = getattr(evidence, "_raw", {})
+        bundle.variable_selection = VariableSelectionInfo(
+            selected_variables=list(raw.get("selected", [])),
+            rejected_variables=list(raw.get("rejected", [])),
+            min_iv=raw.get("min_iv", 0.0),
+            source_step_refs=[_to_schema_ref(ref)],
+        )
+
+    def _collect_implementation_artifacts(
+        self, bundle: ReportBundle,
+        table_ref: _ResolvedStepRef | None,
+        py_ref: _ResolvedStepRef | None,
+        sql_ref: _ResolvedStepRef | None,
+        plan_version_id: str,
+    ) -> None:
+        table_art = None
+        py_art = None
+        sql_art = None
+        if table_ref is not None:
+            rs = self._resolve_run_step(table_ref, plan_version_id)
+            if rs is not None:
+                table_art = self._find_artifact_by_step(rs, SCHEMA_SCORE_TABLE)
+        if py_ref is not None:
+            rs = self._resolve_run_step(py_ref, plan_version_id)
+            if rs is not None:
+                py_art = self._find_artifact_by_step(rs, SCHEMA_SCORING_EXPORT_PYTHON)
+        if sql_ref is not None:
+            rs = self._resolve_run_step(sql_ref, plan_version_id)
+            if rs is not None:
+                sql_art = self._find_artifact_by_step(rs, SCHEMA_SCORING_EXPORT_SQL)
+        bundle.implementation_artifacts = ImplementationArtifactsInfo(
+            scorecard_table=ImplementationArtifactInfo(
+                artifact_type="scorecard_table",
+                schema_version=SCHEMA_SCORE_TABLE,
+                artifact_id=table_art.artifact_id if table_art else "",
+                description="Flat-file attribute points table",
+            ) if table_art else None,
+            scoring_export_python=ImplementationArtifactInfo(
+                artifact_type="scoring_export_python",
+                schema_version=SCHEMA_SCORING_EXPORT_PYTHON,
+                artifact_id=py_art.artifact_id if py_art else "",
+                description="Standalone Python scoring function",
+            ) if py_art else None,
+            scoring_export_sql=ImplementationArtifactInfo(
+                artifact_type="scoring_export_sql",
+                schema_version=SCHEMA_SCORING_EXPORT_SQL,
+                artifact_id=sql_art.artifact_id if sql_art else "",
+                description="Standalone SQL scoring query",
+            ) if sql_art else None,
+            source_step_refs=[_to_schema_ref(r) for r in [table_ref, py_ref, sql_ref] if r is not None],
+        )
+
+    def _find_artifact_by_step(self, rs: Any, schema_version: str) -> Any | None:
+        for row in self.store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+            (rs.run_step_id,),
+        ).fetchall():
+            art = self.store.get_artifact(row["artifact_id"])
+            if art and art.metadata.get("schema_version") == schema_version:
+                return art
+        return None
 
     def _collect_redundancy_review(
         self, bundle: ReportBundle, plan_version_id: str,
