@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import polars as pl
+
 from cardre._evidence.kinds import EvidenceKind, EvidenceNotFoundError
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import (
@@ -10,7 +12,7 @@ from cardre._evidence.schemas import (
     SCHEMA_SCORING_EXPORT_PYTHON,
     SCHEMA_SCORING_EXPORT_SQL,
 )
-from cardre.artifacts import write_json_artifact
+from cardre.artifacts import write_csv_artifact, write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.contracts import NodeType
 
@@ -54,6 +56,15 @@ class ScorecardTableExportNode(NodeType):
                 "points": attr["points"],
             })
 
+        df = pl.DataFrame(table_rows)
+
+        csv_artifact = write_csv_artifact(
+            store, artifact_type="report", role="report",
+            stem=f"scorecard-table-csv-{context.step_spec.step_id}",
+            frame=df,
+            metadata={"schema_version": SCHEMA_SCORE_TABLE, "row_count": len(table_rows)},
+        )
+
         table_payload: dict[str, Any] = {
             "schema_version": SCHEMA_SCORE_TABLE,
             "base_score": scorecard_raw.get("base_score", 600),
@@ -65,18 +76,19 @@ class ScorecardTableExportNode(NodeType):
             "rows": table_rows,
         }
 
-        artifact = write_json_artifact(
+        json_artifact = write_json_artifact(
             store, artifact_type="report", role="report",
             stem=f"scorecard-table-{context.step_spec.step_id}",
             payload=table_payload,
             metadata={
                 "schema_version": SCHEMA_SCORE_TABLE,
                 "row_count": len(table_rows),
+                "csv_artifact_id": csv_artifact.artifact_id,
             },
         )
 
         return NodeOutput(
-            artifacts=[artifact],
+            artifacts=[json_artifact, csv_artifact],
             metrics={"row_count": len(table_rows)},
         )
 
