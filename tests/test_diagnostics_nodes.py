@@ -156,7 +156,8 @@ class TestVifDiagnostics:
         output = VifDiagnosticsNode().run(ctx)
         payload = json.loads((store.root / output.artifacts[0].path).read_text())
         for var in payload["variables"]:
-            assert var["vif"] == float("inf")
+            assert var["vif"] is None
+            assert var["vif_is_infinite"] is True
             assert var["status"] == "warning"
 
     def test_independent_features_pass(self, store):
@@ -285,3 +286,64 @@ class TestCalibrationDiagnostics:
         # With all predicted at 0.5 and actual 50/50, HL should be very small
         assert hl is not None
         assert hl >= 0.0
+
+    def test_hosmer_lemeshow_tie_invariant(self, store):
+        """HL grouping is invariant to row-order shuffling within ties."""
+        np.random.seed(42)
+        n = 50
+        y_bin = np.random.binomial(1, 0.4, n)
+        # Create ties: round probabilities so many duplicate values exist
+        base_prob = np.clip(y_bin + np.random.normal(0, 0.05, n), 0.01, 0.99)
+        y_prob = np.round(base_prob, 1)
+
+        model = _make_model_artifact(store, features=["age_woe"], coefficients={"age_woe": -1.0})
+        meta = self._make_metadata(store)
+
+        targets = ["good" if y == 0 else "bad" for y in y_bin.tolist()]
+
+        # Build dataset in original order
+        train = self._make_scored_dataset(
+            store, "train",
+            y_prob.tolist(), targets,
+        )
+        ctx = _make_context(store, "calibration-diagnostics", "cardre.calibration_diagnostics", [train, model, meta])
+        output = CalibrationDiagnosticsNode().run(ctx)
+        payload = json.loads((store.root / output.artifacts[0].path).read_text())
+        hl_original = payload["roles"]["train"]["hosmer_lemeshow_statistic"]
+
+        # Shuffle row order and re-run
+        shuffle_idx = np.random.permutation(n)
+        y_prob_shuffled = y_prob[shuffle_idx]
+        targets_shuffled = [targets[int(i)] for i in shuffle_idx]
+        train2 = self._make_scored_dataset(
+            store, "test",
+            y_prob_shuffled.tolist(), targets_shuffled,
+        )
+        ctx2 = _make_context(store, "calibration-diagnostics", "cardre.calibration_diagnostics", [train2, model, meta])
+        output2 = CalibrationDiagnosticsNode().run(ctx2)
+        payload2 = json.loads((store.root / output2.artifacts[0].path).read_text())
+        hl_shuffled = payload2["roles"]["test"]["hosmer_lemeshow_statistic"]
+
+        assert hl_original == hl_shuffled
+
+    def test_payload_is_json_safe(self, store):
+        """Artifact payload serializes without Infinity or NaN values."""
+        model = _make_model_artifact(
+            store,
+            features=["age_woe"],
+            coefficients=[
+                {"variable_name": "age_woe", "coefficient": float("inf"), "standard_error": float("inf")},
+            ],
+        )
+        ctx = _make_context(store, "separation-diagnostics", "cardre.separation_diagnostics", [model])
+        output = SeparationDiagnosticsNode().run(ctx)
+        text = (store.root / output.artifacts[0].path).read_text()
+        assert "Infinity" not in text
+        assert "NaN" not in text
+        assert "Inf" not in text
+        # Should round-trip cleanly
+        payload = json.loads(text)
+        assert payload["variables"][0]["coefficient"] is None
+        assert payload["variables"][0]["coefficient_is_infinite"] is True
+        assert payload["variables"][0]["standard_error"] is None
+        assert payload["variables"][0]["standard_error_is_infinite"] is True

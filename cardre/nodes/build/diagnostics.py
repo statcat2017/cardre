@@ -24,6 +24,15 @@ from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.contracts import NodeType
 
 
+def _json_float(value: float | None) -> float | None:
+    """Return a JSON-safe float, or None if non-finite."""
+    if value is None:
+        return None
+    if math.isinf(value) or math.isnan(value):
+        return None
+    return value
+
+
 def _find_model_artifact(
     reader: ArtifactEvidenceReader, input_artifacts: list[ArtifactRef]
 ) -> Any:
@@ -216,9 +225,11 @@ class SeparationDiagnosticsNode(NodeType):
             variable_results.append(
                 {
                     "feature_name": feature_name,
-                    "coefficient": coefficient,
-                    "abs_coefficient": abs(coefficient),
-                    "standard_error": standard_error,
+                    "coefficient": _json_float(coefficient),
+                    "coefficient_is_infinite": math.isinf(coefficient),
+                    "abs_coefficient": _json_float(abs(coefficient)),
+                    "standard_error": _json_float(standard_error),
+                    "standard_error_is_infinite": standard_error is not None and (math.isinf(float(standard_error)) or math.isnan(float(standard_error))),
                     "status": status,
                     "reason": reason,
                 }
@@ -325,7 +336,8 @@ class VifDiagnosticsNode(NodeType):
                     variable_results.append(
                         {
                             "feature_name": feature,
-                            "vif": float("inf"),
+                            "vif": None,
+                            "vif_is_infinite": True,
                             "r_squared": None,
                             "status": "warning",
                             "reason": "Variance is zero or correlation matrix is singular; VIF is infinite.",
@@ -338,17 +350,17 @@ class VifDiagnosticsNode(NodeType):
 
                     vif_diagonal = np.diag(inv(corr))
                     for i, feature in enumerate(woe_features):
-                        vif = float(vif_diagonal[i])
-                        if math.isinf(vif) or math.isnan(vif):
-                            vif = float("inf")
-                        r_squared = 1.0 - 1.0 / vif if vif != 0 and not math.isinf(vif) else None
+                        vif_raw = float(vif_diagonal[i])
+                        is_infinite = math.isinf(vif_raw) or math.isnan(vif_raw)
+                        vif: float | None = None if is_infinite else vif_raw
+                        r_squared = 1.0 - 1.0 / vif if vif is not None and vif != 0 else None
 
                         status = "pass"
-                        reason = f"VIF ({vif:.4f}) is below threshold ({self.VIF_WARNING_THRESHOLD})." if not math.isinf(vif) else "VIF is infinite, indicating exact collinearity."
-                        if math.isinf(vif) or vif >= self.VIF_WARNING_THRESHOLD:
+                        reason = f"VIF ({vif:.4f}) is below threshold ({self.VIF_WARNING_THRESHOLD})." if vif is not None else "VIF is infinite, indicating exact collinearity."
+                        if is_infinite or (vif is not None and vif >= self.VIF_WARNING_THRESHOLD):
                             status = "warning"
                             warning_count += 1
-                            if not math.isinf(vif):
+                            if vif is not None:
                                 reason = (
                                     f"VIF ({vif:.4f}) exceeds threshold ({self.VIF_WARNING_THRESHOLD}), "
                                     f"indicating multicollinearity."
@@ -357,7 +369,8 @@ class VifDiagnosticsNode(NodeType):
                         variable_results.append(
                             {
                                 "feature_name": feature,
-                                "vif": round(vif, 6) if not math.isinf(vif) else vif,
+                                "vif": round(vif, 6) if vif is not None else None,
+                                "vif_is_infinite": is_infinite,
                                 "r_squared": round(r_squared, 6) if r_squared is not None else None,
                                 "status": status,
                                 "reason": reason,
@@ -368,7 +381,8 @@ class VifDiagnosticsNode(NodeType):
                         variable_results.append(
                             {
                                 "feature_name": feature,
-                                "vif": float("inf"),
+                                "vif": None,
+                                "vif_is_infinite": True,
                                 "r_squared": None,
                                 "status": "warning",
                                 "reason": "Correlation matrix is singular (exact collinearity); VIF is infinite.",
@@ -382,10 +396,11 @@ class VifDiagnosticsNode(NodeType):
                         "feature_name": feature,
                         "vif": None,
                         "r_squared": None,
-                        "status": "pass",
+                        "status": "error",
                         "reason": "VIF could not be computed.",
                     }
                 )
+            warning_count = len(woe_features)
 
         payload = {
             "schema_version": SCHEMA_VIF_DIAGNOSTICS,
@@ -472,20 +487,23 @@ class CalibrationDiagnosticsNode(NodeType):
                 }
                 continue
 
-            n_bins = 10
             n = len(y_bin)
-            min_bins = min(n_bins, max(2, n // 5))
+            target_n_bins = max(2, min(10, n // 5))
 
-            # Sort by predicted probability and form quantile groups
-            sort_idx = np.argsort(y_prob)
-            group_size = max(1, n // min_bins)
+            # Sort by predicted probability and form tie-aware quantile groups.
+            # Rows with identical predicted probabilities are never split across
+            # groups, ensuring the grouping is invariant to row order within ties.
+            sort_idx = np.argsort(y_prob, kind="stable")
+            group_size = max(1, math.ceil(n / target_n_bins))
             groups: list[np.ndarray] = []
-            for g in range(min_bins):
-                start = g * group_size
-                end = n if g == min_bins - 1 else min(start + group_size, n)
-                if start >= end:
-                    break
-                groups.append(sort_idx[start:end])
+            i = 0
+            while i < n:
+                end = min(i + group_size, n)
+                if end < n:
+                    while end < n and y_prob[sort_idx[end]] == y_prob[sort_idx[end - 1]]:
+                        end += 1
+                groups.append(sort_idx[i:end])
+                i = end
 
             actual_min_bins = len(groups)
 
