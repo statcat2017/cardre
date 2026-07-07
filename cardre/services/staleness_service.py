@@ -16,6 +16,7 @@ from cardre.domain.run import RunStep, RunStepStatus
 from cardre.domain.step import StepSpec
 
 if TYPE_CHECKING:
+    from cardre.evidence_locator import EvidenceLocator
     from cardre.store.db import ProjectStore
     from cardre.store.evidence_repo import EvidenceRepository
     from cardre.store.run_repo import RunRepository
@@ -100,11 +101,16 @@ class StalenessService:
         stale_cache: dict[str, bool] = {}
         upstream_changes: dict[str, bool] = {}
 
+        # One Locator for the whole recursive walk — avoids re-instantiating
+        # per step (review feedback).
+        from cardre.evidence_locator import EvidenceLocator
+        locator = EvidenceLocator(self._store)
+
         # Check all upstream steps recursively
         for s in steps:
             is_stale = self._step_is_stale(
                 s, steps, rs_repo, evidence_repo, run_repo,
-                plan_version_id, branch_id, plan_id, stale_cache,
+                plan_version_id, branch_id, plan_id, stale_cache, locator,
             )
             upstream_changes[s.step_id] = is_stale
 
@@ -143,6 +149,7 @@ class StalenessService:
         branch_id: str | None,
         plan_id: str | None,
         stale_cache: dict[str, bool],
+        locator: EvidenceLocator | None = None,
     ) -> bool:
         """Check if a step is stale.
 
@@ -153,8 +160,9 @@ class StalenessService:
         if spec.step_id in stale_cache:
             return stale_cache[spec.step_id]
 
-        from cardre.evidence_locator import EvidenceLocator
-        locator = EvidenceLocator(self._store)
+        if locator is None:
+            from cardre.evidence_locator import EvidenceLocator
+            locator = EvidenceLocator(self._store)
 
         # Resolve the run-step for this step via the Locator.  The Locator
         # applies the fingerprint comparison and the branch→full→plan
@@ -177,18 +185,24 @@ class StalenessService:
             parent_spec = _find_spec(pid, all_steps)
             parent_stale = self._step_is_stale(
                 parent_spec, all_steps, rs_repo, evidence_repo, run_repo,
-                plan_version_id, branch_id, plan_id, stale_cache,
+                plan_version_id, branch_id, plan_id, stale_cache, locator,
             )
             if parent_stale:
                 stale_cache[spec.step_id] = True
                 return True
 
-            # Check parent output hashes via evidence edges.
-            # The parent's own edges have run_step_id = parent's run-step.
-            parent_edges = evidence_repo.get_edges_for_plan_step(plan_version_id, pid)
-            parent_rs: RunStep | None = None
-            if parent_edges:
-                parent_rs = rs_repo.get(parent_edges[-1].run_step_id)
+            # Check parent output hashes.  Resolve the parent run-step via
+            # the Locator (same branch_id, plan_id, fingerprint policy) so
+            # the comparison uses the same branch-scoped parent evidence as
+            # the recursive parent staleness check (ADR-0005 §3).
+            parent_resolved = locator.resolve(
+                plan_version_id, pid,
+                branch_id=branch_id, plan_id=plan_id,
+                fingerprint_match=parent_spec,
+            )
+            parent_rs: RunStep | None = (
+                parent_resolved.run_step if parent_resolved is not None else None
+            )
 
             if parent_rs is not None:
                 stored_parent_outputs = fp.get("parent_output_logical_hashes_by_step", {}).get(pid, [])

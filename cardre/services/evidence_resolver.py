@@ -113,7 +113,7 @@ class EvidenceResolver:
         if policy == "source_branch_then_full_then_plan":
             return self._resolve_source_branch_then_full_then_plan(
                 locator, plan_version_id, step_id, source_branch_id,
-                require_fingerprint_match, diagnostics,
+                plan_id, require_fingerprint_match, diagnostics,
             )
 
         if policy == "across_plan":
@@ -151,13 +151,17 @@ class EvidenceResolver:
 
     def _resolve_source_branch_then_full_then_plan(
         self, locator: EvidenceLocator, plan_version_id: str, step_id: str,
-        source_branch_id: str | None, require_fingerprint_match: StepSpec | None,
+        source_branch_id: str | None, plan_id: str | None,
+        require_fingerprint_match: StepSpec | None,
         diagnostics: list[Diagnostic],
     ) -> tuple[ResolvedEvidence | None, str, list[Diagnostic]]:
-        # Resolve plan_id if not provided (needed for across-plan fallback).
-        plan_id = self._plan_id_for_version(plan_version_id)
+        # Resolve plan_id only if not provided by the caller.
+        if plan_id is None:
+            plan_id = self._plan_id_for_version(plan_version_id)
 
-        # Try with source_branch_id first.
+        # Try with source_branch_id first.  The Locator's internal fallback
+        # may already fall through to full-plan/latest-plan/across-plan if
+        # the source branch has no evidence — detect that via source_label.
         resolved = locator.resolve(
             plan_version_id, step_id,
             branch_id=source_branch_id,
@@ -165,29 +169,22 @@ class EvidenceResolver:
             fingerprint_match=require_fingerprint_match,
         )
         if resolved is not None:
-            return resolved, resolved.source_label or "across_plan", diagnostics
-
-        # Fell back to baseline (branch_id=None).
-        resolved = locator.resolve(
-            plan_version_id, step_id,
-            branch_id=None,
-            plan_id=plan_id,
-            fingerprint_match=require_fingerprint_match,
-        )
-        if resolved is not None:
-            if source_branch_id is not None:
+            # If the result did not come from the source branch's own scope,
+            # the Locator fell back to baseline — emit the diagnostic.
+            if source_branch_id is not None and resolved.source_label not in ("branch",):
                 diagnostics.append(Diagnostic(
                     code="INHERITED_BASELINE_EVIDENCE",
                     message=(
                         f"Step {step_id}: source branch {source_branch_id} "
-                        "has no evidence; fell back to baseline (branch_id=None)."
+                        "has no evidence; fell back to baseline "
+                        f"({resolved.source_label})."
                     ),
                     source="EvidenceResolver._resolve_source_branch_then_full_then_plan",
                     severity="warning",
                     context={
                         "step_id": step_id,
                         "source_branch_id": source_branch_id,
-                        "fallback_branch_id": None,
+                        "fallback_label": resolved.source_label,
                     },
                 ))
             return resolved, resolved.source_label or "across_plan", diagnostics

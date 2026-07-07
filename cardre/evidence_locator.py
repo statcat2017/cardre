@@ -54,16 +54,16 @@ class EvidenceLocator:
         Fallback order:
 
         1. ``evidence_edges`` for (``plan_version_id``, ``step_id``) → the
-           consuming step's run-step, filtered by the run's ``branch_id``.
-           If ``branch_id`` is provided, only edges from that branch's runs
-           are considered; if no branch-scoped edge exists, the fallback
-           continues to step 2.
-        2. Full-plan fallback: the latest successful run for this
-           ``plan_version_id`` with ``branch_id IS NULL`` and scan its
-           run_steps.
-        3. Across-plan fallback: if ``plan_id`` is provided (or resolvable),
-           the latest successful run for the entire plan and scan its
-           run_steps.
+           consuming step's run-step, filtered by the run's ``branch_id``
+           and by successful run/run-step status.  ``branch_id=None`` means
+           full-plan/baseline scope (runs where ``branch_id IS NULL``), not
+           "any edge".
+        2. Full-plan fallback (only if ``branch_id`` was provided): retry
+           edge-walking with ``branch_id=None``.
+        3. Plan-level run scan: the latest successful run for this
+           ``plan_version_id`` with ``branch_id IS NULL``.
+        4. Across-plan fallback: if ``plan_id`` is provided (or resolvable),
+           the latest successful run for the entire plan.
 
         The optional ``fingerprint_match`` ``StepSpec`` filters candidates
         by ``params_hash``, ``node_type``, ``node_version``.  Non-matching
@@ -75,16 +75,13 @@ class EvidenceLocator:
         evidence_repo = EvidenceRepository(self._store)
         rs_repo = RunStepRepository(self._store)
 
-        # Step 1: branch-scoped edge-walking.  If branch_id is provided,
-        # filter edges by the run's branch_id; otherwise look at any edge.
-        if branch_id is not None:
-            edges = evidence_repo.get_edges_for_plan_step_branch(
-                plan_version_id, step_id, branch_id,
-            )
-        else:
-            edges = evidence_repo.get_edges_for_plan_step(
-                plan_version_id, step_id,
-            )
+        # Step 1: branch-scoped edge-walking.  Always use the branch-aware
+        # helper: branch_id=None means full-plan/baseline scope (runs where
+        # branch_id IS NULL), not "any edge".  The helper also filters by
+        # run + run-step success status (ADR-0005 §3).
+        edges = evidence_repo.get_edges_for_plan_step_branch(
+            plan_version_id, step_id, branch_id,
+        )
         rs: RunStep | None = None
         if edges:
             rs = rs_repo.get(edges[-1].run_step_id)
@@ -93,7 +90,7 @@ class EvidenceLocator:
             return self._build_resolved_evidence(rs, "branch" if branch_id is not None else "full_plan")
 
         # Step 2: full-plan fallback.  If branch_id was provided, retry
-        # edge-walking without the branch filter (full-plan scope).
+        # edge-walking with branch_id=None (full-plan scope).
         if branch_id is not None:
             edges = evidence_repo.get_edges_for_plan_step_branch(
                 plan_version_id, step_id, None,

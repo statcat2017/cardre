@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 
 from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.run import RunStepStatus
 from cardre.domain.step import StepSpec
 
 
@@ -351,6 +352,9 @@ class TestEvidenceLocatorBranchScoping:
         resolved = locator.resolve(pv_id, step_id, branch_id=None)
         assert resolved is not None
         assert resolved.source_label == "full_plan"
+
+
+class TestEvidenceLocatorRunOnly:
     """The run_only policy — scoped to a single run, no fallback."""
 
     def test_resolve_for_run_finds_step(self, tmp_path):
@@ -380,3 +384,224 @@ class TestEvidenceLocatorBranchScoping:
         locator = EvidenceLocator(store)
         resolved = locator.resolve_for_run(run_id, "nonexistent-step")
         assert resolved is None
+
+
+class TestEvidenceLocatorBranchAndPlanRegression:
+    """Regression tests for the 5 blocking semantic bugs found during code review.
+
+    See PR #286 code review:
+    - branch_id=None must not return branch evidence
+    - Latest edge failed + older edge succeeded (status filtering)
+    - Fingerprint mismatch skips edge, falls to older matching edge
+    - Source branch missing + full-plan exists carries correct source_label
+    - Explicit plan_id honoured when plan_version has no run
+    """
+
+    # --- Regression test for fix 1: branch_id=None scoping ---
+    def test_branch_id_none_excludes_branch_evidence(self, tmp_path):
+        """branch_id=None must only return runs where branch_id IS NULL,
+        not runs from any branch."""
+        store = _make_store(tmp_path)
+        _, _, pv_id, step_id, _, _ = _seed_with_run_evidence(store)
+
+        # Add a second run with branch_id="br-1" for the same step.
+        now = utc_now_iso()
+        run_branch = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, finished_at, branch_id) "
+            "VALUES (?, ?, 'succeeded', ?, ?, ?, ?)",
+            (run_branch, pv_id, now, now, now, "br-1"),
+        )
+        rs_branch = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, "
+            " started_at, finished_at, execution_fingerprint_json) "
+            "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, ?)",
+            (rs_branch, run_branch, step_id, pv_id, now, now,
+             json.dumps({"params_hash": "branch-only"})),
+        )
+        store.execute(
+            "INSERT INTO evidence_edges "
+            "(evidence_edge_id, run_id, run_step_id, plan_version_id, step_id, parent_step_id, "
+            " source_run_id, source_run_step_id, policy, source_label, is_reused, is_stale, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'exact', 'parent', 0, 0, ?)",
+            (str(uuid.uuid4()), run_branch, rs_branch, pv_id, step_id, "step-root",
+             run_branch, rs_branch, now),
+        )
+
+        from cardre.evidence_locator import EvidenceLocator
+        locator = EvidenceLocator(store)
+        resolved = locator.resolve(pv_id, step_id, branch_id=None)
+        assert resolved is not None
+        # The run-step must be from the baseline (branch_id=NULL) run,
+        # not from the "br-1" branch run.
+        assert resolved.run_step.run_step_id != rs_branch
+        assert resolved.source_label == "full_plan"
+
+    # --- Regression test for fix 2: failed edges excluded ---
+    def test_newer_failed_edge_defers_to_older_succeeded_edge(self, tmp_path):
+        """When the latest edge points to a failed run-step, the Locator
+        skips it (filtered out by SQL join on rs.status) and follows up
+        to the older succeeded edge via the plan-level fallback."""
+        store = _make_store(tmp_path)
+        _, _, pv_id, step_id, _, _ = _seed_with_run_evidence(store)
+
+        # The seeded run-step is succeeded.  Add a newer failed run with
+        # an edge that references a failed run-step.  The SQL join
+        # filters it out, so edge-walking finds the seeded edge.
+        now = utc_now_iso()
+        failed_run = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, finished_at) "
+            "VALUES (?, ?, 'failed', ?, ?, ?)",
+            (failed_run, pv_id, now, now, now),
+        )
+        rs_failed = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, "
+            " started_at, finished_at, execution_fingerprint_json) "
+            "VALUES (?, ?, ?, ?, 'failed', ?, ?, ?)",
+            (rs_failed, failed_run, step_id, pv_id, now, now,
+             json.dumps({"params_hash": "hash002"})),
+        )
+        store.execute(
+            "INSERT INTO evidence_edges "
+            "(evidence_edge_id, run_id, run_step_id, plan_version_id, step_id, parent_step_id, "
+            " source_run_id, source_run_step_id, policy, source_label, is_reused, is_stale, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'exact', 'parent', 0, 0, ?)",
+            (str(uuid.uuid4()), failed_run, rs_failed, pv_id, step_id, "step-root",
+             failed_run, rs_failed, now),
+        )
+
+        from cardre.evidence_locator import EvidenceLocator
+        locator = EvidenceLocator(store)
+        # Should still find the original succeeded run-step via edge-walking
+        # (the failed edge is filtered by the SQL join).
+        resolved = locator.resolve(pv_id, step_id)
+        assert resolved is not None
+        assert resolved.run_step.status == RunStepStatus.SUCCEEDED
+
+    # --- Regression test for fix 3: fingerprint mismatch skips edge ---
+    def test_fingerprint_mismatch_skips_latest_edge_falls_to_older(self, tmp_path):
+        """When the latest edge's run-step has a mismatched fingerprint,
+        but an older edge's run-step matches, the Locator picks the
+        older matching one via the plan-level fallback."""
+        store = _make_store(tmp_path)
+        _, _, pv_id, step_id, _, _ = _seed_with_run_evidence(store)
+
+        # The seeded run-step has params_hash "hash002" and node_type
+        # "cardre.profiler".  Add a newer run-step with a different
+        # params_hash ("hash999") so fingerprint_match excludes it.
+        now = utc_now_iso()
+        newer_run = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, finished_at) "
+            "VALUES (?, ?, 'succeeded', ?, ?, ?)",
+            (newer_run, pv_id, now, now, now),
+        )
+        rs_newer = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, "
+            " started_at, finished_at, execution_fingerprint_json) "
+            "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, ?)",
+            (rs_newer, newer_run, step_id, pv_id, now, now,
+             json.dumps({"params_hash": "hash999", "node_type": "cardre.profiler", "node_version": "1"})),
+        )
+        store.execute(
+            "INSERT INTO evidence_edges "
+            "(evidence_edge_id, run_id, run_step_id, plan_version_id, step_id, parent_step_id, "
+            " source_run_id, source_run_step_id, policy, source_label, is_reused, is_stale, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'exact', 'parent', 0, 0, ?)",
+            (str(uuid.uuid4()), newer_run, rs_newer, pv_id, step_id, "step-root",
+             newer_run, rs_newer, now),
+        )
+
+        from cardre.evidence_locator import EvidenceLocator
+        locator = EvidenceLocator(store)
+        # The newest edge has fingerprint mismatch; Locator should skip it
+        # and the edge-walking path returns None (no matching edges).
+        # Then the plan-level run scan should find the seeded matching run-step.
+        resolved = locator.resolve(pv_id, step_id, fingerprint_match=_matching_spec(step_id))
+        assert resolved is not None
+        assert resolved.source_label in ("full_plan", "latest_plan_run")
+
+    # --- Regression test for fix 4: source_label diagnostic ---
+    def test_branch_missing_full_plan_exists_source_label_diagnostic(self, tmp_path):
+        """When branch-scoped lookup finds nothing but the full-plan
+        fallback succeeds, the source_label must be 'full_plan'."""
+        store = _make_store(tmp_path)
+        _, _, pv_id, step_id, _, _ = _seed_with_run_evidence(store)
+
+        from cardre.evidence_locator import EvidenceLocator
+        locator = EvidenceLocator(store)
+        # The seeded run has branch_id=NULL.  Asking for a non-existent
+        # branch should fall back to the full-plan run.
+        resolved = locator.resolve(pv_id, step_id, branch_id="nonexistent-br")
+        assert resolved is not None
+        assert resolved.source_label == "full_plan"
+
+    # --- Regression test for fix 6: explicit plan_id honoured ---
+    def test_explicit_plan_id_honoured(self, tmp_path):
+        """When plan_id is provided explicitly, the across-plan fallback
+        uses it even if the plan_version_id can self-resolve."""
+        store = _make_store(tmp_path)
+        _, plan_id, pv_id, step_id, _, _ = _seed_with_run_evidence(store)
+
+        from cardre.evidence_locator import EvidenceLocator
+        locator = EvidenceLocator(store)
+        resolved_explicit = locator.resolve(pv_id, step_id, plan_id=plan_id)
+        resolved_implicit = locator.resolve(pv_id, step_id)
+
+        assert resolved_explicit is not None
+        assert resolved_implicit is not None
+        assert resolved_explicit.run_step.run_step_id == resolved_implicit.run_step.run_step_id
+
+
+class TestEvidenceLocatorStalenessIntegration:
+    """Integration tests for staleness using the Locator.
+
+    Exercises the _step_is_stale path in StalenessService, which now uses
+    the Locator for resolution (fix 5 from code review).  Note: parent_step_ids
+    are always [] from ``step_repo.get_steps()`` (known gap), so parent-output
+    comparison is not exercised here — only single-step staleness.
+    """
+
+    def test_staleness_uses_locator_for_step_resolution(self, tmp_path):
+        """The _step_is_stale method uses the Locator to resolve each step's
+        run-step, applying the branch→full→plan fallback and fingerprint
+        comparison.  A step with matching fingerprint is fresh."""
+        store = _make_store(tmp_path)
+        _, _, pv_id, step_id, _, _ = _seed_with_run_evidence(store)
+
+        from cardre.services.staleness_service import StalenessService
+        svc = StalenessService(store)
+        explanation = svc.explain_step(pv_id, step_id)
+        assert explanation.status == "fresh"
+
+    def test_staleness_reports_missing_when_no_run_step(self, tmp_path):
+        """When the Locator cannot resolve a run-step for the step,
+        the step is reported as missing."""
+        store = _make_store(tmp_path)
+        _, _, pv_id, _, _, _ = _seed_with_run_evidence(store)
+
+        from cardre.services.staleness_service import StalenessService
+        svc = StalenessService(store)
+        explanation = svc.explain_step(pv_id, "nonexistent-step")
+        assert explanation.status == "missing"
+
+    def test_staleness_uses_locator_for_branch_scoped_resolution(self, tmp_path):
+        """When branch_id is provided, the staleness service passes it
+        through to the Locator, which filters by branch scope."""
+        store = _make_store(tmp_path)
+        _, _, pv_id, step_id, run_id, _ = _seed_with_run_evidence(store)
+
+        # Tag the seed run with a branch_id
+        store.execute(
+            "UPDATE runs SET branch_id = 'test-branch' WHERE run_id = ?",
+            (run_id,),
+        )
+
+        from cardre.services.staleness_service import StalenessService
+        svc = StalenessService(store)
+        explanation = svc.explain_step(pv_id, step_id, branch_id="test-branch")
+        assert explanation.status == "fresh"
