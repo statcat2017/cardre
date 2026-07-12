@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from cardre.config import CardreConfig
@@ -131,3 +133,36 @@ def test_registry_exposes_issue_273_prep_nodes_as_launch_nodes():
         availability = reg.availability(node_type)
         assert availability.available, availability
         assert availability.tier == "launch"
+
+
+def _catalogue_rows(section_header: str) -> dict[str, str]:
+    path = Path(__file__).resolve().parents[1] / "docs" / "reference" / "node-catalogue.md"
+    rows: dict[str, str] = {}
+    in_section = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line == section_header:
+            in_section = True
+            continue
+        if in_section and line.startswith("## "):
+            break
+        if not in_section or not line.startswith("| `cardre."):
+            continue
+        parts = [part.strip() for part in line.strip("|").split("|")]
+        rows[parts[0].strip("`")] = parts[1]
+    return rows
+
+
+def test_node_catalogue_matches_registry_tiers_and_categories():
+    """The published node catalogue is a contract, not hand-written folklore."""
+    reg = NodeRegistry.with_defaults()
+
+    launch_rows = _catalogue_rows("## Launch Nodes (executable at launch)")
+    deferred_rows = _catalogue_rows("## Deferred Nodes (schema only, not executable at launch)")
+
+    assert set(launch_rows) == set(reg.list_launch_nodes())
+    assert set(deferred_rows) == set(reg.list_deferred_nodes())
+
+    for node_type, category in launch_rows.items():
+        assert category == reg.resolve(node_type).category
+    for node_type, category in deferred_rows.items():
+        assert category == reg.resolve(node_type).category

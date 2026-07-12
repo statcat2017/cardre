@@ -27,8 +27,13 @@ REQUIRED_STEPS_CHAMPION: list[str] = [
     "final-woe-iv",
     "model-fit",
     "score-scaling",
+    "freeze-scorecard-bundle",
+    "apply-model",
     "validation-metrics",
     "cutoff-analysis",
+    "scorecard-table-export",
+    "scoring-export-python",
+    "scoring-export-sql",
 ]
 
 REQUIRED_STEPS_COLLECTOR: list[str] = [
@@ -47,6 +52,7 @@ REQUIRED_STEPS_COLLECTOR: list[str] = [
     "sample-definition",
     "explicit-missing-outlier-treatment",
     "initial-woe-iv",
+    "model-limitations",
     "freeze-scorecard-bundle",
     "apply-woe",
     "apply-model",

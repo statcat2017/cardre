@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import json
+import uuid
 from pathlib import Path
 
 import polars as pl
@@ -22,6 +23,8 @@ from cardre._evidence.schemas import (
     SCHEMA_SEPARATION_DIAGNOSTICS,
     SCHEMA_VIF_DIAGNOSTICS,
 )
+from cardre.domain.diagnostics import utc_now_iso
+from cardre.readiness.limitation_codes import LimitationCode
 from cardre.workflows import build_canonical_scorecard_steps, canonical_scorecard_step_ids
 
 
@@ -416,6 +419,44 @@ def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_pa
                 is_branch_owned=True,
             )
 
+        def assign_champion_for_readiness() -> None:
+            now = utc_now_iso()
+            comparison_id = str(uuid.uuid4())
+            comparison_artifact_id = str(uuid.uuid4())
+            snapshot_id = str(uuid.uuid4())
+            store.execute(
+                "INSERT INTO branch_comparisons "
+                "(comparison_id, project_id, plan_id, baseline_branch_id, comparison_spec_json, "
+                " latest_snapshot_id, latest_ready, latest_readiness_json, created_at, created_reason) "
+                "VALUES (?, ?, ?, ?, '{}', ?, 1, '{}', ?, ?)",
+                (comparison_id, project_id, plan_id, branch_id, snapshot_id, now, "readiness test"),
+            )
+            store.execute(
+                "INSERT INTO artifacts "
+                "(artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at, metadata_json) "
+                "VALUES (?, 'comparison', 'report', ?, 'ph', 'lh', 'application/json', ?, '{}')",
+                (comparison_artifact_id, f"comparisons/{comparison_artifact_id}.json", now),
+            )
+            store.execute(
+                "INSERT INTO branch_comparison_snapshots "
+                "(comparison_snapshot_id, comparison_id, project_id, plan_id, comparison_artifact_id, "
+                " readiness_json, created_at, created_reason) "
+                "VALUES (?, ?, ?, ?, ?, '{}', ?, ?)",
+                (snapshot_id, comparison_id, project_id, plan_id, comparison_artifact_id, now, "readiness test"),
+            )
+            store.execute(
+                "INSERT INTO champion_assignments "
+                "(champion_assignment_id, project_id, plan_id, scope_type, scope_key, champion_branch_id, "
+                " comparison_id, comparison_snapshot_id, comparison_artifact_id, selected_plan_version_id, "
+                " assigned_reason, assigned_by, assigned_at) "
+                "VALUES (?, ?, ?, 'plan', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    str(uuid.uuid4()), project_id, plan_id, plan_id, branch_id,
+                    comparison_id, snapshot_id, comparison_artifact_id, plan_version_id,
+                    "acceptance", "test", now,
+                ),
+            )
+
         # Generate report bundle
         bundle = generate_report_bundle(
             store=store,
@@ -450,6 +491,49 @@ def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_pa
         )
         assert result.ready, f"Readiness should be green: {result.blockers}"
 
+        assign_champion_for_readiness()
+        champion_result = check_report_readiness(
+            store=store,
+            project_id=project_id,
+            run_id=run_id,
+            target_branch_id=branch_id,
+            report_mode="champion",
+        )
+        assert not champion_result.ready
+        champion_blocker_codes = {b.code for b in champion_result.blockers}
+        assert LimitationCode.NON_MONOTONIC_WOE_CHAMPION in champion_blocker_codes
+
+        store.execute(
+            "DELETE FROM artifact_lineage WHERE run_step_id IN "
+            "(SELECT run_step_id FROM run_steps WHERE run_id = ? AND step_id = 'apply-model')",
+            (run_id,),
+        )
+        result_no_apply = check_report_readiness(
+            store=store,
+            project_id=project_id,
+            run_id=run_id,
+            target_branch_id=branch_id,
+            report_mode="champion",
+        )
+        assert any(b.code == LimitationCode.MISSING_SCORE_APPLICATION for b in result_no_apply.blockers), (
+            f"Expected MISSING_SCORE_APPLICATION blocker, got: {[b.code for b in result_no_apply.blockers]}"
+        )
+        store.execute(
+            "DELETE FROM artifact_lineage WHERE run_step_id IN "
+            "(SELECT run_step_id FROM run_steps WHERE run_id = ? AND step_id = 'scoring-export-python')",
+            (run_id,),
+        )
+        result_no_export = check_report_readiness(
+            store=store,
+            project_id=project_id,
+            run_id=run_id,
+            target_branch_id=branch_id,
+            report_mode="champion",
+        )
+        assert any(b.code == LimitationCode.MISSING_IMPLEMENTATION_EXPORTS for b in result_no_export.blockers), (
+            f"Expected MISSING_IMPLEMENTATION_EXPORTS blocker, got: {[b.code for b in result_no_export.blockers]}"
+        )
+
         # Negative readiness test: remove score-scaling evidence artifact
         store.execute(
             "DELETE FROM artifact_lineage WHERE run_step_id IN "
@@ -464,7 +548,7 @@ def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_pa
             report_mode="branch",
         )
         assert not result_no_scaling.ready, "Readiness should block when score-scaling evidence is removed"
-        assert any("MISSING_SCORE_SCALING" in b.code for b in result_no_scaling.blockers), (
+        assert any(b.code == LimitationCode.MISSING_SCORE_SCALING for b in result_no_scaling.blockers), (
             f"Expected MISSING_SCORE_SCALING blocker, got: {[b.code for b in result_no_scaling.blockers]}"
         )
 

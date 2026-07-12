@@ -333,6 +333,9 @@ class ReportCollector:
         model_ref = resolved.get("model-fit")
         if model_ref:
             self._collect_model(bundle, model_ref, plan_version_id)
+        limitations_ref = resolved.get("model-limitations")
+        if limitations_ref:
+            self._collect_model_limitations(limitations_ref, plan_version_id)
 
         # Model diagnostics
         sign_ref = resolved.get("coefficient-sign-check")
@@ -576,6 +579,29 @@ class ReportCollector:
             self.limitations.append(Limitation(
                 severity="blocker", code=LimitationCode.MISSING_MODEL_COEFFICIENTS,
                 message=f"Model step {ref.step_id} produced no MODEL_ARTIFACT evidence.",
+            ))
+
+    def _collect_model_limitations(
+        self, ref: _ResolvedStepRef, plan_version_id: str,
+    ) -> None:
+        rs = self._resolve_run_step(ref, plan_version_id)
+        if rs is None:
+            return
+
+        evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.EXPLAINABILITY_REPORT)
+        if evidence is None:
+            return
+        payload = getattr(evidence, "_raw", {})
+
+        for limitation in payload.get("limitations", []):
+            if not isinstance(limitation, dict) or limitation.get("accepted", False):
+                continue
+            raw_severity = str(limitation.get("severity", "warn"))
+            severity = "blocker" if raw_severity == "block" else "warning"
+            self.limitations.append(Limitation(
+                severity=severity,
+                code=str(limitation.get("code", "MODEL_LIMITATION")),
+                message=str(limitation.get("message", "Model limitation evidence is present.")),
             ))
 
     def _collect_modelling_metadata(

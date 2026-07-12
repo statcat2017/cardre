@@ -36,17 +36,24 @@ def json_logical_hash(data: JsonDict) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+TABLE_LOGICAL_HASH_VERSION = "v2"
+
+
 def table_logical_hash(table: Any) -> str:
-    """SHA-256 of a sorted-column Arrow IPC representation."""
+    """SHA-256 of a sorted-column Arrow IPC representation.
+
+    Version history:
+      v1: pyarrow.ipc.new_file + writer.write_table (segfaults on some
+          pyarrow/Python version combinations).
+      v2: polars.DataFrame.write_ipc — avoids the buggy C++ path.
+    """
     import io
+
     sorted_cols = sorted(table.columns)
     table = table.select(sorted_cols)
-    arrow_table = table.to_arrow()
-    import pyarrow as pa
     buf = io.BytesIO()
-    with pa.ipc.new_file(buf, arrow_table.schema) as writer:
-        writer.write_table(arrow_table)
-    return hashlib.sha256(buf.getvalue()).hexdigest()
+    table.write_ipc(buf)
+    return f"{TABLE_LOGICAL_HASH_VERSION}:{hashlib.sha256(buf.getvalue()).hexdigest()}"
 
 
 def params_hash(params: JsonDict) -> str:
@@ -97,6 +104,7 @@ class ArtifactRef:
 
 __all__ = [
     "CHUNK_SIZE",
+    "TABLE_LOGICAL_HASH_VERSION",
     "ArtifactRef",
     "json_logical_hash",
     "params_hash",

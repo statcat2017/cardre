@@ -289,6 +289,41 @@ def check_report_readiness(
                     step_id=ref.step_id,
                 ))
 
+        elif canonical_step_id == "freeze-scorecard-bundle":
+            has_artifact = any(
+                art and art.role == "scorecard"
+                for row in store.execute(
+                    "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+                    (rs.run_step_id,),
+                ).fetchall()
+                if (art := store.get_artifact(row["artifact_id"]))
+            )
+            if not has_artifact:
+                blockers.append(ReadinessBlocker(
+                    LimitationCode.MISSING_FINAL_SCORECARD,
+                    f"Frozen scorecard step {ref.step_id} has no scorecard artifact.",
+                    step_id=ref.step_id,
+                ))
+
+        elif canonical_step_id == "apply-model":
+            scored_roles = {
+                art.role
+                for row in store.execute(
+                    "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+                    (rs.run_step_id,),
+                ).fetchall()
+                if (art := store.get_artifact(row["artifact_id"]))
+                and art.role in {"train", "test", "oot"}
+            }
+            required_roles = {"train", "test", "oot"} if report_mode == "champion" else {"train", "test"}
+            if not required_roles <= scored_roles:
+                blockers.append(ReadinessBlocker(
+                    LimitationCode.MISSING_SCORE_APPLICATION,
+                    f"Apply-model step {ref.step_id} did not produce scored "
+                    f"{', '.join(sorted(required_roles))} artifacts.",
+                    step_id=ref.step_id,
+                ))
+
         # For validation-metrics, check evidence artifact
         elif canonical_step_id == "validation-metrics":
             has_artifact = any(
@@ -320,6 +355,27 @@ def check_report_readiness(
                 blockers.append(ReadinessBlocker(
                     LimitationCode.NO_CUTOFF_ANALYSIS,
                     f"Cutoff analysis step {ref.step_id} has no cardre.cutoff_analysis.v1 artifact.",
+                    step_id=ref.step_id,
+                ))
+
+        elif canonical_step_id in {"scorecard-table-export", "scoring-export-python", "scoring-export-sql"}:
+            expected_schema = {
+                "scorecard-table-export": "cardre.scorecard_table.v1",
+                "scoring-export-python": "cardre.scoring_export_python.v1",
+                "scoring-export-sql": "cardre.scoring_export_sql.v1",
+            }[canonical_step_id]
+            has_artifact = any(
+                art and art.metadata.get("schema_version") == expected_schema
+                for row in store.execute(
+                    "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+                    (rs.run_step_id,),
+                ).fetchall()
+                if (art := store.get_artifact(row["artifact_id"]))
+            )
+            if not has_artifact:
+                blockers.append(ReadinessBlocker(
+                    LimitationCode.MISSING_IMPLEMENTATION_EXPORTS,
+                    f"Implementation export step {ref.step_id} has no {expected_schema} artifact.",
                     step_id=ref.step_id,
                 ))
 

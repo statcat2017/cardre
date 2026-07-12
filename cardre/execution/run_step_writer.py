@@ -99,6 +99,13 @@ def write_run_step(
 
     # 2. Write evidence_edges + evidence_artifacts via the repo
     for idx, parent_rs in enumerate(parent_run_steps):
+        parent_aids = (
+            input_artifact_ids_by_parent.get(parent_rs.step_id, input_artifact_ids)
+            if input_artifact_ids_by_parent is not None
+            else input_artifact_ids
+        )
+        if not parent_aids:
+            continue
         edge = EvidenceEdge(
             evidence_edge_id=str(uuid.uuid4()),
             run_id=run_id,
@@ -117,11 +124,6 @@ def write_run_step(
         )
         evidence_repo.insert_edge(edge, conn)
 
-        parent_aids = (
-            input_artifact_ids_by_parent.get(parent_rs.step_id, input_artifact_ids)
-            if input_artifact_ids_by_parent is not None
-            else input_artifact_ids
-        )
         for aid in parent_aids:
             art = EvidenceArtifact(
                 evidence_artifact_id=str(uuid.uuid4()),
