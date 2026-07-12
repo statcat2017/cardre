@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     outputs:
+      ci: ${{ steps.filter.outputs.ci }}
       python: ${{ steps.filter.outputs.python }}
       frontend: ${{ steps.filter.outputs.frontend }}
       rust: ${{ steps.filter.outputs.rust }}
@@ -34,6 +35,9 @@ jobs:
         id: filter
         with:
           filters: |
+            ci:
+              - '.github/workflows/**'
+              - '.github/actions/**'
             python:
               - 'cardre/**'
               - 'sidecar/**'
@@ -43,7 +47,7 @@ jobs:
               - 'Makefile'
             frontend:
               - 'frontend/**'
-              - 'frontend/src-tauri/**'
+              - '!frontend/src-tauri/**'
             rust:
               - 'frontend/src-tauri/**'
             sidecar:
@@ -62,7 +66,7 @@ jobs:
 
   lint:
     needs: detect-changes
-    if: needs.detect-changes.outputs.python == 'true'
+    if: needs.detect-changes.outputs.python == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -75,14 +79,25 @@ jobs:
         run: ruff check
       - name: Check line counts
         run: python3 scripts/check-line-counts.py
-      - name: Check doc references
-        run: python3 scripts/check_doc_references.py
       - name: Check sidecar naming consistency
         run: python3 scripts/check-sidecar-naming.py
 
+  check-docs:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.python == 'true' || needs.detect-changes.outputs.docs == 'true' || needs.detect-changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Check doc references
+        run: python3 scripts/check_doc_references.py
+
   typecheck-python:
     needs: detect-changes
-    if: needs.detect-changes.outputs.python == 'true'
+    if: needs.detect-changes.outputs.python == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -96,7 +111,7 @@ jobs:
 
   typecheck-frontend:
     needs: detect-changes
-    if: needs.detect-changes.outputs.frontend == 'true'
+    if: needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -118,7 +133,7 @@ jobs:
 
   test-python:
     needs: [detect-changes, lint, typecheck-python]
-    if: needs.detect-changes.outputs.python == 'true'
+    if: needs.detect-changes.outputs.python == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -134,7 +149,7 @@ jobs:
 
   test-python-governance:
     needs: [detect-changes, lint, typecheck-python]
-    if: needs.detect-changes.outputs.python == 'true'
+    if: needs.detect-changes.outputs.python == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -150,7 +165,7 @@ jobs:
 
   test-frontend:
     needs: [detect-changes, typecheck-frontend]
-    if: needs.detect-changes.outputs.frontend == 'true'
+    if: needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -165,7 +180,7 @@ jobs:
 
   build-sidecar:
     needs: detect-changes
-    if: needs.detect-changes.outputs.sidecar == 'true'
+    if: needs.detect-changes.outputs.sidecar == 'true' || needs.detect-changes.outputs.rust == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -185,8 +200,8 @@ jobs:
           path: frontend/src-tauri/binaries/cardre-api-*
 
   check-tauri:
-    needs: [detect-changes, build-sidecar]
-    if: needs.detect-changes.outputs.rust == 'true'
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -196,16 +211,6 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-workspaces: "frontend/src-tauri"
-      - name: Download sidecar binary
-        uses: actions/download-artifact@v8
-        with:
-          name: cardre-api-sidecar
-          path: frontend/src-tauri/binaries/
-      - name: Validate sidecar exists
-        working-directory: frontend/src-tauri
-        run: |
-          ls -la binaries/
-          file binaries/cardre-api-*
       - name: cargo fmt --check
         working-directory: frontend/src-tauri
         run: cargo fmt --check
@@ -218,7 +223,7 @@ jobs:
 
   smoke-test-packaged-sidecar:
     needs: [detect-changes, build-sidecar]
-    if: needs.detect-changes.outputs.sidecar == 'true'
+    if: needs.detect-changes.outputs.sidecar == 'true' || needs.detect-changes.outputs.rust == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -246,7 +251,7 @@ jobs:
 
   smoke-test-sidecar:
     needs: [detect-changes, build-sidecar]
-    if: needs.detect-changes.outputs.sidecar == 'true'
+    if: needs.detect-changes.outputs.sidecar == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -293,7 +298,7 @@ jobs:
 
   check-api-contracts:
     needs: detect-changes
-    if: needs.detect-changes.outputs.openapi == 'true'
+    if: needs.detect-changes.outputs.openapi == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -309,3 +314,68 @@ jobs:
         run: python3 scripts/generate-openapi-types.py
       - name: Check for stale generated types
         run: git diff --exit-code
+
+  ci-success:
+    needs:
+      - detect-changes
+      - lint
+      - check-docs
+      - typecheck-python
+      - typecheck-frontend
+      - test-python
+      - test-python-governance
+      - test-frontend
+      - build-sidecar
+      - check-tauri
+      - smoke-test-packaged-sidecar
+      - smoke-test-sidecar
+      - check-api-contracts
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify required CI jobs
+        env:
+          DETECT_CHANGES: ${{ needs.detect-changes.result }}
+          LINT: ${{ needs.lint.result }}
+          CHECK_DOCS: ${{ needs.check-docs.result }}
+          TYPECHECK_PYTHON: ${{ needs.typecheck-python.result }}
+          TYPECHECK_FRONTEND: ${{ needs.typecheck-frontend.result }}
+          TEST_PYTHON: ${{ needs.test-python.result }}
+          TEST_PYTHON_GOVERNANCE: ${{ needs.test-python-governance.result }}
+          TEST_FRONTEND: ${{ needs.test-frontend.result }}
+          BUILD_SIDECAR: ${{ needs.build-sidecar.result }}
+          CHECK_TAURI: ${{ needs.check-tauri.result }}
+          SMOKE_TEST_PACKAGED_SIDECAR: ${{ needs.smoke-test-packaged-sidecar.result }}
+          SMOKE_TEST_SIDECAR: ${{ needs.smoke-test-sidecar.result }}
+          CHECK_API_CONTRACTS: ${{ needs.check-api-contracts.result }}
+        run: |
+          failures=0
+          for job in \
+            "detect-changes:$DETECT_CHANGES" \
+            "lint:$LINT" \
+            "check-docs:$CHECK_DOCS" \
+            "typecheck-python:$TYPECHECK_PYTHON" \
+            "typecheck-frontend:$TYPECHECK_FRONTEND" \
+            "test-python:$TEST_PYTHON" \
+            "test-python-governance:$TEST_PYTHON_GOVERNANCE" \
+            "test-frontend:$TEST_FRONTEND" \
+            "build-sidecar:$BUILD_SIDECAR" \
+            "check-tauri:$CHECK_TAURI" \
+            "smoke-test-packaged-sidecar:$SMOKE_TEST_PACKAGED_SIDECAR" \
+            "smoke-test-sidecar:$SMOKE_TEST_SIDECAR" \
+            "check-api-contracts:$CHECK_API_CONTRACTS"
+          do
+            name=${job%%:*}
+            result=${job#*:}
+            case "$result" in
+              success|skipped|neutral)
+                echo "$name: $result"
+                ;;
+              *)
+                echo "$name: $result"
+                failures=1
+                ;;
+            esac
+          done
+          exit $failures
