@@ -39,13 +39,11 @@ def json_logical_hash(data: JsonDict) -> str:
 def table_logical_hash(table: Any) -> str:
     """SHA-256 of a sorted-column Arrow IPC representation."""
     import io
+
     sorted_cols = sorted(table.columns)
     table = table.select(sorted_cols)
-    arrow_table = table.to_arrow()
-    import pyarrow as pa
     buf = io.BytesIO()
-    with pa.ipc.new_file(buf, arrow_table.schema) as writer:
-        writer.write_table(arrow_table)
+    table.write_ipc(buf)
     return hashlib.sha256(buf.getvalue()).hexdigest()
 
 
