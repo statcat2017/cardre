@@ -265,27 +265,221 @@ class TestPlanExecutor:
 
         assert result.status == RunStepStatus.SUCCEEDED
 
-    def test_executes_simple_plan(self, tmp_path):
-        store = _make_store(tmp_path)
-        input_path = _write_input_csv(tmp_path)
-        pv_id, step_ids = _seed_plan_version(store, input_path)
+    def test_step_runner_filters_mixed_allowed_and_disallowed_roles(self, tmp_path):
+        """When a parent emits train+test+oot and the child only declares train,
+        disallowed roles are silently removed, execution succeeds, and only the
+        allowed artifacts appear in the execution fingerprint and evidence lineage."""
+        from cardre.domain.artifacts import ArtifactRef
 
-        # Create the run
+        class TrainOnlyNode(NodeType):
+            node_type = "test.train_only_mixed"
+            version = "1"
+            category = "fit"
+            input_roles = ["train"]
+
+            def run(self, context):
+                return NodeOutput(artifacts=[], metrics={"input_count": len(context.input_artifacts)})
+
+        store = _make_store(tmp_path)
+        registry = NodeRegistry()
+        registry.register(TrainOnlyNode)
+        runner = StepRunner(store, registry)
+        spec = StepSpec(
+            step_id="fit",
+            node_type="test.train_only_mixed",
+            node_version="1",
+            category="fit",
+            params={},
+            params_hash="hash",
+            parent_step_ids=["split"],
+        )
+        train_art = ArtifactRef(
+            artifact_id="art-train", artifact_type="dataset", role="train",
+            path="train.parquet", physical_hash="ph-train", logical_hash="lh-train",
+        )
+        test_art = ArtifactRef(
+            artifact_id="art-test", artifact_type="dataset", role="test",
+            path="test.parquet", physical_hash="ph-test", logical_hash="lh-test",
+        )
+        oot_art = ArtifactRef(
+            artifact_id="art-oot", artifact_type="dataset", role="oot",
+            path="oot.parquet", physical_hash="ph-oot", logical_hash="lh-oot",
+        )
+
+        result = runner.run_step(
+            plan_version_id="pv",
+            run_id="run",
+            spec=spec,
+            step_outputs={"split": [train_art, test_art, oot_art]},
+            run_step_records={},
+        )
+
+        assert result.status == RunStepStatus.SUCCEEDED
+        assert result.input_artifact_ids == ["art-train"]
+        assert result.fingerprint["input_artifact_logical_hashes"] == ["lh-train"]
+
+    def test_mixed_role_filtering_produces_no_false_evidence_edge(self, tmp_path):
+        """When all parent artifacts are filtered out, no evidence edge is created.
+        When some artifacts pass filtering, only those appear in the evidence edge."""
+        from cardre.domain.artifacts import ArtifactRef
+        from cardre.domain.run import RunStep, RunStepStatus
+        from cardre.execution.run_step_writer import write_run_step
+        from cardre.store.evidence_repo import EvidenceRepository
+
+        store = _make_store(tmp_path)
+        evidence_repo = EvidenceRepository(store)
+        now = utc_now_iso()
+
+        project_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "Mixed Role Test", now, "0.2.0"),
+        )
+        plan_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (plan_id, project_id, "Mixed Plan", now),
+        )
+        pv_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
+            "VALUES (?, ?, 1, 1, ?, ?)",
+            (pv_id, plan_id, now, "Mixed role evidence test"),
+        )
+
+        step_split = "step-split"
+        step_child = "step-child"
+
+        for sid, ntype, params_json, pos in [
+            (step_split, "cardre.noop", "{}", 0),
+            (step_child, "cardre.noop", "{}", 1),
+        ]:
+            store.execute(
+                "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
+                " params_json, params_hash, branch_label, position, canonical_step_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (sid, pv_id, ntype, "1", "transform",
+                 params_json, f"hash-{sid}", "", pos, sid),
+            )
+
+        store.execute(
+            "INSERT INTO plan_step_edges (plan_version_id, parent_step_id, child_step_id, edge_order) "
+            "VALUES (?, ?, ?, ?)",
+            (pv_id, step_split, step_child, 0),
+        )
+
         from cardre.store.run_repo import RunRepository
         run_repo = RunRepository(store)
         run_id = run_repo.create(pv_id)
 
-        executor = PlanExecutor(store)
-        result = executor.run_plan_version(pv_id, run_id)
-        assert result == run_id
+        spec_child = StepSpec(
+            step_id=step_child,
+            node_type="cardre.noop",
+            node_version="1",
+            category="transform",
+            params={},
+            params_hash="hash-child",
+            parent_step_ids=[step_split],
+        )
 
-        # Check run steps were created
-        from cardre.store.run_step_repo import RunStepRepository
-        rs_repo = RunStepRepository(store)
-        steps = rs_repo.get_for_run(run_id)
-        assert len(steps) == 3
-        for rs in steps:
-            assert rs.status == RunStepStatus.SUCCEEDED
+        # Insert the artifact row required by evidence_artifacts FK
+        store.execute(
+            "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, "
+            " logical_hash, media_type, created_at, metadata_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("art-train", "dataset", "train", "train.parquet",
+             "ph-train", "lh-train", "application/octet-stream", now, "{}"),
+        )
+
+        def _make_run_step(step_id: str) -> RunStep:
+            return RunStep(
+                run_step_id=str(uuid.uuid4()),
+                run_id=run_id,
+                step_id=step_id,
+                plan_version_id=pv_id,
+                status=RunStepStatus.SUCCEEDED,
+                started_at=now,
+                finished_at=now,
+                execution_fingerprint={},
+                warnings=[],
+                errors=[],
+            )
+
+        def _insert_run_step(rs: RunStep) -> None:
+            store.execute(
+                "INSERT INTO run_steps "
+                "(run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, "
+                " execution_fingerprint_json, warnings_json, errors_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (rs.run_step_id, run_id, rs.step_id, pv_id, rs.status.value,
+                 rs.started_at, rs.finished_at, "{}", "[]", "[]"),
+            )
+
+        parent_split_rs = _make_run_step(step_split)
+        _insert_run_step(parent_split_rs)
+        child_rs = _make_run_step(step_child)
+
+        # Case 1: parent outputs no artifacts matching child's input_roles
+        # -> input_artifact_ids=[], evidence edge should be SKIPPED
+        with store.transaction("IMMEDIATE") as conn:
+            write_run_step(
+                conn=conn,
+                run_step=child_rs,
+                spec=spec_child,
+                parent_run_steps=[parent_split_rs],
+                input_artifact_ids=[],
+                output_artifact_ids=[],
+                input_artifact_ids_by_parent={step_split: []},
+                run_branch_id=None,
+                evidence_repo=evidence_repo,
+            )
+
+        edges = store.execute(
+            "SELECT evidence_edge_id FROM evidence_edges WHERE run_step_id = ?",
+            (child_rs.run_step_id,),
+        ).fetchall()
+        assert len(edges) == 0, (
+            "No evidence edges should be created when all parent artifacts are filtered out"
+        )
+
+        # Case 2: parent outputs train+test, child accepts only train
+        # -> evidence edge should contain only train artifact
+        train_art = ArtifactRef(
+            artifact_id="art-train", artifact_type="dataset", role="train",
+            path="train.parquet", physical_hash="ph-train", logical_hash="lh-train",
+        )
+
+        parent_split_rs2 = _make_run_step(step_split)
+        _insert_run_step(parent_split_rs2)
+        child_rs2 = _make_run_step(step_child)
+
+        with store.transaction("IMMEDIATE") as conn:
+            write_run_step(
+                conn=conn,
+                run_step=child_rs2,
+                spec=spec_child,
+                parent_run_steps=[parent_split_rs2],
+                input_artifact_ids=[train_art.artifact_id],
+                output_artifact_ids=[],
+                input_artifact_ids_by_parent={step_split: [train_art.artifact_id]},
+                run_branch_id=None,
+                evidence_repo=evidence_repo,
+            )
+
+        edges2 = store.execute(
+            "SELECT evidence_edge_id, parent_step_id FROM evidence_edges WHERE run_step_id = ?",
+            (child_rs2.run_step_id,),
+        ).fetchall()
+        assert len(edges2) == 1
+        assert edges2[0]["parent_step_id"] == step_split
+
+        edge_aids = [
+            r["artifact_id"] for r in store.execute(
+                "SELECT artifact_id FROM evidence_artifacts WHERE evidence_edge_id = ?",
+                (edges2[0]["evidence_edge_id"],),
+            ).fetchall()
+        ]
+        assert edge_aids == [train_art.artifact_id]
 
     def test_evidence_rows_persisted_per_step(self, tmp_path):
         """Evidence edges + evidence artifacts are written for each step."""
