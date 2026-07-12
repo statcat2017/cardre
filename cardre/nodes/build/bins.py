@@ -581,10 +581,15 @@ class ManualBinningNode(NodeType):
 def validate_manual_binning_overrides(
     bin_def: dict[str, Any], overrides: list[dict[str, Any]], selected_vars: set[str] | None = None
 ) -> list[str]:
-    return LifecycleBinDefinition.validate_overrides(bin_def, overrides, selected_vars)
+    from cardre.engine.binning.definition import LifecycleBinDefinition
+    typed = LifecycleBinDefinition.from_payload(bin_def)
+    return LifecycleBinDefinition.validate_overrides(typed, overrides, selected_vars)
 
 
 def apply_manual_binning_overrides(
     bin_def: dict[str, Any], overrides: list[dict[str, Any]], selected_vars: set[str] | None = None
 ) -> dict[str, Any]:
-    return LifecycleBinDefinition.apply_overrides(bin_def, overrides, selected_vars)
+    from cardre.engine.binning.definition import LifecycleBinDefinition
+    typed = LifecycleBinDefinition.from_payload(bin_def)
+    result = LifecycleBinDefinition.apply_overrides(typed, overrides, selected_vars)
+    return result.to_payload()

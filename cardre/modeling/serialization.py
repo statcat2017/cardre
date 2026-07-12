@@ -11,9 +11,9 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from cardre.domain.artifacts import ArtifactRef, physical_hash, relative_path
+from cardre.artifacts import _register_bytes_artifact
+from cardre.domain.artifacts import ArtifactRef
 from cardre.store import ProjectStore
-from cardre.store.artifact_repo import ArtifactRepository
 
 
 def _compute_bytes_hash(data: bytes) -> str:
@@ -34,6 +34,8 @@ def write_estimator_artifact(
 
     Records physical hash, format, and provenance. The estimator bytes
     are stored in the ``artifacts`` directory alongside JSON artifacts.
+    Uses the shared ``_register_bytes_artifact`` helper for temp-file
+    atomicity and dedup-return.
     """
     logical_hash = _compute_bytes_hash(estimator_bytes)
     extension = {
@@ -42,12 +44,6 @@ def write_estimator_artifact(
         "skops": ".skops",
         "onnx": ".onnx",
     }.get(estimator_format, ".bin")
-
-    filename = f"{logical_hash[:16]}-{stem}{extension}"
-    stored_path = store.root / "artifacts" / filename
-    stored_path.parent.mkdir(parents=True, exist_ok=True)
-    stored_path.write_bytes(estimator_bytes)
-    phys = physical_hash(stored_path)
 
     artifact_meta: dict[str, Any] = {
         "estimator_format": estimator_format,
@@ -58,18 +54,18 @@ def write_estimator_artifact(
     if metadata:
         artifact_meta.update(metadata)
 
-    artifact = ArtifactRef(
-        artifact_id=str(__import__("uuid").uuid4()),
+    return _register_bytes_artifact(
+        store,
+        bytes_writer=lambda: estimator_bytes,
+        logical_hash=logical_hash,
+        stem=stem,
+        extension=extension,
+        media_type="application/octet-stream",
+        directory="artifacts",
         artifact_type="estimator",
         role="model",
-        path=relative_path(stored_path, store.root),
-        physical_hash=phys,
-        logical_hash=logical_hash,
-        media_type="application/octet-stream",
         metadata=artifact_meta,
     )
-    ArtifactRepository(store).register(artifact)
-    return artifact
 
 
 def read_estimator_artifact(

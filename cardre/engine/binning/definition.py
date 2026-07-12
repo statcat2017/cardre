@@ -8,6 +8,7 @@ become adapters at this seam.
 from __future__ import annotations
 
 import copy
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -271,57 +272,7 @@ class LifecycleBinDefinition:
     # ------------------------------------------------------------------
 
     def normalize(self) -> LifecycleBinDefinition:
-        return LifecycleBinDefinition(
-            schema_version=SCHEMA_BIN_DEFINITION,
-            variables=[self._normalize_var(v) for v in self.variables],
-            rejected=[self._normalize_var(r) for r in self.rejected],
-            warnings=list(self.warnings),
-            source=copy.deepcopy(self.source) if self.source is not None else None,
-            extra=copy.deepcopy(self.extra),
-            _present_fields=self._present_fields,
-        )
-
-    @staticmethod
-    def _normalize_var(var: LifecycleVariable) -> LifecycleVariable:
-        normalized_bins = []
-        for b in var.bins:
-            nb = LifecycleBin(
-                bin_id=b.bin_id,
-                label=b.label,
-                lower=b.lower,
-                upper=b.upper,
-                lower_inclusive=b.lower_inclusive,
-                upper_inclusive=b.upper_inclusive,
-                categories=b.categories,
-                is_missing_bin=b.is_missing_bin,
-                is_special_bin=b.is_special_bin,
-                is_other_bin=b.is_other_bin,
-                row_count=b.row_count,
-                good_count=b.good_count,
-                bad_count=b.bad_count,
-                bad_rate=b.bad_rate,
-                woe=b.woe,
-                iv=b.iv,
-                row_pct=b.row_pct,
-                kind=b.kind,
-                special_values=b.special_values,
-                extra=dict(b.extra),
-            )
-            normalized_bins.append(nb)
-        return LifecycleVariable(
-            variable=var.variable,
-            kind=var.kind,
-            dtype=var.dtype,
-            bins=normalized_bins,
-            status=var.status,
-            active=var.active,
-            metrics=dict(var.metrics.items()),
-            warnings=list(var.warnings),
-            override_history=list(var.override_history),
-            failure_reason=var.failure_reason,
-            extra=dict(var.extra),
-            _present_fields=var._present_fields,
-        )
+        return dataclasses.replace(self, schema_version=SCHEMA_BIN_DEFINITION)
 
     # ------------------------------------------------------------------
     # Validate
@@ -363,12 +314,12 @@ class LifecycleBinDefinition:
 
     @staticmethod
     def validate_overrides(
-        bin_def: JsonDict,
+        bin_def: LifecycleBinDefinition,
         overrides: list[JsonDict],
         selected_vars: set[str] | None = None,
     ) -> list[str]:
         errors: list[str] = []
-        var_map = {v["variable"]: v for v in bin_def.get("variables", [])}
+        var_map = {v.variable: v for v in bin_def.variables}
 
         for i, override in enumerate(overrides):
             prefix = f"overrides[{i}]"
@@ -397,8 +348,8 @@ class LifecycleBinDefinition:
                 errors.extend(override_errors)
                 continue
 
-            var_bins = var_map[variable].get("bins", [])
-            bin_id_map = {b["bin_id"]: b for b in var_bins}
+            var_bins = var_map[variable].bins
+            bin_id_map = {b.bin_id: b for b in var_bins}
 
             bin_id_errors: list[str] = []
             for bid in source_bin_ids:
@@ -412,7 +363,7 @@ class LifecycleBinDefinition:
                 if len(source_bin_ids) < 2:
                     errors.append(f"{prefix}: merge_bins requires at least 2 source bins")
                     continue
-                kind = var_map[variable].get("kind", "")
+                kind = var_map[variable].kind
                 if kind == "numeric":
                     bin_positions = [var_bins.index(bin_id_map[bid]) for bid in source_bin_ids]
                     expected_positions = list(range(min(bin_positions), max(bin_positions) + 1))
@@ -430,122 +381,160 @@ class LifecycleBinDefinition:
 
     @staticmethod
     def apply_overrides(
-        bin_def: JsonDict,
+        bin_def: LifecycleBinDefinition,
         overrides: list[JsonDict],
         selected_vars: set[str] | None = None,
-    ) -> JsonDict:
-        var_map = {v["variable"]: dict(v) for v in bin_def.get("variables", [])}
+    ) -> LifecycleBinDefinition:
         warnings: list[JsonDict] = []
+        new_variables: list[LifecycleVariable] = []
 
-        for override in overrides:
-            variable = override.get("variable", "")
-            action = override.get("action", "")
-            source_bin_ids = override.get("source_bin_ids", [])
-            reason = override.get("reason", "")
+        for var in bin_def.variables:
+            var_bins = list(var.bins)
+            bin_id_map = {b.bin_id: b for b in var_bins}
+            override_history: list[JsonDict] = list(var.override_history)
+            modified = False
+            rejected = False
+            reject_reason = ""
 
-            if variable not in var_map:
-                raise ValueError(f"Override references unknown variable '{variable}'")
+            for override in overrides:
+                variable = override.get("variable", "")
+                action = override.get("action", "")
+                source_bin_ids = override.get("source_bin_ids", [])
+                reason = override.get("reason", "")
 
-            var_info = var_map[variable]
-            var_bins = list(var_info.get("bins", []))
-            bin_id_map = {b["bin_id"]: b for b in var_bins}
+                if variable != var.variable:
+                    continue
 
-            override_event = {
-                "user_action": action,
-                "variable": variable,
-                "reason": reason,
-                "source_bin_ids": source_bin_ids,
-            }
-            override_history = (
-                list(var_info.get("override_history", []))
-                if isinstance(var_info.get("override_history"), list) else []
-            )
-
-            if action == "merge_bins":
-                before_labels = [bin_id_map[bid].get("label", bid) for bid in source_bin_ids]
-                merged = {
-                    "bin_id": f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
-                    "label": override.get("new_label", "Merged"),
-                    "lower": bin_id_map[source_bin_ids[0]].get("lower"),
-                    "upper": bin_id_map[source_bin_ids[-1]].get("upper"),
-                    "lower_inclusive": bin_id_map[source_bin_ids[0]].get("lower_inclusive", False),
-                    "upper_inclusive": bin_id_map[source_bin_ids[-1]].get("upper_inclusive", True),
-                    "categories": None,
-                    "is_missing_bin": False,
-                    "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
-                    "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
-                    "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
+                modified = True
+                override_event: JsonDict = {
+                    "user_action": action,
+                    "variable": variable,
+                    "reason": reason,
+                    "source_bin_ids": source_bin_ids,
                 }
-                override_event["before"] = before_labels
-                override_event["after"] = merged["label"]
-                new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
-                insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
-                new_bins.insert(insert_pos, merged)
-                var_info["bins"] = new_bins
 
-            elif action == "group_categories":
-                before_cats = []
-                for bid in source_bin_ids:
-                    before_cats.extend(bin_id_map[bid].get("categories", []))
-                grouped = {
-                    "bin_id": f"{variable}_manual_grouped",
-                    "label": override.get("new_label", "Grouped"),
-                    "lower": None, "upper": None,
-                    "lower_inclusive": False, "upper_inclusive": False,
-                    "categories": before_cats,
-                    "is_missing_bin": False,
-                    "row_count": sum(bin_id_map[bid].get("row_count", 0) for bid in source_bin_ids),
-                    "good_count": sum(bin_id_map[bid].get("good_count", 0) for bid in source_bin_ids),
-                    "bad_count": sum(bin_id_map[bid].get("bad_count", 0) for bid in source_bin_ids),
-                }
-                override_event["before"] = before_cats
-                override_event["after"] = override.get("new_label", "Grouped")
-                new_bins = [b for b in var_bins if b["bin_id"] not in source_bin_ids]
-                insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
-                new_bins.insert(insert_pos, grouped)
-                var_info["bins"] = new_bins
+                if action == "merge_bins":
+                    before_labels = [bin_id_map[bid].label for bid in source_bin_ids]
+                    source_kind = bin_id_map[source_bin_ids[0]].kind
+                    total_row_count = sum(bin_id_map[bid].row_count for bid in source_bin_ids)
+                    total_good = sum(bin_id_map[bid].good_count for bid in source_bin_ids)
+                    total_bad = sum(bin_id_map[bid].bad_count for bid in source_bin_ids)
+                    total_row_pct = sum(bin_id_map[bid].row_pct or 0.0 for bid in source_bin_ids)
+                    merged = LifecycleBin(
+                        bin_id=f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
+                        label=override.get("new_label", "Merged"),
+                        lower=bin_id_map[source_bin_ids[0]].lower,
+                        upper=bin_id_map[source_bin_ids[-1]].upper,
+                        lower_inclusive=bin_id_map[source_bin_ids[0]].lower_inclusive,
+                        upper_inclusive=bin_id_map[source_bin_ids[-1]].upper_inclusive,
+                        categories=None,
+                        is_missing_bin=False,
+                        row_count=total_row_count,
+                        good_count=total_good,
+                        bad_count=total_bad,
+                        bad_rate=total_bad / total_row_count if total_row_count else None,
+                        row_pct=total_row_pct or None,
+                        woe=None,
+                        iv=None,
+                        kind=source_kind,
+                    )
+                    override_event["before"] = before_labels
+                    override_event["after"] = merged.label
+                    new_bins = [b for b in var_bins if b.bin_id not in source_bin_ids]
+                    insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
+                    new_bins.insert(insert_pos, merged)
+                    var_bins = new_bins
+                    bin_id_map = {b.bin_id: b for b in var_bins}
 
-            elif action == "reject_variable":
-                override_event["before"] = "included"
-                override_event["after"] = "excluded"
-                var_info["status"] = "excluded"
-                var_info["active"] = False
-                var_info["reject_reason"] = reason
+                elif action == "group_categories":
+                    before_cats: list[str] = []
+                    for bid in source_bin_ids:
+                        c = bin_id_map[bid].categories
+                        if c:
+                            before_cats.extend(c)
+                    source_kind = bin_id_map[source_bin_ids[0]].kind
+                    total_row_count = sum(bin_id_map[bid].row_count for bid in source_bin_ids)
+                    total_good = sum(bin_id_map[bid].good_count for bid in source_bin_ids)
+                    total_bad = sum(bin_id_map[bid].bad_count for bid in source_bin_ids)
+                    total_row_pct = sum(bin_id_map[bid].row_pct or 0.0 for bid in source_bin_ids)
+                    grouped = LifecycleBin(
+                        bin_id=f"{variable}_manual_grouped",
+                        label=override.get("new_label", "Grouped"),
+                        lower=None, upper=None,
+                        lower_inclusive=False, upper_inclusive=False,
+                        categories=before_cats,
+                        is_missing_bin=False,
+                        row_count=total_row_count,
+                        good_count=total_good,
+                        bad_count=total_bad,
+                        bad_rate=total_bad / total_row_count if total_row_count else None,
+                        row_pct=total_row_pct or None,
+                        woe=None,
+                        iv=None,
+                        kind=source_kind,
+                    )
+                    override_event["before"] = before_cats
+                    override_event["after"] = override.get("new_label", "Grouped")
+                    new_bins = [b for b in var_bins if b.bin_id not in source_bin_ids]
+                    insert_pos = min(var_bins.index(bin_id_map[bid]) for bid in source_bin_ids)
+                    new_bins.insert(insert_pos, grouped)
+                    var_bins = new_bins
+                    bin_id_map = {b.bin_id: b for b in var_bins}
 
-            elif action == "reorder_missing_bin":
-                missing_bins = [b for b in var_bins if b.get("is_missing_bin")]
-                non_missing = [b for b in var_bins if not b.get("is_missing_bin")]
-                var_info["bins"] = non_missing + missing_bins
-                override_event["before"] = "missing_at_original_position"
-                override_event["after"] = "missing_moved_to_end"
+                elif action == "reject_variable":
+                    override_event["before"] = "included"
+                    override_event["after"] = "excluded"
+                    rejected = True
+                    reject_reason = reason
 
-            elif action == "reorder_special_bin":
-                special_bins = [b for b in var_bins if b.get("is_special_bin")]
-                non_special = [b for b in var_bins if not b.get("is_special_bin")]
-                var_info["bins"] = non_special + special_bins
-                override_event["before"] = "special_at_original_position"
-                override_event["after"] = "special_moved_to_end"
+                elif action == "reorder_missing_bin":
+                    missing_bins = [b for b in var_bins if b.is_missing_bin]
+                    non_missing = [b for b in var_bins if not b.is_missing_bin]
+                    var_bins = non_missing + missing_bins
+                    bin_id_map = {b.bin_id: b for b in var_bins}
+                    override_event["before"] = "missing_at_original_position"
+                    override_event["after"] = "missing_moved_to_end"
 
-            override_history.append(override_event)
-            var_info["override_history"] = override_history
+                elif action == "reorder_special_bin":
+                    special_bins = [b for b in var_bins if b.is_special_bin]
+                    non_special = [b for b in var_bins if not b.is_special_bin]
+                    var_bins = non_special + special_bins
+                    bin_id_map = {b.bin_id: b for b in var_bins}
+                    override_event["before"] = "special_at_original_position"
+                    override_event["after"] = "special_moved_to_end"
+
+                override_history.append(override_event)
+
+            if modified:
+                kwargs: dict[str, Any] = {"bins": var_bins, "override_history": override_history}
+                if rejected:
+                    kwargs["status"] = "excluded"
+                    kwargs["active"] = False
+                    kwargs["failure_reason"] = reject_reason
+                new_variables.append(dataclasses.replace(var, **kwargs))
+            else:
+                new_variables.append(var)
 
         if selected_vars is not None:
-            var_map = {k: v for k, v in var_map.items() if k in selected_vars}
+            new_variables = [v for v in new_variables if v.variable in selected_vars]
 
-        active_vars = [v for v in var_map.values() if v.get("active", True)]
-        rejected_vars = [v for v in var_map.values() if not v.get("active", True)]
+        active_vars = [v for v in new_variables if v.active]
+        rejected_vars = [v for v in new_variables if not v.active]
 
-        existing_rejected = list(bin_def.get("rejected") or [])
-        combined_rejected = existing_rejected + rejected_vars
+        combined_rejected = list(bin_def.rejected) + rejected_vars
 
         if not overrides:
             warnings.append({"message": "No manual overrides applied; passing through auto bins for selected variables"})
 
-        return {
-            "variables": active_vars,
-            "rejected": combined_rejected if combined_rejected else None,
-            "warnings": bin_def.get("warnings", []) + warnings,
-        }
+        return LifecycleBinDefinition(
+            schema_version=bin_def.schema_version,
+            variables=active_vars,
+            rejected=combined_rejected,
+            warnings=list(bin_def.warnings) + warnings,
+            source=bin_def.source,
+            extra=dict(bin_def.extra),
+            _present_fields=bin_def._present_fields,
+        )
 
 
 __all__ = [

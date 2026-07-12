@@ -47,6 +47,10 @@ class EvidenceKind(Enum):
     PROXY_RISK_REPORT = "proxy_risk_report"
     CALIBRATION_REPORT = "calibration_report"
     SCORE_TABLE = "scorecard_table"
+    COEFFICIENT_SIGN_DIAGNOSTICS = "coefficient_sign_diagnostics"
+    SEPARATION_DIAGNOSTICS = "separation_diagnostics"
+    VIF_DIAGNOSTICS = "vif_diagnostics"
+    CALIBRATION_DIAGNOSTICS = "calibration_diagnostics"
     SCORING_EXPORT_PYTHON = "scoring_export_python"
     SCORING_EXPORT_SQL = "scoring_export_sql"
 
