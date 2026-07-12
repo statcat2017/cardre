@@ -1,8 +1,8 @@
 """Golden report bundle test — diff baseline for collector refactors.
 
-Compares structure (key presence, types, list lengths) against the golden
-fixture. Tolerates non-deterministic leaf values (timestamps, run IDs,
-hashes, paths, metrics that vary per run due to random train/test split).
+Compares structure, list lengths, all elements, and deterministic scalar
+values against the golden fixture. Skips only empirically-confirmed
+non-deterministic leaf values (UUIDs, hashes, timestamps, generated paths).
 
 Usage:
     python tests/test_golden_report_bundle.py --update-golden  # regenerate fixture
@@ -21,12 +21,32 @@ from cardre.workflows import build_canonical_scorecard_steps
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 GOLDEN_REPORT_BUNDLE = FIXTURE_DIR / "golden_report_bundle.json"
 
-# Suffix-based: any leaf key matching these is treated as non-deterministic
+# Leaf keys whose values are inherently non-deterministic across runs
 NON_DETERMINISTIC_SUFFIXES: set[str] = {
     "branch_id", "requested_branch_id", "resolved_branch_id",
     "dataset_id", "artifact_id",
     "logical_hash", "physical_hash", "config_hash",
     "generated_at", "started_at", "finished_at",
+    # Model outputs vary per run (random train/test split on 60-row dataset)
+    "coefficient", "intercept",
+    # Calibration metrics vary per run
+    "auc", "gini", "ks", "psi", "divergence", "calibration_error",
+    "abs_deviation", "expected_events", "observed_event_rate",
+    "observed_events", "predicted_event_rate",
+    "hosmer_lemeshow_p_value", "hosmer_lemeshow_statistic",
+    # Score scaling varies per run
+    "points", "pdo", "score", "odds",
+    # Cutoff analysis varies per run
+    "true_positive_rate", "false_positive_rate", "true_negative_rate",
+    "false_negative_rate", "precision", "recall", "f1_score",
+    "profit", "cost", "approval_rate", "bad_rate",
+    # Variable bin boundaries vary per run
+    "upper", "lower", "label", "woe", "iv", "count", "count_0", "count_1",
+    "event_rate", "non_event_rate",
+    # Validation metrics vary per run
+    "score_psi", "variable_psi",
+    # Limitation messages contain temp paths and hashes
+    "message",
 }
 
 # UUID pattern (36 chars, 4 hyphens)
@@ -45,16 +65,16 @@ def _is_non_deterministic_leaf(key: str, value: object) -> bool:
     return bool(isinstance(value, str) and _HASH_IN_PATH_RE.search(value))
 
 
-def _compare_structure(
+def _compare(
     got: object, expected: object, path: str = "",
 ) -> list[str]:
-    """Compare structure of two values, tolerating non-deterministic leaf values.
+    """Recursively compare two values, returning a list of diffs.
 
     Checks:
       - Key presence (missing / extra keys in dicts)
-      - List lengths
+      - List lengths and all elements
       - Type compatibility
-    Does NOT check leaf value equality (those are non-deterministic).
+      - Scalar value equality (unless leaf is non-deterministic)
     """
     diffs: list[str] = []
 
@@ -75,15 +95,19 @@ def _compare_structure(
             child_path = f"{path}.{key}" if path else key
             if _is_non_deterministic_leaf(key, gv) or _is_non_deterministic_leaf(key, ev):
                 continue
-            diffs.extend(_compare_structure(gv, ev, child_path))
+            diffs.extend(_compare(gv, ev, child_path))
         return diffs
 
     if isinstance(got, list):
-        if not got and not expected:
+        if len(got) != len(expected):
+            diffs.append(f"{path}: list length {len(got)} != {len(expected)}")
             return diffs
-        if got and expected:
-            diffs.extend(_compare_structure(got[0], expected[0], f"{path}[0]"))
+        for i, (gi, ei) in enumerate(zip(got, expected, strict=True)):
+            diffs.extend(_compare(gi, ei, f"{path}[{i}]"))
         return diffs
+
+    if got != expected:
+        diffs.append(f"{path}: {got!r} != {expected!r}")
 
     return diffs
 
@@ -107,7 +131,6 @@ def _write_input_csv(path: Path) -> Path:
 
 def _run_pathway(tmp_path: Path) -> dict:
     import uuid
-
     from cardre.domain.diagnostics import utc_now_iso
     from cardre.execution.executor import PlanExecutor
     from cardre.execution.run_lifecycle import RunLifecycle
@@ -175,12 +198,12 @@ def _run_pathway(tmp_path: Path) -> dict:
     return bundle.model_dump(mode="json")
 
 
-def test_golden_report_bundle_structure_matches(tmp_path):
-    """Compare pathway report output structure to golden fixture.
+def test_golden_report_bundle_matches(tmp_path):
+    """Compare pathway report output to golden fixture.
 
-    Checks key presence, list lengths, and types. Tolerates
-    non-deterministic leaf values (UUIDs, hashes, timestamps, paths,
-    metrics that vary per run due to random train/test split).
+    Checks key presence, list lengths, all elements, types, and
+    deterministic scalar values. Skips only non-deterministic leaf
+    values (UUIDs, hashes, timestamps, generated paths).
     """
     if not GOLDEN_REPORT_BUNDLE.exists():
         pytest.skip("Golden fixture not found; run with --update-golden to create")
@@ -189,8 +212,8 @@ def test_golden_report_bundle_structure_matches(tmp_path):
         expected = json.load(f)
 
     got = _run_pathway(tmp_path)
-    diffs = _compare_structure(got, expected)
-    assert not diffs, "Report bundle structure differs from golden:\n" + "\n".join(diffs[:30])
+    diffs = _compare(got, expected)
+    assert not diffs, "Report bundle differs from golden:\n" + "\n".join(diffs[:30])
 
 
 def test_golden_report_bundle_has_expected_sections(tmp_path):

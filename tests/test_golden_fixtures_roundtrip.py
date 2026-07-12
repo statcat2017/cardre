@@ -2,7 +2,7 @@
 
 Verifies that each golden fixture can be deserialized and re-serialized
 without data loss. Manual binning overrides are tested through the
-production adapter path.
+production adapter parse path.
 """
 from __future__ import annotations
 
@@ -13,7 +13,9 @@ import pytest
 
 from cardre._evidence.adapters.binning import ManualBinningOverridesAdapter
 from cardre._evidence.models.binning import BinDefinition
+from cardre.domain.artifacts import ArtifactRef
 from cardre.modeling.schema import ModelArtifactV1
+from cardre.store.db import ProjectStore
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
@@ -71,12 +73,31 @@ class TestBinDefinitionRoundTrip:
 
 
 class TestManualBinningOverridesRoundTrip:
-    def test_round_trip_through_adapter(self):
-        """Parse fixture through the production adapter path."""
-        _load_fixture("golden_manual_binning_overrides.json")
+    def test_parse_through_adapter(self, tmp_path):
+        """Parse fixture through the production adapter parse path."""
+        data = _load_fixture("golden_manual_binning_overrides.json")
+
+        store = ProjectStore(tmp_path / "test.cardre")
+        store.initialize()
+
+        fixture_path = tmp_path / "overrides.json"
+        with open(fixture_path, "w") as f:
+            json.dump(data, f)
+
+        art = ArtifactRef(
+            artifact_id="test-overrides",
+            artifact_type="definition",
+            role="definition",
+            path=str(fixture_path),
+            physical_hash="ph",
+            logical_hash="lh",
+            media_type="application/json",
+            metadata={"schema_version": "cardre.manual_binning_overrides.v1"},
+        )
+
         adapter = ManualBinningOverridesAdapter()
-        assert adapter.kind.value == "manual_binning_overrides"
-        assert adapter.profile.schema_version == "cardre.manual_binning_overrides.v1"
+        parsed = adapter.parse(fixture_path, art, store)
+        assert parsed == data, "Manual binning overrides adapter parse changed data"
 
     def test_has_expected_schema(self):
         data = _load_fixture("golden_manual_binning_overrides.json")

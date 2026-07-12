@@ -18,7 +18,7 @@ patterns. No production code changes.
 
 1. Run the existing end-to-end pathway test
    (`tests/test_api_scorecard_launch_pathway.py`) to produce a real report
-   bundle from the German Credit demo dataset.
+   bundle from a synthetic 60-row binary-classification dataset.
 2. Capture the serialized `ReportBundle` JSON output as a golden fixture at
    `tests/fixtures/golden_report_bundle.json`.
 3. Add a test `tests/test_golden_report_bundle.py` that runs the pathway and
