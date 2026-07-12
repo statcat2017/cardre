@@ -97,3 +97,21 @@ only replaces `_raw` accesses in place; the structure stays the same.
 - Do not touch `scoring_export.py`, `freeze.py`, `calibrate.py`, or
   `build/models.py` (those are PR3a/3b).
 - Do not touch `readiness/check.py` structure (that's PR5).
+
+## Follow-up from PR0
+
+The golden report bundle test (PR0) skips a broad set of values globally
+(coefficients, metrics, score scaling, bin values, WOE/IV, points, scores)
+because the 60-row synthetic pathway's random train/test split produces
+genuinely non-deterministic output. This weakens the collector safety net:
+a mis-mapped metric or limitation message would not be caught.
+
+**This PR should make the golden report pathway deterministic enough to
+remove the broad value skips.** Options:
+- Use a fixed random seed for the train/test split in the pathway test.
+- Use a larger deterministic dataset that produces stable bin boundaries.
+- Replace suffix-based skipping with path-specific non-determinism for
+  the few genuinely unstable fields.
+
+The goal: by the end of this PR, `test_golden_report_bundle_matches`
+should compare all scalar values exactly, with no suffix-based skips.
