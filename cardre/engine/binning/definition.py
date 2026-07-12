@@ -393,6 +393,8 @@ class LifecycleBinDefinition:
             bin_id_map = {b.bin_id: b for b in var_bins}
             override_history: list[JsonDict] = list(var.override_history)
             modified = False
+            rejected = False
+            reject_reason = ""
 
             for override in overrides:
                 variable = override.get("variable", "")
@@ -462,6 +464,8 @@ class LifecycleBinDefinition:
                 elif action == "reject_variable":
                     override_event["before"] = "included"
                     override_event["after"] = "excluded"
+                    rejected = True
+                    reject_reason = reason
 
                 elif action == "reorder_missing_bin":
                     missing_bins = [b for b in var_bins if b.is_missing_bin]
@@ -482,9 +486,12 @@ class LifecycleBinDefinition:
                 override_history.append(override_event)
 
             if modified:
-                new_variables.append(dataclasses.replace(
-                    var, bins=var_bins, override_history=override_history,
-                ))
+                kwargs: dict[str, Any] = {"bins": var_bins, "override_history": override_history}
+                if rejected:
+                    kwargs["status"] = "excluded"
+                    kwargs["active"] = False
+                    kwargs["failure_reason"] = reject_reason
+                new_variables.append(dataclasses.replace(var, **kwargs))
             else:
                 new_variables.append(var)
 

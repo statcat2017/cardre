@@ -303,7 +303,7 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_roles={"report"},
         expected_artifact_types={"report"},
         schema_version=SCHEMA_CALIBRATION_DIAGNOSTICS,
-        required_keys={"variables"},
+        required_keys={"roles"},
     ),
     EvidenceKind.SCORE_TABLE: _Profile(
         expected_roles={"report"},
