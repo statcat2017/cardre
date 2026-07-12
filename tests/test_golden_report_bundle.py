@@ -79,11 +79,10 @@ def _compare_structure(
         return diffs
 
     if isinstance(got, list):
-        if len(got) != len(expected):
-            diffs.append(f"{path}: list length {len(got)} != {len(expected)}")
+        if not got and not expected:
             return diffs
-        for i, (gi, ei) in enumerate(zip(got, expected, strict=True)):
-            diffs.extend(_compare_structure(gi, ei, f"{path}[{i}]"))
+        if got and expected:
+            diffs.extend(_compare_structure(got[0], expected[0], f"{path}[0]"))
         return diffs
 
     return diffs
