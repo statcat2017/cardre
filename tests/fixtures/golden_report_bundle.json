@@ -1,0 +1,3133 @@
+{
+  "schema_version": "cardre.report_bundle.v1",
+  "project_id": "60eefe5a-1b97-4165-9504-e34c45226763",
+  "run_id": "b006de56-c857-486c-bdde-361568799305",
+  "target_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+  "report_mode": "branch",
+  "generated_at": "2026-07-12T17:34:56.805Z",
+  "generated_by": {
+    "cardre_version": "0.1.0"
+  },
+  "source": {
+    "run_manifest_path": "",
+    "run_manifest_hash": "",
+    "pathway_hash": "",
+    "artifact_root": ""
+  },
+  "summary": {
+    "model_name": "Golden Test",
+    "target_column": "credit_risk_class",
+    "observation_level": "",
+    "development_sample": "train",
+    "validation_samples": [],
+    "candidate_branch_count": 0,
+    "target_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+    "champion_branch_id": "",
+    "final_variable_count": 0,
+    "excluded_variable_count": 0,
+    "report_status": "complete_with_warnings"
+  },
+  "dataset_roles": [
+    {
+      "role": "train",
+      "dataset_id": "3f82b6b7-6496-4303-a0ee-61979b01229f",
+      "row_count": 36,
+      "column_count": 0,
+      "target": {
+        "good_count": 0,
+        "bad_count": 0,
+        "bad_rate": 0.0
+      },
+      "date_range": {
+        "min": "",
+        "max": ""
+      },
+      "artifacts": []
+    },
+    {
+      "role": "test",
+      "dataset_id": "438c0419-29d5-41e9-abd3-31d44df35137",
+      "row_count": 12,
+      "column_count": 0,
+      "target": {
+        "good_count": 0,
+        "bad_count": 0,
+        "bad_rate": 0.0
+      },
+      "date_range": {
+        "min": "",
+        "max": ""
+      },
+      "artifacts": []
+    },
+    {
+      "role": "oot",
+      "dataset_id": "8973513d-267d-4f65-b614-b0bcdaa747c0",
+      "row_count": 12,
+      "column_count": 0,
+      "target": {
+        "good_count": 0,
+        "bad_count": 0,
+        "bad_rate": 0.0
+      },
+      "date_range": {
+        "min": "",
+        "max": ""
+      },
+      "artifacts": []
+    },
+    {
+      "role": "train",
+      "dataset_id": "3f82b6b7-6496-4303-a0ee-61979b01229f",
+      "row_count": 36,
+      "column_count": 0,
+      "target": {
+        "good_count": 0,
+        "bad_count": 0,
+        "bad_rate": 0.0
+      },
+      "date_range": {
+        "min": "",
+        "max": ""
+      },
+      "artifacts": []
+    },
+    {
+      "role": "test",
+      "dataset_id": "438c0419-29d5-41e9-abd3-31d44df35137",
+      "row_count": 12,
+      "column_count": 0,
+      "target": {
+        "good_count": 0,
+        "bad_count": 0,
+        "bad_rate": 0.0
+      },
+      "date_range": {
+        "min": "",
+        "max": ""
+      },
+      "artifacts": []
+    },
+    {
+      "role": "oot",
+      "dataset_id": "8973513d-267d-4f65-b614-b0bcdaa747c0",
+      "row_count": 12,
+      "column_count": 0,
+      "target": {
+        "good_count": 0,
+        "bad_count": 0,
+        "bad_rate": 0.0
+      },
+      "date_range": {
+        "min": "",
+        "max": ""
+      },
+      "artifacts": []
+    },
+    {
+      "role": "train",
+      "dataset_id": "a7c0a136-c9e6-4d79-970d-7b4c318e5cfa",
+      "row_count": 0,
+      "column_count": 0,
+      "target": {
+        "good_count": 0,
+        "bad_count": 0,
+        "bad_rate": 0.0
+      },
+      "date_range": {
+        "min": "",
+        "max": ""
+      },
+      "artifacts": []
+    },
+    {
+      "role": "train",
+      "dataset_id": "a7c0a136-c9e6-4d79-970d-7b4c318e5cfa",
+      "row_count": 0,
+      "column_count": 0,
+      "target": {
+        "good_count": 0,
+        "bad_count": 0,
+        "bad_rate": 0.0
+      },
+      "date_range": {
+        "min": "",
+        "max": ""
+      },
+      "artifacts": []
+    },
+    {
+      "role": "test",
+      "dataset_id": "ad2c6bee-f166-4b18-9d28-7fdd76d1d7c4",
+      "row_count": 0,
+      "column_count": 0,
+      "target": {
+        "good_count": 0,
+        "bad_count": 0,
+        "bad_rate": 0.0
+      },
+      "date_range": {
+        "min": "",
+        "max": ""
+      },
+      "artifacts": []
+    },
+    {
+      "role": "oot",
+      "dataset_id": "7bccc2af-1f1f-4dd9-8694-b7883af595dc",
+      "row_count": 0,
+      "column_count": 0,
+      "target": {
+        "good_count": 0,
+        "bad_count": 0,
+        "bad_rate": 0.0
+      },
+      "date_range": {
+        "min": "",
+        "max": ""
+      },
+      "artifacts": []
+    },
+    {
+      "role": "train",
+      "dataset_id": "14c4ed33-0288-48c1-b49e-923c0ae80f6a",
+      "row_count": 0,
+      "column_count": 0,
+      "target": {
+        "good_count": 0,
+        "bad_count": 0,
+        "bad_rate": 0.0
+      },
+      "date_range": {
+        "min": "",
+        "max": ""
+      },
+      "artifacts": []
+    },
+    {
+      "role": "test",
+      "dataset_id": "8f026022-8b1f-43dc-8b82-c9cc7a78001d",
+      "row_count": 0,
+      "column_count": 0,
+      "target": {
+        "good_count": 0,
+        "bad_count": 0,
+        "bad_rate": 0.0
+      },
+      "date_range": {
+        "min": "",
+        "max": ""
+      },
+      "artifacts": []
+    },
+    {
+      "role": "oot",
+      "dataset_id": "8808811f-040f-43b4-b82b-a8ddce65030f",
+      "row_count": 0,
+      "column_count": 0,
+      "target": {
+        "good_count": 0,
+        "bad_count": 0,
+        "bad_rate": 0.0
+      },
+      "date_range": {
+        "min": "",
+        "max": ""
+      },
+      "artifacts": []
+    }
+  ],
+  "pathway": {
+    "pathway_id": "scorecard_pathway",
+    "steps": [
+      {
+        "canonical_step_id": "import",
+        "step_id": "import",
+        "branch_id": "",
+        "step_type": "cardre.import_dataset",
+        "status": "",
+        "config_hash": "12b8a5d44621612bb8f5620e89315850e092b02bb8081c5a46f5e00d77f947f3",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "define-metadata",
+        "step_id": "define-metadata",
+        "branch_id": "",
+        "step_type": "cardre.define_modelling_metadata",
+        "status": "",
+        "config_hash": "ae337bc715e0d60b54c6fc42c075fa124bebed5a57ea37783735b635ef06fc87",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "apply-exclusions",
+        "step_id": "apply-exclusions",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.apply_exclusions",
+        "status": "",
+        "config_hash": "da506c8a9c8a9f31aa00eaeef23d49764b9ace97158a1a0a7aa628e6d446b0fb",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "profile",
+        "step_id": "profile",
+        "branch_id": "",
+        "step_type": "cardre.profile_dataset",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "validate-target",
+        "step_id": "validate-target",
+        "branch_id": "",
+        "step_type": "cardre.validate_binary_target",
+        "status": "",
+        "config_hash": "07a45bd30e52c6af1064f628c31801ca2d750d56634dd6c4906c6a2587cfdd5d",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "sample-definition",
+        "step_id": "sample-definition",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.development_sample_definition",
+        "status": "",
+        "config_hash": "93c6dc586e59c9eb5e28c3102a974b27beb7c576ede434f81a6deea0221ee6d4",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "split",
+        "step_id": "split",
+        "branch_id": "",
+        "step_type": "cardre.split_train_test_oot",
+        "status": "",
+        "config_hash": "07a45bd30e52c6af1064f628c31801ca2d750d56634dd6c4906c6a2587cfdd5d",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "explicit-missing-outlier-treatment",
+        "step_id": "explicit-missing-outlier-treatment",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.explicit_missing_outlier_treatment",
+        "status": "",
+        "config_hash": "24ce983c2fa743486e8973b63084d539a39ceefa3d06910304cccadf10d549f0",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "fine-classing",
+        "step_id": "fine-classing",
+        "branch_id": "",
+        "step_type": "cardre.fine_classing",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "initial-woe-iv",
+        "step_id": "initial-woe-iv",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.calculate_woe_iv",
+        "status": "",
+        "config_hash": "5d0bbf116dbc3f9f820a5c27da37c03b0307aaf73b3c127c3da811e8b87064b4",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "variable-clustering",
+        "step_id": "variable-clustering",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.variable_clustering",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "variable-selection",
+        "step_id": "variable-selection",
+        "branch_id": "",
+        "step_type": "cardre.variable_selection",
+        "status": "",
+        "config_hash": "8cae840cd1722dd6ee418ddbee1dd22ad2fb429352b0b83ddd3f02112f9722ff",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "manual-binning",
+        "step_id": "manual-binning",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.manual_binning",
+        "status": "",
+        "config_hash": "43eabf09e901533d8cc9d91b5ef977f68dfa8d6ab857128cb293f4ebc6987643",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "final-woe-iv",
+        "step_id": "final-woe-iv",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.calculate_woe_iv",
+        "status": "",
+        "config_hash": "32a16eb0cafc476e12f2af594cbb72246e92295ccebfc4a20bd08ac6349231f6",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "woe-transform-train",
+        "step_id": "woe-transform-train",
+        "branch_id": "",
+        "step_type": "cardre.woe_transform_train",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "model-fit",
+        "step_id": "model-fit",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.logistic_regression",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "coefficient-sign-check",
+        "step_id": "coefficient-sign-check",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.coefficient_sign_check",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "separation-diagnostics",
+        "step_id": "separation-diagnostics",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.separation_diagnostics",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "vif-diagnostics",
+        "step_id": "vif-diagnostics",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.vif_diagnostics",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "score-scaling",
+        "step_id": "score-scaling",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.score_scaling",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "build-summary-report",
+        "step_id": "build-summary-report",
+        "branch_id": "",
+        "step_type": "cardre.build_summary_report",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "freeze-scorecard-bundle",
+        "step_id": "freeze-scorecard-bundle",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.freeze_scorecard_bundle",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "apply-woe",
+        "step_id": "apply-woe",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.apply_woe_mapping",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "apply-model",
+        "step_id": "apply-model",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.apply_model",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "calibration-diagnostics",
+        "step_id": "calibration-diagnostics",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.calibration_diagnostics",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "validation-metrics",
+        "step_id": "validation-metrics",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.validation_metrics",
+        "status": "",
+        "config_hash": "ada816324601834935d5ccf98b5cff613a7bfaeac558692b2ad88fd6b4415ec9",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "cutoff-analysis",
+        "step_id": "cutoff-analysis",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.cutoff_analysis",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "scorecard-table-export",
+        "step_id": "scorecard-table-export",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.scorecard_table_export",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "scoring-export-python",
+        "step_id": "scoring-export-python",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.scoring_export_python",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "scoring-export-sql",
+        "step_id": "scoring-export-sql",
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "step_type": "cardre.scoring_export_sql",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      },
+      {
+        "canonical_step_id": "technical-manifest-stub",
+        "step_id": "technical-manifest-stub",
+        "branch_id": "",
+        "step_type": "cardre.technical_manifest_export",
+        "status": "",
+        "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "resolution": "exact"
+      }
+    ]
+  },
+  "branches": {
+    "branching_model": "plan_derived_lanes",
+    "target_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+    "branches": [
+      {
+        "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "name": "main",
+        "parent_branch_id": null,
+        "created_from_canonical_step_id": null,
+        "is_target_branch": true,
+        "is_champion": false,
+        "status": "active"
+      }
+    ]
+  },
+  "champion": {
+    "champion_status": "not_available",
+    "assignment_id": null,
+    "champion_branch_id": null,
+    "comparison_artifact_id": null,
+    "rationale": null,
+    "selected_at": null,
+    "target_branch_is_champion": false
+  },
+  "variables": [
+    {
+      "variable_name": "credit_amount",
+      "role": "initial",
+      "branch_id": "",
+      "type": "",
+      "final_bin_count": 0,
+      "iv": 0.231049,
+      "monotonicity_status": "",
+      "manual_edits": false,
+      "woe_smoothing": {
+        "enabled": false,
+        "method": "additive",
+        "alpha": 0.5,
+        "zero_cell_policy": "block",
+        "smoothing_applied": false,
+        "zero_cell_encountered": false,
+        "affected_bin_count": 0
+      },
+      "source_step_refs": [
+        {
+          "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+          "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+          "canonical_step_id": "initial-woe-iv",
+          "step_id": "initial-woe-iv",
+          "resolution": "exact"
+        }
+      ],
+      "bins": [],
+      "affected_bins": [],
+      "artifacts": []
+    },
+    {
+      "variable_name": "age_years",
+      "role": "initial",
+      "branch_id": "",
+      "type": "",
+      "final_bin_count": 0,
+      "iv": 0.25993,
+      "monotonicity_status": "",
+      "manual_edits": false,
+      "woe_smoothing": {
+        "enabled": false,
+        "method": "additive",
+        "alpha": 0.5,
+        "zero_cell_policy": "block",
+        "smoothing_applied": false,
+        "zero_cell_encountered": false,
+        "affected_bin_count": 0
+      },
+      "source_step_refs": [
+        {
+          "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+          "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+          "canonical_step_id": "initial-woe-iv",
+          "step_id": "initial-woe-iv",
+          "resolution": "exact"
+        }
+      ],
+      "bins": [],
+      "affected_bins": [],
+      "artifacts": []
+    },
+    {
+      "variable_name": "duration_months",
+      "role": "initial",
+      "branch_id": "",
+      "type": "",
+      "final_bin_count": 0,
+      "iv": 0.346574,
+      "monotonicity_status": "",
+      "manual_edits": false,
+      "woe_smoothing": {
+        "enabled": false,
+        "method": "additive",
+        "alpha": 0.5,
+        "zero_cell_policy": "block",
+        "smoothing_applied": false,
+        "zero_cell_encountered": false,
+        "affected_bin_count": 0
+      },
+      "source_step_refs": [
+        {
+          "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+          "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+          "canonical_step_id": "initial-woe-iv",
+          "step_id": "initial-woe-iv",
+          "resolution": "exact"
+        }
+      ],
+      "bins": [],
+      "affected_bins": [],
+      "artifacts": []
+    },
+    {
+      "variable_name": "credit_amount",
+      "role": "included",
+      "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+      "type": "",
+      "final_bin_count": 20,
+      "iv": 1.043305,
+      "monotonicity_status": "",
+      "manual_edits": false,
+      "woe_smoothing": {
+        "enabled": true,
+        "method": "additive",
+        "alpha": 0.5,
+        "zero_cell_policy": "block",
+        "smoothing_applied": true,
+        "zero_cell_encountered": true,
+        "affected_bin_count": 12
+      },
+      "source_step_refs": [
+        {
+          "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+          "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+          "canonical_step_id": "final-woe-iv",
+          "step_id": "final-woe-iv",
+          "resolution": "exact"
+        }
+      ],
+      "bins": [
+        {
+          "bin_id": "credit_amount_bin_001",
+          "label": "(-inf, 1388]",
+          "lower": null,
+          "upper": 1387.5,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "credit_amount_bin_002",
+          "label": "(1388, 1525]",
+          "lower": 1387.5,
+          "upper": 1525.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "credit_amount_bin_003",
+          "label": "(1525, 1712]",
+          "lower": 1525.0,
+          "upper": 1712.5,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "credit_amount_bin_004",
+          "label": "(1712, 1800]",
+          "lower": 1712.5,
+          "upper": 1800.0,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "credit_amount_bin_005",
+          "label": "(1800, 1888]",
+          "lower": 1800.0,
+          "upper": 1887.5,
+          "good_count": 1,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 0.663294,
+          "iv_contribution": 0.014188
+        },
+        {
+          "bin_id": "credit_amount_bin_006",
+          "label": "(1888, 2125]",
+          "lower": 1887.5,
+          "upper": 2125.0,
+          "good_count": 0,
+          "bad_count": 2,
+          "bad_rate": 1.0,
+          "woe": -2.044756,
+          "iv_contribution": 0.202289
+        },
+        {
+          "bin_id": "credit_amount_bin_007",
+          "label": "(2125, 2275]",
+          "lower": 2125.0,
+          "upper": 2275.0,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "credit_amount_bin_008",
+          "label": "(2275, 2400]",
+          "lower": 2275.0,
+          "upper": 2400.0,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "credit_amount_bin_009",
+          "label": "(2400, 2538]",
+          "lower": 2400.0,
+          "upper": 2537.5,
+          "good_count": 0,
+          "bad_count": 1,
+          "bad_rate": 1.0,
+          "woe": -1.53393,
+          "iv_contribution": 0.082028
+        },
+        {
+          "bin_id": "credit_amount_bin_010",
+          "label": "(2538, 2675]",
+          "lower": 2537.5,
+          "upper": 2675.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "credit_amount_bin_011",
+          "label": "(2675, 2812]",
+          "lower": 2675.0,
+          "upper": 2812.5,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "credit_amount_bin_012",
+          "label": "(2812, 2900]",
+          "lower": 2812.5,
+          "upper": 2900.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "credit_amount_bin_013",
+          "label": "(2900, 2988]",
+          "lower": 2900.0,
+          "upper": 2987.5,
+          "good_count": 0,
+          "bad_count": 1,
+          "bad_rate": 1.0,
+          "woe": -1.53393,
+          "iv_contribution": 0.082028
+        },
+        {
+          "bin_id": "credit_amount_bin_014",
+          "label": "(2988, 3075]",
+          "lower": 2987.5,
+          "upper": 3075.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "credit_amount_bin_015",
+          "label": "(3075, 3162]",
+          "lower": 3075.0,
+          "upper": 3162.5,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "credit_amount_bin_016",
+          "label": "(3162, 3300]",
+          "lower": 3162.5,
+          "upper": 3300.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "credit_amount_bin_017",
+          "label": "(3300, 3425]",
+          "lower": 3300.0,
+          "upper": 3425.0,
+          "good_count": 1,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 0.663294,
+          "iv_contribution": 0.014188
+        },
+        {
+          "bin_id": "credit_amount_bin_018",
+          "label": "(3425, 3600]",
+          "lower": 3425.0,
+          "upper": 3600.0,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "credit_amount_bin_019",
+          "label": "(3600, 3812]",
+          "lower": 3600.0,
+          "upper": 3812.5,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "credit_amount_bin_020",
+          "label": "(3812, +inf)",
+          "lower": 3812.5,
+          "upper": null,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        }
+      ],
+      "affected_bins": [
+        {
+          "bin_id": "credit_amount_bin_002",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        },
+        {
+          "bin_id": "credit_amount_bin_003",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        },
+        {
+          "bin_id": "credit_amount_bin_005",
+          "reason": "zero_bad",
+          "raw_good_count": 1,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 1.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 0.663294
+        },
+        {
+          "bin_id": "credit_amount_bin_006",
+          "reason": "zero_good",
+          "raw_good_count": 0,
+          "raw_bad_count": 2,
+          "smoothed_good_count": 0.5,
+          "smoothed_bad_count": 2.5,
+          "raw_woe": null,
+          "final_woe": -2.044756
+        },
+        {
+          "bin_id": "credit_amount_bin_009",
+          "reason": "zero_good",
+          "raw_good_count": 0,
+          "raw_bad_count": 1,
+          "smoothed_good_count": 0.5,
+          "smoothed_bad_count": 1.5,
+          "raw_woe": null,
+          "final_woe": -1.53393
+        },
+        {
+          "bin_id": "credit_amount_bin_010",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        },
+        {
+          "bin_id": "credit_amount_bin_012",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        },
+        {
+          "bin_id": "credit_amount_bin_013",
+          "reason": "zero_good",
+          "raw_good_count": 0,
+          "raw_bad_count": 1,
+          "smoothed_good_count": 0.5,
+          "smoothed_bad_count": 1.5,
+          "raw_woe": null,
+          "final_woe": -1.53393
+        },
+        {
+          "bin_id": "credit_amount_bin_014",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        },
+        {
+          "bin_id": "credit_amount_bin_016",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        },
+        {
+          "bin_id": "credit_amount_bin_017",
+          "reason": "zero_bad",
+          "raw_good_count": 1,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 1.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 0.663294
+        },
+        {
+          "bin_id": "credit_amount_bin_019",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "variable_name": "age_years",
+      "role": "included",
+      "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+      "type": "",
+      "final_bin_count": 20,
+      "iv": 1.484902,
+      "monotonicity_status": "",
+      "manual_edits": false,
+      "woe_smoothing": {
+        "enabled": true,
+        "method": "additive",
+        "alpha": 0.5,
+        "zero_cell_policy": "block",
+        "smoothing_applied": true,
+        "zero_cell_encountered": true,
+        "affected_bin_count": 16
+      },
+      "source_step_refs": [
+        {
+          "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+          "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+          "canonical_step_id": "final-woe-iv",
+          "step_id": "final-woe-iv",
+          "resolution": "exact"
+        }
+      ],
+      "bins": [
+        {
+          "bin_id": "age_years_bin_001",
+          "label": "(-inf, 26.75]",
+          "lower": null,
+          "upper": 26.75,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "age_years_bin_002",
+          "label": "(26.75, 29]",
+          "lower": 26.75,
+          "upper": 29.0,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "age_years_bin_003",
+          "label": "(29, 31.25]",
+          "lower": 29.0,
+          "upper": 31.25,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "age_years_bin_004",
+          "label": "(31.25, 32]",
+          "lower": 31.25,
+          "upper": 32.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "age_years_bin_005",
+          "label": "(32, 33]",
+          "lower": 32.0,
+          "upper": 33.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "age_years_bin_006",
+          "label": "(33, 34.5]",
+          "lower": 33.0,
+          "upper": 34.5,
+          "good_count": 0,
+          "bad_count": 1,
+          "bad_rate": 1.0,
+          "woe": -1.53393,
+          "iv_contribution": 0.082028
+        },
+        {
+          "bin_id": "age_years_bin_007",
+          "label": "(34.5, 35.25]",
+          "lower": 34.5,
+          "upper": 35.25,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "age_years_bin_008",
+          "label": "(35.25, 36]",
+          "lower": 35.25,
+          "upper": 36.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "age_years_bin_009",
+          "label": "(36, 37.75]",
+          "lower": 36.0,
+          "upper": 37.75,
+          "good_count": 0,
+          "bad_count": 1,
+          "bad_rate": 1.0,
+          "woe": -1.53393,
+          "iv_contribution": 0.082028
+        },
+        {
+          "bin_id": "age_years_bin_010",
+          "label": "(37.75, 39]",
+          "lower": 37.75,
+          "upper": 39.0,
+          "good_count": 3,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.510592,
+          "iv_contribution": 0.12117
+        },
+        {
+          "bin_id": "age_years_bin_011",
+          "label": "(39, 40.25]",
+          "lower": 39.0,
+          "upper": 40.25,
+          "good_count": 0,
+          "bad_count": 1,
+          "bad_rate": 1.0,
+          "woe": -1.53393,
+          "iv_contribution": 0.082028
+        },
+        {
+          "bin_id": "age_years_bin_012",
+          "label": "(40.25, 41]",
+          "lower": 40.25,
+          "upper": 41.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "age_years_bin_013",
+          "label": "(41, 42]",
+          "lower": 41.0,
+          "upper": 42.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "age_years_bin_014",
+          "label": "(42, 43.5]",
+          "lower": 42.0,
+          "upper": 43.5,
+          "good_count": 0,
+          "bad_count": 1,
+          "bad_rate": 1.0,
+          "woe": -1.53393,
+          "iv_contribution": 0.082028
+        },
+        {
+          "bin_id": "age_years_bin_015",
+          "label": "(43.5, 46]",
+          "lower": 43.5,
+          "upper": 46.0,
+          "good_count": 1,
+          "bad_count": 2,
+          "bad_rate": 0.6667,
+          "woe": -1.386294,
+          "iv_contribution": 0.173287
+        },
+        {
+          "bin_id": "age_years_bin_016",
+          "label": "(46, 48]",
+          "lower": 46.0,
+          "upper": 48.0,
+          "good_count": 1,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 0.663294,
+          "iv_contribution": 0.014188
+        },
+        {
+          "bin_id": "age_years_bin_017",
+          "label": "(48, 49.75]",
+          "lower": 48.0,
+          "upper": 49.75,
+          "good_count": 0,
+          "bad_count": 1,
+          "bad_rate": 1.0,
+          "woe": -1.53393,
+          "iv_contribution": 0.082028
+        },
+        {
+          "bin_id": "age_years_bin_018",
+          "label": "(49.75, 51.5]",
+          "lower": 49.75,
+          "upper": 51.5,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        },
+        {
+          "bin_id": "age_years_bin_019",
+          "label": "(51.5, 52.25]",
+          "lower": 51.5,
+          "upper": 52.25,
+          "good_count": 0,
+          "bad_count": 2,
+          "bad_rate": 1.0,
+          "woe": -2.044756,
+          "iv_contribution": 0.202289
+        },
+        {
+          "bin_id": "age_years_bin_020",
+          "label": "(52.25, +inf)",
+          "lower": 52.25,
+          "upper": null,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.17412,
+          "iv_contribution": 0.059648
+        }
+      ],
+      "affected_bins": [
+        {
+          "bin_id": "age_years_bin_004",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        },
+        {
+          "bin_id": "age_years_bin_005",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        },
+        {
+          "bin_id": "age_years_bin_006",
+          "reason": "zero_good",
+          "raw_good_count": 0,
+          "raw_bad_count": 1,
+          "smoothed_good_count": 0.5,
+          "smoothed_bad_count": 1.5,
+          "raw_woe": null,
+          "final_woe": -1.53393
+        },
+        {
+          "bin_id": "age_years_bin_007",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        },
+        {
+          "bin_id": "age_years_bin_008",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        },
+        {
+          "bin_id": "age_years_bin_009",
+          "reason": "zero_good",
+          "raw_good_count": 0,
+          "raw_bad_count": 1,
+          "smoothed_good_count": 0.5,
+          "smoothed_bad_count": 1.5,
+          "raw_woe": null,
+          "final_woe": -1.53393
+        },
+        {
+          "bin_id": "age_years_bin_010",
+          "reason": "zero_bad",
+          "raw_good_count": 3,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 3.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.510592
+        },
+        {
+          "bin_id": "age_years_bin_011",
+          "reason": "zero_good",
+          "raw_good_count": 0,
+          "raw_bad_count": 1,
+          "smoothed_good_count": 0.5,
+          "smoothed_bad_count": 1.5,
+          "raw_woe": null,
+          "final_woe": -1.53393
+        },
+        {
+          "bin_id": "age_years_bin_012",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        },
+        {
+          "bin_id": "age_years_bin_013",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        },
+        {
+          "bin_id": "age_years_bin_014",
+          "reason": "zero_good",
+          "raw_good_count": 0,
+          "raw_bad_count": 1,
+          "smoothed_good_count": 0.5,
+          "smoothed_bad_count": 1.5,
+          "raw_woe": null,
+          "final_woe": -1.53393
+        },
+        {
+          "bin_id": "age_years_bin_016",
+          "reason": "zero_bad",
+          "raw_good_count": 1,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 1.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 0.663294
+        },
+        {
+          "bin_id": "age_years_bin_017",
+          "reason": "zero_good",
+          "raw_good_count": 0,
+          "raw_bad_count": 1,
+          "smoothed_good_count": 0.5,
+          "smoothed_bad_count": 1.5,
+          "raw_woe": null,
+          "final_woe": -1.53393
+        },
+        {
+          "bin_id": "age_years_bin_018",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        },
+        {
+          "bin_id": "age_years_bin_019",
+          "reason": "zero_good",
+          "raw_good_count": 0,
+          "raw_bad_count": 2,
+          "smoothed_good_count": 0.5,
+          "smoothed_bad_count": 2.5,
+          "raw_woe": null,
+          "final_woe": -2.044756
+        },
+        {
+          "bin_id": "age_years_bin_020",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.17412
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "variable_name": "duration_months",
+      "role": "included",
+      "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+      "type": "",
+      "final_bin_count": 18,
+      "iv": 1.286555,
+      "monotonicity_status": "",
+      "manual_edits": false,
+      "woe_smoothing": {
+        "enabled": true,
+        "method": "additive",
+        "alpha": 0.5,
+        "zero_cell_policy": "block",
+        "smoothing_applied": true,
+        "zero_cell_encountered": true,
+        "affected_bin_count": 11
+      },
+      "source_step_refs": [
+        {
+          "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+          "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+          "canonical_step_id": "final-woe-iv",
+          "step_id": "final-woe-iv",
+          "resolution": "exact"
+        }
+      ],
+      "bins": [
+        {
+          "bin_id": "duration_months_bin_001",
+          "label": "(-inf, 7.75]",
+          "lower": null,
+          "upper": 7.75,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "duration_months_bin_002",
+          "label": "(7.75, 9]",
+          "lower": 7.75,
+          "upper": 9.0,
+          "good_count": 1,
+          "bad_count": 2,
+          "bad_rate": 0.6667,
+          "woe": -1.386294,
+          "iv_contribution": 0.173287
+        },
+        {
+          "bin_id": "duration_months_bin_003",
+          "label": "(9, 10.25]",
+          "lower": 9.0,
+          "upper": 10.25,
+          "good_count": 1,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 0.646627,
+          "iv_contribution": 0.013996
+        },
+        {
+          "bin_id": "duration_months_bin_004",
+          "label": "(10.25, 12]",
+          "lower": 10.25,
+          "upper": 12.0,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "duration_months_bin_005",
+          "label": "(12, 13]",
+          "lower": 12.0,
+          "upper": 13.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.157453,
+          "iv_contribution": 0.060127
+        },
+        {
+          "bin_id": "duration_months_bin_006",
+          "label": "(13, 14]",
+          "lower": 13.0,
+          "upper": 14.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.157453,
+          "iv_contribution": 0.060127
+        },
+        {
+          "bin_id": "duration_months_bin_007",
+          "label": "(14, 16]",
+          "lower": 14.0,
+          "upper": 16.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.157453,
+          "iv_contribution": 0.060127
+        },
+        {
+          "bin_id": "duration_months_bin_008",
+          "label": "(16, 17]",
+          "lower": 16.0,
+          "upper": 17.0,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.157453,
+          "iv_contribution": 0.060127
+        },
+        {
+          "bin_id": "duration_months_bin_009",
+          "label": "(17, 20.5]",
+          "lower": 17.0,
+          "upper": 20.5,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.157453,
+          "iv_contribution": 0.060127
+        },
+        {
+          "bin_id": "duration_months_bin_010",
+          "label": "(20.5, 21.25]",
+          "lower": 20.5,
+          "upper": 21.25,
+          "good_count": 0,
+          "bad_count": 2,
+          "bad_rate": 1.0,
+          "woe": -2.061423,
+          "iv_contribution": 0.214174
+        },
+        {
+          "bin_id": "duration_months_bin_011",
+          "label": "(21.25, 23]",
+          "lower": 21.25,
+          "upper": 23.0,
+          "good_count": 3,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.493925,
+          "iv_contribution": 0.122877
+        },
+        {
+          "bin_id": "duration_months_bin_012",
+          "label": "(23, 26.5]",
+          "lower": 23.0,
+          "upper": 26.5,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "duration_months_bin_013",
+          "label": "(26.5, 27.5]",
+          "lower": 26.5,
+          "upper": 27.5,
+          "good_count": 0,
+          "bad_count": 2,
+          "bad_rate": 1.0,
+          "woe": -2.061423,
+          "iv_contribution": 0.214174
+        },
+        {
+          "bin_id": "duration_months_bin_014",
+          "label": "(27.5, 30]",
+          "lower": 27.5,
+          "upper": 30.0,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "duration_months_bin_015",
+          "label": "(30, 32.5]",
+          "lower": 30.0,
+          "upper": 32.5,
+          "good_count": 1,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 0.646627,
+          "iv_contribution": 0.013996
+        },
+        {
+          "bin_id": "duration_months_bin_016",
+          "label": "(32.5, 35]",
+          "lower": 32.5,
+          "upper": 35.0,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "duration_months_bin_017",
+          "label": "(35, 37.25]",
+          "lower": 35.0,
+          "upper": 37.25,
+          "good_count": 1,
+          "bad_count": 1,
+          "bad_rate": 0.5,
+          "woe": -0.693147,
+          "iv_contribution": 0.028881
+        },
+        {
+          "bin_id": "duration_months_bin_018",
+          "label": "(37.25, +inf)",
+          "lower": 37.25,
+          "upper": null,
+          "good_count": 2,
+          "bad_count": 0,
+          "bad_rate": 0.0,
+          "woe": 1.157453,
+          "iv_contribution": 0.060127
+        }
+      ],
+      "affected_bins": [
+        {
+          "bin_id": "duration_months_bin_003",
+          "reason": "zero_bad",
+          "raw_good_count": 1,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 1.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 0.646627
+        },
+        {
+          "bin_id": "duration_months_bin_005",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.157453
+        },
+        {
+          "bin_id": "duration_months_bin_006",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.157453
+        },
+        {
+          "bin_id": "duration_months_bin_007",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.157453
+        },
+        {
+          "bin_id": "duration_months_bin_008",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.157453
+        },
+        {
+          "bin_id": "duration_months_bin_009",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.157453
+        },
+        {
+          "bin_id": "duration_months_bin_010",
+          "reason": "zero_good",
+          "raw_good_count": 0,
+          "raw_bad_count": 2,
+          "smoothed_good_count": 0.5,
+          "smoothed_bad_count": 2.5,
+          "raw_woe": null,
+          "final_woe": -2.061423
+        },
+        {
+          "bin_id": "duration_months_bin_011",
+          "reason": "zero_bad",
+          "raw_good_count": 3,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 3.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.493925
+        },
+        {
+          "bin_id": "duration_months_bin_013",
+          "reason": "zero_good",
+          "raw_good_count": 0,
+          "raw_bad_count": 2,
+          "smoothed_good_count": 0.5,
+          "smoothed_bad_count": 2.5,
+          "raw_woe": null,
+          "final_woe": -2.061423
+        },
+        {
+          "bin_id": "duration_months_bin_015",
+          "reason": "zero_bad",
+          "raw_good_count": 1,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 1.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 0.646627
+        },
+        {
+          "bin_id": "duration_months_bin_018",
+          "reason": "zero_bad",
+          "raw_good_count": 2,
+          "raw_bad_count": 0,
+          "smoothed_good_count": 2.5,
+          "smoothed_bad_count": 0.5,
+          "raw_woe": null,
+          "final_woe": 1.157453
+        }
+      ],
+      "artifacts": []
+    }
+  ],
+  "model": {
+    "model_type": "logistic_regression_scorecard",
+    "branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+    "target": "credit_risk_class",
+    "features": [
+      {
+        "variable_name": "age_years_woe",
+        "coefficient": -1.284976,
+        "standard_error": null,
+        "p_value": null,
+        "included": true
+      },
+      {
+        "variable_name": "credit_amount_woe",
+        "coefficient": -1.017294,
+        "standard_error": null,
+        "p_value": null,
+        "included": true
+      },
+      {
+        "variable_name": "duration_months_woe",
+        "coefficient": -1.282511,
+        "standard_error": null,
+        "p_value": null,
+        "included": true
+      }
+    ],
+    "intercept": -1.824649,
+    "regularisation": null,
+    "fit_dataset_role": "train",
+    "fitting_config_hash": "",
+    "source_step_refs": [
+      {
+        "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "canonical_step_id": "model-fit",
+        "step_id": "model-fit",
+        "resolution": "exact"
+      }
+    ]
+  },
+  "score_scaling": {
+    "base_score": 600,
+    "base_odds": "50.0",
+    "pdo": 20,
+    "factor": 28.853901,
+    "offset": 487.122876,
+    "score_direction": "higher_is_lower_risk",
+    "rounding": "nearest_integer",
+    "min_score": 0,
+    "max_score": 0,
+    "source_step_refs": [
+      {
+        "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "canonical_step_id": "score-scaling",
+        "step_id": "score-scaling",
+        "resolution": "exact"
+      }
+    ]
+  },
+  "validation": {
+    "metrics_by_role": [
+      {
+        "role": "oot",
+        "row_count": 12,
+        "auc": 0.375,
+        "gini": -0.25,
+        "ks": 0.375,
+        "bad_rate": 0.3333333333333333,
+        "score_mean": null,
+        "score_min": null,
+        "score_max": null
+      },
+      {
+        "role": "test",
+        "row_count": 12,
+        "auc": 0.4375,
+        "gini": -0.125,
+        "ks": 0.375,
+        "bad_rate": 0.3333333333333333,
+        "score_mean": null,
+        "score_min": null,
+        "score_max": null
+      },
+      {
+        "role": "train",
+        "row_count": 36,
+        "auc": 1.0,
+        "gini": 1.0,
+        "ks": 1.0,
+        "bad_rate": 0.3333333333333333,
+        "score_mean": null,
+        "score_min": null,
+        "score_max": null
+      }
+    ],
+    "stability": {
+      "psi_by_role": [
+        {
+          "comparison": "psi_train_vs_oot",
+          "score_psi": 0.994663
+        },
+        {
+          "comparison": "psi_train_vs_test",
+          "score_psi": 1.147512
+        }
+      ]
+    },
+    "source_step_refs": [
+      {
+        "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "canonical_step_id": "validation-metrics",
+        "step_id": "validation-metrics",
+        "resolution": "exact"
+      }
+    ]
+  },
+  "cutoffs": {
+    "cutoff_tables": [
+      {
+        "role": "oot",
+        "rows": [
+          {
+            "score_cutoff": 416.22,
+            "approval_rate": 0.8333,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 443.26,
+            "approval_rate": 0.9167,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 470.3,
+            "approval_rate": 0.8333,
+            "bad_rate": 1.0,
+            "capture_rate": 0.5
+          },
+          {
+            "score_cutoff": 483.81,
+            "approval_rate": 0.9167,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 524.37,
+            "approval_rate": 0.8333,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 537.89,
+            "approval_rate": 0.9167,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 551.41,
+            "approval_rate": 0.9167,
+            "bad_rate": 1.0,
+            "capture_rate": 0.25
+          },
+          {
+            "score_cutoff": 564.93,
+            "approval_rate": 0.9167,
+            "bad_rate": 1.0,
+            "capture_rate": 0.25
+          },
+          {
+            "score_cutoff": 510.85,
+            "approval_rate": 0.9167,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          }
+        ]
+      },
+      {
+        "role": "test",
+        "rows": [
+          {
+            "score_cutoff": 474.64,
+            "approval_rate": 0.8333,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 494.32,
+            "approval_rate": 0.9167,
+            "bad_rate": 1.0,
+            "capture_rate": 0.25
+          },
+          {
+            "score_cutoff": 514.0,
+            "approval_rate": 0.9167,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 520.57,
+            "approval_rate": 0.9167,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 540.25,
+            "approval_rate": 0.9167,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 566.49,
+            "approval_rate": 0.8333,
+            "bad_rate": 1.0,
+            "capture_rate": 0.5
+          },
+          {
+            "score_cutoff": 592.74,
+            "approval_rate": 0.75,
+            "bad_rate": 0.3333,
+            "capture_rate": 0.25
+          },
+          {
+            "score_cutoff": 514.0,
+            "approval_rate": 0.9167,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          }
+        ]
+      },
+      {
+        "role": "train",
+        "rows": [
+          {
+            "score_cutoff": 368.12,
+            "approval_rate": 0.9444,
+            "bad_rate": 1.0,
+            "capture_rate": 0.1667
+          },
+          {
+            "score_cutoff": 400.22,
+            "approval_rate": 0.8889,
+            "bad_rate": 1.0,
+            "capture_rate": 0.3333
+          },
+          {
+            "score_cutoff": 432.32,
+            "approval_rate": 0.9722,
+            "bad_rate": 1.0,
+            "capture_rate": 0.0833
+          },
+          {
+            "score_cutoff": 448.37,
+            "approval_rate": 0.8889,
+            "bad_rate": 1.0,
+            "capture_rate": 0.3333
+          },
+          {
+            "score_cutoff": 480.47,
+            "approval_rate": 0.9722,
+            "bad_rate": 1.0,
+            "capture_rate": 0.0833
+          },
+          {
+            "score_cutoff": 512.57,
+            "approval_rate": 0.9722,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 528.62,
+            "approval_rate": 0.9722,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 544.67,
+            "approval_rate": 0.9167,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 576.77,
+            "approval_rate": 0.9722,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 592.82,
+            "approval_rate": 0.8611,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 608.87,
+            "approval_rate": 0.9722,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 624.92,
+            "approval_rate": 0.9444,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 657.02,
+            "approval_rate": 0.9167,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          },
+          {
+            "score_cutoff": 560.72,
+            "approval_rate": 0.8056,
+            "bad_rate": 0.0,
+            "capture_rate": 0.0
+          }
+        ]
+      }
+    ],
+    "selected_cutoff": {
+      "score": null,
+      "selection_reason": ""
+    },
+    "source_step_refs": [
+      {
+        "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "canonical_step_id": "cutoff-analysis",
+        "step_id": "cutoff-analysis",
+        "resolution": "exact"
+      }
+    ]
+  },
+  "manual_interventions": [],
+  "manual_binning_review": {
+    "review_status": "accepted_automated",
+    "accepted_automated": true,
+    "edited_variable_count": 0,
+    "variables_edited": [],
+    "reasons": [],
+    "reviewed_at": "",
+    "reviewed_by": "",
+    "review_reason": ""
+  },
+  "redundancy_review": {
+    "method": "correlation_threshold",
+    "input_representation": "raw_train",
+    "similarity_metric": "pearson",
+    "threshold": 0.7,
+    "absolute_correlation": true,
+    "missing_handling": "pairwise",
+    "candidate_limit": 50,
+    "minimum_pair_count": 30,
+    "representative_rule": "highest_iv",
+    "cluster_count": 0,
+    "singleton_count": 3,
+    "clusters": [],
+    "singleton_variables": [
+      "duration_months",
+      "age_years",
+      "credit_amount"
+    ],
+    "warnings": []
+  },
+  "limitations": [
+    {
+      "severity": "warning",
+      "code": "NO_CHAMPION_ASSIGNMENT",
+      "message": "No champion branch has been assigned for this run."
+    },
+    {
+      "severity": "warning",
+      "code": "SMOOTHING_APPLIED",
+      "message": "WOE smoothing applied to variable credit_amount."
+    },
+    {
+      "severity": "warning",
+      "code": "SMOOTHING_APPLIED",
+      "message": "WOE smoothing applied to variable age_years."
+    },
+    {
+      "severity": "warning",
+      "code": "SMOOTHING_APPLIED",
+      "message": "WOE smoothing applied to variable duration_months."
+    },
+    {
+      "severity": "warning",
+      "code": "ZERO_CELL_POLICY_USED",
+      "message": "Zero-cell policy 'block' is configured."
+    },
+    {
+      "severity": "blocker",
+      "code": "ARTIFACT_HASH_UNRESOLVED",
+      "message": "Canonical manifest hash mismatch at /var/folders/yr/35vj3r5n31db7765xf4qqqc40000gn/T/tmp9ry5tn9b/golden.cardre/exports/manifest-b006de56-c857-486c-bdde-361568799305/manifest.json: expected b42a1c5e19cce73e2bcda08046f67bd99b3b119211465dfde4904b3740028427, got ."
+    }
+  ],
+  "reproducibility": {
+    "run_id": "b006de56-c857-486c-bdde-361568799305",
+    "manifest_hash": "",
+    "pathway_hash": "",
+    "execution_fingerprints": [
+      {
+        "step_id": "import",
+        "canonical_step_id": "import",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "define-metadata",
+        "canonical_step_id": "define-metadata",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "apply-exclusions",
+        "canonical_step_id": "apply-exclusions",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "profile",
+        "canonical_step_id": "profile",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "sample-definition",
+        "canonical_step_id": "sample-definition",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "split",
+        "canonical_step_id": "split",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "explicit-missing-outlier-treatment",
+        "canonical_step_id": "explicit-missing-outlier-treatment",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "fine-classing",
+        "canonical_step_id": "fine-classing",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "initial-woe-iv",
+        "canonical_step_id": "initial-woe-iv",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "validate-target",
+        "canonical_step_id": "validate-target",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "variable-clustering",
+        "canonical_step_id": "variable-clustering",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "variable-selection",
+        "canonical_step_id": "variable-selection",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "manual-binning",
+        "canonical_step_id": "manual-binning",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "final-woe-iv",
+        "canonical_step_id": "final-woe-iv",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "woe-transform-train",
+        "canonical_step_id": "woe-transform-train",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "model-fit",
+        "canonical_step_id": "model-fit",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "coefficient-sign-check",
+        "canonical_step_id": "coefficient-sign-check",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "separation-diagnostics",
+        "canonical_step_id": "separation-diagnostics",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "vif-diagnostics",
+        "canonical_step_id": "vif-diagnostics",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "score-scaling",
+        "canonical_step_id": "score-scaling",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "build-summary-report",
+        "canonical_step_id": "build-summary-report",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "freeze-scorecard-bundle",
+        "canonical_step_id": "freeze-scorecard-bundle",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "apply-woe",
+        "canonical_step_id": "apply-woe",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "apply-model",
+        "canonical_step_id": "apply-model",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "calibration-diagnostics",
+        "canonical_step_id": "calibration-diagnostics",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "cutoff-analysis",
+        "canonical_step_id": "cutoff-analysis",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "scorecard-table-export",
+        "canonical_step_id": "scorecard-table-export",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "scoring-export-python",
+        "canonical_step_id": "scoring-export-python",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "scoring-export-sql",
+        "canonical_step_id": "scoring-export-sql",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "validation-metrics",
+        "canonical_step_id": "validation-metrics",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      },
+      {
+        "step_id": "technical-manifest-stub",
+        "canonical_step_id": "technical-manifest-stub",
+        "python_version": "3.14.3",
+        "platform": "",
+        "package_fingerprint": {}
+      }
+    ],
+    "report_generation": {
+      "generated_at": "2026-07-12T17:34:56.805Z",
+      "cardre_version": "0.1.0"
+    }
+  },
+  "artifacts": [
+    {
+      "artifact_id": "a57b822e-098e-4fe8-ba3b-1e4ef25f816e",
+      "artifact_type": "dataset",
+      "role": "input",
+      "logical_hash": "v2:aa90b6e05c4fae3a32d96522bc0727db388f2fb92369e2786708c6f7cdb0da99",
+      "physical_hash": "fa68afbe85b32bdf525db376f51f16669ef44112ec2570a3218ffd834451f879",
+      "path": "datasets/v2:aa90b6e05c4fa-imported-dataset.parquet"
+    },
+    {
+      "artifact_id": "3ab8b9df-62d9-47c5-953d-464dfb8ba3c3",
+      "artifact_type": "definition",
+      "role": "definition",
+      "logical_hash": "6b36081099309f98380447deac229637c0faa693e360c1e5eecd084aeddcb3c8",
+      "physical_hash": "72144ddcf9280b4c0c6327a62bcf0b340e8095dea395b72bd3c407169f2bc7f0",
+      "path": "artifacts/6b36081099309f98-modelling-metadata-define-metadata.json"
+    },
+    {
+      "artifact_id": "2c8c77af-0e73-41e2-9fd8-9bfe095a827a",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "a18ac4e74aea37d361a8d897d5c1416d3fce19fe5a0ca30ff259257163c57928",
+      "physical_hash": "5a1741da52a9b9267cf13e066c54d9db2436a7440b6c7c11d8dfdedc79f41b83",
+      "path": "artifacts/a18ac4e74aea37d3-exclusion-report-apply-exclusions.json"
+    },
+    {
+      "artifact_id": "9e0bac46-2a2b-4ffe-b3dc-b04ed331d9d9",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "3267fc844bd95fe48caf6d8342fefcfe75bd506436be63bade1cfe72c7f53738",
+      "physical_hash": "8776df8be60b112c6c7ae8eaa700a244dde2b5c5f5c278cc9136f5b49b7412df",
+      "path": "artifacts/3267fc844bd95fe4-profile-profile.json"
+    },
+    {
+      "artifact_id": "90f38b32-11bc-45de-9f31-4f03712bed8f",
+      "artifact_type": "definition",
+      "role": "definition",
+      "logical_hash": "d0460f58c2d3b508bb8ab92e8fe2efd971de510496510328b4c083af0aa6487c",
+      "physical_hash": "cfed129dbccb756a04e7f614c030c41332453a8f48e3f5ba8383464e40413c19",
+      "path": "artifacts/d0460f58c2d3b508-sample-definition-sample-definition.json"
+    },
+    {
+      "artifact_id": "3f82b6b7-6496-4303-a0ee-61979b01229f",
+      "artifact_type": "dataset",
+      "role": "train",
+      "logical_hash": "v2:b27d46b194da27ad89f6dbc22cdd997f6450d75442db5bcb13bbf9516aa869b0",
+      "physical_hash": "fe3143d48d2aa15cd295ace723535f3d660d4f19443559a8e308f390a0839bae",
+      "path": "datasets/v2:b27d46b194da2-split-train.parquet"
+    },
+    {
+      "artifact_id": "438c0419-29d5-41e9-abd3-31d44df35137",
+      "artifact_type": "dataset",
+      "role": "test",
+      "logical_hash": "v2:e9f2b5a2ba2b3ae0bba0414721dab979c90c3a2f5b27de977ddcf61628ba4604",
+      "physical_hash": "eb94ad096fd4fa15a920dd573c374169b4ad1e32d3613166a423fccea0cac647",
+      "path": "datasets/v2:e9f2b5a2ba2b3-split-test.parquet"
+    },
+    {
+      "artifact_id": "8973513d-267d-4f65-b614-b0bcdaa747c0",
+      "artifact_type": "dataset",
+      "role": "oot",
+      "logical_hash": "v2:ae9a353d33e44de64db765a5398dd567118a4cf29b7ecac188d3bab0d8294cb3",
+      "physical_hash": "1b85e80530e432da191c0d66825f84675abf4fcf8e1765594f160e1167d16dee",
+      "path": "datasets/v2:ae9a353d33e44-split-oot.parquet"
+    },
+    {
+      "artifact_id": "8c163152-a5b2-4d02-9635-05dba4f65ab4",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "1ac0161e61338fd8ae489b58a8a644a3ef7c84ef6dfa2fb5db224f7197d44a27",
+      "physical_hash": "255f8ea1e27e49d2c2e456a295465de6e34a70a0495e8693710a47291a1d119f",
+      "path": "artifacts/1ac0161e61338fd8-split-report-split.json"
+    },
+    {
+      "artifact_id": "486738f6-0f56-484d-98e1-96967c4f54cf",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "24ce983c2fa743486e8973b63084d539a39ceefa3d06910304cccadf10d549f0",
+      "physical_hash": "debd91a89c5e0cf8bd2f749e7bce25bb427b12c7a75f7c8acf0052c4fa0b47c2",
+      "path": "artifacts/24ce983c2fa74348-treatment-report-explicit-missing-outlier-treatment.json"
+    },
+    {
+      "artifact_id": "6cb2d173-ad4f-43cc-8480-16b89adeaa4e",
+      "artifact_type": "definition",
+      "role": "definition",
+      "logical_hash": "b07dc08417652df907044ae79044775cc8ab1e8c0a56ca1e4ee43e75b5719736",
+      "physical_hash": "bea37502be5eb19f8cd1bf7d619d5c225593c1dcfa2a10c650eeeb7e5d449e17",
+      "path": "artifacts/b07dc08417652df9-fine-classing-fine-classing.json"
+    },
+    {
+      "artifact_id": "1b5a5f15-8539-4543-953d-f0e20ad1ba00",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "v2:c0ccb458a4189d9b158cb974b8f37156a684cad6903d04cce6539c9dc4a21b78",
+      "physical_hash": "027831846e90aa40e617895e90b6e8590c0685cbb8e467606eda19ff2e3072f4",
+      "path": "datasets/v2:c0ccb458a4189-woe-table-initial-initial-woe-iv.parquet"
+    },
+    {
+      "artifact_id": "ddb659d7-8f7b-462e-89d9-c21c08a1f407",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "v2:12223e9db43f1a78d66448a67e4f30e104be39be6a8177251ddbf3651facc473",
+      "physical_hash": "af7e412f5692a381feba2115993c3767afc061f73fe0c52d071f07e90fdae8c6",
+      "path": "datasets/v2:12223e9db43f1-iv-ranking-initial-initial-woe-iv.parquet"
+    },
+    {
+      "artifact_id": "c76eed35-ace8-4e06-9ccd-42f46c00acd0",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "1a8b6c67fe898179faf3bf7a5ff65ecf1a8703f297fbe31c8c11e031fbc7d669",
+      "physical_hash": "45608bd04233ccccc02e03e10f2e30a3b2e2345ff97db6e69146a9c49f8f14e5",
+      "path": "artifacts/1a8b6c67fe898179-woe-summary-initial-initial-woe-iv.json"
+    },
+    {
+      "artifact_id": "9ad4c3b7-8f62-4860-978b-1a6512c11bab",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "7c63f875a9b3af1ec3c696219038881c7bfb1914df17f960708f82f3832c9b6d",
+      "physical_hash": "10308e02942d178e1e528991449e6d6c06356eef7c2503b5dc1d7db786278347",
+      "path": "artifacts/7c63f875a9b3af1e-woe-iv-evidence-initial-initial-woe-iv.json"
+    },
+    {
+      "artifact_id": "434b93dd-fa85-472f-9185-348a00846034",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "7ddf5291a53dc98e1e4dbb52b0aef8be8cc30a9fd024442dceb08d927fbe05b8",
+      "physical_hash": "9f51e91d89e9c4f1ebc5c81d9d56d3540dffe0a7f97cc8cb2af658ab2137c686",
+      "path": "artifacts/7ddf5291a53dc98e-target-validate-validate-target.json"
+    },
+    {
+      "artifact_id": "b70d639e-af08-414a-a1d8-a53421c2485d",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "74476cfb613a06e13a5de41a68ab322c5ffb4c5b3d52bca99b6841c5a92af747",
+      "physical_hash": "f73c7ec84edd09daa1dd43dd043d3fd240a8cd8c9cdaca15a6eb08c0f6fc2cc0",
+      "path": "artifacts/74476cfb613a06e1-clustering-variable-clustering.json"
+    },
+    {
+      "artifact_id": "146d24d3-058c-411f-8234-5caed6194bf3",
+      "artifact_type": "definition",
+      "role": "definition",
+      "logical_hash": "df532fe43e5203939e41719a4242506dc3352caa68d35d0080613b70a9037322",
+      "physical_hash": "dea2e669071d9fd4b612ecbb7904bc76f7723eabdd0066ea7ec45279d03a0b22",
+      "path": "artifacts/df532fe43e520393-variable-selection-variable-selection.json"
+    },
+    {
+      "artifact_id": "46d8c261-c356-4cc6-9028-e3a35ae991d1",
+      "artifact_type": "definition",
+      "role": "definition",
+      "logical_hash": "7c46a2e266628f3620464a80a55934a8f5a583af5f26512b753731b140cb05b1",
+      "physical_hash": "eefd98c6028ed49dbf1981519359ab6eda507b0e98504c93dadaeff6be692406",
+      "path": "artifacts/7c46a2e266628f36-manual-binning-manual-binning.json"
+    },
+    {
+      "artifact_id": "05320edb-2631-4b17-b4f1-c4104d2d3566",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "v2:9a71f019645febde9bb39ee625a08274c6830757c447a68a68d4d462de4911cf",
+      "physical_hash": "187b327a0ba2cd4cc8e23b684ce649bc801cb230d9da67151cd9c071cfc98357",
+      "path": "datasets/v2:9a71f019645fe-woe-table-final-final-woe-iv.parquet"
+    },
+    {
+      "artifact_id": "09483e04-1ba9-457b-84d6-870e946c6aee",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "v2:099f3b39507bcf4c8a416191947f06fe61bde0fcb433ff7ffe8eb4f6424f2e19",
+      "physical_hash": "09c99e2a57e465edd49c4ad4ae01e03350b036ff1ae96f4c283dc4b508e10440",
+      "path": "datasets/v2:099f3b39507bc-iv-ranking-final-final-woe-iv.parquet"
+    },
+    {
+      "artifact_id": "ee31a8bc-f4be-4923-be30-348da0bddd7a",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "288345699a52a2459e3af5733513d5a6f00a783bee1bd654122b484e21ae1e5b",
+      "physical_hash": "ea25fe50b6db5f30cc322d562262151db746c51af7cc970642cf2d87b1109f21",
+      "path": "artifacts/288345699a52a245-woe-summary-final-final-woe-iv.json"
+    },
+    {
+      "artifact_id": "9aafb40e-2f6d-4645-8cb1-4c62ed03f317",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "986c399131455a3629c0e91ce6ff124eb9e186672e6693e341d091d037c76b79",
+      "physical_hash": "7f26f8fe3b6d1eb5365bc993f4429eebbe4c19b5b62a8eaf9ac44c3c2a2c6e23",
+      "path": "artifacts/986c399131455a36-woe-iv-evidence-final-final-woe-iv.json"
+    },
+    {
+      "artifact_id": "a7c0a136-c9e6-4d79-970d-7b4c318e5cfa",
+      "artifact_type": "dataset",
+      "role": "train",
+      "logical_hash": "v2:1fd062c4b3ec1e268d97d97f5e69db5b68c823cb48a196bf0c16c0949616fa6e",
+      "physical_hash": "a2af90231f04fcfa68698db50fb673b452d1f8916eb9e9f8f15e4e14623223fa",
+      "path": "datasets/v2:1fd062c4b3ec1-woe-transformed-train-woe-transform-train.parquet"
+    },
+    {
+      "artifact_id": "986c6de4-49d5-40a6-a886-b780c9bc9054",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "4902fc108566218d1087ebd4b0bb3cfaccb4d0fba4f777d75762bfc32f4e42cb",
+      "physical_hash": "6541c69c7d310213fe2389c325753c553f58c3f61bf0b9030e2a4475bb95e37a",
+      "path": "artifacts/4902fc108566218d-woe-transform-report-woe-transform-train.json"
+    },
+    {
+      "artifact_id": "1d70d863-79fa-4d7b-8ca0-d596a169259d",
+      "artifact_type": "model",
+      "role": "model",
+      "logical_hash": "b6616f9e9a975296eabaf61c51ef9a8488d2369f03fe6788b029c8665ee9c9ee",
+      "physical_hash": "2f2c3e60a578924b34b545eea5d9d1ee8dd9846abed049befee3c5ac2a32b434",
+      "path": "artifacts/b6616f9e9a975296-logistic-model-model-fit.json"
+    },
+    {
+      "artifact_id": "d9e15efc-52f2-42f8-a28c-621f38e71a48",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "222161fa6fe4398b14b4dde0958fdf5fcbdfb567dc09c3271808ab1c635eac7c",
+      "physical_hash": "3ef160eb26289f0634dc0e58eb181b1d82bf85d588eb6b09d358cd2ed34931a1",
+      "path": "artifacts/222161fa6fe4398b-coefficient-sign-check-coefficient-sign-check.json"
+    },
+    {
+      "artifact_id": "67466ccf-6f18-4614-b494-96273d85ec02",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "f3493bb1550c0f168be3c999759b425cb23d0b90d1ab3fff21d65c8b3b0884f9",
+      "physical_hash": "c845f77ced6719887bfa6d80eac9d37e9110c8ee3802f6383aa2020f28f35ebd",
+      "path": "artifacts/f3493bb1550c0f16-separation-diagnostics-separation-diagnostics.json"
+    },
+    {
+      "artifact_id": "ab88cf71-71e4-41a7-bc3a-90aff440d1f2",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "9740d6869d973e23a3e04999c8dd7c106729a266b5f63a5fcf96fbd480626242",
+      "physical_hash": "77f5b725a8961e9e77124c0b9391c8e23d7d4e1c3ef213600a7630e32fa7691b",
+      "path": "artifacts/9740d6869d973e23-vif-diagnostics-vif-diagnostics.json"
+    },
+    {
+      "artifact_id": "48839255-d4c7-4241-af2e-76bf6416a8e2",
+      "artifact_type": "scorecard",
+      "role": "scorecard",
+      "logical_hash": "66c5a13b299626b50b7d721b56fce67f624bf160ab16f3bdcf8b01bbea8380ce",
+      "physical_hash": "740629069d4bb9714b1a95022b73c8b5e1c46ee09d55c65c0ddb98efddf6087b",
+      "path": "artifacts/66c5a13b299626b5-scorecard-score-scaling.json"
+    },
+    {
+      "artifact_id": "baf8e462-8e5d-4928-9252-57a506399a8f",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "b12d7a536e5892169a208e82cb0dfd3d96dae097c8ed70ca22000d1ef612980c",
+      "physical_hash": "b4605481787e05cc6bc7556b7783730fe54196e7bee0e2a30bc70bfbc2cdf373",
+      "path": "artifacts/b12d7a536e589216-build-summary-build-summary-report.json"
+    },
+    {
+      "artifact_id": "aef673e9-1d2e-4f4e-be33-3ab0a99c648d",
+      "artifact_type": "scorecard",
+      "role": "scorecard",
+      "logical_hash": "6f28335ee64b2dc2921293bbc6758d641cd5e7b981942c143bb22ad0bb27d3f9",
+      "physical_hash": "96cb611eaadfb234f80e023bff12df2396824c314e9ed849655bcd1fe5866f8d",
+      "path": "artifacts/6f28335ee64b2dc2-frozen-scorecard-bundle-freeze-scorecard-bundle.json"
+    },
+    {
+      "artifact_id": "ad2c6bee-f166-4b18-9d28-7fdd76d1d7c4",
+      "artifact_type": "dataset",
+      "role": "test",
+      "logical_hash": "v2:7462785e8a1140ee3b6291b879dacac2fc11bc31e54b08b3445cdfeeb7da046e",
+      "physical_hash": "e93d5434ecb506d2cde780578dfcf858456bd52735631e759027041b5572edf1",
+      "path": "datasets/v2:7462785e8a114-woe-apply-test-apply-woe.parquet"
+    },
+    {
+      "artifact_id": "7bccc2af-1f1f-4dd9-8694-b7883af595dc",
+      "artifact_type": "dataset",
+      "role": "oot",
+      "logical_hash": "v2:d19384c11722217dff645f6bd995437ffb32d2455a76726371d8f42c346484e0",
+      "physical_hash": "5cdf274faaadcf67b651c2e32a513a6ac2c30a523a643b005a6c185c704e39c2",
+      "path": "datasets/v2:d19384c117222-woe-apply-oot-apply-woe.parquet"
+    },
+    {
+      "artifact_id": "bb9a7177-b6a7-412a-874a-041e355cb271",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "64ec9ca54f99264eb5190bf9aa4b8a5bbd65c3b1740e7d60c1191539f60738f3",
+      "physical_hash": "32e2e6863d6a97f78ee9de3f54eb0945a2da5c77d79b02aaf31a4a46222f27d7",
+      "path": "artifacts/64ec9ca54f99264e-woe-apply-evidence-apply-woe.json"
+    },
+    {
+      "artifact_id": "14c4ed33-0288-48c1-b49e-923c0ae80f6a",
+      "artifact_type": "dataset",
+      "role": "train",
+      "logical_hash": "v2:90185278c01fc2143e60209cdca5c09860e40187f6803c0f100c34ce2058edfc",
+      "physical_hash": "6a93a95c83e60e4df145f135328ea36e1e95e4f06e8199f59e1c720e3f735286",
+      "path": "datasets/v2:90185278c01fc-scored-train-apply-model.parquet"
+    },
+    {
+      "artifact_id": "8f026022-8b1f-43dc-8b82-c9cc7a78001d",
+      "artifact_type": "dataset",
+      "role": "test",
+      "logical_hash": "v2:01ac11ba6cad8daddb5e8566bddf1b74cb9927633584be393e8460bdcbe41c7b",
+      "physical_hash": "2b89b3f100823d3a0146f2acdacf01606107a4ec2e8ef491dae3fa03c040bc43",
+      "path": "datasets/v2:01ac11ba6cad8-scored-test-apply-model.parquet"
+    },
+    {
+      "artifact_id": "8808811f-040f-43b4-b82b-a8ddce65030f",
+      "artifact_type": "dataset",
+      "role": "oot",
+      "logical_hash": "v2:994dba283a6768c82edeaed93d31c17bf1838c6b067649b29e584ba6c160aa6e",
+      "physical_hash": "173f007419ee335bdd8ec009d0537ca3e173358a8ad47eac8355eed7b43399a2",
+      "path": "datasets/v2:994dba283a676-scored-oot-apply-model.parquet"
+    },
+    {
+      "artifact_id": "29b24514-1a4b-4125-864d-3760292a25ff",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "d1ec2e28f932aa209688b4f4ba2e9fc9f9c656a83eb42f2c9aa41f4db60f9c58",
+      "physical_hash": "6398cf879b4b91918ee669439c3d39306f4060f05cbd9fb91045a8e9b4acce18",
+      "path": "artifacts/d1ec2e28f932aa20-score-apply-evidence-apply-model.json"
+    },
+    {
+      "artifact_id": "1162f98f-1de3-4c45-856b-c380ebcb8a14",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "f9d4a2fca4351dd95853d5238b2aa77ab0101db2c6e5ca9141fd199e6d04ece7",
+      "physical_hash": "ac4f6a8a5ad14ec940469cb6d71fac809f29b3f23f28b7903cbb98813db651a4",
+      "path": "artifacts/f9d4a2fca4351dd9-calibration-diagnostics-calibration-diagnostics.json"
+    },
+    {
+      "artifact_id": "55546733-a993-4107-bf6d-357bff25e1d8",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "d0d119e428b8ad58a8fa9fcafb1cf76b4f8d3884c3682daf52f8b8cbb3c41a44",
+      "physical_hash": "2301fe2c02894ab79470f77cacbdb283c905fa75e6fdd1556ec1cd28f8c1e92c",
+      "path": "artifacts/d0d119e428b8ad58-cutoff-analysis-cutoff-analysis.json"
+    },
+    {
+      "artifact_id": "c378f9c8-3829-4f6c-8d12-4a1868a68795",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "fb662022f1523740634277c39b23c0a7c047f125fd7d18d73b18fe45facd5efb",
+      "physical_hash": "07e19760471b7616699d21a5359833ce3916f47dafbf4b891d773a8c642320ad",
+      "path": "artifacts/fb662022f1523740-scorecard-table-scorecard-table-export.json"
+    },
+    {
+      "artifact_id": "4f937734-9ca8-48db-8501-f35ca91a6a29",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "v2:a85150f77f4a000111d8080c206f6818d1b9a447eb6630470d8423a011e0759c",
+      "physical_hash": "01b8014d3c7da580c88ecc59e872ff0becb6f6e3865e8922c22e60d79e1d3e48",
+      "path": "artifacts/v2:a85150f77f4a0-scorecard-table-csv-scorecard-table-export.csv"
+    },
+    {
+      "artifact_id": "74cd7ee5-9882-4405-bd80-104e86b2c485",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "2f2610b245ecc4ac178a10e2d1bb48d86e366fc0ed7407290e8edd336576795c",
+      "physical_hash": "46d2f31bd32b3c68874d7abb1362e7251ebe2be2369456a371e79c85afb0491c",
+      "path": "artifacts/2f2610b245ecc4ac-scoring-export-python-scoring-export-python.json"
+    },
+    {
+      "artifact_id": "38fd7c38-0cae-4697-ab04-24bc464960fd",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "8d61d69a0a36dfb0ce45b8e7112071455759b546398a1ec68d2d32f598b85477",
+      "physical_hash": "6faa625ddbec910c532b2dc85f4fa32622091ad440e2fe62335ab3e934ae9dac",
+      "path": "artifacts/8d61d69a0a36dfb0-scoring-export-sql-scoring-export-sql.json"
+    },
+    {
+      "artifact_id": "0dda461d-92be-4b83-b06f-aaf9a14b013c",
+      "artifact_type": "report",
+      "role": "report",
+      "logical_hash": "065f5efdd3e8f60ed4a086c4474276d5754aa41e0556f383e02af5c984c0b45a",
+      "physical_hash": "ec201a2655d514e0cfa2fe271463cc8f29f414b7e2e43edcdc3a8c85123048e3",
+      "path": "artifacts/065f5efdd3e8f60e-validation-metrics-validation-metrics.json"
+    },
+    {
+      "artifact_id": "28bc5674-38d4-4833-84e3-2dbbdd5e6e7b",
+      "artifact_type": "manifest",
+      "role": "manifest",
+      "logical_hash": "f37670e2c8bcc061223c0fab95b4470a06809e147a018c1f81cf828bf14e9adf",
+      "physical_hash": "98b467e143f98f28409aabc734f6bbba1f79295896ac8f3923cb92a7c4e5de7b",
+      "path": "artifacts/f37670e2c8bcc061-technical-manifest-technical-manifest-stub.json"
+    }
+  ],
+  "run_status": {
+    "run_id": "b006de56-c857-486c-bdde-361568799305",
+    "status": "succeeded",
+    "started_at": "2026-07-12T17:34:56+00:00",
+    "finished_at": "2026-07-12T17:34:56+00:00",
+    "execution_mode": "unknown",
+    "short_circuit": false,
+    "short_circuit_run_id": null,
+    "target_step_id": null,
+    "in_scope_step_ids": [],
+    "diagnostics": []
+  },
+  "modelling_metadata": {
+    "bad_values": [
+      "bad"
+    ],
+    "good_values": [
+      "good"
+    ],
+    "indeterminate_values": [],
+    "observation_window": "2024-01_to_2024-06",
+    "performance_window": "2024-07_to_2024-12",
+    "population": "",
+    "product": "term_loan",
+    "purpose": "application_credit_scorecard",
+    "reject_inference_position": "not_applied",
+    "schema_version": "cardre.modelling_metadata.v1",
+    "segment": "retail",
+    "target_column": "credit_risk_class"
+  },
+  "exclusion_summary": {
+    "rows_before": 0,
+    "rows_after": 0,
+    "rules": [],
+    "source_step_refs": [
+      {
+        "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "canonical_step_id": "apply-exclusions",
+        "step_id": "apply-exclusions",
+        "resolution": "exact"
+      }
+    ]
+  },
+  "sample_definition": {
+    "sample_method": "full_population",
+    "sample_domain": "ttd",
+    "sample_description": "Full booked population without additional row filtering",
+    "source_step_refs": [
+      {
+        "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "canonical_step_id": "sample-definition",
+        "step_id": "sample-definition",
+        "resolution": "exact"
+      }
+    ]
+  },
+  "variable_selection": {
+    "selected_variables": [],
+    "rejected_variables": [],
+    "min_iv": 0.0,
+    "source_step_refs": []
+  },
+  "model_diagnostics": {
+    "coefficient_sign_check": [
+      {
+        "variable_name": "credit_amount",
+        "feature_name": "credit_amount_woe",
+        "coefficient": -1.017294,
+        "coefficient_is_infinite": false,
+        "coefficient_sign": "negative",
+        "expected_sign": "negative",
+        "status": "pass",
+        "reason": "Higher WOE means a higher good-to-bad ratio under ln(good_dist / bad_dist); a negative logistic coefficient therefore lowers predicted bad odds as WOE rises."
+      },
+      {
+        "variable_name": "age_years",
+        "feature_name": "age_years_woe",
+        "coefficient": -1.284976,
+        "coefficient_is_infinite": false,
+        "coefficient_sign": "negative",
+        "expected_sign": "negative",
+        "status": "pass",
+        "reason": "Higher WOE means a higher good-to-bad ratio under ln(good_dist / bad_dist); a negative logistic coefficient therefore lowers predicted bad odds as WOE rises."
+      },
+      {
+        "variable_name": "duration_months",
+        "feature_name": "duration_months_woe",
+        "coefficient": -1.282511,
+        "coefficient_is_infinite": false,
+        "coefficient_sign": "negative",
+        "expected_sign": "negative",
+        "status": "pass",
+        "reason": "Higher WOE means a higher good-to-bad ratio under ln(good_dist / bad_dist); a negative logistic coefficient therefore lowers predicted bad odds as WOE rises."
+      }
+    ],
+    "separation_diagnostics": [
+      {
+        "feature_name": "credit_amount_woe",
+        "coefficient": -1.017294,
+        "coefficient_is_infinite": false,
+        "abs_coefficient": 1.017294,
+        "standard_error": null,
+        "standard_error_is_infinite": false,
+        "status": "pass",
+        "reason": "Coefficient magnitude and standard error are within normal range."
+      },
+      {
+        "feature_name": "age_years_woe",
+        "coefficient": -1.284976,
+        "coefficient_is_infinite": false,
+        "abs_coefficient": 1.284976,
+        "standard_error": null,
+        "standard_error_is_infinite": false,
+        "status": "pass",
+        "reason": "Coefficient magnitude and standard error are within normal range."
+      },
+      {
+        "feature_name": "duration_months_woe",
+        "coefficient": -1.282511,
+        "coefficient_is_infinite": false,
+        "abs_coefficient": 1.282511,
+        "standard_error": null,
+        "standard_error_is_infinite": false,
+        "status": "pass",
+        "reason": "Coefficient magnitude and standard error are within normal range."
+      }
+    ],
+    "vif_diagnostics": [
+      {
+        "feature_name": "credit_amount_woe",
+        "vif": 1.670985,
+        "vif_is_infinite": false,
+        "r_squared": 0.401551,
+        "status": "pass",
+        "reason": "VIF (1.6710) is below threshold (10.0)."
+      },
+      {
+        "feature_name": "age_years_woe",
+        "vif": 2.060359,
+        "vif_is_infinite": false,
+        "r_squared": 0.514648,
+        "status": "pass",
+        "reason": "VIF (2.0604) is below threshold (10.0)."
+      },
+      {
+        "feature_name": "duration_months_woe",
+        "vif": 1.588467,
+        "vif_is_infinite": false,
+        "r_squared": 0.370462,
+        "status": "pass",
+        "reason": "VIF (1.5885) is below threshold (10.0)."
+      }
+    ],
+    "calibration_diagnostics": {
+      "oot": {
+        "row_count": 12,
+        "known_count": 12,
+        "n_bins": 2,
+        "hosmer_lemeshow_statistic": 7.970428,
+        "hosmer_lemeshow_p_value": 0.004755,
+        "calibration_error": 0.309062,
+        "auc": 0.375,
+        "decile_bins": [
+          {
+            "bin": 1,
+            "count": 6,
+            "observed_events": 2,
+            "expected_events": 0.905348,
+            "observed_event_rate": 0.333333,
+            "predicted_event_rate": 0.150891,
+            "abs_deviation": 0.182442
+          },
+          {
+            "bin": 2,
+            "count": 6,
+            "observed_events": 2,
+            "expected_events": 4.614092,
+            "observed_event_rate": 0.333333,
+            "predicted_event_rate": 0.769015,
+            "abs_deviation": 0.435682
+          }
+        ],
+        "status": "pass"
+      },
+      "test": {
+        "row_count": 12,
+        "known_count": 12,
+        "n_bins": 2,
+        "hosmer_lemeshow_statistic": 33.104207,
+        "hosmer_lemeshow_p_value": 0.0,
+        "calibration_error": 0.35227,
+        "auc": 0.4375,
+        "decile_bins": [
+          {
+            "bin": 1,
+            "count": 6,
+            "observed_events": 3,
+            "expected_events": 0.249728,
+            "observed_event_rate": 0.5,
+            "predicted_event_rate": 0.041621,
+            "abs_deviation": 0.458379
+          },
+          {
+            "bin": 2,
+            "count": 6,
+            "observed_events": 1,
+            "expected_events": 2.476968,
+            "observed_event_rate": 0.166667,
+            "predicted_event_rate": 0.412828,
+            "abs_deviation": 0.246161
+          }
+        ],
+        "status": "pass"
+      },
+      "train": {
+        "row_count": 36,
+        "known_count": 36,
+        "n_bins": 6,
+        "hosmer_lemeshow_statistic": 2.942649,
+        "hosmer_lemeshow_p_value": 0.567468,
+        "calibration_error": 0.068869,
+        "auc": 1.0,
+        "decile_bins": [
+          {
+            "bin": 1,
+            "count": 6,
+            "observed_events": 0,
+            "expected_events": 0.012944,
+            "observed_event_rate": 0.0,
+            "predicted_event_rate": 0.002157,
+            "abs_deviation": 0.002157
+          },
+          {
+            "bin": 2,
+            "count": 6,
+            "observed_events": 0,
+            "expected_events": 0.035542,
+            "observed_event_rate": 0.0,
+            "predicted_event_rate": 0.005924,
+            "abs_deviation": 0.005924
+          },
+          {
+            "bin": 3,
+            "count": 6,
+            "observed_events": 0,
+            "expected_events": 0.149742,
+            "observed_event_rate": 0.0,
+            "predicted_event_rate": 0.024957,
+            "abs_deviation": 0.024957
+          },
+          {
+            "bin": 4,
+            "count": 6,
+            "observed_events": 0,
+            "expected_events": 1.041393,
+            "observed_event_rate": 0.0,
+            "predicted_event_rate": 0.173565,
+            "abs_deviation": 0.173565
+          },
+          {
+            "bin": 5,
+            "count": 6,
+            "observed_events": 6,
+            "expected_events": 4.922039,
+            "observed_event_rate": 1.0,
+            "predicted_event_rate": 0.82034,
+            "abs_deviation": 0.17966
+          },
+          {
+            "bin": 6,
+            "count": 6,
+            "observed_events": 6,
+            "expected_events": 5.838276,
+            "observed_event_rate": 1.0,
+            "predicted_event_rate": 0.973046,
+            "abs_deviation": 0.026954
+          }
+        ],
+        "status": "pass"
+      }
+    },
+    "source_step_refs": [
+      {
+        "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "canonical_step_id": "coefficient-sign-check",
+        "step_id": "coefficient-sign-check",
+        "resolution": "exact"
+      },
+      {
+        "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "canonical_step_id": "separation-diagnostics",
+        "step_id": "separation-diagnostics",
+        "resolution": "exact"
+      },
+      {
+        "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "canonical_step_id": "vif-diagnostics",
+        "step_id": "vif-diagnostics",
+        "resolution": "exact"
+      },
+      {
+        "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "canonical_step_id": "calibration-diagnostics",
+        "step_id": "calibration-diagnostics",
+        "resolution": "exact"
+      }
+    ]
+  },
+  "implementation_artifacts": {
+    "scorecard_table": {
+      "artifact_type": "scorecard_table",
+      "schema_version": "cardre.scorecard_table.v1",
+      "artifact_id": "4f937734-9ca8-48db-8501-f35ca91a6a29",
+      "description": "Flat-file attribute points table"
+    },
+    "scoring_export_python": {
+      "artifact_type": "scoring_export_python",
+      "schema_version": "cardre.scoring_export_python.v1",
+      "artifact_id": "74cd7ee5-9882-4405-bd80-104e86b2c485",
+      "description": "Standalone Python scoring function"
+    },
+    "scoring_export_sql": {
+      "artifact_type": "scoring_export_sql",
+      "schema_version": "cardre.scoring_export_sql.v1",
+      "artifact_id": "38fd7c38-0cae-4697-ab04-24bc464960fd",
+      "description": "Standalone SQL scoring query"
+    },
+    "source_step_refs": [
+      {
+        "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "canonical_step_id": "scorecard-table-export",
+        "step_id": "scorecard-table-export",
+        "resolution": "exact"
+      },
+      {
+        "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "canonical_step_id": "scoring-export-python",
+        "step_id": "scoring-export-python",
+        "resolution": "exact"
+      },
+      {
+        "requested_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "resolved_branch_id": "35552075-5234-4c8a-b0a2-66bfbd48d90b",
+        "canonical_step_id": "scoring-export-sql",
+        "step_id": "scoring-export-sql",
+        "resolution": "exact"
+      }
+    ]
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "schema_version": "cardre.model_artifact.v1",
+  "model_family": "logistic_regression",
+  "input_artifact_id": "",
+  "training_role": "train",
+  "target_column": "credit_risk_class",
+  "target_event_value": "bad",
+  "class_mapping": {
+    "0": "good",
+    "1": "bad"
+  },
+  "probability_column_index": 1,
+  "feature_contract": {
+    "features": [
+      "credit_amount_woe",
+      "age_years_woe",
+      "duration_months_woe"
+    ],
+    "transformation_strategy": "woe",
+    "order_hash": "275ea65aee4661b71a566bb400b9d5e117a54c100dd1128c1b145852fc55d7c3",
+    "dtype_contract": {},
+    "missing_policy": "error",
+    "unknown_category_policy": "error"
+  },
+  "feature_order_hash": "275ea65aee4661b71a566bb400b9d5e117a54c100dd1128c1b145852fc55d7c3",
+  "feature_dtype_contract": {},
+  "preprocessing_artifact_ids": [],
+  "prediction_contract": {
+    "probability_semantics": "p(bad)",
+    "score_direction": "higher_is_lower_risk",
+    "score_type": "log_odds_scaled",
+    "threshold_policy_refs": []
+  },
+  "score_direction": "higher_is_lower_risk",
+  "calibration_artifact_id": "",
+  "estimator_reference": {
+    "artifact_id": "",
+    "logical_hash": "",
+    "physical_hash": "",
+    "estimator_format": "json_native",
+    "trusted_load_required": false,
+    "creating_run_id": "",
+    "creating_run_step_id": ""
+  },
+  "training": {
+    "row_count": 36,
+    "params": {
+      "C": 1.0,
+      "max_iter": 1000,
+      "penalty": "l2",
+      "random_state": 42,
+      "solver": "lbfgs"
+    },
+    "converged": true,
+    "iterations": 8
+  },
+  "model_payload": {
+    "coefficients": {
+      "age_years_woe": -1.284976,
+      "credit_amount_woe": -1.017294,
+      "duration_months_woe": -1.282511
+    },
+    "intercept": -1.824649
+  },
+  "interpretability": {
+    "explanation_type": "none",
+    "explanation_level": "none",
+    "native_importance_available": false,
+    "limitations": [],
+    "global_importance_fields": []
+  },
+  "warnings": []
+}
