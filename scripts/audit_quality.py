@@ -1,11 +1,16 @@
 """Audit quality metrics for the thermo-nuclear code quality sprint.
 
 Emits counts for forbidden patterns and structural metrics.
-Use --json for machine-readable output.
+
+Modes:
+  --baseline   prints counts only, always exits 0 (default for PR0)
+  --enforce    exits 1 when any target is missed (target for PR11)
+  --json       machine-readable JSON output
 
 Usage:
     python scripts/audit_quality.py
     python scripts/audit_quality.py --json
+    python scripts/audit_quality.py --enforce
 """
 from __future__ import annotations
 
@@ -108,9 +113,14 @@ METRICS = [
 ]
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Audit quality metrics")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--baseline", action="store_true", default=True,
+                       help="Print counts only, always exit 0 (default)")
+    group.add_argument("--enforce", action="store_true",
+                       help="Exit 1 when any target is missed")
     args = parser.parse_args()
 
     results = []
@@ -128,6 +138,13 @@ def main():
             marker = " ✓" if r["count"] <= r["target"] else " ✗"
             print(f"{r['check']:<65} {r['count']:>6} {r['target']:>6}{marker}")
 
+    if args.enforce:
+        failed = [r for r in results if r["count"] > r["target"]]
+        if failed:
+            print(f"\n{len(failed)} metric(s) exceed target — exiting 1")
+            return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

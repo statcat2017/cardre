@@ -1,11 +1,12 @@
 """Golden report bundle test — diff baseline for collector refactors.
 
-Compares structure and field names, with tolerance for non-deterministic
-values (timestamps, run IDs, hashes, paths, metrics that vary per run).
+Compares structure (key presence, types, list lengths) against the golden
+fixture. Tolerates non-deterministic leaf values (timestamps, run IDs,
+hashes, paths, metrics that vary per run due to random train/test split).
 
 Usage:
+    python tests/test_golden_report_bundle.py --update-golden  # regenerate fixture
     pytest tests/test_golden_report_bundle.py
-    pytest tests/test_golden_report_bundle.py --update-golden  # regenerate fixture
 """
 from __future__ import annotations
 
@@ -20,47 +21,47 @@ from cardre.workflows import build_canonical_scorecard_steps
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 GOLDEN_REPORT_BUNDLE = FIXTURE_DIR / "golden_report_bundle.json"
 
-# Fields whose values are inherently non-deterministic across runs
-NON_DETERMINISTIC_KEYS = {
-    "project_id", "run_id", "target_branch_id", "generated_at",
-    "generated_by", "run_status",
-    "dataset_id", "branch_id", "artifact_id",
-    "logical_hash", "physical_hash",
-    "requested_branch_id", "resolved_branch_id",
-    "path", "message",
-    "gini", "auc", "ks", "psi", "divergence", "iv",
-    "woe", "points", "coefficient",
-    "feature_order_hash", "order_hash",
-    "elapsed_seconds", "iterations",
-    "model_name", "plan_name",
+# Suffix-based: any leaf key matching these is treated as non-deterministic
+NON_DETERMINISTIC_SUFFIXES: set[str] = {
+    "branch_id", "requested_branch_id", "resolved_branch_id",
+    "dataset_id", "artifact_id",
+    "logical_hash", "physical_hash", "config_hash",
+    "generated_at", "started_at", "finished_at",
 }
 
-# Paths with hash-based prefixes that change per run
-_PATH_HASH_RE = re.compile(r'[a-f0-9]{8,}')
+# UUID pattern (36 chars, 4 hyphens)
+_UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+
+# Hash-like strings in paths (v2:hex or hex prefix)
+_HASH_IN_PATH_RE = re.compile(r'(^|/)v2:[a-f0-9]+|artifacts/[a-f0-9]{16,}')
 
 
-def _is_non_deterministic_value(key: str, value: object) -> bool:
-    if key in NON_DETERMINISTIC_KEYS:
+def _is_non_deterministic_leaf(key: str, value: object) -> bool:
+    """Check if a leaf value is inherently non-deterministic."""
+    if key in NON_DETERMINISTIC_SUFFIXES:
         return True
-    if isinstance(value, str) and len(value) == 36 and value.count("-") == 4:
+    if isinstance(value, str) and _UUID_RE.match(value):
         return True
-    return bool(isinstance(value, str) and _PATH_HASH_RE.search(value))
+    return bool(isinstance(value, str) and _HASH_IN_PATH_RE.search(value))
 
 
 def _compare_structure(
-    got: object, expected: object, path: str = "", strict_values: bool = False,
+    got: object, expected: object, path: str = "",
 ) -> list[str]:
-    """Compare structure of two values, tolerating non-deterministic values.
+    """Compare structure of two values, tolerating non-deterministic leaf values.
 
-    Returns a list of difference descriptions (empty = identical structure).
-    When strict_values is False, only checks key presence and types, not values.
+    Checks:
+      - Key presence (missing / extra keys in dicts)
+      - List lengths
+      - Type compatibility
+    Does NOT check leaf value equality (those are non-deterministic).
     """
     diffs: list[str] = []
 
     if not isinstance(got, type(expected)):
         return [f"{path}: type {type(got).__name__} != {type(expected).__name__}"]
 
-    if isinstance(got, dict) and isinstance(expected, dict):
+    if isinstance(got, dict):
         got_keys = set(got)
         expected_keys = set(expected)
         missing = expected_keys - got_keys
@@ -69,25 +70,21 @@ def _compare_structure(
             diffs.append(f"{path}: missing keys {sorted(missing)}")
         if extra:
             diffs.append(f"{path}: extra keys {sorted(extra)}")
-        for key in got_keys & expected_keys:
+        for key in sorted(got_keys & expected_keys):
             gv, ev = got[key], expected[key]
-            if _is_non_deterministic_value(key, gv) or _is_non_deterministic_value(key, ev):
+            child_path = f"{path}.{key}" if path else key
+            if _is_non_deterministic_leaf(key, gv) or _is_non_deterministic_leaf(key, ev):
                 continue
-            if strict_values and gv != ev:
-                diffs.append(f"{path}.{key}: {gv!r} != {ev!r}")
-            else:
-                diffs.extend(_compare_structure(gv, ev, f"{path}.{key}", strict_values))
+            diffs.extend(_compare_structure(gv, ev, child_path))
         return diffs
 
-    if isinstance(got, list) and isinstance(expected, list):
-        if not got and not expected:
+    if isinstance(got, list):
+        if len(got) != len(expected):
+            diffs.append(f"{path}: list length {len(got)} != {len(expected)}")
             return diffs
-        if got and expected:
-            diffs.extend(_compare_structure(got[0], expected[0], f"{path}[0]", strict_values))
+        for i, (gi, ei) in enumerate(zip(got, expected, strict=True)):
+            diffs.extend(_compare_structure(gi, ei, f"{path}[{i}]"))
         return diffs
-
-    if strict_values and got != expected:
-        diffs.append(f"{path}: {got!r} != {expected!r}")
 
     return diffs
 
@@ -179,11 +176,12 @@ def _run_pathway(tmp_path: Path) -> dict:
     return bundle.model_dump(mode="json")
 
 
-def test_golden_report_bundle_structure_matches(raw_project_path, tmp_path):
+def test_golden_report_bundle_structure_matches(tmp_path):
     """Compare pathway report output structure to golden fixture.
 
-    Checks that all expected keys exist with the same types and list lengths.
-    Tolerates non-deterministic values (UUIDs, hashes, timestamps, paths).
+    Checks key presence, list lengths, and types. Tolerates
+    non-deterministic leaf values (UUIDs, hashes, timestamps, paths,
+    metrics that vary per run due to random train/test split).
     """
     if not GOLDEN_REPORT_BUNDLE.exists():
         pytest.skip("Golden fixture not found; run with --update-golden to create")
@@ -196,7 +194,7 @@ def test_golden_report_bundle_structure_matches(raw_project_path, tmp_path):
     assert not diffs, "Report bundle structure differs from golden:\n" + "\n".join(diffs[:30])
 
 
-def test_golden_report_bundle_has_expected_sections(raw_project_path, tmp_path):
+def test_golden_report_bundle_has_expected_sections(tmp_path):
     """Verify the report bundle has all expected sections."""
     if not GOLDEN_REPORT_BUNDLE.exists():
         pytest.skip("Golden fixture not found; run with --update-golden to create")

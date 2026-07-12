@@ -1,5 +1,43 @@
 {
   "schema_version": "cardre.manual_binning_overrides.v1",
-  "overrides": [],
-  "source_artifact_id": ""
+  "overrides": [
+    {
+      "variable": "credit_amount",
+      "action": "merge",
+      "bins": [
+        0,
+        1
+      ],
+      "reason": "Merge adjacent sparse bins for credit_amount",
+      "comment": "Low frequency in first two bins"
+    },
+    {
+      "variable": "age_years",
+      "action": "group",
+      "bins": [
+        "25-30",
+        "31-35"
+      ],
+      "group_label": "Young adults",
+      "reason": "Group young age bands for business interpretability"
+    },
+    {
+      "variable": "duration_months",
+      "action": "reject",
+      "bins": [
+        5
+      ],
+      "reason": "Reject bin with high missing rate"
+    },
+    {
+      "variable": "credit_risk_class",
+      "action": "reorder",
+      "bins": [
+        "good",
+        "bad"
+      ],
+      "reason": "Reorder to match business convention"
+    }
+  ],
+  "source_artifact_id": "golden-source-artifact"
 }
