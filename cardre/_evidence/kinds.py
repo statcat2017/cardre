@@ -30,9 +30,9 @@ class EvidenceKind(Enum):
     IV_TABLE = "iv_table"
     FROZEN_SCORECARD_BUNDLE = "frozen_scorecard_bundle"
     APPLY_WOE_EVIDENCE = "apply_woe_evidence"
-    WOE_APPLICATION_EVIDENCE = "apply_woe_evidence"
+    WOE_APPLICATION_EVIDENCE = "apply_woe_evidence"  # compat alias
     APPLY_MODEL_EVIDENCE = "apply_model_evidence"
-    SCORE_APPLICATION_EVIDENCE = "apply_model_evidence"
+    SCORE_APPLICATION_EVIDENCE = "apply_model_evidence"  # compat alias
     VALIDATION_EVIDENCE = "validation_evidence"
     REPORT_BUNDLE = "report_bundle"
     RUN_MANIFEST = "run_manifest"

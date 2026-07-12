@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from cardre.domain.evidence import ResolvedEvidence
-from cardre.domain.run import RunStep, RunStepStatus
+from cardre.domain.run import ExecutionFingerprint, RunStep, RunStepStatus
 from cardre.domain.step import StepSpec
 
 if TYPE_CHECKING:
@@ -224,11 +224,16 @@ class EvidenceLocator:
         if spec is None or rs is None:
             return True
         fp = rs.execution_fingerprint
-        if fp.get("params_hash", "") != spec.params_hash:
+        fp_typed = ExecutionFingerprint(
+            params_hash=fp.get("params_hash", ""),
+            node_type=fp.get("node_type", ""),
+            node_version=fp.get("node_version", ""),
+        )
+        if fp_typed.params_hash != spec.params_hash:
             return False
-        if fp.get("node_type", "") != spec.node_type:
+        if fp_typed.node_type != spec.node_type:
             return False
-        return cast(bool, fp.get("node_version", "") == spec.node_version)
+        return fp_typed.node_version == spec.node_version
 
 
 __all__ = ["EvidenceLocator"]

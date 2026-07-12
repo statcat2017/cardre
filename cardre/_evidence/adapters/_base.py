@@ -5,11 +5,9 @@ These helpers reproduce the exact matching logic of
 They are intentionally independent of the reader so adapters can be tested
 and wired into the reader without creating a circular dependency.
 
-Phase 2 is parity-preserving: these helpers reproduce the reader's current
-two-phase matching (schema-version → role/type/media + payload check).
-The reader's ``_legacy_match`` method exists but is never called from
-``_match``; these helpers do not include legacy payload-key heuristics.
-A later phase may remove the dead ``_legacy_match`` from the reader.
+The helpers implement two-phase matching: schema-version match followed by
+role/type/media + payload check.  Legacy payload-key heuristics are not
+included in the adapter path.
 """
 
 from __future__ import annotations

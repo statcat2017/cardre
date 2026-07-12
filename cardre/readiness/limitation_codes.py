@@ -56,9 +56,6 @@ class LimitationCode(StrEnum):
     PDF_OUT_OF_SCOPE = "PDF_OUT_OF_SCOPE"
     MANUAL_BINNING_REVIEWED_WITH_WARNINGS = "MANUAL_BINNING_REVIEWED_WITH_WARNINGS"
 
-    # --- Collector block codes (not in readiness BLOCKER_CODES) ---
-    MISSING_RUN_MANIFEST_COLLECTOR = "MISSING_RUN_MANIFEST"
-
     @classmethod
     def blocker_codes(cls) -> set[LimitationCode]:
         """Return the set of codes that represent blockers."""

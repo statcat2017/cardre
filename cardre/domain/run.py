@@ -17,9 +17,13 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
+
+if TYPE_CHECKING:
+    from cardre.domain.artifacts import ArtifactRef
+    from cardre.domain.evidence import EvidenceEdge
 
 
 class RunStepStatus(enum.Enum):
@@ -113,19 +117,26 @@ class RunStep:
 
 
 @dataclass(frozen=True)
+class ExecutionFingerprint:
+    params_hash: str
+    node_type: str
+    node_version: str
+
+
+@dataclass(frozen=True)
 class RunStepEvidenceView:
     """Aggregate view of a run step with derived artifact references."""
     run_step: RunStep
-    input_artifacts: list[Any] = field(default_factory=list)
-    output_artifacts: list[Any] = field(default_factory=list)
-    evidence_edges: list[Any] = field(default_factory=list)
+    input_artifacts: list[ArtifactRef] = field(default_factory=list)
+    output_artifacts: list[ArtifactRef] = field(default_factory=list)
+    evidence_edges: list[EvidenceEdge] = field(default_factory=list)
 
 
 __all__ = [
+    "ExecutionFingerprint",
     "Run",
     "RunScope",
     "RunStep",
     "RunStepEvidenceView",
     "RunStepStatus",
-    "_check_transition",
 ]

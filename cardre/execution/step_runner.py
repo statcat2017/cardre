@@ -11,13 +11,10 @@ responsible for recording the result via a persistence collaborator.
 
 from __future__ import annotations
 
-import enum
 import sys
 import traceback
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
-
-import numpy as np
+from typing import TYPE_CHECKING
 
 from cardre.domain.errors import (
     MissingInputArtifactError,
@@ -28,7 +25,7 @@ from cardre.domain.errors import (
 from cardre.domain.run import RunStep, RunStepStatus
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.execution.failure_classification import classify_step_failure
-from cardre.execution.fingerprints import build_execution_fingerprint
+from cardre.execution.fingerprints import _json_ready, build_execution_fingerprint
 from cardre.nodes.registry import NodeRegistry
 
 if TYPE_CHECKING:
@@ -36,27 +33,6 @@ if TYPE_CHECKING:
     from cardre.domain.diagnostics import JsonDict
     from cardre.domain.step import StepSpec
     from cardre.store.db import ProjectStore
-
-
-def _json_ready(value: Any) -> Any:
-    """Recursively convert enum/ndarray/numpy values to JSON-safe types."""
-    if isinstance(value, enum.Enum):
-        return value.value
-    if isinstance(value, dict):
-        return {str(k): _json_ready(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_ready(v) for v in value]
-    if isinstance(value, set):
-        return [_json_ready(v) for v in value]
-    if isinstance(value, (np.bool_,)):
-        return bool(value)
-    if isinstance(value, (np.integer,)):
-        return int(value)
-    if isinstance(value, (np.floating,)):
-        return float(value)
-    if isinstance(value, (np.ndarray,)):
-        return [_json_ready(v) for v in value.tolist()]
-    return value
 
 
 @dataclass(frozen=True)
