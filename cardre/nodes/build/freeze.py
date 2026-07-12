@@ -145,14 +145,13 @@ class FrozenScorecardBundleNode(NodeType):
         )
 
         model_intercept = model.intercept
-        scorecard_intercept = scorecard.intercept
-        if scorecard_intercept is not None and abs(
-            float(scorecard_intercept) - float(model_intercept)
-        ) > 1e-6:
-            raise ValueError(
-                f"Frozen scorecard bundle cannot be created: scorecard intercept "
-                f"({scorecard_intercept}) differs from model intercept ({model_intercept})"
-            )
+        if scorecard.has_explicit_intercept:
+            scorecard_intercept = scorecard.intercept
+            if abs(float(scorecard_intercept) - float(model_intercept)) > 1e-6:
+                raise ValueError(
+                    f"Frozen scorecard bundle cannot be created: scorecard intercept "
+                    f"({scorecard_intercept}) differs from model intercept ({model_intercept})"
+                )
 
         model_target = model.target_column
         scorecard_target = scorecard.target_column

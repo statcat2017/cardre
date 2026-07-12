@@ -177,7 +177,11 @@ class ScoreScaling:
 
     @property
     def higher_score_is_lower_risk(self) -> bool:
-        return self.score_direction == "higher_is_lower_risk"
+        if "higher_score_is_lower_risk" in self._raw:
+            return bool(self._raw.get("higher_score_is_lower_risk"))
+        if "score_direction" in self._raw:
+            return self.score_direction == "higher_is_lower_risk"
+        return True
 
     @property
     def base_odds_text(self) -> str:
@@ -187,6 +191,10 @@ class ScoreScaling:
     @property
     def intercept(self) -> float:
         return float(self._raw.get("intercept", 0.0))
+
+    @property
+    def has_explicit_intercept(self) -> bool:
+        return "intercept" in self._raw
 
     @property
     def base_points(self) -> float | int | None:
