@@ -60,6 +60,8 @@ NON_DETERMINISTIC_SUFFIXES: set[str] = {
     "singleton_variables",
     # Limitation messages contain temp paths and hashes
     "message",
+    # Python version varies across CI runners
+    "python_version",
 }
 
 # UUID pattern (36 chars, 4 hyphens)
