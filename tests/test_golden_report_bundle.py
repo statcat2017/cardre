@@ -128,9 +128,9 @@ def _write_input_csv(path: Path) -> Path:
         writer.writerows(rows)
     return path
 
-
 def _run_pathway(tmp_path: Path) -> dict:
     import uuid
+
     from cardre.domain.diagnostics import utc_now_iso
     from cardre.execution.executor import PlanExecutor
     from cardre.execution.run_lifecycle import RunLifecycle
@@ -138,7 +138,7 @@ def _run_pathway(tmp_path: Path) -> dict:
     from cardre.store.branch_repo import BranchRepository
     from cardre.store.db import ProjectStore
     from cardre.store.plan_repo import PlanRepository
-    from cardre.store.run_repo import RunRepository
+    from cardre.store.run_repo import RunRepository  # noqa: I001
 
     project_dir = tmp_path / "golden.cardre"
     store = ProjectStore(project_dir)
