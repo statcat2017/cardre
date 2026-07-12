@@ -53,6 +53,7 @@ jobs:
             sidecar:
               - 'cardre/**'
               - 'sidecar/**'
+              - 'frontend/src-tauri/**'
               - 'scripts/build-sidecar.sh'
               - 'pyproject.toml'
             openapi:
@@ -180,7 +181,7 @@ jobs:
 
   build-sidecar:
     needs: detect-changes
-    if: needs.detect-changes.outputs.sidecar == 'true' || needs.detect-changes.outputs.rust == 'true' || needs.detect-changes.outputs.ci == 'true'
+    if: needs.detect-changes.outputs.sidecar == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -200,7 +201,7 @@ jobs:
           path: frontend/src-tauri/binaries/cardre-api-*
 
   check-tauri:
-    needs: detect-changes
+    needs: [detect-changes, build-sidecar]
     if: needs.detect-changes.outputs.rust == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -211,6 +212,16 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-workspaces: "frontend/src-tauri"
+      - name: Download sidecar binary
+        uses: actions/download-artifact@v8
+        with:
+          name: cardre-api-sidecar
+          path: frontend/src-tauri/binaries/
+      - name: Validate sidecar exists
+        working-directory: frontend/src-tauri
+        run: |
+          ls -la binaries/
+          file binaries/cardre-api-*
       - name: cargo fmt --check
         working-directory: frontend/src-tauri
         run: cargo fmt --check
@@ -223,7 +234,7 @@ jobs:
 
   smoke-test-packaged-sidecar:
     needs: [detect-changes, build-sidecar]
-    if: needs.detect-changes.outputs.sidecar == 'true' || needs.detect-changes.outputs.rust == 'true' || needs.detect-changes.outputs.ci == 'true'
+    if: needs.detect-changes.outputs.sidecar == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
