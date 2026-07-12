@@ -217,6 +217,53 @@ class ModelArtifactV1:
     interpretability: InterpretabilityMetadata = field(default_factory=InterpretabilityMetadata)
     warnings: list[dict[str, Any]] = field(default_factory=list)
 
+    # Raw payload for backward compatibility — populated by from_dict.
+    # Consumers migrate off _raw in PR3a/3b/3c.
+    _raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    # ------------------------------------------------------------------
+    # Typed read-only properties for fields accessed via _raw.get(...)
+    # in consumers. These are additive — no consumer migration in this PR.
+    # ------------------------------------------------------------------
+
+    @property
+    def coefficients_dict(self) -> dict[str, float]:
+        """Convenience: model_payload coefficients as a dict."""
+        coeffs = self.model_payload.get("coefficients", {})
+        if isinstance(coeffs, dict):
+            return {k: float(v) for k, v in coeffs.items() if isinstance(v, (int, float))}
+        return {}
+
+    @property
+    def intercept(self) -> float:
+        """Model intercept from model_payload."""
+        return float(self.model_payload.get("intercept", 0.0))
+
+    @property
+    def features(self) -> list[str]:
+        """Feature names from feature_contract."""
+        return list(self.feature_contract.features)
+
+    @property
+    def base_odds(self) -> float:
+        """Base odds parsed from 'N:M' string to float."""
+        raw = self._raw.get("base_odds", "50:1")
+        if isinstance(raw, str) and ":" in raw:
+            parts = raw.split(":", 1)
+            try:
+                return float(parts[0]) / float(parts[1])
+            except (ValueError, ZeroDivisionError):
+                return 50.0
+        return float(raw)
+
+    @property
+    def bad_class_label(self) -> str:
+        return str(self._raw.get("bad_class_label", ""))
+
+    @property
+    def feature_strategy(self) -> str:
+        return str(self._raw.get("feature_strategy", ""))
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-compatible dict."""
         return {
@@ -266,6 +313,7 @@ class ModelArtifactV1:
             model_payload=dict(data.get("model_payload", {})),
             interpretability=InterpretabilityMetadata.from_dict(data.get("interpretability", {})),
             warnings=list(data.get("warnings", [])),
+            _raw=data,
         )
 
 

@@ -18,7 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from cardre._evidence.adapters import EVIDENCE_ADAPTERS, EvidenceAdapter, get_adapter
+from cardre._evidence.adapters import EVIDENCE_ADAPTERS, AdapterSpec, get_adapter
+from cardre._evidence.adapters._base import match
 from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.profiles import EVIDENCE_PROFILES
 from cardre._evidence.reader import ArtifactEvidenceReader
@@ -39,12 +40,11 @@ def test_adapter_registry_covers_all_evidence_kinds() -> None:
         assert kind in EVIDENCE_ADAPTERS, f"{kind.name} missing from registry"
 
 
-def test_get_adapter_returns_correct_kind_and_profile() -> None:
+def test_get_adapter_returns_correct_profile() -> None:
     for kind in EVIDENCE_PROFILES:
-        adapter = get_adapter(kind)
-        assert isinstance(adapter, EvidenceAdapter)
-        assert adapter.kind == kind
-        assert adapter.profile is EVIDENCE_PROFILES[kind]
+        spec = get_adapter(kind)
+        assert isinstance(spec, AdapterSpec)
+        assert spec.profile is EVIDENCE_PROFILES[kind]
 
 
 def test_get_adapter_unknown_kind_raises() -> None:
@@ -140,8 +140,8 @@ def _assert_match_parity(store, kind: EvidenceKind, artifacts: list[ArtifactRef]
     """Assert adapter.match() returns the same artifact IDs as reader._match()."""
     reader = ArtifactEvidenceReader(store)
     reader_result = reader._match(artifacts, kind)
-    adapter = get_adapter(kind)
-    adapter_result = adapter.match(artifacts, store)
+    spec = get_adapter(kind)
+    adapter_result = match(artifacts, spec.profile, store)
     reader_ids = [a.artifact_id for a in reader_result]
     adapter_ids = [a.artifact_id for a in adapter_result]
     assert reader_ids == adapter_ids, (
@@ -153,9 +153,9 @@ def _assert_parse_parity(store, kind: EvidenceKind, artifact: ArtifactRef) -> No
     """Assert adapter.parse() returns the same typed object as reader._parse()."""
     reader = ArtifactEvidenceReader(store)
     reader_result = reader._parse(artifact, kind)
-    adapter = get_adapter(kind)
+    spec = get_adapter(kind)
     path = store.artifact_path(artifact)
-    adapter_result = adapter.parse(path, artifact, store)
+    adapter_result = spec.parse(path, artifact, store)
     assert type(adapter_result) is type(reader_result), (
         f"parse parity failed for {kind.value}: reader type={type(reader_result)}, adapter type={type(adapter_result)}"
     )
@@ -343,8 +343,8 @@ def test_schema_version_takes_priority_over_role_type_media(store, tmp_path) -> 
         store, tmp_path, "wrong_type", "wrong_role", "cardre.bin_definition.v1",
         {"variables": [{"variable": "age", "bins": []}]},
     )
-    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
-    result = adapter.match([art], store)
+    spec = get_adapter(EvidenceKind.BIN_DEFINITION)
+    result = match([art], spec.profile, store)
     assert len(result) == 1
     assert result[0].artifact_id == art.artifact_id
 
@@ -355,8 +355,8 @@ def test_schema_version_mismatch_falls_through_to_role_type_media(store, tmp_pat
         store, tmp_path, "definition", "definition", "wrong.schema.v1",
         {"variables": [{"variable": "age", "bins": []}]},
     )
-    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
-    result = adapter.match([art], store)
+    spec = get_adapter(EvidenceKind.BIN_DEFINITION)
+    result = match([art], spec.profile, store)
     assert len(result) == 1
     assert result[0].artifact_id == art.artifact_id
 
@@ -367,8 +367,8 @@ def test_single_candidate_fails_payload_check_returns_empty(store, tmp_path) -> 
         store, tmp_path, "definition", "definition", "",
         {"wrong_key": "wrong_value"},
     )
-    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
-    result = adapter.match([art], store)
+    spec = get_adapter(EvidenceKind.BIN_DEFINITION)
+    result = match([art], spec.profile, store)
     assert result == []
 
 
@@ -384,8 +384,8 @@ def test_multiple_candidates_skip_payload_check(store, tmp_path) -> None:
         {"wrong_key": "wrong"},
         artifact_id="cand2",
     )
-    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
-    result = adapter.match([art1, art2], store)
+    spec = get_adapter(EvidenceKind.BIN_DEFINITION)
+    result = match([art1, art2], spec.profile, store)
     assert len(result) == 2
 
 
@@ -401,8 +401,8 @@ def test_exclude_key_filters_artifact(store, tmp_path) -> None:
         (aid, "definition", "definition", str(art_path), "ph", "lh", "application/json", "", json.dumps({"schema_version": "", "selected": True})),
     )
     art = store.get_artifact(aid)
-    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
-    result = adapter.match([art], store)
+    spec = get_adapter(EvidenceKind.BIN_DEFINITION)
+    result = match([art], spec.profile, store)
     assert result == []
 
 
@@ -419,8 +419,8 @@ def test_woe_table_no_schema_wrong_columns_returns_empty(store, tmp_path) -> Non
         (aid, "report", "report", str(art_path), "ph", "lh", "application/vnd.apache.parquet", "", json.dumps({})),
     )
     art = store.get_artifact(aid)
-    adapter = get_adapter(EvidenceKind.WOE_TABLE)
-    result = adapter.match([art], store)
+    spec = get_adapter(EvidenceKind.WOE_TABLE)
+    result = match([art], spec.profile, store)
     assert result == []
 
 
@@ -435,9 +435,9 @@ def test_parse_missing_file_raises(store, tmp_path) -> None:
         path="/nonexistent/path.json", physical_hash="x", logical_hash="y",
         media_type="application/json",
     )
-    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
+    spec = get_adapter(EvidenceKind.BIN_DEFINITION)
     with pytest.raises(FileNotFoundError):
-        adapter.parse(Path("/nonexistent/path.json"), fake_art, store)
+        spec.parse(Path("/nonexistent/path.json"), fake_art, store)
 
 
 def test_parse_invalid_json_raises(store, tmp_path) -> None:
@@ -451,9 +451,9 @@ def test_parse_invalid_json_raises(store, tmp_path) -> None:
         (aid, "definition", "definition", str(art_path), "ph", "lh", "application/json", "", json.dumps({"schema_version": "cardre.bin_definition.v1"})),
     )
     art = store.get_artifact(aid)
-    adapter = get_adapter(EvidenceKind.BIN_DEFINITION)
+    spec = get_adapter(EvidenceKind.BIN_DEFINITION)
     with pytest.raises(json.JSONDecodeError):
-        adapter.parse(art_path, art, store)
+        spec.parse(art_path, art, store)
 
 
 def test_iv_table_empty_schema_skips_schema_phase(store, tmp_path) -> None:
@@ -468,8 +468,8 @@ def test_iv_table_empty_schema_skips_schema_phase(store, tmp_path) -> None:
         (aid, "report", "report", str(art_path), "ph", "lh", "application/vnd.apache.parquet", "", json.dumps({})),
     )
     art = store.get_artifact(aid)
-    adapter = get_adapter(EvidenceKind.IV_TABLE)
-    result = adapter.match([art], store)
+    spec = get_adapter(EvidenceKind.IV_TABLE)
+    result = match([art], spec.profile, store)
     assert len(result) == 1
 
 
@@ -485,6 +485,6 @@ def test_scored_dataset_role_based_match(store, tmp_path) -> None:
         (aid, "dataset", "train", str(art_path), "ph", "lh", "application/vnd.apache.parquet", "", json.dumps({})),
     )
     art = store.get_artifact(aid)
-    adapter = get_adapter(EvidenceKind.SCORED_DATASET)
-    result = adapter.match([art], store)
+    spec = get_adapter(EvidenceKind.SCORED_DATASET)
+    result = match([art], spec.profile, store)
     assert len(result) == 1

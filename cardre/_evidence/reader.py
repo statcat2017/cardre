@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from cardre._evidence.adapters import get_adapter
+from cardre._evidence.adapters._base import match
 from cardre._evidence.kinds import (
     AmbiguousEvidenceError,
     EvidenceKind,
@@ -46,7 +47,8 @@ class ArtifactEvidenceReader:
 
         Raises ``EvidenceNotFoundError`` or ``AmbiguousEvidenceError``.
         """
-        candidates = self._match(artifacts, kind)
+        spec = get_adapter(kind)
+        candidates = match(artifacts, spec.profile, self._store)
         if not candidates:
             profile = EVIDENCE_PROFILES.get(kind)
             raise EvidenceNotFoundError(
@@ -97,7 +99,8 @@ class ArtifactEvidenceReader:
                 expected_artifact_type=",".join(sorted(profile.expected_artifact_types)) if profile else None,
                 expected_media_type=",".join(sorted(profile.expected_media_types)) if profile else None,
             )
-        matched = self._match([art], kind)
+        spec = get_adapter(kind)
+        matched = match([art], spec.profile, self._store)
         if not matched:
             profile = EVIDENCE_PROFILES.get(kind)
             raise EvidenceNotFoundError(
@@ -139,8 +142,9 @@ class ArtifactEvidenceReader:
     # ------------------------------------------------------------------
 
     def _match(self, artifacts: list[ArtifactRef], kind: EvidenceKind) -> list[ArtifactRef]:
-        """Delegate matching to the adapter for this evidence kind."""
-        return get_adapter(kind).match(artifacts, self._store)
+        """Delegate matching to the adapter spec's profile."""
+        spec = get_adapter(kind)
+        return match(artifacts, spec.profile, self._store)
 
     def _parse(self, art: ArtifactRef, kind: EvidenceKind) -> Any:
         """Delegate parsing to the adapter for this evidence kind."""

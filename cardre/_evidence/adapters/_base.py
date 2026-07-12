@@ -78,6 +78,19 @@ def candidate_passes_payload_check(art: ArtifactRef, profile: _Profile, store: P
     return True
 
 
+def match(artifacts: list[ArtifactRef], profile: _Profile, store: ProjectStore) -> list[ArtifactRef]:
+    """Two-phase matching: schema version first, then role/type/media + payload check."""
+    schema_matches = match_by_schema_version(artifacts, profile)
+    if schema_matches:
+        return schema_matches
+    candidates = match_by_role_type_media(artifacts, profile)
+    if len(candidates) == 1:
+        if candidate_passes_payload_check(candidates[0], profile, store):
+            return candidates
+        candidates = []
+    return candidates
+
+
 def read_json_payload(path: Path) -> dict[str, Any]:
     """Read and parse a JSON artifact payload, returning a dict."""
     return json.loads(path.read_text())  # type: ignore[no-any-return]  # json.loads returns Any

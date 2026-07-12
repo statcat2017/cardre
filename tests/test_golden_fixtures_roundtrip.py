@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from cardre._evidence.adapters.binning import ManualBinningOverridesAdapter
-from cardre._evidence.models.binning import BinDefinition
+from cardre._evidence.adapters import get_adapter
+from cardre._evidence.kinds import EvidenceKind
+from cardre._evidence.models.binning import BinDefinition, ManualBinningOverrides
 from cardre.domain.artifacts import ArtifactRef
 from cardre.modeling.schema import ModelArtifactV1
 from cardre.store.db import ProjectStore
@@ -95,9 +96,14 @@ class TestManualBinningOverridesRoundTrip:
             metadata={"schema_version": "cardre.manual_binning_overrides.v1"},
         )
 
-        adapter = ManualBinningOverridesAdapter()
-        parsed = adapter.parse(fixture_path, art, store)
-        assert parsed == data, "Manual binning overrides adapter parse changed data"
+        spec = get_adapter(EvidenceKind.MANUAL_BINNING_OVERRIDES)
+        parsed = spec.parse(fixture_path, art, store)
+        assert isinstance(parsed, ManualBinningOverrides), f"Expected ManualBinningOverrides, got {type(parsed)}"
+        assert parsed.schema_version == data.get("schema_version", "")
+        assert len(parsed.overrides) == len(data.get("overrides", []))
+        for override, raw in zip(parsed.overrides, data.get("overrides", []), strict=False):
+            assert override.variable == raw.get("variable", "")
+            assert override.action == raw.get("action", "")
 
     def test_has_expected_schema(self):
         data = _load_fixture("golden_manual_binning_overrides.json")
