@@ -19,8 +19,12 @@ from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import GraphValidationError
 from cardre.domain.run import RunStepStatus
 from cardre.domain.step import StepSpec
+from cardre.execution.context import NodeOutput
 from cardre.execution.executor import PlanExecutor
+from cardre.execution.step_runner import StepRunner
 from cardre.execution.topology import validate_topology
+from cardre.nodes.contracts import NodeType
+from cardre.nodes.registry import NodeRegistry
 
 
 def _make_store(project_root: Path):
@@ -170,6 +174,96 @@ class TestStepGraphEdgeCases:
 
 class TestPlanExecutor:
     """PlanExecutor runs steps and persists evidence per-step."""
+
+    def test_step_runner_blocks_artifact_roles_outside_node_contract(self, tmp_path):
+        class TrainOnlyNode(NodeType):
+            node_type = "test.train_only"
+            version = "1"
+            category = "fit"
+            input_roles = ["train"]
+
+            def run(self, context):  # pragma: no cover - role guard should stop execution
+                raise AssertionError("node.run should not be called")
+
+        from cardre.domain.artifacts import ArtifactRef
+
+        store = _make_store(tmp_path)
+        registry = NodeRegistry()
+        registry.register(TrainOnlyNode)
+        runner = StepRunner(store, registry)
+        spec = StepSpec(
+            step_id="fit",
+            node_type="test.train_only",
+            node_version="1",
+            category="fit",
+            params={},
+            params_hash="hash",
+            parent_step_ids=["split"],
+        )
+        test_artifact = ArtifactRef(
+            artifact_id="art-test",
+            artifact_type="dataset",
+            role="test",
+            path="test.parquet",
+            physical_hash="ph",
+            logical_hash="lh",
+        )
+
+        result = runner.run_step(
+            plan_version_id="pv",
+            run_id="run",
+            spec=spec,
+            step_outputs={"split": [test_artifact]},
+            run_step_records={},
+        )
+
+        assert result.status == RunStepStatus.FAILED
+        assert result.errors[0]["code"] == "NODE_ROLE_ACCESS_VIOLATION"
+        assert "test" in result.errors[0]["message"]
+
+    def test_step_runner_allows_artifact_roles_declared_by_node_contract(self, tmp_path):
+        class TrainOnlyNode(NodeType):
+            node_type = "test.train_only_ok"
+            version = "1"
+            category = "fit"
+            input_roles = ["train"]
+
+            def run(self, context):
+                return NodeOutput(artifacts=[], metrics={})
+
+        from cardre.domain.artifacts import ArtifactRef
+
+        store = _make_store(tmp_path)
+        registry = NodeRegistry()
+        registry.register(TrainOnlyNode)
+        runner = StepRunner(store, registry)
+        spec = StepSpec(
+            step_id="fit",
+            node_type="test.train_only_ok",
+            node_version="1",
+            category="fit",
+            params={},
+            params_hash="hash",
+            parent_step_ids=["split"],
+        )
+        train_artifact = ArtifactRef(
+            artifact_id="art-train",
+            artifact_type="dataset",
+            role="train",
+            path="train.parquet",
+            physical_hash="ph",
+            logical_hash="lh",
+        )
+
+        result = runner.run_step(
+            plan_version_id="pv",
+            run_id="run",
+            spec=spec,
+            step_outputs={"split": [train_artifact]},
+            run_step_records={},
+        )
+
+        assert result.status == RunStepStatus.SUCCEEDED
 
     def test_executes_simple_plan(self, tmp_path):
         store = _make_store(tmp_path)

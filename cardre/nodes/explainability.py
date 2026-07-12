@@ -13,6 +13,7 @@ import polars as pl
 
 from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
 from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre._evidence.schemas import SCHEMA_EXPLAINABILITY_REPORT
 from cardre.artifacts import write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.node_parameters import (
@@ -263,7 +264,11 @@ class ModelExplainabilityNode(NodeType):
             store, artifact_type="report", role="report",
             stem=f"explainability-{context.step_spec.step_id}",
             payload=report,
-            metadata={"model_family": model_family, "explanation_level": explanation_level},
+            metadata={
+                "model_family": model_family,
+                "explanation_level": explanation_level,
+                "schema_version": SCHEMA_EXPLAINABILITY_REPORT,
+            },
         )
         return NodeOutput(artifacts=[art], metrics={"model_family": model_family})
 
@@ -685,6 +690,7 @@ class ModelLimitationsNode(NodeType):
         ]
 
         report: dict[str, Any] = {
+            "schema_version": SCHEMA_EXPLAINABILITY_REPORT,
             "model_family": model_family,
             "explanation_level": explanation_level,
             "overall_status": overall_status,
@@ -699,7 +705,11 @@ class ModelLimitationsNode(NodeType):
             store, artifact_type="report", role="report",
             stem=f"limitations-{context.step_spec.step_id}",
             payload=report,
-            metadata={"model_family": model_family, "overall_status": overall_status},
+            metadata={
+                "model_family": model_family,
+                "overall_status": overall_status,
+                "schema_version": SCHEMA_EXPLAINABILITY_REPORT,
+            },
         )
         return NodeOutput(artifacts=[art], metrics={"overall_status": overall_status})
 

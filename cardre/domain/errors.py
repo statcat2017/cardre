@@ -147,6 +147,12 @@ class MissingInputArtifactError(CardreError):
     status_code = 400
 
 
+class NodeRoleAccessViolation(CardreError):
+    """Raised when a node receives an artifact role outside its contract."""
+    code = "NODE_ROLE_ACCESS_VIOLATION"
+    status_code = 400
+
+
 class ParameterValidationError(CardreError):
     """Raised when node parameter validation fails."""
     code = "PARAMETER_VALIDATION_ERROR"
@@ -209,6 +215,7 @@ __all__ = [
     "GovernanceNotEnabled",
     "GraphValidationError",
     "MissingInputArtifactError",
+    "NodeRoleAccessViolation",
     "NodeNotAvailableForLaunch",
     "OptionalDependencyNotInstalled",
     "ParameterValidationError",

@@ -643,7 +643,17 @@ class NoopNode(NodeType):
     version = "1"
     category = "transform"
     is_internal = True
-    input_roles: list[str] = []
+    input_roles: list[str] = [
+        "input",
+        "train",
+        "test",
+        "oot",
+        "definition",
+        "report",
+        "model",
+        "scorecard",
+        "manifest",
+    ]
     output_roles: list[str] = []
 
     def run(self, context: ExecutionContext) -> NodeOutput:

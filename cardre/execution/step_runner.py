@@ -22,6 +22,7 @@ import numpy as np
 from cardre.domain.errors import (
     MissingInputArtifactError,
     NodeFailedWithArtifacts,
+    NodeRoleAccessViolation,
     ParameterValidationError,
 )
 from cardre.domain.run import RunStep, RunStepStatus
@@ -125,16 +126,11 @@ class StepRunner:
             if (rs := run_step_records.get(pid)) is not None
         ]
         input_artifacts: list[ArtifactRef] = []
+        resolved_input_artifacts: list[ArtifactRef] = []
         input_artifact_ids_by_parent: dict[str, list[str]] = {}
 
         try:
-            input_artifacts = self._resolve_inputs(spec, step_outputs)
-
-            for pid in spec.parent_step_ids:
-                parent_artifacts = step_outputs.get(pid, [])
-                input_artifact_ids_by_parent[pid] = [
-                    a.artifact_id for a in parent_artifacts
-                ]
+            resolved_input_artifacts = self._resolve_inputs(spec, step_outputs)
 
             node = self._node_registry.instantiate(spec.node_type)
             validation_errors = node.validate_params(dict(spec.params))
@@ -149,6 +145,16 @@ class StepRunner:
                         "errors": validation_errors,
                     },
                 )
+            input_artifacts = self._filter_input_artifacts(
+                spec, node.contract().input_roles, resolved_input_artifacts,
+            )
+
+            for pid in spec.parent_step_ids:
+                parent_artifacts = step_outputs.get(pid, [])
+                input_artifact_ids_by_parent[pid] = [
+                    a.artifact_id for a in parent_artifacts
+                    if a in input_artifacts
+                ]
 
             context = ExecutionContext(
                 store=self._store,
@@ -275,6 +281,42 @@ class StepRunner:
                 )
             artifacts.extend(parent_outputs)
         return artifacts
+
+    @staticmethod
+    def _filter_input_artifacts(
+        spec: StepSpec,
+        allowed_roles: list[str],
+        artifacts: list[ArtifactRef],
+    ) -> list[ArtifactRef]:
+        if not artifacts:
+            return []
+        allowed = set(allowed_roles)
+        if not allowed:
+            unexpected = sorted({artifact.role for artifact in artifacts})
+            raise NodeRoleAccessViolation(
+                f"Step {spec.step_id!r} ({spec.node_type}) received artifact role(s) "
+                f"{unexpected}, but its input contract allows no parent artifacts.",
+                context={
+                    "step_id": spec.step_id,
+                    "node_type": spec.node_type,
+                    "unexpected_roles": unexpected,
+                    "allowed_roles": [],
+                },
+            )
+        filtered = [artifact for artifact in artifacts if artifact.role in allowed]
+        if filtered:
+            return filtered
+        unexpected = sorted({artifact.role for artifact in artifacts})
+        raise NodeRoleAccessViolation(
+            f"Step {spec.step_id!r} ({spec.node_type}) received artifact role(s) "
+            f"{unexpected}, but none match its input contract {sorted(allowed)}.",
+            context={
+                "step_id": spec.step_id,
+                "node_type": spec.node_type,
+                "unexpected_roles": unexpected,
+                "allowed_roles": sorted(allowed),
+            },
+        )
 
 
 __all__ = ["StepExecutionResult", "StepRunner"]

@@ -104,6 +104,7 @@ class ExplainabilityReport:
     global_importance_fields: list[str] = field(default_factory=list)
     source_artifact_id: str = ""
     schema_version: str = ""
+    _raw: JsonDict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ExplainabilityReport:
@@ -115,6 +116,7 @@ class ExplainabilityReport:
             global_importance_fields=[str(v) for v in data.get("global_importance_fields", [])],
             source_artifact_id=artifact_id,
             schema_version=data.get("schema_version", ""),
+            _raw=data,
         )
 
 
