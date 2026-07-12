@@ -155,6 +155,14 @@ def _fit_isotonic_cv(
     return _CalibratorEnsemble(all_calibrators, method="isotonic")
 
 
+def _supports_folded_linear_calibration(typed_model: Any) -> bool:
+    return (
+        typed_model.model_family == "logistic_regression"
+        and typed_model.has_explicit_intercept
+        and bool(typed_model.coefficients_dict)
+    )
+
+
 class CalibrateProbabilitiesNode(NodeType):
     node_type = "cardre.calibrate_probabilities"
     version = "1"
@@ -392,11 +400,7 @@ class CalibrateProbabilitiesNode(NodeType):
         # Read model artifact once for model_family checks and later update
         model_art = next(a for a in context.input_artifacts if a.role == "model")
         typed_model = reader.read(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-        model_family = typed_model.model_family
-        has_linear_coefficients = (
-            model_family == "logistic_regression"
-            and bool(typed_model.coefficients_dict)
-        )
+        has_linear_coefficients = _supports_folded_linear_calibration(typed_model)
 
         # 5. Fit calibrator (skip if too few rows)
 

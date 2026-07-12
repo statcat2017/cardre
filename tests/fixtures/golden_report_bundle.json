@@ -2805,8 +2805,8 @@
     "target_column": "credit_risk_class"
   },
   "exclusion_summary": {
-    "rows_before": 0,
-    "rows_after": 0,
+    "rows_before": 60,
+    "rows_after": 60,
     "rules": [],
     "source_step_refs": [
       {

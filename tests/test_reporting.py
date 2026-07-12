@@ -9,7 +9,10 @@ from __future__ import annotations
 import json
 import uuid
 
-from cardre._evidence.schemas import SCHEMA_EXPLAINABILITY_REPORT
+from cardre._evidence.schemas import (
+    SCHEMA_EXCLUSION_SUMMARY,
+    SCHEMA_EXPLAINABILITY_REPORT,
+)
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.readiness import check_report_readiness
 from cardre.readiness.dto import ReportReadinessResult
@@ -447,6 +450,94 @@ def test_generate_report_bundle_missing_run(tmp_path):
     )
     assert bundle is not None
     assert hasattr(bundle, 'model_dump')
+
+
+def test_generate_report_bundle_preserves_exclusion_summary_counts(store):
+    project_id = str(uuid.uuid4())
+    plan_id = str(uuid.uuid4())
+    plan_version_id = str(uuid.uuid4())
+    branch_id = str(uuid.uuid4())
+    run_id = str(uuid.uuid4())
+    run_step_id = str(uuid.uuid4())
+    now = utc_now_iso()
+
+    store.execute(
+        "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+        (project_id, "Report Test", now, "0.2.0"),
+    )
+    store.execute(
+        "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+        (plan_id, project_id, "Plan", now),
+    )
+    store.execute(
+        "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
+        "VALUES (?, ?, 1, 1, ?, ?)",
+        (plan_version_id, plan_id, now, "Base"),
+    )
+    store.execute(
+        "INSERT INTO plan_branches "
+        "(branch_id, project_id, plan_id, name, description, branch_type, status, "
+        " base_plan_version_id, head_plan_version_id, branch_point_step_id, "
+        " branch_point_canonical_step_id, segment_filter_spec_json, created_reason, created_at, updated_at) "
+        "VALUES (?, ?, ?, 'branch', NULL, 'feature', 'active', ?, ?, NULL, NULL, NULL, 'test', ?, ?)",
+        (branch_id, project_id, plan_id, plan_version_id, plan_version_id, now, now),
+    )
+    store.execute(
+        "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, finished_at) "
+        "VALUES (?, ?, 'succeeded', ?, ?, ?)",
+        (run_id, plan_version_id, now, now, now),
+    )
+    store.execute(
+        "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, params_json, params_hash, position, canonical_step_id) "
+        "VALUES ('apply-exclusions', ?, 'cardre.apply_exclusions', '1', 'prep', '{}', 'hash-apply-exclusions', 0, 'apply-exclusions')",
+        (plan_version_id,),
+    )
+    store.execute(
+        "INSERT INTO branch_step_map "
+        "(branch_step_map_id, branch_id, plan_version_id, canonical_step_id, step_id, is_branch_owned, created_at) "
+        "VALUES (?, ?, ?, 'apply-exclusions', 'apply-exclusions', 1, ?)",
+        (str(uuid.uuid4()), branch_id, plan_version_id, now),
+    )
+    store.execute(
+        "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, execution_fingerprint_json) "
+        "VALUES (?, ?, 'apply-exclusions', ?, 'succeeded', ?, ?, '{}')",
+        (run_step_id, run_id, plan_version_id, now, now),
+    )
+
+    artifact_dir = store.root / "artifacts"
+    artifact_dir.mkdir(exist_ok=True)
+    artifact_id = str(uuid.uuid4())
+    artifact_path = artifact_dir / f"{artifact_id}.json"
+    artifact_path.write_text(json.dumps({
+        "schema_version": SCHEMA_EXCLUSION_SUMMARY,
+        "rows_before": 60,
+        "rows_after": 45,
+        "rows_excluded": 15,
+        "rules": [{"reason": "missing income", "rows_removed": 15}],
+    }), encoding="utf-8")
+    store.execute(
+        "INSERT INTO artifacts "
+        "(artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at, metadata_json) "
+        "VALUES (?, 'report', 'report', ?, 'ph-excl', 'lh-excl', 'application/json', ?, ?)",
+        (
+            artifact_id,
+            str(artifact_path.relative_to(store.root)),
+            now,
+            json.dumps({"schema_version": SCHEMA_EXCLUSION_SUMMARY}),
+        ),
+    )
+    store.execute(
+        "INSERT INTO artifact_lineage "
+        "(lineage_id, run_id, run_step_id, plan_version_id, step_id, artifact_id, direction, created_at) "
+        "VALUES (?, ?, ?, ?, 'apply-exclusions', ?, 'output', ?)",
+        (str(uuid.uuid4()), run_id, run_step_id, plan_version_id, artifact_id, now),
+    )
+
+    bundle = generate_report_bundle(store, project_id, run_id, branch_id)
+
+    assert bundle.exclusion_summary.rows_before == 60
+    assert bundle.exclusion_summary.rows_after == 45
+    assert bundle.exclusion_summary.rules[0].rows_removed == 15
 
 
 # ---------------------------------------------------------------------------

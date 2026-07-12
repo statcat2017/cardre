@@ -750,8 +750,8 @@ class ReportCollector:
             for i, r in enumerate(evidence.rules)
         ]
         bundle.exclusion_summary = ExclusionSummaryInfo(
-            rows_before=0,
-            rows_after=0,
+            rows_before=evidence.rows_before,
+            rows_after=evidence.rows_after,
             rules=rules,
             source_step_refs=[ref.to_schema_ref()],
         )

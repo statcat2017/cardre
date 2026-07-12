@@ -122,6 +122,10 @@ class ModelArtifact:
     def calibration(self) -> JsonDict:
         return dict(self._raw.get("calibration", {}))
 
+    @property
+    def has_explicit_intercept(self) -> bool:
+        return "intercept" in self._raw
+
     def to_dict(self) -> JsonDict:
         return dict(self._raw)
 
