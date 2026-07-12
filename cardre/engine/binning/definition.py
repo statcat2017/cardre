@@ -415,6 +415,10 @@ class LifecycleBinDefinition:
 
                 if action == "merge_bins":
                     before_labels = [bin_id_map[bid].label for bid in source_bin_ids]
+                    source_kind = bin_id_map[source_bin_ids[0]].kind
+                    total_row_count = sum(bin_id_map[bid].row_count for bid in source_bin_ids)
+                    total_good = sum(bin_id_map[bid].good_count for bid in source_bin_ids)
+                    total_bad = sum(bin_id_map[bid].bad_count for bid in source_bin_ids)
                     merged = LifecycleBin(
                         bin_id=f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
                         label=override.get("new_label", "Merged"),
@@ -424,9 +428,10 @@ class LifecycleBinDefinition:
                         upper_inclusive=bin_id_map[source_bin_ids[-1]].upper_inclusive,
                         categories=None,
                         is_missing_bin=False,
-                        row_count=sum(bin_id_map[bid].row_count for bid in source_bin_ids),
-                        good_count=sum(bin_id_map[bid].good_count for bid in source_bin_ids),
-                        bad_count=sum(bin_id_map[bid].bad_count for bid in source_bin_ids),
+                        row_count=total_row_count,
+                        good_count=total_good,
+                        bad_count=total_bad,
+                        kind=source_kind,
                     )
                     override_event["before"] = before_labels
                     override_event["after"] = merged.label
@@ -442,6 +447,10 @@ class LifecycleBinDefinition:
                         c = bin_id_map[bid].categories
                         if c:
                             before_cats.extend(c)
+                    source_kind = bin_id_map[source_bin_ids[0]].kind
+                    total_row_count = sum(bin_id_map[bid].row_count for bid in source_bin_ids)
+                    total_good = sum(bin_id_map[bid].good_count for bid in source_bin_ids)
+                    total_bad = sum(bin_id_map[bid].bad_count for bid in source_bin_ids)
                     grouped = LifecycleBin(
                         bin_id=f"{variable}_manual_grouped",
                         label=override.get("new_label", "Grouped"),
@@ -449,9 +458,10 @@ class LifecycleBinDefinition:
                         lower_inclusive=False, upper_inclusive=False,
                         categories=before_cats,
                         is_missing_bin=False,
-                        row_count=sum(bin_id_map[bid].row_count for bid in source_bin_ids),
-                        good_count=sum(bin_id_map[bid].good_count for bid in source_bin_ids),
-                        bad_count=sum(bin_id_map[bid].bad_count for bid in source_bin_ids),
+                        row_count=total_row_count,
+                        good_count=total_good,
+                        bad_count=total_bad,
+                        kind=source_kind,
                     )
                     override_event["before"] = before_cats
                     override_event["after"] = override.get("new_label", "Grouped")

@@ -185,3 +185,69 @@ class TestApplyOverrides:
         assert result.rejected[0].active is False
         assert result.rejected[0].status == "excluded"
         assert result.rejected[0].failure_reason == "Test rejection"
+
+    def test_merge_bins_preserves_kind_and_counts(self):
+        var = LifecycleVariable(
+            variable="age",
+            kind="numeric",
+            bins=[
+                LifecycleBin(bin_id="b1", label="Low", lower=0, upper=30, kind="numeric", row_count=100, good_count=60, bad_count=40),
+                LifecycleBin(bin_id="b2", label="Mid", lower=30, upper=60, kind="numeric", row_count=200, good_count=120, bad_count=80),
+                LifecycleBin(bin_id="b3", label="High", lower=60, upper=100, kind="numeric", row_count=150, good_count=90, bad_count=60),
+            ],
+            active=True,
+        )
+        bin_def = LifecycleBinDefinition(variables=[var], rejected=[])
+
+        result = LifecycleBinDefinition.apply_overrides(
+            bin_def,
+            [{"variable": "age", "action": "merge_bins", "source_bin_ids": ["b1", "b2"], "new_label": "Low-Mid", "reason": "Merge sparse bins"}],
+        )
+
+        assert len(result.variables) == 1
+        merged_bins = result.variables[0].bins
+        assert len(merged_bins) == 2, "Should have 2 bins after merging 3 into 2"
+        merged = merged_bins[0]
+        assert merged.bin_id == "age_manual_low-mid"
+        assert merged.label == "Low-Mid"
+        assert merged.lower == 0
+        assert merged.upper == 60
+        assert merged.kind == "numeric"
+        assert merged.row_count == 300
+        assert merged.good_count == 180
+        assert merged.bad_count == 120
+        assert merged.is_missing_bin is False
+        assert merged.categories is None
+
+    def test_group_categories_preserves_kind_and_counts(self):
+        var = LifecycleVariable(
+            variable="cat_var",
+            kind="categorical",
+            bins=[
+                LifecycleBin(bin_id="c1", label="A", categories=["a"], kind="categorical", row_count=50, good_count=30, bad_count=20),
+                LifecycleBin(bin_id="c2", label="B", categories=["b"], kind="categorical", row_count=70, good_count=40, bad_count=30),
+                LifecycleBin(bin_id="c3", label="C", categories=["c"], kind="categorical", row_count=100, good_count=60, bad_count=40),
+            ],
+            active=True,
+        )
+        bin_def = LifecycleBinDefinition(variables=[var], rejected=[])
+
+        result = LifecycleBinDefinition.apply_overrides(
+            bin_def,
+            [{"variable": "cat_var", "action": "group_categories", "source_bin_ids": ["c1", "c2"], "new_label": "A-B", "reason": "Group sparse categories"}],
+        )
+
+        assert len(result.variables) == 1
+        grouped_bins = result.variables[0].bins
+        assert len(grouped_bins) == 2, "Should have 2 bins after grouping 3 into 2"
+        grouped = grouped_bins[0]
+        assert grouped.bin_id == "cat_var_manual_grouped"
+        assert grouped.label == "A-B"
+        assert grouped.categories == ["a", "b"]
+        assert grouped.kind == "categorical"
+        assert grouped.row_count == 120
+        assert grouped.good_count == 70
+        assert grouped.bad_count == 50
+        assert grouped.is_missing_bin is False
+        assert grouped.lower is None
+        assert grouped.upper is None

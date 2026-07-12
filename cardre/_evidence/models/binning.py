@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cardre.domain.diagnostics import JsonDict
+
+if TYPE_CHECKING:
+    from cardre.engine.binning.definition import LifecycleBinDefinition
 
 
 @dataclass(frozen=True)
@@ -23,7 +26,7 @@ class BinVariable:
 class BinDefinition:
     variables: list[BinVariable]
     source_artifact_id: str
-    _lifecycle: Any = field(default=None, repr=False)
+    _lifecycle: LifecycleBinDefinition | None = field(default=None, repr=False)
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> BinDefinition:
@@ -46,7 +49,7 @@ class BinDefinition:
         return {"variables": [v.to_dict() for v in self.variables]}
 
     @property
-    def lifecycle(self) -> Any | None:
+    def lifecycle(self) -> LifecycleBinDefinition | None:
         return self._lifecycle
 
     @property
