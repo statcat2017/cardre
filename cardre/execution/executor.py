@@ -11,7 +11,6 @@ evidence was resolved before the failure.
 
 from __future__ import annotations
 
-import enum
 import sys
 import threading
 import traceback
@@ -40,29 +39,6 @@ if TYPE_CHECKING:
 
 STATUS_SUCCEEDED = "succeeded"
 STATUS_FAILED = "failed"
-
-
-def _json_ready(value: Any) -> Any:
-    if isinstance(value, enum.Enum):
-        return value.value
-    if isinstance(value, dict):
-        return {str(k): _json_ready(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_json_ready(v) for v in value]
-    if isinstance(value, tuple):
-        return [_json_ready(v) for v in value]
-    if isinstance(value, set):
-        return [_json_ready(v) for v in value]
-    import numpy as np
-    if isinstance(value, (np.bool_,)):
-        return bool(value)
-    if isinstance(value, (np.integer,)):
-        return int(value)
-    if isinstance(value, (np.floating,)):
-        return float(value)
-    if isinstance(value, (np.ndarray,)):
-        return [_json_ready(v) for v in value.tolist()]
-    return value
 
 
 class _HeartbeatWatchdog:

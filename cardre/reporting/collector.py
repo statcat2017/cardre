@@ -6,7 +6,6 @@ It must not become a second modelling execution path.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -21,6 +20,8 @@ from cardre._evidence.schemas import (
     SCHEMA_SEPARATION_DIAGNOSTICS,
     SCHEMA_VIF_DIAGNOSTICS,
 )
+from cardre.branch_step_resolver import ResolvedStepRef as _ResolvedStepRef
+from cardre.branch_step_resolver import resolve_required_steps, resolve_step_for_branch
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.errors import Diagnostic
 from cardre.domain.run import RunStep
@@ -61,7 +62,6 @@ from cardre.reporting.schema import (
     ReportBundle,
     ReportGenerationInfo,
     ReproducibilityInfo,
-    ResolvedStepRef,
     RunManifest,
     RunStatusInfo,
     SampleDefinitionInfo,
@@ -78,94 +78,7 @@ from cardre.store import ProjectStore
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.run_repo import RunRepository
 
-# ---------------------------------------------------------------------------
-# Inlined step resolution helpers (formerly cardre.step_id)
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class _ResolvedStepRef:
-    requested_branch_id: str
-    resolved_branch_id: str
-    canonical_step_id: str
-    step_id: str
-    resolution: str  # "exact" or "ancestor"
-    artifact_ids: list[str] = field(default_factory=list)
-
-
-def _resolve_step_for_branch(
-    *,
-    branch_id: str,
-    canonical_step_id: str,
-    branch_step_map: list[dict[str, Any]],
-    allow_ancestor: bool = True,
-) -> _ResolvedStepRef | None:
-    for row in branch_step_map:
-        if row["canonical_step_id"] != canonical_step_id:
-            continue
-        is_shared = bool(row.get("is_shared_upstream", False))
-        is_owned = bool(row.get("is_branch_owned", True))
-        source_branch_id = row.get("source_branch_id")
-        if is_owned and not is_shared:
-            return _ResolvedStepRef(
-                requested_branch_id=branch_id,
-                resolved_branch_id=branch_id,
-                canonical_step_id=canonical_step_id,
-                step_id=row["step_id"],
-                resolution="exact",
-            )
-        if is_shared and source_branch_id:
-            if allow_ancestor:
-                return _ResolvedStepRef(
-                    requested_branch_id=branch_id,
-                    resolved_branch_id=source_branch_id,
-                    canonical_step_id=canonical_step_id,
-                    step_id=row["step_id"],
-                    resolution="ancestor",
-                )
-            return None
-        return _ResolvedStepRef(
-            requested_branch_id=branch_id,
-            resolved_branch_id=branch_id,
-            canonical_step_id=canonical_step_id,
-            step_id=row["step_id"],
-            resolution="exact",
-        )
-    return None
-
-
-def _resolve_required_steps(
-    *,
-    branch_id: str,
-    canonical_step_ids: list[str],
-    branch_step_map: list[dict[str, Any]],
-    allow_ancestor: bool = True,
-) -> dict[str, _ResolvedStepRef]:
-    result: dict[str, _ResolvedStepRef] = {}
-    for cid in canonical_step_ids:
-        ref = _resolve_step_for_branch(
-            branch_id=branch_id,
-            canonical_step_id=cid,
-            branch_step_map=branch_step_map,
-            allow_ancestor=allow_ancestor,
-        )
-        if ref is not None:
-            result[cid] = ref
-    return result
-
-
 CARDRE_VERSION = "0.1.0"
-
-
-def _to_schema_ref(ref: _ResolvedStepRef) -> ResolvedStepRef:
-    """Convert a step_id.ResolvedStepRef (dataclass) to a schema.ResolvedStepRef (Pydantic)."""
-    return ResolvedStepRef(
-        requested_branch_id=ref.requested_branch_id,
-        resolved_branch_id=ref.resolved_branch_id,
-        canonical_step_id=ref.canonical_step_id,
-        step_id=ref.step_id,
-        resolution=ref.resolution,
-    )
 
 
 def _utc_now() -> str:
@@ -239,14 +152,14 @@ class ReportCollector:
             step_map = self.store.get_branch_step_map(self.target_branch_id, branch_head_pv)
 
         # Resolve required steps
-        resolved = _resolve_required_steps(
+        resolved = resolve_required_steps(
             branch_id=self.target_branch_id,
             canonical_step_ids=REQUIRED_STEPS_COLLECTOR,
             branch_step_map=step_map,
         )
 
         # Modelling metadata (target column, value mapping)
-        modelling_ref = _resolve_step_for_branch(
+        modelling_ref = resolve_step_for_branch(
             branch_id=self.target_branch_id,
             canonical_step_id="define-metadata",
             branch_step_map=step_map,
@@ -524,13 +437,7 @@ class ReportCollector:
                 final_bin_count=len(var_bins),
                 iv=var.iv,
                 woe_smoothing=woe_smoothing,
-                source_step_refs=[ResolvedStepRef(
-                    requested_branch_id=ref.requested_branch_id,
-                    resolved_branch_id=ref.resolved_branch_id,
-                    canonical_step_id=ref.canonical_step_id,
-                    step_id=ref.step_id,
-                    resolution=ref.resolution,
-                )],
+                source_step_refs=[ref.to_schema_ref()],
                 bins=var_bins,
                 affected_bins=affected_bins,
             ))
@@ -573,7 +480,7 @@ class ReportCollector:
                 features=features,
                 intercept=model_art.intercept,
                 fit_dataset_role="train",
-                source_step_refs=[_to_schema_ref(ref)],
+                source_step_refs=[ref.to_schema_ref()],
             )
         else:
             self.limitations.append(Limitation(
@@ -647,7 +554,7 @@ class ReportCollector:
                 rounding=scaling.rounding,
                 min_score=scaling.min_score,
                 max_score=scaling.max_score,
-                source_step_refs=[_to_schema_ref(ref)],
+                source_step_refs=[ref.to_schema_ref()],
             )
         else:
             self.limitations.append(Limitation(
@@ -676,7 +583,7 @@ class ReportCollector:
             ))
             return
 
-        validation = ValidationInfo(source_step_refs=[_to_schema_ref(ref)])
+        validation = ValidationInfo(source_step_refs=[ref.to_schema_ref()])
         for role_name, rm in val.metrics_by_role.items():
             validation.metrics_by_role.append(MetricsByRole(
                 role=role_name,
@@ -719,7 +626,7 @@ class ReportCollector:
                 ]
                 tables.append(CutoffTable(role=role_name, rows=cutoff_rows))
             if tables:
-                bundle.cutoffs = CutoffInfo(cutoff_tables=tables, source_step_refs=[_to_schema_ref(ref)])
+                bundle.cutoffs = CutoffInfo(cutoff_tables=tables, source_step_refs=[ref.to_schema_ref()])
         else:
             self.limitations.append(Limitation(
                 severity="warning", code=LimitationCode.NO_CUTOFF_ANALYSIS,
@@ -732,7 +639,7 @@ class ReportCollector:
         # Populate review state from step params + annotation
         step_map = self.store.get_branch_step_map(self.target_branch_id, plan_version_id)
         if step_map:
-            mb_ref = _resolve_step_for_branch(
+            mb_ref = resolve_step_for_branch(
                 branch_id=self.target_branch_id,
                 canonical_step_id="manual-binning",
                 branch_step_map=step_map,
@@ -825,7 +732,7 @@ class ReportCollector:
             rows_before=raw.get("rows_before", 0),
             rows_after=raw.get("rows_after", 0),
             rules=rules,
-            source_step_refs=[_to_schema_ref(ref)],
+            source_step_refs=[ref.to_schema_ref()],
         )
 
     def _collect_sample_definition(
@@ -842,7 +749,7 @@ class ReportCollector:
             sample_method=raw.get("sample_method", ""),
             sample_domain=raw.get("sample_domain", ""),
             sample_description=raw.get("sample_description", ""),
-            source_step_refs=[_to_schema_ref(ref)],
+            source_step_refs=[ref.to_schema_ref()],
         )
 
     def _collect_initial_woe_iv(
@@ -859,7 +766,7 @@ class ReportCollector:
                 variable_name=var.variable_name,
                 role="initial",
                 iv=var.iv,
-                source_step_refs=[_to_schema_ref(ref)],
+                source_step_refs=[ref.to_schema_ref()],
             ))
 
     def _collect_coefficient_sign_check(
@@ -886,7 +793,7 @@ class ReportCollector:
             for v in variables
         ]
         bundle.model_diagnostics.coefficient_sign_check = entries
-        bundle.model_diagnostics.source_step_refs.append(_to_schema_ref(ref))
+        bundle.model_diagnostics.source_step_refs.append(ref.to_schema_ref())
 
     def _collect_separation_diagnostics(
         self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
@@ -912,7 +819,7 @@ class ReportCollector:
             for v in variables
         ]
         bundle.model_diagnostics.separation_diagnostics = entries
-        bundle.model_diagnostics.source_step_refs.append(_to_schema_ref(ref))
+        bundle.model_diagnostics.source_step_refs.append(ref.to_schema_ref())
 
     def _collect_vif_diagnostics(
         self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
@@ -936,7 +843,7 @@ class ReportCollector:
             for v in variables
         ]
         bundle.model_diagnostics.vif_diagnostics = entries
-        bundle.model_diagnostics.source_step_refs.append(_to_schema_ref(ref))
+        bundle.model_diagnostics.source_step_refs.append(ref.to_schema_ref())
 
     def _collect_calibration_diagnostics(
         self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
@@ -974,7 +881,7 @@ class ReportCollector:
                 status=role_data.get("status", ""),
             )
         bundle.model_diagnostics.calibration_diagnostics = role_entries
-        bundle.model_diagnostics.source_step_refs.append(_to_schema_ref(ref))
+        bundle.model_diagnostics.source_step_refs.append(ref.to_schema_ref())
 
     def _read_raw_json_by_step(self, rs: Any, schema_version: str) -> dict[str, Any] | None:
         import json
@@ -1004,7 +911,7 @@ class ReportCollector:
             selected_variables=list(raw.get("selected", [])),
             rejected_variables=list(raw.get("rejected", [])),
             min_iv=raw.get("min_iv", 0.0),
-            source_step_refs=[_to_schema_ref(ref)],
+            source_step_refs=[ref.to_schema_ref()],
         )
 
     def _collect_implementation_artifacts(
@@ -1048,7 +955,7 @@ class ReportCollector:
                 artifact_id=sql_art.artifact_id if sql_art else "",
                 description="Standalone SQL scoring query",
             ) if sql_art else None,
-            source_step_refs=[_to_schema_ref(r) for r in [table_ref, py_ref, sql_ref] if r is not None],
+            source_step_refs=[r.to_schema_ref() for r in [table_ref, py_ref, sql_ref] if r is not None],
         )
 
     def _find_artifact_by_step(self, rs: Any, schema_version: str) -> Any | None:
@@ -1069,7 +976,7 @@ class ReportCollector:
         step_map = self.store.get_branch_step_map(self.target_branch_id, plan_version_id)
         if not step_map:
             return
-        for _cid, r in _resolve_required_steps(
+        for _cid, r in resolve_required_steps(
             branch_id=self.target_branch_id,
             canonical_step_ids=["variable-clustering"],
             branch_step_map=step_map,

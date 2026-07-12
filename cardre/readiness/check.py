@@ -6,14 +6,13 @@ branch mode (warns but does not block without champion assignment).
 
 from __future__ import annotations
 
-# ---------------------------------------------------------------------------
-# Inlined step resolution helpers (formerly cardre.step_id)
-# ---------------------------------------------------------------------------
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
 
 from cardre._evidence.kinds import EvidenceKind
+from cardre.branch_step_resolver import (
+    resolve_required_steps,
+    resolve_step_for_branch,
+)
 from cardre.readiness.dto import ReadinessBlocker, ReadinessWarning, ReportReadinessResult
 from cardre.readiness.limitation_codes import LimitationCode
 from cardre.reporting.evidence_contract import (
@@ -21,77 +20,6 @@ from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_CHAMPION,
 )
 from cardre.store import ProjectStore
-
-
-@dataclass
-class ResolvedStepRef:
-    requested_branch_id: str
-    resolved_branch_id: str
-    canonical_step_id: str
-    step_id: str
-    resolution: str  # "exact" or "ancestor"
-    artifact_ids: list[str] = field(default_factory=list)
-
-
-def resolve_step_for_branch(
-    *,
-    branch_id: str,
-    canonical_step_id: str,
-    branch_step_map: list[dict[str, Any]],
-    allow_ancestor: bool = True,
-) -> ResolvedStepRef | None:
-    for row in branch_step_map:
-        if row["canonical_step_id"] != canonical_step_id:
-            continue
-        is_shared = bool(row.get("is_shared_upstream", False))
-        is_owned = bool(row.get("is_branch_owned", True))
-        source_branch_id = row.get("source_branch_id")
-        if is_owned and not is_shared:
-            return ResolvedStepRef(
-                requested_branch_id=branch_id,
-                resolved_branch_id=branch_id,
-                canonical_step_id=canonical_step_id,
-                step_id=row["step_id"],
-                resolution="exact",
-            )
-        if is_shared and source_branch_id:
-            if allow_ancestor:
-                return ResolvedStepRef(
-                    requested_branch_id=branch_id,
-                    resolved_branch_id=source_branch_id,
-                    canonical_step_id=canonical_step_id,
-                    step_id=row["step_id"],
-                    resolution="ancestor",
-                )
-            return None
-        return ResolvedStepRef(
-            requested_branch_id=branch_id,
-            resolved_branch_id=branch_id,
-            canonical_step_id=canonical_step_id,
-            step_id=row["step_id"],
-            resolution="exact",
-        )
-    return None
-
-
-def resolve_required_steps(
-    *,
-    branch_id: str,
-    canonical_step_ids: list[str],
-    branch_step_map: list[dict[str, Any]],
-    allow_ancestor: bool = True,
-) -> dict[str, ResolvedStepRef]:
-    result: dict[str, ResolvedStepRef] = {}
-    for cid in canonical_step_ids:
-        ref = resolve_step_for_branch(
-            branch_id=branch_id,
-            canonical_step_id=cid,
-            branch_step_map=branch_step_map,
-            allow_ancestor=allow_ancestor,
-        )
-        if ref is not None:
-            result[cid] = ref
-    return result
 
 
 def _check_oot_exists(store: ProjectStore, run_id: str) -> bool:
@@ -485,8 +413,5 @@ def check_report_readiness(
 
 __all__ = [
     "ReportReadinessResult",
-    "ResolvedStepRef",
     "check_report_readiness",
-    "resolve_step_for_branch",
-    "resolve_required_steps",
 ]

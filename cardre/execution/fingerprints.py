@@ -6,13 +6,37 @@ No ProjectStore, no orchestration.
 
 from __future__ import annotations
 
+import enum
 import sys
 from typing import Any, cast
+
+import numpy as np
 
 from cardre._version import __version__ as CARDRE_VERSION
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.run import RunStep
 from cardre.domain.step import StepSpec
+
+
+def _json_ready(value: Any) -> Any:
+    """Recursively convert enum/ndarray/numpy values to JSON-safe types."""
+    if isinstance(value, enum.Enum):
+        return value.value
+    if isinstance(value, dict):
+        return {str(k): _json_ready(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_ready(v) for v in value]
+    if isinstance(value, set):
+        return [_json_ready(v) for v in value]
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return float(value)
+    if isinstance(value, (np.ndarray,)):
+        return [_json_ready(v) for v in value.tolist()]
+    return value
 
 
 def output_logical_hashes(rs: RunStep) -> list[str]:
@@ -57,6 +81,7 @@ def build_execution_fingerprint(
 
 
 __all__ = [
+    "_json_ready",
     "build_execution_fingerprint",
     "build_parent_output_hashes",
     "output_logical_hashes",
