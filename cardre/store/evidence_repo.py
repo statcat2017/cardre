@@ -91,6 +91,46 @@ class EvidenceRepository:
         ).fetchall()
         return [self._row_to_edge(r) for r in rows]
 
+    def get_edges_for_plan_step_branch(
+        self,
+        plan_version_id: str,
+        step_id: str,
+        branch_id: str | None,
+    ) -> list[EvidenceEdge]:
+        """Edges for a plan step, filtered by the run's branch_id and
+        successful run/run-step status.
+
+        ``branch_id=None`` matches runs where ``branch_id IS NULL`` (the
+        full-plan / baseline runs).  Only edges from succeeded runs whose
+        target run-step also succeeded are returned — failed/cancelled
+        run-steps are excluded even if a newer edge exists.
+        """
+        if branch_id is None:
+            rows = self._store.execute(
+                "SELECT ee.* FROM evidence_edges ee "
+                "JOIN runs r ON ee.run_id = r.run_id "
+                "JOIN run_steps rs ON ee.run_step_id = rs.run_step_id "
+                "WHERE ee.plan_version_id = ? AND ee.step_id = ? "
+                "AND r.branch_id IS NULL "
+                "AND r.status = 'succeeded' "
+                "AND rs.status = 'succeeded' "
+                "ORDER BY ee.created_at, ee.evidence_edge_id",
+                (plan_version_id, step_id),
+            ).fetchall()
+        else:
+            rows = self._store.execute(
+                "SELECT ee.* FROM evidence_edges ee "
+                "JOIN runs r ON ee.run_id = r.run_id "
+                "JOIN run_steps rs ON ee.run_step_id = rs.run_step_id "
+                "WHERE ee.plan_version_id = ? AND ee.step_id = ? "
+                "AND r.branch_id = ? "
+                "AND r.status = 'succeeded' "
+                "AND rs.status = 'succeeded' "
+                "ORDER BY ee.created_at, ee.evidence_edge_id",
+                (plan_version_id, step_id, branch_id),
+            ).fetchall()
+        return [self._row_to_edge(r) for r in rows]
+
     def get_edge_for_child_parent(
         self,
         plan_version_id: str,

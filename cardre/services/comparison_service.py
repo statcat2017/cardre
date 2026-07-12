@@ -33,14 +33,17 @@ def _check_branch_readiness(
 ) -> list[dict[str, str]]:
     """Check if a branch has current successful evidence for required canonical steps.
 
-    Uses branch-scoped evidence lookup. For baseline branches, falls back
-    to full-plan (branch_id=NULL) evidence since baseline runs pre-date
-    the branch model.
+    Uses ``EvidenceLocator`` (ADR-0005 §3) for branch-scoped evidence lookup
+    with the canonical branch→full→plan fallback. For baseline branches,
+    ``branch_id=None`` is used directly since baseline runs pre-date the
+    branch model.
 
     Handles legacy canonical step aliases (e.g., logistic-regression -> model-fit).
 
     Returns a list of missing-or-stale entries; empty list = ready.
     """
+    from cardre.evidence_locator import EvidenceLocator
+
     branches_repo = BranchRepository(store)
     step_map = branches_repo.get_step_map(branch_id, plan_version_id)
     canon_to_actual: dict[str, str] = {}
@@ -48,17 +51,18 @@ def _check_branch_readiness(
         canon_to_actual[row["canonical_step_id"]] = row["step_id"]
 
     staleness_svc = StalenessService(store)
+    locator = EvidenceLocator(store)
 
     missing: list[dict[str, str]] = []
     for cs in required_steps:
         actual_id = canon_to_actual.get(cs, cs)
         evidence_branch = branch_id if not is_baseline else None
-        rs = store.get_latest_successful_run_step(
+        # Single Locator call — the Locator owns the branch→full→plan
+        # fallback (ADR-0005 §3).  No caller-side retry.
+        resolved = locator.resolve(
             plan_version_id, actual_id, branch_id=evidence_branch,
         )
-        if rs is None and evidence_branch is not None:
-            rs = store.get_latest_successful_run_step(plan_version_id, actual_id, branch_id=None)
-        if rs is None:
+        if resolved is None:
             # Use staleness service to determine if stale or not_run
             explanation = staleness_svc.explain_step(
                 plan_version_id, actual_id, branch_id=evidence_branch,
@@ -128,6 +132,8 @@ def _build_comparison_content(
     step_map_b = branches_repo.get_step_map(branch_id_baseline, plan_version_id_baseline)
     step_map_c = branches_repo.get_step_map(branch_id_challenger, plan_version_id_challenger)
     reader = ArtifactEvidenceReader(store)
+    from cardre.evidence_locator import EvidenceLocator
+    locator = EvidenceLocator(store)
 
     def _find_typed_artifact(
         step_map: list[dict[str, Any]],
@@ -139,9 +145,12 @@ def _build_comparison_content(
         """Find the typed evidence for a canonical step."""
         for row in step_map:
             if row["canonical_step_id"] == cs:
-                rs = store.get_latest_successful_run_step(pv_id, row["step_id"], branch_id=evidence_branch_id)
-                if rs is None and evidence_branch_id is not None:
-                    rs = store.get_latest_successful_run_step(pv_id, row["step_id"], branch_id=None)
+                # Single Locator call — the Locator owns the branch→full→plan
+                # fallback (ADR-0005 §3).  No caller-side retry.
+                resolved = locator.resolve(
+                    pv_id, row["step_id"], branch_id=evidence_branch_id,
+                )
+                rs = resolved.run_step if resolved is not None else None
                 if rs:
                     rows = store.execute(
                         "SELECT artifact_id FROM artifact_lineage "
