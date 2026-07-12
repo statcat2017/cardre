@@ -1,0 +1,23 @@
+name: Setup Python Environment
+description: Setup Python with pip cache and install cardre with extras. Checkout must run before this.
+
+inputs:
+  python-version:
+    description: Python version to use.
+    required: true
+  extras:
+    description: Comma-separated extras to install (e.g. "dev,sidecar,test").
+    required: false
+    default: dev,sidecar,test
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+        cache-dependency-path: pyproject.toml
+    - name: Install dependencies
+      run: pip install -e ".[${{ inputs.extras }}]"
+      shell: bash
