@@ -186,14 +186,14 @@ class TestApplyOverrides:
         assert result.rejected[0].status == "excluded"
         assert result.rejected[0].failure_reason == "Test rejection"
 
-    def test_merge_bins_preserves_kind_and_counts(self):
+    def test_merge_bins_preserves_all_fields(self):
         var = LifecycleVariable(
             variable="age",
             kind="numeric",
             bins=[
-                LifecycleBin(bin_id="b1", label="Low", lower=0, upper=30, kind="numeric", row_count=100, good_count=60, bad_count=40),
-                LifecycleBin(bin_id="b2", label="Mid", lower=30, upper=60, kind="numeric", row_count=200, good_count=120, bad_count=80),
-                LifecycleBin(bin_id="b3", label="High", lower=60, upper=100, kind="numeric", row_count=150, good_count=90, bad_count=60),
+                LifecycleBin(bin_id="b1", label="Low", lower=0, upper=30, kind="numeric", row_count=100, good_count=60, bad_count=40, bad_rate=0.4, row_pct=0.2222, woe=0.5, iv=0.1),
+                LifecycleBin(bin_id="b2", label="Mid", lower=30, upper=60, kind="numeric", row_count=200, good_count=120, bad_count=80, bad_rate=0.4, row_pct=0.4444, woe=-0.3, iv=0.2),
+                LifecycleBin(bin_id="b3", label="High", lower=60, upper=100, kind="numeric", row_count=150, good_count=90, bad_count=60, bad_rate=0.4, row_pct=0.3333, woe=0.1, iv=0.05),
             ],
             active=True,
         )
@@ -216,17 +216,21 @@ class TestApplyOverrides:
         assert merged.row_count == 300
         assert merged.good_count == 180
         assert merged.bad_count == 120
+        assert merged.bad_rate == 120 / 300
+        assert merged.row_pct == pytest.approx(0.2222 + 0.4444, rel=1e-4)
+        assert merged.woe is None
+        assert merged.iv is None
         assert merged.is_missing_bin is False
         assert merged.categories is None
 
-    def test_group_categories_preserves_kind_and_counts(self):
+    def test_group_categories_preserves_all_fields(self):
         var = LifecycleVariable(
             variable="cat_var",
             kind="categorical",
             bins=[
-                LifecycleBin(bin_id="c1", label="A", categories=["a"], kind="categorical", row_count=50, good_count=30, bad_count=20),
-                LifecycleBin(bin_id="c2", label="B", categories=["b"], kind="categorical", row_count=70, good_count=40, bad_count=30),
-                LifecycleBin(bin_id="c3", label="C", categories=["c"], kind="categorical", row_count=100, good_count=60, bad_count=40),
+                LifecycleBin(bin_id="c1", label="A", categories=["a"], kind="categorical", row_count=50, good_count=30, bad_count=20, bad_rate=0.4, row_pct=0.2273, woe=0.5, iv=0.1),
+                LifecycleBin(bin_id="c2", label="B", categories=["b"], kind="categorical", row_count=70, good_count=40, bad_count=30, bad_rate=0.4286, row_pct=0.3182, woe=-0.3, iv=0.2),
+                LifecycleBin(bin_id="c3", label="C", categories=["c"], kind="categorical", row_count=100, good_count=60, bad_count=40, bad_rate=0.4, row_pct=0.4545, woe=0.1, iv=0.05),
             ],
             active=True,
         )
@@ -245,6 +249,16 @@ class TestApplyOverrides:
         assert grouped.label == "A-B"
         assert grouped.categories == ["a", "b"]
         assert grouped.kind == "categorical"
+        assert grouped.row_count == 120
+        assert grouped.good_count == 70
+        assert grouped.bad_count == 50
+        assert grouped.bad_rate == 50 / 120
+        assert grouped.row_pct == pytest.approx(0.2273 + 0.3182, rel=1e-4)
+        assert grouped.woe is None
+        assert grouped.iv is None
+        assert grouped.is_missing_bin is False
+        assert grouped.lower is None
+        assert grouped.upper is None
         assert grouped.row_count == 120
         assert grouped.good_count == 70
         assert grouped.bad_count == 50

@@ -419,6 +419,7 @@ class LifecycleBinDefinition:
                     total_row_count = sum(bin_id_map[bid].row_count for bid in source_bin_ids)
                     total_good = sum(bin_id_map[bid].good_count for bid in source_bin_ids)
                     total_bad = sum(bin_id_map[bid].bad_count for bid in source_bin_ids)
+                    total_row_pct = sum(bin_id_map[bid].row_pct or 0.0 for bid in source_bin_ids)
                     merged = LifecycleBin(
                         bin_id=f"{variable}_manual_{override.get('new_label', 'merged').lower().replace(' ', '_')}",
                         label=override.get("new_label", "Merged"),
@@ -431,6 +432,10 @@ class LifecycleBinDefinition:
                         row_count=total_row_count,
                         good_count=total_good,
                         bad_count=total_bad,
+                        bad_rate=total_bad / total_row_count if total_row_count else None,
+                        row_pct=total_row_pct or None,
+                        woe=None,
+                        iv=None,
                         kind=source_kind,
                     )
                     override_event["before"] = before_labels
@@ -451,6 +456,7 @@ class LifecycleBinDefinition:
                     total_row_count = sum(bin_id_map[bid].row_count for bid in source_bin_ids)
                     total_good = sum(bin_id_map[bid].good_count for bid in source_bin_ids)
                     total_bad = sum(bin_id_map[bid].bad_count for bid in source_bin_ids)
+                    total_row_pct = sum(bin_id_map[bid].row_pct or 0.0 for bid in source_bin_ids)
                     grouped = LifecycleBin(
                         bin_id=f"{variable}_manual_grouped",
                         label=override.get("new_label", "Grouped"),
@@ -461,6 +467,10 @@ class LifecycleBinDefinition:
                         row_count=total_row_count,
                         good_count=total_good,
                         bad_count=total_bad,
+                        bad_rate=total_bad / total_row_count if total_row_count else None,
+                        row_pct=total_row_pct or None,
+                        woe=None,
+                        iv=None,
                         kind=source_kind,
                     )
                     override_event["before"] = before_cats
