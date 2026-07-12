@@ -228,20 +228,20 @@ def _build_comparison_content(
 
         # Coefficient comparison only for coefficient-bearing models
         if b_family == "logistic_regression" and c_family == "logistic_regression":
-            b_coeffs_raw = lr_b.get("coefficients", [])
-            c_coeffs_raw = lr_c.get("coefficients", [])
+            b_coeffs_value = lr_b.get("coefficients", [])
+            c_coeffs_value = lr_c.get("coefficients", [])
             b_coeffs = {}
             c_coeffs = {}
-            if isinstance(b_coeffs_raw, dict):
-                b_coeffs = b_coeffs_raw
+            if isinstance(b_coeffs_value, dict):
+                b_coeffs = b_coeffs_value
             else:
-                for c in b_coeffs_raw:
+                for c in b_coeffs_value:
                     if isinstance(c, dict) and "variable" in c:
                         b_coeffs[c["variable"]] = c
-            if isinstance(c_coeffs_raw, dict):
-                c_coeffs = c_coeffs_raw
+            if isinstance(c_coeffs_value, dict):
+                c_coeffs = c_coeffs_value
             else:
-                for c in c_coeffs_raw:
+                for c in c_coeffs_value:
                     if isinstance(c, dict) and "variable" in c:
                         c_coeffs[c["variable"]] = c
 

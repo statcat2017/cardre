@@ -52,9 +52,6 @@ class FrozenScorecardBundleNode(NodeType):
         if scorecard_art is None or model_art is None or bin_def_art is None or woe_table_art is None:
             raise ValueError("Frozen scorecard bundle cannot be created: missing source artifact reference")
 
-        model_raw = model._raw
-        scorecard_raw = scorecard._raw
-
         created_from = {
             "run_id": context.run_id,
             "plan_version_id": context.plan_version_id,
@@ -85,13 +82,13 @@ class FrozenScorecardBundleNode(NodeType):
             components["selection_physical_hash"] = selection_art.physical_hash
 
         model_features = model.features
-        raw_fc = model_raw.get("feature_contract", {})
+        raw_fc = model.feature_contract
         transformation_strategy = raw_fc.get("transformation_strategy", "woe")
         order_hash = raw_fc.get(
             "order_hash", json_logical_hash({"features": model_features})
         )
 
-        source_variables = model_raw.get("source_variables")
+        source_variables = model.source_variables
         if source_variables is None:
             if model_features and all(
                 f.endswith("_woe") for f in model_features
@@ -111,15 +108,10 @@ class FrozenScorecardBundleNode(NodeType):
             ),
         }
 
-        base_odds = scorecard_raw.get("base_odds", scorecard.base_odds)
-        if isinstance(base_odds, str) and ":" in base_odds:
-            num, den = base_odds.split(":", 1)
-            base_odds = float(num) / float(den)
-        else:
-            base_odds = float(base_odds)
-        higher_is_lower_risk = bool(scorecard_raw.get("higher_score_is_lower_risk", scorecard.score_direction == "higher_is_lower_risk"))
-        intercept = float(scorecard_raw.get("intercept", 0.0))
-        base_points = scorecard_raw.get("base_points")
+        base_odds = scorecard.base_odds
+        higher_is_lower_risk = scorecard.higher_score_is_lower_risk
+        intercept = scorecard.intercept
+        base_points = scorecard.base_points
         if base_points is None:
             direction = -1.0 if higher_is_lower_risk else 1.0
             base_points = round(float(scorecard.offset) + direction * float(scorecard.factor) * intercept, 2)
@@ -153,7 +145,7 @@ class FrozenScorecardBundleNode(NodeType):
         )
 
         model_intercept = model.intercept
-        scorecard_intercept = scorecard_raw.get("intercept")
+        scorecard_intercept = scorecard.intercept
         if scorecard_intercept is not None and abs(
             float(scorecard_intercept) - float(model_intercept)
         ) > 1e-6:
@@ -163,7 +155,7 @@ class FrozenScorecardBundleNode(NodeType):
             )
 
         model_target = model.target_column
-        scorecard_target = str(scorecard_raw.get("target_column", ""))
+        scorecard_target = scorecard.target_column
         if model_target and scorecard_target and model_target != scorecard_target:
             raise ValueError(
                 f"Frozen scorecard bundle cannot be created: model target "

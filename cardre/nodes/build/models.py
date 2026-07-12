@@ -426,9 +426,8 @@ class ScoreScalingNode(NodeType):
                 f"Score scaling requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
             )
 
-        # Detect calibration compatibility before building additive scorecard points
-        model_raw = getattr(model, "_raw", {})
-        calibration = model_raw.get("calibration", {})
+        # Detect calibration compatibility before building additive scorecard points.
+        calibration = model.calibration
         if calibration:
             application_mode = calibration.get("application_mode", "")
             score_scaling_compatible = bool(calibration.get("score_scaling_compatible", False))
@@ -567,9 +566,7 @@ class BuildSummaryReportNode(NodeType):
                 "columns": list(woe_table.columns),
             })
 
-        scorecard_raw = scorecard._raw
-        scorecard_base_odds = scorecard_raw.get("base_odds", scorecard.base_odds)
-        scorecard_base_odds = parse_base_odds(scorecard_base_odds)
+        scorecard_base_odds = scorecard.base_odds
 
         report = {
             "model_summary": {
@@ -584,8 +581,8 @@ class BuildSummaryReportNode(NodeType):
                 "base_score": scorecard.base_score,
                 "base_odds": scorecard_base_odds,
                 "points_to_double_odds": scorecard.pdo,
-                "attribute_count": len(scorecard_raw.get("attributes", [])),
-                "higher_score_is_lower_risk": bool(scorecard_raw.get("higher_score_is_lower_risk", scorecard.score_direction == "higher_is_lower_risk")),
+                "attribute_count": len(scorecard.attributes),
+                "higher_score_is_lower_risk": scorecard.higher_score_is_lower_risk,
             },
             "woe_iv_references": woe_summaries,
             "warnings": model_warnings,

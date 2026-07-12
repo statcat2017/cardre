@@ -10,6 +10,7 @@ from cardre._evidence.models.binning import (
     SelectionDefinition,
 )
 from cardre._evidence.models.diagnostics import (
+    CalibrationBin,
     CalibrationDiagnostics,
     CalibrationRole,
     CoefficientSignDiagnostics,
@@ -25,6 +26,7 @@ from cardre._evidence.models.governance import (
     FairnessReport,
     FeatureSelectionEvidence,
     HyperparameterTuningEvidence,
+    LimitationItem,
     ProxyRiskReport,
     RejectInferenceResult,
     RejectPopulationConfig,
@@ -71,6 +73,7 @@ __all__ = [
     "ArtifactEvidenceSummary",
     "BinDefinition",
     "BinVariable",
+    "CalibrationBin",
     "CalibrationDiagnostics",
     "CalibrationRole",
     "ClusterMember",
@@ -86,6 +89,7 @@ __all__ = [
     "FeatureSelectionEvidence",
     "HyperparameterTuningEvidence",
     "IvTable",
+    "LimitationItem",
     "ManualBinningOverride",
     "ManualBinningOverrides",
     "ModelArtifact",

@@ -4,8 +4,16 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import Any
 
 from cardre.domain.diagnostics import JsonDict
+
+
+def _parse_base_odds(raw: Any) -> float:
+    if isinstance(raw, str) and ":" in raw:
+        num, den = raw.split(":", 1)
+        return float(num) / float(den)
+    return float(raw)
 
 
 @dataclass(frozen=True)
@@ -99,11 +107,29 @@ class ModelArtifact:
             "target_column": self.target_column,
         }
 
+    @property
+    def feature_contract(self) -> JsonDict:
+        return dict(self._raw.get("feature_contract", {}))
+
+    @property
+    def source_variables(self) -> list[str] | None:
+        variables = self._raw.get("source_variables")
+        if variables is None:
+            return None
+        return [str(value) for value in variables]
+
+    @property
+    def calibration(self) -> JsonDict:
+        return dict(self._raw.get("calibration", {}))
+
+    def to_dict(self) -> JsonDict:
+        return dict(self._raw)
+
 
 @dataclass(frozen=True)
 class ScoreScaling:
     base_score: int = 600
-    base_odds: str = "50:1"
+    base_odds: float = 50.0
     pdo: int = 20
     factor: float = 0.0
     offset: float = 0.0
@@ -117,7 +143,7 @@ class ScoreScaling:
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ScoreScaling:
         raw_odds = data.get("base_odds", "50:1")
-        base_odds = str(raw_odds) if not isinstance(raw_odds, str) else raw_odds
+        base_odds = _parse_base_odds(raw_odds)
         higher_score_is_lower_risk = data.get("higher_score_is_lower_risk")
         pdo = data.get("pdo", data.get("points_to_double_odds", 20))
         base_score = data.get("base_score", 600)
@@ -126,13 +152,7 @@ class ScoreScaling:
             offset = float(data.get("offset", 0))
         else:
             factor = float(pdo) / math.log(2)  # type: ignore[arg-type]  # pdo is Any from .get()
-            odds_ratio = base_odds
-            if isinstance(raw_odds, str) and ":" in raw_odds:
-                num, den = raw_odds.split(":", 1)
-                odds_ratio = float(num) / float(den)  # type: ignore[assignment]  # odds_ratio starts as str, overwritten with float
-            else:
-                odds_ratio = float(raw_odds)  # type: ignore[assignment]  # odds_ratio starts as str, overwritten with float
-            offset = float(base_score) - factor * math.log(odds_ratio)  # type: ignore[arg-type]  # odds_ratio is str | float
+            offset = float(base_score) - factor * math.log(base_odds)
         return cls(
             base_score=base_score,
             base_odds=base_odds,
@@ -150,3 +170,31 @@ class ScoreScaling:
             _raw=data,
             source_artifact_id=artifact_id,
         )
+
+    @property
+    def higher_score_is_lower_risk(self) -> bool:
+        return self.score_direction == "higher_is_lower_risk"
+
+    @property
+    def base_odds_text(self) -> str:
+        raw_value = self._raw.get("base_odds", self.base_odds)
+        return str(raw_value)
+
+    @property
+    def intercept(self) -> float:
+        return float(self._raw.get("intercept", 0.0))
+
+    @property
+    def base_points(self) -> float | int | None:
+        return self._raw.get("base_points")
+
+    @property
+    def target_column(self) -> str:
+        return str(self._raw.get("target_column", ""))
+
+    @property
+    def attributes(self) -> list[JsonDict]:
+        return [dict(value) for value in self._raw.get("attributes", []) if isinstance(value, dict)]
+
+    def to_dict(self) -> JsonDict:
+        return dict(self._raw)

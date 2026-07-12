@@ -39,9 +39,7 @@ class ScorecardTableExportNode(NodeType):
                 candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
             )
         scorecard = reader.read(scorecard_art.artifact_id, EvidenceKind.SCORE_SCALING)
-        scorecard_raw = getattr(scorecard, "_raw", {})
-
-        attributes = scorecard_raw.get("attributes", [])
+        attributes = scorecard.attributes
         if not attributes:
             raise ValueError("Scorecard table export: no attributes found in score scaling artifact")
 
@@ -67,12 +65,12 @@ class ScorecardTableExportNode(NodeType):
 
         table_payload: dict[str, Any] = {
             "schema_version": SCHEMA_SCORE_TABLE,
-            "base_score": scorecard_raw.get("base_score", 600),
-            "base_odds": scorecard_raw.get("base_odds", 50.0),
-            "points_to_double_odds": scorecard_raw.get("points_to_double_odds", 20),
-            "base_points": scorecard_raw.get("base_points", 0),
-            "higher_score_is_lower_risk": scorecard_raw.get("higher_score_is_lower_risk", True),
-            "target_column": scorecard_raw.get("target_column", ""),
+            "base_score": scorecard.base_score,
+            "base_odds": scorecard.base_odds,
+            "points_to_double_odds": scorecard.pdo,
+            "base_points": scorecard.base_points or 0,
+            "higher_score_is_lower_risk": scorecard.higher_score_is_lower_risk,
+            "target_column": scorecard.target_column,
             "rows": table_rows,
         }
 
@@ -131,19 +129,19 @@ def _validate_bundle_components(
 def _build_python_scorer_source(
     bin_def: Any,
     woe_table: Any,
-    scorecard_raw: dict[str, Any],
-    model_raw: dict[str, Any],
+    scorecard_dict: dict[str, Any],
+    model_dict: dict[str, Any],
     feature_contract: dict[str, Any] | None = None,
 ) -> str:
-    intercept = float(model_raw.get("intercept", 0))
-    coefficients = model_raw.get("coefficients", {})
-    offset = float(scorecard_raw.get("offset", 0))
-    factor_val = float(scorecard_raw.get("factor", 1))
-    higher_is_lower = bool(scorecard_raw.get("higher_score_is_lower_risk", True))
+    intercept = float(model_dict.get("intercept", 0))
+    coefficients = model_dict.get("coefficients", {})
+    offset = float(scorecard_dict.get("offset", 0))
+    factor_val = float(scorecard_dict.get("factor", 1))
+    higher_is_lower = bool(scorecard_dict.get("higher_score_is_lower_risk", True))
     direction = -1.0 if higher_is_lower else 1.0
-    base_score = scorecard_raw.get("base_score", 600)
-    base_odds = scorecard_raw.get("base_odds", 50.0)
-    pdo = scorecard_raw.get("points_to_double_odds", 20)
+    base_score = scorecard_dict.get("base_score", 600)
+    base_odds = scorecard_dict.get("base_odds", 50.0)
+    pdo = scorecard_dict.get("points_to_double_odds", 20)
 
     missing_policy = "error"
     if feature_contract:
@@ -298,7 +296,6 @@ class PythonScoringExportNode(NodeType):
                 candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
             )
         model = reader.read(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-        model_raw = getattr(model, "_raw", {})
 
         scorecard_candidates = [
             a for a in context.input_artifacts
@@ -311,18 +308,28 @@ class PythonScoringExportNode(NodeType):
                 candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
             )
         scorecard = reader.find(scorecard_candidates, EvidenceKind.SCORE_SCALING)
-        scorecard_raw = getattr(scorecard, "_raw", {})
 
         _validate_bundle_components(
             bundle_art, model_art, scorecard, bin_def, woe_table,
         )
 
-        bundle_raw = reader.read(bundle_art.artifact_id, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
-        bundle_payload = getattr(bundle_raw, "_raw", {})
+        bundle_payload = reader.read(bundle_art.artifact_id, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
         feature_contract = bundle_payload.get("feature_contract", {})
 
+        scorecard_for_source = {
+            "offset": scorecard.offset,
+            "factor": scorecard.factor,
+            "higher_score_is_lower_risk": scorecard.higher_score_is_lower_risk,
+            "base_score": scorecard.base_score,
+            "base_odds": scorecard.base_odds,
+            "points_to_double_odds": scorecard.pdo,
+        }
+        model_for_source = {
+            "intercept": model.intercept,
+            "coefficients": model.coefficients_dict,
+        }
         source = _build_python_scorer_source(
-            bin_def, woe_table, scorecard_raw, model_raw, feature_contract,
+            bin_def, woe_table, scorecard_for_source, model_for_source, feature_contract,
         )
 
         payload: dict[str, Any] = {
@@ -330,12 +337,12 @@ class PythonScoringExportNode(NodeType):
             "source": source,
             "function_name": "score_cardre",
             "metadata": {
-                "base_score": scorecard_raw.get("base_score", 600),
-                "base_odds": scorecard_raw.get("base_odds", 50.0),
-                "points_to_double_odds": scorecard_raw.get("points_to_double_odds", 20),
-                "higher_score_is_lower_risk": scorecard_raw.get("higher_score_is_lower_risk", True),
-                "target_column": scorecard_raw.get("target_column", ""),
-                "model_family": model_raw.get("model_family", "logistic_regression"),
+                "base_score": scorecard.base_score,
+                "base_odds": scorecard.base_odds,
+                "points_to_double_odds": scorecard.pdo,
+                "higher_score_is_lower_risk": scorecard.higher_score_is_lower_risk,
+                "target_column": scorecard.target_column or model.target_column,
+                "model_family": model.model_family,
             },
         }
 
@@ -358,15 +365,15 @@ class PythonScoringExportNode(NodeType):
 def _build_sql_scorer_source(
     bin_def: Any,
     woe_table: Any,
-    scorecard_raw: dict[str, Any],
-    model_raw: dict[str, Any],
+    scorecard_dict: dict[str, Any],
+    model_dict: dict[str, Any],
     feature_contract: dict[str, Any] | None = None,
 ) -> str:
-    intercept = float(model_raw.get("intercept", 0))
-    coefficients = model_raw.get("coefficients", {})
-    offset = float(scorecard_raw.get("offset", 0))
-    factor_val = float(scorecard_raw.get("factor", 1))
-    higher_is_lower = bool(scorecard_raw.get("higher_score_is_lower_risk", True))
+    intercept = float(model_dict.get("intercept", 0))
+    coefficients = model_dict.get("coefficients", {})
+    offset = float(scorecard_dict.get("offset", 0))
+    factor_val = float(scorecard_dict.get("factor", 1))
+    higher_is_lower = bool(scorecard_dict.get("higher_score_is_lower_risk", True))
     direction = -1.0 if higher_is_lower else 1.0
 
     missing_policy = "error"
@@ -489,7 +496,6 @@ class SqlScoringExportNode(NodeType):
                 candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
             )
         model = reader.read(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-        model_raw = getattr(model, "_raw", {})
 
         scorecard_candidates = [
             a for a in context.input_artifacts
@@ -502,18 +508,28 @@ class SqlScoringExportNode(NodeType):
                 candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
             )
         scorecard = reader.find(scorecard_candidates, EvidenceKind.SCORE_SCALING)
-        scorecard_raw = getattr(scorecard, "_raw", {})
 
         _validate_bundle_components(
             bundle_art, model_art, scorecard, bin_def, woe_table,
         )
 
-        bundle_raw = reader.read(bundle_art.artifact_id, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
-        bundle_payload = getattr(bundle_raw, "_raw", {})
+        bundle_payload = reader.read(bundle_art.artifact_id, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
         feature_contract = bundle_payload.get("feature_contract", {})
 
+        scorecard_for_source = {
+            "offset": scorecard.offset,
+            "factor": scorecard.factor,
+            "higher_score_is_lower_risk": scorecard.higher_score_is_lower_risk,
+            "base_score": scorecard.base_score,
+            "base_odds": scorecard.base_odds,
+            "points_to_double_odds": scorecard.pdo,
+        }
+        model_for_source = {
+            "intercept": model.intercept,
+            "coefficients": model.coefficients_dict,
+        }
         source = _build_sql_scorer_source(
-            bin_def, woe_table, scorecard_raw, model_raw, feature_contract,
+            bin_def, woe_table, scorecard_for_source, model_for_source, feature_contract,
         )
 
         payload: dict[str, Any] = {
@@ -521,12 +537,12 @@ class SqlScoringExportNode(NodeType):
             "source": source,
             "dialect": "generic",
             "metadata": {
-                "base_score": scorecard_raw.get("base_score", 600),
-                "base_odds": scorecard_raw.get("base_odds", 50.0),
-                "points_to_double_odds": scorecard_raw.get("points_to_double_odds", 20),
-                "higher_score_is_lower_risk": scorecard_raw.get("higher_score_is_lower_risk", True),
-                "target_column": scorecard_raw.get("target_column", ""),
-                "model_family": model_raw.get("model_family", "logistic_regression"),
+                "base_score": scorecard.base_score,
+                "base_odds": scorecard.base_odds,
+                "points_to_double_odds": scorecard.pdo,
+                "higher_score_is_lower_risk": scorecard.higher_score_is_lower_risk,
+                "target_column": scorecard.target_column or model.target_column,
+                "model_family": model.model_family,
             },
         }
 

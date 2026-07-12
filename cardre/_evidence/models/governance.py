@@ -96,9 +96,30 @@ class HyperparameterTuningEvidence:
 
 
 @dataclass(frozen=True)
+class LimitationItem:
+    code: str = ""
+    severity: str = "warn"
+    category: str = ""
+    message: str = ""
+    accepted: bool = False
+
+    @classmethod
+    def from_dict(cls, data: Any) -> LimitationItem:
+        if not isinstance(data, dict):
+            return cls(message=str(data))
+        return cls(
+            code=str(data.get("code", "")),
+            severity=str(data.get("severity", "warn")),
+            category=str(data.get("category", "")),
+            message=str(data.get("message", "")),
+            accepted=bool(data.get("accepted", False)),
+        )
+
+
+@dataclass(frozen=True)
 class ExplainabilityReport:
     model_family: str
-    limitations: list[str]
+    limitations: list[LimitationItem]
     explanation_level: str = ""
     native_importance_available: bool = False
     global_importance_fields: list[str] = field(default_factory=list)
@@ -110,7 +131,7 @@ class ExplainabilityReport:
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ExplainabilityReport:
         return cls(
             model_family=data.get("model_family", ""),
-            limitations=[str(v) for v in data.get("limitations", [])],
+            limitations=[LimitationItem.from_dict(v) for v in data.get("limitations", [])],
             explanation_level=data.get("explanation_level", ""),
             native_importance_available=bool(data.get("native_importance_available", False)),
             global_importance_fields=[str(v) for v in data.get("global_importance_fields", [])],

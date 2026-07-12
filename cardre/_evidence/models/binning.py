@@ -143,6 +143,8 @@ class SelectedVariable:
 @dataclass(frozen=True)
 class SelectionDefinition:
     selected: list[SelectedVariable]
+    rejected: list[JsonDict] = field(default_factory=list)
+    min_iv: float = 0.0
     method: str = ""
     source_artifact_id: str = ""
 
@@ -156,7 +158,13 @@ class SelectionDefinition:
             )
             for s in data.get("selected", [])
         ]
-        return cls(selected=selected, method=data.get("method", ""), source_artifact_id=artifact_id)
+        return cls(
+            selected=selected,
+            rejected=list(data.get("rejected", [])),
+            min_iv=float(data.get("min_iv", 0.0)),
+            method=data.get("method", ""),
+            source_artifact_id=artifact_id,
+        )
 
     @property
     def selected_names(self) -> set[str]:
@@ -168,5 +176,7 @@ class SelectionDefinition:
                 {"variable": s.variable, "reason": s.reason, **s.extra}
                 for s in self.selected
             ],
+            "rejected": list(self.rejected),
+            "min_iv": self.min_iv,
             "method": self.method,
         }

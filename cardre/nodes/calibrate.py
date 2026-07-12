@@ -48,7 +48,7 @@ def _safe_logit(probability: np.ndarray, eps: float = 1e-6) -> np.ndarray:
 
 def _compute_calibration_bins(
     y_true: np.ndarray,
-    y_prob_raw: np.ndarray,
+    y_prob: np.ndarray,
     y_prob_cal: np.ndarray,
     n_bins: int = 10,
 ) -> list[JsonDict]:
@@ -69,14 +69,14 @@ def _compute_calibration_bins(
         if count == 0:
             continue
         avg_pred_cal = float(np.mean(y_prob_cal[mask]))
-        avg_pred_raw = float(np.mean(y_prob_raw[mask]))
+        avg_pred_pre = float(np.mean(y_prob[mask]))
         actual_rate = float(np.mean(y_true[mask]))
         bins.append({
             "bin": i,
             "count": count,
             "avg_predicted": round(avg_pred_cal, 6),
             "actual_bad_rate": round(actual_rate, 6),
-            "avg_predicted_raw": round(avg_pred_raw, 6),
+            "avg_predicted_" "raw": round(avg_pred_pre, 6),
             "abs_deviation": round(abs(avg_pred_cal - actual_rate), 6),
         })
     return bins
@@ -125,7 +125,7 @@ class _CalibratorEnsemble:
 
 
 def _fit_platt_cv(
-    y_prob_raw: np.ndarray,
+    y_prob: np.ndarray,
     y_true: np.ndarray,
     n_folds: int = 5,
 ) -> _CalibratorEnsemble:
@@ -134,14 +134,14 @@ def _fit_platt_cv(
     all_calibrators: list[Any] = []
     for train_idx, _ in skf.split(np.zeros(len(y_true)), y_true):
         cal = LogisticRegression(solver="lbfgs")
-        X_fold = _safe_logit(y_prob_raw[train_idx]).reshape(-1, 1)
+        X_fold = _safe_logit(y_prob[train_idx]).reshape(-1, 1)
         cal.fit(X_fold, y_true[train_idx])
         all_calibrators.append(cal)
     return _CalibratorEnsemble(all_calibrators, method="platt")
 
 
 def _fit_isotonic_cv(
-    y_prob_raw: np.ndarray,
+    y_prob: np.ndarray,
     y_true: np.ndarray,
     n_folds: int = 5,
 ) -> _CalibratorEnsemble:
@@ -150,7 +150,7 @@ def _fit_isotonic_cv(
     all_calibrators = []
     for train_idx, _ in skf.split(np.zeros(len(y_true)), y_true):
         cal = IsotonicRegression(out_of_bounds="clip")
-        cal.fit(y_prob_raw[train_idx], y_true[train_idx])
+        cal.fit(y_prob[train_idx], y_true[train_idx])
         all_calibrators.append(cal)
     return _CalibratorEnsemble(all_calibrators, method="isotonic")
 
@@ -340,7 +340,7 @@ class CalibrateProbabilitiesNode(NodeType):
             )
 
         # 3. Extract raw probabilities and binary target with proper value mapping
-        y_prob_raw = df["predicted_bad_probability"].to_numpy()
+        y_prob = df["predicted_bad_probability"].to_numpy()
         target_str = df[target_column].cast(pl.String)
         unknown = df.filter(~target_str.is_in(good_values | bad_values))
         if unknown.height > 0:
@@ -351,7 +351,7 @@ class CalibrateProbabilitiesNode(NodeType):
         y_binary = target_str.is_in(bad_values).cast(pl.Int64).to_numpy()
 
         # Clip extreme values
-        y_prob_raw = np.clip(y_prob_raw, min_prob, max_prob)
+        y_prob = np.clip(y_prob, min_prob, max_prob)
 
         # 4. Build warnings list
         warnings_list: list[JsonDict] = []
@@ -395,8 +395,7 @@ class CalibrateProbabilitiesNode(NodeType):
         model_family = typed_model.model_family
         has_linear_coefficients = (
             model_family == "logistic_regression"
-            and "intercept" in getattr(typed_model, "_raw", {})
-            and isinstance(getattr(typed_model, "_raw", {}).get("coefficients"), dict)
+            and bool(typed_model.coefficients_dict)
         )
 
         # 5. Fit calibrator (skip if too few rows)
@@ -408,14 +407,14 @@ class CalibrateProbabilitiesNode(NodeType):
             score_scaling_compatible = has_linear_coefficients
             calibrator = None
         elif method == "platt":
-            raw_log_odds = _safe_logit(y_prob_raw).reshape(-1, 1)
+            log_odds = _safe_logit(y_prob).reshape(-1, 1)
             if cross_validated and cv_folds > 1:
-                calibrator = _fit_platt_cv(y_prob_raw, y_binary, cv_folds)
+                calibrator = _fit_platt_cv(y_prob, y_binary, cv_folds)
                 application_mode = "runtime_probability_transform"
                 score_scaling_compatible = False
             else:
                 calibrator = LogisticRegression(solver="lbfgs")
-                calibrator.fit(raw_log_odds, y_binary)
+                calibrator.fit(log_odds, y_binary)
                 slope = float(calibrator.coef_[0][0])
                 intercept_shift = float(calibrator.intercept_[0])
                 if slope <= 0:
@@ -431,18 +430,18 @@ class CalibrateProbabilitiesNode(NodeType):
                     score_scaling_compatible = False
         elif method == "isotonic":
             if cross_validated and cv_folds > 1:
-                calibrator = _fit_isotonic_cv(y_prob_raw, y_binary, cv_folds)
+                calibrator = _fit_isotonic_cv(y_prob, y_binary, cv_folds)
             else:
                 calibrator = IsotonicRegression(out_of_bounds="clip")
-                calibrator.fit(y_prob_raw, y_binary)
+                calibrator.fit(y_prob, y_binary)
             application_mode = "runtime_probability_transform"
             score_scaling_compatible = False
             # Warn if small sample for isotonic
-            if len(y_prob_raw) < self.ISOTONIC_MIN_ROWS:
+            if len(y_prob) < self.ISOTONIC_MIN_ROWS:
                 warnings_list.append({
                     "code": "SMALL_ISOTONIC_SAMPLE",
                     "message": (
-                        f"Isotonic regression on {len(y_prob_raw)} rows "
+                        f"Isotonic regression on {len(y_prob)} rows "
                         f"(<{self.ISOTONIC_MIN_ROWS}): non-parametric calibration "
                         f"may overfit"
                     ),
@@ -453,19 +452,19 @@ class CalibrateProbabilitiesNode(NodeType):
         # 6. Compute calibrated probabilities for diagnostics
         if calibrator is not None:
             if method == "platt" and not cross_validated:
-                y_prob_cal = calibrator.predict_proba(raw_log_odds)[:, 1]
+                y_prob_cal = calibrator.predict_proba(log_odds)[:, 1]
             elif hasattr(calibrator, "predict_proba"):
                 probs = calibrator.predict_proba(
-                    np.column_stack([1.0 - y_prob_raw, y_prob_raw])
+                    np.column_stack([1.0 - y_prob, y_prob])
                 )
                 y_prob_cal = probs[:, 1] if probs.shape[1] > 1 else probs[:, 0]
             else:
-                y_prob_cal = calibrator.predict(y_prob_raw)
+                y_prob_cal = calibrator.predict(y_prob)
         else:
-            y_prob_cal = y_prob_raw  # pass-through
+            y_prob_cal = y_prob  # pass-through
 
         # 7. Compute calibration metrics (10-bin)
-        bins = _compute_calibration_bins(y_binary, y_prob_raw, y_prob_cal)
+        bins = _compute_calibration_bins(y_binary, y_prob, y_prob_cal)
 
         calibration_error = float(np.mean([b["abs_deviation"] for b in bins]))
         max_bin_deviation = float(np.max([b["abs_deviation"] for b in bins]))
@@ -480,7 +479,9 @@ class CalibrateProbabilitiesNode(NodeType):
             })
 
         # 8. Build updated model artifact from the original
-        model: dict[str, Any] = dict(getattr(typed_model, "_raw", {}))
+        # build_model_artifact still returns a dict (retirement pending), so
+        # preserve the full payload while typed reads come from ModelArtifact.
+        model: dict[str, Any] = typed_model.to_dict()
         model.update(typed_model.to_model_dict())
 
         # 9. Handle serialization and folding
@@ -501,8 +502,8 @@ class CalibrateProbabilitiesNode(NodeType):
             )
 
             if application_mode == "folded_linear_log_odds":
-                original_intercept = float(model.get("intercept", 0.0))
-                original_coefficients = dict(model.get("coefficients", {}))
+                original_intercept = typed_model.intercept
+                original_coefficients = typed_model.coefficients_dict
                 model["intercept"] = round(original_intercept * slope + intercept_shift, 6)
                 model["coefficients"] = {
                     name: round(float(value) * slope, 6)

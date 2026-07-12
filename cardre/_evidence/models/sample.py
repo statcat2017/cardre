@@ -31,6 +31,9 @@ class ModellingMetadata:
             source_artifact_id=artifact_id,
         )
 
+    def to_dict(self) -> JsonDict:
+        return dict(self._raw)
+
 
 @dataclass(frozen=True)
 class SampleDefinition:

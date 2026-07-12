@@ -6,23 +6,23 @@ It must not become a second modelling execution path.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from json import JSONDecodeError, loads
 from typing import Any
 
 from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import (
-    SCHEMA_CALIBRATION_DIAGNOSTICS,
-    SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS,
     SCHEMA_SCORE_TABLE,
     SCHEMA_SCORING_EXPORT_PYTHON,
     SCHEMA_SCORING_EXPORT_SQL,
-    SCHEMA_SEPARATION_DIAGNOSTICS,
-    SCHEMA_VIF_DIAGNOSTICS,
 )
 from cardre.branch_step_resolver import ResolvedStepRef as _ResolvedStepRef
 from cardre.branch_step_resolver import resolve_required_steps, resolve_step_for_branch
-from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.artifacts import (
+    json_logical_hash,
+)
 from cardre.domain.errors import Diagnostic
 from cardre.domain.run import RunStep
 from cardre.readiness.limitation_codes import LimitationCode
@@ -81,6 +81,25 @@ from cardre.store.run_repo import RunRepository
 CARDRE_VERSION = "0.1.0"
 
 
+@dataclass(frozen=True)
+class ManifestDigest:
+    """Immutable digest of the canonical run manifest.
+
+    Produced by ``_read_canonical_manifest`` so that ``_collect_run_status``
+    and ``_collect_reproducibility`` can consume the manifest fields without
+    mutating ``bundle`` during validation.
+    """
+
+    manifest_hash: str | None = None
+    pathway_hash: str | None = None
+    execution_mode: str | None = None
+    target_step_id: str | None = None
+    in_scope_step_ids: list[str] = field(default_factory=list)
+    limitations: list[Limitation] = field(default_factory=list)
+    source_run_manifest_path: str | None = None
+    artifact_root: str | None = None
+
+
 def _utc_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
@@ -130,10 +149,7 @@ class ReportCollector:
         plan_version_id = run["plan_version_id"]
         plan_id = self.store.get_plan_id_for_version(plan_version_id)
 
-        # Run status info
-        self._collect_run_status(bundle, run)
-
-        # Source info — updated to canonical path by _read_canonical_manifest
+        # Source info — updated from the canonical manifest digest if available.
         bundle.source.run_manifest_path = ""
 
         # Branch
@@ -299,11 +315,19 @@ class ReportCollector:
         # Redundancy review
         self._collect_redundancy_review(bundle, plan_version_id)
 
-        # Read canonical manifest for hashes
-        self._read_canonical_manifest(bundle)
+        # Read canonical manifest for hashes + execution scope.
+        manifest_digest = self._read_canonical_manifest()
+        self.limitations.extend(manifest_digest.limitations)
+        bundle.source.run_manifest_path = manifest_digest.source_run_manifest_path or ""
+        bundle.source.run_manifest_hash = manifest_digest.manifest_hash or ""
+        bundle.source.pathway_hash = manifest_digest.pathway_hash or ""
+        bundle.source.artifact_root = manifest_digest.artifact_root or ""
+
+        # Run status info
+        self._collect_run_status(bundle, run, manifest_digest)
 
         # Reproducibility
-        self._collect_reproducibility(bundle, plan_version_id)
+        self._collect_reproducibility(bundle, plan_version_id, manifest_digest)
 
         # Limitations
         bundle.limitations = self.limitations
@@ -461,7 +485,7 @@ class ReportCollector:
 
         model_art = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.MODEL_ARTIFACT)
         if model_art is not None:
-            target_column = model_art.target_column or str(getattr(model_art, "_raw", {}).get("target_column", ""))
+            target_column = model_art.target_column
             if target_column and not bundle.summary.target_column:
                 bundle.summary.target_column = target_column
             features = [
@@ -498,17 +522,15 @@ class ReportCollector:
         evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.EXPLAINABILITY_REPORT)
         if evidence is None:
             return
-        payload = getattr(evidence, "_raw", {})
-
-        for limitation in payload.get("limitations", []):
-            if not isinstance(limitation, dict) or limitation.get("accepted", False):
+        for limitation in evidence.limitations:
+            if limitation.accepted:
                 continue
-            raw_severity = str(limitation.get("severity", "warn"))
+            raw_severity = limitation.severity
             severity = "blocker" if raw_severity == "block" else "warning"
             self.limitations.append(Limitation(
                 severity=severity,
-                code=str(limitation.get("code", "MODEL_LIMITATION")),
-                message=str(limitation.get("message", "Model limitation evidence is present.")),
+                code=limitation.code or "MODEL_LIMITATION",
+                message=limitation.message or "Model limitation evidence is present.",
             ))
 
     def _collect_modelling_metadata(
@@ -526,10 +548,10 @@ class ReportCollector:
             ))
             return
 
-        target_column = meta.target_column or str(getattr(meta, "_raw", {}).get("target_column", ""))
+        target_column = meta.target_column
         if target_column and not bundle.summary.target_column:
             bundle.summary.target_column = target_column
-        bundle.modelling_metadata = getattr(meta, "_raw", {})
+        bundle.modelling_metadata = meta.to_dict()
 
     def _collect_score_scaling(
         self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
@@ -546,7 +568,7 @@ class ReportCollector:
         if scaling is not None:
             bundle.score_scaling = ScoreScalingInfo(
                 base_score=scaling.base_score,
-                base_odds=scaling.base_odds,
+                base_odds=scaling.base_odds_text,
                 pdo=scaling.pdo,
                 factor=scaling.factor,
                 offset=scaling.offset,
@@ -691,13 +713,13 @@ class ReportCollector:
                     continue
                 interventions: list[dict[str, Any]] = []
                 if data is not None:
-                    payload = data.to_dict() if hasattr(data, "to_dict") else getattr(data, "_raw", data)
+                    payload = data.to_dict()
                     if isinstance(payload, dict):
                         for var in list(payload.get("variables", [])) + list(payload.get("rejected", [])):
                             if isinstance(var, dict):
                                 interventions.extend(var.get("override_history", []) or [])
                 if not interventions and legacy is not None:
-                    legacy_payload = legacy.to_dict() if hasattr(legacy, "to_dict") else getattr(legacy, "_raw", legacy)
+                    legacy_payload = legacy.to_dict()
                     if isinstance(legacy_payload, dict):
                         interventions.extend(legacy_payload.get("overrides", []) or [])
                 for i, ov in enumerate(interventions):
@@ -723,14 +745,13 @@ class ReportCollector:
         evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.EXCLUSION_SUMMARY)
         if evidence is None:
             return
-        raw = getattr(evidence, "_raw", {})
         rules = [
             ExclusionRuleInfo(rule_id=str(i), reason=r.get("reason", ""), rows_removed=r.get("rows_removed", 0))
-            for i, r in enumerate(raw.get("rules", []))
+            for i, r in enumerate(evidence.rules)
         ]
         bundle.exclusion_summary = ExclusionSummaryInfo(
-            rows_before=raw.get("rows_before", 0),
-            rows_after=raw.get("rows_after", 0),
+            rows_before=0,
+            rows_after=0,
             rules=rules,
             source_step_refs=[ref.to_schema_ref()],
         )
@@ -744,11 +765,10 @@ class ReportCollector:
         evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.SAMPLE_DEFINITION)
         if evidence is None:
             return
-        raw = getattr(evidence, "_raw", {})
         bundle.sample_definition = SampleDefinitionInfo(
-            sample_method=raw.get("sample_method", ""),
-            sample_domain=raw.get("sample_domain", ""),
-            sample_description=raw.get("sample_description", ""),
+            sample_method=evidence.sample_method,
+            sample_domain=evidence.sample_domain,
+            sample_description=evidence.sample_description,
             source_step_refs=[ref.to_schema_ref()],
         )
 
@@ -775,22 +795,21 @@ class ReportCollector:
         rs = self._resolve_run_step(ref, plan_version_id)
         if rs is None:
             return
-        raw = self._read_raw_json_by_step(rs, SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS)
-        if raw is None:
+        evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.COEFFICIENT_SIGN_DIAGNOSTICS)
+        if evidence is None:
             return
-        variables = raw.get("variables", [])
         entries = [
             CoefficientSignEntry(
-                variable_name=v.get("variable_name", ""),
-                feature_name=v.get("feature_name", ""),
-                coefficient=v.get("coefficient", 0.0),
-                coefficient_is_infinite=v.get("coefficient_is_infinite", False),
-                coefficient_sign=v.get("coefficient_sign", ""),
-                expected_sign=v.get("expected_sign", ""),
-                status=v.get("status", ""),
-                reason=v.get("reason", ""),
+                variable_name=v.variable_name,
+                feature_name=v.feature_name,
+                coefficient=v.coefficient,
+                coefficient_is_infinite=v.coefficient_is_infinite,
+                coefficient_sign=v.coefficient_sign,
+                expected_sign=v.expected_sign,
+                status=v.status,
+                reason=v.reason,
             )
-            for v in variables
+            for v in evidence.variables
         ]
         bundle.model_diagnostics.coefficient_sign_check = entries
         bundle.model_diagnostics.source_step_refs.append(ref.to_schema_ref())
@@ -801,22 +820,21 @@ class ReportCollector:
         rs = self._resolve_run_step(ref, plan_version_id)
         if rs is None:
             return
-        raw = self._read_raw_json_by_step(rs, SCHEMA_SEPARATION_DIAGNOSTICS)
-        if raw is None:
+        evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.SEPARATION_DIAGNOSTICS)
+        if evidence is None:
             return
-        variables = raw.get("variables", [])
         entries = [
             SeparationEntry(
-                feature_name=v.get("feature_name", ""),
-                coefficient=v.get("coefficient", 0.0),
-                coefficient_is_infinite=v.get("coefficient_is_infinite", False),
-                abs_coefficient=v.get("abs_coefficient", 0.0),
-                standard_error=v.get("standard_error"),
-                standard_error_is_infinite=v.get("standard_error_is_infinite", False),
-                status=v.get("status", ""),
-                reason=v.get("reason", ""),
+                feature_name=v.feature_name,
+                coefficient=v.coefficient,
+                coefficient_is_infinite=v.coefficient_is_infinite,
+                abs_coefficient=v.abs_coefficient,
+                standard_error=v.standard_error,
+                standard_error_is_infinite=v.standard_error_is_infinite,
+                status=v.status,
+                reason=v.reason,
             )
-            for v in variables
+            for v in evidence.variables
         ]
         bundle.model_diagnostics.separation_diagnostics = entries
         bundle.model_diagnostics.source_step_refs.append(ref.to_schema_ref())
@@ -827,20 +845,19 @@ class ReportCollector:
         rs = self._resolve_run_step(ref, plan_version_id)
         if rs is None:
             return
-        raw = self._read_raw_json_by_step(rs, SCHEMA_VIF_DIAGNOSTICS)
-        if raw is None:
+        evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.VIF_DIAGNOSTICS)
+        if evidence is None:
             return
-        variables = raw.get("variables", [])
         entries = [
             VifEntry(
-                feature_name=v.get("feature_name", ""),
-                vif=v.get("vif"),
-                vif_is_infinite=v.get("vif_is_infinite", False),
-                r_squared=v.get("r_squared"),
-                status=v.get("status", ""),
-                reason=v.get("reason", ""),
+                feature_name=v.feature_name,
+                vif=v.vif,
+                vif_is_infinite=v.vif_is_infinite,
+                r_squared=v.r_squared,
+                status=v.status,
+                reason=v.reason,
             )
-            for v in variables
+            for v in evidence.variables
         ]
         bundle.model_diagnostics.vif_diagnostics = entries
         bundle.model_diagnostics.source_step_refs.append(ref.to_schema_ref())
@@ -851,51 +868,36 @@ class ReportCollector:
         rs = self._resolve_run_step(ref, plan_version_id)
         if rs is None:
             return
-        raw = self._read_raw_json_by_step(rs, SCHEMA_CALIBRATION_DIAGNOSTICS)
-        if raw is None:
+        evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.CALIBRATION_DIAGNOSTICS)
+        if evidence is None:
             return
-        roles = raw.get("roles", {})
         role_entries: dict[str, CalibrationRole] = {}
-        for role_name, role_data in roles.items():
+        for role_data in evidence.roles:
             decile_bins = [
                 CalibrationBin(
-                    bin=b.get("bin", i + 1),
-                    count=b.get("count", 0),
-                    observed_events=b.get("observed_events", 0),
-                    expected_events=b.get("expected_events", 0.0),
-                    observed_event_rate=b.get("observed_event_rate", 0.0),
-                    predicted_event_rate=b.get("predicted_event_rate", 0.0),
-                    abs_deviation=b.get("abs_deviation", 0.0),
+                    bin=b.bin,
+                    count=b.count,
+                    observed_events=b.observed_events,
+                    expected_events=b.expected_events,
+                    observed_event_rate=b.observed_event_rate,
+                    predicted_event_rate=b.predicted_event_rate,
+                    abs_deviation=b.abs_deviation,
                 )
-                for i, b in enumerate(role_data.get("decile_bins", []))
+                for b in role_data.decile_bins
             ]
-            role_entries[role_name] = CalibrationRole(
-                row_count=role_data.get("row_count", 0),
-                known_count=role_data.get("known_count", 0),
-                n_bins=role_data.get("n_bins", 0),
-                hosmer_lemeshow_statistic=role_data.get("hosmer_lemeshow_statistic"),
-                hosmer_lemeshow_p_value=role_data.get("hosmer_lemeshow_p_value"),
-                calibration_error=role_data.get("calibration_error", 0.0),
-                auc=role_data.get("auc"),
+            role_entries[role_data.role] = CalibrationRole(
+                row_count=role_data.row_count,
+                known_count=role_data.known_count,
+                n_bins=role_data.n_bins,
+                hosmer_lemeshow_statistic=role_data.hosmer_lemeshow_statistic,
+                hosmer_lemeshow_p_value=role_data.hosmer_lemeshow_p_value,
+                calibration_error=role_data.calibration_error,
+                auc=role_data.auc,
                 decile_bins=decile_bins,
-                status=role_data.get("status", ""),
+                status=role_data.status,
             )
         bundle.model_diagnostics.calibration_diagnostics = role_entries
         bundle.model_diagnostics.source_step_refs.append(ref.to_schema_ref())
-
-    def _read_raw_json_by_step(self, rs: Any, schema_version: str) -> dict[str, Any] | None:
-        import json
-        for row in self.store.execute(
-            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
-            (rs.run_step_id,),
-        ).fetchall():
-            art = self.store.get_artifact(row["artifact_id"])
-            if art and art.metadata.get("schema_version") == schema_version:
-                path = self.store.artifact_path(art)  # cardre-allow-artifact-read: low-level-evidence-parser
-                if path.exists():
-                    data = json.loads(path.read_text())  # cardre-allow-artifact-read: low-level-evidence-parser
-                    return dict(data) if isinstance(data, dict) else None
-        return None
 
     def _collect_variable_selection(
         self, bundle: ReportBundle, ref: _ResolvedStepRef, plan_version_id: str,
@@ -906,11 +908,10 @@ class ReportCollector:
         evidence = self.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.SELECTION_DEFINITION)
         if evidence is None:
             return
-        raw = getattr(evidence, "_raw", {})
         bundle.variable_selection = VariableSelectionInfo(
-            selected_variables=list(raw.get("selected", [])),
-            rejected_variables=list(raw.get("rejected", [])),
-            min_iv=raw.get("min_iv", 0.0),
+            selected_variables=[item.variable for item in evidence.selected],
+            rejected_variables=[str(item.get("variable", "")) for item in evidence.rejected if item.get("variable")],
+            min_iv=evidence.min_iv,
             source_step_refs=[ref.to_schema_ref()],
         )
 
@@ -1042,7 +1043,7 @@ class ReportCollector:
         )
 
     def _collect_reproducibility(
-        self, bundle: ReportBundle, plan_version_id: str,
+        self, bundle: ReportBundle, plan_version_id: str, manifest_digest: ManifestDigest,
     ) -> None:
         run_steps = self.store.get_run_steps(self.run_id)
         fingerprints = []
@@ -1056,12 +1057,10 @@ class ReportCollector:
                 package_fingerprint={},
             ))
 
-        existing_m_hash = bundle.reproducibility.manifest_hash
-        existing_pw_hash = bundle.reproducibility.pathway_hash
         bundle.reproducibility = ReproducibilityInfo(
             run_id=self.run_id,
-            manifest_hash=existing_m_hash,
-            pathway_hash=existing_pw_hash,
+            manifest_hash=manifest_digest.manifest_hash or "",
+            pathway_hash=manifest_digest.pathway_hash or "",
             execution_fingerprints=fingerprints,
             report_generation=ReportGenerationInfo(
                 generated_at=bundle.generated_at,
@@ -1093,8 +1092,6 @@ class ReportCollector:
         return entries
 
     def _get_latest_review_annotation(self, step_id: str, plan_version_id: str) -> tuple[dict[str, Any] | None, list[Diagnostic]]:
-        import json as _json
-
         try:
             with self.store.transaction() as conn:
                 rows = conn.execute(
@@ -1105,7 +1102,7 @@ class ReportCollector:
                 ).fetchall()
             if not rows:
                 return (None, [])
-            payload = _json.loads(rows[0]["payload_json"])
+            payload = loads(rows[0]["payload_json"])
             payload["created_at"] = rows[0]["created_at"]
             return (payload, [])
         except Exception as exc:
@@ -1116,13 +1113,16 @@ class ReportCollector:
                 context={"step_id": step_id, "plan_version_id": plan_version_id},
             )])
 
-    def _collect_run_status(self, bundle: ReportBundle, run: dict[str, Any]) -> None:
+    def _collect_run_status(self, bundle: ReportBundle, run: dict[str, Any], manifest_digest: ManifestDigest) -> None:
         run_diags = RunRepository(self.store).get_diagnostics(self.run_id)
         bundle.run_status = RunStatusInfo(
             run_id=self.run_id,
             status=run.get("status", ""),
             started_at=run.get("started_at", ""),
             finished_at=run.get("finished_at"),
+            execution_mode=manifest_digest.execution_mode or "unknown",
+            target_step_id=manifest_digest.target_step_id,
+            in_scope_step_ids=list(manifest_digest.in_scope_step_ids),
         )
         for d in run_diags:
             bundle.run_status.diagnostics.append(DiagnosticEntry(
@@ -1139,8 +1139,8 @@ class ReportCollector:
                 message=f"Run status is '{run['status']}', expected 'succeeded'.",
             ))
 
-    def _read_canonical_manifest(self, bundle: ReportBundle) -> None:
-        """Try to read the canonical manifest.json and populate hash fields.
+    def _read_canonical_manifest(self) -> ManifestDigest:
+        """Try to read the canonical manifest.json and return its validated digest.
 
         Validates the manifest payload against the RunManifest model and
         recomputes the self-referential hash (from the raw dict) to detect
@@ -1148,17 +1148,17 @@ class ReportCollector:
         """
         manifest_path = self.store.root / "exports" / f"manifest-{self.run_id}" / "manifest.json"
         if not manifest_path.exists():
-            self.limitations.append(Limitation(
-                severity="warning",
-                code=LimitationCode.CANONICAL_MANIFEST_MISSING,
-                message=f"No canonical manifest at {manifest_path}. "
-                "Manifest hash and pathway hash will be empty in the report.",
-            ))
-            return
+            return ManifestDigest(
+                limitations=[Limitation(
+                    severity="warning",
+                    code=LimitationCode.CANONICAL_MANIFEST_MISSING,
+                    message=f"No canonical manifest at {manifest_path}. "
+                    "Manifest hash and pathway hash will be empty in the report.",
+                )]
+            )
         try:
-            import json
             raw = manifest_path.read_text()
-            manifest_data = json.loads(raw)
+            manifest_data = loads(raw)
 
             # Validate schema — extra fields are rejected if present
             RunManifest.model_validate(manifest_data)
@@ -1171,39 +1171,41 @@ class ReportCollector:
             actual_hash = manifest_data.get("manifest_hash", "")
 
             if actual_hash != expected_hash:
-                self.limitations.append(Limitation(
+                return ManifestDigest(
+                    limitations=[Limitation(
+                        severity="blocker",
+                        code=LimitationCode.ARTIFACT_HASH_UNRESOLVED,
+                        message=f"Canonical manifest hash mismatch at {manifest_path}: "
+                        f"expected {expected_hash}, got {actual_hash}.",
+                    )]
+                )
+
+            return ManifestDigest(
+                manifest_hash=actual_hash,
+                pathway_hash=manifest_data.get("pathway_hash") or None,
+                execution_mode=str(manifest_data.get("execution_mode", "unknown")),
+                target_step_id=manifest_data.get("target_step_id"),
+                in_scope_step_ids=list(manifest_data.get("in_scope_step_ids", [])),
+                source_run_manifest_path=str(manifest_path),
+                artifact_root=str(manifest_data.get("artifact_root", "")) or None,
+            )
+
+        except JSONDecodeError as exc:
+            return ManifestDigest(
+                limitations=[Limitation(
                     severity="blocker",
-                    code=LimitationCode.ARTIFACT_HASH_UNRESOLVED,
-                    message=f"Canonical manifest hash mismatch at {manifest_path}: "
-                    f"expected {expected_hash}, got {actual_hash}.",
-                ))
-                return
-
-            pw_hash = manifest_data.get("pathway_hash", "")
-            art_root = manifest_data.get("artifact_root", "")
-            bundle.source.run_manifest_path = str(manifest_path)
-            bundle.source.run_manifest_hash = actual_hash
-            bundle.source.pathway_hash = pw_hash
-            bundle.source.artifact_root = art_root
-            bundle.reproducibility.manifest_hash = actual_hash
-            bundle.reproducibility.pathway_hash = pw_hash
-
-            bundle.run_status.execution_mode = manifest_data.get("execution_mode", "unknown")
-            bundle.run_status.target_step_id = manifest_data.get("target_step_id")
-            bundle.run_status.in_scope_step_ids = manifest_data.get("in_scope_step_ids", [])
-
-        except json.JSONDecodeError as exc:
-            self.limitations.append(Limitation(
-                severity="blocker",
-                code=LimitationCode.CANONICAL_MANIFEST_UNREADABLE,
-                message=f"Invalid JSON in canonical manifest at {manifest_path}: {exc}",
-            ))
+                    code=LimitationCode.CANONICAL_MANIFEST_UNREADABLE,
+                    message=f"Invalid JSON in canonical manifest at {manifest_path}: {exc}",
+                )]
+            )
         except Exception as exc:
-            self.limitations.append(Limitation(
-                severity="blocker",
-                code=LimitationCode.CANONICAL_MANIFEST_UNREADABLE,
-                message=f"Could not read or validate canonical manifest at {manifest_path}: {exc}",
-            ))
+            return ManifestDigest(
+                limitations=[Limitation(
+                    severity="blocker",
+                    code=LimitationCode.CANONICAL_MANIFEST_UNREADABLE,
+                    message=f"Could not read or validate canonical manifest at {manifest_path}: {exc}",
+                )]
+            )
 
     def _resolve_run_step(
         self, ref: _ResolvedStepRef, plan_version_id: str,
