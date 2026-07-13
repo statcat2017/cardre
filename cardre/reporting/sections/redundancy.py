@@ -19,7 +19,7 @@ class RedundancyReviewSection(SectionCollector):
     kinds = (EvidenceKind.VARIABLE_CLUSTERING,)
 
     def build(self, ctx: SectionContext) -> None:
-        from cardre.reporting.collector import _resolve_run_step
+        from cardre.reporting.collector import resolve_run_step
 
         step_map = ctx.store.get_branch_step_map(ctx.bundle.target_branch_id, ctx.plan_version_id)
         if not step_map:
@@ -37,7 +37,7 @@ class RedundancyReviewSection(SectionCollector):
         if ref is None:
             return
 
-        rs = _resolve_run_step(ctx.store, ref, ctx.plan_version_id)
+        rs = resolve_run_step(ctx, ref)
         if rs is None:
             ctx.add_limitation(Limitation(
                 severity="warning",

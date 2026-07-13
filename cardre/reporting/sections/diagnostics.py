@@ -21,8 +21,8 @@ class CoefficientSignSection(SectionCollector):
         ref = ctx.resolved.get(self.canonical_step_id)
         if ref is None:
             return
-        from cardre.reporting.collector import _resolve_run_step
-        rs = _resolve_run_step(ctx.store, ref, ctx.plan_version_id)
+        from cardre.reporting.collector import resolve_run_step
+        rs = resolve_run_step(ctx, ref)
         if rs is None:
             return
         evidence = ctx.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.COEFFICIENT_SIGN_DIAGNOSTICS)
@@ -53,8 +53,8 @@ class SeparationSection(SectionCollector):
         ref = ctx.resolved.get(self.canonical_step_id)
         if ref is None:
             return
-        from cardre.reporting.collector import _resolve_run_step
-        rs = _resolve_run_step(ctx.store, ref, ctx.plan_version_id)
+        from cardre.reporting.collector import resolve_run_step
+        rs = resolve_run_step(ctx, ref)
         if rs is None:
             return
         evidence = ctx.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.SEPARATION_DIAGNOSTICS)
@@ -85,8 +85,8 @@ class VifSection(SectionCollector):
         ref = ctx.resolved.get(self.canonical_step_id)
         if ref is None:
             return
-        from cardre.reporting.collector import _resolve_run_step
-        rs = _resolve_run_step(ctx.store, ref, ctx.plan_version_id)
+        from cardre.reporting.collector import resolve_run_step
+        rs = resolve_run_step(ctx, ref)
         if rs is None:
             return
         evidence = ctx.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.VIF_DIAGNOSTICS)
@@ -115,8 +115,8 @@ class CalibrationSection(SectionCollector):
         ref = ctx.resolved.get(self.canonical_step_id)
         if ref is None:
             return
-        from cardre.reporting.collector import _resolve_run_step
-        rs = _resolve_run_step(ctx.store, ref, ctx.plan_version_id)
+        from cardre.reporting.collector import resolve_run_step
+        rs = resolve_run_step(ctx, ref)
         if rs is None:
             return
         evidence = ctx.reader.read_step_output_optional(rs.run_step_id, EvidenceKind.CALIBRATION_DIAGNOSTICS)

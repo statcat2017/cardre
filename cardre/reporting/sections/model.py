@@ -20,8 +20,8 @@ class ModelSection(SectionCollector):
         ref = ctx.resolved.get(self.canonical_step_id)
         if ref is None:
             return
-        from cardre.reporting.collector import _resolve_run_step
-        rs = _resolve_run_step(ctx.store, ref, ctx.plan_version_id)
+        from cardre.reporting.collector import resolve_run_step
+        rs = resolve_run_step(ctx, ref)
         if rs is None:
             ctx.add_limitation(Limitation(
                 severity="blocker", code=LimitationCode.MISSING_MODEL_COEFFICIENTS,
@@ -67,8 +67,8 @@ class ModelLimitationsSection(SectionCollector):
         ref = ctx.resolved.get(self.canonical_step_id)
         if ref is None:
             return
-        from cardre.reporting.collector import _resolve_run_step
-        rs = _resolve_run_step(ctx.store, ref, ctx.plan_version_id)
+        from cardre.reporting.collector import resolve_run_step
+        rs = resolve_run_step(ctx, ref)
         if rs is None:
             return
 
@@ -93,7 +93,7 @@ class ModellingMetadataSection(SectionCollector):
 
     def build(self, ctx: SectionContext) -> None:
         from cardre.branch_step_resolver import resolve_step_for_branch
-        from cardre.reporting.collector import _resolve_run_step
+        from cardre.reporting.collector import resolve_run_step
 
         step_map = ctx.store.get_branch_step_map(ctx.bundle.target_branch_id, ctx.plan_version_id)
         if not step_map:
@@ -105,7 +105,7 @@ class ModellingMetadataSection(SectionCollector):
         )
         if ref is None:
             return
-        rs = _resolve_run_step(ctx.store, ref, ctx.plan_version_id)
+        rs = resolve_run_step(ctx, ref)
         if rs is None:
             return
 

@@ -28,7 +28,7 @@ class ImplementationArtifactsSection(SectionCollector):
         return None
 
     def build(self, ctx: SectionContext) -> None:
-        from cardre.reporting.collector import _resolve_run_step
+        from cardre.reporting.collector import resolve_run_step
 
         table_ref = ctx.resolved.get("scorecard-table-export")
         py_ref = ctx.resolved.get("scoring-export-python")
@@ -42,15 +42,15 @@ class ImplementationArtifactsSection(SectionCollector):
         sql_art = None
 
         if table_ref is not None:
-            rs = _resolve_run_step(ctx.store, table_ref, ctx.plan_version_id)
+            rs = resolve_run_step(ctx, table_ref)
             if rs is not None:
                 table_art = self._find_artifact_by_step(ctx, rs, SCHEMA_SCORE_TABLE)
         if py_ref is not None:
-            rs = _resolve_run_step(ctx.store, py_ref, ctx.plan_version_id)
+            rs = resolve_run_step(ctx, py_ref)
             if rs is not None:
                 py_art = self._find_artifact_by_step(ctx, rs, SCHEMA_SCORING_EXPORT_PYTHON)
         if sql_ref is not None:
-            rs = _resolve_run_step(ctx.store, sql_ref, ctx.plan_version_id)
+            rs = resolve_run_step(ctx, sql_ref)
             if rs is not None:
                 sql_art = self._find_artifact_by_step(ctx, rs, SCHEMA_SCORING_EXPORT_SQL)
 

@@ -55,6 +55,11 @@ def _resolve_run_step(
     return rs
 
 
+def resolve_run_step(ctx: SectionContext, ref: _ResolvedStepRef) -> RunStep | None:
+    """Convenience wrapper that passes ctx.add_limitation to _resolve_run_step."""
+    return _resolve_run_step(ctx.store, ref, ctx.plan_version_id, ctx.add_limitation)
+
+
 class ReportCollector:
     """Collects evidence from immutable run artifacts and builds a ReportBundle."""
 
