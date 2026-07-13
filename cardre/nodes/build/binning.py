@@ -245,7 +245,7 @@ class BinningNode(NodeType):
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
-        method = params.get("method", self.VALID_METHODS)
+        method = params.get("method", "fine_classing")
         if method not in self.VALID_METHODS:
             errors.append(f"method must be one of {sorted(self.VALID_METHODS)}, got {method!r}")
             return errors
@@ -342,22 +342,12 @@ class BinningNode(NodeType):
         raise ValueError(f"Unknown binning method: {method!r}")
 
     def _run_fine_classing(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.nodes.build.bins import FineClassingNode
-
-        node = FineClassingNode()
-        delegated_params = {k: v for k, v in context.validated_params.items() if k != "method"}
-        from dataclasses import replace
-        delegated_ctx = replace(context, validated_params=delegated_params)
-        return node.run(delegated_ctx)
+        from cardre.nodes.build.bins import _run_fine_classing
+        return _run_fine_classing(context)
 
     def _run_optbinning(self, context: ExecutionContext) -> NodeOutput:
-        from cardre.nodes.build.auto_binning_fit import AutoBinningFitNode
-
-        node = AutoBinningFitNode()
-        delegated_params = {k: v for k, v in context.validated_params.items() if k != "method"}
-        from dataclasses import replace
-        delegated_ctx = replace(context, validated_params=delegated_params)
-        return node.run(delegated_ctx)
+        from cardre.nodes.build.auto_binning_fit import _run_optbinning
+        return _run_optbinning(context)
 
 
 __all__ = ["BinningNode"]

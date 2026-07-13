@@ -152,7 +152,7 @@ class ModelExplainabilityNode(NodeType):
         model_typed = reader.require_model(model_art, "model_explainability")
         model_family = model_typed.model_family
         features = model_typed.features
-        model = dict(getattr(model_typed, "_raw", {}))
+        model = model_typed.to_dict()
         interpretability = model.get("interpretability", {})
         explanation_level = interpretability.get("explanation_level", "none")
 
@@ -583,7 +583,7 @@ class ModelLimitationsNode(NodeType):
         model_typed = reader.require_model(model_art, "model_limitations")
         model_family = model_typed.model_family
         features = model_typed.features
-        model = dict(getattr(model_typed, "_raw", {}))
+        model = model_typed.to_dict()
         interpretability = model.get("interpretability", {})
         explanation_level = interpretability.get("explanation_level", "none")
         model_limitations = interpretability.get("limitations", [])

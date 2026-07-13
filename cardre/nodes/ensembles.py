@@ -42,9 +42,7 @@ def _load_model_artifact(reader: ArtifactEvidenceReader, artifact_id: str) -> di
     if art is None:
         raise ValueError(f"Model artifact {artifact_id!r} not found")
     typed = reader.require_model(art, "ensemble")
-    model = dict(getattr(typed, "_raw", {}))
-    model.update(typed.to_model_dict())
-    return model
+    return cast("dict[str, Any]", typed.to_dict())
 
 
 def _get_predictions(
