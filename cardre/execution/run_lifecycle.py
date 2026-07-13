@@ -20,6 +20,7 @@ from cardre.domain.errors import (
     RunNotRunningError,
     RunPlanVersionMismatchError,
 )
+from cardre.domain.run import RunStatus
 
 if TYPE_CHECKING:
     from cardre.domain.diagnostics import JsonDict
@@ -176,7 +177,7 @@ def finalise_run(
         in_scope_step_ids=finalisation.in_scope_step_ids,
     )
     from cardre.store.run_repo import RunRepository
-    RunRepository(store).finish(finalisation.run_id, finalisation.status)
+    RunRepository(store).transition(finalisation.run_id, RunStatus(finalisation.status), expected_from=(RunStatus.RUNNING,))
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +252,7 @@ class RunLifecycle:
                     "created_at": utc_now_iso(),
                 })
             self.finalise(
-                status="failed",
+                status=RunStatus.FAILED.value,
                 execution_mode=self._execution_mode,
                 branch_id=self._branch_id,
                 target_step_id=self._target_step_id,
@@ -290,7 +291,7 @@ class RunLifecycle:
                 f"Run {run_id} not found",
                 context={"run_id": run_id},
             )
-        if existing_run.get("status") != "running":
+        if existing_run.get("status") != RunStatus.RUNNING.value:
             raise RunNotRunningError(
                 f"Run {run_id} is not in 'running' state "
                 f"(status={existing_run.get('status')})",
@@ -356,7 +357,7 @@ class RunLifecycle:
                 "traceback": tb,
                 "created_at": utc_now_iso(),
             })
-            RunRepository(self._store).finish(self.run_id, "failed")
+            RunRepository(self._store).transition(self.run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
             raise
         self._finalised = True
 
@@ -380,7 +381,7 @@ def assert_run_audit_integrity(store: ProjectStore, run_id: str) -> None:
     if run is None:
         raise RunNotFoundError(f"Run {run_id} not found", context={"run_id": run_id})
 
-    if run["status"] not in ("succeeded", "failed", "interrupted", "cancelled"):
+    if run["status"] not in {s.value for s in RunStatus.terminal()}:
         raise RunLifecycleError(
             f"Run {run_id} is not in a terminal state (status={run['status']!r})",
             code="RUN_NOT_TERMINAL",

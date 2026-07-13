@@ -15,6 +15,7 @@ import sys
 import threading
 import traceback
 import uuid
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from cardre.domain.artifacts import ArtifactRef
@@ -23,7 +24,7 @@ from cardre.domain.errors import (
     CardreError,
     PlanContainsUnavailableNodesError,
 )
-from cardre.domain.run import RunStep, RunStepStatus
+from cardre.domain.run import RunStatus, RunStep, RunStepStatus
 from cardre.execution.action_planner import ExecutionActionPlanner, _StepAction
 from cardre.execution.failure_classification import classify_step_failure
 from cardre.execution.run_step_writer import write_run_step
@@ -35,8 +36,18 @@ if TYPE_CHECKING:
     from cardre.domain.step import StepSpec
     from cardre.store.db import ProjectStore
 
-STATUS_SUCCEEDED = "succeeded"
-STATUS_FAILED = "failed"
+
+@dataclass
+class PlanExecutionResult:
+    """Typed result of a plan version execution."""
+    run_id: str
+    has_failure: bool
+    outputs: dict[str, list[ArtifactRef]]
+    records: dict[str, RunStep]
+    executed_step_ids: list[str]
+
+    def status(self) -> RunStatus:
+        return RunStatus.FAILED if self.has_failure else RunStatus.SUCCEEDED
 
 
 class _HeartbeatWatchdog:
@@ -135,12 +146,21 @@ class PlanExecutor:
         *,
         force: bool = False,
         branch_id: str | None = None,
-    ) -> str:
-        """Execute all steps in a plan version. Returns the run_id."""
+    ) -> PlanExecutionResult:
+        """Execute all steps in a plan version. Returns a ``PlanExecutionResult``."""
         steps = self._load_and_validate(plan_version_id)
         actions = self._action_planner.plan_full_plan(steps)
-        has_failure, _, _ = self._execute_actions(plan_version_id, run_id, actions)
-        return run_id
+        # Resolve branch_id once per run for lineage rows
+        run_branch_id = self._resolve_run_branch_id(run_id, branch_id)
+        has_failure, outputs, records = self._execute_actions(plan_version_id, run_id, actions, run_branch_id=run_branch_id)
+        executed_step_ids = [s.step_id for s in steps if s.step_id in records]
+        return PlanExecutionResult(
+            run_id=run_id,
+            has_failure=has_failure,
+            outputs=outputs,
+            records=records,
+            executed_step_ids=executed_step_ids,
+        )
 
     # ------------------------------------------------------------------
     # Shared action execution loop
@@ -151,6 +171,8 @@ class PlanExecutor:
         plan_version_id: str,
         run_id: str,
         actions: list[_StepAction],
+        *,
+        run_branch_id: str | None = None,
     ) -> tuple[bool, dict[str, list[ArtifactRef]], dict[str, RunStep]]:
         """Execute a sequence of step actions.
 
@@ -170,6 +192,7 @@ class PlanExecutor:
             ):
                 rs = self._execute_and_persist(
                     plan_version_id, run_id, action.spec, outputs, records,
+                    run_branch_id=run_branch_id,
                 )
             self._heartbeat(run_id)
             records[action.spec.step_id] = rs
@@ -192,6 +215,8 @@ class PlanExecutor:
         spec: StepSpec,
         step_outputs: dict[str, list[ArtifactRef]],
         run_step_records: dict[str, RunStep],
+        *,
+        run_branch_id: str | None = None,
     ) -> RunStep:
         """Run a step via StepRunner, persist the result, and return the RunStep.
 
@@ -205,7 +230,7 @@ class PlanExecutor:
         )
         try:
             return self._record_run_step_from_result(
-                run_id, spec, plan_version_id, result,
+                run_id, spec, plan_version_id, result, run_branch_id=run_branch_id,
             )
         except Exception:
             if result.status == RunStepStatus.FAILED:
@@ -242,7 +267,7 @@ class PlanExecutor:
             )
             try:
                 return self._record_run_step_from_result(
-                    run_id, spec, plan_version_id, failed_result,
+                    run_id, spec, plan_version_id, failed_result, run_branch_id=run_branch_id,
                 )
             except Exception as rec_exc2:
                 raise CardreError(
@@ -265,6 +290,8 @@ class PlanExecutor:
         spec: StepSpec,
         plan_version_id: str,
         result: StepExecutionResult,
+        *,
+        run_branch_id: str | None = None,
     ) -> RunStep:
         """Persist a StepExecutionResult as a run step with evidence.
 
@@ -286,13 +313,6 @@ class PlanExecutor:
             warnings=result.warnings,
             errors=result.errors,
         )
-
-        # Resolve branch ID for lineage rows
-        branch_id = self._get_branch_for_run(run_id)
-        run_record = self._store.execute(
-            "SELECT branch_id FROM runs WHERE run_id = ?", (run_id,)
-        ).fetchone()
-        run_branch_id = run_record["branch_id"] if run_record and run_record["branch_id"] else branch_id
 
         from cardre.store.evidence_repo import EvidenceRepository
         evidence_repo = EvidenceRepository(self._store)
@@ -347,11 +367,25 @@ class PlanExecutor:
         from cardre.store.run_repo import RunRepository
         RunRepository(self._store).append_diagnostic(run_id, diag)
 
-    def _get_branch_for_run(self, run_id: str) -> str | None:
+    def _resolve_run_branch_id(self, run_id: str, branch_id: str | None) -> str | None:
+        """Resolve the effective branch_id for a run.
+
+        Prefers the caller-supplied ``branch_id``, falling back to the
+        run row's ``branch_id`` column. Asserts they match if both are
+        non-None (invariant).
+        """
         row = self._store.execute(
             "SELECT branch_id FROM runs WHERE run_id = ?", (run_id,)
         ).fetchone()
-        return row["branch_id"] if row else None
+        db_branch_id = row["branch_id"] if row else None
+        if branch_id is not None and db_branch_id is not None and branch_id != db_branch_id:
+            raise CardreError(
+                f"branch_id mismatch: caller supplied {branch_id!r}, "
+                f"run row has {db_branch_id!r}",
+                code="BRANCH_ID_MISMATCH",
+                context={"run_id": run_id, "caller_branch_id": branch_id, "db_branch_id": db_branch_id},
+            )
+        return branch_id or db_branch_id
 
     def _resolve_output_artifacts(
         self,
@@ -371,9 +405,5 @@ class PlanExecutor:
                 artifacts.append(artifact)
         return artifacts
 
-    @staticmethod
-    def compute_final_status(has_failure: bool) -> str:
-        return STATUS_FAILED if has_failure else STATUS_SUCCEEDED
 
-
-__all__ = ["PlanExecutor"]
+__all__ = ["PlanExecutionResult", "PlanExecutor"]

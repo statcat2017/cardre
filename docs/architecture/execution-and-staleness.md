@@ -23,13 +23,13 @@ The executor enforces role-based access for artifacts:
 
 ## Run Lifecycle
 
-The `RunLifecycle` class (`cardre/run_lifecycle.py`) owns generic run mechanics:
+The `RunLifecycle` class (`cardre/execution/run_lifecycle.py`) owns generic run mechanics:
 
 - Run creation and `run_id` resolution.
-- Final status setting and manifest artifact writing, combined into one atomic `finalise_run()` call.
+- Final status setting and manifest artifact writing, combined into one atomic `finalise_run()` call. The terminal status is written via `RunRepository.transition(run_id, RunStatus.X, expected_from=(RunStatus.RUNNING,))` — the single atomic terminal-status writer. Run statuses are modelled by the `RunStatus(StrEnum)` in `cardre/domain/run.py`; callers pass enum members, not bare strings.
 - Manifest payload construction (`build_manifest_payload`) and labelling (`step_action`).
 
-`PlanExecutor` still owns execution semantics: topological ordering, node execution, role and leakage enforcement, and run-step evidence recording.
+`PlanExecutor` still owns execution semantics: topological ordering, node execution, role and leakage enforcement, and run-step evidence recording. `run_plan_version` returns a typed `PlanExecutionResult` (carrying `has_failure`, `executed_step_ids`, and a `status() -> RunStatus` property) so `RunCoordinator` does not re-query `RunStepRepository.get_for_run` after execution.
 
 ### Run-step writer seam
 

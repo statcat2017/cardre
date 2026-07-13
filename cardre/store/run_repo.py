@@ -8,6 +8,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, cast
 
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
+from cardre.domain.run import RunStatus, _check_transition
 
 if TYPE_CHECKING:
     from cardre.store.db import ProjectStore
@@ -113,20 +114,54 @@ class RunRepository:
         d = dict(row)
         return d
 
-    def finish(self, run_id: str, status: str = "succeeded") -> None:
+    def transition(
+        self,
+        run_id: str,
+        to_status: RunStatus,
+        *,
+        expected_from: tuple[RunStatus, ...] | None = None,
+    ) -> bool:
+        """Atomically transition a run to a terminal status.
+
+        Validates the transition via ``_check_transition``. If
+        ``expected_from`` is given, only transitions from one of those
+        statuses (SQL-level guard). Returns ``True`` if a row was
+        updated, ``False`` otherwise.
+
+        This is the **only** writer of terminal run statuses.
+        """
+        _check_transition(RunStatus.RUNNING, to_status)
         now = utc_now_iso()
-        cursor = self._store.execute(
-            "UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ? AND status = 'running'",
-            (status, now, run_id),
-        )
+        if expected_from:
+            placeholders = ", ".join("?" for _ in expected_from)
+            sql = (
+                f"UPDATE runs SET status = ?, finished_at = ? "
+                f"WHERE run_id = ? AND status IN ({placeholders})"
+            )
+            cursor = self._store.execute(sql, (to_status.value, now, run_id) + tuple(s.value for s in expected_from))
+        else:
+            cursor = self._store.execute(
+                "UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ?",
+                (to_status.value, now, run_id),
+            )
         if cursor.rowcount == 0:
-            logger.warning("finish: no running run found for run_id=%s", run_id)
+            logger.warning("transition: no matching run found for run_id=%s to_status=%s", run_id, to_status)
+            return False
+        return True
+
+    def finish(self, run_id: str, status: str = "succeeded") -> None:
+        """Legacy wrapper — delegates to ``transition``.
+
+        Deprecated: prefer ``transition(run_id, RunStatus.X, expected_from=(RunStatus.RUNNING,))``.
+        """
+        self.transition(run_id, RunStatus(status), expected_from=(RunStatus.RUNNING,))
 
     def update_status(self, run_id: str, status: str) -> None:
-        self._store.execute(
-            "UPDATE runs SET status = ? WHERE run_id = ?",
-            (status, run_id),
-        )
+        """Legacy unguarded status writer — delegates to ``transition``.
+
+        Deprecated: prefer ``transition(run_id, RunStatus.X, expected_from=...)``.
+        """
+        self.transition(run_id, RunStatus(status))
 
     def get_steps(self, run_id: str) -> list[JsonDict]:
         rows = self._store.execute(

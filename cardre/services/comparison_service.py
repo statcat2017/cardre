@@ -532,13 +532,14 @@ def refresh_comparison(
             branch_id=cid,
         )
 
-        # Update comparison with latest snapshot
-        with store.transaction() as conn:
-            conn.execute(
-                "UPDATE branch_comparisons SET latest_snapshot_id = ?, latest_ready = 1 WHERE comparison_id = ?",
-                (snapshot_id, comparison_id),
-            )
         last_snapshot_id = snapshot_id
+
+    # Single UPDATE at the end — not per-iteration
+    if last_snapshot_id is not None:
+        store.execute(
+            "UPDATE branch_comparisons SET latest_snapshot_id = ?, latest_ready = 1 WHERE comparison_id = ?",
+            (last_snapshot_id, comparison_id),
+        )
 
     return {
         "comparison_id": comparison_id,

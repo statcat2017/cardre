@@ -125,10 +125,11 @@ def _fail_run_if_running(store: ProjectStore, run_id: str) -> None:
     ensure it is not left ``running``. Never raises.
     """
     try:
+        from cardre.domain.run import RunStatus
         from cardre.store.run_repo import RunRepository
         run = RunRepository(store).get(run_id)
-        if run and run.get("status") == "running":
-            RunRepository(store).finish(run_id, "failed")
+        if run and run.get("status") == RunStatus.RUNNING.value:
+            RunRepository(store).transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
     except Exception as e:
         logger.exception("_fail_run_if_running failed for run %s: %s", run_id, e)
 
