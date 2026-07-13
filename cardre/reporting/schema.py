@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from cardre.readiness.limitation_codes import LimitationCode  # noqa: F401
+from cardre.reporting.types import ReportMode
 
 # ---------------------------------------------------------------------------
 # Source step reference — tracks exact vs inherited resolution
@@ -397,7 +398,6 @@ class ReportSummary(BaseModel):
     champion_branch_id: str = ""
     final_variable_count: int = 0
     excluded_variable_count: int = 0
-    report_status: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -607,7 +607,7 @@ class ReportBundle(BaseModel):
     project_id: str = ""
     run_id: str = ""
     target_branch_id: str = ""
-    report_mode: str = "branch"
+    report_mode: ReportMode = "branch"
     generated_at: str = ""
     generated_by: GeneratedBy = Field(default_factory=GeneratedBy)
     source: ReportSource = Field(default_factory=ReportSource)
@@ -634,3 +634,11 @@ class ReportBundle(BaseModel):
     variable_selection: VariableSelectionInfo = Field(default_factory=VariableSelectionInfo)
     model_diagnostics: ModelDiagnosticsInfo = Field(default_factory=ModelDiagnosticsInfo)
     implementation_artifacts: ImplementationArtifactsInfo = Field(default_factory=ImplementationArtifactsInfo)
+
+    @computed_field
+    def report_status(self) -> str:
+        if any(lim.severity == "blocker" for lim in self.limitations):
+            return "blocked"
+        if self.limitations:
+            return "complete_with_warnings"
+        return "complete"

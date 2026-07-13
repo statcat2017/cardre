@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     pass
 
 from cardre.domain.errors import CardreError
+from cardre.reporting.types import ReportMode
 from cardre.services.report_service import ReportGenerationService
 from cardre.store import ProjectStore
 from cardre.store.artifact_repo import ArtifactRepository
@@ -39,7 +40,7 @@ def export_branch_audit_pack(
     comparison_snapshot_id: str | None = None,
     include_row_level_data: bool = False,
     include_report: bool = False,
-    report_mode: str = "branch",
+    report_mode: ReportMode = "branch",
 ) -> dict[str, Any]:
     """Export selected branch evidence as an audit pack.
 
@@ -131,7 +132,7 @@ def _populate_export(
     comparison_snapshot_id: str | None,
     include_row_level_data: bool,
     include_report: bool,
-    report_mode: str,
+    report_mode: ReportMode,
     diagnostics: list[dict[str, Any]],
     warnings_list: list[str],
     branch: dict[str, Any],
@@ -291,7 +292,7 @@ def _populate_export(
                     target_branch_id=branch_id,
                     report_mode=report_mode,
                 )
-                if readiness.ready:
+                if readiness.ready:  # type: ignore[truthy-function]
                     result = svc.generate_and_write(
                         project_id=project_id,
                         run_id=latest_run_id,
