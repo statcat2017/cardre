@@ -52,7 +52,7 @@ class TestNodeTypesRoutes:
         assert "node_types" in data
         assert any(nt["node_type"] == "cardre.noop" for nt in data["node_types"])
 
-    def test_list_node_types_empty_returns_defaults(self, api_client, store):
+    def test_list_node_types_empty_returns_empty_list(self, api_client, store):
         project_id = str(uuid.uuid4())
         now = utc_now_iso()
         store.execute(
@@ -65,7 +65,7 @@ class TestNodeTypesRoutes:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data["node_types"]) > 0
+        assert data["node_types"] == []
 
 
 class TestReportsRoutes:

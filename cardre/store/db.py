@@ -8,56 +8,17 @@ import types
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from cardre._version import __version__
 from cardre.domain.errors import SchemaVersionError
-
-if TYPE_CHECKING:
-    pass
-
+from cardre.store._locked_cursor import LockedCursor as _LockedCursor
+from cardre.store._schema_version import check_and_migrate as _check_and_migrate
 from cardre.store.schema import (
     ALL_TABLES_SQL,
     V2_STORE_SCHEMA_FAMILY,
     V2_STORE_SCHEMA_VERSION,
 )
-
-
-class _LockedCursor:
-    """Cursor wrapper that serializes fetches on the store lock."""
-
-    def __init__(self, lock: threading.RLock, cursor: sqlite3.Cursor) -> None:
-        self._lock = lock
-        self._cursor = cursor
-
-    def fetchone(self) -> Any:
-        with self._lock:
-            return self._cursor.fetchone()
-
-    def fetchall(self) -> Any:
-        with self._lock:
-            return self._cursor.fetchall()
-
-    def fetchmany(self, size: int | None = None) -> Any:
-        with self._lock:
-            return self._cursor.fetchmany() if size is None else self._cursor.fetchmany(size)
-
-    def close(self) -> None:
-        with self._lock:
-            self._cursor.close()
-
-    @property
-    def rowcount(self) -> int:
-        with self._lock:
-            return self._cursor.rowcount
-
-    @property
-    def lastrowid(self) -> int | None:
-        with self._lock:
-            return self._cursor.lastrowid
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._cursor, name)
 
 
 class ProjectStore:
@@ -128,52 +89,7 @@ class ProjectStore:
                 f"No store found at {db_path}."
             )
         conn = self._connect()
-        self._check_schema_version(conn)
-
-    def _ensure_store_meta_table(self, conn: sqlite3.Connection) -> None:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS store_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
-        )
-
-    def _check_schema_version(self, conn: sqlite3.Connection) -> None:
-        self._ensure_store_meta_table(conn)
-        try:
-            rows = conn.execute(
-                "SELECT key, value FROM store_meta WHERE key IN ('schema_family', 'schema_version')"
-            ).fetchall()
-        except sqlite3.OperationalError as exc:
-            raise SchemaVersionError(
-                "Store schema metadata is missing or corrupt. "
-                "Recreate this project with the current app."
-            ) from exc
-
-        meta = {row["key"]: row["value"] for row in rows}
-        family = meta.get("schema_family")
-        if family != V2_STORE_SCHEMA_FAMILY:
-            raise SchemaVersionError(
-                f"Store schema family {family!r} does not match app family "
-                f"{V2_STORE_SCHEMA_FAMILY!r}. Recreate this project with the current app."
-            )
-
-        version_text = meta.get("schema_version")
-        if version_text is None:
-            raise SchemaVersionError(
-                "Store schema version is missing. Recreate this project with the current app."
-            )
-
-        try:
-            stored_version = int(version_text)
-        except ValueError as exc:
-            raise SchemaVersionError(
-                f"Store schema version {version_text!r} is invalid. "
-                "Recreate this project with the current app."
-            ) from exc
-
-        if stored_version != V2_STORE_SCHEMA_VERSION:
-            raise SchemaVersionError(
-                f"Store schema version {stored_version} does not match app version "
-                f"{V2_STORE_SCHEMA_VERSION}. Recreate this project with the current app."
-            )
+        _check_and_migrate(conn)
 
     # ------------------------------------------------------------------
     # Connection

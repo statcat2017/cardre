@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
 from cardre.api.routes._run_mappings import node_type_to_response
-from cardre.api.schemas import NodeTypeListResponse, NodeTypeResponse
+from cardre.api.schemas import NodeTypeListResponse
 from cardre.store.db import ProjectStore
 from cardre.store.step_repo import StepRepository
 
@@ -23,25 +23,11 @@ async def list_node_types(
     rows = step_repo.get_distinct_node_types(project_id)
 
     seen: set[str] = set()
-    node_types: list[NodeTypeResponse] = []
+    node_types = []
     for r in rows:
         nt = r["node_type"]
         if nt not in seen:
             seen.add(nt)
             node_types.append(node_type_to_response(nt, category=r.get("category", "")))
-
-    if not node_types:
-        # Return some well-known defaults if no data yet
-        defaults = [
-            ("cardre.import_data", "import", True),
-            ("cardre.profile", "fit", True),
-            ("cardre.fine_classing", "fit", True),
-            ("cardre.manual_binning", "refinement", True),
-            ("cardre.woe_transform", "transform", True),
-            ("cardre.logistic_regression", "fit", True),
-            ("cardre.score_scaling", "transform", True),
-        ]
-        for nt, cat, _ in defaults:
-            node_types.append(node_type_to_response(nt, category=cat))
 
     return NodeTypeListResponse(node_types=node_types)

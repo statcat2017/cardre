@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 from cardre.domain.run import _VALID_TRANSITIONS, RunStatus
@@ -86,25 +86,18 @@ class RunRepository:
             logger.warning("heartbeat: no running run found for run_id=%s", run_id)
 
     def set_active_step(self, run_id: str, step_id: str | None) -> None:
-        row = self._store.execute("SELECT metadata_json FROM runs WHERE run_id = ?", (run_id,)).fetchone()
-        if row is None:
-            return
-        metadata = json.loads(row["metadata_json"] or "{}")
-        if step_id is None:
-            metadata.pop("active_step_id", None)
-        else:
-            metadata["active_step_id"] = step_id
         self._store.execute(
-            "UPDATE runs SET metadata_json = ? WHERE run_id = ?",
-            (json.dumps(metadata), run_id),
+            "UPDATE runs SET active_step_id = ? WHERE run_id = ?",
+            (step_id, run_id),
         )
 
     def get_active_step(self, run_id: str) -> str | None:
-        row = self._store.execute("SELECT metadata_json FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+        row = self._store.execute(
+            "SELECT active_step_id FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
         if row is None:
             return None
-        metadata = json.loads(row["metadata_json"] or "{}")
-        return cast(str | None, metadata.get("active_step_id"))
+        return row["active_step_id"]
 
     def get(self, run_id: str) -> JsonDict | None:
         row = self._store.execute(
