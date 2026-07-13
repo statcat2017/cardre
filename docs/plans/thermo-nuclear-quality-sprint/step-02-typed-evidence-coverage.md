@@ -127,26 +127,25 @@ migrated (a later PR or PR11).
    in `binning.py`.
 7. Delete `kind`/`profile` class attrs from any remaining classes.
 
-### T7 — Fix `BinDefinition` Any-shadow + `apply_overrides` + `normalize`
+### T7 — Land the PR2 share of the binning cleanup
 
-1. Make `BinDefinition` a thin typed alias for
-   `LifecycleBinDefinition` (re-export, or retire `BinDefinition`/`BinVariable`
-   and update callers to use `LifecycleBinDefinition`/`LifecycleBin`/
-   `LifecycleVariable`). Delete the `_lifecycle: Any` field and the
-   `if self._lifecycle is not None: return self._lifecycle.X` forwarding.
-2. Replace `normalize` + `_normalize_var` with:
+1. Replace `normalize` + `_normalize_var` with:
    ```python
    def normalize(self) -> "LifecycleBinDefinition":
        return dataclasses.replace(self, schema_version=SCHEMA_BIN_DEFINITION)
    ```
-3. Rewrite `validate_overrides` and `apply_overrides` to take and return
+2. Rewrite `validate_overrides` and `apply_overrides` to take and return
    `LifecycleBinDefinition` (not `JsonDict`). Construct merged bins via
    `dataclasses.replace`/`LifecycleBin(...)`. This fixes the silent
    field-drop bug where merged-bin dict literals (lines 466-478) are
    missing `kind`/`woe`/`iv`/`bad_rate`/`row_pct`.
-4. Update callers of `validate_overrides`/`apply_overrides` (likely in
+3. Update callers of `validate_overrides`/`apply_overrides` (likely in
    `cardre/services/manual_binning_service.py`) to pass/expect typed
    `LifecycleBinDefinition`.
+4. Do not attempt repo-wide retirement of `BinDefinition` in PR2. If a
+   wrapper still remains after these changes, PR7 owns only the narrow
+   follow-up: current-schema fixture alignment and regression coverage for
+   the manual-binning override seam.
 5. Add round-trip tests using the golden bin definition + manual overrides
    fixtures from PR0. Assert that `apply_overrides` produces bins with ALL
    `LifecycleBin.from_dict` fields present.

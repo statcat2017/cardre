@@ -53,7 +53,7 @@ PR0  safety net (golden fixtures, smoke test, grep checks)
   │    ├── PR3b remove _raw from calibration slice
   │    ├── PR3c remove _raw from reporting collector slice
   │    │    └── PR5  collector decomposition (section registry)
-  │    ├── PR7  binning type cleanup (BinDefinition, apply_overrides)
+  │    ├── PR7  binning override seam hardening (fixtures + round-trip tests)
   │    └── PR6  node helper extraction (target_metadata, require_model)
   ├── PR4  evidence reuse decision (delete or implement)
   │    └── PR8  run status transitions (RunStatus enum, atomic finish)
@@ -75,7 +75,7 @@ PR0  safety net (golden fixtures, smoke test, grep checks)
 | S4 | PR4 | Decide evidence reuse: delete or implement | T3, K1 | PR1 | Decision required (see below) |
 | S5 | PR5 | Decompose reporting collector into section registry | T5 (collector), R1, R2, R3, R5, R6 | PR3c | No (golden report diff) |
 | S6 | PR6 | Extract node helpers (target_metadata, require_model, data_artifacts) | T4, N4, N5 | PR2 | No |
-| S7 | PR7 | Converge binning types (BinDefinition, apply_overrides, normalize) | T7 (full), T2 (if binning adapters) | PR2 | No (round-trip tests) |
+| S7 | PR7 | Harden binning override seam (current-schema fixtures + lossless round-trip tests) | T7 (remaining residue after PR2) | PR2 | No (round-trip tests) |
 | S8 | PR8 | Introduce RunStatus enum and atomic transitions | SE1, SE2, SE3, SE4, SE5, SE7 | PR4 | Migration (labelled) |
 | S9 | PR9 | Store / API / sidecar cleanup | A1-A9 | PR8 | No |
 | S10 | PR10 | Frontend + Tauri cleanup | F1-F10 | — | No |
@@ -165,13 +165,18 @@ opening the PR.
   deleted.
 
 ### T7 — binning types
-- [ ] `BinDefinition` has no `_lifecycle: Any` field.
-- [ ] `apply_overrides`/`validate_overrides` operate on typed
-  `LifecycleBinDefinition` (not `JsonDict`).
-- [ ] Merged bins include all `LifecycleBin.from_dict` fields (no silent
-  field-drop).
-- [ ] `normalize` is `dataclasses.replace(self, schema_version=...)`.
-- [ ] Round-trip tests for merged bins pass.
+- [ ] `tests/fixtures/golden_manual_binning_overrides.json` matches the live
+  manual-binning override schema used by production code.
+- [ ] A regression test reads the golden bin definition through
+  `LifecycleBinDefinition.from_payload(...)`, applies current-schema
+  overrides, and proves the merged result round-trips losslessly through
+  `to_payload()` → `from_payload()`.
+- [ ] Merged-bin assertions cover the previously dropped metrics (`kind`,
+  `bad_rate`, `woe`, `iv`, `row_pct`) and any special/other-bin metadata
+  exercised by the fixture or targeted test setup.
+- [ ] If production code changes are needed, they stay local to the
+  manual-binning binning seam; no repo-wide `BinDefinition` retirement or
+  broad caller migration is part of PR7.
 
 ### R1-R6, SE1-SE8, N1-N5, A1-A9, K1-K5, F1-F10
 - [ ] Resolved per the finding descriptions in

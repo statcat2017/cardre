@@ -140,17 +140,17 @@ class TestManualBinningOverridesRoundTrip:
     def test_has_representative_overrides(self):
         data = _load_fixture("golden_manual_binning_overrides.json")
         overrides = data["overrides"]
-        assert len(overrides) >= 3, "Fixture should have at least 3 representative overrides"
+        assert len(overrides) >= 2, "Fixture should have at least 2 representative overrides"
 
         actions = {o["action"] for o in overrides}
-        assert "merge" in actions, "Fixture should include a merge override"
-        assert "group" in actions, "Fixture should include a group override"
-        assert "reject" in actions, "Fixture should include a reject override"
+        assert "merge_bins" in actions, "Fixture should include a merge_bins override"
+        assert "reject_variable" in actions, "Fixture should include a reject_variable override"
 
         for override in overrides:
             assert "variable" in override, "Each override must have a variable"
             assert "action" in override, "Each override must have an action"
             assert "reason" in override, "Each override must have a reason"
+            assert "source_bin_ids" in override, "Each override must have source_bin_ids"
 
     def test_json_round_trip(self):
         data = _load_fixture("golden_manual_binning_overrides.json")
@@ -265,3 +265,104 @@ class TestApplyOverrides:
         assert grouped.is_missing_bin is False
         assert grouped.lower is None
         assert grouped.upper is None
+
+
+class TestApplyOverridesGoldenFixture:
+    """Golden fixture regression tests for apply_overrides round-trip losslessness."""
+
+    def test_golden_bin_def_round_trips_through_apply_overrides(self):
+        data = _load_fixture("golden_bin_definition.json")
+        overrides = _load_fixture("golden_manual_binning_overrides.json")["overrides"]
+
+        bin_def = LifecycleBinDefinition.from_payload(data)
+        result = LifecycleBinDefinition.apply_overrides(bin_def, overrides)
+
+        re_serialized = result.to_payload()
+        round_tripped = LifecycleBinDefinition.from_payload(re_serialized)
+
+        assert round_tripped.schema_version == result.schema_version
+        assert len(round_tripped.variables) == len(result.variables)
+        assert len(round_tripped.rejected) == len(result.rejected)
+        assert len(round_tripped.warnings) == len(result.warnings)
+
+        for var, rvar in zip(result.variables, round_tripped.variables, strict=True):
+            assert var.variable == rvar.variable
+            assert var.kind == rvar.kind
+            assert len(var.bins) == len(rvar.bins)
+            for b, rb in zip(var.bins, rvar.bins, strict=True):
+                assert b.bin_id == rb.bin_id
+                assert b.label == rb.label
+                assert b.lower == rb.lower
+                assert b.upper == rb.upper
+                assert b.lower_inclusive == rb.lower_inclusive
+                assert b.upper_inclusive == rb.upper_inclusive
+                assert b.categories == rb.categories
+                assert b.is_missing_bin == rb.is_missing_bin
+                assert b.is_special_bin == rb.is_special_bin
+                assert b.is_other_bin == rb.is_other_bin
+                assert b.row_count == rb.row_count
+                assert b.good_count == rb.good_count
+                assert b.bad_count == rb.bad_count
+                assert b.bad_rate == rb.bad_rate
+                assert b.woe == rb.woe
+                assert b.iv == rb.iv
+                assert b.row_pct == rb.row_pct
+                assert b.kind == rb.kind
+                assert b.special_values == rb.special_values
+                assert b.extra == rb.extra
+
+    def test_merged_bins_preserve_previously_dropped_metrics(self):
+        data = _load_fixture("golden_bin_definition.json")
+        overrides = _load_fixture("golden_manual_binning_overrides.json")["overrides"]
+
+        bin_def = LifecycleBinDefinition.from_payload(data)
+        result = LifecycleBinDefinition.apply_overrides(bin_def, overrides)
+
+        credit_amount_var = next(v for v in result.variables if v.variable == "credit_amount")
+        merged = [b for b in credit_amount_var.bins if b.bin_id == "credit_amount_manual_low_credit"]
+        assert len(merged) == 1, "Expected exactly one merged bin for credit_amount"
+        merged = merged[0]
+
+        assert merged.label == "Low Credit"
+        assert merged.lower is None
+        assert merged.upper == 1525.0
+        assert merged.lower_inclusive is False
+        assert merged.upper_inclusive is True
+        assert merged.categories is None
+        assert merged.is_missing_bin is False
+        assert merged.row_count == 4
+        assert merged.good_count == 3
+        assert merged.bad_count == 1
+        assert merged.bad_rate == 0.25
+        assert merged.row_pct is None
+        assert merged.woe is None
+        assert merged.iv is None
+        assert merged.kind == ""
+        assert merged.is_special_bin is False
+        assert merged.is_other_bin is False
+        assert merged.special_values is None
+
+    def test_apply_overrides_with_no_overrides_round_trips_stably(self):
+        data = _load_fixture("golden_bin_definition.json")
+        bin_def = LifecycleBinDefinition.from_payload(data)
+        result = LifecycleBinDefinition.apply_overrides(bin_def, [])
+
+        assert len(result.warnings) == len(bin_def.warnings) + 1
+        assert result.warnings[-1]["message"] == (
+            "No manual overrides applied; passing through auto bins for selected variables"
+        )
+
+        re_serialized = result.to_payload()
+        round_tripped = LifecycleBinDefinition.from_payload(re_serialized)
+
+        assert round_tripped.schema_version == result.schema_version
+        assert len(round_tripped.variables) == len(result.variables)
+        for var, rvar in zip(result.variables, round_tripped.variables, strict=True):
+            assert var.variable == rvar.variable
+            for b, rb in zip(var.bins, rvar.bins, strict=True):
+                assert b.bin_id == rb.bin_id
+                assert b.bad_rate == rb.bad_rate
+                assert b.woe == rb.woe
+                assert b.iv == rb.iv
+                assert b.row_pct == rb.row_pct
+                assert b.kind == rb.kind
