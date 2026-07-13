@@ -396,6 +396,14 @@ def test_render_report_bundle_empty():
         "cutoffs": {},
         "champion": {},
         "artifacts": [],
+        "redundancy_review": {
+            "cluster_count": 0, "singleton_count": 0,
+            "clusters": [], "singleton_variables": [], "warnings": [],
+            "method": "", "input_representation": "", "similarity_metric": "",
+            "threshold": None, "absolute_correlation": True,
+            "missing_handling": "pairwise", "candidate_limit": 50,
+            "minimum_pair_count": 30, "representative_rule": "",
+        },
         "generated_at": utc_now_iso(),
         "cardre_version": "0.2.0",
     }
@@ -597,6 +605,14 @@ def test_renderer_html_output():
         },
         "champion": {},
         "artifacts": [],
+        "redundancy_review": {
+            "cluster_count": 0, "singleton_count": 0,
+            "clusters": [], "singleton_variables": [], "warnings": [],
+            "method": "", "input_representation": "", "similarity_metric": "",
+            "threshold": None, "absolute_correlation": True,
+            "missing_handling": "pairwise", "candidate_limit": 50,
+            "minimum_pair_count": 30, "representative_rule": "",
+        },
         "generated_at": utc_now_iso(),
         "cardre_version": "0.2.0",
     }
