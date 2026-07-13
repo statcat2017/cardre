@@ -44,18 +44,18 @@ This is the **highest-leverage and largest single step** in the sprint.
 
 ### T1b — Add `ManualBinningOverrides` typed model
 
-1. In `cardre/_evidence/models/binning.py` (or a new
-   `_evidence/models/manual_binning_overrides.py`), define a typed
+1. In `cardre/_evidence/models/binning.py`, define a typed
    `ManualBinningOverrides` dataclass matching the raw shape the collector
    currently reads via `getattr(data, "_raw", data)`:
-   - `variables: list[ManualBinningOverrideVariable]`
-   - each variable: `variable, bins: list[OverrideBin], override_history:
-     list[OverrideHistoryEntry]`
+   - `overrides: list[ManualBinningOverride]`
+   - each override: `variable, action, bins, reason, comment, group_label, new_label`
+   - `schema_version: str`, `source_artifact_id: str`
    - `from_json(data, artifact_id) -> Self`
    - `to_dict() -> dict` (the collector currently calls `data.to_dict()` via
      duck-typing — make it a real typed method)
-2. Update `cardre/_evidence/adapters/binning.py:ManualBinningOverridesAdapter.parse`
-   to return the typed model instead of the raw dict.
+2. Update `cardre/_evidence/adapters/__init__.py` to wire
+   `ManualBinningOverrides.from_json` as the parse callable for
+   `EvidenceKind.MANUAL_BINNING_OVERRIDES`.
 
 ### T1c — Add typed read-only properties to `ModelArtifactV1` (properties only, no consumer migration)
 
