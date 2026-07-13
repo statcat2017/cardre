@@ -71,7 +71,8 @@ def _prepare_training_data(
     Returns (df, features, target_column, good_values, bad_values, y_binary, meta).
     """
     store = context.store
-    train_artifact = next(a for a in context.input_artifacts if a.role == "train")
+    reader = ArtifactEvidenceReader(store)
+    train_artifact = context.require_train_artifact("_prepare_training_data")
 
     target_column, good_values, bad_values, meta = _extract_target_metadata(
         store, context.input_artifacts,
@@ -84,7 +85,7 @@ def _prepare_training_data(
     if not bad_values:
         raise ValueError("Bad values must be defined")
 
-    df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+    df = reader.read_dataframe(train_artifact)
 
     if target_column not in df.columns:
         raise ValueError(f"Target column '{target_column}' not found in training data")

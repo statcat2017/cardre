@@ -509,8 +509,6 @@ for _fam in ("logistic_regression",):
 for _fam in ("decision_tree", "random_forest", "gbdt",
              "xgboost", "lightgbm", "catboost"):
     _ADAPTERS[_fam] = apply_sklearn_estimator
-for _fam in ("voting_ensemble", "weighted_ensemble"):
-    _ADAPTERS[_fam] = apply_ensemble
 
 
 def apply_model(

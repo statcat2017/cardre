@@ -275,11 +275,7 @@ class PythonScoringExportNode(NodeType):
         store = context.store
         reader = ArtifactEvidenceReader(store)
 
-        bundle_art = next(
-            (a for a in context.input_artifacts
-             if a.metadata.get("schema_version") == SCHEMA_FROZEN_SCORECARD_BUNDLE),
-            None,
-        )
+        bundle_art = context.find_frozen_bundle()
         if bundle_art is None:
             raise EvidenceNotFoundError(
                 EvidenceKind.FROZEN_SCORECARD_BUNDLE,
@@ -475,11 +471,7 @@ class SqlScoringExportNode(NodeType):
         store = context.store
         reader = ArtifactEvidenceReader(store)
 
-        bundle_art = next(
-            (a for a in context.input_artifacts
-             if a.metadata.get("schema_version") == SCHEMA_FROZEN_SCORECARD_BUNDLE),
-            None,
-        )
+        bundle_art = context.find_frozen_bundle()
         if bundle_art is None:
             raise EvidenceNotFoundError(
                 EvidenceKind.FROZEN_SCORECARD_BUNDLE,

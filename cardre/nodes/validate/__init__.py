@@ -3,9 +3,9 @@ from cardre.nodes.validate.analyse import (
     ThresholdOptimizationNode,
     ValidationMetricsNode,
 )
-from cardre.nodes.validate.apply import ApplyModelNode, ApplyWoeMappingNode, DummyApplyNode
+from cardre.nodes.validate.apply import ApplyModelNode, ApplyWoeMappingNode
 
 __all__ = [
     "ApplyModelNode", "ApplyWoeMappingNode", "CutoffAnalysisNode",
-    "DummyApplyNode", "ThresholdOptimizationNode", "ValidationMetricsNode",
+    "ThresholdOptimizationNode", "ValidationMetricsNode",
 ]

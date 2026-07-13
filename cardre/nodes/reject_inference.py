@@ -63,16 +63,16 @@ class DefineRejectPopulationNode(NodeType):
         reader = ArtifactEvidenceReader(store)
 
         dataset_artifact = next(a for a in context.input_artifacts if a.role == "input")
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+        df = reader.read_dataframe(dataset_artifact)
         total_rows = df.height
 
-        metadata = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        metadata = context.target_metadata()
         sample_def = reader.find(context.input_artifacts, EvidenceKind.SAMPLE_DEFINITION)
 
-        target_column = metadata.target_column
-        good_values = {str(v) for v in metadata.good_values}
-        bad_values = {str(v) for v in metadata.bad_values}
-        indeterminate_values = {str(v) for v in metadata.indeterminate_values}
+        target_column = metadata.target_column if metadata else ""
+        good_values = {str(v) for v in (metadata.good_values if metadata else [])}
+        bad_values = {str(v) for v in (metadata.bad_values if metadata else [])}
+        indeterminate_values = {str(v) for v in (metadata.indeterminate_values if metadata else [])}
 
         sample_domain = sample_def.sample_domain
         rejection_source = sample_def.rejection_source
@@ -201,7 +201,7 @@ class RejectInferenceNoneNode(NodeType):
         reader = ArtifactEvidenceReader(store)
 
         dataset_artifact = next(a for a in context.input_artifacts if a.role == "input")
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+        df = reader.read_dataframe(dataset_artifact)
 
         config = reader.find(context.input_artifacts, EvidenceKind.REJECT_POPULATION_CONFIG)
 
@@ -319,10 +319,10 @@ class RejectInferenceAugmentationNode(NodeType):
         params = context.validated_params
 
         dataset_artifact = next(a for a in context.input_artifacts if a.role == "input")
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+        df = reader.read_dataframe(dataset_artifact)
 
         config = reader.find(context.input_artifacts, EvidenceKind.REJECT_POPULATION_CONFIG)
-        metadata = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        metadata = context.target_metadata()
 
         n_score_bands = int(params.get("n_score_bands", 10))
         min_samples_per_band = int(params.get("min_samples_per_band", 30))
@@ -370,9 +370,9 @@ class RejectInferenceAugmentationNode(NodeType):
                 metrics={"method": "augmentation", "n_financed": n_financed, "resampled": 0},
             )
 
-        target_column = metadata.target_column
-        good_values = {str(v) for v in metadata.good_values}
-        bad_values = {str(v) for v in metadata.bad_values}
+        target_column = metadata.target_column if metadata else ""
+        good_values = {str(v) for v in (metadata.good_values if metadata else [])}
+        bad_values = {str(v) for v in (metadata.bad_values if metadata else [])}
         all_known = good_values | bad_values
 
         numeric_cols = [c for c in df.columns

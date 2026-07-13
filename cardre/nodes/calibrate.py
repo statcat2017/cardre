@@ -314,10 +314,10 @@ class CalibrateProbabilitiesNode(NodeType):
             cross_validated = False
 
         # 1. Read modelling metadata for target definition
-        meta = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
-        target_column = meta.target_column
-        good_values = {str(v) for v in meta.good_values}
-        bad_values = {str(v) for v in meta.bad_values}
+        meta = context.target_metadata()
+        target_column = meta.target_column if meta else ""
+        good_values = meta.good_values if meta else frozenset()
+        bad_values = meta.bad_values if meta else frozenset()
         if not good_values or not bad_values:
             raise ValueError(
                 "Calibration requires modelling metadata with good_values and bad_values"
@@ -334,7 +334,7 @@ class CalibrateProbabilitiesNode(NodeType):
                 f"none found in input artifacts"
             )
 
-        df = pl.read_parquet(store.artifact_path(calib_art))  # cardre-allow-artifact-read: dataset-frame-input
+        df = reader.read_dataframe(calib_art)
 
         if "predicted_bad_probability" not in df.columns:
             raise ValueError(

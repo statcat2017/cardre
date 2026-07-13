@@ -11,7 +11,6 @@ from typing import Any
 
 import polars as pl
 
-from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import SCHEMA_EXPLAINABILITY_REPORT
 from cardre.artifacts import write_json_artifact
@@ -149,20 +148,10 @@ class ModelExplainabilityNode(NodeType):
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
         if model_art is None:
             raise ValueError("model_explainability requires a model artifact")
-
-        try:
-            model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-        except EvidenceParseError as exc:
-            raise ValueError(
-                f"model_explainability requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
-            ) from exc
-        if model_typed is None or not model_typed.model_family:
-            raise ValueError(
-                f"model_explainability requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
-            )
-        model = dict(getattr(model_typed, "_raw", {}))
+        model_typed = reader.require_model(model_art, "model_explainability")
         model_family = model_typed.model_family
         features = model_typed.features
+        model = dict(getattr(model_typed, "_raw", {}))
         interpretability = model.get("interpretability", {})
         explanation_level = interpretability.get("explanation_level", "none")
 
@@ -310,7 +299,8 @@ class ModelExplainabilityNode(NodeType):
             import joblib
             estimator = joblib.load(io.BytesIO(estimator_bytes))
 
-            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
+            reader = ArtifactEvidenceReader(store)
+            df = reader.read_dataframe(data_art)
             target_col = model.get("target_column", "")
             if target_col not in df.columns:
                 return None
@@ -335,7 +325,7 @@ class ModelExplainabilityNode(NodeType):
                     for i, f in enumerate(features)
                 },
             }
-        except Exception:
+        except (ImportError, FileNotFoundError, joblib.InvalidJoblibException):
             return None
 
     def _compute_stability_analysis(
@@ -411,7 +401,8 @@ class ModelExplainabilityNode(NodeType):
             import joblib
             estimator = joblib.load(io.BytesIO(estimator_bytes))
 
-            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
+            reader = ArtifactEvidenceReader(store)
+            df = reader.read_dataframe(data_art)
             X = df.select(features).to_numpy()
 
             feature_importance = model.get("model_payload", {}).get("feature_importance", {})
@@ -436,7 +427,7 @@ class ModelExplainabilityNode(NodeType):
                     "average_predictions": result["average"][0].tolist(),
                 })
             return pdp_results if pdp_results else None
-        except Exception:
+        except (ImportError, FileNotFoundError, joblib.InvalidJoblibException):
             return None
 
     def _compute_shap(
@@ -468,7 +459,8 @@ class ModelExplainabilityNode(NodeType):
 
             model_family = model.get("model_family", "")
 
-            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
+            reader = ArtifactEvidenceReader(store)
+            df = reader.read_dataframe(data_art)
             X = df.select(features).to_numpy()
 
             if model_family in ("random_forest", "gbdt", "decision_tree"):
@@ -493,7 +485,7 @@ class ModelExplainabilityNode(NodeType):
                 },
                 "explainer_type": explainer_type,
             }
-        except Exception:
+        except (ImportError, FileNotFoundError, joblib.InvalidJoblibException):
             return None
 
     def _champion_gate(self, explanation_level: str, report: dict[str, Any]) -> dict[str, str]:
@@ -587,20 +579,10 @@ class ModelLimitationsNode(NodeType):
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
         if model_art is None:
             raise ValueError("model_limitations requires a model artifact")
-
-        try:
-            model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-        except EvidenceParseError as exc:
-            raise ValueError(
-                f"model_limitations requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
-            ) from exc
-        if model_typed is None or not model_typed.model_family:
-            raise ValueError(
-                f"model_limitations requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
-            )
-        model = dict(getattr(model_typed, "_raw", {}))
+        model_typed = reader.require_model(model_art, "model_limitations")
         model_family = model_typed.model_family
         features = model_typed.features
+        model = dict(getattr(model_typed, "_raw", {}))
         interpretability = model.get("interpretability", {})
         explanation_level = interpretability.get("explanation_level", "none")
         model_limitations = interpretability.get("limitations", [])
@@ -723,8 +705,9 @@ class ModelLimitationsNode(NodeType):
             return issues
 
         try:
-            df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
-        except Exception:
+            reader = ArtifactEvidenceReader(store)
+            df = reader.read_dataframe(train_art)
+        except (OSError, pl.ComputeError):
             return issues
 
         n_rows = df.height

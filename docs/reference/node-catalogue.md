@@ -15,7 +15,6 @@ Generated from `NodeRegistry.with_defaults()`. Nodes are divided into launch and
 | `cardre.calibration_diagnostics` | fit | Compute calibration diagnostics for scored roles |
 | `cardre.separation_diagnostics` | fit | Detect high-coefficient separation risk |
 | `cardre.vif_diagnostics` | fit | Compute VIF multicollinearity diagnostics |
-| `cardre.import_fixture_uci_german_credit` | transform | Import the UCI German Credit fixture |
 | `cardre.import_dataset` | transform | Import tabular data from CSV/TSV/Parquet |
 | `cardre.profile_dataset` | transform | Profile dataset columns and statistics |
 | `cardre.validate_binary_target` | transform | Validate binary target column |
@@ -39,7 +38,6 @@ Generated from `NodeRegistry.with_defaults()`. Nodes are divided into launch and
 | `cardre.apply_model` | apply | Apply model to test/oot |
 | `cardre.validation_metrics` | apply | Calculate validation metrics |
 | `cardre.cutoff_analysis` | apply | Cutoff analysis |
-| `cardre.dummy_apply` | apply | Dummy apply (testing) |
 
 ## Deferred Nodes (schema only, not executable at launch)
 
@@ -62,6 +60,4 @@ Generated from `NodeRegistry.with_defaults()`. Nodes are divided into launch and
 | `cardre.alternative_data_manifest` | report | Alternative data manifest |
 | `cardre.reject_inference_none` | transform | Reject inference (none) |
 | `cardre.reject_inference_augmentation` | transform | Reject inference (augmentation) |
-| `cardre.voting_ensemble` | fit | Voting ensemble |
-| `cardre.weighted_ensemble` | fit | Weighted ensemble |
 | `cardre.decision_tree_classifier` | fit | Decision tree classifier |
