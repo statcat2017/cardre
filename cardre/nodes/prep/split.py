@@ -79,7 +79,7 @@ class ValidateBinaryTargetNode(NodeType):
         input_artifact = context.input_artifacts[0]
         params = context.validated_params
         target_col = params.get("target_column", "credit_risk_class")
-        df = pl.read_parquet(store.artifact_path(input_artifact))
+        df = pl.read_parquet(store.artifact_path(input_artifact))  # cardre-allow-artifact-read: dataset-frame-input
         values = df[target_col].unique().to_list()
         unique_values = sorted(str(v) for v in values)
 
@@ -207,7 +207,7 @@ class SplitTrainTestOotNode(NodeType):
         if abs(total - 1.0) > 0.001:
             raise ValueError(f"Split fractions sum to {total}, expected 1.0")
 
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
+        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
 
         if strategy == "preassigned_role_column":
             if not role_column or role_column not in df.columns:

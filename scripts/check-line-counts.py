@@ -90,11 +90,6 @@ SEAM_WATCHLIST: dict[str, dict[str, Any]] = {
 # ── Temporary line-count debt ────────────────────────────────────────
 
 LINE_COUNT_DEBT: dict[str, dict[str, Any]] = {
-    "cardre/nodes/prep.py": {
-        "current_count": 1073,
-        "ceiling": 1300,
-        "reason": "node module; candidate for node-family split",
-    },
 }
 
 

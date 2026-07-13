@@ -62,8 +62,7 @@ class ProfileDatasetNode(NodeType):
         params = context.validated_params
         profile_max_rows: int | None = params.get("profile_max_rows")
 
-        path = store.artifact_path(input_artifact)
-        df = pl.read_parquet(path, n_rows=profile_max_rows)
+        df = pl.read_parquet(store.artifact_path(input_artifact), n_rows=profile_max_rows)  # cardre-allow-artifact-read: dataset-frame-input
 
         quality_warnings: list[JsonDict] = []
         recommended_exclude: list[str] = []

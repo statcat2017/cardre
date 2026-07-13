@@ -24,7 +24,7 @@ class ApplyExclusionsNode(NodeType):
         dataset_artifact = next(a for a in context.input_artifacts if a.role in ("input", "train"))
         rules = params.get("rules", [])
 
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
+        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
         n_before = df.height
 
         rule_counts = []
@@ -133,7 +133,7 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
             if input_art.role in ("train", "test", "oot")
         ]
         for input_art in data_inputs:
-            df = pl.read_parquet(store.artifact_path(input_art))
+            df = pl.read_parquet(store.artifact_path(input_art))  # cardre-allow-artifact-read: dataset-frame-input
             affected: dict[str, dict[str, Any]] = {"imputations": {}, "caps": {}, "floors": {}}
 
             for col_name, config in imputations.items():

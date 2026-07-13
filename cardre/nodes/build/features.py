@@ -150,8 +150,8 @@ class CalculateWoeIvNode(NodeType):
                 row_count = int(cast(Any, bin_mask.sum()))
 
                 if target_series is not None and good_values and bad_values:
-                    bin_good = int(target_series.filter(bin_mask).is_in(good_values_list).sum())
-                    bin_bad = int(target_series.filter(bin_mask).is_in(bad_values_list).sum())
+                    bin_good = int(target_series.filter(cast(pl.Series, bin_mask)).is_in(good_values_list).sum())
+                    bin_bad = int(target_series.filter(cast(pl.Series, bin_mask)).is_in(bad_values_list).sum())
                 else:
                     bin_good = bin_def.get("good_count", 0)
                     bin_bad = bin_def.get("bad_count", 0)

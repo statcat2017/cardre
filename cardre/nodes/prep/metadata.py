@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import polars as pl
-
+from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION
 from cardre.artifacts import write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
@@ -42,9 +41,10 @@ class DefineModellingMetadataNode(NodeType):
     def run(self, context: ExecutionContext) -> NodeOutput:
 
         store = context.store
+        reader = ArtifactEvidenceReader(store)
         params = context.validated_params
         dataset_artifact = context.input_artifacts[0]
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
+        df = reader.read_dataframe(dataset_artifact)
 
         target_column = params.get("target_column", "")
         good_values = params.get("good_values", [])
@@ -130,6 +130,7 @@ class DevelopmentSampleDefinitionNode(NodeType):
     def run(self, context: ExecutionContext) -> NodeOutput:
 
         store = context.store
+        reader = ArtifactEvidenceReader(store)
         params = context.validated_params
 
         sample_domain = params.get("sample_domain", "ttd")
@@ -141,7 +142,7 @@ class DevelopmentSampleDefinitionNode(NodeType):
         weight_column = params.get("weight_column")
 
         dataset_artifact = next(a for a in context.input_artifacts if a.role in ("input", "train"))
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))
+        df = reader.read_dataframe(dataset_artifact)
         total_rows = df.height
 
         if weight_column:
