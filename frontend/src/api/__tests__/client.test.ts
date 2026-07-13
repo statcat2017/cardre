@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { fetchJson, ApiError } from "../client";
+import { fetchJson, ApiError, toErrorMessage } from "../client";
 import { ErrorCodes } from "../errorCodes";
 
 // ---------------------------------------------------------------------------
@@ -171,23 +171,56 @@ describe("fetchJson", () => {
 
 describe("ApiError", () => {
   it("stores code, message, status, and context", () => {
-    const err = new ApiError("TEST_CODE", "Test message", 418, { key: "value" });
-    expect(err.code).toBe("TEST_CODE");
+    const err = new ApiError(ErrorCodes.RUN_EXECUTION_FAILED, "Test message", 418, {
+      key: "value",
+    });
+    expect(err.code).toBe(ErrorCodes.RUN_EXECUTION_FAILED);
     expect(err.message).toBe("Test message");
     expect(err.status).toBe(418);
     expect(err.context).toEqual({ key: "value" });
-    expect(err.detail).toBe("TEST_CODE: Test message (HTTP 418)");
+    expect(err.detail).toBe("RUN_EXECUTION_FAILED: Test message (HTTP 418)");
   });
 
   it("defaults status to 500 and context to {}", () => {
-    const err = new ApiError("ERR", "msg");
+    const err = new ApiError(ErrorCodes.RUN_NOT_FOUND, "msg");
     expect(err.status).toBe(500);
     expect(err.context).toEqual({});
   });
 
   it("is instance of Error", () => {
-    const err = new ApiError("CODE", "msg");
+    const err = new ApiError(ErrorCodes.RUN_NOT_FOUND, "msg");
     expect(err).toBeInstanceOf(Error);
     expect(err.name).toBe("ApiError");
+  });
+
+  it("code is typed as ErrorCode union (rejects arbitrary strings at compile time)", () => {
+    const err = new ApiError(ErrorCodes.SIDECAR_UNREACHABLE, "msg");
+    const code: string = err.code;
+    expect(code).toBe("SIDECAR_UNREACHABLE");
+  });
+
+  it("maps unknown detail.code to a known ErrorCode and preserves original in context", () => {
+    const err = new ApiError(ErrorCodes.NON_JSON_ERROR_RESPONSE, "msg", 500, {
+      originalCode: "UNKNOWN_CODE",
+    });
+    expect(err.code).toBe(ErrorCodes.NON_JSON_ERROR_RESPONSE);
+    expect(err.context.originalCode).toBe("UNKNOWN_CODE");
+  });
+});
+
+describe("toErrorMessage", () => {
+  it("returns ApiError.detail for ApiError", () => {
+    const err = new ApiError(ErrorCodes.RUN_EXECUTION_FAILED, "boom", 500);
+    expect(toErrorMessage(err)).toBe("RUN_EXECUTION_FAILED: boom (HTTP 500)");
+  });
+
+  it("returns Error.message for plain Error", () => {
+    expect(toErrorMessage(new Error("oops"))).toBe("oops");
+  });
+
+  it("returns String(value) for unknown types", () => {
+    expect(toErrorMessage("raw string")).toBe("raw string");
+    expect(toErrorMessage(42)).toBe("42");
+    expect(toErrorMessage(null)).toBe("null");
   });
 });

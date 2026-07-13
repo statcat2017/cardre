@@ -55,3 +55,11 @@ export const ErrorCodes = {
   OPTIONAL_DEPENDENCY_NOT_INSTALLED: "OPTIONAL_DEPENDENCY_NOT_INSTALLED",
   RUN_LIFECYCLE_ERROR: "RUN_LIFECYCLE_ERROR",
 } as const;
+
+export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
+
+const VALID_CODES: ReadonlySet<string> = new Set(Object.values(ErrorCodes));
+
+export function isErrorCode(value: unknown): value is ErrorCode {
+  return typeof value === "string" && VALID_CODES.has(value);
+}

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { ApiError, api } from "../api/client";
+import { api, toErrorMessage } from "../api/client";
 import { useSelectedEntity } from "../hooks/useSelectedEntity";
 import { theme, pageCardStyle } from "../styles";
 import { PlanSidebar } from "./PlanSidebar";
@@ -12,30 +12,6 @@ interface Props {
   projectPath: string;
   projectId: string;
   onBack: () => void;
-}
-
-/**
- * Returns the first query error together with a human-readable source label.
- */
-const QUERY_SOURCES = [
-  "project",
-  "plans",
-  "versions",
-  "runs",
-  "run",
-  "runSteps",
-  "runEvidence",
-] as const;
-
-function firstQueryError(
-  ...queries: Array<{ error: Error | null }>
-): { source: string; error: Error } | null {
-  for (let i = 0; i < queries.length; i++) {
-    if (queries[i].error) {
-      return { source: QUERY_SOURCES[i] ?? `query_${i}`, error: queries[i].error as Error };
-    }
-  }
-  return null;
 }
 
 export function ProjectView({ projectPath, projectId, onBack }: Props) {
@@ -122,9 +98,7 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
       queryClient.invalidateQueries({ queryKey: ["plans", projectId] });
     },
     onError: (err) => {
-      setError(
-        err instanceof ApiError ? err.detail : err instanceof Error ? err.message : String(err),
-      );
+      setError(toErrorMessage(err));
     },
   });
 
@@ -146,9 +120,7 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
       });
     },
     onError: (err) => {
-      setError(
-        err instanceof ApiError ? err.detail : err instanceof Error ? err.message : String(err),
-      );
+      setError(toErrorMessage(err));
     },
   });
 
@@ -159,23 +131,17 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
       (version) => version.plan_version_id === effectiveSelectedVersionId,
     ) ?? null;
 
-  const queryErrorInfo = firstQueryError(
-    projectQuery,
-    plansQuery,
-    versionsQuery,
-    runsQuery,
-    selectedRunQuery,
-    runStepsQuery,
-    runEvidenceQuery,
-  );
-
-  const queryErrorMessage = queryErrorInfo
-    ? `[${queryErrorInfo.source}] ${
-        queryErrorInfo.error instanceof ApiError
-          ? queryErrorInfo.error.detail
-          : queryErrorInfo.error.message
-      }`
-    : null;
+  const queryErrorEntries: Array<{ key: string; error: Error | null }> = [
+    { key: "project", error: projectQuery.error },
+    { key: "plans", error: plansQuery.error },
+    { key: "versions", error: versionsQuery.error },
+    { key: "runs", error: runsQuery.error },
+    { key: "run", error: selectedRunQuery.error },
+    { key: "runSteps", error: runStepsQuery.error },
+    { key: "runEvidence", error: runEvidenceQuery.error },
+  ];
+  const errored = queryErrorEntries.find((e) => e.error);
+  const queryErrorMessage = errored ? `[${errored.key}] ${toErrorMessage(errored.error!)}` : null;
 
   return (
     <main
