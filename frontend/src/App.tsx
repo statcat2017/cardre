@@ -14,17 +14,14 @@ const queryClient = new QueryClient({
 });
 
 function AppContent() {
-  const [projectPath, setProjectPath] = useState<string | null>(null);
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const [project, setProject] = useState<{ id: string; path: string } | null>(null);
 
-  if (projectPath && projectId) {
+  if (project) {
     return (
       <ProjectView
-        projectPath={projectPath}
-        projectId={projectId}
-        onBack={() => {
-          setProjectId(null);
-        }}
+        projectPath={project.path}
+        projectId={project.id}
+        onBack={() => setProject(null)}
       />
     );
   }
@@ -32,8 +29,7 @@ function AppContent() {
   return (
     <WelcomeScreen
       onProjectCreated={(nextProjectId, nextProjectPath) => {
-        setProjectId(nextProjectId);
-        setProjectPath(nextProjectPath);
+        setProject({ id: nextProjectId, path: nextProjectPath });
       }}
     />
   );

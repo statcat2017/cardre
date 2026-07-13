@@ -5,7 +5,7 @@
  */
 
 import type { components } from "./schema.d";
-import { ErrorCodes } from "./errorCodes";
+import { ErrorCodes, isErrorCode, type ErrorCode } from "./errorCodes";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -18,12 +18,12 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 // ---------------------------------------------------------------------------
 
 export class ApiError extends Error {
-  readonly code: string;
+  readonly code: ErrorCode;
   readonly status: number;
   readonly context: Record<string, unknown>;
 
   constructor(
-    code: string,
+    code: ErrorCode,
     message: string,
     status: number = 500,
     context: Record<string, unknown> = {},
@@ -38,6 +38,12 @@ export class ApiError extends Error {
   get detail(): string {
     return `${this.code}: ${this.message} (HTTP ${this.status})`;
   }
+}
+
+export function toErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) return err.detail;
+  if (err instanceof Error) return err.message;
+  return String(err);
 }
 
 // ---------------------------------------------------------------------------
@@ -115,11 +121,19 @@ export async function fetchJson<T>(url: string, options: FetchOptions = {}): Pro
         try {
           const parsed = JSON.parse(bodyText);
           const detail = parsed?.detail ?? parsed;
+          const rawCode = detail?.code;
+          const code: ErrorCode = isErrorCode(rawCode)
+            ? rawCode
+            : ErrorCodes.NON_JSON_ERROR_RESPONSE;
+          const context: Record<string, unknown> = detail?.context ?? {};
+          if (rawCode !== undefined && !isErrorCode(rawCode)) {
+            context.originalCode = rawCode;
+          }
           throw new ApiError(
-            detail?.code ?? "HTTP_ERROR",
+            code,
             detail?.message ?? response.statusText,
             response.status,
-            detail?.context ?? {},
+            context,
           );
         } catch (parseErr) {
           // Re-throw ApiError (thrown above on success), fall through on parse failure

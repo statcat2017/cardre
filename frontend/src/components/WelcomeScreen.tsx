@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
-import { ApiError, api } from "../api/client";
+import { api, toErrorMessage } from "../api/client";
 import { theme, pageCardStyle } from "../styles";
 
 interface Props {
@@ -34,9 +34,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
       onProjectCreated(project.project_id, projectPath.trim());
     },
     onError: (err) => {
-      setError(
-        err instanceof ApiError ? err.detail : err instanceof Error ? err.message : String(err),
-      );
+      setError(toErrorMessage(err));
     },
   });
 

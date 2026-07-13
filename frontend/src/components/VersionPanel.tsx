@@ -1,22 +1,15 @@
+import type { components } from "../api/schema.d";
 import { theme, pageCardStyle } from "../styles";
 
-interface Version {
-  plan_version_id: string;
-  version_number: number;
-  is_committed: boolean;
-  description?: string | null;
-}
-
-interface SelectedPlan {
-  plan_id: string;
-  name: string;
-}
-
-interface SelectedVersion {
-  plan_version_id: string;
-  version_number: number;
-  is_committed: boolean;
-}
+type Version = Pick<
+  components["schemas"]["PlanVersionResponse"],
+  "plan_version_id" | "version_number" | "is_committed" | "description"
+>;
+type SelectedPlan = Pick<components["schemas"]["PlanResponse"], "plan_id" | "name">;
+type SelectedVersion = Pick<
+  components["schemas"]["PlanVersionResponse"],
+  "plan_version_id" | "version_number" | "is_committed"
+>;
 
 interface Props {
   selectedPlan: SelectedPlan | null;

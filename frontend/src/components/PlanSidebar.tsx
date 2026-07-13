@@ -1,14 +1,8 @@
+import type { components } from "../api/schema.d";
 import { theme, pageCardStyle } from "../styles";
 
-interface Plan {
-  plan_id: string;
-  name: string;
-}
-
-interface Run {
-  run_id: string;
-  status: string;
-}
+type Plan = Pick<components["schemas"]["PlanResponse"], "plan_id" | "name">;
+type Run = Pick<components["schemas"]["RunResponse"], "run_id" | "status">;
 
 interface Props {
   plans: Plan[] | undefined;

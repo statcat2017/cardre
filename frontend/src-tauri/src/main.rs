@@ -9,8 +9,7 @@
 use std::io::{BufRead, BufReader, Read};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
@@ -32,9 +31,15 @@ fn find_free_port() -> u16 {
 }
 
 fn wait_for_health(port: u16, max_retries: u32) -> Result<(), String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
     let url = format!("http://127.0.0.1:{port}/health");
     for _ in 0..max_retries {
-        let healthy = reqwest::blocking::get(&url)
+        let healthy = client
+            .get(&url)
+            .send()
             .ok()
             .and_then(|resp| resp.json::<serde_json::Value>().ok())
             .and_then(|body| {
@@ -120,14 +125,6 @@ fn resolve_sidecar(resource_dir: Option<&std::path::Path>) -> Result<std::path::
 }
 
 fn main() {
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })
-    .expect("Error setting Ctrl-C handler");
-
     let port = find_free_port();
     eprintln!("Reserved port: {port}");
 
@@ -151,7 +148,8 @@ fn main() {
             eprintln!("sidecar: port: {port}");
 
             let mut child: Child = match Command::new(&sidecar_path)
-                .arg(port.to_string())
+                .env("CARDRE_API_PORT", port.to_string())
+                .env("CARDRE_API_HOST", "127.0.0.1")
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()

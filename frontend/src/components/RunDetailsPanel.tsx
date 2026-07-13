@@ -1,28 +1,9 @@
+import type { components } from "../api/schema.d";
 import { theme, pageCardStyle } from "../styles";
 
-interface Run {
-  run_id: string;
-  status: string;
-  started_at: string;
-  finished_at?: string | null;
-  step_count: number;
-  executed_step_ids?: string[];
-  latest_error?: Record<string, unknown> | null;
-}
-
-interface Step {
-  run_step_id: string;
-  step_id: string;
-  status: string;
-  plan_version_id: string;
-}
-
-interface Evidence {
-  evidence_edge_id: string;
-  step_id: string;
-  policy: string;
-  source_label: string;
-}
+type Run = components["schemas"]["RunResponse"];
+type Step = components["schemas"]["RunStepResponse"];
+type Evidence = components["schemas"]["RunEvidenceEdgeResponse"];
 
 interface Props {
   runLoading: boolean;
@@ -73,7 +54,10 @@ export function RunDetailsPanel({
                   color: theme.redText,
                 }}
               >
-                {String(run.latest_error.message ?? run.latest_error.code ?? "Unknown error")}
+                {(() => {
+                  const le = run.latest_error as { message?: string; code?: string } | null;
+                  return String(le?.message ?? le?.code ?? "Unknown error");
+                })()}
               </div>
             )}
           </div>
