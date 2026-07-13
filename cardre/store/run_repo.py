@@ -97,7 +97,7 @@ class RunRepository:
         ).fetchone()
         if row is None:
             return None
-        return row["active_step_id"]
+        return row["active_step_id"]  # type: ignore[no-any-return]
 
     def get(self, run_id: str) -> JsonDict | None:
         row = self._store.execute(
