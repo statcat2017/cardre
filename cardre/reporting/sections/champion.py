@@ -5,6 +5,8 @@ from __future__ import annotations
 from cardre.readiness.limitation_codes import LimitationCode
 from cardre.reporting.schema import ChampionInfo, Limitation
 from cardre.reporting.types import SectionCollector, SectionContext
+from cardre.store.champion_repo import ChampionRepository
+from cardre.store.plan_repo import PlanRepository
 
 
 class ChampionSection(SectionCollector):
@@ -12,12 +14,12 @@ class ChampionSection(SectionCollector):
     kinds = ()
 
     def build(self, ctx: SectionContext) -> None:
-        plan_id = ctx.store.get_plan_id_for_version(ctx.plan_version_id)
+        plan_id = PlanRepository(ctx.store).get_plan_id_for_version(ctx.plan_version_id)
         if plan_id is None:
             ctx.bundle.champion = ChampionInfo(champion_status="not_available")
             return
 
-        row = ctx.store.get_champion_assignment(plan_id)
+        row = ChampionRepository(ctx.store).get_champion_assignment(plan_id)
         if row is None:
             ctx.add_limitation(Limitation(
                 severity="warning", code=LimitationCode.NO_CHAMPION_ASSIGNMENT,

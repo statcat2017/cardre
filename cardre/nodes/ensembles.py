@@ -16,6 +16,7 @@ import numpy as np
 import polars as pl
 
 from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre.store.artifact_repo import ArtifactRepository
 
 
 def _load_estimator(store: Any, estimator_ref: dict[str, Any]) -> Any:
@@ -25,7 +26,7 @@ def _load_estimator(store: Any, estimator_ref: dict[str, Any]) -> Any:
         raise ValueError("estimator_reference.artifact_id is required")
 
     from cardre.modeling.serialization import read_estimator_artifact
-    art = store.get_artifact(artifact_id)
+    art = ArtifactRepository(store).get(artifact_id)
     if art is None:
         raise ValueError(f"Estimator artifact {artifact_id!r} not found")
 
@@ -38,7 +39,7 @@ def _load_estimator(store: Any, estimator_ref: dict[str, Any]) -> Any:
 
 def _load_model_artifact(reader: ArtifactEvidenceReader, artifact_id: str) -> dict[str, Any]:
     """Load a model JSON artifact by ID."""
-    art = reader._store.get_artifact(artifact_id)
+    art = ArtifactRepository(reader._store).get(artifact_id)
     if art is None:
         raise ValueError(f"Model artifact {artifact_id!r} not found")
     typed = reader.require_model(art, "ensemble")

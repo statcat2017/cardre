@@ -41,11 +41,12 @@ def _get_branch_step_map(
     plan_version_id: str,
 ) -> list[dict[str, Any]]:
     """Fetch the branch step map, falling back to head plan version."""
-    step_map = store.get_branch_step_map(branch_id, plan_version_id)
+    from cardre.store.branch_repo import BranchRepository
+    step_map = BranchRepository(store).get_step_map(branch_id, plan_version_id)
     if not step_map:
-        branch = store.get_branch(branch_id)
+        branch = BranchRepository(store).get_branch(branch_id)
         if branch and branch.get("head_plan_version_id"):
-            step_map = store.get_branch_step_map(branch_id, branch["head_plan_version_id"])
+            step_map = BranchRepository(store).get_step_map(branch_id, branch["head_plan_version_id"])
     return step_map or []
 
 

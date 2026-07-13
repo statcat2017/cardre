@@ -10,6 +10,7 @@ from cardre.reporting.schema import (
 )
 from cardre.reporting.types import SectionCollector, SectionContext
 from cardre.store.branch_repo import BranchRepository
+from cardre.store.plan_repo import PlanRepository
 
 
 class PathwaySection(SectionCollector):
@@ -17,7 +18,7 @@ class PathwaySection(SectionCollector):
     kinds = ()
 
     def build(self, ctx: SectionContext) -> None:
-        plan_steps = ctx.store.get_plan_version_steps(ctx.plan_version_id)
+        plan_steps = PlanRepository(ctx.store).get_version_steps(ctx.plan_version_id)
         pathway_steps: list[PathwayStep] = []
         for ps in plan_steps:
             resolution = "exact"
@@ -38,7 +39,7 @@ class PathwaySection(SectionCollector):
             ))
         ctx.bundle.pathway = PathwaySummary(pathway_id="scorecard_pathway", steps=pathway_steps)
 
-        plan_id = ctx.store.get_plan_id_for_version(ctx.plan_version_id)
+        plan_id = PlanRepository(ctx.store).get_plan_id_for_version(ctx.plan_version_id)
         all_branches = BranchRepository(ctx.store).list(ctx.bundle.project_id, plan_id=plan_id)
         branch_infos: list[BranchInfo] = []
         for b in all_branches:

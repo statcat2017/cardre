@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store, require_governance
 from cardre.api.routes._project_scope import plan_belongs_to_project
-from cardre.api.schemas import ChampionAssignmentResponse, ChampionResponse
-from cardre.store.branch_repo import BranchRepository
+from cardre.api.routes._run_mappings import champion_assignment_to_response
+from cardre.api.schemas import ChampionResponse
+from cardre.store.champion_repo import ChampionRepository
 from cardre.store.db import ProjectStore
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["champion"],
@@ -21,12 +22,12 @@ async def get_champion(
     store: ProjectStore = Depends(get_project_store),
 ) -> ChampionResponse:
     """Get the current champion assignment for a project or plan."""
-    repo = BranchRepository(store)
+    repo = ChampionRepository(store)
     if plan_id:
         if not plan_belongs_to_project(store, project_id, plan_id):
-            from cardre.api.errors import PLAN_NOT_FOUND, CardreApiError
+            from cardre.api.errors import CardreApiError, ErrorCode
             raise CardreApiError(
-                code=PLAN_NOT_FOUND,
+                code=ErrorCode.PLAN_NOT_FOUND,
                 message=f"Plan {plan_id!r} not found in project {project_id!r}.",
                 status_code=404,
             )
@@ -38,13 +39,5 @@ async def get_champion(
         return ChampionResponse(assignment=None)
 
     return ChampionResponse(
-        assignment=ChampionAssignmentResponse(
-            champion_assignment_id=assignment["champion_assignment_id"],
-            project_id=assignment["project_id"],
-            plan_id=assignment["plan_id"],
-            champion_branch_id=assignment["champion_branch_id"],
-            selected_plan_version_id=assignment["selected_plan_version_id"],
-            assigned_at=assignment.get("assigned_at", ""),
-            superseded_at=assignment.get("superseded_at"),
-        )
+        assignment=champion_assignment_to_response(assignment)
     )

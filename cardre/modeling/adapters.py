@@ -30,6 +30,7 @@ from cardre.domain.diagnostics import JsonDict
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.modeling.serialization import read_estimator_artifact
 from cardre.store import ProjectStore
+from cardre.store.artifact_repo import ArtifactRepository
 
 
 class ModelApplyAdapter(Protocol):
@@ -235,7 +236,7 @@ def apply_sklearn_estimator(
     if not estimator_artifact_id:
         raise ValueError("Non-logistic model requires estimator_reference.artifact_id")
 
-    estimator_art = store.get_artifact(estimator_artifact_id)
+    estimator_art = ArtifactRepository(store).get(estimator_artifact_id)
     if estimator_art is None:
         raise ValueError(f"Estimator artifact {estimator_artifact_id!r} not found")
 
@@ -375,7 +376,7 @@ def apply_ensemble(
                 estimator_art_id = estimator_ref.get("artifact_id", "")
                 if not estimator_art_id:
                     raise ValueError("Ensemble base model missing estimator_reference")
-                est_art = store.get_artifact(estimator_art_id)
+                est_art = ArtifactRepository(store).get(estimator_art_id)
                 if est_art is None:
                     raise ValueError(f"Base model estimator artifact {estimator_art_id!r} not found")
                 est_bytes = read_estimator_artifact(
@@ -473,7 +474,7 @@ def _apply_calibration(
     if not calibrator_id:
         raise ValueError("Model has calibration block but no calibrator_artifact_id")
 
-    calibrator_art = store.get_artifact(calibrator_id)
+    calibrator_art = ArtifactRepository(store).get(calibrator_id)
     if calibrator_art is None:
         raise ValueError(
             f"Calibrator artifact {calibrator_id!r} not found in store"

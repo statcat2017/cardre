@@ -87,9 +87,9 @@ def test_project_store_get_latest_successful_run_step_returns_run_step(store) ->
     )
     RunStepRepository(store).save(branch_step)
 
-    found = store.get_latest_successful_run_step(pv_id, "step-a")
-    branch_found = store.get_latest_successful_run_step(pv_id, "step-a", branch_id=branch_id)
-    missing = store.get_latest_successful_run_step(pv_id, "missing-step")
+    found = RunStepRepository(store).get_latest_successful_step(pv_id, "step-a")
+    branch_found = RunStepRepository(store).get_latest_successful_step(pv_id, "step-a", branch_id=branch_id)
+    missing = RunStepRepository(store).get_latest_successful_step(pv_id, "missing-step")
 
     assert found is not None
     assert isinstance(found, RunStep)

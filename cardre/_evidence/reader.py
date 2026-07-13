@@ -90,7 +90,8 @@ class ArtifactEvidenceReader:
         Raises ``EvidenceNotFoundError`` if the artifact does not exist
         or does not match the expected profile.
         """
-        art = self._store.get_artifact(artifact_id)
+        from cardre.store.artifact_repo import ArtifactRepository
+        art = ArtifactRepository(self._store).get(artifact_id)
         if art is None:
             profile = EVIDENCE_PROFILES.get(kind)
             raise EvidenceNotFoundError(

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge
+from cardre.store._base import _branch_filter
 
 if TYPE_CHECKING:
     from cardre.store.db import ProjectStore
@@ -105,30 +106,17 @@ class EvidenceRepository:
         target run-step also succeeded are returned — failed/cancelled
         run-steps are excluded even if a newer edge exists.
         """
-        if branch_id is None:
-            rows = self._store.execute(
-                "SELECT ee.* FROM evidence_edges ee "
-                "JOIN runs r ON ee.run_id = r.run_id "
-                "JOIN run_steps rs ON ee.run_step_id = rs.run_step_id "
-                "WHERE ee.plan_version_id = ? AND ee.step_id = ? "
-                "AND r.branch_id IS NULL "
-                "AND r.status = 'succeeded' "
-                "AND rs.status = 'succeeded' "
-                "ORDER BY ee.created_at, ee.evidence_edge_id",
-                (plan_version_id, step_id),
-            ).fetchall()
-        else:
-            rows = self._store.execute(
-                "SELECT ee.* FROM evidence_edges ee "
-                "JOIN runs r ON ee.run_id = r.run_id "
-                "JOIN run_steps rs ON ee.run_step_id = rs.run_step_id "
-                "WHERE ee.plan_version_id = ? AND ee.step_id = ? "
-                "AND r.branch_id = ? "
-                "AND r.status = 'succeeded' "
-                "AND rs.status = 'succeeded' "
-                "ORDER BY ee.created_at, ee.evidence_edge_id",
-                (plan_version_id, step_id, branch_id),
-            ).fetchall()
+        clause, params = _branch_filter(branch_id)
+        sql = (
+            "SELECT ee.* FROM evidence_edges ee "
+            "JOIN runs r ON ee.run_id = r.run_id "
+            "JOIN run_steps rs ON ee.run_step_id = rs.run_step_id "
+            "WHERE ee.plan_version_id = ? AND ee.step_id = ? "
+            "AND r.status = 'succeeded' AND rs.status = 'succeeded'"
+        )
+        params = [plan_version_id, step_id] + params
+        sql += f" {clause} ORDER BY ee.created_at, ee.evidence_edge_id"
+        rows = self._store.execute(sql, tuple(params)).fetchall()
         return [self._row_to_edge(r) for r in rows]
 
     def get_edge_for_child_parent(
@@ -168,6 +156,33 @@ class EvidenceRepository:
             (run_id,),
         ).fetchall()
         return [self._row_to_artifact(r) for r in rows]
+
+    def list_for_run_ordered(self, run_id: str) -> list[tuple[EvidenceEdge, list[EvidenceArtifact]]]:
+        """Return evidence edges + artifacts ordered by run_step_id.
+
+        Groups artifacts by edge and orders edges by the run's step order.
+        """
+        from cardre.store.run_step_repo import RunStepRepository
+
+        rs_repo = RunStepRepository(self._store)
+        run_step_ids = [rs.run_step_id for rs in rs_repo.get_for_run(run_id)]
+
+        edges = self.get_edges_for_run(run_id)
+        artifacts = self.get_artifacts_for_run(run_id)
+
+        artifacts_by_edge_id: dict[str, list[EvidenceArtifact]] = {}
+        for artifact in artifacts:
+            artifacts_by_edge_id.setdefault(artifact.evidence_edge_id, []).append(artifact)
+
+        edges_by_step: dict[str, list[EvidenceEdge]] = {}
+        for edge in edges:
+            edges_by_step.setdefault(edge.run_step_id, []).append(edge)
+
+        result: list[tuple[EvidenceEdge, list[EvidenceArtifact]]] = []
+        for run_step_id in run_step_ids:
+            for edge in edges_by_step.get(run_step_id, []):
+                result.append((edge, artifacts_by_edge_id.get(edge.evidence_edge_id, [])))
+        return result
 
     @staticmethod
     def _row_to_edge(row: dict[str, Any]) -> EvidenceEdge:

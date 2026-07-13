@@ -15,6 +15,9 @@ from cardre.reporting.schema import (
     ManualIntervention,
 )
 from cardre.reporting.types import SectionCollector, SectionContext
+from cardre.store.artifact_repo import ArtifactRepository
+from cardre.store.branch_repo import BranchRepository
+from cardre.store.plan_repo import PlanRepository
 
 
 class ManualInterventionsSection(SectionCollector):
@@ -26,7 +29,7 @@ class ManualInterventionsSection(SectionCollector):
         if ref is None:
             return
 
-        step_map = ctx.store.get_branch_step_map(ctx.bundle.target_branch_id, ctx.plan_version_id)
+        step_map = BranchRepository(ctx.store).get_step_map(ctx.bundle.target_branch_id, ctx.plan_version_id)
         if step_map:
             mb_ref = resolve_step_for_branch(
                 branch_id=ctx.bundle.target_branch_id,
@@ -34,7 +37,7 @@ class ManualInterventionsSection(SectionCollector):
                 branch_step_map=step_map,
             )
             if mb_ref:
-                for s in ctx.store.get_plan_version_steps(ctx.plan_version_id):
+                for s in PlanRepository(ctx.store).get_version_steps(ctx.plan_version_id):
                     if s.step_id == mb_ref.step_id:
                         params = s.params
                         is_reviewed = params.get("reviewed", False)
@@ -70,7 +73,7 @@ class ManualInterventionsSection(SectionCollector):
             (rs.run_step_id,),
         ).fetchall():
             aid = row["artifact_id"]
-            art = ctx.store.get_artifact(aid)
+            art = ArtifactRepository(ctx.store).get(aid)
             if art and art.role in ("definition", "report") and "manual" in art.path.lower():
                 data = ctx.reader.read_optional(aid, EvidenceKind.BIN_DEFINITION)
                 legacy = ctx.reader.read_optional(aid, EvidenceKind.MANUAL_BINNING_OVERRIDES)

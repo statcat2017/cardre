@@ -1,13 +1,16 @@
 """SQL schema for the Cardre v2 project store.
 
-Hard break from v1: ``V2_STORE_SCHEMA_VERSION = 100``.
-No MIGRATIONS_SQL, no backfill.  ``store_meta`` is a hard-version-check,
-not a migration table.
+Version 100: original v2 schema (hard break from v1).
+Version 101: added ``active_step_id`` column to ``runs`` (A7).
+
+``store_meta`` is a version-check table. ``_check_schema_version`` in
+``db.py`` runs incremental migrations for stores below the current
+version, then updates ``schema_version`` to match.
 """
 
 # Explicit v2 identity for the new store in ``cardre.store.db``.
 V2_STORE_SCHEMA_FAMILY = "cardre-v2"
-V2_STORE_SCHEMA_VERSION = 100
+V2_STORE_SCHEMA_VERSION = 101
 
 # ---------------------------------------------------------------------------
 # Core tables
@@ -89,6 +92,7 @@ CREATE TABLE IF NOT EXISTS runs (
     started_at TEXT NOT NULL,
     finished_at TEXT,
     heartbeat_at TEXT,
+    active_step_id TEXT,
     metadata_json TEXT NOT NULL DEFAULT '{}'
 );
 

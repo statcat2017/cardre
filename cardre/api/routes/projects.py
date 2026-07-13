@@ -12,12 +12,7 @@ from pathlib import Path
 
 from fastapi import APIRouter
 
-from cardre.api.errors import (
-    INVALID_PROJECT_PATH,
-    PROJECT_NOT_FOUND,
-    STORE_ALREADY_EXISTS,
-    CardreApiError,
-)
+from cardre.api.errors import CardreApiError, ErrorCode
 from cardre.api.routes._run_mappings import project_to_response
 from cardre.api.schemas import (
     ProjectCreateRequest,
@@ -100,7 +95,7 @@ async def get_project(project_id: str) -> ProjectResponse:
         project = repo.get(project_id)
         if project is None:
             raise CardreApiError(
-                code=PROJECT_NOT_FOUND,
+                code=ErrorCode.PROJECT_NOT_FOUND,
                 message=f"Project {project_id!r} not found.",
                 status_code=404,
             )
@@ -117,13 +112,13 @@ async def create_project(
     root = Path(body.path)
     if not root.is_absolute():
         raise CardreApiError(
-            code=INVALID_PROJECT_PATH,
+            code=ErrorCode.INVALID_PROJECT_PATH,
             message=f"Project path must be absolute, got {body.path!r}.",
             status_code=400,
         )
     if ".." in root.parts:
         raise CardreApiError(
-            code=INVALID_PROJECT_PATH,
+            code=ErrorCode.INVALID_PROJECT_PATH,
             message=f"Project path must not contain '..' traversal, got {body.path!r}.",
             status_code=400,
         )
@@ -132,7 +127,7 @@ async def create_project(
         store.initialize()
     except SchemaVersionError as e:
         raise CardreApiError(
-            code=STORE_ALREADY_EXISTS,
+            code=ErrorCode.STORE_ALREADY_EXISTS,
             message=str(e),
             status_code=409,
         ) from e
@@ -142,6 +137,6 @@ async def create_project(
         ProjectResolver(CardreConfig.from_env().registry_path).register_project(project_id, root)
         project = repo.get(project_id)
         assert project is not None
-        return project_to_response(project, cardre_version="0.2.0")
+        return project_to_response(project)
     finally:
         store.close()

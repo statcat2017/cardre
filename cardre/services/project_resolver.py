@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from cardre.api.errors import PROJECT_NOT_FOUND
+from cardre.api.errors import ErrorCode
 from cardre.domain.errors import CardreError
 from cardre.store.project_registry import ProjectRegistry
 
@@ -27,7 +27,7 @@ class ProjectResolver:
         if root is None or not root.exists():
             raise CardreError(
                 f"Project {project_id!r} not found",
-                code=PROJECT_NOT_FOUND,
+                code=ErrorCode.PROJECT_NOT_FOUND,
                 context={"project_id": project_id},
                 status_code=404,
             )

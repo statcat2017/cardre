@@ -627,15 +627,17 @@ class TestBranchRepo:
         assert branch["head_plan_version_id"] == new_pv_id
 
     def test_branch_repo_champion_and_comparison_methods(self, store):
-        from cardre.store.branch_repo import BranchRepository
-        repo = BranchRepository(store)
-        assert repo.get_champion_assignment_for_project("nonexistent") is None
-        assert repo.get_champion_assignment("nonexistent-plan") is None
-        assert repo.get_champion_assignment("nonexistent-plan", champion_branch_id="b1") is None
-        assert repo.get_champion_assignment_by_branch("nonexistent-branch") is None
-        assert repo.get_comparison("nonexistent") is None
-        assert repo.get_comparison_snapshot("nonexistent") is None
-        assert repo.get_comparison_snapshots("nonexistent") == []
+        from cardre.store.champion_repo import ChampionRepository
+        from cardre.store.comparison_repo import ComparisonRepository
+        champion_repo = ChampionRepository(store)
+        assert champion_repo.get_champion_assignment_for_project("nonexistent") is None
+        assert champion_repo.get_champion_assignment("nonexistent-plan") is None
+        assert champion_repo.get_champion_assignment("nonexistent-plan", champion_branch_id="b1") is None
+        assert champion_repo.get_champion_assignment_by_branch("nonexistent-branch") is None
+        comparison_repo = ComparisonRepository(store)
+        assert comparison_repo.get_comparison("nonexistent") is None
+        assert comparison_repo.get_comparison_snapshot("nonexistent") is None
+        assert comparison_repo.get_comparison_snapshots("nonexistent") == []
 
     def test_comparison_repo_full_lifecycle(self, store):
         from cardre.store.comparison_repo import ComparisonRepository
@@ -689,12 +691,70 @@ class TestBranchRepo:
         )
         assert snapshot_id is not None
 
-        snapshots = branch_repo.get_comparison_snapshots(comp_id)
+        snapshots = repo.get_comparison_snapshots(comp_id)
         assert len(snapshots) == 1
 
-        snapshot = branch_repo.get_comparison_snapshot(snapshot_id)
+        snapshot = repo.get_comparison_snapshot(snapshot_id)
         assert snapshot is not None
 
         repo.add_snapshot_plan_version(snapshot_id, pv_id, branch_id=challenger_id)
         versions = repo.get_snapshot_plan_versions(snapshot_id)
         assert len(versions) == 1
+
+
+class TestSchemaMigration:
+    def test_v100_store_migrated_to_v101_adds_active_step_id(self, tmp_path):
+        """A store created at schema version 100 is migrated to 101 on open,
+        adding the ``active_step_id`` column to the ``runs`` table."""
+        from cardre.store.db import ProjectStore
+        from cardre.store.schema import V2_STORE_SCHEMA_FAMILY
+
+        store_root = tmp_path / "v100.cardre"
+        store_root.mkdir(parents=True)
+        (store_root / "cardre.sqlite").touch()
+
+        conn = __import__("sqlite3").connect(str(store_root / "cardre.sqlite"))
+        conn.row_factory = __import__("sqlite3").Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.isolation_level = None
+
+        conn.execute(
+            "CREATE TABLE store_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO store_meta (key, value) VALUES ('schema_family', ?)",
+            (V2_STORE_SCHEMA_FAMILY,),
+        )
+        conn.execute(
+            "INSERT INTO store_meta (key, value) VALUES ('schema_version', '100')"
+        )
+
+        conn.execute(
+            "CREATE TABLE runs ("
+            "run_id TEXT PRIMARY KEY, plan_version_id TEXT, status TEXT NOT NULL, "
+            "run_scope TEXT NOT NULL DEFAULT 'full_plan', branch_id TEXT, "
+            "target_step_id TEXT, force INTEGER NOT NULL DEFAULT 0, "
+            "requested_by TEXT, request_id TEXT, created_at TEXT NOT NULL, "
+            "queued_at TEXT, started_at TEXT NOT NULL, finished_at TEXT, "
+            "heartbeat_at TEXT, metadata_json TEXT NOT NULL DEFAULT '{}')"
+        )
+        conn.execute(
+            "INSERT INTO runs (run_id, plan_version_id, status, run_scope, "
+            "created_at, started_at) VALUES ('r1', 'pv1', 'running', 'full_plan', 'now', 'now')"
+        )
+        conn.close()
+
+        store = ProjectStore(store_root)
+        store.open()
+
+        from cardre.store.schema import V2_STORE_SCHEMA_VERSION
+        assert V2_STORE_SCHEMA_VERSION == 101
+
+        from cardre.store.run_repo import RunRepository
+        repo = RunRepository(store)
+        assert repo.get_active_step("r1") is None
+        repo.set_active_step("r1", "step-x")
+        assert repo.get_active_step("r1") == "step-x"
+
+        store.close()

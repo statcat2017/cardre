@@ -22,6 +22,7 @@ from cardre.services.report_service import ReportGenerationService
 from cardre.store import ProjectStore
 from cardre.store.artifact_repo import ArtifactRepository
 from cardre.store.branch_repo import BranchRepository
+from cardre.store.comparison_repo import ComparisonRepository
 from cardre.store.plan_repo import PlanRepository
 from cardre.store.project_repo import ProjectRepository
 from cardre.store.run_repo import RunRepository
@@ -256,7 +257,7 @@ def _populate_export(
 
     # 8. Comparison snapshot
     if comparison_snapshot_id:
-        snap = branch_repo.get_comparison_snapshot(comparison_snapshot_id)
+        snap = ComparisonRepository(store).get_comparison_snapshot(comparison_snapshot_id)
         if snap:
             snap_dict = dict(snap) if isinstance(snap, dict) else snap
             (export_dir / "comparison_snapshot.json").write_text(json.dumps(snap_dict, indent=2))

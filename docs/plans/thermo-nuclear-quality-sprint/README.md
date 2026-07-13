@@ -77,7 +77,7 @@ PR0  safety net (golden fixtures, smoke test, grep checks)
 | S6 | PR6 | Extract node helpers (target_metadata, require_model, data_artifacts) | T4, N4, N5 | PR2 | No |
 | S7 | PR7 | Harden binning override seam (current-schema fixtures + lossless round-trip tests) | T7 (remaining residue after PR2) | PR2 | No (round-trip tests) |
 | S8 | PR8 | Introduce RunStatus enum and atomic transitions | SE1, SE2, SE3, SE4, SE5, SE7 | PR4 | Migration (labelled) |
-| S9 | PR9 | Store / API / sidecar cleanup | A1-A9 | PR8 | No |
+| S9 | PR9 | Store / API / sidecar cleanup | A1, A2, A3 (scoped), A4, A5 (scoped), A6, A7, A8, A9 | PR8 | No (schema migration is transparent) |
 | S10 | PR10 | Frontend + Tauri cleanup | F1-F10 | — | No |
 | S11 | PR11 | Verify, lock-down, decision log | All | All | No |
 
@@ -183,6 +183,11 @@ opening the PR.
   [review 013](../../plan-reviews/013-thermo-nuclear-codebase-review.md).
 - [ ] Each finding's acceptance criteria (where specified in the step
   file) met.
+- [ ] **A7** (`active_step_id` column) resolved in PR9 — schema version
+  bumped 100→101, migration runner added in `_schema_version.py`,
+  v100 stores upgraded via `ALTER TABLE runs ADD COLUMN active_step_id
+  TEXT`. See [`step-09`](step-09-store-api-sidecar-cleanup.md) for
+  implementation details.
 
 ### Sprint-wide
 - [ ] `make preflight` green. `ruff check`, `pytest tests/ -q`,
@@ -219,6 +224,8 @@ Each file is a drop-in prompt for a subagent to execute one step:
 - [`step-07-binning-type-cleanup.md`](./step-07-binning-type-cleanup.md)
 - [`step-08-run-status-transitions.md`](./step-08-run-status-transitions.md)
 - [`step-09-store-api-sidecar-cleanup.md`](./step-09-store-api-sidecar-cleanup.md)
+- [`step-09-implementation-guide.md`](./step-09-implementation-guide.md) — detailed
+  implementation steps with exact file paths, line numbers, and caller lists
 - [`step-10-frontend-tauri-cleanup.md`](./step-10-frontend-tauri-cleanup.md)
 - [`step-11-verify-lockdown.md`](./step-11-verify-lockdown.md)
 

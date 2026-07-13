@@ -9,6 +9,10 @@ from cardre._evidence.schemas import SCHEMA_TECHNICAL_MANIFEST_INDEX
 from cardre.artifacts import write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.contracts import NodeType
+from cardre.store.artifact_repo import ArtifactRepository
+from cardre.store.plan_repo import PlanRepository
+from cardre.store.project_repo import ProjectRepository
+from cardre.store.run_step_repo import RunStepRepository
 
 
 class TechnicalManifestExportNode(NodeType):
@@ -38,7 +42,7 @@ class TechnicalManifestExportNode(NodeType):
                 evidence = reader.read_optional(artifact_id, kind)
                 if evidence is None:
                     continue
-                artifact = store.get_artifact(artifact_id)
+                artifact = ArtifactRepository(store).get(artifact_id)
                 if artifact is not None:
                     matches[artifact_id] = (evidence, artifact)
 
@@ -70,17 +74,17 @@ class TechnicalManifestExportNode(NodeType):
         run_id = context.run_id
         plan_version_id = context.plan_version_id
 
-        plan_version = store.get_plan_version(plan_version_id)
+        plan_version = PlanRepository(store).get_version(plan_version_id)
         plan = None
         project = None
         if plan_version:
-            plan_id = store.get_plan_id_for_version(plan_version_id)
+            plan_id = PlanRepository(store).get_plan_id_for_version(plan_version_id)
             if plan_id:
-                plan = store.get_plan(plan_id)
+                plan = PlanRepository(store).get_plan(plan_id)
                 if plan:
-                    project = store.get_project(plan["project_id"])
+                    project = ProjectRepository(store).get(plan["project_id"])
 
-        all_run_steps = store.get_run_steps(run_id)
+        all_run_steps = RunStepRepository(store).get_for_run(run_id)
 
         steps_evidence: list[dict[str, Any]] = []
         artifacts_evidence: list[dict[str, Any]] = []
@@ -109,7 +113,7 @@ class TechnicalManifestExportNode(NodeType):
                 if aid in seen_artifact_ids:
                     continue
                 seen_artifact_ids.add(aid)
-                art = store.get_artifact(aid)
+                art = ArtifactRepository(store).get(aid)
                 if art:
                     artifacts_evidence.append({
                         "artifact_id": art.artifact_id,

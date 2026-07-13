@@ -23,6 +23,7 @@ from cardre.node_parameters import (
     ParameterDefinition,
 )
 from cardre.nodes.contracts import NodeType
+from cardre.store.artifact_repo import ArtifactRepository
 
 EXPLAINABILITY_LEVELS = {
     "native_scorecard",
@@ -288,7 +289,7 @@ class ModelExplainabilityNode(NodeType):
 
         try:
             from cardre.modeling.serialization import read_estimator_artifact
-            estimator_art = store.get_artifact(estimator_ref["artifact_id"])
+            estimator_art = ArtifactRepository(store).get(estimator_ref["artifact_id"])
             if estimator_art is None:
                 return None
             estimator_bytes = read_estimator_artifact(
@@ -390,7 +391,7 @@ class ModelExplainabilityNode(NodeType):
 
         try:
             from cardre.modeling.serialization import read_estimator_artifact
-            estimator_art = store.get_artifact(estimator_ref["artifact_id"])
+            estimator_art = ArtifactRepository(store).get(estimator_ref["artifact_id"])
             if estimator_art is None:
                 return None
             estimator_bytes = read_estimator_artifact(
@@ -445,7 +446,7 @@ class ModelExplainabilityNode(NodeType):
 
         try:
             from cardre.modeling.serialization import read_estimator_artifact
-            estimator_art = store.get_artifact(estimator_ref["artifact_id"])
+            estimator_art = ArtifactRepository(store).get(estimator_ref["artifact_id"])
             if estimator_art is None:
                 return None
             estimator_bytes = read_estimator_artifact(

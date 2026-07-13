@@ -10,6 +10,7 @@ from cardre.domain.run import RunStepStatus
 from cardre.domain.step import StepSpec
 from cardre.execution.step_runner import StepRunner
 from cardre.nodes.registry import NodeRegistry
+from cardre.store.artifact_repo import ArtifactRepository
 
 
 def _write_dataset(store, *, role: str):
@@ -53,7 +54,7 @@ def _run_clustering_step(store, *, parent_artifacts, params):
 def _read_report_payload(store, result):
     if not result.output_artifact_ids:
         return {}
-    art = store.get_artifact(result.output_artifact_ids[0])
+    art = ArtifactRepository(store).get(result.output_artifact_ids[0])
     if art is None:
         return {}
     path = store.artifact_path(art)

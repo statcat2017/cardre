@@ -10,6 +10,7 @@ from cardre.artifacts import write_json_artifact
 from cardre.domain.artifacts import json_logical_hash
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.contracts import NodeType
+from cardre.store.artifact_repo import ArtifactRepository
 
 
 class FrozenScorecardBundleNode(NodeType):
@@ -44,11 +45,11 @@ class FrozenScorecardBundleNode(NodeType):
             else None
         )
 
-        scorecard_art = store.get_artifact(scorecard.source_artifact_id)
-        model_art = store.get_artifact(model.source_artifact_id)
-        bin_def_art = store.get_artifact(bin_def.source_artifact_id)
-        woe_table_art = store.get_artifact(woe_table.source_artifact_id)
-        selection_art = store.get_artifact(selection_def.source_artifact_id) if selection_def is not None else None
+        scorecard_art = ArtifactRepository(store).get(scorecard.source_artifact_id)
+        model_art = ArtifactRepository(store).get(model.source_artifact_id)
+        bin_def_art = ArtifactRepository(store).get(bin_def.source_artifact_id)
+        woe_table_art = ArtifactRepository(store).get(woe_table.source_artifact_id)
+        selection_art = ArtifactRepository(store).get(selection_def.source_artifact_id) if selection_def is not None else None
         if scorecard_art is None or model_art is None or bin_def_art is None or woe_table_art is None:
             raise ValueError("Frozen scorecard bundle cannot be created: missing source artifact reference")
 
