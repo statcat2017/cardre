@@ -28,6 +28,9 @@ from cardre.reporting.schema import (
 from cardre.reporting.sections import SECTION_COLLECTORS
 from cardre.reporting.types import ManifestDigest, ReportMode, SectionContext
 from cardre.store import ProjectStore
+from cardre.store.branch_repo import BranchRepository
+from cardre.store.project_repo import ProjectRepository
+from cardre.store.run_repo import RunRepository
 
 CARDRE_VERSION = "0.1.0"
 
@@ -90,8 +93,8 @@ class ReportCollector:
             generated_by=GeneratedBy(cardre_version=CARDRE_VERSION),
         )
 
-        project = self.store.get_project(self.project_id)
-        run = self.store.get_run(self.run_id)
+        project = ProjectRepository(self.store).get(self.project_id)
+        run = RunRepository(self.store).get(self.run_id)
 
         if project:
             bundle.summary.model_name = project.get("name", "")
@@ -104,7 +107,7 @@ class ReportCollector:
         plan_version_id = run["plan_version_id"]
         bundle.source.run_manifest_path = ""
 
-        branch = self.store.get_branch(self.target_branch_id)
+        branch = BranchRepository(self.store).get_branch(self.target_branch_id)
         if branch is None:
             self.limitations.append(Limitation(severity="blocker", code=LimitationCode.TARGET_BRANCH_NOT_FOUND, message=f"Branch {self.target_branch_id!r} not found."))
             bundle.limitations = self.limitations
@@ -113,9 +116,9 @@ class ReportCollector:
         branch_head_pv = branch["head_plan_version_id"]
         bundle.summary.target_branch_id = self.target_branch_id
 
-        step_map = self.store.get_branch_step_map(self.target_branch_id, plan_version_id)
+        step_map = BranchRepository(self.store).get_step_map(self.target_branch_id, plan_version_id)
         if not step_map and branch_head_pv:
-            step_map = self.store.get_branch_step_map(self.target_branch_id, branch_head_pv)
+            step_map = BranchRepository(self.store).get_step_map(self.target_branch_id, branch_head_pv)
 
         resolved = resolve_required_steps(
             branch_id=self.target_branch_id,

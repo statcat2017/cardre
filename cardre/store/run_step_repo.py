@@ -6,6 +6,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from cardre.domain.run import RunStep, RunStepStatus
+from cardre.store._base import _branch_filter
 
 if TYPE_CHECKING:
     from cardre.store.db import ProjectStore
@@ -58,22 +59,15 @@ class RunStepRepository:
         step_id: str,
         branch_id: str | None = None,
     ) -> RunStep | None:
+        clause, params = _branch_filter(branch_id)
         sql = (
             "SELECT rs.* FROM run_steps rs "
             "JOIN runs r ON rs.run_id = r.run_id "
-            "WHERE rs.plan_version_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' "
+            "WHERE rs.plan_version_id = ? AND rs.step_id = ? AND rs.status = 'succeeded'"
         )
-        params: list[object] = [plan_version_id, step_id]
-        if branch_id is None:
-            row = self._store.execute(
-                sql + "AND r.branch_id IS NULL ORDER BY rs.started_at DESC LIMIT 1",
-                tuple(params),
-            ).fetchone()
-        else:
-            row = self._store.execute(
-                sql + "AND r.branch_id = ? ORDER BY rs.started_at DESC LIMIT 1",
-                tuple(params + [branch_id]),
-            ).fetchone()
+        params = [plan_version_id, step_id] + params
+        sql += f" {clause} ORDER BY rs.started_at DESC LIMIT 1"
+        row = self._store.execute(sql, tuple(params)).fetchone()
         if row is None:
             return None
         return self._row_to_run_step(row)

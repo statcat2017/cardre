@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 from cardre.domain.run import _VALID_TRANSITIONS, RunStatus
+from cardre.store._base import _branch_filter
 
 if TYPE_CHECKING:
     from cardre.store.db import ProjectStore
@@ -177,14 +178,10 @@ class RunRepository:
         return dict(row)
 
     def get_latest_successful_id(self, plan_version_id: str, branch_id: str | None = None) -> str | None:
+        clause, params = _branch_filter(branch_id)
         sql = "SELECT run_id FROM runs WHERE plan_version_id = ? AND status = 'succeeded'"
-        params: list[object] = [plan_version_id]
-        if branch_id is None:
-            sql += " AND branch_id IS NULL"
-        else:
-            sql += " AND branch_id = ?"
-            params.append(branch_id)
-        sql += " ORDER BY started_at DESC LIMIT 1"
+        params = [plan_version_id] + params
+        sql += f" {clause} ORDER BY started_at DESC LIMIT 1"
         row = self._store.execute(sql, tuple(params)).fetchone()
         return None if row is None else row["run_id"]
 
@@ -200,18 +197,14 @@ class RunRepository:
         return None if row is None else row["run_id"]
 
     def get_latest_successful_step_across_plan(self, plan_id: str, step_id: str, branch_id: str | None = None) -> dict[str, Any] | None:
+        clause, params = _branch_filter(branch_id)
         sql = (
             "SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
             "JOIN plan_versions pv ON rs.plan_version_id = pv.plan_version_id "
             "WHERE pv.plan_id = ? AND rs.step_id = ? AND rs.status = 'succeeded'"
         )
-        params: list[object] = [plan_id, step_id]
-        if branch_id is None:
-            sql += " AND r.branch_id IS NULL"
-        else:
-            sql += " AND r.branch_id = ?"
-            params.append(branch_id)
-        sql += " ORDER BY rs.started_at DESC LIMIT 1"
+        params = [plan_id, step_id] + params
+        sql += f" {clause} ORDER BY rs.started_at DESC LIMIT 1"
         row = self._store.execute(sql, tuple(params)).fetchone()
         if row is None:
             return None

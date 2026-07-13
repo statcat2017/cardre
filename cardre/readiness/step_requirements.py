@@ -12,6 +12,9 @@ from cardre.readiness.dto import ReadinessFinding
 from cardre.readiness.limitation_codes import LimitationCode
 from cardre.reporting.types import ReportMode
 from cardre.store import ProjectStore
+from cardre.store.artifact_repo import ArtifactRepository
+from cardre.store.champion_repo import ChampionRepository
+from cardre.store.plan_repo import PlanRepository
 
 
 @dataclass(frozen=True)
@@ -40,7 +43,7 @@ def _check_woe_iv_monotonicity(
         return []
     v1_art = None
     for row in _output_artifact_refs(store, rs.run_step_id):
-        art = store.get_artifact(row["artifact_id"])
+        art = ArtifactRepository(store).get(row["artifact_id"])
         if art and art.metadata.get("schema_version") == "cardre.woe_iv_evidence.v1":
             v1_art = art
             break
@@ -82,7 +85,7 @@ def _check_apply_model(
     scored_roles = {
         art.role
         for row in _output_artifact_refs(store, rs.run_step_id)
-        if (art := store.get_artifact(row["artifact_id"]))
+        if (art := ArtifactRepository(store).get(row["artifact_id"]))
         and art.role in {"train", "test", "oot"}
     }
     required_roles = {"train", "test", "oot"} if report_mode == "champion" else {"train", "test"}
@@ -151,7 +154,7 @@ def _check_oot_exists(store: ProjectStore, run_id: str) -> bool:
         (run_id,),
     ).fetchall()
     for row in rows:
-        art = store.get_artifact(row["artifact_id"])
+        art = ArtifactRepository(store).get(row["artifact_id"])
         if art and art.role == "oot":
             return True
     return False
@@ -190,7 +193,7 @@ def check_per_step_evidence(
             has_artifact = any(
                 art and art.metadata.get("schema_version") in req.expected_schemas
                 for row in _output_artifact_refs(store, rs.run_step_id)
-                if (art := store.get_artifact(row["artifact_id"]))
+                if (art := ArtifactRepository(store).get(row["artifact_id"]))
             )
             if not has_artifact:
                 blockers.append(ReadinessFinding(
@@ -202,7 +205,7 @@ def check_per_step_evidence(
             has_artifact = any(
                 art and art.metadata.get("schema_version") == req.expected_schema
                 for row in _output_artifact_refs(store, rs.run_step_id)
-                if (art := store.get_artifact(row["artifact_id"]))
+                if (art := ArtifactRepository(store).get(row["artifact_id"]))
             )
             if not has_artifact:
                 blockers.append(ReadinessFinding(
@@ -214,7 +217,7 @@ def check_per_step_evidence(
             has_artifact = any(
                 art and art.role == req.expected_role
                 for row in _output_artifact_refs(store, rs.run_step_id)
-                if (art := store.get_artifact(row["artifact_id"]))
+                if (art := ArtifactRepository(store).get(row["artifact_id"]))
             )
             if not has_artifact:
                 blockers.append(ReadinessFinding(
@@ -234,14 +237,14 @@ def check_champion_readiness(
     if not plan_id:
         return
     if report_mode == "champion":
-        champion = store.get_champion_assignment(plan_id, target_branch_id)
+        champion = ChampionRepository(store).get_champion_assignment(plan_id, target_branch_id)
         if champion is None:
             blockers.append(ReadinessFinding(
                 severity="blocker", code=LimitationCode.CHAMPION_ASSIGNMENT_MISSING,
                 message=f"No active champion assignment for branch {target_branch_id!r} in champion report mode.",
             ))
     else:
-        champ_check = store.get_champion_assignment(plan_id)
+        champ_check = ChampionRepository(store).get_champion_assignment(plan_id)
         if champ_check is None:
             warnings.append(ReadinessFinding(
                 severity="warning", code=LimitationCode.NO_CHAMPION_ASSIGNMENT,
@@ -272,7 +275,7 @@ def check_manual_binning_readiness(
         ))
         return
     mb_step = None
-    for s in store.get_plan_version_steps(plan_version_id):
+    for s in PlanRepository(store).get_version_steps(plan_version_id):
         if s.step_id == mb_ref.step_id:
             mb_step = s
             break

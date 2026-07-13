@@ -21,6 +21,7 @@ from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.step import StepSpec
 from cardre.execution.context import ExecutionContext
 from cardre.nodes.build.models import LogisticRegressionNode
+from cardre.store.artifact_repo import ArtifactRepository
 
 
 def _seed_project_and_plan(store) -> tuple[str, str]:
@@ -121,9 +122,9 @@ def test_logistic_regression_model_artifact_shape(
     )
 
     # --- Retrieve ArtifactRefs from the store ---
-    meta_art = store.get_artifact(meta_art_id)
+    meta_art = ArtifactRepository(store).get(meta_art_id)
     assert meta_art is not None
-    train_art = store.get_artifact(train_art_id)
+    train_art = ArtifactRepository(store).get(train_art_id)
     assert train_art is not None
 
     # --- Build ExecutionContext ---

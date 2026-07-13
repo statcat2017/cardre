@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from cardre.reporting.schema import ArtifactEntry
 from cardre.reporting.types import SectionCollector, SectionContext
+from cardre.store.artifact_repo import ArtifactRepository
 
 
 class ArtifactsSection(SectionCollector):
@@ -21,7 +22,7 @@ class ArtifactsSection(SectionCollector):
             if aid in seen:
                 continue
             seen.add(aid)
-            art = ctx.store.get_artifact(aid)
+            art = ArtifactRepository(ctx.store).get(aid)
             if art:
                 entries.append(ArtifactEntry(
                     artifact_id=art.artifact_id,

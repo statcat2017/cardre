@@ -400,7 +400,8 @@ class PlanExecutor:
         ).fetchall()
         artifacts: list[ArtifactRef] = []
         for row in rows:
-            artifact = self._store.get_artifact(row["artifact_id"])
+            from cardre.store.artifact_repo import ArtifactRepository
+            artifact = ArtifactRepository(self._store).get(row["artifact_id"])
             if artifact is not None:
                 artifacts.append(artifact)
         return artifacts

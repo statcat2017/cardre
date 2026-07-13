@@ -12,6 +12,7 @@ from typing import Any
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError
 from cardre.store.branch_repo import BranchRepository
+from cardre.store.champion_repo import ChampionRepository
 from cardre.store.comparison_repo import ComparisonRepository
 from cardre.store.db import ProjectStore
 
@@ -80,7 +81,7 @@ def assign_champion(
         )
 
     # Verify snapshot belongs to this comparison
-    snap = branches_repo.get_comparison_snapshot(comparison_snapshot_id)
+    snap = ComparisonRepository(store).get_comparison_snapshot(comparison_snapshot_id)
     if snap is None or snap["comparison_id"] != comparison_id:
         raise CardreError(
             f"COMPARISON_SNAPSHOT_NOT_FOUND: {comparison_snapshot_id} does not belong to comparison {comparison_id}.",
@@ -184,8 +185,8 @@ def supersede_champion_for_branch(
     changed.  This function marks the old assignment as superseded so the
     branch must be re-evaluated before it can be champion again.
     """
-    branches_repo = BranchRepository(store)
-    assignment = branches_repo.get_champion_assignment_by_branch(branch_id)
+    champion_repo = ChampionRepository(store)
+    assignment = champion_repo.get_champion_assignment_by_branch(branch_id)
     if assignment is None:
         return
     if assignment["selected_plan_version_id"] == new_plan_version_id:

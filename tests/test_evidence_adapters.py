@@ -25,6 +25,7 @@ from cardre._evidence.profiles import EVIDENCE_PROFILES
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.domain.artifacts import ArtifactRef
+from cardre.store.artifact_repo import ArtifactRepository
 
 # ---------------------------------------------------------------------------
 # Registry coverage tests
@@ -114,7 +115,7 @@ def _write_json_artifact(
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (aid, artifact_type, role, str(art_path), "phys_hash", "log_hash", media_type, "", json.dumps(metadata)),
     )
-    return store.get_artifact(aid)
+    return ArtifactRepository(store).get(aid)
 
 
 def _write_parquet_artifact(
@@ -133,7 +134,7 @@ def _write_parquet_artifact(
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (aid, artifact_type, role, str(art_path), "phys_hash", "log_hash", media_type, "", json.dumps(metadata)),
     )
-    return store.get_artifact(aid)
+    return ArtifactRepository(store).get(aid)
 
 
 def _assert_match_parity(store, kind: EvidenceKind, artifacts: list[ArtifactRef]) -> None:
@@ -206,7 +207,7 @@ def test_artifact_helpers_deduplicate_physical_hash(store, writer, kwargs):
 
     assert first.artifact_id == second.artifact_id
     assert first.path == second.path
-    assert store.get_artifact(first.artifact_id) is not None
+    assert ArtifactRepository(store).get(first.artifact_id) is not None
     count = store.execute(
         "SELECT COUNT(*) FROM artifacts WHERE physical_hash = ?",
         (first.physical_hash,),
@@ -400,7 +401,7 @@ def test_exclude_key_filters_artifact(store, tmp_path) -> None:
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (aid, "definition", "definition", str(art_path), "ph", "lh", "application/json", "", json.dumps({"schema_version": "", "selected": True})),
     )
-    art = store.get_artifact(aid)
+    art = ArtifactRepository(store).get(aid)
     spec = get_adapter(EvidenceKind.BIN_DEFINITION)
     result = match([art], spec.profile, store)
     assert result == []
@@ -418,7 +419,7 @@ def test_woe_table_no_schema_wrong_columns_returns_empty(store, tmp_path) -> Non
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (aid, "report", "report", str(art_path), "ph", "lh", "application/vnd.apache.parquet", "", json.dumps({})),
     )
-    art = store.get_artifact(aid)
+    art = ArtifactRepository(store).get(aid)
     spec = get_adapter(EvidenceKind.WOE_TABLE)
     result = match([art], spec.profile, store)
     assert result == []
@@ -450,7 +451,7 @@ def test_parse_invalid_json_raises(store, tmp_path) -> None:
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (aid, "definition", "definition", str(art_path), "ph", "lh", "application/json", "", json.dumps({"schema_version": "cardre.bin_definition.v1"})),
     )
-    art = store.get_artifact(aid)
+    art = ArtifactRepository(store).get(aid)
     spec = get_adapter(EvidenceKind.BIN_DEFINITION)
     with pytest.raises(json.JSONDecodeError):
         spec.parse(art_path, art, store)
@@ -467,7 +468,7 @@ def test_iv_table_empty_schema_skips_schema_phase(store, tmp_path) -> None:
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (aid, "report", "report", str(art_path), "ph", "lh", "application/vnd.apache.parquet", "", json.dumps({})),
     )
-    art = store.get_artifact(aid)
+    art = ArtifactRepository(store).get(aid)
     spec = get_adapter(EvidenceKind.IV_TABLE)
     result = match([art], spec.profile, store)
     assert len(result) == 1
@@ -484,7 +485,7 @@ def test_scored_dataset_role_based_match(store, tmp_path) -> None:
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (aid, "dataset", "train", str(art_path), "ph", "lh", "application/vnd.apache.parquet", "", json.dumps({})),
     )
-    art = store.get_artifact(aid)
+    art = ArtifactRepository(store).get(aid)
     spec = get_adapter(EvidenceKind.SCORED_DATASET)
     result = match([art], spec.profile, store)
     assert len(result) == 1

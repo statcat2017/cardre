@@ -169,13 +169,19 @@ consistency).
 
 - **PR9a** — `ProjectStore` delegate block deletion (A1); `Repository`
   base + `_branch_filter` helper + `ChampionRepository` extraction (A2);
-  repo return-type consistency (A5); `active_step_id` column (A7).
-- **PR9b** — move route business logic to services (A3); `errors.py`
-  dedup (A4); centralise mappings (A6); `create_project` `__version__`
-  fix (A8); sidecar argv cleanup (A9).
+  delete `_value` polymorphic helper (A5 scoped — full typed hydration
+  deferred to follow-up). **A7 (`active_step_id` column) is deferred to
+  a separate labelled migration PR** — the store has no migration
+  infrastructure and PR9 is structure-only per sprint rules.
+- **PR9b** — move 3 route handlers' inline logic to existing
+  repos/services (A3 scoped — speculative services excluded);
+  `errors.py` dedup (A4); centralise 3 inline mappers (A6);
+  `create_project` `__version__` fix (A8); sidecar argv cleanup (A9).
 
-**Gate:** `ProjectStore` < 80 lines. No route walks the filesystem or
-builds `RunSummary` inline. CI green.
+**Gate:** `ProjectStore` has no delegate methods. No route walks the
+filesystem or builds `RunSummary` inline. CI green. See step-09 for
+follow-up tickets (A7 migration, A5 full hydration, `finish()` removal,
+`RunScope` audit).
 
 ### Batch H — Frontend + Tauri (1 agent, independent)
 

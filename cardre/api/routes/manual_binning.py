@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store, require_governance
-from cardre.api.errors import REVIEW_NOT_FOUND, CardreApiError
+from cardre.api.errors import CardreApiError, ErrorCode
+from cardre.api.routes._run_mappings import manual_binning_review_to_response
 from cardre.api.schemas import (
     ManualBinningEditRequest,
     ManualBinningEditResponse,
@@ -32,21 +31,6 @@ router = APIRouter(prefix="/projects/{project_id}/manual-binning", tags=["manual
                    dependencies=[Depends(require_governance)])
 
 
-def _review_to_response(review: Any) -> ManualBinningReviewResponse:
-    """Convert a ManualBinningReview domain object to a response model."""
-    d = review if isinstance(review, dict) else review.to_dict()
-    return ManualBinningReviewResponse(
-        review_id=d["review_id"],
-        plan_version_id=d["plan_version_id"],
-        step_id=d["step_id"],
-        status=d["status"],
-        reviewer_notes=d.get("reviewer_notes", ""),
-        affected_downstream_step_ids=d.get("affected_downstream_step_ids", []),
-        created_at=d.get("created_at", ""),
-        updated_at=d.get("updated_at", ""),
-    )
-
-
 @router.get("/reviews", response_model=list[ManualBinningReviewResponse])
 async def list_reviews(
     project_id: str,
@@ -60,7 +44,7 @@ async def list_reviews(
         reviews = repo.get_reviews_for_step(plan_version_id, step_id)
     else:
         reviews = repo.list_for_project(project_id)
-    return [_review_to_response(r) for r in reviews]
+    return [manual_binning_review_to_response(r) for r in reviews]
 
 
 @router.get("/reviews/{review_id}", response_model=ManualBinningReviewResponse)
@@ -74,11 +58,11 @@ async def get_review(
     review = repo.get_review(review_id)
     if review is None:
         raise CardreApiError(
-            code=REVIEW_NOT_FOUND,
+            code=ErrorCode.REVIEW_NOT_FOUND,
             message=f"Review {review_id!r} not found.",
             status_code=404,
         )
-    return _review_to_response(review)
+    return manual_binning_review_to_response(review)
 
 
 @router.patch("/reviews/{review_id}", response_model=ManualBinningReviewResponse)
@@ -93,7 +77,7 @@ async def update_review(
     existing = repo.get_review(review_id)
     if existing is None:
         raise CardreApiError(
-            code=REVIEW_NOT_FOUND,
+            code=ErrorCode.REVIEW_NOT_FOUND,
             message=f"Review {review_id!r} not found.",
             status_code=404,
         )
@@ -104,7 +88,7 @@ async def update_review(
     )
     updated = repo.get_review(review_id)
     assert updated is not None
-    return _review_to_response(updated)
+    return manual_binning_review_to_response(updated)
 
 
 @router.post("/edit", response_model=ManualBinningEditResponse)

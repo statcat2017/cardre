@@ -5,6 +5,7 @@ Re-exports ``ProjectStore`` and repository classes for focused access.
 
 from cardre.store.artifact_repo import ArtifactRepository
 from cardre.store.branch_repo import BranchRepository
+from cardre.store.champion_repo import ChampionRepository
 from cardre.store.comparison_repo import ComparisonRepository
 from cardre.store.db import ProjectStore
 from cardre.store.evidence_repo import EvidenceRepository
@@ -36,6 +37,7 @@ __all__ = [
     "SCHEMA_SQL",
     "ArtifactRepository",
     "BranchRepository",
+    "ChampionRepository",
     "ComparisonRepository",
     "EvidenceRepository",
     "ManualBinningRepository",

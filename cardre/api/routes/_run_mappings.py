@@ -11,10 +11,13 @@ from typing import Any
 
 from cardre._version import __version__
 from cardre.api.schemas import (
+    ArtifactResponse,
     BranchResponse,
+    ChampionAssignmentResponse,
     ComparisonResponse,
     EvidenceArtifactResponse,
     EvidenceEdgeResponse,
+    ManualBinningReviewResponse,
     NodeTypeResponse,
     PlanResponse,
     PlanVersionResponse,
@@ -23,16 +26,11 @@ from cardre.api.schemas import (
     RunResponse,
     RunStepResponse,
 )
+from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge
-from cardre.domain.plan import Plan, PlanVersion
+from cardre.domain.manual_binning import ManualBinningReview
 from cardre.domain.run import RunStep
 from cardre.services.run_coordinator import RunSummary
-
-
-def _value(obj: Any, key: str, default: Any = None) -> Any:
-    if isinstance(obj, Mapping):
-        return obj.get(key, default)
-    return getattr(obj, key, default)
 
 
 def run_summary_to_response(summary: RunSummary) -> RunResponse:
@@ -69,23 +67,23 @@ def run_step_to_response(rs: RunStep) -> RunStepResponse:
     )
 
 
-def plan_to_response(plan: Plan | Mapping[str, Any]) -> PlanResponse:
+def plan_to_response(plan: Mapping[str, Any]) -> PlanResponse:
     return PlanResponse(
-        plan_id=_value(plan, "plan_id"),
-        project_id=_value(plan, "project_id"),
-        name=_value(plan, "name"),
-        created_at=_value(plan, "created_at"),
+        plan_id=plan["plan_id"],
+        project_id=plan["project_id"],
+        name=plan["name"],
+        created_at=plan["created_at"],
     )
 
 
-def plan_version_to_response(plan_version: PlanVersion | Mapping[str, Any]) -> PlanVersionResponse:
+def plan_version_to_response(plan_version: Mapping[str, Any]) -> PlanVersionResponse:
     return PlanVersionResponse(
-        plan_version_id=_value(plan_version, "plan_version_id"),
-        plan_id=_value(plan_version, "plan_id"),
-        version_number=_value(plan_version, "version_number"),
-        is_committed=bool(_value(plan_version, "is_committed", False)),
-        created_at=_value(plan_version, "created_at"),
-        description=_value(plan_version, "description", ""),
+        plan_version_id=plan_version["plan_version_id"],
+        plan_id=plan_version["plan_id"],
+        version_number=plan_version["version_number"],
+        is_committed=bool(plan_version.get("is_committed", False)),
+        created_at=plan_version["created_at"],
+        description=plan_version.get("description", ""),
     )
 
 
@@ -130,6 +128,44 @@ def project_to_response(
         name=project["name"],
         created_at=project["created_at"],
         cardre_version=project.get("cardre_version", cardre_version or __version__),
+    )
+
+
+def champion_assignment_to_response(assignment: Mapping[str, Any]) -> ChampionAssignmentResponse:
+    return ChampionAssignmentResponse(
+        champion_assignment_id=assignment["champion_assignment_id"],
+        project_id=assignment["project_id"],
+        plan_id=assignment["plan_id"],
+        champion_branch_id=assignment["champion_branch_id"],
+        selected_plan_version_id=assignment["selected_plan_version_id"],
+        assigned_at=assignment.get("assigned_at", ""),
+        superseded_at=assignment.get("superseded_at"),
+    )
+
+
+def artifact_to_response(artifact: ArtifactRef) -> ArtifactResponse:
+    return ArtifactResponse(
+        artifact_id=artifact.artifact_id,
+        artifact_type=artifact.artifact_type,
+        role=artifact.role,
+        path=artifact.path,
+        physical_hash=artifact.physical_hash,
+        logical_hash=artifact.logical_hash,
+        media_type=artifact.media_type,
+        created_at=artifact.created_at,
+    )
+
+
+def manual_binning_review_to_response(review: ManualBinningReview) -> ManualBinningReviewResponse:
+    return ManualBinningReviewResponse(
+        review_id=review.review_id,
+        plan_version_id=review.plan_version_id,
+        step_id=review.step_id,
+        status=review.status,
+        reviewer_notes=review.reviewer_notes,
+        affected_downstream_step_ids=list(review.affected_downstream_step_ids),
+        created_at=review.created_at,
+        updated_at=review.updated_at,
     )
 
 

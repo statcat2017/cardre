@@ -134,3 +134,17 @@ class ComparisonRepository:
             (comparison_snapshot_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_comparison_snapshot(self, snapshot_id: str) -> JsonDict | None:
+        row = self._store.execute(
+            "SELECT * FROM branch_comparison_snapshots WHERE comparison_snapshot_id = ?",
+            (snapshot_id,),
+        ).fetchone()
+        return None if row is None else dict(row)
+
+    def get_comparison_snapshots(self, comparison_id: str) -> list[JsonDict]:
+        rows = self._store.execute(
+            "SELECT * FROM branch_comparison_snapshots WHERE comparison_id = ? ORDER BY created_at",
+            (comparison_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]

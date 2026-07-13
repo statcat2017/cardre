@@ -19,11 +19,9 @@ from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.node_parameters import (
     MethodOption,
     NodeParameterSchema,
-    ParameterConstraint,
-    ParameterDefinition,
 )
-from cardre.nodes._bin_mask import build_bin_condition
 from cardre.nodes.contracts import NodeType
+from cardre.store.plan_repo import PlanRepository
 
 
 class CalculateWoeIvNode(NodeType):
@@ -342,9 +340,9 @@ class CalculateWoeIvNode(NodeType):
 
         # Controlled WOE/IV evidence artifact (Phase 5, cardre.woe_iv_evidence.v1)
         project_id = ""
-        plan_id = store.get_plan_id_for_version(context.plan_version_id)
+        plan_id = PlanRepository(store).get_plan_id_for_version(context.plan_version_id)
         if plan_id:
-            plan = store.get_plan(plan_id)
+            plan = PlanRepository(store).get_plan(plan_id)
             if plan:
                 project_id = plan["project_id"]
 

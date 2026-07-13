@@ -23,6 +23,9 @@ from cardre.reporting.evidence_contract import (
 )
 from cardre.reporting.types import ReportMode
 from cardre.store import ProjectStore
+from cardre.store.branch_repo import BranchRepository
+from cardre.store.plan_repo import PlanRepository
+from cardre.store.run_repo import RunRepository
 
 BLOCKER_CODES = LimitationCode.blocker_codes()
 
@@ -39,7 +42,7 @@ def check_report_readiness(
     blockers: list[ReadinessFinding] = []
     warnings: list[ReadinessFinding] = []
 
-    branch = store.get_branch(target_branch_id)
+    branch = BranchRepository(store).get_branch(target_branch_id)
     if branch is None:
         blockers.append(ReadinessFinding(
             severity="blocker", code=LimitationCode.TARGET_BRANCH_NOT_FOUND,
@@ -53,7 +56,7 @@ def check_report_readiness(
             message=f"Target branch {target_branch_id!r} has status {branch.get('status')!r}.",
         ))
 
-    run = store.get_run(run_id)
+    run = RunRepository(store).get(run_id)
     if run is None:
         blockers.append(ReadinessFinding(
             severity="blocker", code=LimitationCode.MISSING_RUN_MANIFEST,
@@ -68,7 +71,7 @@ def check_report_readiness(
         ))
 
     plan_version_id = run["plan_version_id"]
-    plan_id = store.get_plan_id_for_version(plan_version_id)
+    plan_id = PlanRepository(store).get_plan_id_for_version(plan_version_id)
 
     if plan_id is None:
         blockers.append(ReadinessFinding(
@@ -77,9 +80,9 @@ def check_report_readiness(
         ))
 
     head_pv = branch.get("head_plan_version_id")
-    step_map = store.get_branch_step_map(target_branch_id, plan_version_id)
+    step_map = BranchRepository(store).get_step_map(target_branch_id, plan_version_id)
     if not step_map and head_pv:
-        step_map = store.get_branch_step_map(target_branch_id, head_pv)
+        step_map = BranchRepository(store).get_step_map(target_branch_id, head_pv)
     if not step_map:
         blockers.append(ReadinessFinding(
             severity="blocker", code=LimitationCode.TARGET_BRANCH_INCOMPLETE,

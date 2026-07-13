@@ -8,6 +8,7 @@ from cardre.reporting.schema import (
     ReproducibilityInfo,
 )
 from cardre.reporting.types import SectionCollector, SectionContext
+from cardre.store.run_step_repo import RunStepRepository
 
 
 class ReproducibilitySection(SectionCollector):
@@ -15,7 +16,7 @@ class ReproducibilitySection(SectionCollector):
     kinds = ()
 
     def build(self, ctx: SectionContext) -> None:
-        run_steps = ctx.store.get_run_steps(ctx.run["run_id"])
+        run_steps = RunStepRepository(ctx.store).get_for_run(ctx.run["run_id"])
         fingerprints = []
         for rs in run_steps:
             fp = rs.execution_fingerprint

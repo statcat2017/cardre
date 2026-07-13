@@ -5,6 +5,7 @@ from __future__ import annotations
 from cardre.readiness.limitation_codes import LimitationCode
 from cardre.reporting.schema import DatasetRole, Limitation
 from cardre.reporting.types import SectionCollector, SectionContext
+from cardre.store.artifact_repo import ArtifactRepository
 
 
 class DatasetRolesSection(SectionCollector):
@@ -18,7 +19,7 @@ class DatasetRolesSection(SectionCollector):
             "WHERE al.run_id = ? AND al.direction = 'output'",
             (ctx.run["run_id"],),
         ).fetchall():
-            art = ctx.store.get_artifact(row["artifact_id"])
+            art = ArtifactRepository(ctx.store).get(row["artifact_id"])
             if art and art.role in ("train", "test", "oot"):
                 roles.append(DatasetRole(
                     role=art.role,

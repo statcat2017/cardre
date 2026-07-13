@@ -11,6 +11,7 @@ from cardre._evidence.schemas import (
 )
 from cardre.reporting.schema import ImplementationArtifactInfo, ImplementationArtifactsInfo
 from cardre.reporting.types import SectionCollector, SectionContext
+from cardre.store.artifact_repo import ArtifactRepository
 
 
 class ImplementationArtifactsSection(SectionCollector):
@@ -22,7 +23,7 @@ class ImplementationArtifactsSection(SectionCollector):
             "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
             (rs.run_step_id,),
         ).fetchall():
-            art = ctx.store.get_artifact(row["artifact_id"])
+            art = ArtifactRepository(ctx.store).get(row["artifact_id"])
             if art and art.metadata.get("schema_version") == schema_version:
                 return art
         return None

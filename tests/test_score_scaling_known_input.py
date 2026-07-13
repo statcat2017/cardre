@@ -21,6 +21,7 @@ from cardre.domain.step import StepSpec
 from cardre.execution.context import ExecutionContext
 from cardre.nodes.build._logit_helpers import WOE_ROUND
 from cardre.nodes.build.models import ScoreScalingNode
+from cardre.store.artifact_repo import ArtifactRepository
 
 # ------------------------------------------------------------------
 # Helper: seed a minimal project + plan + plan_version
@@ -199,11 +200,11 @@ def test_score_scaling_with_known_input(
     )
 
     # --- Retrieve ArtifactRefs from the store ---
-    model_art = store.get_artifact(model_art_id)
+    model_art = ArtifactRepository(store).get(model_art_id)
     assert model_art is not None
-    bin_def_art = store.get_artifact(bin_def_art_id)
+    bin_def_art = ArtifactRepository(store).get(bin_def_art_id)
     assert bin_def_art is not None
-    woe_art = store.get_artifact(woe_art_id)
+    woe_art = ArtifactRepository(store).get(woe_art_id)
     assert woe_art is not None
 
     # --- Build ExecutionContext ---

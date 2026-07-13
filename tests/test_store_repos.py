@@ -627,15 +627,17 @@ class TestBranchRepo:
         assert branch["head_plan_version_id"] == new_pv_id
 
     def test_branch_repo_champion_and_comparison_methods(self, store):
-        from cardre.store.branch_repo import BranchRepository
-        repo = BranchRepository(store)
-        assert repo.get_champion_assignment_for_project("nonexistent") is None
-        assert repo.get_champion_assignment("nonexistent-plan") is None
-        assert repo.get_champion_assignment("nonexistent-plan", champion_branch_id="b1") is None
-        assert repo.get_champion_assignment_by_branch("nonexistent-branch") is None
-        assert repo.get_comparison("nonexistent") is None
-        assert repo.get_comparison_snapshot("nonexistent") is None
-        assert repo.get_comparison_snapshots("nonexistent") == []
+        from cardre.store.champion_repo import ChampionRepository
+        from cardre.store.comparison_repo import ComparisonRepository
+        champion_repo = ChampionRepository(store)
+        assert champion_repo.get_champion_assignment_for_project("nonexistent") is None
+        assert champion_repo.get_champion_assignment("nonexistent-plan") is None
+        assert champion_repo.get_champion_assignment("nonexistent-plan", champion_branch_id="b1") is None
+        assert champion_repo.get_champion_assignment_by_branch("nonexistent-branch") is None
+        comparison_repo = ComparisonRepository(store)
+        assert comparison_repo.get_comparison("nonexistent") is None
+        assert comparison_repo.get_comparison_snapshot("nonexistent") is None
+        assert comparison_repo.get_comparison_snapshots("nonexistent") == []
 
     def test_comparison_repo_full_lifecycle(self, store):
         from cardre.store.comparison_repo import ComparisonRepository
@@ -689,10 +691,10 @@ class TestBranchRepo:
         )
         assert snapshot_id is not None
 
-        snapshots = branch_repo.get_comparison_snapshots(comp_id)
+        snapshots = repo.get_comparison_snapshots(comp_id)
         assert len(snapshots) == 1
 
-        snapshot = branch_repo.get_comparison_snapshot(snapshot_id)
+        snapshot = repo.get_comparison_snapshot(snapshot_id)
         assert snapshot is not None
 
         repo.add_snapshot_plan_version(snapshot_id, pv_id, branch_id=challenger_id)

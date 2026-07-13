@@ -14,9 +14,7 @@ from cardre._version import __version__
 from cardre.domain.errors import SchemaVersionError
 
 if TYPE_CHECKING:
-    from cardre.domain.artifacts import ArtifactRef
-    from cardre.domain.run import RunStep
-    from cardre.domain.step import StepSpec
+    pass
 
 from cardre.store.schema import (
     ALL_TABLES_SQL,
@@ -265,70 +263,4 @@ class ProjectStore:
         with self._lock:
             return _LockedCursor(self._lock, self._connect().executemany(sql, seq))
 
-    # ------------------------------------------------------------------
-    # Convenience delegates over the repository classes
-    # ------------------------------------------------------------------
 
-    def get_branch(self, branch_id: str) -> dict[str, Any] | None:
-        from cardre.store.branch_repo import BranchRepository
-        return BranchRepository(self).get_branch(branch_id)
-
-    def get_branch_step_map(self, branch_id: str, plan_version_id: str) -> list[dict[str, Any]]:
-        from cardre.store.branch_repo import BranchRepository
-        return BranchRepository(self).get_step_map(branch_id, plan_version_id)
-
-    def get_plan_version(self, plan_version_id: str) -> dict[str, Any] | None:
-        from cardre.store.plan_repo import PlanRepository
-        return PlanRepository(self).get_version(plan_version_id)
-
-    def get_plan_version_steps(self, plan_version_id: str) -> list[StepSpec]:
-        from cardre.store.plan_repo import PlanRepository
-        return PlanRepository(self).get_version_steps(plan_version_id)
-
-    def get_plan(self, plan_id: str) -> dict[str, Any] | None:
-        from cardre.store.plan_repo import PlanRepository
-        return PlanRepository(self).get_plan(plan_id)
-
-    def get_run(self, run_id: str) -> dict[str, Any] | None:
-        from cardre.store.run_repo import RunRepository
-        return RunRepository(self).get(run_id)
-
-    def get_run_steps(self, run_id: str) -> list[RunStep]:
-        from cardre.store.run_step_repo import RunStepRepository
-        return RunStepRepository(self).get_for_run(run_id)
-
-    def get_artifact(self, artifact_id: str) -> ArtifactRef | None:
-        from cardre.store.artifact_repo import ArtifactRepository
-        return ArtifactRepository(self).get(artifact_id)
-
-    def get_latest_successful_run_id(self, plan_version_id: str, branch_id: str | None = None) -> str | None:
-        from cardre.store.run_repo import RunRepository
-        return RunRepository(self).get_latest_successful_id(plan_version_id, branch_id=branch_id)
-
-    def get_latest_successful_run_id_for_plan(self, plan_id: str) -> str | None:
-        from cardre.store.run_repo import RunRepository
-        return RunRepository(self).get_latest_successful_id_for_plan(plan_id)
-
-    def get_latest_successful_run_step(self, plan_version_id: str, step_id: str, branch_id: str | None = None) -> RunStep | None:
-        from cardre.store.run_step_repo import RunStepRepository
-        return RunStepRepository(self).get_latest_successful_step(plan_version_id, step_id, branch_id=branch_id)
-
-    def get_plan_id_for_version(self, plan_version_id: str) -> str | None:
-        from cardre.store.plan_repo import PlanRepository
-        return PlanRepository(self).get_plan_id_for_version(plan_version_id)
-
-    def get_project(self, project_id: str) -> dict[str, Any] | None:
-        from cardre.store.project_repo import ProjectRepository
-        return ProjectRepository(self).get(project_id)
-
-    def get_comparison_snapshot(self, snapshot_id: str) -> dict[str, Any] | None:
-        from cardre.store.branch_repo import BranchRepository
-        return BranchRepository(self).get_comparison_snapshot(snapshot_id)
-
-    def get_champion_assignment(self, plan_id: str, champion_branch_id: str | None = None) -> dict[str, Any] | None:
-        from cardre.store.branch_repo import BranchRepository
-        return BranchRepository(self).get_champion_assignment(plan_id, champion_branch_id)
-
-    def get_champion_assignment_by_branch(self, branch_id: str) -> dict[str, Any] | None:
-        from cardre.store.branch_repo import BranchRepository
-        return BranchRepository(self).get_champion_assignment_by_branch(branch_id)

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
-from cardre.api.errors import RUN_EXECUTION_FAILED
+from cardre.api.errors import ErrorCode
 from cardre.config import CardreConfig
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import (
@@ -331,7 +331,7 @@ class RunCoordinator:
         except Exception as exc:
             raise CardreError(
                 f"Run execution failed: {exc}",
-                code=RUN_EXECUTION_FAILED,
+                code=ErrorCode.RUN_EXECUTION_FAILED,
                 context={
                     "plan_version_id": plan_version_id,
                     "run_scope": run_scope,
@@ -547,6 +547,24 @@ class RunCoordinator:
             heartbeat_at=run.get("heartbeat_at"),
             is_stale=self._is_stale(run),
         )
+
+    def list_for_project(self, project_id: str) -> list[RunSummary]:
+        """List all runs for a project as RunSummary objects."""
+        from cardre.store.run_repo import RunRepository
+
+        run_repo = RunRepository(self._store)
+        runs = run_repo.list_for_project(project_id)
+        return [
+            RunSummary(
+                run_id=r["run_id"],
+                plan_version_id=r["plan_version_id"],
+                status=r["status"],
+                started_at=r["started_at"],
+                finished_at=r.get("finished_at"),
+                branch_id=r.get("branch_id"),
+            )
+            for r in runs
+        ]
 
 
 __all__ = ["RunCoordinator", "RunPlanDecision", "RunSummary"]

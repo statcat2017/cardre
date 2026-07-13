@@ -8,12 +8,7 @@ from pathlib import Path
 
 from fastapi import Depends, Header, HTTPException
 
-from cardre.api.errors import (
-    GOVERNANCE_DISABLED,
-    MISSING_PROJECT_ID,
-    PROJECT_NOT_FOUND,
-    RAW_PROJECT_PATH_DISABLED,
-)
+from cardre.api.errors import ErrorCode
 from cardre.config import CardreConfig
 from cardre.services.project_resolver import ProjectResolver
 from cardre.services.run_coordinator import RunCoordinator
@@ -42,7 +37,7 @@ def get_project_store(
             raise HTTPException(
                 status_code=400,
                 detail={
-                    "code": RAW_PROJECT_PATH_DISABLED,
+                    "code": ErrorCode.RAW_PROJECT_PATH_DISABLED,
                     "message": (
                         "X-Project-Path is disabled by default. Set CARDRE_ALLOW_RAW_PROJECT_PATH=1 "
                         "for development-only access or send X-Project-Id instead."
@@ -54,7 +49,7 @@ def get_project_store(
             raise HTTPException(
                 status_code=404,
                 detail={
-                    "code": PROJECT_NOT_FOUND,
+                    "code": ErrorCode.PROJECT_NOT_FOUND,
                     "message": f"Project not found at {project_path}.",
                 },
             )
@@ -69,7 +64,7 @@ def get_project_store(
         raise HTTPException(
             status_code=400,
             detail={
-                "code": MISSING_PROJECT_ID,
+                "code": ErrorCode.MISSING_PROJECT_ID,
                 "message": "X-Project-Id header is required.",
             },
         )
@@ -98,7 +93,7 @@ def require_governance() -> None:
         raise HTTPException(
             status_code=403,
             detail={
-                "code": GOVERNANCE_DISABLED,
+                "code": ErrorCode.GOVERNANCE_DISABLED,
                 "message": (
                     "This endpoint requires CARDRE_GOVERNANCE=1. "
                     "Set the environment variable to enable governance features."

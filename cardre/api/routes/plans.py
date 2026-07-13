@@ -11,12 +11,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_project_store
-from cardre.api.errors import (
-    PLAN_NOT_FOUND,
-    PLAN_VERSION_IMMUTABLE,
-    PLAN_VERSION_NOT_FOUND,
-    CardreApiError,
-)
+from cardre.api.errors import CardreApiError, ErrorCode
 from cardre.api.routes._project_scope import (
     plan_belongs_to_project,
     plan_version_belongs_to_project,
@@ -54,7 +49,7 @@ async def list_plans(
     service = PlanService(store)
     plans = service.list_plans(project_id)
     return PlanListResponse(
-        plans=[plan_to_response(p) for p in plans]
+        plans=[plan_to_response(p.to_dict()) for p in plans]
     )
 
 
@@ -67,7 +62,7 @@ async def get_plan(
     """Get a single plan by ID."""
     if not plan_belongs_to_project(store, project_id, plan_id):
         raise CardreApiError(
-            code=PLAN_NOT_FOUND,
+            code=ErrorCode.PLAN_NOT_FOUND,
             message=f"Plan {plan_id!r} not found.",
             status_code=404,
         )
@@ -75,11 +70,11 @@ async def get_plan(
     plan = service.get_plan(plan_id)
     if plan is None:
         raise CardreApiError(
-            code=PLAN_NOT_FOUND,
+            code=ErrorCode.PLAN_NOT_FOUND,
             message=f"Plan {plan_id!r} not found.",
             status_code=404,
         )
-    return plan_to_response(plan)
+    return plan_to_response(plan.to_dict())
 
 
 @router.post("/plans", response_model=PlanResponse, status_code=201)
@@ -110,7 +105,7 @@ async def list_plan_versions(
     """List all versions of a plan."""
     if not plan_belongs_to_project(store, project_id, plan_id):
         raise CardreApiError(
-            code=PLAN_NOT_FOUND,
+            code=ErrorCode.PLAN_NOT_FOUND,
             message=f"Plan {plan_id!r} not found.",
             status_code=404,
         )
@@ -135,7 +130,7 @@ async def get_plan_version(
     """Get a single plan version by ID."""
     if not plan_version_belongs_to_project(store, project_id, plan_version_id):
         raise CardreApiError(
-            code=PLAN_VERSION_NOT_FOUND,
+            code=ErrorCode.PLAN_VERSION_NOT_FOUND,
             message=f"Plan version {plan_version_id!r} not found.",
             status_code=404,
         )
@@ -143,11 +138,11 @@ async def get_plan_version(
     pv = service.get_plan_version(plan_version_id)
     if pv is None:
         raise CardreApiError(
-            code=PLAN_VERSION_NOT_FOUND,
+            code=ErrorCode.PLAN_VERSION_NOT_FOUND,
             message=f"Plan version {plan_version_id!r} not found.",
             status_code=404,
         )
-    return plan_version_to_response(pv)
+    return plan_version_to_response(pv.to_dict())
 
 
 @router.patch("/plan-versions/{plan_version_id}", response_model=PlanVersionResponse)
@@ -163,7 +158,7 @@ async def update_plan_version(
     """
     if not plan_version_belongs_to_project(store, project_id, plan_version_id):
         raise CardreApiError(
-            code=PLAN_VERSION_NOT_FOUND,
+            code=ErrorCode.PLAN_VERSION_NOT_FOUND,
             message=f"Plan version {plan_version_id!r} not found.",
             status_code=404,
         )
@@ -171,13 +166,13 @@ async def update_plan_version(
     pv = service.get_plan_version(plan_version_id)
     if pv is None:
         raise CardreApiError(
-            code=PLAN_VERSION_NOT_FOUND,
+            code=ErrorCode.PLAN_VERSION_NOT_FOUND,
             message=f"Plan version {plan_version_id!r} not found.",
             status_code=404,
         )
     if pv.is_committed:
         raise CardreApiError(
-            code=PLAN_VERSION_IMMUTABLE,
+            code=ErrorCode.PLAN_VERSION_IMMUTABLE,
             message=f"Plan version {plan_version_id!r} is already committed and cannot be modified.",
             status_code=409,
         )
@@ -188,7 +183,7 @@ async def update_plan_version(
 
     updated = service.get_plan_version(plan_version_id)
     assert updated is not None
-    return plan_version_to_response(updated)
+    return plan_version_to_response(updated.to_dict())
 
 
 @router.post("/plan-versions/{plan_version_id}/commit", response_model=PlanVersionResponse)
@@ -203,7 +198,7 @@ async def commit_plan_version(
     """
     if not plan_version_belongs_to_project(store, project_id, plan_version_id):
         raise CardreApiError(
-            code=PLAN_VERSION_NOT_FOUND,
+            code=ErrorCode.PLAN_VERSION_NOT_FOUND,
             message=f"Plan version {plan_version_id!r} not found.",
             status_code=404,
         )
@@ -212,9 +207,9 @@ async def commit_plan_version(
         result = service.commit_plan_version(plan_version_id)
     except PlanServiceError as exc:
         raise CardreApiError(
-            code=PLAN_VERSION_IMMUTABLE,
+            code=ErrorCode.PLAN_VERSION_IMMUTABLE,
             message=str(exc),
             status_code=409,
         ) from exc
 
-    return plan_version_to_response(result)
+    return plan_version_to_response(result.to_dict())

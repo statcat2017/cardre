@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 class TestSidecarEntrypoint:
-    def test_main_uses_positional_port_argument(self, monkeypatch):
+    def test_main_uses_config_port(self, monkeypatch):
         from sidecar import __main__ as sidecar_main
 
         captured: dict[str, object] = {}
@@ -22,8 +22,8 @@ class TestSidecarEntrypoint:
             classmethod(lambda cls: cls(api_host="127.0.0.1", api_port=8752)),
         )
 
-        sidecar_main.main(["cardre-api", "18000"])
+        sidecar_main.main()
 
         assert captured["host"] == "127.0.0.1"
-        assert captured["port"] == 18000
+        assert captured["port"] == 8752
         assert captured["log_level"] == "info"
