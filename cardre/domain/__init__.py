@@ -31,7 +31,7 @@ from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge, ResolvedEvide
 from cardre.domain.manual_binning import ManualBinningReview
 from cardre.domain.plan import Plan, PlanVersion
 from cardre.domain.project import Project
-from cardre.domain.run import Run, RunScope, RunStep, RunStepEvidenceView, RunStepStatus
+from cardre.domain.run import Run, RunScope, RunStatus, RunStep, RunStepEvidenceView, RunStepStatus
 from cardre.domain.step import StepSpec
 
 __all__ = [
@@ -58,6 +58,7 @@ __all__ = [
     "RunNotRunningError",
     "RunPlanVersionMismatchError",
     "RunScope",
+    "RunStatus",
     "RunStep",
     "RunStepEvidenceView",
     "RunStepStatus",

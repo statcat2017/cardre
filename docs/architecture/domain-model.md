@@ -61,8 +61,12 @@ These are two different node types: `impute_missing` (data transform) and the `m
 
 ## Step Status: Stored vs Computed
 
-- **Stored statuses** (set by the executor): `not_run`, `queued`, `running`, `succeeded`, `failed`, `cancelled`.
+- **Stored statuses** (set by the executor): `not_run`, `queued`, `running`, `succeeded`, `failed`, `cancelled`. These are `RunStepStatus` enum members in `cardre/domain/run.py`.
 - **`is_stale`**: a computed boolean property, not a stored status. Answers: "does this step's latest run reference the latest upstream run steps?" If an upstream step was re-run with different params/hash, all downstream steps become stale regardless of their stored status.
+
+## Run Status
+
+Run-level status (distinct from per-step status) is modelled by the `RunStatus(StrEnum)` in `cardre/domain/run.py`: `created`, `queued`, `running`, `succeeded`, `failed`, `interrupted`, `cancelled`. Terminal statuses are written exclusively through `RunRepository.transition(run_id, to_status, *, expected_from=...)`, which atomically guards on the current status. `RunScope` (also a `StrEnum`: `full_plan`, `branch`, `to_node`) discriminates the execution scope; `to_node` is rejected at launch time.
 
 ## Dataset vs Artifact vs Snapshot
 

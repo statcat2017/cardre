@@ -488,57 +488,62 @@ def refresh_comparison(
     last_snapshot_id = None
     artifact = None
 
-    for cid in challenger_ids:
-        challenger = branches_repo.get_branch(cid)
-        if challenger is None:
-            continue
+    with store.transaction("IMMEDIATE") as conn:
+        for cid in challenger_ids:
+            challenger = branches_repo.get_branch(cid)
+            if challenger is None:
+                continue
 
-        content = _build_comparison_content(
-            store,
-            baseline["head_plan_version_id"],
-            challenger["head_plan_version_id"],
-            baseline_branch_id,
-            cid,
-            spec,
-        )
-        artifact = write_json_artifact(
-            store,
-            artifact_type="branch_comparison",
-            role="comparison",
-            stem=f"comparison_{comparison_id}_{cid}",
-            payload=content,
-            metadata={"comparison_id": comparison_id, "challenger_branch_id": cid},
-        )
+            content = _build_comparison_content(
+                store,
+                baseline["head_plan_version_id"],
+                challenger["head_plan_version_id"],
+                baseline_branch_id,
+                cid,
+                spec,
+            )
+            artifact = write_json_artifact(
+                store,
+                artifact_type="branch_comparison",
+                role="comparison",
+                stem=f"comparison_{comparison_id}_{cid}",
+                payload=content,
+                metadata={"comparison_id": comparison_id, "challenger_branch_id": cid},
+            )
 
-        # Create snapshot using repository (relational plan versions)
-        snapshot_id = comparison_repo.create_snapshot(
-            comparison_id=comparison_id,
-            project_id=comparison["project_id"],
-            plan_id=comparison["plan_id"],
-            comparison_artifact_id=artifact.artifact_id,
-            readiness={"ready": True, "missing": []},
-            created_reason="Comparison refresh",
-        )
+            # Create snapshot using repository (relational plan versions)
+            snapshot_id = comparison_repo.create_snapshot(
+                comparison_id=comparison_id,
+                project_id=comparison["project_id"],
+                plan_id=comparison["plan_id"],
+                comparison_artifact_id=artifact.artifact_id,
+                readiness={"ready": True, "missing": []},
+                created_reason="Comparison refresh",
+                conn=conn,
+            )
 
-        # Add source plan versions relationally
-        comparison_repo.add_snapshot_plan_version(
-            snapshot_id,
-            baseline["head_plan_version_id"],
-            branch_id=baseline_branch_id,
-        )
-        comparison_repo.add_snapshot_plan_version(
-            snapshot_id,
-            challenger["head_plan_version_id"],
-            branch_id=cid,
-        )
+            # Add source plan versions relationally
+            comparison_repo.add_snapshot_plan_version(
+                snapshot_id,
+                baseline["head_plan_version_id"],
+                branch_id=baseline_branch_id,
+                conn=conn,
+            )
+            comparison_repo.add_snapshot_plan_version(
+                snapshot_id,
+                challenger["head_plan_version_id"],
+                branch_id=cid,
+                conn=conn,
+            )
 
-        # Update comparison with latest snapshot
-        with store.transaction() as conn:
+            last_snapshot_id = snapshot_id
+
+        # Single UPDATE at the end — inside the same transaction
+        if last_snapshot_id is not None:
             conn.execute(
                 "UPDATE branch_comparisons SET latest_snapshot_id = ?, latest_ready = 1 WHERE comparison_id = ?",
-                (snapshot_id, comparison_id),
+                (last_snapshot_id, comparison_id),
             )
-        last_snapshot_id = snapshot_id
 
     return {
         "comparison_id": comparison_id,

@@ -37,7 +37,8 @@ class TestRunRepo:
         assert run["status"] == "running"
         assert run["run_scope"] == "full_plan"
 
-    def test_update_status(self, store):
+    def test_transition_updates_status(self, store):
+        from cardre.domain.run import RunStatus
         from cardre.store.run_repo import RunRepository
         repo = RunRepository(store)
         project_id = str(uuid.uuid4())
@@ -58,7 +59,7 @@ class TestRunRepo:
             (pv_id, plan_id, now),
         )
         run_id = repo.create(pv_id)
-        repo.update_status(run_id, "interrupted")
+        repo.transition(run_id, RunStatus.INTERRUPTED)
         run = repo.get(run_id)
         assert run["status"] == "interrupted"
 
@@ -87,6 +88,86 @@ class TestRunRepo:
         run = repo.get(run_id)
         assert run["status"] == "succeeded"
         assert run["finished_at"] is not None
+
+    def test_transition_returns_false_when_not_running(self, store):
+        from cardre.domain.run import RunStatus
+        from cardre.store.run_repo import RunRepository
+        repo = RunRepository(store)
+        project_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "Test", now, "0.2.0"),
+        )
+        plan_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (plan_id, project_id, "Test", now),
+        )
+        pv_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
+            "VALUES (?, ?, 1, 1, ?)",
+            (pv_id, plan_id, now),
+        )
+        run_id = repo.create(pv_id)
+        # First transition succeeds
+        assert repo.transition(run_id, RunStatus.SUCCEEDED)
+        # Second transition returns False — run is already succeeded
+        assert not repo.transition(run_id, RunStatus.FAILED)
+
+    def test_transition_rejects_illegal_move(self, store):
+        from cardre.domain.run import RunStatus
+        from cardre.store.run_repo import RunRepository
+        repo = RunRepository(store)
+        project_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "Test", now, "0.2.0"),
+        )
+        plan_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (plan_id, project_id, "Test", now),
+        )
+        pv_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
+            "VALUES (?, ?, 1, 1, ?)",
+            (pv_id, plan_id, now),
+        )
+        run_id = repo.create(pv_id)
+        import pytest
+        with pytest.raises(ValueError, match="Invalid run state transition"):
+            repo.transition(run_id, RunStatus.CREATED)
+
+    def test_transition_expected_from_guards(self, store):
+        from cardre.domain.run import RunStatus
+        from cardre.store.run_repo import RunRepository
+        repo = RunRepository(store)
+        project_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "Test", now, "0.2.0"),
+        )
+        plan_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
+            (plan_id, project_id, "Test", now),
+        )
+        pv_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
+            "VALUES (?, ?, 1, 1, ?)",
+            (pv_id, plan_id, now),
+        )
+        run_id = repo.create(pv_id)
+        # First transition to SUCCEEDED
+        assert repo.transition(run_id, RunStatus.SUCCEEDED)
+        # Now try to transition from RUNNING — SQL won't match (run is SUCCEEDED)
+        assert not repo.transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
 
     def test_list_for_plan_version_all(self, store):
         from cardre.store.run_repo import RunRepository

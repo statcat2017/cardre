@@ -466,7 +466,14 @@ class TestRunSummary:
                 "VALUES (?, ?, ?, ?, ?, ?, ?, '{}', '[]', '[]')",
                 ("rs-failed", run_id, "step-a", plan_version_id, RunStepStatus.FAILED.value, now, now),
             )
-            return run_id
+            from cardre.execution.executor import PlanExecutionResult
+            return PlanExecutionResult(
+                run_id=run_id,
+                has_failure=True,
+                outputs={},
+                records={},
+                executed_step_ids=["step-a"],
+            )
 
         monkeypatch.setattr(PlanExecutor, "run_plan_version", fake_run_plan_version)
 

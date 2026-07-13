@@ -27,7 +27,7 @@ from cardre.domain.errors import (
     PlanVersionNotCommittedError,
     RunScopeNotAvailableForLaunch,
 )
-from cardre.domain.run import RunStepStatus
+from cardre.domain.run import RunStatus
 
 if TYPE_CHECKING:
     from cardre.domain.diagnostics import JsonDict
@@ -202,7 +202,7 @@ class RunCoordinator:
                 code="RUN_NOT_FOUND",
                 context={"run_id": run_id},
             )
-        if run["status"] != "running":
+        if run["status"] != RunStatus.RUNNING.value:
             raise CardreError(
                 f"Run {run_id} is not running.",
                 code="RUN_NOT_RUNNING",
@@ -298,13 +298,14 @@ class RunCoordinator:
 
         if run_scope == "to_node":
             from cardre.store.run_repo import RunRepository
-            RunRepository(self._store).finish(run_id, "failed")
+            RunRepository(self._store).transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
             self._raise_run_scope_not_available(run_scope, target_step_id)
 
         from cardre.execution.executor import PlanExecutor
         from cardre.execution.run_lifecycle import RunLifecycle
 
         executor = PlanExecutor(self._store)
+        result = None
 
         try:
             with RunLifecycle(
@@ -315,17 +316,12 @@ class RunCoordinator:
                 branch_id=branch_id,
                 target_step_id=target_step_id,
             ) as lifecycle:
-                executor.run_plan_version(
+                result = executor.run_plan_version(
                     plan_version_id, run_id,
                     force=force, branch_id=branch_id,
                 )
-                from cardre.store.run_step_repo import RunStepRepository
-                has_failure = any(
-                    rs.status == RunStepStatus.FAILED
-                    for rs in RunStepRepository(self._store).get_for_run(run_id)
-                )
                 lifecycle.finalise(
-                    status="failed" if has_failure else "succeeded",
+                    status=result.status().value,
                     execution_mode=execution_mode,
                     branch_id=branch_id,
                     target_step_id=target_step_id,
@@ -343,9 +339,7 @@ class RunCoordinator:
                 },
             ) from exc
 
-        from cardre.store.run_step_repo import RunStepRepository
-        rs_repo = RunStepRepository(self._store)
-        executed_ids = [rs.step_id for rs in rs_repo.get_for_run(run_id)]
+        executed_ids = result.executed_step_ids if result else []
         return self.get_summary(run_id, executed_ids)
 
     def _execute_sync(
@@ -387,7 +381,7 @@ class RunCoordinator:
                     "plan_version_id": plan_version_id,
                     "created_at": utc_now_iso(),
                 })
-                RunRepository(self._store).finish(run_id, "failed")
+                RunRepository(self._store).transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
             raise
         return self.get_summary(run_id)
 
@@ -442,25 +436,7 @@ class RunCoordinator:
                         },
                     )
 
-            for existing_run in run_repo.list_for_plan_version(plan_version_id=plan_version_id):
-                if existing_run.get("status") == "running" and self._is_stale(existing_run):
-                    active_step_id = run_repo.get_active_step(existing_run["run_id"])
-                    diag: JsonDict = {
-                        "code": "RUN_RECOVERED_STALE",
-                        "message": f"Run {existing_run['run_id']} was stuck in 'running' with stale heartbeat — recovered as interrupted.",
-                        "severity": "error",
-                        "run_id": existing_run["run_id"],
-                        "plan_version_id": existing_run.get("plan_version_id", ""),
-                        "created_at": utc_now_iso(),
-                    }
-                    if active_step_id is not None:
-                        diag["active_step_id"] = active_step_id
-                        diag["message"] = (
-                            f"Run {existing_run['run_id']} was stuck in 'running' with stale heartbeat "
-                            f"(last active step: {active_step_id}) — recovered as interrupted."
-                        )
-                    run_repo.finish(existing_run["run_id"], "interrupted")
-                    run_repo.append_diagnostic(existing_run["run_id"], diag)
+            self._sweep_stale_running_runs(plan_version_id)
 
             if not force:
                 existing = conn.execute(
@@ -487,32 +463,41 @@ class RunCoordinator:
     # Stale-run recovery
     # ------------------------------------------------------------------
 
-    def _maybe_recover_stale_run(self, run: JsonDict) -> None:
-        if self._is_stale(run):
-            from cardre.store.run_repo import RunRepository
-            run_repo = RunRepository(self._store)
+    def _sweep_stale_running_runs(self, plan_version_id: str) -> list[str]:
+        """Find and interrupt stale running runs for a plan version.
 
-            active_step_id = run_repo.get_active_step(run["run_id"])
-            diag: JsonDict = {
-                "code": "RUN_RECOVERED_STALE",
-                "message": f"Run {run['run_id']} was stuck in 'running' with stale heartbeat — recovered as interrupted.",
-                "severity": "error",
-                "run_id": run["run_id"],
-                "plan_version_id": run.get("plan_version_id", ""),
-                "created_at": utc_now_iso(),
-            }
-            if active_step_id is not None:
-                diag["active_step_id"] = active_step_id
-                diag["message"] = (
-                    f"Run {run['run_id']} was stuck in 'running' with stale heartbeat "
-                    f"(last active step: {active_step_id}) — recovered as interrupted."
-                )
-            with self._store.transaction("IMMEDIATE"):
-                run_repo.finish(run["run_id"], "interrupted")
-                run_repo.append_diagnostic(run["run_id"], diag)
+        Returns the list of interrupted run IDs.
+        """
+        from cardre.store.run_repo import RunRepository
+
+        run_repo = RunRepository(self._store)
+        interrupted: list[str] = []
+
+        for existing_run in run_repo.list_for_plan_version(plan_version_id=plan_version_id):
+            if existing_run.get("status") == RunStatus.RUNNING.value and self._is_stale(existing_run):
+                active_step_id = run_repo.get_active_step(existing_run["run_id"])
+                diag: JsonDict = {
+                    "code": "RUN_RECOVERED_STALE",
+                    "message": f"Run {existing_run['run_id']} was stuck in 'running' with stale heartbeat — recovered as interrupted.",
+                    "severity": "error",
+                    "run_id": existing_run["run_id"],
+                    "plan_version_id": existing_run.get("plan_version_id", ""),
+                    "created_at": utc_now_iso(),
+                }
+                if active_step_id is not None:
+                    diag["active_step_id"] = active_step_id
+                    diag["message"] = (
+                        f"Run {existing_run['run_id']} was stuck in 'running' with stale heartbeat "
+                        f"(last active step: {active_step_id}) — recovered as interrupted."
+                    )
+                run_repo.transition(existing_run["run_id"], RunStatus.INTERRUPTED, expected_from=(RunStatus.RUNNING,))
+                run_repo.append_diagnostic(existing_run["run_id"], diag)
+                interrupted.append(existing_run["run_id"])
+
+        return interrupted
 
     def _is_stale(self, run: JsonDict) -> bool:
-        if run.get("status") != "running":
+        if run.get("status") != RunStatus.RUNNING.value:
             return False
         hb = run.get("heartbeat_at")
         if hb is None:

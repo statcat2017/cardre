@@ -7,8 +7,11 @@ Proposed
 ## Historical note
 
 PR4 removed the dead evidence-reuse / `run_to_node` execution subsystem.
-References below to reuse actions or `run_to_node` describe the pre-PR4 shape
-that motivated this ADR, not the current implementation.
+PR8 replaced the bare-string run-status writer (`RunRepository.finish`)
+with `RunRepository.transition(run_id, RunStatus.X, expected_from=...)`,
+the single atomic terminal-status writer, and introduced the `RunStatus`
+enum. References below to reuse actions or `run_to_node` describe the
+pre-PR4 shape that motivated this ADR, not the current implementation.
 
 ## Context
 

@@ -91,12 +91,12 @@ def test_fallback_fingerprint_clears_output_hashes(tmp_path, monkeypatch):
 
     call_count = 0
 
-    def _controlled_record(self, run_id, spec, plan_version_id, result):
+    def _controlled_record(self, run_id, spec, plan_version_id, result, *, run_branch_id=None):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
             raise RuntimeError("First write fails")
-        return original_record(self, run_id, spec, plan_version_id, result)
+        return original_record(self, run_id, spec, plan_version_id, result, run_branch_id=run_branch_id)
 
     monkeypatch.setattr(
         PlanExecutor, "_record_run_step_from_result", _controlled_record,

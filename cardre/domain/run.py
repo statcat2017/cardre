@@ -35,33 +35,46 @@ class RunStepStatus(enum.Enum):
     SKIPPED = "skipped"
 
 
-_VALID_TRANSITIONS: dict[str, set[str]] = {
-    "created": {"queued"},
-    "queued": {"running"},
-    "running": {"succeeded", "failed", "cancelled", "interrupted"},
-    "succeeded": set(),
-    "failed": set(),
-    "cancelled": set(),
-    "interrupted": set(),
+class RunStatus(enum.StrEnum):
+    """Status values for runs — the run-level state machine."""
+    CREATED = "created"
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    INTERRUPTED = "interrupted"
+    CANCELLED = "cancelled"
+
+    @classmethod
+    def terminal(cls) -> set[RunStatus]:
+        return {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.INTERRUPTED, RunStatus.CANCELLED}
+
+
+class RunScope(enum.StrEnum):
+    """Execution scope discriminator for a run."""
+    FULL_PLAN = "full_plan"
+    BRANCH = "branch"
+    TO_NODE = "to_node"
+
+
+_VALID_TRANSITIONS: dict[RunStatus, set[RunStatus]] = {
+    RunStatus.CREATED: {RunStatus.QUEUED},
+    RunStatus.QUEUED: {RunStatus.RUNNING},
+    RunStatus.RUNNING: {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.INTERRUPTED},
+    RunStatus.SUCCEEDED: set(),
+    RunStatus.FAILED: set(),
+    RunStatus.CANCELLED: set(),
+    RunStatus.INTERRUPTED: set(),
 }
 
 
-def _check_transition(current: str, target: str) -> None:
+def _check_transition(current: RunStatus, target: RunStatus) -> None:
     allowed = _VALID_TRANSITIONS.get(current, set())
     if target not in allowed:
         raise ValueError(
             f"Invalid run state transition: {current!r} -> {target!r}. "
             f"Allowed transitions from {current!r}: {sorted(allowed)}"
         )
-
-
-@dataclass(frozen=True)
-class RunScope:
-    """Scope of a run — what it targets."""
-    plan_version_id: str
-    branch_id: str | None = None
-    target_step_id: str | None = None
-    force: bool = False
 
 
 @dataclass(frozen=True)
@@ -79,10 +92,10 @@ class Run:
 
     def transition_to(self, new_status: str) -> Run:
         """Return a new ``Run`` with the given status, or raise."""
-        _check_transition(self.status, new_status)
+        _check_transition(RunStatus(self.status), RunStatus(new_status))
         import copy
 
-        terminal_statuses = {"succeeded", "failed", "cancelled", "interrupted"}
+        terminal_statuses = {s.value for s in RunStatus.terminal()}
         return Run(
             run_id=self.run_id,
             plan_version_id=self.plan_version_id,
@@ -136,6 +149,7 @@ __all__ = [
     "ExecutionFingerprint",
     "Run",
     "RunScope",
+    "RunStatus",
     "RunStep",
     "RunStepEvidenceView",
     "RunStepStatus",
