@@ -70,21 +70,32 @@ class EvidenceLocator:
                 return EvidenceCheckResult(status="missing")
 
             staleness = StalenessService(self._store)
-            explanation = staleness.explain_step(plan_version_id, steps[0].step_id)
-            stale_step_ids = [
-                step.step_id
-                for step in steps
-                if explanation.upstream_changes.get(step.step_id, True)
-            ]
-            if stale_step_ids:
-                return EvidenceCheckResult(status="missing")
-
+            explanation = staleness.explain_step(
+                plan_version_id,
+                steps[0].step_id,
+                branch_id=branch_id,
+            )
             existing_run_id = run_repo.get_latest_successful_id(
                 plan_version_id,
                 branch_id=branch_id,
             )
             if existing_run_id is None:
                 return EvidenceCheckResult(status="missing")
+
+            stale_step_ids = [
+                step.step_id
+                for step in steps
+                if explanation.upstream_changes.get(step.step_id, True)
+            ]
+            if stale_step_ids:
+                return EvidenceCheckResult(
+                    status="stale",
+                    diagnostics=[{
+                        "code": "BRANCH_STALE",
+                        "message": "Branch evidence is stale and must be re-executed.",
+                        "step_ids": stale_step_ids,
+                    }],
+                )
 
             return EvidenceCheckResult(
                 status="current",

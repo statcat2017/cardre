@@ -21,6 +21,7 @@ from cardre.domain.errors import (
     PlanVersionNotCommittedError,
     RunScopeNotAvailableForLaunch,
 )
+from cardre.services.staleness_service import StalenessExplanation
 
 
 def _make_store(project_root: Path):
@@ -338,6 +339,35 @@ class TestShortCircuit:
         )
 
         assert summary.run_id == branch_run_id
+        assert summary.plan_version_id == pv_id
+
+    def test_stale_branch_launch_executes_new_run(self, tmp_path, monkeypatch):
+        store = _make_store(tmp_path)
+        pv_id, branch_id, branch_run_id = _seed_current_branch_runs(store)
+        monkeypatch.setenv("CARDRE_GOVERNANCE", "1")
+
+        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.services.staleness_service import StalenessService
+
+        def fake_explain_step(self, plan_version_id, step_id, *, branch_id=None, plan_id=None):
+            return StalenessExplanation(
+                step_id=step_id,
+                status="stale" if branch_id else "fresh",
+                upstream_changes={step_id: branch_id == "branch-current"},
+                missing_evidence=[],
+            )
+
+        monkeypatch.setattr(StalenessService, "explain_step", fake_explain_step)
+
+        coordinator = RunCoordinator(store)
+        summary = coordinator.run(
+            pv_id,
+            run_scope="branch",
+            branch_id=branch_id,
+            sync=True,
+        )
+
+        assert summary.run_id != branch_run_id
         assert summary.plan_version_id == pv_id
 
     def test_to_node_short_circuit(self, tmp_path):

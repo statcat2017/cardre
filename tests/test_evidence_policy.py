@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
+from cardre.services.staleness_service import StalenessExplanation
 
 
 def _make_store(project_root: Path):
@@ -127,6 +128,30 @@ def test_current_branch_returns_existing_run(store):
     result = service.check_branch_current(pv_id, branch_id)
     assert result.status == "current"
     assert result.run_id == branch_run_id
+
+
+def test_stale_branch_does_not_short_circuit(store, monkeypatch):
+    """A stale branch must not short-circuit to its existing run."""
+    from cardre.evidence_locator import EvidenceLocator
+    from cardre.services.staleness_service import StalenessService
+
+    pv_id, branch_id, branch_run_id = _seed_current_branch_runs(store)
+
+    def fake_explain_step(self, plan_version_id, step_id, *, branch_id=None, plan_id=None):
+        return StalenessExplanation(
+            step_id=step_id,
+            status="stale" if branch_id else "fresh",
+            upstream_changes={step_id: branch_id == "branch-current"},
+            missing_evidence=[],
+        )
+
+    monkeypatch.setattr(StalenessService, "explain_step", fake_explain_step)
+
+    service = EvidenceLocator(store)
+    result = service.check_branch_current(pv_id, branch_id)
+    assert result.status == "stale"
+    assert result.run_id is None
+    assert branch_run_id != result.run_id
 
 
 def test_evidence_check_does_not_swallow_db_errors(store, monkeypatch):
