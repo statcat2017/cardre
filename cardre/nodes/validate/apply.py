@@ -323,13 +323,11 @@ class ApplyModelNode(NodeType):
                         f"does not match input scorecard artifact ({getattr(scorecard_evidence, 'source_artifact_id', None)})"
                     )
         typed_model = read_typed_evidence(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT, "model")
-        model: dict[str, Any] = dict(getattr(typed_model, "_raw", {}))
-        model.update(typed_model.to_model_dict())
+        model: dict[str, Any] = typed_model.to_dict()
 
-        # Parse scorecard artifact here, not in adapters — adapters receive parsed payloads only.
         scorecard_parsed: dict[str, Any] | None = None
         if scorecard_evidence is not None:
-            scorecard_parsed = dict(getattr(scorecard_evidence, "_raw", {}))
+            scorecard_parsed = scorecard_evidence.to_dict()
 
         scorecard_artifact_id: str | None = getattr(scorecard_evidence, "source_artifact_id", None)
         bundle_artifact_id: str | None = bundle_art.artifact_id if bundle_art else None

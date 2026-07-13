@@ -205,7 +205,6 @@ class ValidationMetricsNode(NodeType):
         fail_on_missing_score = params.get("fail_on_missing_score", True)
         fail_on_missing_target = params.get("fail_on_missing_target", True)
 
-        # Detect linked artifacts
         bundle_art = context.find_frozen_bundle()
         score_evidence_art = next(
             (a for a in context.input_artifacts
@@ -214,16 +213,55 @@ class ValidationMetricsNode(NodeType):
         )
 
         data_arts = context.data_artifacts()
+        roles_metrics, psi_data, gates = self._compute_role_metrics(
+            reader, data_arts, target_col, good, bad, bad_list,
+            cutoffs, include_calibration_display,
+            require_test, require_oot,
+            fail_on_missing_score, fail_on_missing_target,
+        )
+
+        stability, all_psi_warnings = self._compute_stability(psi_data)
+
+        gates = self._apply_threshold_gates(gates, roles_metrics, stability, minimum_auc, maximum_psi)
+
+        payload = self._build_payload(
+            target_col, good, bad, roles_metrics, stability, gates, all_psi_warnings,
+            bundle_art, score_evidence_art,
+        )
+
+        art = write_json_artifact(
+            store, artifact_type="report", role="report",
+            stem=f"validation-metrics-{context.step_spec.step_id}",
+            payload=payload,
+            metadata={"schema_version": SCHEMA_VALIDATION_METRICS},
+        )
+
+        failing_gates = [gate for gate in gates if gate.get("status") == "fail"]
+        if failing_gates:
+            failing_gate_codes = ", ".join(
+                str(gate.get("code", "UNKNOWN_GATE"))
+                for gate in failing_gates
+            )
+            raise NodeFailedWithArtifacts(
+                f"Validation metrics failed required gate(s): {failing_gate_codes}",
+                artifacts=[art],
+            )
+
+        return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
+
+    def _compute_role_metrics(
+        self, reader: ArtifactEvidenceReader, data_arts: list[Any],
+        target_col: str, good: frozenset[str], bad: frozenset[str], bad_list: list[str],
+        cutoffs: list[float], include_calibration_display: bool,
+        require_test: bool, require_oot: bool,
+        fail_on_missing_score: bool, fail_on_missing_target: bool,
+    ) -> tuple[dict[str, JsonDict], dict[str, pl.Series], list[JsonDict]]:
         roles_metrics: dict[str, JsonDict] = {}
         psi_data: dict[str, pl.Series] = {}
         gates: list[JsonDict] = []
 
-        # Gate: sample presence
         role_names = {a.role for a in data_arts}
-        gates.append({
-            "code": "TRAIN_SAMPLE_PRESENT",
-            "status": "pass",
-        })
+        gates.append({"code": "TRAIN_SAMPLE_PRESENT", "status": "pass"})
         if require_test:
             gates.append({
                 "code": "TEST_SAMPLE_PRESENT",
@@ -249,10 +287,7 @@ class ValidationMetricsNode(NodeType):
             n = df.height
 
             if "predicted_bad_probability" not in df.columns:
-                roles_metrics[role] = {
-                    "row_count": n,
-                    "error": "Missing predicted_bad_probability",
-                }
+                roles_metrics[role] = {"row_count": n, "error": "Missing predicted_bad_probability"}
                 if fail_on_missing_score:
                     gates.append({
                         "code": "PREDICTED_BAD_PROBABILITY_PRESENT",
@@ -273,10 +308,7 @@ class ValidationMetricsNode(NodeType):
             scores_series_all = df["score"] if has_score else df["predicted_bad_probability"]
 
             if y_bin is None:
-                roles_metrics[role] = {
-                    "row_count": n,
-                    "warnings": warnings,
-                }
+                roles_metrics[role] = {"row_count": n, "warnings": warnings}
                 if fail_on_missing_target:
                     gates.append({
                         "code": "TARGET_AVAILABLE",
@@ -285,8 +317,6 @@ class ValidationMetricsNode(NodeType):
                     })
                 continue
 
-            # Filter probability, scores, and KS dataframe to known rows only
-            # so that y_bin, y_prob, and scores are aligned.
             y_prob = y_prob_all[known_mask]
             scores = scores_series_all.to_numpy()[known_mask]
             scores_series = pl.Series(scores)
@@ -294,11 +324,8 @@ class ValidationMetricsNode(NodeType):
             n_bad = int(sum(y_bin))
             n_good = int(len(y_bin) - n_bad)
 
-            # Known-rows dataframe for KS and calibration (excludes unknown targets)
             all_known_list = list(good | bad)
-            df_known = df.filter(
-                pl.col(target_col).cast(pl.String).is_in(all_known_list)
-            )
+            df_known = df.filter(pl.col(target_col).cast(pl.String).is_in(all_known_list))
 
             auc_val = None
             gini_val = None
@@ -327,7 +354,6 @@ class ValidationMetricsNode(NodeType):
                 if ks_max is not None:
                     ks_val = round(float(ks_max), 6)
                     ks_at_rows = ks_df.filter(pl.col("ks_val") == ks_max).select("ks_at")
-                    # Ties are possible; keep the first tied location in the sorted scan.
                     ks_at = float(ks_at_rows.row(0)[0])
 
                 calib = self._calibration(df_known, target_col, bad_list, 10)
@@ -383,11 +409,12 @@ class ValidationMetricsNode(NodeType):
             }
             psi_data[role] = scores_series
 
-        # Stability (PSI)
-        stability: JsonDict = {
-            "psi_train_vs_test": None,
-            "psi_train_vs_oot": None,
-        }
+        return roles_metrics, psi_data, gates
+
+    def _compute_stability(
+        self, psi_data: dict[str, pl.Series],
+    ) -> tuple[JsonDict, list[JsonDict]]:
+        stability: JsonDict = {"psi_train_vs_test": None, "psi_train_vs_oot": None}
         all_psi_warnings: list[JsonDict] = []
         if "train" in psi_data and "test" in psi_data:
             psi_val, psi_warns = self._psi(psi_data["train"], psi_data["test"])
@@ -397,8 +424,12 @@ class ValidationMetricsNode(NodeType):
             psi_val, psi_warns = self._psi(psi_data["train"], psi_data["oot"])
             stability["psi_train_vs_oot"] = psi_val
             all_psi_warnings.extend(psi_warns)
+        return stability, all_psi_warnings
 
-        # Gate: AUC threshold
+    def _apply_threshold_gates(
+        self, gates: list[JsonDict], roles_metrics: dict[str, JsonDict],
+        stability: JsonDict, minimum_auc: float | None, maximum_psi: float | None,
+    ) -> list[JsonDict]:
         if minimum_auc is not None:
             for role_name, rm in roles_metrics.items():
                 role_auc = rm.get("auc")
@@ -408,8 +439,6 @@ class ValidationMetricsNode(NodeType):
                         "status": "fail",
                         "message": f"AUC ({role_auc}) below minimum ({minimum_auc}) for role {role_name!r}",
                     })
-
-        # Gate: PSI threshold
         if maximum_psi is not None:
             for key in ("psi_train_vs_test", "psi_train_vs_oot"):
                 val = stability.get(key)
@@ -419,17 +448,20 @@ class ValidationMetricsNode(NodeType):
                         "status": "fail",
                         "message": f"PSI ({val}) exceeds maximum ({maximum_psi}) for {key}",
                     })
+        return gates
 
-        # Build payload
+    def _build_payload(
+        self, target_col: str, good: frozenset[str], bad: frozenset[str],
+        roles_metrics: dict[str, JsonDict], stability: JsonDict,
+        gates: list[JsonDict], all_psi_warnings: list[JsonDict],
+        bundle_art: Any, score_evidence_art: Any,
+    ) -> JsonDict:
         target_payload: JsonDict = {
             "target_column": target_col,
             "good_values": [str(v) for v in good],
             "bad_values": [str(v) for v in bad],
         }
-
         failing_gates = [gate for gate in gates if gate.get("status") == "fail"]
-        has_failing = bool(failing_gates)
-
         payload: JsonDict = {
             "schema_version": SCHEMA_VALIDATION_METRICS,
             "target": target_payload,
@@ -439,31 +471,13 @@ class ValidationMetricsNode(NodeType):
             "psi": stability,
             "gates": gates,
             "warnings": all_psi_warnings,
-            "status": "failed" if has_failing else "passed",
+            "status": "failed" if failing_gates else "passed",
         }
         if bundle_art is not None:
             payload["frozen_bundle_artifact_id"] = bundle_art.artifact_id
         if score_evidence_art is not None:
             payload["score_application_evidence_artifact_id"] = score_evidence_art.artifact_id
-
-        art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"validation-metrics-{context.step_spec.step_id}",
-            payload=payload,
-            metadata={"schema_version": SCHEMA_VALIDATION_METRICS},
-        )
-
-        if has_failing:
-            failing_gate_codes = ", ".join(
-                str(gate.get("code", "UNKNOWN_GATE"))
-                for gate in failing_gates
-            )
-            raise NodeFailedWithArtifacts(
-                f"Validation metrics failed required gate(s): {failing_gate_codes}",
-                artifacts=[art],
-            )
-
-        return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
+        return payload
 
     def _calibration(
         self, df: pl.DataFrame, target_col: str, bad_list: list[str], n_bins: int = 10,

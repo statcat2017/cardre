@@ -109,347 +109,353 @@ class FineClassingNode(NodeType):
         return errors
 
     def run(self, context: ExecutionContext) -> NodeOutput:
+        return _run_fine_classing(context)
 
-        store = context.store
-        params = context.validated_params
-        max_bins = int(params.get("max_bins", 20))
-        min_bin_fraction = float(params.get("min_bin_fraction", 0.05))
-        missing_policy = params.get("missing_policy", "separate_bin")
-        max_categorical_levels = int(params.get("max_categorical_levels", 50))
-        exclude_columns = list(params.get("exclude_columns", []))
 
-        if max_bins < 2:
-            raise ValueError("max_bins must be >= 2")
-        if not (0 < min_bin_fraction < 1):
-            raise ValueError("min_bin_fraction must be between 0 and 1")
-        if missing_policy not in ("separate_bin", "ignore"):
-            raise ValueError("missing_policy must be one of: separate_bin, ignore")
-        if max_categorical_levels < 1:
-            raise ValueError("max_categorical_levels must be >= 1")
+def _run_fine_classing(context: ExecutionContext) -> NodeOutput:
+    store = context.store
+    params = context.validated_params
+    max_bins = int(params.get("max_bins", 20))
+    min_bin_fraction = float(params.get("min_bin_fraction", 0.05))
+    missing_policy = params.get("missing_policy", "separate_bin")
+    max_categorical_levels = int(params.get("max_categorical_levels", 50))
+    exclude_columns = list(params.get("exclude_columns", []))
 
-        reader = ArtifactEvidenceReader(store)
-        train_artifact = context.require_train_artifact("cardre.fine_classing")
-        meta_def = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+    if max_bins < 2:
+        raise ValueError("max_bins must be >= 2")
+    if not (0 < min_bin_fraction < 1):
+        raise ValueError("min_bin_fraction must be between 0 and 1")
+    if missing_policy not in ("separate_bin", "ignore"):
+        raise ValueError("missing_policy must be one of: separate_bin, ignore")
+    if max_categorical_levels < 1:
+        raise ValueError("max_categorical_levels must be >= 1")
 
-        df = reader.read_dataframe(train_artifact)
-        target_column = meta_def.target_column
-        good_values = {str(v) for v in meta_def.good_values}
-        bad_values = {str(v) for v in meta_def.bad_values}
+    reader = ArtifactEvidenceReader(store)
+    train_artifact = context.require_train_artifact("cardre.fine_classing")
+    meta_def = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
 
-        if not target_column:
-            raise ValueError("Fine classing requires non-empty target_column in modelling metadata")
-        if target_column not in df.columns:
-            raise ValueError(f"Target column '{target_column}' not found")
-        if not good_values or not bad_values:
-            raise ValueError("Fine classing requires non-empty good_values and bad_values in modelling metadata")
-        target_series = df[target_column].cast(pl.String)
-        actual_good = int(target_series.is_in(list(good_values)).sum())
-        actual_bad = int(target_series.is_in(list(bad_values)).sum())
-        if actual_good == 0:
-            raise ValueError(
-                f"Fine classing: good_values {sorted(good_values)} not found in "
-                f"target column '{target_column}'"
-            )
-        if actual_bad == 0:
-            raise ValueError(
-                f"Fine classing: bad_values {sorted(bad_values)} not found in "
-                f"target column '{target_column}'"
-            )
-        exclude_columns = list(set(exclude_columns + [target_column]))
+    df = reader.read_dataframe(train_artifact)
+    target_column = meta_def.target_column
+    good_values = {str(v) for v in meta_def.good_values}
+    bad_values = {str(v) for v in meta_def.bad_values}
 
-        feature_cols = [c for c in df.columns if c not in exclude_columns]
+    if not target_column:
+        raise ValueError("Fine classing requires non-empty target_column in modelling metadata")
+    if target_column not in df.columns:
+        raise ValueError(f"Target column '{target_column}' not found")
+    if not good_values or not bad_values:
+        raise ValueError("Fine classing requires non-empty good_values and bad_values in modelling metadata")
+    target_series = df[target_column].cast(pl.String)
+    actual_good = int(target_series.is_in(list(good_values)).sum())
+    actual_bad = int(target_series.is_in(list(bad_values)).sum())
+    if actual_good == 0:
+        raise ValueError(
+            f"Fine classing: good_values {sorted(good_values)} not found in "
+            f"target column '{target_column}'"
+        )
+    if actual_bad == 0:
+        raise ValueError(
+            f"Fine classing: bad_values {sorted(bad_values)} not found in "
+            f"target column '{target_column}'"
+        )
+    exclude_columns = list(set(exclude_columns + [target_column]))
 
-        variables: list[dict[str, Any]] = []
-        warnings: list[dict[str, Any]] = []
+    feature_cols = [c for c in df.columns if c not in exclude_columns]
 
-        for col in feature_cols:
-            col_dtype = df.schema[col]
-            is_numeric = col_dtype in (
-                pl.Float64, pl.Float32, pl.Int64, pl.Int32,
-                pl.Int16, pl.Int8, pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8,
-            )
+    variables: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
 
-            if is_numeric:
-                bins = self._bin_numeric(df, col, target_column, good_values, bad_values,
-                                         max_bins, min_bin_fraction, missing_policy, warnings)
-                variables.append({
-                    "variable": col,
-                    "kind": "numeric",
-                    "bins": bins,
-                })
-            else:
-                bins = self._bin_categorical(df, col, target_column, good_values, bad_values,
-                                             max_categorical_levels, missing_policy, warnings)
-                variables.append({
-                    "variable": col,
-                    "kind": "categorical",
-                    "bins": bins,
-                })
-
-        bin_def = LifecycleBinDefinition.from_payload({
-            "variables": variables,
-            "warnings": warnings,
-        }).to_payload()
-        artifact = write_json_artifact(
-            store, artifact_type="definition", role="definition",
-            stem=f"fine-classing-{context.step_spec.step_id}",
-            payload=bin_def,
-            metadata={
-                "source_artifact_id": train_artifact.artifact_id,
-                "target_column": target_column,
-                "schema_version": SCHEMA_BIN_DEFINITION,
-            },
+    for col in feature_cols:
+        col_dtype = df.schema[col]
+        is_numeric = col_dtype in (
+            pl.Float64, pl.Float32, pl.Int64, pl.Int32,
+            pl.Int16, pl.Int8, pl.UInt64, pl.UInt32, pl.UInt16, pl.UInt8,
         )
 
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"variable_count": len(variables)})
-
-    def _bin_numeric(
-        self, df: pl.DataFrame, col: str, target_column: str,
-        good_values: set[str], bad_values: set[str],
-        max_bins: int, min_bin_fraction: float,
-        missing_policy: str, warnings: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        non_null = df.filter(pl.col(col).is_not_null())
-        missing = df.filter(pl.col(col).is_null())
-
-        good_list = list(good_values)
-        bad_list = list(bad_values)
-
-        bins: list[dict[str, Any]] = []
-        bin_counter = 0
-
-        if missing.height > 0 and missing_policy == "separate_bin":
-            bin_counter += 1
-            mb = self._make_bin_counts(missing, col, target_column, good_values, bad_values)
-            bins.append({
-                "bin_id": f"{col}_bin_{bin_counter:03d}",
-                "label": "Missing",
-                "lower": None, "upper": None,
-                "lower_inclusive": False, "upper_inclusive": False,
-                "categories": None, "is_missing_bin": True,
-                "row_count": mb["row_count"], "good_count": mb["good_count"], "bad_count": mb["bad_count"],
-            })
-
-        if non_null.height == 0:
-            return bins
-
-        n = non_null.height
-        n_bins = min(max_bins, n)
-        pre_count = 1 if missing.height > 0 and missing_policy == "separate_bin" else 0
-        max_non_missing = max_bins - pre_count
-
-        if max_non_missing <= 0:
-            return bins
-
-        actual_n_bins = min(n_bins, max_non_missing)
-
-        binned = non_null.with_columns([
-            pl.col(col).qcut(actual_n_bins, allow_duplicates=True, include_breaks=True).alias("_qcut_bin"),
-            pl.col(target_column).cast(pl.String).alias("_tgt_str"),
-        ])
-
-        bin_stats = binned.with_columns([
-            binned["_qcut_bin"].struct.field("breakpoint").alias("_brk"),
-        ]).group_by("_brk", maintain_order=True).agg([
-            pl.len().alias("row_count"),
-            pl.col("_tgt_str").is_in(bad_list).sum().alias("bad_count"),
-            pl.col("_tgt_str").is_in(good_list).sum().alias("good_count"),
-        ]).sort("_brk")
-
-        vc = non_null[col].value_counts().sort("count", descending=True)
-        max_count = vc["count"][0]
-        dup_ratio = max_count / n
-        if dup_ratio > 0.5:
-            dominant_val = vc[col][0]
-            warnings.append({
-                "code": "DUPLICATE_VALUES_CONCENTRATED",
+        if is_numeric:
+            bins = _bin_numeric(df, col, target_column, good_values, bad_values,
+                                max_bins, min_bin_fraction, missing_policy, warnings)
+            variables.append({
                 "variable": col,
-                "concentration_ratio": round(float(dup_ratio), 4),
-                "dominant_value": str(dominant_val),
-                "message": f"Variable {col!r} has {int(max_count)}/{int(n)} rows "
-                          f"({dup_ratio:.1%}) with the same value {dominant_val!r}; "
-                          f"bin boundaries may be unstable.",
+                "kind": "numeric",
+                "bins": bins,
             })
-
-        _all_bk = bin_stats["_brk"].to_list()
-        col_min_raw: Any = non_null[col].min()
-        col_min = float(col_min_raw) if col_min_raw is not None else 0.0
-        prev_upper: float | None = col_min
-
-        for i, rec in enumerate(bin_stats.to_dicts()):
-            bin_counter += 1
-            brk = rec["_brk"]
-            row_count = rec["row_count"]
-            bad_count = rec["bad_count"]
-            good_count = rec["good_count"]
-
-            is_last = i == len(bin_stats) - 1
-            hi = None if brk == float("inf") else float(brk)
-            if i == 0:
-                lo = None
-                lower_inc = False
-            else:
-                lower_inc = False
-                lo = float(_all_bk[i - 1]) if _all_bk[i - 1] != float("inf") else prev_upper
-
-            if lo is not None and hi is not None:
-                label = f"({lo:.4g}, {hi:.4g}]"
-            elif lo is not None:
-                label = f"({lo:.4g}, +inf)"
-            elif hi is not None:
-                label = f"(-inf, {hi:.4g}]"
-            else:
-                label = "All values"
-            prev_upper = hi if hi is not None else lo
-
-            bins.append({
-                "bin_id": f"{col}_bin_{bin_counter:03d}",
-                "label": label,
-                "lower": lo,
-                "upper": hi,
-                "lower_inclusive": lower_inc,
-                "upper_inclusive": not is_last,
-                "categories": None,
-                "is_missing_bin": False,
-                "row_count": row_count,
-                "good_count": good_count,
-                "bad_count": bad_count,
-            })
-
-            if row_count / n < min_bin_fraction:
-                warnings.append({
-                    "variable": col, "bin_id": bins[-1]["bin_id"],
-                    "message": f"Bin fraction {row_count / n:.4f} is below min_bin_fraction {min_bin_fraction}",
-                })
-
-        if bin_counter == 0 and non_null.height > 0:
-            bin_counter += 1
-            bc = self._make_bin_counts(non_null, col, target_column, good_values, bad_values)
-            bins.append({
-                "bin_id": f"{col}_bin_{bin_counter:03d}", "label": "All values",
-                "lower": None, "upper": None, "lower_inclusive": False, "upper_inclusive": False,
-                "categories": None, "is_missing_bin": False,
-                "row_count": bc["row_count"], "good_count": bc["good_count"], "bad_count": bc["bad_count"],
-            })
-
-        return bins
-
-    def _bin_categorical(
-        self, df: pl.DataFrame, col: str, target_column: str,
-        good_values: set[str], bad_values: set[str],
-        max_categorical_levels: int, missing_policy: str,
-        warnings: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        non_null = df.filter(pl.col(col).is_not_null())
-        missing = df.filter(pl.col(col).is_null())
-
-        good_list = list(good_values)
-        bad_list = list(bad_values)
-
-        bins: list[dict[str, Any]] = []
-        bin_counter = 0
-
-        if missing.height > 0 and missing_policy == "separate_bin":
-            bin_counter += 1
-            mb = self._make_bin_counts(missing, col, target_column, good_values, bad_values)
-            bins.append({
-                "bin_id": f"{col}_bin_{bin_counter:03d}", "label": "Missing",
-                "lower": None, "upper": None,
-                "lower_inclusive": False, "upper_inclusive": False,
-                "categories": None, "is_missing_bin": True,
-                "row_count": mb["row_count"], "good_count": mb["good_count"], "bad_count": mb["bad_count"],
-            })
-
-        if non_null.height == 0:
-            return bins
-
-        vc = non_null[col].value_counts().sort("count", descending=True)
-        all_levels = vc[col].to_list()
-
-        other_categories: list[Any] = []
-        if len(all_levels) > max_categorical_levels:
-            other_categories = all_levels[max_categorical_levels:]
-            all_levels = all_levels[:max_categorical_levels]
-            warnings.append({
-                "variable": col,
-                "message": f"High cardinality: {len(all_levels) + len(other_categories)} categories, "
-                          f"using top {max_categorical_levels} plus 'Other'",
-                "dropped_categories": len(other_categories),
-            })
-
-        grouped = non_null.with_columns(
-            pl.col(target_column).cast(pl.String).alias("_tgt_str"),
-        ).group_by(col).agg([
-            pl.len().alias("row_count"),
-            pl.col("_tgt_str").is_in(bad_list).sum().alias("bad_count"),
-            pl.col("_tgt_str").is_in(good_list).sum().alias("good_count"),
-        ])
-
-        level_map: dict[str, dict[str, int]] = {
-            str(r[0]): {"row_count": int(r[1]), "bad_count": int(r[2]), "good_count": int(r[3])}
-            for r in grouped.iter_rows()
-        }
-
-        for level in all_levels:
-            key = str(level)
-            stats = level_map.get(key)
-            if stats is None or stats["row_count"] == 0:
-                continue
-            bin_counter += 1
-            bad_count = stats["bad_count"]
-            good_count = stats["good_count"]
-            row_count = stats["row_count"]
-            bins.append({
-                "bin_id": f"{col}_bin_{bin_counter:03d}", "label": key,
-                "lower": None, "upper": None,
-                "lower_inclusive": False, "upper_inclusive": False,
-                "categories": [level], "is_missing_bin": False,
-                "row_count": row_count,
-                "good_count": good_count,
-                "bad_count": bad_count,
-            })
-
-        if other_categories:
-            other_df = non_null.filter(pl.col(col).is_in(other_categories))
-            if other_df.height > 0:
-                other_stats = other_df.with_columns(
-                    pl.col(target_column).cast(pl.String).alias("_tgt_str"),
-                ).select([
-                    pl.len().alias("row_count"),
-                    pl.col("_tgt_str").is_in(bad_list).sum().alias("bad_count"),
-                    pl.col("_tgt_str").is_in(good_list).sum().alias("good_count"),
-                ])
-                bin_counter += 1
-                rc = other_stats["row_count"][0]
-                bc = other_stats["bad_count"][0]
-                gc = other_stats["good_count"][0]
-                bins.append({
-                    "bin_id": f"{col}_bin_{bin_counter:03d}", "label": "Other",
-                    "lower": None, "upper": None,
-                    "lower_inclusive": False, "upper_inclusive": False,
-                    "categories": other_categories, "is_missing_bin": False, "is_other_bin": True,
-                    "row_count": rc,
-                    "good_count": gc,
-                    "bad_count": bc,
-                })
-
-        return bins
-
-    def _make_bin_counts(
-        self, bin_df: pl.DataFrame, col: str, target_column: str,
-        good_values: set[str], bad_values: set[str],
-    ) -> dict[str, int]:
-        row_count = bin_df.height
-        if target_column and target_column in bin_df.columns and (good_values or bad_values):
-            target_series = bin_df[target_column].cast(pl.String)
-            good_count = int(target_series.is_in(list(good_values)).sum()) if good_values else 0
-            bad_count = int(target_series.is_in(list(bad_values)).sum()) if bad_values else 0
         else:
-            good_count = 0
-            bad_count = 0
-        return {"row_count": row_count, "good_count": good_count, "bad_count": bad_count}
+            bins = _bin_categorical(df, col, target_column, good_values, bad_values,
+                                    max_categorical_levels, missing_policy, warnings)
+            variables.append({
+                "variable": col,
+                "kind": "categorical",
+                "bins": bins,
+            })
+
+    bin_def = LifecycleBinDefinition.from_payload({
+        "variables": variables,
+        "warnings": warnings,
+    }).to_payload()
+    artifact = write_json_artifact(
+        store, artifact_type="definition", role="definition",
+        stem=f"fine-classing-{context.step_spec.step_id}",
+        payload=bin_def,
+        metadata={
+            "source_artifact_id": train_artifact.artifact_id,
+            "target_column": target_column,
+            "schema_version": SCHEMA_BIN_DEFINITION,
+        },
+    )
+
+    return NodeOutput(
+        artifacts=[artifact],
+        metrics={"variable_count": len(variables)})
+
+
+def _bin_numeric(
+    df: pl.DataFrame, col: str, target_column: str,
+    good_values: set[str], bad_values: set[str],
+    max_bins: int, min_bin_fraction: float,
+    missing_policy: str, warnings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    non_null = df.filter(pl.col(col).is_not_null())
+    missing = df.filter(pl.col(col).is_null())
+
+    good_list = list(good_values)
+    bad_list = list(bad_values)
+
+    bins: list[dict[str, Any]] = []
+    bin_counter = 0
+
+    if missing.height > 0 and missing_policy == "separate_bin":
+        bin_counter += 1
+        mb = _make_bin_counts(missing, col, target_column, good_values, bad_values)
+        bins.append({
+            "bin_id": f"{col}_bin_{bin_counter:03d}",
+            "label": "Missing",
+            "lower": None, "upper": None,
+            "lower_inclusive": False, "upper_inclusive": False,
+            "categories": None, "is_missing_bin": True,
+            "row_count": mb["row_count"], "good_count": mb["good_count"], "bad_count": mb["bad_count"],
+        })
+
+    if non_null.height == 0:
+        return bins
+
+    n = non_null.height
+    n_bins = min(max_bins, n)
+    pre_count = 1 if missing.height > 0 and missing_policy == "separate_bin" else 0
+    max_non_missing = max_bins - pre_count
+
+    if max_non_missing <= 0:
+        return bins
+
+    actual_n_bins = min(n_bins, max_non_missing)
+
+    binned = non_null.with_columns([
+        pl.col(col).qcut(actual_n_bins, allow_duplicates=True, include_breaks=True).alias("_qcut_bin"),
+        pl.col(target_column).cast(pl.String).alias("_tgt_str"),
+    ])
+
+    bin_stats = binned.with_columns([
+        binned["_qcut_bin"].struct.field("breakpoint").alias("_brk"),
+    ]).group_by("_brk", maintain_order=True).agg([
+        pl.len().alias("row_count"),
+        pl.col("_tgt_str").is_in(bad_list).sum().alias("bad_count"),
+        pl.col("_tgt_str").is_in(good_list).sum().alias("good_count"),
+    ]).sort("_brk")
+
+    vc = non_null[col].value_counts().sort("count", descending=True)
+    max_count = vc["count"][0]
+    dup_ratio = max_count / n
+    if dup_ratio > 0.5:
+        dominant_val = vc[col][0]
+        warnings.append({
+            "code": "DUPLICATE_VALUES_CONCENTRATED",
+            "variable": col,
+            "concentration_ratio": round(float(dup_ratio), 4),
+            "dominant_value": str(dominant_val),
+            "message": f"Variable {col!r} has {int(max_count)}/{int(n)} rows "
+                      f"({dup_ratio:.1%}) with the same value {dominant_val!r}; "
+                      f"bin boundaries may be unstable.",
+        })
+
+    _all_bk = bin_stats["_brk"].to_list()
+    col_min_raw: Any = non_null[col].min()
+    col_min = float(col_min_raw) if col_min_raw is not None else 0.0
+    prev_upper: float | None = col_min
+
+    for i, rec in enumerate(bin_stats.to_dicts()):
+        bin_counter += 1
+        brk = rec["_brk"]
+        row_count = rec["row_count"]
+        bad_count = rec["bad_count"]
+        good_count = rec["good_count"]
+
+        is_last = i == len(bin_stats) - 1
+        hi = None if brk == float("inf") else float(brk)
+        if i == 0:
+            lo = None
+            lower_inc = False
+        else:
+            lower_inc = False
+            lo = float(_all_bk[i - 1]) if _all_bk[i - 1] != float("inf") else prev_upper
+
+        if lo is not None and hi is not None:
+            label = f"({lo:.4g}, {hi:.4g}]"
+        elif lo is not None:
+            label = f"({lo:.4g}, +inf)"
+        elif hi is not None:
+            label = f"(-inf, {hi:.4g}]"
+        else:
+            label = "All values"
+        prev_upper = hi if hi is not None else lo
+
+        bins.append({
+            "bin_id": f"{col}_bin_{bin_counter:03d}",
+            "label": label,
+            "lower": lo,
+            "upper": hi,
+            "lower_inclusive": lower_inc,
+            "upper_inclusive": not is_last,
+            "categories": None,
+            "is_missing_bin": False,
+            "row_count": row_count,
+            "good_count": good_count,
+            "bad_count": bad_count,
+        })
+
+        if row_count / n < min_bin_fraction:
+            warnings.append({
+                "variable": col, "bin_id": bins[-1]["bin_id"],
+                "message": f"Bin fraction {row_count / n:.4f} is below min_bin_fraction {min_bin_fraction}",
+            })
+
+    if bin_counter == 0 and non_null.height > 0:
+        bin_counter += 1
+        bc = _make_bin_counts(non_null, col, target_column, good_values, bad_values)
+        bins.append({
+            "bin_id": f"{col}_bin_{bin_counter:03d}", "label": "All values",
+            "lower": None, "upper": None, "lower_inclusive": False, "upper_inclusive": False,
+            "categories": None, "is_missing_bin": False,
+            "row_count": bc["row_count"], "good_count": bc["good_count"], "bad_count": bc["bad_count"],
+        })
+
+    return bins
+
+
+def _bin_categorical(
+    df: pl.DataFrame, col: str, target_column: str,
+    good_values: set[str], bad_values: set[str],
+    max_categorical_levels: int, missing_policy: str,
+    warnings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    non_null = df.filter(pl.col(col).is_not_null())
+    missing = df.filter(pl.col(col).is_null())
+
+    good_list = list(good_values)
+    bad_list = list(bad_values)
+
+    bins: list[dict[str, Any]] = []
+    bin_counter = 0
+
+    if missing.height > 0 and missing_policy == "separate_bin":
+        bin_counter += 1
+        mb = _make_bin_counts(missing, col, target_column, good_values, bad_values)
+        bins.append({
+            "bin_id": f"{col}_bin_{bin_counter:03d}", "label": "Missing",
+            "lower": None, "upper": None,
+            "lower_inclusive": False, "upper_inclusive": False,
+            "categories": None, "is_missing_bin": True,
+            "row_count": mb["row_count"], "good_count": mb["good_count"], "bad_count": mb["bad_count"],
+        })
+
+    if non_null.height == 0:
+        return bins
+
+    vc = non_null[col].value_counts().sort("count", descending=True)
+    all_levels = vc[col].to_list()
+
+    other_categories: list[Any] = []
+    if len(all_levels) > max_categorical_levels:
+        other_categories = all_levels[max_categorical_levels:]
+        all_levels = all_levels[:max_categorical_levels]
+        warnings.append({
+            "variable": col,
+            "message": f"High cardinality: {len(all_levels) + len(other_categories)} categories, "
+                      f"using top {max_categorical_levels} plus 'Other'",
+            "dropped_categories": len(other_categories),
+        })
+
+    grouped = non_null.with_columns(
+        pl.col(target_column).cast(pl.String).alias("_tgt_str"),
+    ).group_by(col).agg([
+        pl.len().alias("row_count"),
+        pl.col("_tgt_str").is_in(bad_list).sum().alias("bad_count"),
+        pl.col("_tgt_str").is_in(good_list).sum().alias("good_count"),
+    ])
+
+    level_map: dict[str, dict[str, int]] = {
+        str(r[0]): {"row_count": int(r[1]), "bad_count": int(r[2]), "good_count": int(r[3])}
+        for r in grouped.iter_rows()
+    }
+
+    for level in all_levels:
+        key = str(level)
+        stats = level_map.get(key)
+        if stats is None or stats["row_count"] == 0:
+            continue
+        bin_counter += 1
+        bad_count = stats["bad_count"]
+        good_count = stats["good_count"]
+        row_count = stats["row_count"]
+        bins.append({
+            "bin_id": f"{col}_bin_{bin_counter:03d}", "label": key,
+            "lower": None, "upper": None,
+            "lower_inclusive": False, "upper_inclusive": False,
+            "categories": [level], "is_missing_bin": False,
+            "row_count": row_count,
+            "good_count": good_count,
+            "bad_count": bad_count,
+        })
+
+    if other_categories:
+        other_df = non_null.filter(pl.col(col).is_in(other_categories))
+        if other_df.height > 0:
+            other_stats = other_df.with_columns(
+                pl.col(target_column).cast(pl.String).alias("_tgt_str"),
+            ).select([
+                pl.len().alias("row_count"),
+                pl.col("_tgt_str").is_in(bad_list).sum().alias("bad_count"),
+                pl.col("_tgt_str").is_in(good_list).sum().alias("good_count"),
+            ])
+            bin_counter += 1
+            rc = other_stats["row_count"][0]
+            bc = other_stats["bad_count"][0]
+            gc = other_stats["good_count"][0]
+            bins.append({
+                "bin_id": f"{col}_bin_{bin_counter:03d}", "label": "Other",
+                "lower": None, "upper": None,
+                "lower_inclusive": False, "upper_inclusive": False,
+                "categories": other_categories, "is_missing_bin": False, "is_other_bin": True,
+                "row_count": rc,
+                "good_count": gc,
+                "bad_count": bc,
+            })
+
+    return bins
+
+
+def _make_bin_counts(
+    bin_df: pl.DataFrame, col: str, target_column: str,
+    good_values: set[str], bad_values: set[str],
+) -> dict[str, int]:
+    row_count = bin_df.height
+    if target_column and target_column in bin_df.columns and (good_values or bad_values):
+        target_series = bin_df[target_column].cast(pl.String)
+        good_count = int(target_series.is_in(list(good_values)).sum()) if good_values else 0
+        bad_count = int(target_series.is_in(list(bad_values)).sum()) if bad_values else 0
+    else:
+        good_count = 0
+        bad_count = 0
+    return {"row_count": row_count, "good_count": good_count, "bad_count": bad_count}
 
 
 class ManualBinningNode(NodeType):
