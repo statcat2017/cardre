@@ -261,7 +261,7 @@ class ValidationMetricsNode(NodeType):
                     })
                 continue
 
-            y_bin, known_mask, warnings = self._derive_y_bin(df, target_col, good, bad)
+            y_bin, known_mask, warnings = self._derive_y_bin(df, target_col, set(good), set(bad))
             y_prob_all = df["predicted_bad_probability"].to_numpy()
             has_score = "score" in df.columns
             if fail_on_missing_score and not has_score:

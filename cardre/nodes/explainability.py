@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 import polars as pl
+from polars.exceptions import ComputeError
 
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import SCHEMA_EXPLAINABILITY_REPORT
@@ -707,7 +708,7 @@ class ModelLimitationsNode(NodeType):
         try:
             reader = ArtifactEvidenceReader(store)
             df = reader.read_dataframe(train_art)
-        except (OSError, pl.ComputeError):
+        except (OSError, ComputeError):
             return issues
 
         n_rows = df.height

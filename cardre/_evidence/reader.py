@@ -22,7 +22,7 @@ from cardre._evidence.kinds import (
 )
 from cardre._evidence.profiles import EVIDENCE_PROFILES
 from cardre.domain.artifacts import ArtifactRef
-from cardre.modeling.schema import ModelArtifactV1
+from cardre._evidence.models.model import ModelArtifact
 from cardre.store import ProjectStore
 
 
@@ -124,7 +124,7 @@ class ArtifactEvidenceReader:
         except EvidenceNotFoundError:
             return None
 
-    def require_model(self, model_art: ArtifactRef, node_type: str) -> ModelArtifactV1:
+    def require_model(self, model_art: ArtifactRef, node_type: str) -> Any:
         """Read and parse a model artifact; raise ValueError on failure."""
         try:
             model_typed = self.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)

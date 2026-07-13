@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 import polars as pl
+from polars.exceptions import ComputeError
 
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
@@ -342,7 +343,7 @@ class ProxyRiskReportNode(NodeType):
                             corr = abs(float(df.select(pl.corr(col, feat)).item()))
                             if not np.isnan(corr):
                                 correlations[feat] = round(corr, 4)
-                        except (ValueError, pl.ComputeError):
+                        except (ValueError, ComputeError):
                             pass
 
             high_corr_features = [
