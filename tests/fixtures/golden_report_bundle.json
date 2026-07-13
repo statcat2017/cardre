@@ -24,8 +24,7 @@
     "target_branch_id": "ac314da2-bcb1-4592-a9bb-259fc900bb79",
     "champion_branch_id": "",
     "final_variable_count": 0,
-    "excluded_variable_count": 0,
-    "report_status": "complete_with_warnings"
+    "excluded_variable_count": 0
   },
   "dataset_roles": [
     {
@@ -3121,5 +3120,6 @@
         "resolution": "exact"
       }
     ]
-  }
+  },
+  "report_status": "blocked"
 }

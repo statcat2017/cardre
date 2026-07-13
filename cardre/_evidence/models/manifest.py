@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from cardre.domain.diagnostics import JsonDict
+from cardre.reporting.types import ReportMode
 
 
 @dataclass(frozen=True)
@@ -13,7 +14,7 @@ class ReportBundleEvidence:
     project_id: str
     run_id: str
     target_branch_id: str = ""
-    report_mode: str = "branch"
+    report_mode: ReportMode = "branch"
     generated_at: str = ""
     generated_by: JsonDict = field(default_factory=dict)
     source: JsonDict = field(default_factory=dict)

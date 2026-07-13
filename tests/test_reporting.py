@@ -87,11 +87,11 @@ def test_check_report_readiness_blocked_no_run(store, monkeypatch):
 
 def test_report_readiness_result():
     """ReportReadinessResult works correctly."""
-    from cardre.readiness.dto import ReadinessBlocker
+    from cardre.readiness.dto import ReadinessFinding
 
     result = ReportReadinessResult(
         blockers=[
-            ReadinessBlocker("TARGET_BRANCH_NOT_FOUND", "Branch not found"),
+            ReadinessFinding(severity="blocker", code="TARGET_BRANCH_NOT_FOUND", message="Branch not found"),
         ],
         target_branch_id="test-branch",
         run_id="test-run",
@@ -101,7 +101,7 @@ def test_report_readiness_result():
     assert len(result.blockers) == 1
     assert result.blockers[0].code == "TARGET_BRANCH_NOT_FOUND"
 
-    d = result.to_dict()
+    d = result.model_dump(exclude_none=True)
     assert d["status"] == "blocked"
     assert d["blockers"][0]["code"] == "TARGET_BRANCH_NOT_FOUND"
 
@@ -396,6 +396,14 @@ def test_render_report_bundle_empty():
         "cutoffs": {},
         "champion": {},
         "artifacts": [],
+        "redundancy_review": {
+            "cluster_count": 0, "singleton_count": 0,
+            "clusters": [], "singleton_variables": [], "warnings": [],
+            "method": "", "input_representation": "", "similarity_metric": "",
+            "threshold": None, "absolute_correlation": True,
+            "missing_handling": "pairwise", "candidate_limit": 50,
+            "minimum_pair_count": 30, "representative_rule": "",
+        },
         "generated_at": utc_now_iso(),
         "cardre_version": "0.2.0",
     }
@@ -597,6 +605,14 @@ def test_renderer_html_output():
         },
         "champion": {},
         "artifacts": [],
+        "redundancy_review": {
+            "cluster_count": 0, "singleton_count": 0,
+            "clusters": [], "singleton_variables": [], "warnings": [],
+            "method": "", "input_representation": "", "similarity_metric": "",
+            "threshold": None, "absolute_correlation": True,
+            "missing_handling": "pairwise", "candidate_limit": 50,
+            "minimum_pair_count": 30, "representative_rule": "",
+        },
         "generated_at": utc_now_iso(),
         "cardre_version": "0.2.0",
     }

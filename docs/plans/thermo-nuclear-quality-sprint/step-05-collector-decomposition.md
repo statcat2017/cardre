@@ -25,41 +25,77 @@ blocker limitations exist, which is an intended fix, not a regression).
 
 ### T5 — Collector decomposition (registry-driven)
 
-1. Define a `SectionCollector` protocol in
-   `cardre/reporting/sections/__init__.py`:
+1. Define a `SectionContext` dataclass that carries everything a section
+   collector needs, so the protocol has a single uniform `build(ctx)`
+   signature regardless of how many refs a section consumes:
+   ```python
+   @dataclass(frozen=True)
+   class SectionContext:
+       bundle: ReportBundle
+       resolved: dict[str, ResolvedStepRef]      # all resolved refs
+       run: dict[str, Any]                        # run row
+       manifest_digest: ManifestDigest
+       plan_version_id: str
+       report_mode: ReportMode
+       store: ProjectStore
+       reader: ArtifactEvidenceReader
+       add_limitation: Callable[[Limitation], None]
+   ```
+
+2. Define a `SectionCollector` protocol in
+   `cardre/reporting/sections/__init__.py` with a single `build(ctx)`
+   method. Sections that need a ref pull it from `ctx.resolved` by their
+   `canonical_step_id`; sections that need no ref (champion, dataset_roles,
+   artifacts, run_status, reproducibility) ignore `ctx.resolved`:
    ```python
    class SectionCollector(Protocol):
-       canonical_step_id: str
-       kinds: tuple[EvidenceKind, ...]
-       def build(self, bundle, ref, evidence, add_limitation, *,
-                 store, reader, plan_version_id, report_mode) -> None: ...
-   ```
-2. Migrate each of the ~20 `_collect_*` methods from `collector.py` into a
-   small collector class in `cardre/reporting/sections/`:
-   - `sections/woe_iv.py`, `sections/score_scaling.py`,
-     `sections/model.py`, `sections/validation.py`,
-     `sections/cutoff.py`, `sections/exclusions.py`,
-     `sections/sample.py`, `sections/manual_interventions.py`,
-     `sections/redundancy.py`, `sections/selection.py`,
-     `sections/diagnostics.py`, `sections/dataset_roles.py`,
-     `sections/run_status.py`, `sections/reproducibility.py`,
-     `sections/exports.py`, `sections/pathway.py`,
-     `sections/explainability.py`
-3. Register all section collectors in `SECTION_COLLECTORS:
+        canonical_step_id: str | None   # None for non-step sections
+        def build(self, ctx: SectionContext) -> None: ...
+    ```
+
+   The uniform single-arg shape avoids the shape mismatch that 7 of the
+   23 `_collect_*` methods have (multi-ref, no-ref, or digest-dependent).
+
+3. Migrate each of the 23 `_collect_*` methods into a small collector class
+   in `cardre/reporting/sections/`. Group related diagnostics together;
+   the 23 methods map to these files:
+   - `sections/woe_iv.py` (`_collect_woe_iv`, `_collect_initial_woe_iv`)
+   - `sections/score_scaling.py` (`_collect_score_scaling`)
+   - `sections/model.py` (`_collect_model`, `_collect_model_limitations`,
+     `_collect_modelling_metadata`)
+   - `sections/validation.py` (`_collect_validation`)
+   - `sections/cutoff.py` (`_collect_cutoff`)
+   - `sections/exclusions.py` (`_collect_exclusion_summary`)
+   - `sections/sample.py` (`_collect_sample_definition`)
+   - `sections/manual_interventions.py` (`_collect_manual_interventions`)
+   - `sections/redundancy.py` (`_collect_redundancy_review`)
+   - `sections/selection.py` (`_collect_variable_selection`)
+   - `sections/diagnostics.py` (`_collect_coefficient_sign_check`,
+     `_collect_separation_diagnostics`, `_collect_vif_diagnostics`,
+     `_collect_calibration_diagnostics`)
+   - `sections/dataset_roles.py` (`_collect_dataset_roles`) — no ref
+   - `sections/run_status.py` (`_collect_run_status`) — needs digest+run
+   - `sections/reproducibility.py` (`_collect_reproducibility`) — needs digest
+   - `sections/exports.py` (`_collect_implementation_artifacts`) — 3 refs
+   - `sections/champion.py` (`_collect_champion`) — no ref, plan_id
+   - `sections/artifacts.py` (`_collect_artifacts`) — no ref, returns list
+   - `sections/pathway.py` — the inline pathway/branches loop in `collect()`
+     (currently inlined, not a `_collect_*` method)
+
+4. Register all section collectors in `SECTION_COLLECTORS:
    list[SectionCollector]`.
-4. Rewrite `ReportCollector.collect()` as a single loop:
+
+5. Rewrite `ReportCollector.collect()` as a single loop:
    ```python
    resolved = resolve_required_steps(...)
+   ctx = SectionContext(bundle=..., resolved=resolved, run=run,
+                        manifest_digest=manifest_digest, ...)
    for section in SECTION_COLLECTORS:
-       ref = resolved.get(section.canonical_step_id)
-       if ref is None:
-           self.limitations.append(missing_step_limitation(section))
-           continue
-       evidence = self._read_evidence(section, ref)
-       section.build(bundle, ref, evidence, self.limitations.append, ...)
+       section.build(ctx)
    ```
-5. The shared "resolve-or-limitation, read-or-limitation, map" triplet
-   becomes a helper on `ReportCollector` (`_read_evidence(section, ref)`).
+   The shared "resolve-or-limitation, read-or-limitation, map" triplet
+   becomes a helper on `ReportCollector` (`_read_evidence(section, ctx)`)
+   that step-driven sections call from inside `build`.
 
 ### R1 — `readiness/check.py` table-driven
 
@@ -96,13 +132,34 @@ blocker limitations exist, which is an intended fix, not a regression).
    ```
 3. Convert `ReportReadinessResult` to Pydantic. Delete hand-written
    `to_dict` (use `model_dump(exclude_none=True)`).
-4. Update callers.
+4. Update callers. Known callers (verified):
+   - `cardre/readiness/__init__.py:14-15` — re-exports `ReadinessBlocker`,
+     `ReadinessWarning`; update to export `ReadinessFinding`.
+   - `cardre/services/report_service.py:21,32` —
+     `ReportGenerationError.__init__` takes `blockers: list[ReadinessBlocker]`;
+     change to `list[ReadinessFinding]`.
+   - `tests/test_reporting.py:18,90,92,94` — imports `ReportReadinessResult`
+     and `ReadinessBlocker`; update to `ReadinessFinding`.
+   - `cardre/readiness/check.py` — 30+ construction sites for
+     `ReadinessBlocker`/`ReadinessWarning`; add `severity="blocker"`/`"warning"` arg.
 
 ### R3 — `report_mode: Literal["branch", "champion"]`
 
 1. Define `ReportMode = Literal["branch", "champion"]` in
    `cardre/reporting/schema.py` (or `cardre/reporting/types.py`).
-2. Replace `report_mode: str` across all 8 sites listed in review 013.
+2. Replace `report_mode: str` across all **12** occurrences in **7** files
+   (verified against the current repo, not the review's "8 sites"):
+   - `cardre/reporting/schema.py` — `ReportBundle.report_mode` (Pydantic field)
+   - `cardre/reporting/collector.py` — `ReportCollector.__init__` and
+     `generate_report_bundle`
+   - `cardre/readiness/check.py` — `check_report_readiness`
+   - `cardre/readiness/dto.py` — `ReportReadinessResult.report_mode` (twice:
+     attribute annotation and `__init__` param)
+   - `cardre/services/report_service.py` — `check_readiness`,
+     `generate_and_write`, `generate_report`
+   - `cardre/services/export_service.py` — two signatures
+   - `cardre/_evidence/models/manifest.py` — `ReportBundleEvidence` frozen
+     dataclass field (note: dataclass, not Pydantic; `Literal` still applies)
 
 ### R5 — `report_status` computed property
 
@@ -116,7 +173,8 @@ blocker limitations exist, which is an intended fix, not a regression).
            return "complete_with_warnings"
        return "complete"
    ```
-2. Delete the explicit assignment in `collector.py:402`.
+2. Delete the explicit assignment in `collector.py:339`
+   (currently `bundle.summary.report_status = "complete_with_warnings" if self.limitations else "complete"`).
 3. **This is an intended behaviour change:** reports with blocker
    limitations now correctly say `"blocked"` instead of
    `"complete_with_warnings"`. Update the golden report fixture if
@@ -163,6 +221,14 @@ blocker limitations exist, which is an intended fix, not a regression).
 - Do not touch services/execution (that's PR8).
 - Do not change the report bundle *schema* — only the construction
   mechanism. The golden diff catches regressions.
+
+## Already done by PR3c (do not redo)
+
+PR3c (PR #312, merged) already introduced `ManifestDigest` and rewrote
+`_read_canonical_manifest` to return it, and `_collect_run_status` /
+`_collect_reproducibility` already consume it. The original step-05 draft
+listed these as tasks; they are **complete** and must not be redone. PR5
+only consumes `ManifestDigest` via `SectionContext`.
 
 ## Follow-up from PR0
 

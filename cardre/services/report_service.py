@@ -18,9 +18,10 @@ from typing import Any
 
 from cardre.domain.errors import CardreError, Diagnostic
 from cardre.readiness import check_report_readiness
-from cardre.readiness.dto import ReadinessBlocker, ReportReadinessResult
+from cardre.readiness.dto import ReadinessFinding, ReportReadinessResult
 from cardre.reporting.collector import generate_report_bundle
 from cardre.reporting.renderer_html import write_html_report
+from cardre.reporting.types import ReportMode
 from cardre.store import ProjectStore
 
 
@@ -29,9 +30,9 @@ class ReportGenerationError(CardreError):
     code = "REPORT_BLOCKED"
     status_code = 400
 
-    def __init__(self, message: str, blockers: list[ReadinessBlocker]) -> None:
+    def __init__(self, message: str, blockers: list[ReadinessFinding]) -> None:
         self.blockers = blockers
-        blocker_dicts = [b.to_dict() for b in blockers]
+        blocker_dicts = [b.model_dump(exclude_none=True) for b in blockers]
         super().__init__(
             message,
             code=self.code,
@@ -59,7 +60,7 @@ class ReportGenerationService:
         project_id: str,
         run_id: str,
         target_branch_id: str,
-        report_mode: str = "branch",
+        report_mode: ReportMode = "branch",
     ) -> ReportReadinessResult:
         return check_report_readiness(
             store=self.store,
@@ -74,7 +75,7 @@ class ReportGenerationService:
         project_id: str,
         run_id: str,
         target_branch_id: str,
-        report_mode: str = "branch",
+        report_mode: ReportMode = "branch",
         report_dir: Path | None = None,
     ) -> dict[str, Any]:
         """Full pipeline: check readiness, generate bundle, write files.
@@ -104,7 +105,7 @@ class ReportGenerationService:
             report_mode=report_mode,
         )
 
-        if not readiness.ready:
+        if not readiness.ready:  # type: ignore[truthy-function]
             raise ReportGenerationError(
                 "Report generation blocked by readiness checks.",
                 blockers=readiness.blockers,
@@ -145,7 +146,7 @@ class ReportGenerationService:
         project_id: str,
         run_id: str,
         target_branch_id: str,
-        report_mode: str = "branch",
+        report_mode: ReportMode = "branch",
         output_dir: Path | None = None,
     ) -> dict[str, Any]:
         """Convenience wrapper for generate_and_write that returns paths relative to store root."""
