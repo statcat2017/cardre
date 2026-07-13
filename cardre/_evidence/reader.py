@@ -22,7 +22,6 @@ from cardre._evidence.kinds import (
 )
 from cardre._evidence.profiles import EVIDENCE_PROFILES
 from cardre.domain.artifacts import ArtifactRef
-from cardre._evidence.models.model import ModelArtifact
 from cardre.store import ProjectStore
 
 
