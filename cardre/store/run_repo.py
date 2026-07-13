@@ -8,7 +8,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, cast
 
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
-from cardre.domain.run import RunStatus, _check_transition
+from cardre.domain.run import _VALID_TRANSITIONS, RunStatus
 
 if TYPE_CHECKING:
     from cardre.store.db import ProjectStore
@@ -119,31 +119,35 @@ class RunRepository:
         run_id: str,
         to_status: RunStatus,
         *,
-        expected_from: tuple[RunStatus, ...] | None = None,
+        expected_from: tuple[RunStatus, ...] = (RunStatus.RUNNING,),
     ) -> bool:
         """Atomically transition a run to a terminal status.
 
-        Validates the transition via ``_check_transition``. If
-        ``expected_from`` is given, only transitions from one of those
-        statuses (SQL-level guard). Returns ``True`` if a row was
-        updated, ``False`` otherwise.
+        Validates that at least one source in ``expected_from`` can
+        legally transition to ``to_status``. The SQL-level
+        ``WHERE status IN (...)`` guard ensures atomicity: only rows
+        whose current status matches one of ``expected_from`` are
+        updated.
 
         This is the **only** writer of terminal run statuses.
         """
-        _check_transition(RunStatus.RUNNING, to_status)
+        if not any(
+            to_status in _VALID_TRANSITIONS.get(s, set())
+            for s in expected_from
+        ):
+            raise ValueError(
+                f"Invalid run state transition: {expected_from} -> {to_status!r}. "
+                f"No allowed source status in {expected_from} can transition to {to_status!r}."
+            )
         now = utc_now_iso()
-        if expected_from:
-            placeholders = ", ".join("?" for _ in expected_from)
-            sql = (
-                f"UPDATE runs SET status = ?, finished_at = ? "
-                f"WHERE run_id = ? AND status IN ({placeholders})"
-            )
-            cursor = self._store.execute(sql, (to_status.value, now, run_id) + tuple(s.value for s in expected_from))
-        else:
-            cursor = self._store.execute(
-                "UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ?",
-                (to_status.value, now, run_id),
-            )
+        placeholders = ", ".join("?" for _ in expected_from)
+        sql = (
+            f"UPDATE runs SET status = ?, finished_at = ? "
+            f"WHERE run_id = ? AND status IN ({placeholders})"
+        )
+        cursor = self._store.execute(
+            sql, (to_status.value, now, run_id) + tuple(s.value for s in expected_from)
+        )
         if cursor.rowcount == 0:
             logger.warning("transition: no matching run found for run_id=%s to_status=%s", run_id, to_status)
             return False
@@ -152,14 +156,7 @@ class RunRepository:
     def finish(self, run_id: str, status: str = "succeeded") -> None:
         """Legacy wrapper — delegates to ``transition``.
 
-        Deprecated: prefer ``transition(run_id, RunStatus.X, expected_from=(RunStatus.RUNNING,))``.
-        """
-        self.transition(run_id, RunStatus(status), expected_from=(RunStatus.RUNNING,))
-
-    def update_status(self, run_id: str, status: str) -> None:
-        """Legacy unguarded status writer — delegates to ``transition``.
-
-        Deprecated: prefer ``transition(run_id, RunStatus.X, expected_from=...)``.
+        Deprecated: prefer ``transition(run_id, RunStatus.X)``.
         """
         self.transition(run_id, RunStatus(status))
 

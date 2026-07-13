@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 
 if TYPE_CHECKING:
+    import sqlite3
+
     from cardre.store.db import ProjectStore
 
 
@@ -86,19 +88,25 @@ class ComparisonRepository:
         comparison_artifact_id: str,
         readiness: dict[str, Any] | None = None,
         created_reason: str | None = None,
+        *,
+        conn: sqlite3.Connection | None = None,
     ) -> str:
         snapshot_id = str(uuid.uuid4())
         now = utc_now_iso()
-        self._store.execute(
+        sql = (
             "INSERT INTO branch_comparison_snapshots "
             "(comparison_snapshot_id, comparison_id, project_id, plan_id, "
             " comparison_artifact_id, readiness_json, created_at, created_reason) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                snapshot_id, comparison_id, project_id, plan_id,
-                comparison_artifact_id, json.dumps(readiness or {}), now, created_reason,
-            ),
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         )
+        params = (
+            snapshot_id, comparison_id, project_id, plan_id,
+            comparison_artifact_id, json.dumps(readiness or {}), now, created_reason,
+        )
+        if conn is not None:
+            conn.execute(sql, params)
+        else:
+            self._store.execute(sql, params)
         return snapshot_id
 
     def add_snapshot_plan_version(
@@ -106,13 +114,19 @@ class ComparisonRepository:
         comparison_snapshot_id: str,
         plan_version_id: str,
         branch_id: str | None = None,
+        *,
+        conn: sqlite3.Connection | None = None,
     ) -> None:
-        self._store.execute(
+        sql = (
             "INSERT OR IGNORE INTO comparison_snapshot_plan_versions "
             "(comparison_snapshot_id, plan_version_id, branch_id) "
-            "VALUES (?, ?, ?)",
-            (comparison_snapshot_id, plan_version_id, branch_id),
+            "VALUES (?, ?, ?)"
         )
+        params = (comparison_snapshot_id, plan_version_id, branch_id)
+        if conn is not None:
+            conn.execute(sql, params)
+        else:
+            self._store.execute(sql, params)
 
     def get_snapshot_plan_versions(self, comparison_snapshot_id: str) -> list[JsonDict]:
         rows = self._store.execute(

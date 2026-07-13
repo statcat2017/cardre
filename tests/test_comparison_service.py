@@ -179,6 +179,85 @@ class TestRefreshComparison:
         assert result["blocked_reason"] is not None
         assert len(result["missing_or_stale"]) > 0
 
+    def test_refresh_ready_creates_snapshots(self, store, monkeypatch):
+        """A comparison with ready branches creates snapshots for all challengers."""
+        import cardre.services.comparison_service as cs
+        monkeypatch.setattr(cs, "_check_branch_readiness", lambda *a, **kw: [])
+        monkeypatch.setattr(cs, "_build_comparison_content", lambda *a, **kw: {"ready": True})
+        comparison_id, baseline_id, challenger_ids = self._seed_comparison(store)
+        result = cs.refresh_comparison(store, comparison_id)
+        assert result["ready"] is True
+        assert result["comparison_snapshot_id"] is not None
+        comparison_repo = ComparisonRepository(store)
+        comparison = comparison_repo.get_comparison(comparison_id)
+        assert comparison is not None
+        assert comparison["latest_snapshot_id"] == result["comparison_snapshot_id"]
+
+    def test_refresh_rolls_back_on_challenger_failure(self, store, monkeypatch):
+        """If a challenger fails mid-loop, no snapshots remain and latest_snapshot_id is unchanged."""
+        import cardre.services.comparison_service as cs
+        monkeypatch.setattr(cs, "_check_branch_readiness", lambda *a, **kw: [])
+        comparison_id, baseline_id, challenger_ids = self._seed_comparison(store)
+
+        call_count = 0
+        original_build = cs._build_comparison_content
+
+        def _failing_build(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                raise RuntimeError("Simulated challenger failure")
+            return original_build(*args, **kwargs)
+
+        monkeypatch.setattr(cs, "_build_comparison_content", _failing_build)
+
+        with pytest.raises(RuntimeError, match="Simulated challenger failure"):
+            cs.refresh_comparison(store, comparison_id)
+
+        comparison_repo = ComparisonRepository(store)
+        comparison = comparison_repo.get_comparison(comparison_id)
+        assert comparison is not None
+        assert comparison["latest_snapshot_id"] is None
+        # No snapshot rows should remain after rollback
+        snapshots = store.execute(
+            "SELECT COUNT(*) as cnt FROM branch_comparison_snapshots WHERE comparison_id = ?",
+            (comparison_id,),
+        ).fetchone()
+        assert snapshots["cnt"] == 0
+
+    @staticmethod
+    def _seed_comparison(store):
+        """Seed a minimal comparison with baseline + 2 challengers."""
+        project_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+            (project_id, "test", utc_now_iso(), "0.2.0"),
+        )
+        plan_repo = PlanRepository(store)
+        plan_id = plan_repo.create_plan(project_id, "test-plan")
+        pv_id = plan_repo.create_version(plan_id, [], description="v1")
+        branches_repo = BranchRepository(store)
+        baseline_id = branches_repo.create_branch(
+            project_id, plan_id, "baseline", "baseline",
+            base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+            created_reason="Baseline.",
+        )
+        challenger_ids = []
+        for i in range(2):
+            cid = branches_repo.create_branch(
+                project_id, plan_id, f"challenger-{i}", f"challenger-{i}",
+                base_plan_version_id=pv_id, head_plan_version_id=pv_id,
+                created_reason="Challenger.",
+            )
+            challenger_ids.append(cid)
+        comparison_repo = ComparisonRepository(store)
+        comparison_id = comparison_repo.create_comparison(
+            project_id=project_id, plan_id=plan_id, baseline_branch_id=baseline_id,
+        )
+        for i, cid in enumerate(challenger_ids):
+            comparison_repo.add_challenger_branch(comparison_id, cid, position=i)
+        return comparison_id, baseline_id, challenger_ids
+
 
 # =========================================================================
 # _build_comparison_content tests
