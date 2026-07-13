@@ -45,9 +45,10 @@ patterns. No production code changes.
    `tests/fixtures/golden_bin_definition.json` and
    `tests/fixtures/golden_manual_binning_overrides.json`.
 2. Add a round-trip test for each.
-3. This fixture is the baseline for PR7 (binning type cleanup). The
-   `apply_overrides` lossy round-trip (T7) will be caught here if the
-   merged bins drop fields.
+3. This fixture is the baseline for PR7 (binning override seam hardening).
+   The `apply_overrides` lossy round-trip (T7) will be caught here if the
+   merged bins drop fields or the override fixture drifts from the live
+   schema.
 
 ### 4. Build → validate → report smoke test
 

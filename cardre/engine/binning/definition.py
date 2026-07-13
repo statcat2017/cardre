@@ -526,6 +526,14 @@ class LifecycleBinDefinition:
         if not overrides:
             warnings.append({"message": "No manual overrides applied; passing through auto bins for selected variables"})
 
+        present = set(bin_def._present_fields) if bin_def._present_fields is not None else set()
+        if combined_rejected:
+            present.add("rejected")
+        if warnings:
+            present.add("warnings")
+        if bin_def.source is not None:
+            present.add("source")
+
         return LifecycleBinDefinition(
             schema_version=bin_def.schema_version,
             variables=active_vars,
@@ -533,7 +541,7 @@ class LifecycleBinDefinition:
             warnings=list(bin_def.warnings) + warnings,
             source=bin_def.source,
             extra=dict(bin_def.extra),
-            _present_fields=bin_def._present_fields,
+            _present_fields=frozenset(present) if present else None,
         )
 
 

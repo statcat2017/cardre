@@ -136,10 +136,11 @@ Depends on Batch D (needs PR3c collector `_raw` removal).
   `VariableClusteringNode.run` 230→~50), `ModelExplainabilityNode`
   estimator-load dedup (N2), ensemble dead-code removal (N3),
   `prep.py` split + German-credit fixture relocation.
-- **PR7** — binning type cleanup: `BinDefinition` → alias for
-  `LifecycleBinDefinition`; `apply_overrides`/`validate_overrides` operate
-  on typed `LifecycleBinDefinition`; round-trip tests for merged bins.
-  (Note: PR2 may already do some of this — coordinate; PR7 finishes it.)
+- **PR7** — binning override seam hardening: replace the stale golden manual
+  override fixture with the live schema, add golden regression tests around
+  `LifecycleBinDefinition.apply_overrides(...)`, and fix field-preservation
+  bugs only if the new tests expose one. Do not attempt repo-wide
+  `BinDefinition` retirement here.
 
 **Gate:** `collector.py` < 500 lines. `prep.py` is gone (split into 5
 files). `GERMAN_CREDIT_COLUMNS` not in production launch-tier code. God-
@@ -228,7 +229,7 @@ total sprint effort in PR2 + PR3* + PR5.
 | PR4 | Low (mostly deletion) | ~5 files + docs/tests | Decision required |
 | PR5 | **High** | `collector.py` + new `reporting/sections/` | No (golden diff) |
 | PR6 | High | ~15 node files + new `prep/` package | No |
-| PR7 | Medium | `binning.py`, `definition.py` | No (round-trip tests) |
+| PR7 | Low-medium | binning fixtures/tests + maybe `definition.py` | No (round-trip tests) |
 | PR8 | Medium | ~7 services/execution files | Migration (labelled) |
 | PR9 | Medium | ~15 store/api files | No |
 | PR10 | Medium | ~12 frontend/rust files | No |
