@@ -30,7 +30,7 @@ cd frontend && npm install && npm run dev
 │                        │                                │
 │  ┌─────────────────────▼─────────────────────────────┐  │
 │  │              execution/                           │  │
-│  │  RunCoordinator, PlanExecutor, EvidenceResolver   │  │
+│  │  RunCoordinator, PlanExecutor, EvidenceLocator    │  │
 │  │  StalenessService, RunLifecycle, Worker           │  │
 │  └───────────────────────────────────────────────────┘  │
 └──────────────────────────┬──────────────────────────────┘
@@ -59,9 +59,9 @@ cd frontend && npm install && npm run dev
 - **`cardre/`** — pure-Python scorecard engine (no GUI dependency)
   - `cardre/domain/` — domain kernel: Project, Plan, PlanVersion, Run, Artifact, StepSpec, evidence models, errors
   - `cardre/nodes/` — node registry + plugin implementations (launch and deferred tiers)
-  - `cardre/services/` — stateless business logic: RunCoordinator, EvidenceResolver, StalenessService, PlanMutationService, BranchService, ComparisonService, ChampionService, ManualBinningService, ExportService
+  - `cardre/services/` — stateless business logic: RunCoordinator, StalenessService, PlanMutationService, BranchService, ComparisonService, ChampionService, ManualBinningService, ExportService
   - `cardre/store/` — SQLite-backed ProjectStore with per-table repositories (PlanRepository, BranchRepository, ComparisonRepository, etc.)
-  - `cardre/execution/` — execution engine: PlanExecutor, RunLifecycle, Worker, EvidenceResolver dispatch
+  - `cardre/execution/` — execution engine: PlanExecutor, RunLifecycle, Worker
   - `cardre/api/` — FastAPI route definitions (project-scoped)
   - `cardre/reporting/` — report rendering and collector
   - `cardre/_evidence/` — evidence kinds, models, reader, schemas

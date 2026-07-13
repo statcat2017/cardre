@@ -1,5 +1,9 @@
 # Branch Evidence Policy Unification — Implementation Plan
 
+> Historical note: PR4 (`docs/plans/thermo-nuclear-quality-sprint/reuse-decision.md`)
+> deleted the dead evidence-reuse / `EvidenceResolver` surface. This plan now
+> contains historical guidance only where it refers to those deleted seams.
+
 > **Audience:** an LLM executor with moderate code-navigation skill. This
 > document is self-contained: read it, then make the edits in the order
 > given. Each section lists the exact files, the change to make, and a

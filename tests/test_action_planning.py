@@ -1,7 +1,7 @@
 """Tests for honest action planning (#214).
 
-Every step action must carry a reason code. The to-node closure only
-includes ancestor steps. There are no pretend reuse/skip branches.
+Every step action must carry a reason code. There are no pretend reuse/skip
+branches.
 """
 
 from __future__ import annotations
@@ -95,28 +95,3 @@ def test_run_plan_version_actions_have_reason(store):
     assert len(captured) == 2
     assert all(a.reason_code == "full_plan" for a in captured)
     assert all(a.action == "execute" for a in captured)
-
-
-def test_to_node_closure_only_includes_ancestors(store):
-    """to-node run only includes ancestor closure, not all steps."""
-    from cardre.execution.executor import PlanExecutor
-
-    pv_id = _seed_plan_with_steps(store, ("step-a", "step-b", "step-c"))
-    executor = PlanExecutor(store)
-
-    captured = []
-    original = PlanExecutor._execute_actions
-
-    def capture(self, plan_version_id, run_id, actions, **kwargs):
-        captured.extend(actions)
-        return (False, {}, {})
-
-    PlanExecutor._execute_actions = capture
-    try:
-        executor.run_to_node(pv_id, "step-b", "run-1", force=True)
-    finally:
-        PlanExecutor._execute_actions = original
-
-    step_ids = [a.spec.step_id for a in captured]
-    assert step_ids == ["step-a", "step-b"]
-    assert all(a.reason_code == "to_node_closure" for a in captured)

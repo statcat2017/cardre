@@ -21,14 +21,12 @@ from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import (
     CardreError,
-    GraphValidationError,
     PlanContainsUnavailableNodesError,
 )
-from cardre.domain.evidence import ResolvedEvidence
 from cardre.domain.run import RunStep, RunStepStatus
 from cardre.execution.action_planner import ExecutionActionPlanner, _StepAction
 from cardre.execution.failure_classification import classify_step_failure
-from cardre.execution.run_step_writer import write_reused_run_step, write_run_step
+from cardre.execution.run_step_writer import write_run_step
 from cardre.execution.step_runner import StepExecutionResult, StepRunner
 from cardre.execution.topology import validate_topology
 from cardre.nodes.registry import NodeRegistry
@@ -137,41 +135,11 @@ class PlanExecutor:
         *,
         force: bool = False,
         branch_id: str | None = None,
-        precomputed_outputs: dict[str, list[ArtifactRef]] | None = None,
-        precomputed_records: dict[str, RunStep] | None = None,
     ) -> str:
         """Execute all steps in a plan version. Returns the run_id."""
         steps = self._load_and_validate(plan_version_id)
         actions = self._action_planner.plan_full_plan(steps)
-        has_failure, _, _ = self._execute_actions(
-            plan_version_id, run_id, actions, branch_id=branch_id,
-            precomputed_outputs=precomputed_outputs,
-            precomputed_records=precomputed_records,
-        )
-        return run_id
-
-    def run_to_node(
-        self,
-        plan_version_id: str,
-        target_step_id: str,
-        run_id: str,
-        *,
-        force: bool = False,
-        branch_id: str | None = None,
-    ) -> str:
-        """Execute only the ancestor closure of *target_step_id*."""
-        steps = self._load_and_validate(plan_version_id)
-
-        step_by_id = {s.step_id: s for s in steps}
-        if target_step_id not in step_by_id:
-            raise GraphValidationError(
-                f"Target step {target_step_id!r} not found in plan version {plan_version_id}"
-            )
-
-        actions = self._action_planner.plan_to_node(steps, target_step_id)
-        has_failure, _, _ = self._execute_actions(
-            plan_version_id, run_id, actions, branch_id=branch_id,
-        )
+        has_failure, _, _ = self._execute_actions(plan_version_id, run_id, actions)
         return run_id
 
     # ------------------------------------------------------------------
@@ -183,80 +151,33 @@ class PlanExecutor:
         plan_version_id: str,
         run_id: str,
         actions: list[_StepAction],
-        *,
-        branch_id: str | None = None,
-        precomputed_outputs: dict[str, list[ArtifactRef]] | None = None,
-        precomputed_records: dict[str, RunStep] | None = None,
     ) -> tuple[bool, dict[str, list[ArtifactRef]], dict[str, RunStep]]:
         """Execute a sequence of step actions.
 
         Returns ``(has_failure, step_outputs, run_step_records)``.
         """
-        outputs: dict[str, list[ArtifactRef]] = precomputed_outputs or {}
-        records: dict[str, RunStep] = precomputed_records or {}
+        outputs: dict[str, list[ArtifactRef]] = {}
+        records: dict[str, RunStep] = {}
         has_failure = False
 
         for action in actions:
             if has_failure:
                 break
-            if action.action == "skip":
-                continue
-            if action.action == "reuse":
-                rs = self._reuse_run_step(
+            self._heartbeat(run_id)
+            with _HeartbeatWatchdog(
+                self._store, run_id, action.spec.step_id,
+                interval_seconds=self._heartbeat_interval,
+            ):
+                rs = self._execute_and_persist(
                     plan_version_id, run_id, action.spec, outputs, records,
-                    evidence=action.evidence_source, branch_id=branch_id,
                 )
-                if rs is not None:
-                    records[action.spec.step_id] = rs
-                    outputs[action.spec.step_id] = self._resolve_output_artifacts(
-                        plan_version_id, run_id, rs,
-                    )
-                else:
-                    self._append_diagnostic(run_id, {
-                        "code": "REUSE_EVIDENCE_NOT_FOUND",
-                        "message": f"No prior evidence to reuse for step {action.spec.step_id}, falling back to execute.",
-                        "severity": "warning",
-                        "run_id": run_id,
-                        "plan_version_id": plan_version_id,
-                        "step_id": action.spec.step_id,
-                        "branch_id": branch_id,
-                    })
-                    if action.before_execute is not None:
-                        action.before_execute()
-                    self._heartbeat(run_id)
-                    with _HeartbeatWatchdog(
-                        self._store, run_id, action.spec.step_id,
-                        interval_seconds=self._heartbeat_interval,
-                    ):
-                        rs = self._execute_and_persist(
-                            plan_version_id, run_id, action.spec, outputs, records,
-                        )
-                    records[action.spec.step_id] = rs
-                    outputs[action.spec.step_id] = self._resolve_output_artifacts(
-                        plan_version_id, run_id, rs,
-                    )
-                    if rs.status == RunStepStatus.FAILED:
-                        has_failure = True
-                continue
-
-            if action.action == "execute":
-                if action.before_execute is not None:
-                    action.before_execute()
-                self._heartbeat(run_id)
-                with _HeartbeatWatchdog(
-                    self._store, run_id, action.spec.step_id,
-                    interval_seconds=self._heartbeat_interval,
-                ):
-                    rs = self._execute_and_persist(
-                        plan_version_id, run_id, action.spec, outputs, records,
-                    )
-                self._heartbeat(run_id)
-                records[action.spec.step_id] = rs
-                outputs[action.spec.step_id] = self._resolve_output_artifacts(
-                    plan_version_id, run_id, rs,
-                )
-                if rs.status == RunStepStatus.FAILED:
-                    has_failure = True
+            self._heartbeat(run_id)
+            records[action.spec.step_id] = rs
+            outputs[action.spec.step_id] = self._resolve_output_artifacts(
+                plan_version_id, run_id, rs,
+            )
+            if rs.status == RunStepStatus.FAILED:
+                has_failure = True
 
         return has_failure, outputs, records
 
@@ -390,88 +311,6 @@ class PlanExecutor:
             )
 
         return run_step
-
-    # ------------------------------------------------------------------
-    # Reuse (carry-forward)
-    # ------------------------------------------------------------------
-
-    def _reuse_run_step(
-        self,
-        plan_version_id: str,
-        run_id: str,
-        spec: StepSpec,
-        step_outputs: dict[str, list[ArtifactRef]],
-        run_step_records: dict[str, RunStep],
-        evidence: ResolvedEvidence | None = None,
-        branch_id: str | None = None,
-    ) -> RunStep | None:
-        """Carry forward a prior run step into the current run."""
-        from cardre.store.artifact_repo import ArtifactRepository
-        from cardre.store.evidence_repo import EvidenceRepository
-        from cardre.store.run_step_repo import RunStepRepository
-
-        evidence_repo = EvidenceRepository(self._store)
-
-        prev_rs = evidence.run_step if evidence is not None else None
-        if prev_rs is None:
-            rs_repo = RunStepRepository(self._store)
-            prev_rs = rs_repo.get_latest_successful_step(plan_version_id, spec.step_id, branch_id=branch_id)
-            if prev_rs is None:
-                return None
-            # Fetch edges/artifacts for fallback
-            edges = evidence_repo.get_edges_for_run_step(prev_rs.run_step_id)
-            all_artifacts = evidence_repo.get_artifacts_for_run_step(prev_rs.run_step_id)
-        else:
-            edges = evidence.edges  # type: ignore[union-attr]  # evidence is guaranteed not None by prev_rs guard above
-            all_artifacts = evidence.artifacts  # type: ignore[union-attr]  # evidence is guaranteed not None by prev_rs guard above
-
-        copied_fp = dict(prev_rs.execution_fingerprint)
-        copied_fp["cardre_step_carried_forward"] = True
-        copied_fp["carried_forward_from_run_step_id"] = prev_rs.run_step_id
-        copied_fp["carried_forward_from_plan_version_id"] = prev_rs.plan_version_id
-        copied_fp["carried_forward_from_run_id"] = prev_rs.run_id
-        copied_fp["carried_forward_original_started_at"] = prev_rs.started_at
-        copied_fp["carried_forward_original_finished_at"] = prev_rs.finished_at
-
-        now = utc_now_iso()
-        rs_id = str(uuid.uuid4())
-
-        # Get output artifacts from artifact_lineage
-        art_repo = ArtifactRepository(self._store)
-        lineage = art_repo.get_lineage_for_run_step(prev_rs.run_step_id)
-
-        copied_rs = RunStep(
-            run_step_id=rs_id,
-            run_id=run_id,
-            step_id=prev_rs.step_id,
-            plan_version_id=plan_version_id,
-            status=prev_rs.status,
-            started_at=now,
-            finished_at=now,
-            execution_fingerprint=copied_fp,
-            warnings=prev_rs.warnings,
-            errors=prev_rs.errors,
-        )
-
-        # Resolve branch ID for lineage rows
-        run_record = self._store.execute(
-            "SELECT branch_id FROM runs WHERE run_id = ?", (run_id,)
-        ).fetchone()
-        run_branch_id = run_record["branch_id"] if run_record and run_record["branch_id"] else branch_id
-
-        # Delegate persistence to the writer module
-        with self._store.transaction("IMMEDIATE") as conn:
-            write_reused_run_step(
-                conn=conn,
-                copied_rs=copied_rs,
-                edges=edges,
-                all_artifacts=all_artifacts,
-                lineage_rows=lineage,
-                run_branch_id=run_branch_id,
-                evidence_repo=evidence_repo,
-            )
-
-        return copied_rs
 
     # ------------------------------------------------------------------
     # Helpers

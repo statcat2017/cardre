@@ -368,7 +368,7 @@ class TestRunSummary:
         from cardre.execution.executor import PlanExecutor
         from cardre.services.run_coordinator import RunCoordinator
 
-        def fake_run_plan_version(self, plan_version_id, run_id, *, force=False, branch_id=None, precomputed_outputs=None, precomputed_records=None):
+        def fake_run_plan_version(self, plan_version_id, run_id, *, force=False, branch_id=None):
             now = utc_now_iso()
             store.execute(
                 "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, execution_fingerprint_json, warnings_json, errors_json) "

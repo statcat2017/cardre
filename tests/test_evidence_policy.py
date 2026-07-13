@@ -1,6 +1,6 @@
-"""Tests for typed evidence policy results (#215).
+"""Tests for typed evidence availability results (#215).
 
-The evidence-policy seam must not swallow infrastructure bugs.
+The branch-current seam must not swallow infrastructure bugs.
 A typed EvidenceCheckResult carries status: current | stale | missing | error.
 """
 
@@ -52,7 +52,7 @@ def _seed_minimal_plan(store):
 
 def test_evidence_check_result_type_exists():
     """EvidenceCheckResult is a typed result with status and diagnostics."""
-    from cardre.services.evidence_resolver import EvidenceCheckResult
+    from cardre.evidence_locator import EvidenceCheckResult
 
     result = EvidenceCheckResult(status="missing")
     assert result.status == "missing"
@@ -66,10 +66,10 @@ def test_evidence_check_result_type_exists():
 
 def test_missing_evidence_returns_missing(store):
     """A branch check with no prior evidence returns 'missing'."""
-    from cardre.services.evidence_resolver import EvidencePolicyService
+    from cardre.evidence_locator import EvidenceLocator
 
     pv_id = _seed_minimal_plan(store)
-    service = EvidencePolicyService(store)
+    service = EvidenceLocator(store)
     result = service.check_branch_current(pv_id, "nonexistent-branch")
     assert result.status == "missing"
     assert result.run_id is None
@@ -77,11 +77,11 @@ def test_missing_evidence_returns_missing(store):
 
 def test_evidence_check_does_not_swallow_db_errors(store, monkeypatch):
     """An unexpected infrastructure error propagates, not silently swallowed (#215)."""
-    from cardre.services.evidence_resolver import EvidencePolicyService
+    from cardre.evidence_locator import EvidenceLocator
     from cardre.store.step_repo import StepRepository
 
     pv_id = _seed_minimal_plan(store)
-    service = EvidencePolicyService(store)
+    service = EvidenceLocator(store)
 
     def boom(*args, **kwargs):
         raise RuntimeError("DB corruption")
@@ -91,3 +91,13 @@ def test_evidence_check_does_not_swallow_db_errors(store, monkeypatch):
     # Unexpected exceptions (RuntimeError) propagate as hard failures.
     with pytest.raises(RuntimeError, match="DB corruption"):
         service.check_branch_current(pv_id, "some-branch")
+
+
+def test_missing_branch_returns_missing(store):
+    """A non-existent branch does not fabricate a short-circuit run."""
+    from cardre.evidence_locator import EvidenceLocator
+
+    pv_id = _seed_minimal_plan(store)
+    service = EvidenceLocator(store)
+    result = service.check_branch_current(pv_id, "missing-branch")
+    assert result.status == "missing"

@@ -243,8 +243,9 @@ class RunCoordinator:
         creating a placeholder.
         """
         if not force and run_scope == "branch" and branch_id:
-            from cardre.services.evidence_resolver import EvidencePolicyService
-            evidence = EvidencePolicyService(self._store)
+            from cardre.evidence_locator import EvidenceLocator
+
+            evidence = EvidenceLocator(self._store)
             result = evidence.check_branch_current(plan_version_id, branch_id)
             if result.status == "current" and result.run_id is not None:
                 return RunPlanDecision(
@@ -416,9 +417,9 @@ class RunCoordinator:
 
         with self._store.transaction("IMMEDIATE") as conn:
             if not force and run_scope == "branch" and branch_id:
-                from cardre.services.evidence_resolver import EvidencePolicyService
+                from cardre.evidence_locator import EvidenceLocator
 
-                evidence = EvidencePolicyService(self._store)
+                evidence = EvidenceLocator(self._store)
                 result = evidence.check_branch_current(plan_version_id, branch_id)
                 if result.status == "current" and result.run_id is not None:
                     raise CardreError(

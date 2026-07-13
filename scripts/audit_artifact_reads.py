@@ -109,7 +109,11 @@ def git_ls_tracked_python_files(repo_root: Path) -> list[Path]:
     )
     if result.returncode != 0:
         raise RuntimeError(f"git ls-files failed: {result.stderr.strip()}")
-    return [repo_root / rel for rel in result.stdout.splitlines() if rel.strip()]
+    return [
+        repo_root / rel
+        for rel in result.stdout.splitlines()
+        if rel.strip() and (repo_root / rel).exists()
+    ]
 
 
 def _is_docs_path(path: Path) -> bool:

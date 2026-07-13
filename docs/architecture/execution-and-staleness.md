@@ -2,17 +2,16 @@
 
 ## Plan Executor
 
-The `PlanExecutor` (`cardre/executor.py`) is the single execution seam for all run modes:
+The `PlanExecutor` (`cardre/execution/executor.py`) is the single execution seam.
 
 - **Full-plan run**: executes all steps in a plan version in topological order.
-- **Branch run**: executes only branch-owned steps, reusing evidence from the baseline for shared upstream steps. **Branch evidence policy (validation, staleness, short-circuit, shared/branch-owned evidence seeding, and parent evidence resolution) is owned by `cardre/services/evidence_policy.py` (`EvidencePolicyService`) — the single source of truth.** `PlanExecutor.run_branch` is a pure consumer: it requires a `BranchRunEvidence` prepared upstream and does not resolve policy itself. Both sync (`RunService._execute_sync`) and async (`run_orchestrator.execute_run` → `RunWorker`) paths prepare evidence via `EvidencePolicyService` and pass it as `branch_ctx`.
-- **To-node run**: executes the ancestor closure of a target step, reusing non-stale upstream evidence.
-- **Replay**: re-executes steps with modified parameters, reusing unchanged upstream evidence.
+- **Branch launch**: the run metadata may be branch-scoped, but step execution still uses the same execute-all-steps loop. The only branch-specific pre-execution policy that survives is a short-circuit check via `cardre/evidence_locator.py`.
+- **To-node execution is not supported at launch.** `RunCoordinator` rejects `run_scope="to_node"` before execution begins.
 
 ### Execution Flow
 
-1. **Action planning**: builds a list of `_StepAction` instances (execute, reuse, or skip) based on the run mode and staleness.
-2. **Action execution**: walks actions in order, executing nodes or reusing prior evidence.
+1. **Action planning**: builds a list of `_StepAction` instances. The only supported action is `execute`.
+2. **Action execution**: walks actions in order and executes nodes.
 3. **Finalisation**: writes the run manifest and transitions the run to its final status.
 
 ### Role Enforcement
@@ -30,11 +29,11 @@ The `RunLifecycle` class (`cardre/run_lifecycle.py`) owns generic run mechanics:
 - Final status setting and manifest artifact writing, combined into one atomic `finalise_run()` call.
 - Manifest payload construction (`build_manifest_payload`) and labelling (`step_action`).
 
-`PlanExecutor` still owns execution semantics: topological ordering, node execution, role and leakage enforcement, parent evidence resolution, and run-step evidence recording.
+`PlanExecutor` still owns execution semantics: topological ordering, node execution, role and leakage enforcement, and run-step evidence recording.
 
 ### Run-step writer seam
 
-The `cardre/execution/run_step_writer.py` module coordinates transaction-scoped persistence for ``run_steps``, ``evidence_edges``, ``evidence_artifacts``, and ``artifact_lineage`` rows. Extracted from ``PlanExecutor._record_run_step`` and ``PlanExecutor._reuse_run_step`` (ADR 0002 precedent), it keeps the executor focused on orchestration while the writer handles persistence. The writer owns raw ``INSERT`` SQL for ``run_steps`` and ``artifact_lineage``; evidence edge/artifact inserts are delegated to ``EvidenceRepository.insert_edge`` / ``insert_artifact`` to avoid duplicating the insert SQL owned by the repository layer. The writer exposes two functions: ``write_run_step`` (first-time execution) and ``write_reused_run_step`` (carried-forward run steps). Both require an active ``IMMEDIATE`` connection and use ``INSERT OR IGNORE`` for lineage de-duplication.
+The `cardre/execution/run_step_writer.py` module coordinates transaction-scoped persistence for ``run_steps``, ``evidence_edges``, ``evidence_artifacts``, and ``artifact_lineage`` rows. Extracted from ``PlanExecutor._record_run_step``, it keeps the executor focused on orchestration while the writer handles persistence. The writer owns raw ``INSERT`` SQL for ``run_steps`` and ``artifact_lineage``; evidence edge/artifact inserts are delegated to ``EvidenceRepository.insert_edge`` / ``insert_artifact`` to avoid duplicating the insert SQL owned by the repository layer. The writer exposes one function: ``write_run_step``. It requires an active ``IMMEDIATE`` connection and uses ``INSERT OR IGNORE`` for lineage de-duplication.
 
 ## Staleness Detection
 

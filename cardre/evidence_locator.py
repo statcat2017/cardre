@@ -14,7 +14,8 @@ is eliminated by design.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from cardre.domain.evidence import ResolvedEvidence
 from cardre.domain.run import ExecutionFingerprint, RunStep, RunStepStatus
@@ -23,6 +24,15 @@ from cardre.domain.step import StepSpec
 if TYPE_CHECKING:
     from cardre.store.db import ProjectStore
     from cardre.store.run_step_repo import RunStepRepository
+
+
+@dataclass
+class EvidenceCheckResult:
+    """Typed result for evidence availability checks."""
+
+    status: Literal["current", "stale", "missing", "error"]
+    run_id: str | None = None
+    diagnostics: list[Any] = field(default_factory=list)
 
 
 class EvidenceLocator:
@@ -39,6 +49,60 @@ class EvidenceLocator:
 
     def __init__(self, store: ProjectStore) -> None:
         self._store = store
+
+    def check_branch_current(
+        self,
+        plan_version_id: str,
+        branch_id: str,
+    ) -> EvidenceCheckResult:
+        """Check whether branch execution can short-circuit to an existing run."""
+        from cardre.execution.topology import validate_topology
+        from cardre.services.staleness_service import StalenessService
+        from cardre.store.run_repo import RunRepository
+        from cardre.store.step_repo import StepRepository
+
+        try:
+            step_repo = StepRepository(self._store)
+            run_repo = RunRepository(self._store)
+            steps = step_repo.get_steps(plan_version_id)
+            validate_topology(steps)
+            if not steps:
+                return EvidenceCheckResult(status="missing")
+
+            staleness = StalenessService(self._store)
+            explanation = staleness.explain_step(plan_version_id, steps[0].step_id)
+            stale_step_ids = [
+                step.step_id
+                for step in steps
+                if explanation.upstream_changes.get(step.step_id, True)
+            ]
+            if stale_step_ids:
+                return EvidenceCheckResult(status="missing")
+
+            existing_run_id = run_repo.get_latest_successful_id(
+                plan_version_id,
+                branch_id=branch_id,
+            )
+            if existing_run_id is None:
+                return EvidenceCheckResult(status="missing")
+
+            return EvidenceCheckResult(
+                status="current",
+                run_id=existing_run_id,
+                diagnostics=[{
+                    "code": "BRANCH_CURRENT",
+                    "message": "Branch evidence is current.",
+                }],
+            )
+        except (KeyError, ValueError, TypeError) as exc:
+            return EvidenceCheckResult(
+                status="error",
+                diagnostics=[{
+                    "code": "EVIDENCE_CHECK_ERROR",
+                    "message": f"Evidence check failed: {exc}",
+                    "severity": "error",
+                }],
+            )
 
     def resolve(
         self,
@@ -236,4 +300,4 @@ class EvidenceLocator:
         return fp_typed.node_version == spec.node_version
 
 
-__all__ = ["EvidenceLocator"]
+__all__ = ["EvidenceCheckResult", "EvidenceLocator"]

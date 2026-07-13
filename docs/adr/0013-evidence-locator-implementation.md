@@ -4,6 +4,12 @@
 
 Proposed
 
+## Historical note
+
+The incremental migration path below was overtaken by PR4. `EvidenceResolver`
+was deleted instead of retained as a wrapper, and the surviving branch-current
+check moved onto the locator-side seam.
+
 ## Context
 
 ADR-0005 §3 mandated: "Evidence locator is the single lookup path. `evidence_locator.py` (or a renamed equivalent) is the only place that implements branch/full-plan/across-plan fallback. Services call it with a named policy; they do not reimplement fallback logic."

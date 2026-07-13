@@ -4,6 +4,12 @@
 
 Proposed
 
+## Historical note
+
+PR4 deleted `EvidenceResolver` as dead layering. The surviving contract is that
+`cardre/evidence_locator.py` owns the evidence lookup path and the branch-current
+availability check consumed by launch coordination.
+
 ## Context
 
 Cardre's reporting, readiness, comparison, export, and branch evidence services each define their own required canonical step lists, legacy alias maps, and evidence fallback policies. This has produced three concrete problems:

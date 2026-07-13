@@ -4,6 +4,12 @@
 
 Proposed
 
+## Historical note
+
+PR4 removed the dead evidence-reuse / `run_to_node` execution subsystem.
+References below to reuse actions or `run_to_node` describe the pre-PR4 shape
+that motivated this ADR, not the current implementation.
+
 ## Context
 
 Cardre's execution core (`PlanExecutor`) has three public run methods: `run_plan_version`, `run_branch`, and `run_to_node`. A fourth path, `replay_from_step`, exists outside the public seam. Each path handles run creation, step execution, reuse/carry-forward, cancellation, finalisation, and manifest writing differently.
