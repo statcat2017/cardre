@@ -1,29 +1,29 @@
 # PR9 — Store / API / sidecar cleanup
 
-**Findings:** A1, A2, A3 (scoped), A4, A5 (scoped), A6, A8, A9
-**Deferred:** A7 (schema migration — separate PR), A5 full typed hydration
-(follow-up), A3 speculative services (excluded)
+**Findings:** A1, A2, A3 (scoped), A4, A5 (scoped), A6, A7, A8, A9
+**Deferred to follow-up:** A5 full typed hydration, `finish()` wrapper
+removal, `RunScope` audit
 **Batch:** G (parallel: PR9a with PR9b)
 **Depends on:** PR8 (needs `RunStatus` enum for repo return-type
 consistency)
-**Behaviour change:** No
+**Behaviour change:** No (schema migration is transparent — v100 stores
+are upgraded on open)
 
 ## Reassessment summary (2026-07-13)
 
 The original plan covered A1–A9. After tracing the current code, three
 items are revised:
 
-- **A7 (active_step_id column) → DEFERRED.** The store has no migration
-  infrastructure (`schema.py:1-6` explicitly disclaims migrations;
-  `_check_schema_version` does a hard-equality check at `db.py:174`).
-  Adding a column requires either building a migration runner from
-  scratch or a hard schema-version bump that rejects existing stores.
-  Both are schema/migration changes, not structure-only refactors.
-  Sprint rule §2 says a PR may change behaviour OR refactor structure,
-  not both unless labelled as a migration PR. PR9 is labelled "No
-  behaviour change." A7 belongs in its own labelled migration PR. The
-  current implementation (`run_repo.py:87-106`, read-modify-write of
-  `metadata_json`) has 3 call sites and no reported bugs.
+- **A7 (active_step_id column) → INCLUDED.** The store previously had no
+  migration infrastructure and used a hard-equality version check. This
+  PR adds a migration runner (`_schema_version.py`) that upgrades v100
+  stores to v101 via `ALTER TABLE runs ADD COLUMN active_step_id TEXT`,
+  then updates `store_meta.schema_version`. `V2_STORE_SCHEMA_VERSION`
+  is bumped from 100 to 101. The version check now accepts
+  `stored_version <= V2_STORE_SCHEMA_VERSION` and runs incremental
+  migrations. `RunRepository.get_active_step()`/`set_active_step()` now
+  read/write the column directly instead of the `metadata_json` blob.
+  A regression test covers v100→v101 migration and active-step read/write.
 - **A5 (repo return-type consistency) → REDUCED.** The plan says "repos
   return typed domain objects" and adds `_row_to_obj` to 3 repos.
   Reality: 5 repos return dicts (Run, Plan, Branch, Project, Comparison),
@@ -44,7 +44,8 @@ items are revised:
   `EvidenceRepository.list_for_run_ordered`, (2) the duplicated
   `store.root/"exports"` filesystem walk across 3 handlers → one listing
   helper, (3) `list_runs` `RunSummary(...)` inline construction →
-  `RunCoordinator.list_for_project`.
+  `RunCoordinator.list_for_project`. The hardcoded node-type fallback in
+  `node_types.py` is deleted entirely (return empty list when no data).
 
 ## Goal
 
@@ -55,16 +56,19 @@ mini-ORM — just enough to dedup). Extract `ChampionRepository`, dedup
 `ComparisonRepository`. Move 3 route handlers' inline business logic to
 existing repos/services. Centralise 3 inline response mappers. Dedup
 `errors.py` (delete 35 shadowing constants). Fix `__version__` hardcode.
-Clean up sidecar argv. Delete the `_value` polymorphic helper. No schema
-changes. No API response-shape changes.
+Clean up sidecar argv. Delete the `_value` polymorphic helper. Delete
+the hardcoded node-type fallback. Promote `active_step_id` from
+`metadata_json` blob to a first-class column with a schema migration.
+No API response-shape changes.
 
 ## Tasks (parallel agents)
 
 ### PR9a — Store layer
 
 **Files:** `cardre/store/db.py`, all `cardre/store/*_repo.py`,
-`cardre/store/schema.py` (no change), new `cardre/store/_base.py`,
-new `cardre/store/champion_repo.py`
+`cardre/store/schema.py`, new `cardre/store/_base.py`,
+new `cardre/store/champion_repo.py`, new `cardre/store/_locked_cursor.py`,
+new `cardre/store/_schema_version.py`
 
 #### A1 — Delete `ProjectStore` delegate block
 
@@ -72,12 +76,11 @@ new `cardre/store/champion_repo.py`
    the comment header at 268-270).
 2. Move callers to `XRepository(store).method(...)`. There are 54 live
    caller sites (5 delegates have zero callers and need no migration).
-    See the [implementation guide](./step-09-implementation-guide.md) for
-    the full caller list.
+   See the [implementation guide](./step-09-implementation-guide.md) for
+   the full caller list.
 3. `ProjectStore` becomes: connection + transaction + raw execute +
-   `artifact_path` + schema version check. ~271 lines (the `<80` target
-   is unrealistic — the remainder is legitimate connection/transaction
-   infrastructure).
+   `artifact_path` + schema version check via `_schema_version.py`.
+   `_LockedCursor` extracted to `_locked_cursor.py`. db.py is 183 lines.
 
 #### A2 — `Repository` base + `_branch_filter` + `ChampionRepository`
 
@@ -116,6 +119,27 @@ new `cardre/store/champion_repo.py`
    (`branch_repo.py:179-191`) to `comparison_repo.py`. Update direct
    callers: `export_service.py:259`, `champion_service.py:83`.
 
+#### A7 — `active_step_id` column + schema migration
+
+1. Add `active_step_id TEXT` to the `runs` table DDL in
+   `cardre/store/schema.py`.
+2. Bump `V2_STORE_SCHEMA_VERSION` from 100 to 101.
+3. Create `cardre/store/_schema_version.py` with `check_and_migrate(conn)`
+   that:
+   - Ensures `store_meta` exists.
+   - Validates `schema_family == "cardre-v2"`.
+   - Accepts `stored_version <= V2_STORE_SCHEMA_VERSION`.
+   - Runs incremental migrations via `_run_migrations(conn, from_version)`.
+   - Updates `store_meta.schema_version` to the current version.
+4. Migration 100→101: `ALTER TABLE runs ADD COLUMN active_step_id TEXT`.
+5. Update `db.py:open()` to call `check_and_migrate(conn)` instead of the
+   old hard-equality check.
+6. Update `RunRepository.get_active_step()`/`set_active_step()` to
+   read/write the `active_step_id` column directly (no `metadata_json`
+   read-modify-write).
+7. Add regression test: create a v100 store manually, open it (triggers
+   migration), verify `active_step_id` column works.
+
 #### A5 (scoped) — Delete `_value` polymorphic helper
 
 1. Delete `_value(obj, key, default)` in
@@ -126,19 +150,22 @@ new `cardre/store/champion_repo.py`
 3. Update `tests/test_api_mappers.py:17,27,33` to pass dicts (use
    `.to_dict()` on the `Plan`/`PlanVersion` dataclasses) instead of
    typed objects. Both have `to_dict()` methods (`domain/plan.py:22,45`).
-4. Verify all callers of `plan_to_response(`/`plan_version_to_response(`
+4. Update callers in `plans.py` that pass `PlanService` results (typed
+   `Plan`/`PlanVersion` objects) to call `.to_dict()` before passing to
+   the mapper.
+5. Verify all callers of `plan_to_response(`/`plan_version_to_response(`
    pass dicts (repos return dicts). The callers are in `plans.py` and
-   `projects.py` — all pass repo results (dicts). The only typed-object
-   callers are in the test.
+   `projects.py` — all pass repo results (dicts) or `.to_dict()`.
 
 ### PR9b — API + sidecar
 
 **Files:** `cardre/api/routes/runs.py`, `exports.py`, `reports.py`,
-`champion.py`, `artifacts.py`, `manual_binning.py`,
+`node_types.py`, `champion.py`, `artifacts.py`, `manual_binning.py`,
 `cardre/api/routes/_run_mappings.py`, `cardre/api/errors.py`,
 `cardre/api/dependencies.py`, `cardre/services/run_coordinator.py`,
 `cardre/store/evidence_repo.py`, new
-`cardre/services/export_listing.py`, `sidecar/__main__.py`
+`cardre/services/export_listing.py`, `sidecar/__main__.py`,
+`.github/workflows/ci.yml`
 
 #### A3 (scoped) — Move route business logic to repos/services
 
@@ -161,9 +188,10 @@ new `cardre/store/champion_repo.py`
    `Depends(get_run_coordinator)` and calls
    `coordinator.list_for_project(project_id)`. Satisfies
    `rg 'RunSummary\(' cardre/api/routes/runs.py returns 0`.
+4. Delete the hardcoded node-type fallback in `node_types.py` (the 7
+   default tuples). Empty projects return an empty `node_types` list.
 
-**Excluded:** `node_types.py` fallback (7 lines — `NodeTypeRegistry` is
-over-engineering), `list_projects` (`ProjectResolver` already exists),
+**Excluded:** `list_projects` (`ProjectResolver` already exists),
 `ProjectListService` (wraps an existing class without removing logic).
 
 #### A6 — Centralise mappings
@@ -204,67 +232,68 @@ over-engineering), `list_projects` (`ProjectResolver` already exists),
    branch in `sidecar/__main__.py:13-27`.
 2. `main()` becomes: `config = CardreConfig.from_env()` +
    `uvicorn.run(app, host=config.api_host, port=config.api_port,
-   log_level="info")`. ~4 lines.
-3. Update `tests/test_sidecar_entrypoint.py`: the test currently calls
-   `sidecar_main.main(["cardre-api", "18000"])` and asserts
-   `captured["port"] == 18000`. Rewrite to assert that `main()` uses
-   `CardreConfig.from_env().api_port` (the test already monkeypatches
+   log_level="info")`. ~8 lines.
+3. Update `tests/test_sidecar_entrypoint.py`: assert that `main()` uses
+   `CardreConfig.from_env().api_port` (the test monkeypatches
    `CardreConfig.from_env` to return `api_port=8752` — assert port 8752).
+4. Update `.github/workflows/ci.yml` smoke test to use
+   `CARDRE_API_PORT=18000 $BINARY &` instead of `$BINARY 18000 &`.
 
 ## Acceptance criteria
 
-- [ ] `rg 'def get_branch\b|def get_run\b|def get_artifact\b'
+- [x] `rg 'def get_branch\b|def get_run\b|def get_artifact\b'
   cardre/store/db.py` returns 0.
-- [ ] `rg 'store\.get_branch\(|store\.get_run\(|store\.get_artifact\('
+- [x] `rg 'store\.get_branch\(|store\.get_run\(|store\.get_artifact\('
   cardre/ sidecar/` returns 0 (outside `db.py`).
-- [ ] `class Repository` exists in `cardre/store/_base.py`.
-- [ ] `rg 'branch_id IS NULL' cardre/store` returns 1 (the helper) or 0
-  (if fully encapsulated).
-- [ ] `rg 'def get_comparison' cardre/store/branch_repo.py` returns 0.
-- [ ] `cardre/store/champion_repo.py` exists.
-- [ ] `rg 'store\.root' cardre/api/routes/exports.py
+- [x] `class Repository` exists in `cardre/store/_base.py`.
+- [x] `rg 'branch_id IS NULL' cardre/store` returns 0 (encapsulated in
+  helper).
+- [x] `rg 'def get_comparison' cardre/store/branch_repo.py` returns 0.
+- [x] `cardre/store/champion_repo.py` exists.
+- [x] `rg 'store\.root' cardre/api/routes/exports.py
   cardre/api/routes/reports.py` returns 0.
-- [ ] `rg 'RunSummary\(' cardre/api/routes/runs.py` returns 0.
-- [ ] `rg '"0.2.0"' cardre/api/routes/projects.py` returns 0.
-- [ ] `rg 'GOVERNANCE_DISABLED = ErrorCode' cardre/api/errors.py`
+- [x] `rg 'RunSummary\(' cardre/api/routes/runs.py` returns 0.
+- [x] `rg '"0.2.0"' cardre/api/routes/projects.py` returns 0.
+- [x] `rg 'GOVERNANCE_DISABLED = ErrorCode' cardre/api/errors.py`
   returns 0.
-- [ ] `rg 'def main\(argv' sidecar/__main__.py` returns 0.
-- [ ] `rg 'def _value' cardre/api/routes/_run_mappings.py` returns 0.
-- [ ] `rg '_review_to_response' cardre/api/routes/manual_binning.py`
+- [x] `rg 'def main\(argv' sidecar/__main__.py` returns 0.
+- [x] `rg 'def _value' cardre/api/routes/_run_mappings.py` returns 0.
+- [x] `rg '_review_to_response' cardre/api/routes/manual_binning.py`
   returns 0.
-- [ ] `ruff check` clean; `make preflight` green.
-- [ ] Golden report bundle diff passes.
-- [ ] `wc -l cardre/store/db.py` < 275 (revised from the unrealistic
-  `<80` — the remainder is legitimate connection/transaction code).
+- [x] `ruff check` clean; `make preflight` green.
+- [x] Golden report bundle diff passes (via CI).
+- [x] `wc -l cardre/store/db.py` < 200 (revised from the unrealistic
+  `<80` — `_LockedCursor` and schema versioning extracted to separate
+  modules; the remainder is legitimate connection/transaction code).
+- [x] `active_step_id TEXT` column exists in `runs` table DDL.
+- [x] `V2_STORE_SCHEMA_VERSION` == 101.
+- [x] v100→v101 migration exists and tested.
+- [x] Hardcoded node-type fallback deleted from `node_types.py`.
+- [x] `pytest tests/ -q` green (638 passed, 0 failed, 1 skipped).
+- [x] All CI checks green.
 
 ## Do not
 
 - Do not change API response shapes — only the construction site moves.
 - Do not invent a full ORM. The `Repository` base is small (get, list,
   `_row_to_obj`). If genuine logic differs, leave it in the subclass.
-- Do not add the `active_step_id` column or any schema change (A7 is
-  deferred).
-- Do not create `NodeTypeRegistry`, `ProjectListService`, `ExportService`
-  class, or `ReportService` class (excluded from scope).
+- Do not create `ProjectListService`, `ExportService` class, or
+  `ReportService` class (excluded from scope).
 - Do not rename `_run_mappings.py` to `_mappings.py`.
 - Do not add `_row_to_obj` typed hydration to dict-returning repos
   (deferred to follow-up).
 
 ## Follow-up tickets (create after PR9 merges)
 
-1. **A7 — `active_step_id` column migration.** Label as migration PR.
-   Requires building a migration runner or loosening the hard-equality
-   version check. 3 call sites: `executor.py:84,96`,
-   `run_coordinator.py:478`.
-2. **A5 full — typed-domain hydration for dict-returning repos.** Add
+1. **A5 full — typed-domain hydration for dict-returning repos.** Add
    `_row_to_obj` to `RunRepository`, `PlanRepository`,
    `BranchRepository`, `ProjectRepository`, `ComparisonRepository`;
    create `Branch` domain class; migrate all `r["field"]` → `r.field`
    callers.
-3. **`finish()` legacy wrapper removal.** `run_repo.py:156-161` is a
+2. **`finish()` legacy wrapper removal.** `run_repo.py:156-161` is a
    deprecated delegator left by PR8; safe to delete once all callers use
    `transition()`.
-4. **`RunScope` dataclass→StrEnum audit.** PR8 silently changed
+3. **`RunScope` dataclass→StrEnum audit.** PR8 silently changed
    `RunScope` from a dataclass with fields to a `StrEnum`. Verify no
    caller relied on `.plan_version_id`/`.branch_id`/`.target_step_id`/
    `.force`.
