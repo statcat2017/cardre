@@ -84,20 +84,68 @@ class TestBinDefinitionRoundTrip:
         data = _load_fixture("golden_bin_definition.json")
         obj = BinDefinition.from_json(data, artifact_id="golden-test")
         re_serialized = obj.to_dict()
-        assert re_serialized["variables"] == data.get("variables", []), (
-            "BinDefinition round-trip changed variables"
-        )
+        assert re_serialized["schema_version"] == "cardre.bin_definition.v1"
+        assert len(re_serialized["variables"]) == len(data.get("variables", []))
+        for var, rvar in zip(re_serialized["variables"], data.get("variables", []), strict=True):
+            assert var["variable"] == rvar.get("variable", "")
+            assert var["kind"] == rvar.get("kind", "")
+            assert len(var["bins"]) == len(rvar.get("bins", []))
+            for b, rb in zip(var["bins"], rvar.get("bins", []), strict=True):
+                assert b["bin_id"] == rb.get("bin_id", "")
+                assert b["label"] == rb.get("label", "")
+                assert b["row_count"] == rb.get("row_count", 0)
+        assert re_serialized.get("warnings") == data.get("warnings", [])
 
     def test_from_json_handles_empty(self):
         obj = BinDefinition.from_json({}, artifact_id="test")
         assert obj.variables == []
         assert obj.source_artifact_id == "test"
+        assert obj.warnings == []
+        assert obj.rejected == []
+        assert obj.source is None
 
     def test_to_dict_round_trip_empty(self):
         obj = BinDefinition.from_json({}, artifact_id="test")
         d = obj.to_dict()
+        assert d["schema_version"] == "cardre.bin_definition.v1"
         assert "variables" in d
         assert d["variables"] == []
+        assert "warnings" not in d
+        assert "rejected" not in d
+        assert "source" not in d
+
+    def test_to_dict_round_trips_through_lifecycle_from_payload(self):
+        """BinDefinition.to_dict() output must be re-parseable by LifecycleBinDefinition.from_payload."""
+        from cardre.engine.binning.definition import LifecycleBinDefinition
+        data = _load_fixture("golden_bin_definition.json")
+        obj = BinDefinition.from_json(data, artifact_id="golden-test")
+        payload = obj.to_dict()
+        re_parsed = LifecycleBinDefinition.from_payload(payload)
+        assert re_parsed.schema_version == "cardre.bin_definition.v1"
+        assert len(re_parsed.variables) == len(data.get("variables", []))
+        for var, rvar in zip(re_parsed.variables, data.get("variables", []), strict=True):
+            assert var.variable == rvar.get("variable", "")
+            assert len(var.bins) == len(rvar.get("bins", []))
+            for b, rb in zip(var.bins, rvar.get("bins", []), strict=True):
+                assert b.bin_id == rb.get("bin_id", "")
+        assert len(re_parsed.warnings) == len(data.get("warnings", []))
+
+    def test_preserves_lifecycle_fields_through_manual_binning_path(self):
+        """Top-level warnings/rejected/source survive from_json -> to_dict -> from_payload."""
+        from cardre.engine.binning.definition import LifecycleBinDefinition
+        data = _load_fixture("golden_bin_definition.json")
+        obj = BinDefinition.from_json(data, artifact_id="golden-test")
+        payload = obj.to_dict()
+        re_parsed = LifecycleBinDefinition.from_payload(payload)
+        assert len(re_parsed.warnings) == len(data.get("warnings", []))
+        for w, rw in zip(re_parsed.warnings, data.get("warnings", []), strict=True):
+            assert w["message"] == rw["message"]
+            assert w["variable"] == rw["variable"]
+        assert len(re_parsed.rejected) == len(data.get("rejected", []))
+        if data.get("source") is not None:
+            assert re_parsed.source is not None
+        else:
+            assert re_parsed.source is None
 
 
 class TestManualBinningOverridesRoundTrip:

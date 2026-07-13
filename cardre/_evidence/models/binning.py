@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from cardre.domain.diagnostics import JsonDict
-
-if TYPE_CHECKING:
-    from cardre.engine.binning.definition import LifecycleBinDefinition
+from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION
 
 
 @dataclass(frozen=True)
@@ -26,12 +24,12 @@ class BinVariable:
 class BinDefinition:
     variables: list[BinVariable]
     source_artifact_id: str
-    _lifecycle: LifecycleBinDefinition | None = field(default=None, repr=False)
+    warnings: list[JsonDict] = field(default_factory=list)
+    rejected: list[JsonDict] = field(default_factory=list)
+    source: JsonDict | None = None
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> BinDefinition:
-        from cardre.engine.binning.definition import LifecycleBinDefinition
-        lifecycle = LifecycleBinDefinition.from_payload(data)
         variables = [
             BinVariable(
                 variable=v.get("variable", ""),
@@ -41,35 +39,26 @@ class BinDefinition:
             )
             for v in data.get("variables", [])
         ]
-        return cls(variables=variables, source_artifact_id=artifact_id, _lifecycle=lifecycle)
+        return cls(
+            variables=variables,
+            source_artifact_id=artifact_id,
+            warnings=list(data.get("warnings", [])),
+            rejected=list(data.get("rejected", [])),
+            source=dict(data["source"]) if "source" in data else None,
+        )
 
     def to_dict(self) -> JsonDict:
-        if self._lifecycle is not None:
-            return dict(self._lifecycle.to_payload())
-        return {"variables": [v.to_dict() for v in self.variables]}
-
-    @property
-    def lifecycle(self) -> LifecycleBinDefinition | None:
-        return self._lifecycle
-
-    @property
-    def rejected(self) -> list[Any]:
-        if self._lifecycle is not None:
-            return list(self._lifecycle.rejected)
-        return []
-
-    @property
-    def warnings(self) -> list[JsonDict]:
-        if self._lifecycle is not None:
-            return list(self._lifecycle.warnings)
-        return []
-
-    @property
-    def source(self) -> JsonDict | None:
-        if self._lifecycle is not None:
-            val = self._lifecycle.source
-            return dict(val) if val is not None else None
-        return None
+        d: JsonDict = {
+            "schema_version": SCHEMA_BIN_DEFINITION,
+            "variables": [v.to_dict() for v in self.variables],
+        }
+        if self.warnings:
+            d["warnings"] = list(self.warnings)
+        if self.rejected:
+            d["rejected"] = list(self.rejected)
+        if self.source is not None:
+            d["source"] = dict(self.source)
+        return d
 
 
 @dataclass(frozen=True)
