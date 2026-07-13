@@ -537,13 +537,13 @@ class VariableClusteringNode(NodeType):
 
         input_representation = params.get("input_representation", "raw_train")
 
-        train_artifact = next(a for a in context.input_artifacts if a.role == "train")
-        df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+        train_artifact = context.require_train_artifact("VariableClusteringNode")
+        df = reader.read_dataframe(train_artifact)
 
         iv_map: dict[str, float] = {}
         try:
             iv_table = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
-        except Exception:
+        except (KeyError, TypeError):
             iv_table = None
 
         if iv_table is not None:
@@ -551,7 +551,7 @@ class VariableClusteringNode(NodeType):
                 iv_df = iv_table.dataframe.collect()
                 for row in iv_df.iter_rows():
                     iv_map[str(row[0])] = float(row[1])
-            except Exception:
+            except (KeyError, TypeError):
                 iv_map = {}
 
         missing_map: dict[str, float] = {}
@@ -565,7 +565,7 @@ class VariableClusteringNode(NodeType):
             try:
                 bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
                 woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
-            except Exception:
+            except (KeyError, TypeError):
                 bin_def = None
                 woe_table = None
 
@@ -696,7 +696,7 @@ class VariableClusteringNode(NodeType):
                         )
                     warnings_list.extend(cluster_warnings)
 
-            except ImportError:
+            except (ImportError, ValueError):
                 for col in candidates:
                     singleton_variables.append(col)
                 warnings_list.append({

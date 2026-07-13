@@ -9,6 +9,7 @@ from cardre._evidence.kinds import AmbiguousEvidenceError, EvidenceKind, Evidenc
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import (
     SCHEMA_IV_TABLE,
+    SCHEMA_WOE_IV_EVIDENCE,
     SCHEMA_WOE_TABLE,
     SCHEMA_WOE_TRANSFORM_EVIDENCE,
 )
@@ -90,15 +91,15 @@ class CalculateWoeIvNode(NodeType):
         purpose = params.get("purpose", "initial")
         enforce_monotonic_woe = bool(params.get("enforce_monotonic_woe", False))
 
-        train_artifact = next(a for a in context.input_artifacts if a.role == "train")
+        train_artifact = context.require_train_artifact("CalculateWoeIvNode")
         bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
-        meta_def = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        meta_def = context.target_metadata()
 
-        df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+        df = reader.read_dataframe(train_artifact)
 
-        target_column = meta_def.target_column
-        good_values = {str(v) for v in meta_def.good_values}
-        bad_values = {str(v) for v in meta_def.bad_values}
+        target_column = meta_def.target_column if meta_def else ""
+        good_values = {str(v) for v in (meta_def.good_values if meta_def else [])}
+        bad_values = {str(v) for v in (meta_def.bad_values if meta_def else [])}
         good_values_list = list(good_values)
         bad_values_list = list(bad_values)
 
@@ -149,8 +150,8 @@ class CalculateWoeIvNode(NodeType):
                 row_count = int(cast(Any, bin_mask.sum()))
 
                 if target_series is not None and good_values and bad_values:
-                    bin_good = int(target_series.filter(bin_mask).is_in(good_values_list).sum())
-                    bin_bad = int(target_series.filter(bin_mask).is_in(bad_values_list).sum())
+                    bin_good = int(target_series.filter(cast(pl.Series, bin_mask)).is_in(good_values_list).sum())
+                    bin_bad = int(target_series.filter(cast(pl.Series, bin_mask)).is_in(bad_values_list).sum())
                 else:
                     bin_good = bin_def.get("good_count", 0)
                     bin_bad = bin_def.get("bad_count", 0)
@@ -348,7 +349,7 @@ class CalculateWoeIvNode(NodeType):
                 project_id = plan["project_id"]
 
         woe_evidence: dict[str, Any] = {
-            "schema_version": "cardre.woe_iv_evidence.v1",
+            "schema_version": SCHEMA_WOE_IV_EVIDENCE,
             "project_id": project_id,
             "run_id": context.run_id,
             "branch_id": context.step_spec.branch_id or "",
@@ -370,7 +371,7 @@ class CalculateWoeIvNode(NodeType):
             store, artifact_type="report", role="report",
             stem=f"woe-iv-evidence-{purpose}-{context.step_spec.step_id}",
             payload=woe_evidence,
-            metadata={"purpose": purpose, "schema_version": "cardre.woe_iv_evidence.v1"},
+            metadata={"purpose": purpose, "schema_version": SCHEMA_WOE_IV_EVIDENCE},
         )
 
         all_artifacts = [woe_art, iv_art, summary_art, evidence_art]
@@ -394,7 +395,7 @@ class WoeTransformTrainNode(NodeType):
 
         store = context.store
         reader = ArtifactEvidenceReader(store)
-        train_artifact = next(a for a in context.input_artifacts if a.role == "train")
+        train_artifact = context.require_train_artifact("cardre.woe_transform_train")
 
         bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
         woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
@@ -409,7 +410,7 @@ class WoeTransformTrainNode(NodeType):
             raise ValueError("WOE transform received an empty bin definition")
         target_column = meta.target_column if meta is not None else ""
 
-        df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+        df = reader.read_dataframe(train_artifact)
         woe_map = woe_table.mapping
 
         missing_woe_bins: list[str] = []

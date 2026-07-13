@@ -128,10 +128,10 @@ class FineClassingNode(NodeType):
             raise ValueError("max_categorical_levels must be >= 1")
 
         reader = ArtifactEvidenceReader(store)
-        train_artifact = next(a for a in context.input_artifacts if a.role == "train")
+        train_artifact = context.require_train_artifact("cardre.fine_classing")
         meta_def = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
 
-        df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+        df = reader.read_dataframe(train_artifact)
         target_column = meta_def.target_column
         good_values = {str(v) for v in meta_def.good_values}
         bad_values = {str(v) for v in meta_def.bad_values}

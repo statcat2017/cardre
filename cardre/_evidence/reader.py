@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import polars as pl
+
 from cardre._evidence.adapters import get_adapter
 from cardre._evidence.adapters._base import match
 from cardre._evidence.kinds import (
@@ -120,6 +122,24 @@ class ArtifactEvidenceReader:
             return self.read(artifact_id, kind)
         except EvidenceNotFoundError:
             return None
+
+    def require_model(self, model_art: ArtifactRef, node_type: str) -> Any:
+        """Read and parse a model artifact; raise ValueError on failure."""
+        try:
+            model_typed = self.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        except EvidenceParseError as exc:
+            raise ValueError(
+                f"{node_type} requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
+            ) from exc
+        if model_typed is None or not model_typed.model_family:
+            raise ValueError(
+                f"{node_type} requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
+            )
+        return model_typed
+
+    def read_dataframe(self, art: ArtifactRef) -> pl.DataFrame:
+        """Read a parquet dataset artifact."""
+        return pl.read_parquet(self._store.artifact_path(art))
 
     def read_step_output_optional(
         self,

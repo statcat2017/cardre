@@ -76,15 +76,11 @@ class ApplyWoeMappingNode(NodeType):
         woe_unmatched_policy = params.get("woe_unmatched_policy", "fail")
 
         # Detect frozen scorecard bundle for governed-path defaults
-        bundle_art = next(
-            (a for a in context.input_artifacts
-             if a.metadata.get("schema_version") == SCHEMA_FROZEN_SCORECARD_BUNDLE),
-            None,
-        )
+        bundle_art = context.find_frozen_bundle()
         if bundle_art is not None and "woe_unmatched_policy" not in params:
             woe_unmatched_policy = "fail"
 
-        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
+        data_arts = context.data_artifacts()
         bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
         woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
         sel_def = reader.find_optional(context.input_artifacts, EvidenceKind.SELECTION_DEFINITION)
@@ -145,7 +141,7 @@ class ApplyWoeMappingNode(NodeType):
         unmatched_total = 0
 
         for data_art in data_arts:
-            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
+            df = reader.read_dataframe(data_art)
             role = data_art.role
             fallback_counts: dict[str, int] = {}
             woe_columns_created: list[str] = []
@@ -306,11 +302,7 @@ class ApplyModelNode(NodeType):
         scorecard_evidence = find_typed_evidence(scorecard_candidates, EvidenceKind.SCORE_SCALING, "scorecard scaling")
 
         # Detect frozen bundle
-        bundle_art = next(
-            (a for a in context.input_artifacts
-             if a.metadata.get("schema_version") == SCHEMA_FROZEN_SCORECARD_BUNDLE),
-            None,
-        )
+        bundle_art = context.find_frozen_bundle()
         if bundle_art is not None:
             bundle_meta = bundle_art.metadata
             if bundle_meta.get("model_artifact_id") != model_art.artifact_id:
@@ -334,8 +326,7 @@ class ApplyModelNode(NodeType):
         model: dict[str, Any] = dict(getattr(typed_model, "_raw", {}))
         model.update(typed_model.to_model_dict())
 
-        # Parse scorecard and ensemble base model artifacts here,
-        # not in adapters — adapters receive parsed payloads only.
+        # Parse scorecard artifact here, not in adapters — adapters receive parsed payloads only.
         scorecard_parsed: dict[str, Any] | None = None
         if scorecard_evidence is not None:
             scorecard_parsed = dict(getattr(scorecard_evidence, "_raw", {}))
@@ -343,76 +334,10 @@ class ApplyModelNode(NodeType):
         scorecard_artifact_id: str | None = getattr(scorecard_evidence, "source_artifact_id", None)
         bundle_artifact_id: str | None = bundle_art.artifact_id if bundle_art else None
 
-        if model.get("model_family") in ("voting_ensemble", "weighted_ensemble"):
-            model_payload = model.get("model_payload", {})
-            base_parsed: list[dict[str, Any]] = []
-            for bm in model_payload.get("base_models", []):
-                aid = bm.get("artifact_id", "")
-                if not aid:
-                    continue
-                typed_base_model = read_typed_evidence(
-                    aid,
-                    EvidenceKind.MODEL_ARTIFACT,
-                    "ensemble base model",
-                )
-                base_model: dict[str, Any] = dict(getattr(typed_base_model, "_raw", {}))
-                base_model.update(typed_base_model.to_model_dict())
-                base_parsed.append(base_model)
-            model["_base_models_parsed"] = base_parsed
-
         return _apply_model_adapter(
             context, model, model_art,
             scorecard_parsed, scorecard_artifact_id, bundle_artifact_id,
         )
 
 
-class DummyApplyNode(NodeType):
-    node_type = "cardre.dummy_apply"
-    version = "1"
-    category = "apply"
-    input_roles: list[str] = ["train", "test", "oot", "definition"]
-    output_roles: list[str] = ["prediction"]
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        data_artifacts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
-        def_artifact = next((a for a in context.input_artifacts if a.role == "definition"), None)
-
-        if def_artifact is None:
-            raise ValueError("Dummy apply requires a definition artifact")
-
-        input_roles = {a.role for a in data_artifacts}
-        required_roles = {"train", "test", "oot"}
-        missing = required_roles - input_roles
-        if missing:
-            raise ValueError(
-                f"Dummy apply requires train, test, and oot artifacts. "
-                f"Missing: {sorted(missing)}. "
-                f"Received roles: {sorted(input_roles)}"
-            )
-
-        outputs = []
-        for data_art in data_artifacts:
-            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
-            pred = pl.DataFrame({
-                "dummy_prediction": [0.5] * df.height,
-                "row_id": list(range(df.height)),
-            })
-
-            artifact = write_parquet_artifact(
-                store,
-                artifact_type="dataset",
-                role="prediction",
-                stem=f"apply-{data_art.role}-{context.step_spec.step_id}",
-                frame=pred,
-                metadata={
-                    "source_artifact_id": data_art.artifact_id,
-                    "definition_artifact_id": def_artifact.artifact_id,
-                },
-                directory="artifacts",
-            )
-            outputs.append(artifact)
-
-        return NodeOutput(
-            artifacts=outputs,
-            metrics={"output_count": len(outputs)})

@@ -197,7 +197,6 @@ def _register_launch_nodes(reg: NodeRegistry) -> None:
         DefineModellingMetadataNode,
         DevelopmentSampleDefinitionNode,
         ExplicitMissingOutlierTreatmentNode,
-        ImportGermanCreditNode,
         ImportTabularDatasetNode,
         ProfileDatasetNode,
         SplitTrainTestOotNode,
@@ -207,7 +206,6 @@ def _register_launch_nodes(reg: NodeRegistry) -> None:
         ApplyModelNode,
         ApplyWoeMappingNode,
         CutoffAnalysisNode,
-        DummyApplyNode,
         ValidationMetricsNode,
     )
 
@@ -221,7 +219,6 @@ def _register_launch_nodes(reg: NodeRegistry) -> None:
         CalibrationDiagnosticsNode,
         SeparationDiagnosticsNode,
         VifDiagnosticsNode,
-        ImportGermanCreditNode,
         ImportTabularDatasetNode,
         ProfileDatasetNode,
         ValidateBinaryTargetNode,
@@ -245,7 +242,6 @@ def _register_launch_nodes(reg: NodeRegistry) -> None:
         ApplyModelNode,
         ValidationMetricsNode,
         CutoffAnalysisNode,
-        DummyApplyNode,
     ]:
         reg.register(n)  # type: ignore[type-abstract]  # Protocol subclasses as defaults is intentional
 
@@ -273,8 +269,6 @@ def _register_deferred_nodes(reg: NodeRegistry) -> None:
         RejectInferenceNoneNode,
         ResampleTrainingDataNode,
         SmoteTrainingDataNode,
-        VotingEnsembleNode,
-        WeightedEnsembleNode,
         XGBoostClassifierNode,
     )
 
@@ -296,8 +290,6 @@ def _register_deferred_nodes(reg: NodeRegistry) -> None:
         AlternativeDataManifestNode,
         RejectInferenceNoneNode,
         RejectInferenceAugmentationNode,
-        VotingEnsembleNode,
-        WeightedEnsembleNode,
         DecisionTreeNode,
     ]:
         reg.register(_deferred(n))  # type: ignore[type-abstract]  # Protocol subclasses as defaults is intentional

@@ -9,8 +9,8 @@ from typing import Any
 
 import numpy as np
 import polars as pl
+from polars.exceptions import ComputeError
 
-from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
@@ -67,15 +67,15 @@ class FairnessReportNode(NodeType):
         cutoff = float(params.get("cutoff", 0.5))
 
         reader = ArtifactEvidenceReader(store)
-        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        meta = context.target_metadata()
         if meta:
             target_col = meta.target_column
-            bad = {str(v) for v in meta.bad_values}
+            bad = set(meta.bad_values)
         else:
             target_col = ""
             bad = set()
 
-        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
+        data_arts = context.data_artifacts()
         report: dict[str, Any] = {
             "sensitive_columns": sensitive_columns,
             "min_group_size": min_group_size,
@@ -85,19 +85,10 @@ class FairnessReportNode(NodeType):
 
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
         if model_art:
-            try:
-                model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-            except EvidenceParseError as exc:
-                raise ValueError(
-                    f"fairness_report requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
-                ) from exc
-            if model_typed is None or not model_typed.model_family:
-                raise ValueError(
-                    f"fairness_report requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
-                )
+            reader.require_model(model_art, "cardre.fairness_report")
         for data_art in data_arts:
             role = data_art.role
-            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
+            df = reader.read_dataframe(data_art)
             role_report: dict[str, Any] = {"row_count": df.height}
 
             if "predicted_bad_probability" not in df.columns:
@@ -300,7 +291,7 @@ class ProxyRiskReportNode(NodeType):
         importance_threshold = float(params.get("importance_threshold", 0.05))
 
         reader = ArtifactEvidenceReader(store)
-        train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
+        train_art = context.train_artifact()
         warnings: list[dict[str, Any]] = []
 
         report: dict[str, Any] = {
@@ -315,28 +306,19 @@ class ProxyRiskReportNode(NodeType):
         feature_importance: dict[str, float] = {}
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
         if model_art:
-            try:
-                model_typed = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-            except EvidenceParseError as exc:
-                raise ValueError(
-                    f"fairness_report requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
-                ) from exc
-            if model_typed is None or not model_typed.model_family:
-                raise ValueError(
-                    f"fairness_report requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
-                )
-            model = dict(getattr(model_typed, "_raw", {}))
+            model_typed = reader.require_model(model_art, "cardre.proxy_risk_report")
             model_features = model_typed.features
-            feature_importance = model.get("model_payload", {}).get("feature_importance", {})
+            model_payload = model_typed.model_payload
+            feature_importance = model_payload.get("feature_importance", {})
 
         # Load training data
         if train_art:
             try:
-                df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
+                df = reader.read_dataframe(train_art)
             except Exception as exc:
                 warnings.append({
                     "code": "TRAIN_DATA_READ_FAILED",
-                    "message": f"Could not read training data for fairness analysis: {exc}",
+                    "message": f"Could not read training data for proxy_risk_report: {exc}",
                 })
                 df = None
         else:
@@ -361,7 +343,7 @@ class ProxyRiskReportNode(NodeType):
                             corr = abs(float(df.select(pl.corr(col, feat)).item()))
                             if not np.isnan(corr):
                                 correlations[feat] = round(corr, 4)
-                        except Exception:
+                        except (ValueError, ComputeError):
                             pass
 
             high_corr_features = [
@@ -475,16 +457,17 @@ class AlternativeDataManifestNode(NodeType):
         params = context.validated_params
         data_sources = list(params.get("data_sources", []))
         warnings: list[dict[str, Any]] = []
+        reader = ArtifactEvidenceReader(store)
 
-        train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
+        train_art = context.train_artifact()
         df = None
         if train_art:
             try:
-                df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
+                df = reader.read_dataframe(train_art)
             except Exception as exc:
                 warnings.append({
                     "code": "TRAIN_DATA_READ_FAILED",
-                    "message": f"Could not read training data for fairness analysis: {exc}",
+                    "message": f"Could not read training data for alternative_data_manifest: {exc}",
                 })
                 df = None
 

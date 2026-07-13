@@ -13,13 +13,11 @@ from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import (
     SCHEMA_CALIBRATION_DIAGNOSTICS,
     SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS,
-    SCHEMA_FROZEN_SCORECARD_BUNDLE,
     SCHEMA_SEPARATION_DIAGNOSTICS,
     SCHEMA_VIF_DIAGNOSTICS,
     SCHEMA_WOE_IV_EVIDENCE,
 )
 from cardre.artifacts import write_json_artifact
-from cardre.domain.artifacts import ArtifactRef
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.contracts import NodeType
 
@@ -34,13 +32,14 @@ def _json_float(value: float | None) -> float | None:
 
 
 def _find_model_artifact(
-    reader: ArtifactEvidenceReader, input_artifacts: list[ArtifactRef]
+    reader: ArtifactEvidenceReader, context: ExecutionContext
 ) -> Any:
     """Find the model artifact, excluding frozen scorecard bundle artifacts."""
 
+    bundle = context.find_frozen_bundle()
     non_bundle_artifacts = [
-        a for a in input_artifacts
-        if a.metadata.get("schema_version") != SCHEMA_FROZEN_SCORECARD_BUNDLE
+        a for a in context.input_artifacts
+        if a.artifact_id != (bundle.artifact_id if bundle else "")
     ]
     return reader.find(non_bundle_artifacts, EvidenceKind.MODEL_ARTIFACT)
 
@@ -55,7 +54,7 @@ class CoefficientSignCheckNode(NodeType):
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         reader = ArtifactEvidenceReader(store)
-        model = _find_model_artifact(reader, context.input_artifacts)
+        model = _find_model_artifact(reader, context)
 
         woe_evidence_candidates = [
             artifact
@@ -171,7 +170,7 @@ class SeparationDiagnosticsNode(NodeType):
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         reader = ArtifactEvidenceReader(store)
-        model = _find_model_artifact(reader, context.input_artifacts)
+        model = _find_model_artifact(reader, context)
 
         coeffs_by_feature = {c.variable_name: c for c in model.coefficients}
         variable_results: list[dict[str, Any]] = []
@@ -281,15 +280,13 @@ class VifDiagnosticsNode(NodeType):
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         reader = ArtifactEvidenceReader(store)
-        model = _find_model_artifact(reader, context.input_artifacts)
+        model = _find_model_artifact(reader, context)
 
-        train_artifact = next(
-            (a for a in context.input_artifacts if a.role == "train"), None
-        )
+        train_artifact = context.train_artifact()
         if train_artifact is None:
             raise ValueError("VIF diagnostics requires a WOE-transformed train dataset")
 
-        df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+        df = reader.read_dataframe(train_artifact)
         woe_features = [f for f in model.features if f.endswith("_woe") and f in df.columns]
 
         if len(woe_features) < 2:
@@ -390,7 +387,7 @@ class VifDiagnosticsNode(NodeType):
                             }
                         )
                     warning_count = len(woe_features)
-        except Exception:
+        except np.linalg.LinAlgError:
             for _i, feature in enumerate(woe_features):
                 variable_results.append(
                     {
@@ -440,20 +437,20 @@ class CalibrationDiagnosticsNode(NodeType):
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         reader = ArtifactEvidenceReader(store)
-        model = _find_model_artifact(reader, context.input_artifacts)
-        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        model = _find_model_artifact(reader, context)
+        meta = context.target_metadata()
 
         target_col = meta.target_column if meta is not None else model.target_column
-        good = {str(v) for v in (meta.good_values if meta is not None else [])}
-        bad = {str(v) for v in (meta.bad_values if meta is not None else [])}
+        good = meta.good_values if meta is not None else frozenset()
+        bad = meta.bad_values if meta is not None else frozenset()
         bad_list = list(bad)
 
-        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
+        data_arts = context.data_artifacts()
         roles_results: dict[str, dict[str, Any]] = {}
 
         for data_art in data_arts:
             role = data_art.role
-            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
+            df = reader.read_dataframe(data_art)
 
             if "predicted_bad_probability" not in df.columns or not target_col or target_col not in df.columns:
                 roles_results[role] = {
@@ -555,7 +552,7 @@ class CalibrationDiagnosticsNode(NodeType):
                 from scipy.stats import chi2
 
                 hl_p_value = round(float(chi2.sf(hl_stat, dof)), 6)
-            except Exception:
+            except (ValueError, TypeError):
                 hl_p_value = None
 
             hl_stat_json = _json_float(hl_stat)
@@ -564,7 +561,7 @@ class CalibrationDiagnosticsNode(NodeType):
 
             try:
                 auc = round(float(roc_auc_score(y_bin, y_prob)), 6)
-            except Exception:
+            except (ValueError, TypeError):
                 auc = None
 
             roles_results[role] = {

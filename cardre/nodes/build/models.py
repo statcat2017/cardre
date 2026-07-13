@@ -7,7 +7,7 @@ from typing import Any
 
 import polars as pl
 
-from cardre._evidence.kinds import EvidenceKind, EvidenceNotFoundError, EvidenceParseError
+from cardre._evidence.kinds import EvidenceKind, EvidenceNotFoundError
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import SCHEMA_MODEL_ARTIFACT, SCHEMA_SCORE_SCALING
 from cardre.artifacts import write_json_artifact
@@ -192,14 +192,14 @@ class LogisticRegressionNode(NodeType):
         store = context.store
         params = context.validated_params
         reader = ArtifactEvidenceReader(store)
-        train_artifact = next(a for a in context.input_artifacts if a.role == "train")
+        train_artifact = context.require_train_artifact("LogisticRegressionNode")
 
-        meta = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        meta = context.target_metadata()
         sel_def = reader.find_optional(context.input_artifacts, EvidenceKind.SELECTION_DEFINITION)
 
-        target_column = meta.target_column
-        good_values = {str(v) for v in meta.good_values}
-        bad_values = {str(v) for v in meta.bad_values}
+        target_column = meta.target_column if meta else ""
+        good_values = meta.good_values if meta else frozenset()
+        bad_values = meta.bad_values if meta else frozenset()
 
         if not target_column:
             raise ValueError("Target column is required for logistic regression")
@@ -208,7 +208,7 @@ class LogisticRegressionNode(NodeType):
         if not bad_values:
             raise ValueError("Bad values must be defined for logistic regression")
 
-        df = pl.read_parquet(store.artifact_path(train_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+        df = reader.read_dataframe(train_artifact)
         woe_cols = [c for c in df.columns if c.endswith("_woe")]
         if not woe_cols:
             raise ValueError("No WOE-transformed columns found in training data")
@@ -288,7 +288,7 @@ class LogisticRegressionNode(NodeType):
         )
 
         model = {
-            "schema_version": "cardre.model_artifact.v1",
+            "schema_version": SCHEMA_MODEL_ARTIFACT,
             "model_family": "logistic_regression",
             "target_column": target_column,
             "features": features_list,
@@ -415,16 +415,7 @@ class ScoreScalingNode(NodeType):
                 EvidenceKind.MODEL_ARTIFACT,
                 candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
             )
-        try:
-            model = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-        except EvidenceParseError as exc:
-            raise ValueError(
-                f"Score scaling requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
-            ) from exc
-        if model is None or not model.model_family:
-            raise ValueError(
-                f"Score scaling requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
-            )
+        model = reader.require_model(model_art, "ScoreScalingNode")
 
         # Detect calibration compatibility before building additive scorecard points.
         calibration = model.calibration
@@ -535,9 +526,7 @@ class BuildSummaryReportNode(NodeType):
         model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
         if model_art is None:
             raise ValueError("Build summary requires a model artifact")
-        model = reader.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-        if model is None or not model.model_family:
-            raise ValueError(f"Build summary requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence")
+        model = reader.require_model(model_art, "BuildSummaryNode")
 
         model_features = model.features
         model_intercept = model.intercept
@@ -609,10 +598,11 @@ class DummyFitNode(NodeType):
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
+        reader = ArtifactEvidenceReader(store)
         input_artifact = context.input_artifacts[0]
         params = context.validated_params
 
-        df = pl.read_parquet(store.artifact_path(input_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+        df = reader.read_dataframe(input_artifact)
         dummy_def = {
             "model_type": "dummy",
             "version": self.version,

@@ -109,15 +109,15 @@ class FeatureSelectionFilterNode(NodeType):
         max_features = params.get("max_features")
         exclude_columns = list(params.get("exclude_columns", []))
 
-        train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
+        train_art = context.train_artifact()
         if train_art is None:
             raise ValueError("feature_selection_filter requires a train artifact")
 
-        df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
+        reader = ArtifactEvidenceReader(store)
+        df = reader.read_dataframe(train_art)
 
         # Resolve target column from modelling metadata — fail closed if missing
-        reader = ArtifactEvidenceReader(store)
-        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        meta = context.target_metadata()
         target_column = ""
         if meta is not None:
             target_column = meta.target_column or ""
@@ -284,8 +284,8 @@ class FeatureSelectionFilterNode(NodeType):
                 existing["selected_count"] = len(selected)
                 existing["rejected_count"] = len(rejected)
                 selection = existing
-            except (KeyError, TypeError, AttributeError) as exc:
-                logger.warning("Could not merge existing selection definition: %s", exc)
+            except (KeyError, TypeError, AttributeError):
+                logger.warning("Could not merge existing selection definition", exc_info=True)
 
         art = write_json_artifact(
             store, artifact_type="definition", role="definition",
@@ -358,16 +358,16 @@ class FeatureSelectionEmbeddedNode(NodeType):
         target_column = params.get("target_column", "")
         exclude_columns = list(params.get("exclude_columns", []))
 
-        train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
+        train_art = context.train_artifact()
         def_art = next((a for a in context.input_artifacts if a.role == "definition"), None)
         if train_art is None:
             raise ValueError("feature_selection_embedded requires a train artifact")
 
-        df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
+        reader = ArtifactEvidenceReader(store)
+        df = reader.read_dataframe(train_art)
 
         # Read target metadata from definition
-        reader = ArtifactEvidenceReader(store)
-        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        meta = context.target_metadata()
         if not target_column:
             target_column = meta.target_column if meta is not None else ""
         bad_values = {str(v) for v in (meta.bad_values if meta is not None else [])}
@@ -468,8 +468,8 @@ class FeatureSelectionEmbeddedNode(NodeType):
                 existing["selected_count"] = len(selected)
                 existing["rejected_count"] = len(rejected)
                 selection = existing
-            except (KeyError, TypeError, AttributeError) as exc:
-                logger.warning("Could not merge existing selection definition: %s", exc)
+            except (KeyError, TypeError, AttributeError):
+                logger.warning("Could not merge existing selection definition", exc_info=True)
 
         def_art_out = write_json_artifact(
             store, artifact_type="definition", role="definition",
@@ -548,12 +548,12 @@ class ResampleTrainingDataNode(NodeType):
         sampling_ratio = float(params.get("sampling_ratio", 1.0))
         random_seed = int(params.get("random_seed", 42))
 
-        train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
+        train_art = context.train_artifact()
         if train_art is None:
             raise ValueError("resample_training_data requires a train artifact")
 
         reader = ArtifactEvidenceReader(store)
-        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        meta = context.target_metadata()
         target_col = meta.target_column if meta is not None else ""
         bad_values = {str(v) for v in (meta.bad_values if meta is not None else [])}
 
@@ -562,7 +562,7 @@ class ResampleTrainingDataNode(NodeType):
         if not bad_values:
             raise ValueError("bad_values required for resampling")
 
-        df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
+        df = reader.read_dataframe(train_art)
 
         if target_col not in df.columns:
             raise ValueError(f"Target column {target_col!r} not found")
@@ -718,20 +718,20 @@ class SmoteTrainingDataNode(NodeType):
         sampling_ratio = float(params.get("sampling_ratio", 1.0))
         random_seed = int(params.get("random_seed", 42))
 
-        train_art = next((a for a in context.input_artifacts if a.role == "train"), None)
+        train_art = context.train_artifact()
         if train_art is None:
             raise ValueError("smote_training_data requires a train artifact")
 
         reader = ArtifactEvidenceReader(store)
-        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        meta = context.target_metadata()
         target_col = meta.target_column if meta is not None else ""
-        good_values = {str(v) for v in (meta.good_values if meta is not None else [])}
-        bad_values = {str(v) for v in (meta.bad_values if meta is not None else [])}
+        good_values = meta.good_values if meta is not None else frozenset()
+        bad_values = meta.bad_values if meta is not None else frozenset()
 
         if not target_col or not bad_values:
             raise ValueError("Target column and bad_values required for SMOTE")
 
-        df = pl.read_parquet(store.artifact_path(train_art))  # cardre-allow-artifact-read: dataset-frame-input
+        df = reader.read_dataframe(train_art)
 
         if target_col not in df.columns:
             raise ValueError(f"Target column {target_col!r} not found")

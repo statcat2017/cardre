@@ -11,11 +11,9 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import (
     SCHEMA_CUTOFF_ANALYSIS,
-    SCHEMA_FROZEN_SCORECARD_BUNDLE,
     SCHEMA_SCORE_APPLICATION_EVIDENCE,
     SCHEMA_VALIDATION_METRICS,
 )
@@ -191,10 +189,10 @@ class ValidationMetricsNode(NodeType):
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         reader = ArtifactEvidenceReader(store)
-        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        meta = context.target_metadata()
         target_col = meta.target_column if meta is not None else ""
-        good = {str(v) for v in (meta.good_values if meta is not None else [])}
-        bad = {str(v) for v in (meta.bad_values if meta is not None else [])}
+        good = meta.good_values if meta is not None else frozenset()
+        bad = meta.bad_values if meta is not None else frozenset()
         bad_list = list(bad)
 
         params = context.validated_params
@@ -208,18 +206,14 @@ class ValidationMetricsNode(NodeType):
         fail_on_missing_target = params.get("fail_on_missing_target", True)
 
         # Detect linked artifacts
-        bundle_art = next(
-            (a for a in context.input_artifacts
-             if a.metadata.get("schema_version") == SCHEMA_FROZEN_SCORECARD_BUNDLE),
-            None,
-        )
+        bundle_art = context.find_frozen_bundle()
         score_evidence_art = next(
             (a for a in context.input_artifacts
              if a.metadata.get("schema_version") == SCHEMA_SCORE_APPLICATION_EVIDENCE),
             None,
         )
 
-        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
+        data_arts = context.data_artifacts()
         roles_metrics: dict[str, JsonDict] = {}
         psi_data: dict[str, pl.Series] = {}
         gates: list[JsonDict] = []
@@ -251,7 +245,7 @@ class ValidationMetricsNode(NodeType):
 
         for data_art in data_arts:
             role = data_art.role
-            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
+            df = reader.read_dataframe(data_art)
             n = df.height
 
             if "predicted_bad_probability" not in df.columns:
@@ -267,7 +261,7 @@ class ValidationMetricsNode(NodeType):
                     })
                 continue
 
-            y_bin, known_mask, warnings = self._derive_y_bin(df, target_col, good, bad)
+            y_bin, known_mask, warnings = self._derive_y_bin(df, target_col, set(good), set(bad))
             y_prob_all = df["predicted_bad_probability"].to_numpy()
             has_score = "score" in df.columns
             if fail_on_missing_score and not has_score:
@@ -653,17 +647,17 @@ class ThresholdOptimizationNode(NodeType):
         cost_fp = float(params.get("cost_fp", 1.0))
         cost_fn = float(params.get("cost_fn", 10.0))
 
-        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        meta = context.target_metadata()
         target_col = meta.target_column if meta is not None else ""
-        bad = {str(v) for v in (meta.bad_values if meta is not None else [])}
+        bad = meta.bad_values if meta is not None else frozenset()
         bad_list = list(bad)
 
-        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
+        data_arts = context.data_artifacts()
         report: JsonDict = {"objective": objective, "cost_fp": cost_fp, "cost_fn": cost_fn, "roles": {}}
 
         for data_art in data_arts:
             role = data_art.role
-            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
+            df = reader.read_dataframe(data_art)
 
             if "predicted_bad_probability" not in df.columns:
                 report["roles"][role] = {"error": "Missing predicted_bad_probability"}
@@ -807,19 +801,19 @@ class CutoffAnalysisNode(NodeType):
         if band_count < 2:
             raise ValueError(f"band_count must be at least 2, got {band_count}")
 
-        meta = reader.find_optional(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+        meta = context.target_metadata()
         target_col = meta.target_column if meta is not None else ""
-        good = {str(v) for v in (meta.good_values if meta is not None else [])}
-        bad = {str(v) for v in (meta.bad_values if meta is not None else [])}
+        good = meta.good_values if meta is not None else frozenset()
+        bad = meta.bad_values if meta is not None else frozenset()
         bad_list = list(bad)
 
-        data_arts = [a for a in context.input_artifacts if a.role in ("train", "test", "oot")]
+        data_arts = context.data_artifacts()
         cutoff_tables: dict[str, list[JsonDict]] = {}
         warnings: list[JsonDict] = []
 
         for data_art in data_arts:
             role = data_art.role
-            df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
+            df = reader.read_dataframe(data_art)
             if "score" not in df.columns or "predicted_bad_probability" not in df.columns:
                 continue
 
