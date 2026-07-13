@@ -6,7 +6,7 @@ every change. Follow the steps in order — each step depends on the
 previous one.
 
 **Do not change API response shapes.** Only the construction site
-moves. **Do not add schema changes** (A7 is deferred). **Do not create
+moves. **Do not create
 `NodeTypeRegistry`, `ProjectListService`, `ExportService` class, or
 `ReportService` class.** **Do not rename `_run_mappings.py`.**
 
@@ -457,6 +457,112 @@ Add `ChampionRepository` to the imports and `__all__`.
   and `_branch_filter("x")` → `("AND branch_id = ?", ["x"])`.
 - Add a test that `ChampionRepository` returns the same results as the
   old `BranchRepository` accessors (use a fixture with champion data).
+
+---
+
+## Step 2b — A7: active_step_id column + schema migration
+
+### 2b-1 — Update `cardre/store/schema.py`
+
+Bump `V2_STORE_SCHEMA_VERSION` from 100 to 101 and add `active_step_id
+TEXT` to the `runs` table DDL (before `metadata_json`):
+
+```python
+V2_STORE_SCHEMA_VERSION = 101
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS runs (
+    ...
+    heartbeat_at TEXT,
+    active_step_id TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+```
+
+Update the module docstring to describe version history:
+- Version 100: original v2 schema (hard break from v1).
+- Version 101: added `active_step_id` column to `runs`.
+
+### 2b-2 — Create `cardre/store/_schema_version.py`
+
+Extract the schema version check and migration runner from `db.py` into
+a new module. The `check_and_migrate(conn)` function:
+
+1. Ensures `store_meta` table exists.
+2. Validates `schema_family == "cardre-v2"`.
+3. Accepts `stored_version <= V2_STORE_SCHEMA_VERSION`.
+4. If `stored_version < V2_STORE_SCHEMA_VERSION`, runs `_run_migrations`.
+5. Updates `store_meta.schema_version` to current.
+
+The `_run_migrations(conn, from_version)` function has a
+`dict[int, list[str]]` mapping version → SQL statements. Migration
+100→101: `["ALTER TABLE runs ADD COLUMN active_step_id TEXT"]`.
+
+### 2b-3 — Update `cardre/store/db.py`
+
+Replace the old `_check_schema_version` / `_ensure_store_meta_table` /
+`_run_migrations` methods with a call to `_check_and_migrate(conn)`:
+
+```python
+from cardre.store._schema_version import check_and_migrate as _check_and_migrate
+
+# In open():
+conn = self._connect()
+_check_and_migrate(conn)
+```
+
+Delete `_ensure_store_meta_table`, `_check_schema_version`, and
+`_run_migrations` from `db.py`.
+
+### 2b-4 — Update `cardre/store/run_repo.py`
+
+Replace `get_active_step` and `set_active_step` to use the column
+directly instead of the `metadata_json` blob:
+
+```python
+def set_active_step(self, run_id: str, step_id: str | None) -> None:
+    self._store.execute(
+        "UPDATE runs SET active_step_id = ? WHERE run_id = ?",
+        (step_id, run_id),
+    )
+
+def get_active_step(self, run_id: str) -> str | None:
+    row = self._store.execute(
+        "SELECT active_step_id FROM runs WHERE run_id = ?", (run_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    return row["active_step_id"]  # type: ignore[no-any-return]
+```
+
+Remove the unused `cast` import if no other code uses it.
+
+### 2b-5 — Add migration regression test
+
+In `tests/test_store_repos.py`, add `TestSchemaMigration` class:
+
+```python
+class TestSchemaMigration:
+    def test_v100_store_migrated_to_v101_adds_active_step_id(self, tmp_path):
+        """A store created at schema version 100 is migrated to 101 on open,
+        adding the ``active_step_id`` column to the ``runs`` table."""
+        # 1. Create a v100 store manually with a runs row
+        # 2. Open it with ProjectStore (triggers migration)
+        # 3. Verify active_step_id column works (set + get)
+```
+
+The test creates a v100 store with `schema_version='100'`, inserts a
+`runs` row (without `active_step_id` column), opens it with
+`ProjectStore` (which triggers the migration), and verifies
+`get_active_step`/`set_active_step` work on the migrated store.
+
+### Tests
+
+- `tests/test_store_repos.py` — existing `test_run_repo_set_active_step`
+  passes unchanged (uses the new column).
+- New `TestSchemaMigration::test_v100_store_migrated_to_v101` proves
+  migration works.
 
 ---
 
