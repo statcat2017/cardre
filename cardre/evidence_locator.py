@@ -1,8 +1,8 @@
 """Evidence Locator — the single lookup path for run-step evidence.
 
 Implements ADR-0005 §3: the branch→full→plan fallback lives here and only
-here.  Services call ``EvidenceLocator.resolve`` with a named policy; they
-do not reimplement fallback logic.
+here. Services call ``EvidenceLocator.resolve`` directly for evidence lookup,
+and launch coordination uses the same seam for branch-current checks.
 
 The locator walks ``evidence_edges`` → ``run_steps`` (the v2 two-level
 model), applies an optional fingerprint match against the current

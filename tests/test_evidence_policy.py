@@ -50,6 +50,49 @@ def _seed_minimal_plan(store):
     return pv_id
 
 
+def _seed_current_branch_runs(store):
+    """Seed fresh baseline + branch runs so branch-current can short-circuit."""
+    pv_id = _seed_minimal_plan(store)
+    now = utc_now_iso()
+    baseline_run_id = str(uuid.uuid4())
+    branch_run_id = str(uuid.uuid4())
+    branch_id = "branch-current"
+
+    store.execute(
+        "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, finished_at) "
+        "VALUES (?, ?, 'succeeded', ?, ?, ?)",
+        (baseline_run_id, pv_id, now, now, now),
+    )
+    store.execute(
+        "INSERT INTO runs (run_id, plan_version_id, status, branch_id, created_at, started_at, finished_at) "
+        "VALUES (?, ?, 'succeeded', ?, ?, ?, ?)",
+        (branch_run_id, pv_id, branch_id, now, now, now),
+    )
+
+    for run_id in (baseline_run_id, branch_run_id):
+        store.execute(
+            "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, "
+            " execution_fingerprint_json, warnings_json, errors_json) "
+            "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, ?, '[]', '[]')",
+            (
+                str(uuid.uuid4()),
+                run_id,
+                "step-a",
+                pv_id,
+                now,
+                now,
+                json.dumps({
+                    "params_hash": "hash001",
+                    "node_type": "cardre.noop",
+                    "node_version": "1",
+                    "output_artifact_logical_hashes": [],
+                }),
+            ),
+        )
+
+    return pv_id, branch_id, branch_run_id
+
+
 def test_evidence_check_result_type_exists():
     """EvidenceCheckResult is a typed result with status and diagnostics."""
     from cardre.evidence_locator import EvidenceCheckResult
@@ -73,6 +116,17 @@ def test_missing_evidence_returns_missing(store):
     result = service.check_branch_current(pv_id, "nonexistent-branch")
     assert result.status == "missing"
     assert result.run_id is None
+
+
+def test_current_branch_returns_existing_run(store):
+    """A fresh branch with an existing successful run short-circuits."""
+    from cardre.evidence_locator import EvidenceLocator
+
+    pv_id, branch_id, branch_run_id = _seed_current_branch_runs(store)
+    service = EvidenceLocator(store)
+    result = service.check_branch_current(pv_id, branch_id)
+    assert result.status == "current"
+    assert result.run_id == branch_run_id
 
 
 def test_evidence_check_does_not_swallow_db_errors(store, monkeypatch):

@@ -60,6 +60,49 @@ def _seed_minimal_plan(store):
     return pv_id
 
 
+def _seed_current_branch_runs(store):
+    """Seed fresh baseline + branch runs so branch launch short-circuits."""
+    pv_id = _seed_minimal_plan(store)
+    now = utc_now_iso()
+    baseline_run_id = str(uuid.uuid4())
+    branch_run_id = str(uuid.uuid4())
+    branch_id = "branch-current"
+
+    store.execute(
+        "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, finished_at) "
+        "VALUES (?, ?, 'succeeded', ?, ?, ?)",
+        (baseline_run_id, pv_id, now, now, now),
+    )
+    store.execute(
+        "INSERT INTO runs (run_id, plan_version_id, status, branch_id, created_at, started_at, finished_at) "
+        "VALUES (?, ?, 'succeeded', ?, ?, ?, ?)",
+        (branch_run_id, pv_id, branch_id, now, now, now),
+    )
+
+    for run_id in (baseline_run_id, branch_run_id):
+        store.execute(
+            "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, "
+            " execution_fingerprint_json, warnings_json, errors_json) "
+            "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, ?, '[]', '[]')",
+            (
+                str(uuid.uuid4()),
+                run_id,
+                "step-a",
+                pv_id,
+                now,
+                now,
+                json.dumps({
+                    "params_hash": "hash001",
+                    "node_type": "cardre.noop",
+                    "node_version": "1",
+                    "output_artifact_logical_hashes": [],
+                }),
+            ),
+        )
+
+    return pv_id, branch_id, branch_run_id
+
+
 class TestRunCoordinatorSync:
     """Sync execution path."""
 
@@ -278,6 +321,24 @@ class TestExecuteCreatedRun:
 
 class TestShortCircuit:
     """Short-circuit logic for branch and to_node scopes."""
+
+    def test_branch_short_circuit_returns_existing_run(self, tmp_path, monkeypatch):
+        store = _make_store(tmp_path)
+        pv_id, branch_id, branch_run_id = _seed_current_branch_runs(store)
+        monkeypatch.setenv("CARDRE_GOVERNANCE", "1")
+
+        from cardre.services.run_coordinator import RunCoordinator
+
+        coordinator = RunCoordinator(store)
+        summary = coordinator.run(
+            pv_id,
+            run_scope="branch",
+            branch_id=branch_id,
+            sync=True,
+        )
+
+        assert summary.run_id == branch_run_id
+        assert summary.plan_version_id == pv_id
 
     def test_to_node_short_circuit(self, tmp_path):
         """A to_node run is rejected early with RunScopeNotAvailableForLaunch."""

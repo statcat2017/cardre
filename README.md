@@ -108,7 +108,7 @@ The v2 refactor is complete. The engine supports:
 - Plan mutation (draft/committed, atomic commands)
 - Run coordination (sync/async, stale-run recovery, cancellation)
 - Manual binning with atomic review commands
-- Evidence resolution with four named policies
+- Evidence lookup centralized in `EvidenceLocator`, with branch-current short-circuit checks at launch time
 - Audit export (evidence trail as the product)
 
 ## Documentation
