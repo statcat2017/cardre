@@ -180,17 +180,17 @@ def test_logistic_regression_model_artifact_shape(
     assert raw["model_family"] == "logistic_regression"
     assert raw["target_column"] == "default_flag"
 
-    # Features: the two WOE columns
-    assert raw["features"] == ["age_woe", "income_woe"]
+    # Features: the two WOE columns (in feature_contract)
+    assert raw["feature_contract"]["features"] == ["age_woe", "income_woe"]
 
     # Source variables: derived from WOE column names (no selection definition)
     assert raw["source_variables"] == ["age", "income"]
 
-    # Intercept and coefficients: rounded to 6 decimal places
-    assert isinstance(raw["intercept"], float)
-    assert len(str(raw["intercept"]).split(".")[1]) <= 6
-    assert set(raw["coefficients"].keys()) == {"age_woe", "income_woe"}
-    for coef in raw["coefficients"].values():
+    # Intercept and coefficients: in model_payload, rounded to 6 decimal places
+    assert isinstance(raw["model_payload"]["intercept"], float)
+    assert len(str(raw["model_payload"]["intercept"]).split(".")[1]) <= 6
+    assert set(raw["model_payload"]["coefficients"].keys()) == {"age_woe", "income_woe"}
+    for coef in raw["model_payload"]["coefficients"].values():
         assert isinstance(coef, float)
         assert len(str(coef).split(".")[1]) <= 6
 

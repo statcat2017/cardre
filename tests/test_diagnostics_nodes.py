@@ -32,8 +32,8 @@ def _make_model_artifact(
         "schema_version": SCHEMA_MODEL_ARTIFACT,
         "model_family": "logistic_regression",
         "target_column": target_column,
-        "features": features,
-        "coefficients": coefficients,
+        "feature_contract": {"features": features},
+        "model_payload": {"coefficients": coefficients},
         "training": training or {"converged": True, "iterations": 50},
         "warnings": [],
     }

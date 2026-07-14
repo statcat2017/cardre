@@ -84,10 +84,8 @@ class FrozenScorecardBundleNode(NodeType):
 
         model_features = model.features
         raw_fc = model.feature_contract
-        transformation_strategy = raw_fc.get("transformation_strategy", "woe")
-        order_hash = raw_fc.get(
-            "order_hash", json_logical_hash({"features": model_features})
-        )
+        transformation_strategy = raw_fc.transformation_strategy or "woe"
+        order_hash = raw_fc.order_hash or json_logical_hash({"features": model_features})
 
         source_variables = model.source_variables
         if source_variables is None:
@@ -103,10 +101,8 @@ class FrozenScorecardBundleNode(NodeType):
             "source_variables": source_variables,
             "transformation_strategy": transformation_strategy,
             "order_hash": order_hash,
-            "missing_policy": raw_fc.get("missing_policy", "error"),
-            "unknown_category_policy": raw_fc.get(
-                "unknown_category_policy", "error"
-            ),
+            "missing_policy": raw_fc.missing_policy or "error",
+            "unknown_category_policy": raw_fc.unknown_category_policy or "error",
         }
 
         base_odds = scorecard.base_odds

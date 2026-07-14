@@ -47,9 +47,6 @@ class FeatureContract:
             unknown_category_policy=data.get("unknown_category_policy", "error"),
         )
 
-    def get(self, key: str, default: Any = None) -> Any:
-        return self.to_dict().get(key, default)
-
 
 @dataclass
 class PredictionContract:
@@ -121,9 +118,6 @@ class TrainingMetadata:
             iterations=data.get("iterations"),
             tuning_status=data.get("tuning_status"),
         )
-
-    def get(self, key: str, default: Any = None) -> Any:
-        return self.to_dict().get(key, default)
 
 
 @dataclass
@@ -296,8 +290,6 @@ class ModelArtifactV1:
             "training_role": self.training_role,
             "target_column": self.target_column,
             "target_event_value": self.target_event_value,
-            "features": self.features,
-            "coefficients": self.coefficients_dict,
             "class_mapping": dict(self.class_mapping),
             "probability_column_index": self.probability_column_index,
             "feature_contract": self.feature_contract.to_dict(),
@@ -318,9 +310,6 @@ class ModelArtifactV1:
             "warnings": list(self.warnings),
         }
 
-        if self.has_explicit_intercept:
-            result["intercept"] = self.intercept
-
         if self.source_variables is not None:
             result["source_variables"] = list(self.source_variables)
         return result
@@ -328,13 +317,12 @@ class ModelArtifactV1:
     @classmethod
     def from_dict(cls, data: dict[str, Any], artifact_id: str = "") -> ModelArtifactV1:
         """Deserialize from a JSON dict."""
+        model_family = data.get("model_family", "")
+        if not model_family:
+            raise ValueError("ModelArtifactV1 requires a non-empty 'model_family'.")
+
         model_payload = dict(data.get("model_payload", {}))
-        if not model_payload and ("intercept" in data or data.get("coefficients")):
-            model_payload = {
-                "coefficients": dict(data.get("coefficients", {})),
-                **({"intercept": data["intercept"]} if "intercept" in data else {}),
-            }
-        coeffs = model_payload.get("coefficients", data.get("coefficients", {}))
+        coeffs = model_payload.get("coefficients", {})
         if isinstance(coeffs, list):
             raise ValueError(
                 "ModelArtifact coefficients must be a dict {variable: coefficient}; "
@@ -342,14 +330,12 @@ class ModelArtifactV1:
             )
 
         feature_contract = FeatureContract.from_dict(data.get("feature_contract", {}))
-        if not feature_contract.features and data.get("features"):
-            feature_contract.features = list(data.get("features", []))
-        if not feature_contract.transformation_strategy and data.get("feature_strategy"):
-            feature_contract.transformation_strategy = str(data.get("feature_strategy"))
+        if not feature_contract.features:
+            raise ValueError("ModelArtifactV1 requires feature_contract.features to be a non-empty list.")
 
         return cls(
             schema_version=data.get("schema_version", MODEL_ARTIFACT_SCHEMA_VERSION),
-            model_family=data.get("model_family", "logistic_regression"),
+            model_family=model_family,
             input_artifact_id=data.get("input_artifact_id", ""),
             training_role=data.get("training_role", "train"),
             target_column=data.get("target_column", ""),

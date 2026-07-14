@@ -235,8 +235,8 @@ class SeparationDiagnosticsNode(NodeType):
                 }
             )
 
-        converged = bool(model.training.get("converged", False))
-        iterations = int(model.training.get("iterations", 0))
+        converged = bool(model.training.converged or False)
+        iterations = int(model.training.iterations or 0)
 
         payload = {
             "schema_version": SCHEMA_SEPARATION_DIAGNOSTICS,

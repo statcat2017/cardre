@@ -68,9 +68,6 @@ def model_artifact_payload() -> dict:
         "schema_version": SCHEMA_MODEL_ARTIFACT,
         "model_family": "logistic_regression",
         "target_column": "default_flag",
-        "intercept": -0.5,
-        "coefficients": {"age_woe": 1.2, "income_woe": -0.8},
-        "features": ["age_woe", "income_woe"],
         "source_variables": ["age", "income"],
         "class_mapping": {"good": "0", "bad": "1"},
         "bad_class_label": "1",
@@ -84,6 +81,10 @@ def model_artifact_payload() -> dict:
             "unknown_category_policy": "error",
         },
         "feature_order_hash": "abc",
+        "model_payload": {
+            "intercept": -0.5,
+            "coefficients": {"age_woe": 1.2, "income_woe": -0.8},
+        },
         "training": {"row_count": 100, "converged": True, "iterations": 15, "params": {"C": 1.0}},
         "warnings": [],
     }
@@ -158,7 +159,7 @@ def _build_score_scaling_context(store, tmp_path, model_payload, bin_def_payload
         step_spec=step_spec, parent_run_steps=[],
         input_artifacts=[model_ref, bin_ref, woe_ref],
         validated_params={"base_score": 600, "base_odds": "50:1", "points_to_double_odds": 20.0,
-                          "score_direction": "higher_is_lower_risk"},
+                          "higher_score_is_lower_risk": True},
         runtime_metadata={},
     )
 

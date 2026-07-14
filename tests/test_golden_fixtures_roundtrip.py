@@ -16,7 +16,7 @@ from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.models.binning import BinDefinition, ManualBinningOverrides
 from cardre.domain.artifacts import ArtifactRef
 from cardre.engine.binning.definition import LifecycleBin, LifecycleBinDefinition, LifecycleVariable
-from cardre.modeling.schema import ModelArtifactV1
+from cardre.modeling.schema import FeatureContract, ModelArtifactV1
 from cardre.store.db import ProjectStore
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -76,18 +76,20 @@ class TestModelArtifactRoundTrip:
         assert obj.bad_class_label == str(data.get("bad_class_label", ""))
         assert obj.feature_strategy == str(data.get("feature_strategy", ""))
 
-    def test_from_dict_handles_empty(self):
-        obj = ModelArtifactV1.from_dict({})
-        assert obj.schema_version == "cardre.model_artifact.v1"
-        assert obj.model_family == "logistic_regression"
+    def test_from_dict_rejects_empty(self):
+        import pytest
+        with pytest.raises(ValueError, match="requires a non-empty 'model_family'"):
+            ModelArtifactV1.from_dict({})
 
-    def test_to_dict_round_trip_empty(self):
-        obj = ModelArtifactV1()
+    def test_to_dict_round_trip_minimal(self):
+        obj = ModelArtifactV1(
+            model_family="test_family",
+            feature_contract=FeatureContract(features=["x"]),
+            model_payload={"coefficients": {"x": 1.0}},
+        )
         d = obj.to_dict()
         obj2 = ModelArtifactV1.from_dict(d)
         re = obj2.to_dict()
-        # to_dict() adds synthetic top-level keys derived from model_payload
-        # and feature_contract.  Only check that every original key survives.
         for k, v in d.items():
             assert k in re, f"Round trip dropped key {k!r}"
             assert re[k] == v, f"Round trip changed value for key {k!r}"
