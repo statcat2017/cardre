@@ -165,21 +165,17 @@ class SeparationDiagnosticsNode(NodeType):
     output_roles: list[str] = ["report"]
 
     SEPARATION_COEFFICIENT_THRESHOLD = 10.0
-    SEPARATION_SE_THRESHOLD = 10.0
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
         reader = ArtifactEvidenceReader(store)
         model = _find_model_artifact(reader, context)
 
-        coeffs_by_feature = {c.variable_name: c for c in model.coefficients}
         variable_results: list[dict[str, Any]] = []
         warning_count = 0
 
         for feature_name in model.features:
             coefficient = float(model.coefficients_dict.get(feature_name, 0.0))
-            coeff_obj = coeffs_by_feature.get(feature_name)
-            standard_error = coeff_obj.standard_error if coeff_obj is not None else None
 
             status = "pass"
             reasons: list[str] = []
@@ -199,28 +195,10 @@ class SeparationDiagnosticsNode(NodeType):
                     f"possible quasi-complete separation."
                 )
 
-            if standard_error is not None:
-                se_val = float(standard_error)
-                if math.isinf(se_val) or math.isnan(se_val):
-                    if status != "fail":
-                        status = "fail"
-                    reasons.append(
-                        f"Standard error is {'infinite' if math.isinf(se_val) else 'NaN'} "
-                        f"for {feature_name!r}, indicating complete separation."
-                    )
-                elif se_val > self.SEPARATION_SE_THRESHOLD:
-                    if status == "pass":
-                        status = "warning"
-                    reasons.append(
-                        f"Standard error ({se_val:.2f}) exceeds threshold "
-                        f"({self.SEPARATION_SE_THRESHOLD}), indicating possible "
-                        f"quasi-complete separation."
-                    )
-
             if status in ("fail", "warning"):
                 warning_count += 1
 
-            reason = " ".join(reasons) if reasons else "Coefficient magnitude and standard error are within normal range."
+            reason = " ".join(reasons) if reasons else "Coefficient magnitude is within normal range."
 
             variable_results.append(
                 {
@@ -228,21 +206,18 @@ class SeparationDiagnosticsNode(NodeType):
                     "coefficient": _json_float(coefficient),
                     "coefficient_is_infinite": math.isinf(coefficient),
                     "abs_coefficient": _json_float(abs(coefficient)),
-                    "standard_error": _json_float(standard_error),
-                    "standard_error_is_infinite": standard_error is not None and (math.isinf(float(standard_error)) or math.isnan(float(standard_error))),
                     "status": status,
                     "reason": reason,
                 }
             )
 
-        converged = bool(model.training.get("converged", False))
-        iterations = int(model.training.get("iterations", 0))
+        converged = bool(model.training.converged or False)
+        iterations = int(model.training.iterations or 0)
 
         payload = {
             "schema_version": SCHEMA_SEPARATION_DIAGNOSTICS,
             "target_column": model.target_column,
             "threshold": self.SEPARATION_COEFFICIENT_THRESHOLD,
-            "standard_error_threshold": self.SEPARATION_SE_THRESHOLD,
             "model_converged": converged,
             "model_iterations": iterations,
             "variables": variable_results,

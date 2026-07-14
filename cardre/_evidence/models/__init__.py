@@ -39,7 +39,7 @@ from cardre._evidence.models.manifest import (
     ReportBundleEvidence,
     TechnicalManifestIndex,
 )
-from cardre._evidence.models.model import Coefficient, ModelArtifact, ScoreScaling
+from cardre._evidence.models.model import ScoreScaling
 from cardre._evidence.models.sample import (
     ExclusionSummary,
     ModellingMetadata,
@@ -76,7 +76,6 @@ __all__ = [
     "CalibrationDiagnostics",
     "CalibrationRole",
     "ClusterMember",
-    "Coefficient",
     "CoefficientSignDiagnostics",
     "CoefficientSignEntry",
     "ComparisonArtifact",
@@ -91,7 +90,6 @@ __all__ = [
     "LimitationItem",
     "ManualBinningOverride",
     "ManualBinningOverrides",
-    "ModelArtifact",
     "ModellingMetadata",
     "ProfileSummary",
     "ProxyRiskReport",

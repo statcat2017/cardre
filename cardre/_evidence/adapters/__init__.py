@@ -44,7 +44,7 @@ from cardre._evidence.models.manifest import (
     ReportBundleEvidence,
     TechnicalManifestIndex,
 )
-from cardre._evidence.models.model import ModelArtifact, ScoreScaling
+from cardre._evidence.models.model import ScoreScaling
 from cardre._evidence.models.sample import (
     ExclusionSummary,
     ModellingMetadata,
@@ -56,6 +56,7 @@ from cardre._evidence.models.validation import CutoffAnalysis, ValidationMetrics
 from cardre._evidence.models.woe import IvTable, WoeIvEvidence, WoeTable, WoeTransformEvidence
 from cardre._evidence.profiles import EVIDENCE_PROFILES, _Profile
 from cardre.domain.artifacts import ArtifactRef
+from cardre.modeling.schema import ModelArtifactV1
 from cardre.store import ProjectStore
 
 
@@ -84,7 +85,7 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, AdapterSpec] = {
     ),
     EvidenceKind.ENSEMBLE_MODEL_ARTIFACT: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.ENSEMBLE_MODEL_ARTIFACT],
-        parse=lambda path, art, store: ModelArtifact.from_json(read_json_payload(path), artifact_id=art.artifact_id),
+        parse=lambda path, art, store: ModelArtifactV1.from_dict(read_json_payload(path), artifact_id=art.artifact_id),
     ),
     EvidenceKind.EXCLUSION_SUMMARY: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.EXCLUSION_SUMMARY],
@@ -128,7 +129,7 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, AdapterSpec] = {
     ),
     EvidenceKind.MODEL_ARTIFACT: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.MODEL_ARTIFACT],
-        parse=lambda path, art, store: ModelArtifact.from_json(read_json_payload(path), artifact_id=art.artifact_id),
+        parse=lambda path, art, store: ModelArtifactV1.from_dict(read_json_payload(path), artifact_id=art.artifact_id),
     ),
     EvidenceKind.PROFILE_SUMMARY: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.PROFILE_SUMMARY],

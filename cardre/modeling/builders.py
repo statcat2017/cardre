@@ -42,13 +42,11 @@ def build_model_artifact(
         "schema_version": "cardre.model_artifact.v1",
         "model_family": model_family,
         "target_column": target_column,
-        "features": features,
         "class_mapping": class_mapping,
         "bad_class_label": str(bad_class),
         "target_event_value": str(bad_class),
         "probability_column_index": prob_col_idx,
         "feature_order_hash": feature_order_hash,
-        "feature_strategy": feature_strategy,
         "feature_contract": {
             "features": features,
             "transformation_strategy": feature_strategy,

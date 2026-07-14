@@ -128,9 +128,11 @@ def apply_logistic(
     bundle_artifact_id: str | None = None,
 ) -> NodeOutput:
     store = context.store
-    features = model.get("features", [])
-    intercept = float(model.get("intercept", 0))
-    coefficients = model.get("coefficients", {})
+    fc = model.get("feature_contract", {})
+    features = fc.get("features", [])
+    mp = model.get("model_payload", {})
+    intercept = float(mp.get("intercept", 0))
+    coefficients = mp.get("coefficients", {})
     has_scorecard = scorecard_parsed is not None
 
     if has_scorecard:
@@ -231,7 +233,7 @@ def apply_sklearn_estimator(
 
     estimator_ref = model.get("estimator_reference", {})
     estimator_artifact_id = estimator_ref.get("artifact_id", "")
-    features = model.get("feature_contract", {}).get("features", []) or model.get("features", [])
+    features = model.get("feature_contract", {}).get("features", [])
     prob_col_idx = model.get("probability_column_index", 1)
 
     if not estimator_artifact_id:

@@ -41,7 +41,7 @@ NON_DETERMINISTIC_SUFFIXES: set[str] = {
     "hosmer_lemeshow_p_value", "hosmer_lemeshow_statistic",
     "n_bins",
     # Score scaling varies per run
-    "points", "pdo", "score", "odds",
+    "points", "points_to_double_odds", "score", "odds",
     # Cutoff analysis varies per run
     "true_positive_rate", "false_positive_rate", "true_negative_rate",
     "false_negative_rate", "precision", "recall", "f1_score",

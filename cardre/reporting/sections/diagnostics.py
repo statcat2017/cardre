@@ -66,8 +66,8 @@ class SeparationSection(SectionCollector):
                 coefficient=v.coefficient,
                 coefficient_is_infinite=v.coefficient_is_infinite,
                 abs_coefficient=v.abs_coefficient,
-                standard_error=v.standard_error,
-                standard_error_is_infinite=v.standard_error_is_infinite,
+                standard_error=None,
+                standard_error_is_infinite=False,
                 status=v.status,
                 reason=v.reason,
             )

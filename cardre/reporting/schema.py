@@ -201,7 +201,7 @@ class ScoreScalingInfo(BaseModel):
     points_to_double_odds: int = 20
     factor: float = 0.0
     offset: float = 0.0
-    score_direction: str = "higher_is_better"
+    score_direction: str = "higher_is_lower_risk"
     rounding: str = "nearest_integer"
     min_score: int = 0
     max_score: int = 0

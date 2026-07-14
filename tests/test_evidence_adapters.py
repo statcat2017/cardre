@@ -222,15 +222,25 @@ _JSON_KIND_FIXTURES = [
     (EvidenceKind.SELECTION_DEFINITION, "definition", "definition",
      "cardre.selection_definition.v1", {"selected": [{"variable": "age"}]}),
     (EvidenceKind.MODEL_ARTIFACT, "model", "model",
-     "cardre.model_artifact.v1", {"model_family": "logistic_regression", "coefficients": {"age": 1.5}}),
+     "cardre.model_artifact.v1", {
+         "schema_version": "cardre.model_artifact.v1",
+         "model_family": "logistic_regression",
+         "target_column": "y",
+         "target_event_value": "bad",
+         "class_mapping": {"good": "good", "bad": "bad"},
+         "probability_column_index": 1,
+         "feature_contract": {"features": ["age"]},
+         "model_payload": {"intercept": 0.0, "coefficients": {"age": 1.5}},
+         "training": {"row_count": 100},
+     }),
     (EvidenceKind.SCORE_SCALING, "scorecard", "scorecard",
      "cardre.score_scaling.v1", {"factor": 20, "offset": 500}),
     (EvidenceKind.WOE_IV_EVIDENCE, "report", "report",
      "cardre.woe_iv_evidence.v1", {"variables": [{"variable": "age"}]}),
     (EvidenceKind.VALIDATION_METRICS, "report", "report",
-     "cardre.validation_metrics.v1", {"metrics": {"train": {"auc": 0.75}}}),
+     "cardre.validation_metrics.v1", {"roles": {"train": {"auc": 0.75}}, "stability": {}}),
     (EvidenceKind.CUTOFF_ANALYSIS, "report", "report",
-     "cardre.cutoff_analysis.v1", {"cutoff_tables": {"train": [{"score": 100}]}}),
+     "cardre.cutoff_analysis.v1", {"cutoff_tables": {"train": [{"score_cutoff": 100}]}}),
     (EvidenceKind.COMPARISON_ARTIFACT, "branch_comparison", "comparison",
      "cardre.comparison_artifact.v1",
      {"comparison_type": "woe_iv", "baseline_branch_id": "b1", "challenger_branch_id": "b2"}),
@@ -311,7 +321,7 @@ def test_no_match_parity(store, tmp_path) -> None:
     """Parity: both adapter and reader return [] when no artifact matches."""
     art = _write_json_artifact(
         store, tmp_path, "report", "report", "cardre.cutoff_analysis.v1",
-        {"cutoff_tables": {"train": [{"score": 100}]}},
+        {"cutoff_tables": {"train": [{"score_cutoff": 100}]}},
     )
     _assert_match_parity(store, EvidenceKind.BIN_DEFINITION, [art])
 

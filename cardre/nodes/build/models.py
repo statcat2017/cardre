@@ -277,10 +277,7 @@ class LogisticRegressionNode(NodeType):
             "schema_version": SCHEMA_MODEL_ARTIFACT,
             "model_family": "logistic_regression",
             "target_column": target_column,
-            "features": features_list,
             "source_variables": source_variables,
-            "intercept": round(float(lr.intercept_[0]), COEF_ROUND),
-            "coefficients": coefficients,
             "class_mapping": class_mapping,
             "bad_class_label": str(bad_class),
             "target_event_value": str(bad_class),
@@ -293,6 +290,10 @@ class LogisticRegressionNode(NodeType):
                 "unknown_category_policy": "error",
             },
             "feature_order_hash": feature_order_hash,
+            "model_payload": {
+                "intercept": round(float(lr.intercept_[0]), COEF_ROUND),
+                "coefficients": coefficients,
+            },
             "training": {
                 "row_count": X.shape[0],
                 "converged": converged,
@@ -517,8 +518,8 @@ class BuildSummaryReportNode(NodeType):
         model_features = model.features
         model_intercept = model.intercept
         model_coeff_count = len(model.coefficients_dict)
-        model_converged = model.training.get("converged", False)
-        model_row_count = model.training.get("row_count", 0)
+        model_converged = model.training.converged or False
+        model_row_count = model.training.row_count or 0
         model_warnings = list(model.warnings)
         model_target = model.target_column
 

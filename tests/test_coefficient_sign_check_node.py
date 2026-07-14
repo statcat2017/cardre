@@ -24,12 +24,18 @@ def test_coefficient_sign_check_flags_positive_woe_coefficients(store):
             "schema_version": SCHEMA_MODEL_ARTIFACT,
             "model_family": "logistic_regression",
             "target_column": "credit_risk_class",
-            "features": ["age_woe", "income_woe"],
-            "coefficients": {
-                "age_woe": -0.8,
-                "income_woe": 0.4,
+            "target_event_value": "bad",
+            "class_mapping": {"good": "good", "bad": "bad"},
+            "probability_column_index": 1,
+            "feature_contract": {"features": ["age_woe", "income_woe"]},
+            "model_payload": {
+                "intercept": 0.0,
+                "coefficients": {
+                    "age_woe": -0.8,
+                    "income_woe": 0.4,
+                },
             },
-            "training": {},
+            "training": {"row_count": 100},
             "warnings": [],
         },
         metadata={"schema_version": SCHEMA_MODEL_ARTIFACT},

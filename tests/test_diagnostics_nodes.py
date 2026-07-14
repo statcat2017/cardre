@@ -24,7 +24,7 @@ def _make_model_artifact(
     store,
     *,
     features: list[str],
-    coefficients: dict[str, float] | list[dict],
+    coefficients: dict[str, float],
     target_column: str = "credit_risk_class",
     training: dict | None = None,
 ):
@@ -32,14 +32,17 @@ def _make_model_artifact(
         "schema_version": SCHEMA_MODEL_ARTIFACT,
         "model_family": "logistic_regression",
         "target_column": target_column,
-        "features": features,
-        "training": training or {"converged": True, "iterations": 50},
+        "target_event_value": "bad",
+        "class_mapping": {"good": "good", "bad": "bad"},
+        "probability_column_index": 1,
+        "feature_contract": {"features": features},
+        "model_payload": {
+            "intercept": -1.0,
+            "coefficients": coefficients,
+        },
+        "training": training or {"converged": True, "iterations": 50, "row_count": 100},
         "warnings": [],
     }
-    if isinstance(coefficients, dict):
-        payload["coefficients"] = coefficients
-    else:
-        payload["coefficients"] = coefficients
     return write_json_artifact(
         store,
         artifact_type="model",
@@ -78,19 +81,17 @@ def _make_context(store, step_id, node_type, input_artifacts):
 
 
 class TestSeparationDiagnostics:
-    def test_infinite_standard_error_detected(self, store):
+    def test_infinite_coefficient_detected(self, store):
         model = _make_model_artifact(
             store,
             features=["age_woe"],
-            coefficients=[
-                {"variable_name": "age_woe", "coefficient": 2.5, "standard_error": float("inf")},
-            ],
+            coefficients={"age_woe": float("inf")},
         )
         ctx = _make_context(store, "separation-diagnostics", "cardre.separation_diagnostics", [model])
         output = SeparationDiagnosticsNode().run(ctx)
         payload = json.loads((store.root / output.artifacts[0].path).read_text())
         assert payload["variables"][0]["status"] == "fail"
-        assert "Standard error is infinite" in payload["variables"][0]["reason"]
+        assert "Coefficient is infinite" in payload["variables"][0]["reason"]
 
     def test_large_coefficient_detected(self, store):
         model = _make_model_artifact(
@@ -108,27 +109,13 @@ class TestSeparationDiagnostics:
         model = _make_model_artifact(
             store,
             features=["age_woe"],
-            coefficients=[
-                {"variable_name": "age_woe", "coefficient": 0.5, "standard_error": 0.1},
-            ],
+            coefficients={"age_woe": 0.5},
         )
         ctx = _make_context(store, "separation-diagnostics", "cardre.separation_diagnostics", [model])
         output = SeparationDiagnosticsNode().run(ctx)
         payload = json.loads((store.root / output.artifacts[0].path).read_text())
         assert payload["variables"][0]["status"] == "pass"
         assert payload["summary"]["warning_count"] == 0
-
-    def test_infinite_coefficient_detected(self, store):
-        model = _make_model_artifact(
-            store,
-            features=["age_woe"],
-            coefficients={"age_woe": float("inf")},
-        )
-        ctx = _make_context(store, "separation-diagnostics", "cardre.separation_diagnostics", [model])
-        output = SeparationDiagnosticsNode().run(ctx)
-        payload = json.loads((store.root / output.artifacts[0].path).read_text())
-        assert payload["variables"][0]["status"] == "fail"
-        assert "infinite" in payload["variables"][0]["reason"].lower()
 
 
 class TestVifDiagnostics:
@@ -338,9 +325,7 @@ class TestCalibrationDiagnostics:
         model = _make_model_artifact(
             store,
             features=["age_woe"],
-            coefficients=[
-                {"variable_name": "age_woe", "coefficient": float("inf"), "standard_error": float("inf")},
-            ],
+            coefficients={"age_woe": float("inf")},
         )
         ctx = _make_context(store, "separation-diagnostics", "cardre.separation_diagnostics", [model])
         output = SeparationDiagnosticsNode().run(ctx)
@@ -349,8 +334,6 @@ class TestCalibrationDiagnostics:
         payload = json.loads(text)
         assert payload["variables"][0]["coefficient"] is None
         assert payload["variables"][0]["coefficient_is_infinite"] is True
-        assert payload["variables"][0]["standard_error"] is None
-        assert payload["variables"][0]["standard_error_is_infinite"] is True
 
         # --- Calibration diagnostics (infinite HL stat) ---
         meta = self._make_metadata(store)

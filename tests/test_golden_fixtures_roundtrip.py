@@ -16,7 +16,7 @@ from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.models.binning import BinDefinition, ManualBinningOverrides
 from cardre.domain.artifacts import ArtifactRef
 from cardre.engine.binning.definition import LifecycleBin, LifecycleBinDefinition, LifecycleVariable
-from cardre.modeling.schema import ModelArtifactV1
+from cardre.modeling.schema import FeatureContract, ModelArtifactV1, TrainingMetadata
 from cardre.store.db import ProjectStore
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -35,11 +35,20 @@ class TestModelArtifactRoundTrip:
         data = _load_fixture("golden_model_artifact.json")
         obj = ModelArtifactV1.from_dict(data)
         re_serialized = obj.to_dict()
-        assert re_serialized == data, (
-            f"ModelArtifactV1 round-trip changed data.\n"
-            f"Keys in original: {set(data)}\n"
-            f"Keys in re-serialized: {set(re_serialized)}"
-        )
+        # to_dict() adds synthetic top-level keys (features, coefficients,
+        # intercept) derived from feature_contract/model_payload.  Every
+        # original key must be preserved.
+        for k, v in data.items():
+            assert k in re_serialized, (
+                f"ModelArtifactV1 round-trip dropped key {k!r}.\n"
+                f"Original keys: {set(data)}\n"
+                f"Re-serialized keys: {set(re_serialized)}"
+            )
+            assert re_serialized[k] == v, (
+                f"ModelArtifactV1 round-trip changed value for key {k!r}.\n"
+                f"Original: {v!r}\n"
+                f"Re-serialized: {re_serialized[k]!r}"
+            )
 
     def test_typed_properties_match_raw_fixture(self):
         data = _load_fixture("golden_model_artifact.json")
@@ -67,16 +76,26 @@ class TestModelArtifactRoundTrip:
         assert obj.bad_class_label == str(data.get("bad_class_label", ""))
         assert obj.feature_strategy == str(data.get("feature_strategy", ""))
 
-    def test_from_dict_handles_empty(self):
-        obj = ModelArtifactV1.from_dict({})
-        assert obj.schema_version == "cardre.model_artifact.v1"
-        assert obj.model_family == "logistic_regression"
+    def test_from_dict_rejects_empty(self):
+        import pytest
+        with pytest.raises(ValueError, match="requires a non-empty 'model_family'"):
+            ModelArtifactV1.from_dict({})
 
-    def test_to_dict_round_trip_empty(self):
-        obj = ModelArtifactV1()
+    def test_to_dict_round_trip_minimal(self):
+        obj = ModelArtifactV1(
+            model_family="test_family",
+            target_column="y",
+            target_event_value="bad",
+            class_mapping={"good": "good", "bad": "bad"},
+            probability_column_index=1,
+            feature_contract=FeatureContract(features=["x"]),
+            model_payload={"coefficients": {"x": 1.0}},
+            training=TrainingMetadata(row_count=100),
+        )
         d = obj.to_dict()
         obj2 = ModelArtifactV1.from_dict(d)
-        assert obj2.to_dict() == d
+        re = obj2.to_dict()
+        assert re == d
 
 
 class TestBinDefinitionRoundTrip:

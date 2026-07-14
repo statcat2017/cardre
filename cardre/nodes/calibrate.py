@@ -487,10 +487,7 @@ class CalibrateProbabilitiesNode(NodeType):
             })
 
         # 8. Build updated model artifact from the original
-        # build_model_artifact still returns a dict (retirement pending), so
-        # preserve the full payload while typed reads come from ModelArtifact.
         model: dict[str, Any] = typed_model.to_dict()
-        model.update(typed_model.to_model_dict())
 
         # 9. Handle serialization and folding
         calibrator_art_ref = None
@@ -510,13 +507,15 @@ class CalibrateProbabilitiesNode(NodeType):
             )
 
             if application_mode == "folded_linear_log_odds":
+                model_payload = dict(model.get("model_payload", {}))
                 original_intercept = typed_model.intercept
                 original_coefficients = typed_model.coefficients_dict
-                model["intercept"] = round(original_intercept * slope + intercept_shift, 6)
-                model["coefficients"] = {
+                model_payload["intercept"] = round(original_intercept * slope + intercept_shift, 6)
+                model_payload["coefficients"] = {
                     name: round(float(value) * slope, 6)
                     for name, value in original_coefficients.items()
                 }
+                model["model_payload"] = model_payload
         else:
             calibrator_art_ref = model_art  # placeholder: use original model
 

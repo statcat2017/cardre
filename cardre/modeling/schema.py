@@ -186,6 +186,14 @@ class EstimatorReference:
         )
 
 
+@dataclass(frozen=True)
+class ModelCoefficient:
+    variable_name: str
+    coefficient: float = 0.0
+    standard_error: float | None = None
+    p_value: float | None = None
+
+
 @dataclass
 class ModelArtifactV1:
     """Generic model artifact — cardre.model_artifact.v1.
@@ -211,20 +219,17 @@ class ModelArtifactV1:
     prediction_contract: PredictionContract = field(default_factory=PredictionContract)
     score_direction: str = "higher_is_lower_risk"
     calibration_artifact_id: str = ""
+    calibration: dict[str, Any] = field(default_factory=dict)
     estimator_reference: EstimatorReference = field(default_factory=EstimatorReference)
     training: TrainingMetadata = field(default_factory=TrainingMetadata)
     model_payload: dict[str, Any] = field(default_factory=dict)
     interpretability: InterpretabilityMetadata = field(default_factory=InterpretabilityMetadata)
+    source_variables: list[str] | None = None
+    base_odds_text: str = "50:1"
+    bad_class_label: str = ""
+    feature_strategy: str = ""
     warnings: list[dict[str, Any]] = field(default_factory=list)
-
-    # Raw payload for backward compatibility — populated by from_dict.
-    # Consumers migrate off _raw in PR3a/3b/3c.
-    _raw: dict[str, Any] = field(default_factory=dict, repr=False)
-
-    # ------------------------------------------------------------------
-    # Typed read-only properties for fields accessed via _raw.get(...)
-    # in consumers. These are additive — no consumer migration in this PR.
-    # ------------------------------------------------------------------
+    source_artifact_id: str = ""
 
     @property
     def coefficients_dict(self) -> dict[str, float]:
@@ -247,7 +252,7 @@ class ModelArtifactV1:
     @property
     def base_odds(self) -> float:
         """Base odds parsed from 'N:M' string to float."""
-        raw = self._raw.get("base_odds", "50:1")
+        raw = self.base_odds_text
         if isinstance(raw, str) and ":" in raw:
             parts = raw.split(":", 1)
             try:
@@ -257,16 +262,28 @@ class ModelArtifactV1:
         return float(raw)
 
     @property
-    def bad_class_label(self) -> str:
-        return str(self._raw.get("bad_class_label", ""))
+    def coefficients(self) -> list[ModelCoefficient]:
+        return [
+            ModelCoefficient(variable_name=name, coefficient=value)
+            for name, value in self.coefficients_dict.items()
+        ]
 
     @property
-    def feature_strategy(self) -> str:
-        return str(self._raw.get("feature_strategy", ""))
+    def has_explicit_intercept(self) -> bool:
+        return "intercept" in self.model_payload
+
+    def to_model_dict(self) -> dict[str, Any]:
+        return {
+            "model_family": self.model_family,
+            "coefficients": self.coefficients_dict,
+            "intercept": self.intercept,
+            "features": self.features,
+            "target_column": self.target_column,
+        }
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-compatible dict."""
-        return {
+        result = {
             "schema_version": self.schema_version,
             "model_family": self.model_family,
             "input_artifact_id": self.input_artifact_id,
@@ -282,38 +299,142 @@ class ModelArtifactV1:
             "prediction_contract": self.prediction_contract.to_dict(),
             "score_direction": self.score_direction,
             "calibration_artifact_id": self.calibration_artifact_id,
+            "calibration": dict(self.calibration),
             "estimator_reference": self.estimator_reference.to_dict(),
             "training": self.training.to_dict(),
             "model_payload": dict(self.model_payload),
             "interpretability": self.interpretability.to_dict(),
+            "base_odds": self.base_odds_text,
+            "bad_class_label": self.bad_class_label,
             "warnings": list(self.warnings),
         }
 
+        if self.source_variables is not None:
+            result["source_variables"] = list(self.source_variables)
+        return result
+
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ModelArtifactV1:
+    def from_dict(cls, data: dict[str, Any], artifact_id: str = "") -> ModelArtifactV1:
         """Deserialize from a JSON dict."""
+        model_family = data.get("model_family", "")
+        if not model_family:
+            raise ValueError("ModelArtifactV1 requires a non-empty 'model_family'.")
+
+        if data.get("schema_version") != MODEL_ARTIFACT_SCHEMA_VERSION:
+            raise ValueError(
+                f"ModelArtifactV1 requires schema_version "
+                f"{MODEL_ARTIFACT_SCHEMA_VERSION!r}, "
+                f"got {data.get('schema_version')!r}."
+            )
+
+        # Reject legacy top-level keys that duplicate canonical locations
+        for legacy_key in ("features", "coefficients", "intercept", "feature_strategy"):
+            if legacy_key in data:
+                raise ValueError(
+                    f"ModelArtifactV1 rejects top-level key {legacy_key!r}; "
+                    f"use feature_contract.features / model_payload.{legacy_key} instead."
+                )
+
+        if "feature_contract" not in data:
+            raise ValueError("ModelArtifactV1 requires 'feature_contract'.")
+        feature_contract = FeatureContract.from_dict(data.get("feature_contract", {}))
+        if not feature_contract.features:
+            raise ValueError("ModelArtifactV1 requires feature_contract.features to be a non-empty list.")
+
+        model_payload = data.get("model_payload")
+        if not isinstance(model_payload, dict) or not model_payload:
+            raise ValueError("ModelArtifactV1 requires a non-empty 'model_payload' dict.")
+
+        coeffs = model_payload.get("coefficients", {})
+        if isinstance(coeffs, list):
+            raise ValueError(
+                "ModelArtifact coefficients must be a dict {variable: coefficient}; "
+                "list-of-dicts form is not supported."
+            )
+
+        # For logistic regression, validate coefficient coverage
+        if model_family == "logistic_regression":
+            if "intercept" not in model_payload:
+                raise ValueError(
+                    "Logistic regression ModelArtifactV1 requires "
+                    "'intercept' in model_payload."
+                )
+            if not isinstance(model_payload["intercept"], (int, float)):
+                raise ValueError(
+                    "Logistic regression ModelArtifactV1 requires "
+                    "a numeric 'intercept' in model_payload."
+                )
+            if not isinstance(coeffs, dict):
+                raise ValueError(
+                    "Logistic regression ModelArtifactV1 requires "
+                    "'coefficients' to be a dict in model_payload."
+                )
+            coeff_features = set(coeffs.keys())
+            declared_features = set(feature_contract.features)
+            missing = declared_features - coeff_features
+            if missing:
+                raise ValueError(
+                    f"Logistic regression ModelArtifactV1 missing coefficients "
+                    f"for features: {sorted(missing)}"
+                )
+            extra = coeff_features - declared_features
+            if extra:
+                raise ValueError(
+                    f"Logistic regression ModelArtifactV1 has coefficients "
+                    f"for unknown features: {sorted(extra)}"
+                )
+            for val in coeffs.values():
+                if not isinstance(val, (int, float)):
+                    raise ValueError(
+                        f"Logistic regression coefficient {val!r} must be numeric."
+                    )
+
+        target_column = data.get("target_column", "")
+        if not target_column:
+            raise ValueError("ModelArtifactV1 requires non-empty 'target_column'.")
+
+        target_event_value = data.get("target_event_value", "")
+        if not target_event_value:
+            raise ValueError("ModelArtifactV1 requires non-empty 'target_event_value'.")
+
+        class_mapping = data.get("class_mapping", {})
+        if not isinstance(class_mapping, dict) or not class_mapping:
+            raise ValueError("ModelArtifactV1 requires non-empty 'class_mapping' dict.")
+
+        if "probability_column_index" not in data:
+            raise ValueError("ModelArtifactV1 requires 'probability_column_index'.")
+
+        training = data.get("training", {})
+        if not training.get("row_count"):
+            raise ValueError("ModelArtifactV1 requires training.row_count > 0.")
+
         return cls(
             schema_version=data.get("schema_version", MODEL_ARTIFACT_SCHEMA_VERSION),
-            model_family=data.get("model_family", "logistic_regression"),
+            model_family=model_family,
             input_artifact_id=data.get("input_artifact_id", ""),
             training_role=data.get("training_role", "train"),
-            target_column=data.get("target_column", ""),
-            target_event_value=data.get("target_event_value", ""),
-            class_mapping=dict(data.get("class_mapping", {})),
+            target_column=target_column,
+            target_event_value=target_event_value,
+            class_mapping=dict(class_mapping),
             probability_column_index=data.get("probability_column_index", 1),
-            feature_contract=FeatureContract.from_dict(data.get("feature_contract", {})),
+            feature_contract=feature_contract,
             feature_order_hash=data.get("feature_order_hash", ""),
             feature_dtype_contract=dict(data.get("feature_dtype_contract", {})),
             preprocessing_artifact_ids=list(data.get("preprocessing_artifact_ids", [])),
             prediction_contract=PredictionContract.from_dict(data.get("prediction_contract", {})),
             score_direction=data.get("score_direction", "higher_is_lower_risk"),
             calibration_artifact_id=data.get("calibration_artifact_id", ""),
+            calibration=dict(data.get("calibration", {})),
             estimator_reference=EstimatorReference.from_dict(data.get("estimator_reference", {})),
-            training=TrainingMetadata.from_dict(data.get("training", {})),
-            model_payload=dict(data.get("model_payload", {})),
+            training=TrainingMetadata.from_dict(training),
+            model_payload=model_payload,
             interpretability=InterpretabilityMetadata.from_dict(data.get("interpretability", {})),
+            source_variables=list(data.get("source_variables", [])) or None,
+            base_odds_text=str(data.get("base_odds", "50:1")),
+            bad_class_label=str(data.get("bad_class_label", "")),
+            feature_strategy="",  # legacy; no longer written
             warnings=list(data.get("warnings", [])),
-            _raw=data,
+            source_artifact_id=artifact_id,
         )
 
 

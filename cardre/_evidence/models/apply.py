@@ -61,4 +61,3 @@ class ApplyModelEvidence:
 @dataclass(frozen=True)
 class ScoredDataset:
     dataframe: Any
-    _raw: JsonDict = field(default_factory=dict, repr=False)
