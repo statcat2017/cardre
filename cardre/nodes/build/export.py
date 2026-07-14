@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json  # noqa: F401 — imported for monkeypatch/patch compatibility in tests
+from dataclasses import asdict
 from typing import Any, cast
 
 from cardre._evidence.kinds import AmbiguousEvidenceError, EvidenceKind, EvidenceNotFoundError
@@ -61,11 +62,10 @@ class TechnicalManifestExportNode(NodeType):
         return next(iter(matches.values()))
 
     def _evidence_payload(self, evidence: Any) -> dict[str, Any]:
-        raw = getattr(evidence, "_raw", None)
-        if isinstance(raw, dict):
-            return cast(dict[str, Any], dict(raw))
         if hasattr(evidence, "to_dict"):
             return cast(dict[str, Any], evidence.to_dict())
+        if hasattr(evidence, "__dataclass_fields__"):
+            return asdict(evidence)
         return cast(dict[str, Any], evidence.to_model_dict())
 
     def run(self, context: ExecutionContext) -> NodeOutput:

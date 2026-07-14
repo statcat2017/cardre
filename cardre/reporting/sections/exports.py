@@ -29,7 +29,7 @@ class ImplementationArtifactsSection(SectionCollector):
         return None
 
     def build(self, ctx: SectionContext) -> None:
-        from cardre.reporting.collector import resolve_run_step
+        from cardre.reporting._resolve import resolve_run_step
 
         table_ref = ctx.resolved.get("scorecard-table-export")
         py_ref = ctx.resolved.get("scoring-export-python")

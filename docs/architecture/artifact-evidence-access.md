@@ -77,7 +77,7 @@ When introducing a new evidence type, update all of these:
 2. Add a `SCHEMA_<KIND>` constant in `cardre/_evidence/schemas.py`.
 3. Add a typed dataclass and `from_json` in `cardre/_evidence/models/` (in the appropriate family module, e.g. `models/binning.py`, `models/model.py`). Re-export it from `cardre/_evidence/models/__init__.py`.
 4. Add an `EVIDENCE_PROFILES` entry in `cardre/_evidence/profiles.py`.
-5. Add an adapter class in `cardre/_evidence/adapters/` (in the appropriate family module) and register it in `EVIDENCE_ADAPTERS`.
+5. Add an `AdapterSpec` entry in the `EVIDENCE_ADAPTERS` table in `cardre/_evidence/adapters/__init__.py`. Most adapters are a one-liner `AdapterSpec(profile=..., parse=lambda path, art, store: Model.from_json(...))`. Only add a custom class if the parse logic is non-trivial (e.g. `WoeTable`, `IvTable`, `ScoredDataset`).
 6. Add fixture-backed parse coverage in `tests/test_evidence_adapters.py`.
 7. Add a parametrized profile assertion in `tests/test_evidence_profiles.py`.
 

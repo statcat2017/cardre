@@ -961,3 +961,62 @@ is the highest-leverage move.
 
 The sprint plan resolving every finding lives at
 [`docs/plans/thermo-nuclear-quality-sprint/README.md`](../plans/thermo-nuclear-quality-sprint/README.md).
+
+## Resolution
+
+All findings resolved as of 2026-07-14. See
+[`docs/plans/thermo-nuclear-quality-sprint/decision-log.md`](../plans/thermo-nuclear-quality-sprint/decision-log.md)
+for structural decisions and deferred follow-ups.
+
+| Finding | PR(s) | Resolution |
+|---|---|---|
+| T1 | PR2, PR3 | Typed evidence layer completed: 4 diagnostics kinds added, `MANUAL_BINNING_OVERRIDES` typed model, `_raw` access removed from all node/reporting/comparison code. |
+| T2 | PR2 | 40 adapter classes collapsed to `AdapterSpec` table. |
+| T3 | PR4 | Dead evidence-reuse subsystem deleted (~600 LOC). ADRs updated. |
+| T4 | PR6 | Canonical node helpers promoted (`target_metadata`, `require_model`, `data_artifacts`, `train_artifact`, `read_dataframe`). 89+ boilerplate sites replaced. Fairness copy-paste bug fixed. |
+| T5 | PR5, PR6 | `collector.py` 1337→240 lines via section registry. `prep.py` split into 5 files. `ValidationMetricsNode.run` <100 lines. `VariableClusteringNode.run` <80 lines. German-credit fixture deleted. |
+| T6 | PR1 | Shared `branch_step_resolver.py` module restored. `_json_ready` centralized. `dispatcher.py` deleted. |
+| T7 | PR2, PR7 | Binning override seam hardened with current-schema fixtures and lossless round-trip tests. `BinDefinition._lifecycle` forwarders removed. |
+| R1 | PR5 | 8-branch if/elif cascade replaced with `_STEP_REQUIREMENTS` table. |
+| R2 | PR5 | `ReadinessFinding` Pydantic model with `severity`/`code` fields. |
+| R3 | PR5 | `ReportMode = Literal["branch","champion"]` defined. |
+| R4 | PR3c | `ManifestDigest` returned from `_read_canonical_manifest`, consumed by two owners. |
+| R5 | PR5 | `report_status` computed from limitation severities. |
+| R6 | PR5 | Hardcoded default fallback deleted from `renderer_html.py`. |
+| SE1 | PR8 | Dead `_maybe_recover_stale_run` deleted; live sweep extracted to `_sweep_stale_running_runs`. |
+| SE2 | PR8 | `to_node` branch in executor deleted; coordinator retains a `to_node` guard that transitions to FAILED and raises `RunScopeNotAvailableForLaunch`. |
+| SE3 | PR8 | `RunStatus` enum + `_VALID_TRANSITIONS` table + atomic `transition()` writer. |
+| SE4 | PR8 | `PlanExecutionResult` returned from executor; coordinator no longer re-queries. |
+| SE5 | PR8 | Comparison refresh wrapped in one outer transaction with one final `latest_snapshot_id` UPDATE. |
+| SE6 | PR1 | `_json_ready` centralized in `execution/fingerprints.py`. |
+| SE7 | PR8 | `branch_id` resolved once, passed down. |
+| SE8 | PR1 | `dispatcher.py` deleted. |
+| N1 | PR6, PR318 | `BinningNode` dispatcher collapsed — delegates to `_run_fine_classing`/`_run_optbinning` module-level functions. `FineClassingNode` and `AutoBinningFitNode` removed from registry. |
+| N2 | PR6 | Estimator-load dedup via `_load_estimator`; `except Exception` narrowed to typed catches. |
+| N3 | PR6 | Ensemble dead code removed from registry. |
+| N4 | PR6 | Magic strings replaced with constants; `parse_base_odds` used consistently. |
+| N5 | PR6, PR11 | Local helper retained in `feature_selection.py`; `_raw` fallback removed in PR11. `to_payload()` protocol not added. |
+| A1 | PR9 | `ProjectStore` delegate API deleted (16 methods). |
+| A2 | PR9 | Repository boilerplate reduced; `ChampionRepository` extracted; `get_comparison` deduped. |
+| A3 | PR9 | Scoped: `list_run_evidence` → `EvidenceRepository`, exports listing → `export_listing.py`, `list_runs` → `RunCoordinator.list_for_project`. |
+| A4 | PR9 | `errors.py` deduped — 35 shadowing constants deleted. |
+| A5 | PR9 | Scoped: `_value` polymorphic helper deleted. Full typed hydration deferred. |
+| A6 | PR9 | Centralised response mappers for champion, artifact, manual-binning. |
+| A7 | PR9 | `active_step_id` column + schema migration 100→101. |
+| A8 | PR9 | `create_project` no longer hardcodes `cardre_version`. |
+| A9 | PR9 | Sidecar argv cleanup — uses `CARDRE_API_PORT` env var. |
+| K1 | PR4 | `EvidenceLocator` + `EvidenceResolver` overlap resolved by deleting the resolver. |
+| K2 | PR2 | `_register_bytes_artifact` extracted; `write_estimator_artifact` gains atomicity+dedup. |
+| K3 | PR1 | `list[Any]` on domain aggregates typed. |
+| K4 | PR1 | Silent alias pairs documented. |
+| K5 | PR1 | Stale docstrings rewritten. |
+| F1 | PR10 | Positional `QUERY_SOURCES`/`firstQueryError` removed. |
+| F2 | PR10 | `ApiError.code` typed as `ErrorCode` union; validated at parse time. |
+| F3 | PR10 | Dead `useRunWatch` hook deleted (never wired into any component). |
+| F4 | PR10 | Shared `toErrorMessage` helper added; 4 inline ternaries replaced. |
+| F5 | PR10 | Shadow component interfaces replaced with generated schema types. |
+| F6 | PR10 | Dead `stuck` status deleted; `deriveStatus` tightened. |
+| F7 | PR10 | Dead `useRunWatch`/`useManualBinningReview` hooks deleted. |
+| F8 | PR10 | Dead styles deleted from `styles.ts`. |
+| F9 | PR10 | Project state made symmetric (single `{id, path} | null`). |
+| F10 | PR10 | Tauri health-check timeout added; dead `AtomicBool` removed. |

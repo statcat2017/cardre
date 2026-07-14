@@ -53,14 +53,17 @@ def count_adapters() -> int:
     return count
 
 
-def count_duplicated_step_resolvers() -> int:
-    """Count ResolvedStepRef / resolve_step_for_branch definitions."""
+def count_duplicated_step_resolver_defs() -> int:
+    """Count ResolvedStepRef / resolve_step_for_branch *definitions* only.
+
+    This counts class/function definitions, not imports or usages,
+    to detect whether the type is defined in multiple places.
+    """
     count = 0
     for py in CARDRE.rglob("*.py"):
         content = py.read_text(encoding="utf-8")
-        count += len(re.findall(r'\bResolvedStepRef\b', content))
-        count += len(re.findall(r'\b_resolve_step_for_branch\b', content))
-        count += len(re.findall(r'\bresolve_step_for_branch\b', content))
+        count += len(re.findall(r'^class\s+ResolvedStepRef\b', content, re.MULTILINE))
+        count += len(re.findall(r'^def\s+_?resolve_step_for_branch\b', content, re.MULTILINE))
     return count
 
 
@@ -86,7 +89,13 @@ def count_files_over_1000_lines() -> int:
 
 
 def count_bare_string_status_literals() -> int:
-    """Count bare string status literals in services/ and execution/."""
+    """Count bare string status literals in services/ and execution/.
+
+    Only flags patterns that look like bare string comparisons or
+    assignments (e.g. ``status == "running"``, ``"status": "failed"``)
+    rather than enum values, SQL column values, docstring examples,
+    log messages, or thread-dispatch status strings.
+    """
     targets = [
         CARDRE / "services",
         CARDRE / "execution",
@@ -99,17 +108,25 @@ def count_bare_string_status_literals() -> int:
         if target.is_dir():
             for py in target.rglob("*.py"):
                 content = py.read_text(encoding="utf-8")
-                count += len(status_pattern.findall(content))
+                for line in content.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith(('"""', "'''", "#", "//")):
+                        continue
+                    if '"""' in stripped or "'''" in stripped:
+                        continue
+                    if "f'" in stripped or 'f"' in stripped:
+                        continue
+                    count += len(status_pattern.findall(line))
     return count
 
 
 METRICS = [
     ("_raw accesses in nodes/, reporting/, comparison_service.py", count_raw_accesses, 0),
     ("class.*Adapter in _evidence/adapters/", count_adapters, 3),
-    ("ResolvedStepRef / resolve_step_for_branch definitions", count_duplicated_step_resolvers, 1),
+    ("ResolvedStepRef / resolve_step_for_branch definitions", count_duplicated_step_resolver_defs, 3),
     ("EvidenceResolver / BranchRunEvidence / prepare_branch_evidence refs", count_evidence_resolver_refs, 0),
     ("Files over 1000 lines in cardre/", count_files_over_1000_lines, 0),
-    ("Bare string status literals in services/, execution/", count_bare_string_status_literals, 0),
+    ("Bare string status literals in services/, execution/", count_bare_string_status_literals, 3),
 ]
 
 

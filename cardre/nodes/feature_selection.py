@@ -26,16 +26,12 @@ logger = logging.getLogger(__name__)
 def _typed_definition_payload(existing_typed: Any | None) -> dict[str, Any]:
     if existing_typed is None:
         return {}
-    raw = getattr(existing_typed, "_raw", None)
-    if isinstance(raw, dict) and raw:
-        return dict(raw)
-    if hasattr(existing_typed, "__dataclass_fields__"):
-        return asdict(existing_typed)
-    to_dict = getattr(existing_typed, "to_dict", None)
-    if callable(to_dict):
-        payload = to_dict()
+    if hasattr(existing_typed, "to_dict"):
+        payload = existing_typed.to_dict()
         if isinstance(payload, dict):
             return dict(payload)
+    if hasattr(existing_typed, "__dataclass_fields__"):
+        return asdict(existing_typed)
     return {}
 
 
