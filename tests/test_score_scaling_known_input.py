@@ -90,12 +90,6 @@ def model_artifact_payload() -> dict:
         "schema_version": "cardre.model_artifact.v1",
         "model_family": "logistic_regression",
         "target_column": "default_flag",
-        "intercept": -0.5,
-        "coefficients": {
-            "age_woe": 1.2,
-            "income_woe": -0.8,
-        },
-        "features": ["age_woe", "income_woe"],
         "source_variables": ["age", "income"],
         "class_mapping": {"good": "0", "bad": "1"},
         "bad_class_label": "1",
@@ -109,6 +103,13 @@ def model_artifact_payload() -> dict:
             "unknown_category_policy": "error",
         },
         "feature_order_hash": "abc",
+        "model_payload": {
+            "intercept": -0.5,
+            "coefficients": {
+                "age_woe": 1.2,
+                "income_woe": -0.8,
+            },
+        },
         "training": {
             "row_count": 100,
             "converged": True,
@@ -214,7 +215,7 @@ def test_score_scaling_with_known_input(
         node_version="1",
         category="fit",
         params={"base_score": 600, "base_odds": "50:1", "points_to_double_odds": 20.0,
-                "score_direction": "higher_is_lower_risk"},
+                "higher_score_is_lower_risk": True},
         params_hash="dummy",
         parent_step_ids=[],
     )
@@ -230,7 +231,7 @@ def test_score_scaling_with_known_input(
             "base_score": 600,
             "base_odds": "50:1",
             "points_to_double_odds": 20.0,
-            "score_direction": "higher_is_lower_risk",
+            "higher_score_is_lower_risk": True,
         },
         runtime_metadata={},
     )

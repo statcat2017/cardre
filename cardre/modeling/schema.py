@@ -47,6 +47,9 @@ class FeatureContract:
             unknown_category_policy=data.get("unknown_category_policy", "error"),
         )
 
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.to_dict().get(key, default)
+
 
 @dataclass
 class PredictionContract:
@@ -119,6 +122,9 @@ class TrainingMetadata:
             tuning_status=data.get("tuning_status"),
         )
 
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.to_dict().get(key, default)
+
 
 @dataclass
 class InterpretabilityMetadata:
@@ -186,6 +192,14 @@ class EstimatorReference:
         )
 
 
+@dataclass(frozen=True)
+class ModelCoefficient:
+    variable_name: str
+    coefficient: float = 0.0
+    standard_error: float | None = None
+    p_value: float | None = None
+
+
 @dataclass
 class ModelArtifactV1:
     """Generic model artifact — cardre.model_artifact.v1.
@@ -211,20 +225,17 @@ class ModelArtifactV1:
     prediction_contract: PredictionContract = field(default_factory=PredictionContract)
     score_direction: str = "higher_is_lower_risk"
     calibration_artifact_id: str = ""
+    calibration: dict[str, Any] = field(default_factory=dict)
     estimator_reference: EstimatorReference = field(default_factory=EstimatorReference)
     training: TrainingMetadata = field(default_factory=TrainingMetadata)
     model_payload: dict[str, Any] = field(default_factory=dict)
     interpretability: InterpretabilityMetadata = field(default_factory=InterpretabilityMetadata)
+    source_variables: list[str] | None = None
+    base_odds_text: str = "50:1"
+    bad_class_label: str = ""
+    feature_strategy: str = ""
     warnings: list[dict[str, Any]] = field(default_factory=list)
-
-    # Raw payload for backward compatibility — populated by from_dict.
-    # Consumers migrate off _raw in PR3a/3b/3c.
-    _raw: dict[str, Any] = field(default_factory=dict, repr=False)
-
-    # ------------------------------------------------------------------
-    # Typed read-only properties for fields accessed via _raw.get(...)
-    # in consumers. These are additive — no consumer migration in this PR.
-    # ------------------------------------------------------------------
+    source_artifact_id: str = ""
 
     @property
     def coefficients_dict(self) -> dict[str, float]:
@@ -247,7 +258,7 @@ class ModelArtifactV1:
     @property
     def base_odds(self) -> float:
         """Base odds parsed from 'N:M' string to float."""
-        raw = self._raw.get("base_odds", "50:1")
+        raw = self.base_odds_text
         if isinstance(raw, str) and ":" in raw:
             parts = raw.split(":", 1)
             try:
@@ -257,22 +268,36 @@ class ModelArtifactV1:
         return float(raw)
 
     @property
-    def bad_class_label(self) -> str:
-        return str(self._raw.get("bad_class_label", ""))
+    def coefficients(self) -> list[ModelCoefficient]:
+        return [
+            ModelCoefficient(variable_name=name, coefficient=value)
+            for name, value in self.coefficients_dict.items()
+        ]
 
     @property
-    def feature_strategy(self) -> str:
-        return str(self._raw.get("feature_strategy", ""))
+    def has_explicit_intercept(self) -> bool:
+        return "intercept" in self.model_payload
+
+    def to_model_dict(self) -> dict[str, Any]:
+        return {
+            "model_family": self.model_family,
+            "coefficients": self.coefficients_dict,
+            "intercept": self.intercept,
+            "features": self.features,
+            "target_column": self.target_column,
+        }
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-compatible dict."""
-        return {
+        result = {
             "schema_version": self.schema_version,
             "model_family": self.model_family,
             "input_artifact_id": self.input_artifact_id,
             "training_role": self.training_role,
             "target_column": self.target_column,
             "target_event_value": self.target_event_value,
+            "features": self.features,
+            "coefficients": self.coefficients_dict,
             "class_mapping": dict(self.class_mapping),
             "probability_column_index": self.probability_column_index,
             "feature_contract": self.feature_contract.to_dict(),
@@ -282,16 +307,46 @@ class ModelArtifactV1:
             "prediction_contract": self.prediction_contract.to_dict(),
             "score_direction": self.score_direction,
             "calibration_artifact_id": self.calibration_artifact_id,
+            "calibration": dict(self.calibration),
             "estimator_reference": self.estimator_reference.to_dict(),
             "training": self.training.to_dict(),
             "model_payload": dict(self.model_payload),
             "interpretability": self.interpretability.to_dict(),
+            "base_odds": self.base_odds_text,
+            "bad_class_label": self.bad_class_label,
+            "feature_strategy": self.feature_strategy,
             "warnings": list(self.warnings),
         }
 
+        if self.has_explicit_intercept:
+            result["intercept"] = self.intercept
+
+        if self.source_variables is not None:
+            result["source_variables"] = list(self.source_variables)
+        return result
+
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ModelArtifactV1:
+    def from_dict(cls, data: dict[str, Any], artifact_id: str = "") -> ModelArtifactV1:
         """Deserialize from a JSON dict."""
+        model_payload = dict(data.get("model_payload", {}))
+        if not model_payload and ("intercept" in data or data.get("coefficients")):
+            model_payload = {
+                "coefficients": dict(data.get("coefficients", {})),
+                **({"intercept": data["intercept"]} if "intercept" in data else {}),
+            }
+        coeffs = model_payload.get("coefficients", data.get("coefficients", {}))
+        if isinstance(coeffs, list):
+            raise ValueError(
+                "ModelArtifact coefficients must be a dict {variable: coefficient}; "
+                "list-of-dicts form is not supported."
+            )
+
+        feature_contract = FeatureContract.from_dict(data.get("feature_contract", {}))
+        if not feature_contract.features and data.get("features"):
+            feature_contract.features = list(data.get("features", []))
+        if not feature_contract.transformation_strategy and data.get("feature_strategy"):
+            feature_contract.transformation_strategy = str(data.get("feature_strategy"))
+
         return cls(
             schema_version=data.get("schema_version", MODEL_ARTIFACT_SCHEMA_VERSION),
             model_family=data.get("model_family", "logistic_regression"),
@@ -301,19 +356,24 @@ class ModelArtifactV1:
             target_event_value=data.get("target_event_value", ""),
             class_mapping=dict(data.get("class_mapping", {})),
             probability_column_index=data.get("probability_column_index", 1),
-            feature_contract=FeatureContract.from_dict(data.get("feature_contract", {})),
+            feature_contract=feature_contract,
             feature_order_hash=data.get("feature_order_hash", ""),
             feature_dtype_contract=dict(data.get("feature_dtype_contract", {})),
             preprocessing_artifact_ids=list(data.get("preprocessing_artifact_ids", [])),
             prediction_contract=PredictionContract.from_dict(data.get("prediction_contract", {})),
             score_direction=data.get("score_direction", "higher_is_lower_risk"),
             calibration_artifact_id=data.get("calibration_artifact_id", ""),
+            calibration=dict(data.get("calibration", {})),
             estimator_reference=EstimatorReference.from_dict(data.get("estimator_reference", {})),
             training=TrainingMetadata.from_dict(data.get("training", {})),
-            model_payload=dict(data.get("model_payload", {})),
+            model_payload=model_payload,
             interpretability=InterpretabilityMetadata.from_dict(data.get("interpretability", {})),
+            source_variables=list(data.get("source_variables", [])) or None,
+            base_odds_text=str(data.get("base_odds", "50:1")),
+            bad_class_label=str(data.get("bad_class_label", "")),
+            feature_strategy=str(data.get("feature_strategy", "")),
             warnings=list(data.get("warnings", [])),
-            _raw=data,
+            source_artifact_id=artifact_id,
         )
 
 

@@ -117,6 +117,9 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
             role = row["role"]
             df = pl.read_parquet(store.root / row["path"])
             assert "score" in df.columns, f"apply-model {role} missing score column"
+            assert "cardre_scaled_score" not in df.columns, (
+                f"apply-model {role} still writes removed cardre_scaled_score column"
+            )
 
             ref_scores = df["score"].to_list()
             records = df.drop(["score", "predicted_bad_probability",

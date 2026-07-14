@@ -67,7 +67,7 @@ class TestScoreScalingRunErrors:
             ),
             parent_run_steps=[], input_artifacts=[],
             validated_params={"base_score": 600, "base_odds": "50:1",
-                              "points_to_double_odds": 20.0, "score_direction": "higher_is_lower_risk"},
+                              "points_to_double_odds": 20.0, "higher_score_is_lower_risk": True},
             runtime_metadata={},
         )
         node = ScoreScalingNode()
@@ -82,9 +82,6 @@ class TestScoreScalingRunErrors:
             "schema_version": "cardre.model_artifact.v1",
             "model_family": "logistic_regression",
             "target_column": "default_flag",
-            "intercept": -0.5,
-            "coefficients": {"age_woe": 1.2},
-            "features": ["age_woe"],
             "source_variables": ["age"],
             "class_mapping": {"good": "0", "bad": "1"},
             "bad_class_label": "1",
@@ -94,6 +91,7 @@ class TestScoreScalingRunErrors:
                                  "order_hash": "abc", "missing_policy": "error",
                                  "unknown_category_policy": "error"},
             "feature_order_hash": "abc",
+            "model_payload": {"intercept": -0.5, "coefficients": {"age_woe": 1.2}},
             "training": {"row_count": 100, "converged": True, "iterations": 15, "params": {}},
             "warnings": [],
         }
@@ -141,7 +139,7 @@ class TestScoreScalingRunErrors:
                 _make_ref("woe-art", "report", "report", woe_path, "application/vnd.apache.parquet"),
             ],
             validated_params={"base_score": 600, "base_odds": "50:1",
-                              "points_to_double_odds": 20.0, "score_direction": "higher_is_lower_risk"},
+                              "points_to_double_odds": 20.0, "higher_score_is_lower_risk": True},
             runtime_metadata={},
         )
         node = ScoreScalingNode()
@@ -156,9 +154,6 @@ class TestScoreScalingRunErrors:
             "schema_version": "cardre.model_artifact.v1",
             "model_family": "logistic_regression",
             "target_column": "default_flag",
-            "intercept": -0.5,
-            "coefficients": {"age_woe": 1.2},
-            "features": ["age_woe"],
             "source_variables": ["age"],
             "class_mapping": {"good": "0", "bad": "1"},
             "bad_class_label": "1",
@@ -168,6 +163,7 @@ class TestScoreScalingRunErrors:
                                  "order_hash": "abc", "missing_policy": "error",
                                  "unknown_category_policy": "error"},
             "feature_order_hash": "abc",
+            "model_payload": {"intercept": -0.5, "coefficients": {"age_woe": 1.2}},
             "training": {"row_count": 100, "converged": True, "iterations": 15, "params": {}},
             "warnings": [],
         }
@@ -218,9 +214,12 @@ class TestScoreScalingRunErrors:
                 _make_ref("woe-art-2", "report", "report", woe_path, "application/vnd.apache.parquet"),
             ],
             validated_params={"base_score": 600, "base_odds": "50:1",
-                              "points_to_double_odds": 20.0, "score_direction": "higher_is_better"},
+                              "points_to_double_odds": 20.0, "higher_score_is_lower_risk": False},
             runtime_metadata={},
         )
         node = ScoreScalingNode()
         output = node.run(ctx)
         assert len(output.artifacts) == 1
+        payload = json.loads(store.artifact_path(output.artifacts[0]).read_text())
+        assert payload["score_direction"] == "higher_is_better"
+        assert payload["base_points"] < 600

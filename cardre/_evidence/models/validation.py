@@ -27,6 +27,9 @@ class ValidationMetrics:
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ValidationMetrics:
+        if "roles" not in data:
+            if "metrics" in data or any(key in data for key in ("train", "test", "oot")):
+                raise ValueError("ValidationMetrics requires canonical 'roles' payload.")
         metrics_by_role: dict[str, RoleMetrics] = {}
         raw_metrics = data.get("roles", {})
 
@@ -44,6 +47,8 @@ class ValidationMetrics:
             )
 
         psi: dict[str, float] = {}
+        if "stability" not in data and "psi" in data:
+            raise ValueError("ValidationMetrics requires canonical 'stability' payload.")
         raw_psi = data.get("stability", {})
         if isinstance(raw_psi, dict):
             psi = {k: float(v) for k, v in raw_psi.items() if isinstance(v, (int, float))}
@@ -73,13 +78,19 @@ class CutoffAnalysis:
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> CutoffAnalysis:
+        if "cutoff_tables" not in data and "tables" in data:
+            raise ValueError("CutoffAnalysis requires canonical 'cutoff_tables' payload.")
         raw_tables = data.get("cutoff_tables", {})
         tables: dict[str, list[CutoffRow]] = {}
         for role, rows in raw_tables.items():
             if isinstance(rows, list):
                 tables[role] = [
                     CutoffRow(
-                        score_cutoff=r.get("score_cutoff", 0),
+                        score_cutoff=(
+                            r["score_cutoff"]
+                            if "score_cutoff" in r
+                            else (_raise_missing_score_cutoff())
+                        ),
                         approval_rate=r.get("approval_rate", 0.0),
                         bad_rate=r.get("bad_rate", 0.0),
                         capture_rate=r.get("capture_rate", 0.0),
@@ -87,3 +98,7 @@ class CutoffAnalysis:
                     for r in rows
                 ]
         return cls(cutoff_tables=tables, source_artifact_id=artifact_id)
+
+
+def _raise_missing_score_cutoff() -> float:
+    raise ValueError("CutoffAnalysis rows require canonical 'score_cutoff' values.")

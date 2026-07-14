@@ -593,9 +593,15 @@ def test_renderer_html_output():
             "features": {"var1": 0.5},
         },
         "score_scaling": {
+            "base_score": 600,
+            "base_odds": "50:1",
+            "factor": 28.85,
             "offset": 500,
-            "pdo": 20,
-            "odds": 50,
+            "points_to_double_odds": 37,
+            "score_direction": "higher_is_lower_risk",
+            "rounding": "nearest_integer",
+            "min_score": 0,
+            "max_score": 1000,
         },
         "validation": {
             "train": {"auc": 0.75, "ks": 0.5},
@@ -621,3 +627,5 @@ def test_renderer_html_output():
     assert len(html) > 200
     # Should contain some expected sections
     assert "Test Model" in html or "Test" in html
+    assert "Points to Double Odds" in html
+    assert ">37<" in html
