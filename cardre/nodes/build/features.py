@@ -96,21 +96,24 @@ class CalculateWoeIvNode(NodeType):
         bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
         meta_def = context.target_metadata()
 
+        from cardre.modeling.target import TargetSpec
+        target_spec = TargetSpec.from_metadata(meta_def)
+        if target_spec is None:
+            raise ValueError("WOE/IV requires target metadata")
+
         df = reader.read_dataframe(train_artifact)
 
-        target_column = meta_def.target_column if meta_def else ""
-        good_values = {str(v) for v in (meta_def.good_values if meta_def else [])}
-        bad_values = {str(v) for v in (meta_def.bad_values if meta_def else [])}
-        good_values_list = list(good_values)
-        bad_values_list = list(bad_values)
+        target_column = target_spec.target_column
+        good_values = target_spec.good_values
+        bad_values = target_spec.bad_values
 
-        if not target_column or target_column not in df.columns:
+        if target_column not in df.columns:
             raise ValueError(f"WOE/IV target column {target_column!r} not found in training data")
         if not good_values or not bad_values:
             raise ValueError("WOE/IV requires non-empty good_values and bad_values")
         target_series = df[target_column].cast(pl.String)
-        total_good_all = int(target_series.is_in(good_values_list).sum())
-        total_bad_all = int(target_series.is_in(bad_values_list).sum())
+        total_good_all = int(target_series.is_in(list(good_values)).sum())
+        total_bad_all = int(target_series.is_in(list(bad_values)).sum())
         if total_good_all == 0 or total_bad_all == 0:
             raise ValueError(
                 f"WOE/IV requires at least one good and one bad row; found goods={total_good_all}, bads={total_bad_all}"
@@ -151,8 +154,8 @@ class CalculateWoeIvNode(NodeType):
                 row_count = int(cast(Any, bin_mask.sum()))
 
                 if target_series is not None and good_values and bad_values:
-                    bin_good = int(target_series.filter(cast(pl.Series, bin_mask)).is_in(good_values_list).sum())
-                    bin_bad = int(target_series.filter(cast(pl.Series, bin_mask)).is_in(bad_values_list).sum())
+                    bin_good = int(target_series.filter(cast(pl.Series, bin_mask)).is_in(list(good_values)).sum())
+                    bin_bad = int(target_series.filter(cast(pl.Series, bin_mask)).is_in(list(bad_values)).sum())
                 else:
                     bin_good = bin_def.get("good_count", 0)
                     bin_bad = bin_def.get("bad_count", 0)

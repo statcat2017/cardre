@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import polars as pl
 from polars.exceptions import ComputeError
 
 from cardre._evidence.reader import ArtifactEvidenceReader
@@ -307,8 +306,14 @@ class ModelExplainabilityNode(NodeType):
             if target_col not in df.columns:
                 return None
 
+            from cardre.modeling.target import TargetSpec
             bad_values_set = set(model.get("bad_class_label", "").split()) or {"bad"}
-            y_bin = df[target_col].cast(pl.String).is_in(bad_values_set).cast(pl.Int64).to_numpy()
+            target_spec = TargetSpec(
+                target_column=target_col,
+                good_values=frozenset(),
+                bad_values=frozenset(bad_values_set),
+            )
+            y_bin = target_spec.encode_binary(df).to_numpy()
 
             X = df.select(features).to_numpy()
             result = sklearn_permutation_importance(
