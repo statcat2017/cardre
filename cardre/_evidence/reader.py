@@ -148,12 +148,9 @@ class ArtifactEvidenceReader:
         kind: EvidenceKind,
     ) -> Any | None:
         """Resolve output artifact IDs via artifact_lineage and scan for the given kind."""
-        rows = self._store.execute(
-            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
-            (run_step_id,),
-        ).fetchall()
-        for row in rows:
-            result = self.read_optional(row["artifact_id"], kind)
+        from cardre.store.artifact_repo import ArtifactRepository
+        for aid in ArtifactRepository(self._store).output_artifact_ids_for_run_step(run_step_id):
+            result = self.read_optional(aid, kind)
             if result is not None:
                 return result
         return None

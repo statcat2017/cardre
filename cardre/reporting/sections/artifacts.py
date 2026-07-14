@@ -14,11 +14,7 @@ class ArtifactsSection(SectionCollector):
     def build(self, ctx: SectionContext) -> None:
         entries: list[ArtifactEntry] = []
         seen: set[str] = set()
-        for row in ctx.store.execute(
-            "SELECT artifact_id FROM artifact_lineage WHERE run_id = ? AND direction = 'output'",
-            (ctx.run["run_id"],),
-        ).fetchall():
-            aid = row["artifact_id"]
+        for aid in ArtifactRepository(ctx.store).output_artifact_ids_for_run(ctx.run["run_id"]):
             if aid in seen:
                 continue
             seen.add(aid)
