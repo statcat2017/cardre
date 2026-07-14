@@ -68,11 +68,7 @@ class ManualInterventionsSection(SectionCollector):
         if rs is None:
             return
 
-        for row in ctx.store.execute(
-            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
-            (rs.run_step_id,),
-        ).fetchall():
-            aid = row["artifact_id"]
+        for aid in ArtifactRepository(ctx.store).output_artifact_ids_for_run_step(rs.run_step_id):
             art = ArtifactRepository(ctx.store).get(aid)
             if art and art.role in ("definition", "report") and "manual" in art.path.lower():
                 data = ctx.reader.read_optional(aid, EvidenceKind.BIN_DEFINITION)

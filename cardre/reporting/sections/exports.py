@@ -19,11 +19,8 @@ class ImplementationArtifactsSection(SectionCollector):
     kinds = ()
 
     def _find_artifact_by_step(self, ctx: SectionContext, rs: Any, schema_version: str) -> Any | None:
-        for row in ctx.store.execute(
-            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
-            (rs.run_step_id,),
-        ).fetchall():
-            art = ArtifactRepository(ctx.store).get(row["artifact_id"])
+        for aid in ArtifactRepository(ctx.store).output_artifact_ids_for_run_step(rs.run_step_id):
+            art = ArtifactRepository(ctx.store).get(aid)
             if art and art.metadata.get("schema_version") == schema_version:
                 return art
         return None

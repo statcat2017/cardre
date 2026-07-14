@@ -399,15 +399,12 @@ def _run_step_to_dict_v2(store: ProjectStore, rs: Any) -> dict[str, Any]:
     input_ids: list[str] = []
     output_ids: list[str] = []
     try:
-        rows = store.execute(
-            "SELECT artifact_id, direction FROM artifact_lineage WHERE run_step_id = ?",
-            (rs.run_step_id,),
-        ).fetchall()
-        for r in rows:
-            if r["direction"] == "input":
-                input_ids.append(r["artifact_id"])
+        from cardre.store.artifact_repo import ArtifactRepository
+        for entry in ArtifactRepository(store).lineage_artifact_ids_for_run_step(rs.run_step_id):
+            if entry["direction"] == "input":
+                input_ids.append(entry["artifact_id"])
             else:
-                output_ids.append(r["artifact_id"])
+                output_ids.append(entry["artifact_id"])
     except Exception as exc:
         raise CardreError(
             f"Could not resolve run-step artifact lineage for {rs.run_step_id}",

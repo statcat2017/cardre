@@ -19,6 +19,7 @@ from cardre.reporting.evidence_contract import (
     REQUIRED_STEPS_COMPARISON,
 )
 from cardre.services.staleness_service import StalenessService
+from cardre.store.artifact_repo import ArtifactRepository
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.comparison_repo import ComparisonRepository
 from cardre.store.db import ProjectStore
@@ -152,12 +153,7 @@ def _build_comparison_content(
                 )
                 rs = resolved.run_step if resolved is not None else None
                 if rs:
-                    rows = store.execute(
-                        "SELECT artifact_id FROM artifact_lineage "
-                        "WHERE run_step_id = ? AND direction = 'output'",
-                        (rs.run_step_id,),
-                    ).fetchall()
-                    artifact_ids = [r["artifact_id"] for r in rows]
+                    artifact_ids = ArtifactRepository(store).output_artifact_ids_for_run_step(rs.run_step_id)
                     if artifact_ids:
                         for aid in artifact_ids:
                             for kind in kinds:

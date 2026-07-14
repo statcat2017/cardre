@@ -31,11 +31,9 @@ class TechnicalManifestExportNode(NodeType):
         kinds: tuple[EvidenceKind, ...],
     ) -> tuple[Any, Any]:
         matches: dict[str, tuple[Any, Any]] = {}
-        rows = store.execute(
-            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
-            (getattr(run_step, "run_step_id", ""),),
-        ).fetchall()
-        output_artifact_ids = [r["artifact_id"] for r in rows]
+        output_artifact_ids = ArtifactRepository(store).output_artifact_ids_for_run_step(
+            getattr(run_step, "run_step_id", ""),
+        )
         for kind in kinds:
             for artifact_id in output_artifact_ids:
                 if artifact_id in matches:
@@ -93,11 +91,7 @@ class TechnicalManifestExportNode(NodeType):
 
         seen_artifact_ids: set[str] = set()
         for rs in all_run_steps:
-            rows = store.execute(
-                "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
-                (rs.run_step_id,),
-            ).fetchall()
-            output_artifact_ids = [r["artifact_id"] for r in rows]
+            output_artifact_ids = ArtifactRepository(store).output_artifact_ids_for_run_step(rs.run_step_id)
             step_info = {
                 "step_id": rs.step_id,
                 "node_type": rs.execution_fingerprint.get("node_type", ""),

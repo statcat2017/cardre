@@ -137,6 +137,31 @@ class ArtifactRepository:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def output_artifact_ids_for_run_step(self, run_step_id: str) -> builtins.list[str]:
+        rows: Any = self._store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
+            (run_step_id,),
+        ).fetchall()
+        return [str(r["artifact_id"]) for r in rows]
+
+    def output_artifacts_for_run_step(self, run_step_id: str) -> builtins.list[ArtifactRef]:
+        ids = self.output_artifact_ids_for_run_step(run_step_id)
+        return [a for aid in ids if (a := self.get(aid)) is not None]
+
+    def output_artifact_ids_for_run(self, run_id: str) -> builtins.list[str]:
+        rows: Any = self._store.execute(
+            "SELECT artifact_id FROM artifact_lineage WHERE run_id = ? AND direction = 'output'",
+            (run_id,),
+        ).fetchall()
+        return [str(r["artifact_id"]) for r in rows]
+
+    def lineage_artifact_ids_for_run_step(self, run_step_id: str) -> builtins.list[dict[str, str]]:
+        rows: Any = self._store.execute(
+            "SELECT artifact_id, direction FROM artifact_lineage WHERE run_step_id = ?",
+            (run_step_id,),
+        ).fetchall()
+        return [{"artifact_id": str(r["artifact_id"]), "direction": str(r["direction"])} for r in rows]
+
     @staticmethod
     def _row_to_artifact_ref(row: dict[str, Any]) -> ArtifactRef:
         d = dict(row)

@@ -29,11 +29,11 @@ class StepRequirement:
 
 def _output_artifact_refs(
     store: ProjectStore, run_step_id: str,
-) -> Any:
-    return store.execute(
-        "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output'",
-        (run_step_id,),
-    ).fetchall()
+) -> list[dict[str, str]]:
+    return [
+        {"artifact_id": aid}
+        for aid in ArtifactRepository(store).output_artifact_ids_for_run_step(run_step_id)
+    ]
 
 
 def _check_woe_iv_monotonicity(
@@ -149,12 +149,8 @@ STEP_REQUIREMENTS: dict[str, StepRequirement] = {
 
 
 def _check_oot_exists(store: ProjectStore, run_id: str) -> bool:
-    rows = store.execute(
-        "SELECT artifact_id FROM artifact_lineage WHERE run_id = ? AND direction = 'output'",
-        (run_id,),
-    ).fetchall()
-    for row in rows:
-        art = ArtifactRepository(store).get(row["artifact_id"])
+    for aid in ArtifactRepository(store).output_artifact_ids_for_run(run_id):
+        art = ArtifactRepository(store).get(aid)
         if art and art.role == "oot":
             return True
     return False

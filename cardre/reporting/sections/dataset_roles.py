@@ -14,12 +14,8 @@ class DatasetRolesSection(SectionCollector):
 
     def build(self, ctx: SectionContext) -> None:
         roles: list[DatasetRole] = []
-        for row in ctx.store.execute(
-            "SELECT al.artifact_id FROM artifact_lineage al "
-            "WHERE al.run_id = ? AND al.direction = 'output'",
-            (ctx.run["run_id"],),
-        ).fetchall():
-            art = ArtifactRepository(ctx.store).get(row["artifact_id"])
+        for aid in ArtifactRepository(ctx.store).output_artifact_ids_for_run(ctx.run["run_id"]):
+            art = ArtifactRepository(ctx.store).get(aid)
             if art and art.role in ("train", "test", "oot"):
                 roles.append(DatasetRole(
                     role=art.role,

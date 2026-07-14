@@ -394,17 +394,8 @@ class PlanExecutor:
         rs: RunStep,
     ) -> list[ArtifactRef]:
         """Resolve output artifact Refs for a run step from artifact_lineage."""
-        rows = self._store.execute(
-            "SELECT artifact_id FROM artifact_lineage WHERE run_step_id = ? AND direction = 'output' ORDER BY created_at",
-            (rs.run_step_id,),
-        ).fetchall()
-        artifacts: list[ArtifactRef] = []
-        for row in rows:
-            from cardre.store.artifact_repo import ArtifactRepository
-            artifact = ArtifactRepository(self._store).get(row["artifact_id"])
-            if artifact is not None:
-                artifacts.append(artifact)
-        return artifacts
+        from cardre.store.artifact_repo import ArtifactRepository
+        return ArtifactRepository(self._store).output_artifacts_for_run_step(rs.run_step_id)
 
 
 __all__ = ["PlanExecutionResult", "PlanExecutor"]
