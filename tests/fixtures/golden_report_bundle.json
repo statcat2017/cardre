@@ -1810,7 +1810,7 @@
   "score_scaling": {
     "base_score": 600,
     "base_odds": "50.0",
-    "pdo": 20,
+    "points_to_double_odds": 20,
     "factor": 28.853901,
     "offset": 487.122876,
     "score_direction": "higher_is_lower_risk",

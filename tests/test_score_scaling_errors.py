@@ -67,7 +67,7 @@ class TestScoreScalingRunErrors:
             ),
             parent_run_steps=[], input_artifacts=[],
             validated_params={"base_score": 600, "base_odds": "50:1",
-                              "points_to_double_odds": 20.0, "higher_score_is_lower_risk": True},
+                              "points_to_double_odds": 20.0, "score_direction": "higher_is_lower_risk"},
             runtime_metadata={},
         )
         node = ScoreScalingNode()
@@ -141,7 +141,7 @@ class TestScoreScalingRunErrors:
                 _make_ref("woe-art", "report", "report", woe_path, "application/vnd.apache.parquet"),
             ],
             validated_params={"base_score": 600, "base_odds": "50:1",
-                              "points_to_double_odds": 20.0, "higher_score_is_lower_risk": True},
+                              "points_to_double_odds": 20.0, "score_direction": "higher_is_lower_risk"},
             runtime_metadata={},
         )
         node = ScoreScalingNode()
@@ -218,7 +218,7 @@ class TestScoreScalingRunErrors:
                 _make_ref("woe-art-2", "report", "report", woe_path, "application/vnd.apache.parquet"),
             ],
             validated_params={"base_score": 600, "base_odds": "50:1",
-                              "points_to_double_odds": 20.0, "higher_score_is_lower_risk": False},
+                              "points_to_double_odds": 20.0, "score_direction": "higher_is_better"},
             runtime_metadata={},
         )
         node = ScoreScalingNode()

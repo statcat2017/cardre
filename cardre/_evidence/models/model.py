@@ -134,10 +134,10 @@ class ModelArtifact:
 class ScoreScaling:
     base_score: int = 600
     base_odds: float = 50.0
-    pdo: int = 20
+    points_to_double_odds: int = 20
     factor: float = 0.0
     offset: float = 0.0
-    score_direction: str = "higher_is_better"
+    score_direction: str = "higher_is_lower_risk"
     rounding: str = "nearest_integer"
     min_score: int = 0
     max_score: int = 0
@@ -148,26 +148,21 @@ class ScoreScaling:
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ScoreScaling:
         raw_odds = data.get("base_odds", "50:1")
         base_odds = _parse_base_odds(raw_odds)
-        higher_score_is_lower_risk = data.get("higher_score_is_lower_risk")
-        pdo = data.get("pdo", data.get("points_to_double_odds", 20))
+        points_to_double_odds = data.get("points_to_double_odds", 20)
         base_score = data.get("base_score", 600)
         if "factor" in data and "offset" in data:
             factor = float(data.get("factor", 0))
             offset = float(data.get("offset", 0))
         else:
-            factor = float(pdo) / math.log(2)  # type: ignore[arg-type]  # pdo is Any from .get()
+            factor = float(points_to_double_odds) / math.log(2)
             offset = float(base_score) - factor * math.log(base_odds)
         return cls(
             base_score=base_score,
             base_odds=base_odds,
-            pdo=pdo,  # type: ignore[arg-type]  # pdo is Any from .get()
+            points_to_double_odds=points_to_double_odds,
             factor=factor,
             offset=offset,
-            score_direction=(
-                "higher_is_lower_risk"
-                if higher_score_is_lower_risk is True
-                else data.get("score_direction", "higher_is_better")
-            ),
+            score_direction=data.get("score_direction", "higher_is_lower_risk"),
             rounding=data.get("rounding", "nearest_integer"),
             min_score=data.get("min_score", 0),
             max_score=data.get("max_score", 0),
@@ -177,11 +172,7 @@ class ScoreScaling:
 
     @property
     def higher_score_is_lower_risk(self) -> bool:
-        if "higher_score_is_lower_risk" in self._raw:
-            return bool(self._raw.get("higher_score_is_lower_risk"))
-        if "score_direction" in self._raw:
-            return self.score_direction == "higher_is_lower_risk"
-        return True
+        return self.score_direction == "higher_is_lower_risk"
 
     @property
     def base_odds_text(self) -> str:

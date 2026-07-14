@@ -67,9 +67,9 @@ class ScorecardTableExportNode(NodeType):
             "schema_version": SCHEMA_SCORE_TABLE,
             "base_score": scorecard.base_score,
             "base_odds": scorecard.base_odds,
-            "points_to_double_odds": scorecard.pdo,
+            "points_to_double_odds": scorecard.points_to_double_odds,
             "base_points": scorecard.base_points or 0,
-            "higher_score_is_lower_risk": scorecard.higher_score_is_lower_risk,
+            "score_direction": scorecard.score_direction,
             "target_column": scorecard.target_column,
             "rows": table_rows,
         }
@@ -137,7 +137,7 @@ def _build_python_scorer_source(
     coefficients = model_dict.get("coefficients", {})
     offset = float(scorecard_dict.get("offset", 0))
     factor_val = float(scorecard_dict.get("factor", 1))
-    higher_is_lower = bool(scorecard_dict.get("higher_score_is_lower_risk", True))
+    higher_is_lower = scorecard_dict.get("score_direction", "higher_is_lower_risk") == "higher_is_lower_risk"
     direction = -1.0 if higher_is_lower else 1.0
     base_score = scorecard_dict.get("base_score", 600)
     base_odds = scorecard_dict.get("base_odds", 50.0)
@@ -160,7 +160,8 @@ def _build_python_scorer_source(
     lines.append(f'    "base_score": {base_score!r},')
     lines.append(f'    "base_odds": {base_odds!r},')
     lines.append(f'    "points_to_double_odds": {pdo!r},')
-    lines.append(f'    "higher_score_is_lower_risk": {higher_is_lower!r},')
+    dir_str = '"higher_is_lower_risk"' if higher_is_lower else '"higher_is_better"'
+    lines.append(f'    "score_direction": {dir_str},')
     lines.append("}")
     lines.append("")
     lines.append("")
@@ -315,10 +316,10 @@ class PythonScoringExportNode(NodeType):
         scorecard_for_source = {
             "offset": scorecard.offset,
             "factor": scorecard.factor,
-            "higher_score_is_lower_risk": scorecard.higher_score_is_lower_risk,
+            "score_direction": scorecard.score_direction,
             "base_score": scorecard.base_score,
             "base_odds": scorecard.base_odds,
-            "points_to_double_odds": scorecard.pdo,
+            "points_to_double_odds": scorecard.points_to_double_odds,
         }
         model_for_source = {
             "intercept": model.intercept,
@@ -335,8 +336,8 @@ class PythonScoringExportNode(NodeType):
             "metadata": {
                 "base_score": scorecard.base_score,
                 "base_odds": scorecard.base_odds,
-                "points_to_double_odds": scorecard.pdo,
-                "higher_score_is_lower_risk": scorecard.higher_score_is_lower_risk,
+                "points_to_double_odds": scorecard.points_to_double_odds,
+                "score_direction": scorecard.score_direction,
                 "target_column": scorecard.target_column or model.target_column,
                 "model_family": model.model_family,
             },
@@ -369,7 +370,7 @@ def _build_sql_scorer_source(
     coefficients = model_dict.get("coefficients", {})
     offset = float(scorecard_dict.get("offset", 0))
     factor_val = float(scorecard_dict.get("factor", 1))
-    higher_is_lower = bool(scorecard_dict.get("higher_score_is_lower_risk", True))
+    higher_is_lower = scorecard_dict.get("score_direction", "higher_is_lower_risk") == "higher_is_lower_risk"
     direction = -1.0 if higher_is_lower else 1.0
 
     missing_policy = "error"
@@ -511,10 +512,10 @@ class SqlScoringExportNode(NodeType):
         scorecard_for_source = {
             "offset": scorecard.offset,
             "factor": scorecard.factor,
-            "higher_score_is_lower_risk": scorecard.higher_score_is_lower_risk,
+            "score_direction": scorecard.score_direction,
             "base_score": scorecard.base_score,
             "base_odds": scorecard.base_odds,
-            "points_to_double_odds": scorecard.pdo,
+            "points_to_double_odds": scorecard.points_to_double_odds,
         }
         model_for_source = {
             "intercept": model.intercept,
@@ -531,8 +532,8 @@ class SqlScoringExportNode(NodeType):
             "metadata": {
                 "base_score": scorecard.base_score,
                 "base_odds": scorecard.base_odds,
-                "points_to_double_odds": scorecard.pdo,
-                "higher_score_is_lower_risk": scorecard.higher_score_is_lower_risk,
+                "points_to_double_odds": scorecard.points_to_double_odds,
+                "score_direction": scorecard.score_direction,
                 "target_column": scorecard.target_column or model.target_column,
                 "model_family": model.model_family,
             },
