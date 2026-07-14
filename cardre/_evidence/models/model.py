@@ -34,8 +34,13 @@ class ModelArtifact:
     coefficients_dict: dict[str, float] = field(default_factory=dict)
     training: JsonDict = field(default_factory=dict)
     warnings: list[JsonDict] = field(default_factory=list)
-    _raw: JsonDict = field(default_factory=dict, repr=False)
+    calibration: JsonDict = field(default_factory=dict)
+    feature_contract: JsonDict = field(default_factory=dict)
+    source_variables: list[str] | None = None
+    has_explicit_intercept: bool = False
+    interpretability: JsonDict = field(default_factory=dict)
     source_artifact_id: str = ""
+    _data: JsonDict = field(default_factory=dict, repr=False)
     ensemble_type: str = ""
     base_models: list[JsonDict] = field(default_factory=list)
     weights: list[float] = field(default_factory=list)
@@ -45,11 +50,18 @@ class ModelArtifact:
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ModelArtifact:
-        coefficients: list[Coefficient] = []
-        coefficients_dict: dict[str, float] = {}
         raw_coeffs = data.get("coefficients", [])
         model_payload = data.get("model_payload", {}) if isinstance(data.get("model_payload", {}), dict) else {}
         model_family = str(data.get("model_family", "")).strip()
+        features = data.get("features", [])
+
+        if not model_family:
+            raise ValueError("ModelArtifact requires a non-empty 'model_family'.")
+        if not features:
+            raise ValueError("ModelArtifact requires a non-empty 'features' list.")
+
+        coefficients: list[Coefficient] = []
+        coefficients_dict: dict[str, float] = {}
 
         if isinstance(raw_coeffs, dict):
             coefficients_dict = {
@@ -61,23 +73,10 @@ class ModelArtifact:
                 for k, v in coefficients_dict.items()
             ]
         elif isinstance(raw_coeffs, list):
-            for c in raw_coeffs:
-                if isinstance(c, dict):
-                    coefficients.append(Coefficient(
-                        variable_name=c.get("variable_name", c.get("variable", "")),  # type: ignore[arg-type]  # .get() on dict[str, Any] returns Any
-                        coefficient=c.get("coefficient", 0.0),
-                        standard_error=c.get("standard_error"),
-                        p_value=c.get("p_value"),
-                    ))
-                    var_name = c.get("variable_name") or c.get("variable", "")
-                    if var_name and isinstance(c.get("coefficient"), (int, float)):
-                        coefficients_dict[var_name] = c["coefficient"]
-
-        features = data.get("features", [])
-        if not features and coefficients_dict:
-            features = list(coefficients_dict.keys())
-        if not model_family and (coefficients_dict or raw_coeffs):
-            model_family = "logistic_regression"
+            raise ValueError(
+                "ModelArtifact coefficients must be a dict {variable: coefficient}; "
+                "list-of-dicts form is not supported."
+            )
 
         return cls(
             model_family=model_family,
@@ -88,8 +87,13 @@ class ModelArtifact:
             coefficients_dict=coefficients_dict,
             training=data.get("training", {}),
             warnings=list(data.get("warnings", [])),
-            _raw=data,
+            calibration=dict(data.get("calibration", {})),
+            feature_contract=dict(data.get("feature_contract", {})),
+            source_variables=[str(v) for v in data["source_variables"]] if "source_variables" in data else None,
+            has_explicit_intercept="intercept" in data,
+            interpretability=dict(data.get("interpretability", {})),
             source_artifact_id=artifact_id,
+            _data=data,
             ensemble_type=str(model_payload.get("ensemble_type", "")),
             base_models=list(model_payload.get("base_models", [])),
             weights=[float(v) for v in model_payload.get("weights", []) if isinstance(v, (int, float))],
@@ -107,27 +111,8 @@ class ModelArtifact:
             "target_column": self.target_column,
         }
 
-    @property
-    def feature_contract(self) -> JsonDict:
-        return dict(self._raw.get("feature_contract", {}))
-
-    @property
-    def source_variables(self) -> list[str] | None:
-        variables = self._raw.get("source_variables")
-        if variables is None:
-            return None
-        return [str(value) for value in variables]
-
-    @property
-    def calibration(self) -> JsonDict:
-        return dict(self._raw.get("calibration", {}))
-
-    @property
-    def has_explicit_intercept(self) -> bool:
-        return "intercept" in self._raw
-
     def to_dict(self) -> JsonDict:
-        return dict(self._raw)
+        return dict(self._data)
 
 
 @dataclass(frozen=True)
@@ -141,8 +126,13 @@ class ScoreScaling:
     rounding: str = "nearest_integer"
     min_score: int = 0
     max_score: int = 0
-    _raw: JsonDict = field(default_factory=dict, repr=False)
     source_artifact_id: str = ""
+    base_odds_text: str = "50:1"
+    intercept: float = 0.0
+    has_explicit_intercept: bool = False
+    base_points: float | int | None = None
+    target_column: str = ""
+    attributes: list = field(default_factory=list)
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ScoreScaling:
@@ -166,38 +156,15 @@ class ScoreScaling:
             rounding=data.get("rounding", "nearest_integer"),
             min_score=data.get("min_score", 0),
             max_score=data.get("max_score", 0),
-            _raw=data,
             source_artifact_id=artifact_id,
+            base_odds_text=str(raw_odds),
+            intercept=float(data.get("intercept", 0.0)),
+            has_explicit_intercept="intercept" in data,
+            base_points=data.get("base_points"),
+            target_column=str(data.get("target_column", "")),
+            attributes=[dict(v) for v in data.get("attributes", []) if isinstance(v, dict)],
         )
 
     @property
     def higher_score_is_lower_risk(self) -> bool:
         return self.score_direction == "higher_is_lower_risk"
-
-    @property
-    def base_odds_text(self) -> str:
-        raw_value = self._raw.get("base_odds", self.base_odds)
-        return str(raw_value)
-
-    @property
-    def intercept(self) -> float:
-        return float(self._raw.get("intercept", 0.0))
-
-    @property
-    def has_explicit_intercept(self) -> bool:
-        return "intercept" in self._raw
-
-    @property
-    def base_points(self) -> float | int | None:
-        return self._raw.get("base_points")
-
-    @property
-    def target_column(self) -> str:
-        return str(self._raw.get("target_column", ""))
-
-    @property
-    def attributes(self) -> list[JsonDict]:
-        return [dict(value) for value in self._raw.get("attributes", []) if isinstance(value, dict)]
-
-    def to_dict(self) -> JsonDict:
-        return dict(self._raw)

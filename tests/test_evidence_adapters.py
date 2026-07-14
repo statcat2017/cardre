@@ -222,7 +222,7 @@ _JSON_KIND_FIXTURES = [
     (EvidenceKind.SELECTION_DEFINITION, "definition", "definition",
      "cardre.selection_definition.v1", {"selected": [{"variable": "age"}]}),
     (EvidenceKind.MODEL_ARTIFACT, "model", "model",
-     "cardre.model_artifact.v1", {"model_family": "logistic_regression", "coefficients": {"age": 1.5}}),
+     "cardre.model_artifact.v1", {"model_family": "logistic_regression", "features": ["age"], "target_column": "y", "coefficients": {"age": 1.5}}),
     (EvidenceKind.SCORE_SCALING, "scorecard", "scorecard",
      "cardre.score_scaling.v1", {"factor": 20, "offset": 500}),
     (EvidenceKind.WOE_IV_EVIDENCE, "report", "report",

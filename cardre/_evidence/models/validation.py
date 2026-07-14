@@ -23,19 +23,14 @@ class ValidationMetrics:
     target: JsonDict = field(default_factory=dict)
     gates: list[JsonDict] = field(default_factory=list)
     warnings: list[JsonDict] = field(default_factory=list)
-    _raw: JsonDict = field(default_factory=dict, repr=False)
     source_artifact_id: str = ""
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ValidationMetrics:
         metrics_by_role: dict[str, RoleMetrics] = {}
-        raw_metrics = data.get("roles", data.get("metrics", {}))
-        if not raw_metrics:
-            for key in ("train", "test", "oot"):
-                if key in data and isinstance(data[key], dict):
-                    raw_metrics[key] = data[key]  # type: ignore[index]  # raw_metrics is Any from .get()
+        raw_metrics = data.get("roles", {})
 
-        for role, m in raw_metrics.items():  # type: ignore[union-attr]  # raw_metrics is Any from .get()
+        for role, m in raw_metrics.items():
             bad_rate: float | None = m.get("bad_rate")
             if bad_rate is None and "bad_count" in m and "row_count" in m:
                 rc = m.get("row_count", 0)
@@ -49,7 +44,7 @@ class ValidationMetrics:
             )
 
         psi: dict[str, float] = {}
-        raw_psi = data.get("stability", data.get("psi", {}))
+        raw_psi = data.get("stability", {})
         if isinstance(raw_psi, dict):
             psi = {k: float(v) for k, v in raw_psi.items() if isinstance(v, (int, float))}
 
@@ -59,7 +54,6 @@ class ValidationMetrics:
             target=dict(data.get("target", {})),
             gates=list(data.get("gates", [])),
             warnings=list(data.get("warnings", [])),
-            _raw=data,
             source_artifact_id=artifact_id,
         )
 
@@ -75,22 +69,21 @@ class CutoffRow:
 @dataclass(frozen=True)
 class CutoffAnalysis:
     cutoff_tables: dict[str, list[CutoffRow]] = field(default_factory=dict)
-    _raw: JsonDict = field(default_factory=dict, repr=False)
     source_artifact_id: str = ""
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> CutoffAnalysis:
-        raw_tables = data.get("cutoff_tables", data.get("tables", {}))
+        raw_tables = data.get("cutoff_tables", {})
         tables: dict[str, list[CutoffRow]] = {}
-        for role, rows in raw_tables.items():  # type: ignore[union-attr]  # raw_tables is Any from .get()
+        for role, rows in raw_tables.items():
             if isinstance(rows, list):
                 tables[role] = [
                     CutoffRow(
-                        score_cutoff=r.get("score_cutoff", r.get("score", 0)),
+                        score_cutoff=r.get("score_cutoff", 0),
                         approval_rate=r.get("approval_rate", 0.0),
                         bad_rate=r.get("bad_rate", 0.0),
                         capture_rate=r.get("capture_rate", 0.0),
                     )
                     for r in rows
                 ]
-        return cls(cutoff_tables=tables, _raw=data, source_artifact_id=artifact_id)
+        return cls(cutoff_tables=tables, source_artifact_id=artifact_id)
