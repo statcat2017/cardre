@@ -132,7 +132,7 @@ class ScoreScaling:
     has_explicit_intercept: bool = False
     base_points: float | int | None = None
     target_column: str = ""
-    attributes: list = field(default_factory=list)
+    attributes: list[JsonDict] = field(default_factory=list)
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ScoreScaling:
