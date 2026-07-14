@@ -50,6 +50,7 @@ def _get_predictions(
     store: Any, model: dict[str, Any], df: pl.DataFrame, features: list[str],
 ) -> np.ndarray[Any, Any]:
     """Get probability predictions from a model artifact on a dataframe."""
+
     model_family = model.get("model_family", "")
     prob_col_idx = model.get("probability_column_index", 1)
 

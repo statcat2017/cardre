@@ -21,8 +21,12 @@ def build_model_comparison(
     if not lr_b or not lr_c:
         return {"variables": [], "branch_level": {}}
 
+    from cardre.modeling.families import require as require_family
+
     b_family = lr_b.get("model_family", "logistic_regression")
     c_family = lr_c.get("model_family", "logistic_regression")
+    b_spec = require_family(b_family)
+    c_spec = require_family(c_family)
 
     result: dict[str, Any] = {
         "branch_level": {
@@ -39,7 +43,7 @@ def build_model_comparison(
         },
     }
 
-    if b_family == "logistic_regression" and c_family == "logistic_regression":
+    if b_spec.has_coefficients and c_spec.has_coefficients:
         b_coeffs_value = lr_b.get("coefficients", [])
         c_coeffs_value = lr_c.get("coefficients", [])
         b_coeffs = {}
