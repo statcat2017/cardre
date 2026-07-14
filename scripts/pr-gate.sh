@@ -58,8 +58,12 @@ if [[ -z "${TIMEOUT_SECONDS}" || ! "${TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]]; then
 fi
 
 if [[ ! -f ".opencode/github-token" && -z "${GH_TOKEN:-}" && -z "${GITHUB_TOKEN:-}" ]]; then
-  printf '%s\n' "Missing GitHub token: set GH_TOKEN/GITHUB_TOKEN or keep .opencode/github-token in place." >&2
-  exit 1
+  if command -v gh &>/dev/null && gh auth status &>/dev/null; then
+    :
+  else
+    printf '%s\n' "Missing GitHub token: set GH_TOKEN/GITHUB_TOKEN, keep .opencode/github-token, or authenticate gh CLI." >&2
+    exit 1
+  fi
 fi
 
 printf '%s\n' "Running preflight checks"
@@ -94,7 +98,18 @@ NO_OPEN = os.environ["CARDRE_NO_OPEN"].lower() == "true"
 TOKEN = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
 if not TOKEN:
     token_path = ROOT / ".opencode" / "github-token"
-    TOKEN = token_path.read_text(encoding="utf-8").strip()
+    if token_path.exists():
+        TOKEN = token_path.read_text(encoding="utf-8").strip()
+if not TOKEN:
+    try:
+        TOKEN = subprocess.run(
+            ["gh", "auth", "token"], cwd=ROOT, check=True, text=True, capture_output=True
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+if not TOKEN:
+    print("No GitHub token found: set GH_TOKEN/GITHUB_TOKEN, keep .opencode/github-token, or ensure gh CLI is authenticated", file=sys.stderr)
+    sys.exit(1)
 
 
 def run_git(*args: str) -> str:
@@ -126,9 +141,15 @@ def api(method: str, path: str, payload: dict | None = None) -> object:
 
 
 def parse_origin(url: str) -> tuple[str, str]:
+    # Token-based HTTPS: https://x-access-token:ghp_xxx@github.com/owner/repo.git
+    token_https_match = re.match(r"https://[^:]+:[^@]+@github\.com/([^/]+)/([^/]+?)(?:\.git)?$", url)
+    if token_https_match:
+        return token_https_match.group(1), token_https_match.group(2)
+    # Plain HTTPS: https://github.com/owner/repo.git
     https_match = re.match(r"https://github.com/([^/]+)/([^/]+?)(?:\.git)?$", url)
     if https_match:
         return https_match.group(1), https_match.group(2)
+    # SSH: git@github.com:owner/repo.git
     ssh_match = re.match(r"git@github.com:([^/]+)/([^/]+?)(?:\.git)?$", url)
     if ssh_match:
         return ssh_match.group(1), ssh_match.group(2)

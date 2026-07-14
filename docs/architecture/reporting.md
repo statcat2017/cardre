@@ -65,7 +65,7 @@ Evidence is resolved by canonical step IDs defined in `evidence_contract.py`:
 - `cutoff-analysis`
 - `manual-binning`
 - `variable-clustering`
-- `technical-manifest-stub` (comparison mode)
+- `technical-manifest` (comparison mode)
 
 ## Report Modes
 
