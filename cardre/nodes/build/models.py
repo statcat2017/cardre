@@ -5,8 +5,6 @@ import math
 import warnings
 from typing import Any
 
-import polars as pl
-
 from cardre._evidence.kinds import EvidenceKind, EvidenceNotFoundError
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import SCHEMA_MODEL_ARTIFACT, SCHEMA_SCORE_SCALING
@@ -195,18 +193,16 @@ class LogisticRegressionNode(NodeType):
         train_artifact = context.require_train_artifact("LogisticRegressionNode")
 
         meta = context.target_metadata()
+        from cardre.modeling.target import TargetSpec
+        target_spec = TargetSpec.from_metadata(meta)
+        if target_spec is None:
+            raise ValueError("Target metadata is required for logistic regression")
+
         sel_def = reader.find_optional(context.input_artifacts, EvidenceKind.SELECTION_DEFINITION)
 
-        target_column = meta.target_column if meta else ""
-        good_values = meta.good_values if meta else frozenset()
-        bad_values = meta.bad_values if meta else frozenset()
-
-        if not target_column:
-            raise ValueError("Target column is required for logistic regression")
-        if not good_values:
-            raise ValueError("Good values must be defined for logistic regression")
-        if not bad_values:
-            raise ValueError("Bad values must be defined for logistic regression")
+        target_column = target_spec.target_column
+        good_values = target_spec.good_values
+        bad_values = target_spec.bad_values
 
         df = reader.read_dataframe(train_artifact)
         woe_cols = [c for c in df.columns if c.endswith("_woe")]
@@ -218,18 +214,8 @@ class LogisticRegressionNode(NodeType):
         if target_column not in df.columns:
             raise ValueError(f"Target column '{target_column}' not found in training data")
 
-        raw_target = df[target_column].cast(pl.String)
-        target_is_bad = raw_target.is_in(bad_values)
-        target_is_known = target_is_bad | raw_target.is_in(good_values)
-        unknown = raw_target.filter(~target_is_known).unique().to_list()
-        if unknown:
-            raise ValueError(
-                f"Target column '{target_column}' contains {len(unknown)} value(s) "
-                f"not declared as good or bad: {sorted(unknown)[:10]}. "
-                f"Every row must be explicitly classified."
-            )
-
-        y_binary = target_is_bad.cast(pl.Int64).to_list()
+        target_spec.validate_good_bad_only(df)
+        y_binary = target_spec.encode_binary_strict(df).to_list()
         n_bad = sum(y_binary)
         n_good = len(y_binary) - n_bad
         if n_bad == 0:

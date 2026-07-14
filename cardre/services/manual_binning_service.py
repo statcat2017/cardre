@@ -2,12 +2,18 @@
 
 These functions operate on evidence data to extract WOE/IV/event-rate
 metrics for the manual-binning editor preview panel.
+
+WOE convention: the preview uses ``BAD_OVER_GOOD`` (ln(bad_pct / good_pct))
+so that positive WOE = higher risk, which is more intuitive in the editor.
+Production WOE/IV uses ``GOOD_OVER_BAD`` (ln(good_dist / bad_dist)) for
+consistency with scorecard scaling conventions.
 """
 
 from __future__ import annotations
 
-import math
 from typing import Any
+
+from cardre.engine.binning.woe import WoeConvention, compute_iv, compute_woe
 
 
 def extract_woe_by_bin(variable_data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -35,8 +41,7 @@ def extract_woe_by_bin(variable_data: dict[str, Any]) -> list[dict[str, Any]]:
         bin_id, label, good_count, bad_count, row_count,
         good_pct, bad_pct, woe
 
-    WOE is defined as: ln(bad_pct / good_pct)
-    A small epsilon is added to avoid division by zero.
+    WOE is defined as: ln(bad_pct / good_pct) (BAD_OVER_GOOD convention).
     """
     bins = variable_data.get("bins", [])
     total_good = sum(b.get("good_count", 0) or 0 for b in bins)
@@ -53,11 +58,11 @@ def extract_woe_by_bin(variable_data: dict[str, Any]) -> list[dict[str, Any]]:
 
         # WOE = ln(bad_pct / good_pct); clip to avoid log(0)
         if good_pct <= 0:
-            woe = -10.0  # large negative WOE when no goods
+            woe = -10.0
         elif bad_pct <= 0:
-            woe = 10.0   # large positive WOE when no bads
+            woe = 10.0
         else:
-            woe = math.log(bad_pct / good_pct)
+            woe = compute_woe(good_pct, bad_pct, WoeConvention.BAD_OVER_GOOD)
 
         results.append({
             "bin_id": b.get("bin_id", ""),
@@ -78,11 +83,10 @@ def extract_iv(variable_data: dict[str, Any]) -> float:
 
     IV = sum over bins of (bad_pct - good_pct) * WOE
     """
-    woe_by_bin = extract_woe_by_bin(variable_data)
-    iv = 0.0
-    for entry in woe_by_bin:
-        iv += (entry["bad_pct"] - entry["good_pct"]) * entry["woe"]
-    return round(iv, 6)
+    bins = variable_data.get("bins", [])
+    total_good = sum(b.get("good_count", 0) or 0 for b in bins)
+    total_bad = sum(b.get("bad_count", 0) or 0 for b in bins)
+    return round(compute_iv(bins, total_good, total_bad, WoeConvention.BAD_OVER_GOOD), 6)
 
 
 def extract_event_rate_by_bin(variable_data: dict[str, Any]) -> list[dict[str, Any]]:

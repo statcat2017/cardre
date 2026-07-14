@@ -65,54 +65,40 @@ def _resolve_features(
 def _prepare_training_data(
     context: ExecutionContext,
     params: dict[str, Any],
-) -> tuple[pl.DataFrame, list[str], str, set[str], set[str], np.ndarray, dict[str, Any] | None]:
+) -> tuple[pl.DataFrame, list[str], str, set[str], set[str], np.ndarray, Any]:
     """Shared training data preparation for all sklearn model nodes.
 
     Returns (df, features, target_column, good_values, bad_values, y_binary, meta).
     """
+    from cardre.modeling.target import TargetSpec
+
     store = context.store
     reader = ArtifactEvidenceReader(store)
     train_artifact = context.require_train_artifact("_prepare_training_data")
 
-    target_column, good_values, bad_values, meta = _extract_target_metadata(
-        store, context.input_artifacts,
-    )
+    meta = context.target_metadata()
+    target_spec = TargetSpec.from_metadata(meta)
 
-    if not target_column:
-        raise ValueError("Target column is required")
-    if not good_values:
-        raise ValueError("Good values must be defined")
-    if not bad_values:
-        raise ValueError("Bad values must be defined")
+    if target_spec is None:
+        raise ValueError("Target metadata is required")
 
     df = reader.read_dataframe(train_artifact)
 
-    if target_column not in df.columns:
-        raise ValueError(f"Target column '{target_column}' not found in training data")
+    if target_spec.target_column not in df.columns:
+        raise ValueError(f"Target column '{target_spec.target_column}' not found in training data")
 
-    features = _resolve_features(df, target_column, params)
+    features = _resolve_features(df, target_spec.target_column, params)
 
-    raw_target = df[target_column].cast(pl.String)
-    target_is_bad = raw_target.is_in(bad_values)
-    target_is_known = target_is_bad | raw_target.is_in(good_values)
-    n_unknown = int((~target_is_known).sum())
-    if n_unknown > 0:
-        unknown_vals = sorted(raw_target.filter(~target_is_known).unique().to_list())
-        raise ValueError(
-            f"Target column '{target_column}' contains {n_unknown} value(s) "
-            f"not declared as good or bad: {unknown_vals[:10]}. "
-            f"Every row must be explicitly classified."
-        )
-
-    y_binary = target_is_bad.cast(pl.Int64).to_numpy()
+    target_spec.validate_known(df)
+    y_binary = target_spec.encode_binary_strict(df).to_numpy()
     n_bad = int(y_binary.sum())
     n_good = len(y_binary) - n_bad
     if n_bad == 0:
-        raise ValueError(f"No bad-class rows found (bad_values={sorted(bad_values)})")
+        raise ValueError(f"No bad-class rows found (bad_values={sorted(target_spec.bad_values)})")
     if n_good == 0:
-        raise ValueError(f"No good-class rows found (good_values={sorted(good_values)})")
+        raise ValueError(f"No good-class rows found (good_values={sorted(target_spec.good_values)})")
 
-    return df, features, target_column, good_values, bad_values, y_binary, meta
+    return df, features, target_spec.target_column, set(target_spec.good_values), set(target_spec.bad_values), y_binary, meta
 
 
 def _write_estimator(store: Any, clf: Any, step_id: str, run_id: str, model_family: str) -> Any:
