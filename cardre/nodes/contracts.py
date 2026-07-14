@@ -38,8 +38,6 @@ class NodeType(ABC):
     version: str = ""
     category: str = ""
     description: str = ""
-    is_internal: bool = False
-    is_deprecated: bool = False
     optional_dependencies: list[str] | None = None
     _deferred: bool = False
 

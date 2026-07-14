@@ -70,7 +70,7 @@ class TestApplyManualBinningEdit:
             for edge in edges
         ]
         assert new_edge_tuples == [
-            ("fine-classing", "manual-binning", 0),
+            ("automatic-binning", "manual-binning", 0),
             ("manual-binning", "apply-woe", 0),
         ]
 

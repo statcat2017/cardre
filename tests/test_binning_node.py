@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from cardre.nodes.build.bins import FineClassingNode
+from cardre.nodes.build.bins import AutomaticBinningNode
 
 
-class TestFineClassingNodeValidateParams:
+class TestAutomaticBinningNodeValidateParams:
     @pytest.fixture
     def node(self):
-        return FineClassingNode()
+        return AutomaticBinningNode()
 
     def test_valid_fine_classing(self, node):
         errors = node.validate_params({"method": "fine_classing", "max_bins": 20, "min_bin_fraction": 0.05})
@@ -84,9 +84,9 @@ class TestFineClassingNodeValidateParams:
         assert any("min_prebin_size" in e for e in errors)
 
 
-class TestFineClassingNodeRun:
+class TestAutomaticBinningNodeRun:
     def test_run_unknown_method_raises(self):
-        node = FineClassingNode()
+        node = AutomaticBinningNode()
         from cardre.execution.context import ExecutionContext
         with pytest.raises(ValueError, match="Unknown binning method"):
             node.run(

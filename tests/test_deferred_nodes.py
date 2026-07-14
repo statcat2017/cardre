@@ -64,7 +64,7 @@ class TestDeferredNodeTiers:
         # Launch-tier nodes should not appear in deferred list
         assert "cardre.logistic_regression" not in deferred
         assert "cardre.import_dataset" not in deferred
-        assert "cardre.fine_classing" not in deferred
+        assert "cardre.automatic_binning" not in deferred
 
     def test_deferred_nodes_not_available_in_launch_mode(self) -> None:
         reg = NodeRegistry.with_defaults()

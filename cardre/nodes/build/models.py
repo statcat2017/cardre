@@ -579,7 +579,6 @@ class DummyFitNode(NodeType):
     node_type = "cardre.dummy_fit"
     version = "1"
     category = "fit"
-    is_internal = True
     input_roles: list[str] = ["train"]
     output_roles: list[str] = ["definition"]
 
@@ -616,7 +615,6 @@ class NoopNode(NodeType):
     node_type = "cardre.noop"
     version = "1"
     category = "transform"
-    is_internal = True
     input_roles: list[str] = [
         "input",
         "train",

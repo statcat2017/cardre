@@ -171,11 +171,11 @@ def _deferred(cls: type[NodeType]) -> type[NodeType]:
 
 def _register_launch_nodes(reg: NodeRegistry) -> None:
     from cardre.nodes.build import (
+        AutomaticBinningNode,
         BuildSummaryReportNode,
         CalculateWoeIvNode,
         CalibrationDiagnosticsNode,
         CoefficientSignCheckNode,
-        FineClassingNode,
         FrozenScorecardBundleNode,
         LogisticRegressionNode,
         ManualBinningNode,
@@ -221,7 +221,7 @@ def _register_launch_nodes(reg: NodeRegistry) -> None:
         ProfileDatasetNode,
         ValidateBinaryTargetNode,
         SplitTrainTestOotNode,
-        FineClassingNode,
+        AutomaticBinningNode,
         CalculateWoeIvNode,
         VariableClusteringNode,
         VariableSelectionNode,

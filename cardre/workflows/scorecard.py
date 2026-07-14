@@ -71,15 +71,15 @@ _CANONICAL_SCORECARD_STEPS: list[tuple[str, str, list[str], dict[str, Any]]] = [
         {"imputations": {}, "caps": {}, "floors": {}},
     ),
     (
-        "fine-classing",
-        "cardre.fine_classing",
+        "automatic-binning",
+        "cardre.automatic_binning",
         ["explicit-missing-outlier-treatment", "define-metadata"],
         {},
     ),
     (
         "initial-woe-iv",
         "cardre.calculate_woe_iv",
-        ["explicit-missing-outlier-treatment", "fine-classing", "define-metadata"],
+        ["explicit-missing-outlier-treatment", "automatic-binning", "define-metadata"],
         {"purpose": "initial"},
     ),
     (
@@ -97,7 +97,7 @@ _CANONICAL_SCORECARD_STEPS: list[tuple[str, str, list[str], dict[str, Any]]] = [
     (
         "manual-binning",
         "cardre.manual_binning",
-        ["fine-classing", "variable-selection"],
+        ["automatic-binning", "variable-selection"],
         {"accept_automated": True},
     ),
     (

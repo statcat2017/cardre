@@ -69,7 +69,7 @@ def _seed_with_run_evidence(store):
         "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
         " params_json, params_hash, branch_label, position, canonical_step_id) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (step_b, pv_id, "cardre.fine_classing", "1", "fit",
+        (step_b, pv_id, "cardre.automatic_binning", "1", "fit",
          json.dumps({"max_bins": 20}), "hash003", "", 2, step_b),
     )
 
@@ -110,7 +110,7 @@ def _seed_with_run_evidence(store):
     })
     fp_b = json.dumps({
         "params_hash": "hash003",
-        "node_type": "cardre.fine_classing",
+        "node_type": "cardre.automatic_binning",
         "node_version": "1",
         "output_artifact_logical_hashes": ["out3"],
         "parent_output_logical_hashes_by_step": {"step-a": ["out2"]},

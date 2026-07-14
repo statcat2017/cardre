@@ -312,10 +312,10 @@
         "resolution": "exact"
       },
       {
-        "canonical_step_id": "fine-classing",
-        "step_id": "fine-classing",
+        "canonical_step_id": "automatic-binning",
+        "step_id": "automatic-binning",
         "branch_id": "",
-        "step_type": "cardre.fine_classing",
+        "step_type": "cardre.automatic_binning",
         "status": "",
         "config_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
         "resolution": "exact"
@@ -2221,8 +2221,8 @@
         "package_fingerprint": {}
       },
       {
-        "step_id": "fine-classing",
-        "canonical_step_id": "fine-classing",
+        "step_id": "automatic-binning",
+        "canonical_step_id": "automatic-binning",
         "python_version": "3.14.3",
         "platform": "",
         "package_fingerprint": {}
