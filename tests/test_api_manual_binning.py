@@ -192,7 +192,7 @@ class TestManualBinningReviews:
 
 
 def _seed_store_with_evidence(store, project_id):
-    """Seed a store with a committed plan (fine-classing → manual-binning → apply-woe)
+    """Seed a store with a committed plan (automatic-binning → manual-binning → apply-woe)
     and a succeeded run with evidence.
 
     Mirrors conftest.store_with_evidence but operates on an existing store.
@@ -214,7 +214,7 @@ def _seed_store_with_evidence(store, project_id):
         (base_pv_id, plan_id, now, "Base version"),
     )
 
-    # Steps: fine-classing -> manual-binning -> apply-woe
+    # Steps: automatic-binning -> manual-binning -> apply-woe
     binning_step_id = "automatic-binning"
     mb_step_id = "manual-binning"
     downstream_step_id = "apply-woe"

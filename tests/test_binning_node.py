@@ -97,3 +97,27 @@ class TestAutomaticBinningNodeRun:
                     runtime_metadata={},
                 )
             )
+
+    def test_run_optbinning_dispatch(self, monkeypatch):
+        """Assert that method='optbinning' dispatches to _run_optbinning."""
+        import cardre.nodes.build.bins as bins_mod
+        called = False
+
+        def fake_optbinning(ctx):
+            nonlocal called
+            called = True
+            from cardre.execution.context import NodeOutput
+            return NodeOutput(artifacts=[], metrics={})
+
+        monkeypatch.setattr(bins_mod, "_run_optbinning", fake_optbinning)
+        node = AutomaticBinningNode()
+        from cardre.execution.context import ExecutionContext
+        node.run(
+            ExecutionContext(
+                store=None, run_id="r", plan_version_id="pv",
+                step_spec=None, parent_run_steps=[],
+                input_artifacts=[], validated_params={"method": "optbinning"},
+                runtime_metadata={},
+            )
+        )
+        assert called, "_run_optbinning was not invoked for method='optbinning'"

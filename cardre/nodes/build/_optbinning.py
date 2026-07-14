@@ -182,7 +182,7 @@ def _run_optbinning(context: ExecutionContext) -> NodeOutput:
 
     bin_artifact = write_json_artifact(
         store, artifact_type="definition", role="definition",
-        stem=f"auto-binning-{context.step_spec.step_id}",
+        stem=f"automatic-binning-{context.step_spec.step_id}",
         payload=bin_def,
         metadata={
             "source_artifact_id": train_artifact.artifact_id,
@@ -217,7 +217,7 @@ def _run_optbinning(context: ExecutionContext) -> NodeOutput:
         var_summary_df = pl.DataFrame(var_summary_rows)
         var_summary_artifact = write_parquet_artifact(
             store, artifact_type="report", role="report",
-            stem=f"auto-binning-summary-{context.step_spec.step_id}",
+            stem=f"automatic-binning-summary-{context.step_spec.step_id}",
             frame=var_summary_df,
             metadata={
                 "engine": "optbinning",
@@ -229,7 +229,7 @@ def _run_optbinning(context: ExecutionContext) -> NodeOutput:
         empty_df = pl.DataFrame({"placeholder": []})
         var_summary_artifact = write_parquet_artifact(
             store, artifact_type="report", role="report",
-            stem=f"auto-binning-summary-{context.step_spec.step_id}",
+            stem=f"automatic-binning-summary-{context.step_spec.step_id}",
             frame=empty_df,
             metadata={"engine": "optbinning", "variable_count": 0},
             directory="artifacts",
@@ -249,7 +249,7 @@ def _run_optbinning(context: ExecutionContext) -> NodeOutput:
     })
     manifest_artifact = write_json_artifact(
         store, artifact_type="report", role="report",
-        stem=f"auto-binning-manifest-{context.step_spec.step_id}",
+        stem=f"automatic-binning-manifest-{context.step_spec.step_id}",
         payload=manifest,
         metadata={
             "engine": "optbinning",

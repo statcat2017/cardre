@@ -123,7 +123,7 @@ def store_with_evidence(store):
         (rs_downstream, run_id, downstream_step_id, pv_id, now, now),
     )
 
-    # Insert evidence edges (for the manual-binning step from fine-classing)
+    # Insert evidence edges (for the manual-binning step from automatic-binning)
     ee_id = str(uuid.uuid4())
     store.execute(
         "INSERT INTO evidence_edges "

@@ -74,7 +74,7 @@ _CANONICAL_SCORECARD_STEPS: list[tuple[str, str, list[str], dict[str, Any]]] = [
         "automatic-binning",
         "cardre.automatic_binning",
         ["explicit-missing-outlier-treatment", "define-metadata"],
-        {},
+        {"method": "fine_classing"},
     ),
     (
         "initial-woe-iv",

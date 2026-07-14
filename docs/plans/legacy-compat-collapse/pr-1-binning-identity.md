@@ -22,12 +22,12 @@ One canonical automatic-binning node identity: `cardre.automatic_binning`. Delet
 
 ## Code instructions
 
-### Step 1 — Move `_run_optbinning` + helpers into `bins.py`
+### Step 1 — Move `_run_optbinning` + helpers into a private module
 
-Open `cardre/nodes/build/auto_binning_fit.py` and copy the following into `cardre/nodes/build/bins.py` (place after `_run_fine_classing`, before `ManualBinningNode`):
-- The `_run_optbinning` function (lines 245-479).
+The optbinning code is large enough that inlining it into `bins.py` would exceed the repo's 1000-line file limit. Instead, create a new private module `cardre/nodes/build/_optbinning.py` containing:
+- The `_run_optbinning` function (moved from `auto_binning_fit.py` lines 245-479).
 - The `_resolve_train_input` helper (lines 236-242).
-- The `_NUMERIC_TYPES` set (lines 42-45) — move to module level in `bins.py` as `_NUMERIC_TYPES`.
+- The `_NUMERIC_TYPES` set (lines 42-45) — move to module level as `_NUMERIC_TYPES`.
 
 In the moved `_run_optbinning`, fix the class reference `AutoBinningFitNode._NUMERIC_TYPES` (was line 273) → the module-level `_NUMERIC_TYPES`.
 
@@ -37,12 +37,12 @@ Fix the manifest mislabel (was line 449):
 "cardre_node_type": "cardre.automatic_binning",
 ```
 
-Delete the import at `bins.py:329`:
+In `bins.py`, replace the import at line 329:
 ```python
 # was: from cardre.nodes.build.auto_binning_fit import _run_optbinning
-# now: _run_optbinning is in the same module — just call it directly
+# now: from cardre.nodes.build._optbinning import _run_optbinning
 ```
-The existing `FineClassingNode.run` dispatch (`bins.py:324-331`) stays the same shape; only the import line goes away.
+The existing `AutomaticBinningNode.run` dispatch stays the same shape; only the import changes.
 
 ### Step 2 — Rename the class and identity
 

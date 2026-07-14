@@ -13,9 +13,6 @@
   "cardre/nodes/_training_utils.py": [
     86
   ],
-  "cardre/nodes/build/auto_binning_fit.py": [
-    248
-  ],
   "cardre/nodes/build/bins.py": [
     130
   ],

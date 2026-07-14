@@ -414,7 +414,7 @@ def _run_fine_classing(context: ExecutionContext) -> NodeOutput:
     }).to_payload()
     artifact = write_json_artifact(
         store, artifact_type="definition", role="definition",
-        stem=f"fine-classing-{context.step_spec.step_id}",
+        stem=f"automatic-binning-{context.step_spec.step_id}",
         payload=bin_def,
         metadata={
             "source_artifact_id": train_artifact.artifact_id,
