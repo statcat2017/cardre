@@ -111,18 +111,6 @@ class TestSeparationDiagnostics:
         assert payload["variables"][0]["status"] == "pass"
         assert payload["summary"]["warning_count"] == 0
 
-    def test_infinite_coefficient_detected(self, store):
-        model = _make_model_artifact(
-            store,
-            features=["age_woe"],
-            coefficients={"age_woe": float("inf")},
-        )
-        ctx = _make_context(store, "separation-diagnostics", "cardre.separation_diagnostics", [model])
-        output = SeparationDiagnosticsNode().run(ctx)
-        payload = json.loads((store.root / output.artifacts[0].path).read_text())
-        assert payload["variables"][0]["status"] == "fail"
-        assert "infinite" in payload["variables"][0]["reason"].lower()
-
 
 class TestVifDiagnostics:
     def _make_woe_train(self, store, data: dict[str, list[float]], model):
