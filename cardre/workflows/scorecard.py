@@ -236,7 +236,7 @@ _CANONICAL_SCORECARD_STEPS: list[tuple[str, str, list[str], dict[str, Any]]] = [
         {},
     ),
     (
-        "technical-manifest-stub",
+        "technical-manifest",
         "cardre.technical_manifest_export",
         [
             "define-metadata",

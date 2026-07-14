@@ -13,7 +13,7 @@ Evidence is resolved by canonical step IDs defined in `cardre/reporting/evidence
 | `cutoff-analysis` | Cutoff analysis evidence |
 | `manual-binning` | Manual binning evidence |
 | `variable-clustering` | Variable clustering evidence |
-| `technical-manifest-stub` | Technical manifest stub (comparison mode) |
+| `technical-manifest` | Technical manifest (comparison mode) |
 
 ## Legacy Aliases
 
@@ -28,7 +28,7 @@ Evidence is resolved by canonical step IDs defined in `cardre/reporting/evidence
 | Branch report | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics` |
 | Champion report | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics` |
 | Full collector | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis`, `manual-binning`, `variable-clustering` |
-| Comparison | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis`, `technical-manifest-stub` |
+| Comparison | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis`, `technical-manifest` |
 
 ## Evidence Kinds
 

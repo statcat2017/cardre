@@ -67,5 +67,5 @@ REQUIRED_STEPS_COMPARISON: list[str] = [
     "score-scaling",
     "validation-metrics",
     "cutoff-analysis",
-    "technical-manifest-stub",
+    "technical-manifest",
 ]
