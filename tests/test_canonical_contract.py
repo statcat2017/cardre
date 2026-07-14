@@ -55,13 +55,7 @@ def test_no_compat_evidence_aliases_in_source():
             continue
         tree = ast.parse(py.read_text())
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                for alias in node.names:
-                    if alias.name in banned:
-                        raise AssertionError(
-                            f"{py.relative_to(root)} imports banned identifier {alias.name!r}"
-                        )
-            elif isinstance(node, ast.Import):
+            if isinstance(node, (ast.ImportFrom, ast.Import)):
                 for alias in node.names:
                     if alias.name in banned:
                         raise AssertionError(
