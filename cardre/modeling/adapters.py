@@ -505,14 +505,17 @@ def _apply_calibration(
 # Adapter registry
 # ---------------------------------------------------------------------------
 
-_ADAPTERS: dict[str, Callable[..., NodeOutput]] = {
-    "logistic_regression": apply_logistic,
+_ADAPTER_FNS: dict[str, Callable[..., NodeOutput]] = {
+    "apply_logistic": apply_logistic,
+    "apply_sklearn_estimator": apply_sklearn_estimator,
 }
+
+_ADAPTERS: dict[str, Callable[..., NodeOutput]] = {}
 
 for _fam in list_families():
     spec = get_family_spec(_fam)
-    if spec is not None and spec.adapter_fn == "apply_sklearn_estimator":
-        _ADAPTERS.setdefault(_fam, apply_sklearn_estimator)
+    if spec is not None and spec.adapter_fn in _ADAPTER_FNS:
+        _ADAPTERS[_fam] = _ADAPTER_FNS[spec.adapter_fn]
 
 
 def apply_model(

@@ -156,8 +156,12 @@ def _fit_isotonic_cv(
 
 
 def _supports_folded_linear_calibration(typed_model: Any) -> bool:
+    from cardre.modeling.families import get as get_family_spec
+    spec = get_family_spec(typed_model.model_family)
     return (
-        typed_model.model_family == "logistic_regression"
+        spec is not None
+        and spec.has_coefficients
+        and spec.supports_scorecard_scaling
         and typed_model.has_explicit_intercept
         and bool(typed_model.coefficients_dict)
     )
