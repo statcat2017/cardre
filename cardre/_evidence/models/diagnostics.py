@@ -62,8 +62,6 @@ class SeparationEntry:
     coefficient: float = 0.0
     coefficient_is_infinite: bool = False
     abs_coefficient: float = 0.0
-    standard_error: float | None = None
-    standard_error_is_infinite: bool = False
     status: str = ""
     reason: str = ""
 
@@ -74,8 +72,6 @@ class SeparationEntry:
             coefficient=float(data.get("coefficient", 0.0)),
             coefficient_is_infinite=bool(data.get("coefficient_is_infinite", False)),
             abs_coefficient=float(data.get("abs_coefficient", 0.0)),
-            standard_error=data.get("standard_error"),
-            standard_error_is_infinite=bool(data.get("standard_error_is_infinite", False)),
             status=data.get("status", ""),
             reason=data.get("reason", ""),
         )
@@ -86,7 +82,6 @@ class SeparationDiagnostics:
     variables: list[SeparationEntry] = field(default_factory=list)
     target_column: str = ""
     threshold: float = 0.0
-    standard_error_threshold: float = 0.0
     model_converged: bool = False
     model_iterations: int = 0
     summary: JsonDict = field(default_factory=dict)
@@ -100,7 +95,6 @@ class SeparationDiagnostics:
             variables=variables,
             target_column=data.get("target_column", ""),
             threshold=float(data.get("threshold", 0.0)),
-            standard_error_threshold=float(data.get("standard_error_threshold", 0.0)),
             model_converged=bool(data.get("model_converged", False)),
             model_iterations=int(data.get("model_iterations", 0)),
             summary=dict(data.get("summary", {})),

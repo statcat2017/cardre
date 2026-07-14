@@ -165,7 +165,6 @@ class SeparationDiagnosticsNode(NodeType):
     output_roles: list[str] = ["report"]
 
     SEPARATION_COEFFICIENT_THRESHOLD = 10.0
-    SEPARATION_SE_THRESHOLD = 10.0
 
     def run(self, context: ExecutionContext) -> NodeOutput:
         store = context.store
@@ -219,7 +218,6 @@ class SeparationDiagnosticsNode(NodeType):
             "schema_version": SCHEMA_SEPARATION_DIAGNOSTICS,
             "target_column": model.target_column,
             "threshold": self.SEPARATION_COEFFICIENT_THRESHOLD,
-            "standard_error_threshold": self.SEPARATION_SE_THRESHOLD,
             "model_converged": converged,
             "model_iterations": iterations,
             "variables": variable_results,

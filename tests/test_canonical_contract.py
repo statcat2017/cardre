@@ -157,3 +157,36 @@ def test_cutoff_analysis_rejects_legacy_score_key():
 
     with pytest.raises(ValueError, match="score_cutoff"):
         CutoffAnalysis.from_json({"cutoff_tables": {"train": [{"score": 100}]}})
+
+
+def test_model_artifact_requires_schema_version():
+    from cardre.modeling.schema import ModelArtifactV1
+    payload = {
+        "model_family": "logistic_regression",
+        "target_column": "y",
+        "target_event_value": "bad",
+        "class_mapping": {"good": "good", "bad": "bad"},
+        "probability_column_index": 1,
+        "feature_contract": {"features": ["x"]},
+        "model_payload": {"intercept": 0.0, "coefficients": {"x": 1.0}},
+        "training": {"row_count": 100},
+    }
+    with pytest.raises(ValueError, match="requires schema_version"):
+        ModelArtifactV1.from_dict(payload)
+
+
+def test_model_artifact_rejects_wrong_schema_version():
+    from cardre.modeling.schema import ModelArtifactV1
+    payload = {
+        "schema_version": "cardre.model_artifact.v2",
+        "model_family": "logistic_regression",
+        "target_column": "y",
+        "target_event_value": "bad",
+        "class_mapping": {"good": "good", "bad": "bad"},
+        "probability_column_index": 1,
+        "feature_contract": {"features": ["x"]},
+        "model_payload": {"intercept": 0.0, "coefficients": {"x": 1.0}},
+        "training": {"row_count": 100},
+    }
+    with pytest.raises(ValueError, match="requires schema_version"):
+        ModelArtifactV1.from_dict(payload)

@@ -223,6 +223,7 @@ _JSON_KIND_FIXTURES = [
      "cardre.selection_definition.v1", {"selected": [{"variable": "age"}]}),
     (EvidenceKind.MODEL_ARTIFACT, "model", "model",
      "cardre.model_artifact.v1", {
+         "schema_version": "cardre.model_artifact.v1",
          "model_family": "logistic_regression",
          "target_column": "y",
          "target_event_value": "bad",

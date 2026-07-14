@@ -320,6 +320,13 @@ class ModelArtifactV1:
         if not model_family:
             raise ValueError("ModelArtifactV1 requires a non-empty 'model_family'.")
 
+        if data.get("schema_version") != MODEL_ARTIFACT_SCHEMA_VERSION:
+            raise ValueError(
+                f"ModelArtifactV1 requires schema_version "
+                f"{MODEL_ARTIFACT_SCHEMA_VERSION!r}, "
+                f"got {data.get('schema_version')!r}."
+            )
+
         # Reject legacy top-level keys that duplicate canonical locations
         for legacy_key in ("features", "coefficients", "intercept", "feature_strategy"):
             if legacy_key in data:
