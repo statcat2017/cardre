@@ -16,7 +16,7 @@ from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.models.binning import BinDefinition, ManualBinningOverrides
 from cardre.domain.artifacts import ArtifactRef
 from cardre.engine.binning.definition import LifecycleBin, LifecycleBinDefinition, LifecycleVariable
-from cardre.modeling.schema import FeatureContract, ModelArtifactV1
+from cardre.modeling.schema import FeatureContract, ModelArtifactV1, TrainingMetadata
 from cardre.store.db import ProjectStore
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -84,15 +84,18 @@ class TestModelArtifactRoundTrip:
     def test_to_dict_round_trip_minimal(self):
         obj = ModelArtifactV1(
             model_family="test_family",
+            target_column="y",
+            target_event_value="bad",
+            class_mapping={"good": "good", "bad": "bad"},
+            probability_column_index=1,
             feature_contract=FeatureContract(features=["x"]),
             model_payload={"coefficients": {"x": 1.0}},
+            training=TrainingMetadata(row_count=100),
         )
         d = obj.to_dict()
         obj2 = ModelArtifactV1.from_dict(d)
         re = obj2.to_dict()
-        for k, v in d.items():
-            assert k in re, f"Round trip dropped key {k!r}"
-            assert re[k] == v, f"Round trip changed value for key {k!r}"
+        assert re == d
 
 
 class TestBinDefinitionRoundTrip:

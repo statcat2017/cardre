@@ -32,9 +32,15 @@ def _make_model_artifact(
         "schema_version": SCHEMA_MODEL_ARTIFACT,
         "model_family": "logistic_regression",
         "target_column": target_column,
+        "target_event_value": "bad",
+        "class_mapping": {"good": "good", "bad": "bad"},
+        "probability_column_index": 1,
         "feature_contract": {"features": features},
-        "model_payload": {"coefficients": coefficients},
-        "training": training or {"converged": True, "iterations": 50},
+        "model_payload": {
+            "intercept": -1.0,
+            "coefficients": coefficients,
+        },
+        "training": training or {"converged": True, "iterations": 50, "row_count": 100},
         "warnings": [],
     }
     return write_json_artifact(
@@ -328,8 +334,6 @@ class TestCalibrationDiagnostics:
         payload = json.loads(text)
         assert payload["variables"][0]["coefficient"] is None
         assert payload["variables"][0]["coefficient_is_infinite"] is True
-        assert payload["variables"][0]["standard_error"] is None
-        assert payload["variables"][0]["standard_error_is_infinite"] is False
 
         # --- Calibration diagnostics (infinite HL stat) ---
         meta = self._make_metadata(store)

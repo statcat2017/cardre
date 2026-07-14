@@ -225,8 +225,12 @@ _JSON_KIND_FIXTURES = [
      "cardre.model_artifact.v1", {
          "model_family": "logistic_regression",
          "target_column": "y",
+         "target_event_value": "bad",
+         "class_mapping": {"good": "good", "bad": "bad"},
+         "probability_column_index": 1,
          "feature_contract": {"features": ["age"]},
-         "model_payload": {"coefficients": {"age": 1.5}},
+         "model_payload": {"intercept": 0.0, "coefficients": {"age": 1.5}},
+         "training": {"row_count": 100},
      }),
     (EvidenceKind.SCORE_SCALING, "scorecard", "scorecard",
      "cardre.score_scaling.v1", {"factor": 20, "offset": 500}),
