@@ -60,3 +60,6 @@ Generated from `NodeRegistry.with_defaults()`. Nodes are divided into launch and
 | `cardre.reject_inference_none` | transform | Reject inference (none) |
 | `cardre.reject_inference_augmentation` | transform | Reject inference (augmentation) |
 | `cardre.decision_tree_classifier` | fit | Decision tree classifier |
+| `cardre.calibrate_probabilities` | fit | Platt and isotonic probability calibration |
+| `cardre.define_reject_population` | transform | Define reject population for inference |
+| `cardre.threshold_optimization` | apply | Optimize classification threshold |

@@ -251,8 +251,10 @@ def _register_launch_nodes(reg: NodeRegistry) -> None:
 def _register_deferred_nodes(reg: NodeRegistry) -> None:
     from cardre.nodes import (
         AlternativeDataManifestNode,
+        CalibrateProbabilitiesNode,
         CatBoostClassifierNode,
         DecisionTreeNode,
+        DefineRejectPopulationNode,
         FairnessReportNode,
         FeatureSelectionEmbeddedNode,
         FeatureSelectionFilterNode,
@@ -267,6 +269,7 @@ def _register_deferred_nodes(reg: NodeRegistry) -> None:
         RejectInferenceNoneNode,
         ResampleTrainingDataNode,
         SmoteTrainingDataNode,
+        ThresholdOptimizationNode,
         XGBoostClassifierNode,
     )
 
@@ -289,5 +292,8 @@ def _register_deferred_nodes(reg: NodeRegistry) -> None:
         RejectInferenceNoneNode,
         RejectInferenceAugmentationNode,
         DecisionTreeNode,
+        CalibrateProbabilitiesNode,
+        DefineRejectPopulationNode,
+        ThresholdOptimizationNode,
     ]:
         reg.register(_deferred(n))  # type: ignore[type-abstract]  # Protocol subclasses as defaults is intentional
