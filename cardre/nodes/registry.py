@@ -171,7 +171,6 @@ def _deferred(cls: type[NodeType]) -> type[NodeType]:
 
 def _register_launch_nodes(reg: NodeRegistry) -> None:
     from cardre.nodes.build import (
-        BinningNode,
         BuildSummaryReportNode,
         CalculateWoeIvNode,
         CalibrationDiagnosticsNode,
@@ -210,7 +209,6 @@ def _register_launch_nodes(reg: NodeRegistry) -> None:
     )
 
     for n in [
-        BinningNode,
         ApplyExclusionsNode,
         DevelopmentSampleDefinitionNode,
         DefineModellingMetadataNode,

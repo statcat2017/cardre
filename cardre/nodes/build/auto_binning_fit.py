@@ -446,7 +446,7 @@ def _run_optbinning(context: ExecutionContext) -> NodeOutput:
 
     manifest = dict(result.manifest)
     manifest.update({
-        "cardre_node_type": "cardre.binning",
+        "cardre_node_type": "cardre.fine_classing",
         "method": "optbinning",
         "fit_sample_role": "train",
         "train_artifact_id": train_artifact.artifact_id,
