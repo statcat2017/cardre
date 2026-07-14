@@ -290,8 +290,8 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         ]
         assert validation_metrics_reports, "validation-metrics did not produce a report"
         validation_payload = json.loads((store.root / validation_metrics_reports[0]["path"]).read_text())
-        assert "train" in validation_payload["metrics"]
-        assert "test" in validation_payload["metrics"]
+        assert "train" in validation_payload["roles"]
+        assert "test" in validation_payload["roles"]
 
         scorecard_table_artifacts = [
             row for row in artifact_rows

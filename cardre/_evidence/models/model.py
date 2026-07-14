@@ -168,3 +168,23 @@ class ScoreScaling:
     @property
     def higher_score_is_lower_risk(self) -> bool:
         return self.score_direction == "higher_is_lower_risk"
+
+    def to_dict(self) -> JsonDict:
+        payload: JsonDict = {
+            "base_score": self.base_score,
+            "base_odds": self.base_odds_text,
+            "points_to_double_odds": self.points_to_double_odds,
+            "factor": self.factor,
+            "offset": self.offset,
+            "score_direction": self.score_direction,
+            "rounding": self.rounding,
+            "min_score": self.min_score,
+            "max_score": self.max_score,
+            "target_column": self.target_column,
+            "attributes": self.attributes,
+        }
+        if self.has_explicit_intercept:
+            payload["intercept"] = self.intercept
+        if self.base_points is not None:
+            payload["base_points"] = self.base_points
+        return payload
