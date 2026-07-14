@@ -1,5 +1,5 @@
 from cardre.nodes.build.bins import (
-    FineClassingNode,
+    AutomaticBinningNode,
     ManualBinningNode,
     apply_manual_binning_overrides,
     validate_manual_binning_overrides,
@@ -29,10 +29,10 @@ from cardre.nodes.build.scoring_export import (
 from cardre.nodes.build.selection import VariableSelectionNode
 
 __all__ = [
-    "BuildSummaryReportNode", "CalculateWoeIvNode", "DummyFitNode",
+    "AutomaticBinningNode", "BuildSummaryReportNode", "CalculateWoeIvNode", "DummyFitNode",
     "CalibrationDiagnosticsNode",
     "CoefficientSignCheckNode",
-    "FineClassingNode", "FrozenScorecardBundleNode", "LogisticRegressionNode", "ManualBinningNode",
+    "FrozenScorecardBundleNode", "LogisticRegressionNode", "ManualBinningNode",
     "NoopNode", "PythonScoringExportNode", "ScoreScalingNode", "ScorecardTableExportNode",
     "SeparationDiagnosticsNode", "SqlScoringExportNode", "TechnicalManifestExportNode",
     "VariableClusteringNode", "VariableSelectionNode",

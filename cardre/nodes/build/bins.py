@@ -15,11 +15,12 @@ from cardre.node_parameters import (
     ParameterConstraint,
     ParameterDefinition,
 )
+from cardre.nodes.build._optbinning import _run_optbinning
 from cardre.nodes.contracts import NodeType
 
 
-class FineClassingNode(NodeType):
-    node_type = "cardre.fine_classing"
+class AutomaticBinningNode(NodeType):
+    node_type = "cardre.automatic_binning"
     version = "1"
     category = "fit"
     input_roles: list[str] = ["train", "definition"]
@@ -32,7 +33,7 @@ class FineClassingNode(NodeType):
         return NodeParameterSchema(
             node_type=cls.node_type,
             node_version=cls.version,
-            title="Fine Classing",
+            title="Automatic Binning",
             default_method="fine_classing",
             methods=[
                 MethodOption(
@@ -326,7 +327,6 @@ class FineClassingNode(NodeType):
         if method == "fine_classing":
             return _run_fine_classing(context)
         elif method == "optbinning":
-            from cardre.nodes.build.auto_binning_fit import _run_optbinning
             return _run_optbinning(context)
         raise ValueError(f"Unknown binning method: {method!r}")
 
@@ -350,7 +350,7 @@ def _run_fine_classing(context: ExecutionContext) -> NodeOutput:
         raise ValueError("max_categorical_levels must be >= 1")
 
     reader = ArtifactEvidenceReader(store)
-    train_artifact = context.require_train_artifact("cardre.fine_classing")
+    train_artifact = context.require_train_artifact("cardre.automatic_binning")
     meta_def = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
 
     df = reader.read_dataframe(train_artifact)
@@ -414,7 +414,7 @@ def _run_fine_classing(context: ExecutionContext) -> NodeOutput:
     }).to_payload()
     artifact = write_json_artifact(
         store, artifact_type="definition", role="definition",
-        stem=f"fine-classing-{context.step_spec.step_id}",
+        stem=f"automatic-binning-{context.step_spec.step_id}",
         payload=bin_def,
         metadata={
             "source_artifact_id": train_artifact.artifact_id,

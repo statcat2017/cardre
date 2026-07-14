@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from cardre.nodes.build.bins import FineClassingNode
+from cardre.nodes.build.bins import AutomaticBinningNode
 
 
-class TestFineClassingNodeValidateParams:
+class TestAutomaticBinningNodeValidateParams:
     @pytest.fixture
     def node(self):
-        return FineClassingNode()
+        return AutomaticBinningNode()
 
     def test_valid_fine_classing(self, node):
         errors = node.validate_params({"method": "fine_classing", "max_bins": 20, "min_bin_fraction": 0.05})
@@ -84,9 +84,9 @@ class TestFineClassingNodeValidateParams:
         assert any("min_prebin_size" in e for e in errors)
 
 
-class TestFineClassingNodeRun:
+class TestAutomaticBinningNodeRun:
     def test_run_unknown_method_raises(self):
-        node = FineClassingNode()
+        node = AutomaticBinningNode()
         from cardre.execution.context import ExecutionContext
         with pytest.raises(ValueError, match="Unknown binning method"):
             node.run(
@@ -97,3 +97,27 @@ class TestFineClassingNodeRun:
                     runtime_metadata={},
                 )
             )
+
+    def test_run_optbinning_dispatch(self, monkeypatch):
+        """Assert that method='optbinning' dispatches to _run_optbinning."""
+        import cardre.nodes.build.bins as bins_mod
+        called = False
+
+        def fake_optbinning(ctx):
+            nonlocal called
+            called = True
+            from cardre.execution.context import NodeOutput
+            return NodeOutput(artifacts=[], metrics={})
+
+        monkeypatch.setattr(bins_mod, "_run_optbinning", fake_optbinning)
+        node = AutomaticBinningNode()
+        from cardre.execution.context import ExecutionContext
+        node.run(
+            ExecutionContext(
+                store=None, run_id="r", plan_version_id="pv",
+                step_spec=None, parent_run_steps=[],
+                input_artifacts=[], validated_params={"method": "optbinning"},
+                runtime_metadata={},
+            )
+        )
+        assert called, "_run_optbinning was not invoked for method='optbinning'"

@@ -45,7 +45,7 @@ class TestApplyManualBinningEdit:
             "SELECT * FROM plan_steps WHERE plan_version_id = ? ORDER BY position",
             (result.new_plan_version_id,),
         ).fetchall()
-        assert len(steps) == 3, "Should have 3 steps (fine-classing, manual-binning, apply-woe)"
+        assert len(steps) == 3, "Should have 3 steps (automatic-binning, manual-binning, apply-woe)"
 
         # 3. Manual-binning step has updated params
         mb_step = None
@@ -63,14 +63,14 @@ class TestApplyManualBinningEdit:
             "SELECT * FROM plan_step_edges WHERE plan_version_id = ?",
             (result.new_plan_version_id,),
         ).fetchall()
-        assert len(edges) == 2, "Should have 2 edges (fine-classing -> mb, mb -> apply-woe)"
+        assert len(edges) == 2, "Should have 2 edges (automatic-binning -> mb, mb -> apply-woe)"
 
         new_edge_tuples = [
             (edge["parent_step_id"], edge["child_step_id"], edge["edge_order"])
             for edge in edges
         ]
         assert new_edge_tuples == [
-            ("fine-classing", "manual-binning", 0),
+            ("automatic-binning", "manual-binning", 0),
             ("manual-binning", "apply-woe", 0),
         ]
 

@@ -192,7 +192,7 @@ class TestManualBinningReviews:
 
 
 def _seed_store_with_evidence(store, project_id):
-    """Seed a store with a committed plan (fine-classing → manual-binning → apply-woe)
+    """Seed a store with a committed plan (automatic-binning → manual-binning → apply-woe)
     and a succeeded run with evidence.
 
     Mirrors conftest.store_with_evidence but operates on an existing store.
@@ -214,8 +214,8 @@ def _seed_store_with_evidence(store, project_id):
         (base_pv_id, plan_id, now, "Base version"),
     )
 
-    # Steps: fine-classing -> manual-binning -> apply-woe
-    binning_step_id = "fine-classing"
+    # Steps: automatic-binning -> manual-binning -> apply-woe
+    binning_step_id = "automatic-binning"
     mb_step_id = "manual-binning"
     downstream_step_id = "apply-woe"
 
@@ -223,7 +223,7 @@ def _seed_store_with_evidence(store, project_id):
         "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
         " params_json, params_hash, branch_label, position, canonical_step_id) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (binning_step_id, base_pv_id, "cardre.fine_classing", "1", "fit",
+        (binning_step_id, base_pv_id, "cardre.automatic_binning", "1", "fit",
          json.dumps({"max_bins": 20}), "abc123", "", 0, binning_step_id),
     )
     store.execute(

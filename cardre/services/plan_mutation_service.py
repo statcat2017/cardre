@@ -97,7 +97,7 @@ class PlanMutationService:
         plan_id = base_pv["plan_id"]
         version_number = base_pv["version_number"]
 
-        # 2. Validate that the source fine-classing step has evidence
+        # 2. Validate that the source automatic-binning step has evidence
         #    (reads from evidence_edges + evidence_artifacts)
         #    Since execution may not exist yet, this validation is best-effort.
         self._validate_source_evidence(command.plan_version_id, command.step_id)
@@ -182,7 +182,7 @@ class PlanMutationService:
         plan_version_id: str,
         step_id: str,
     ) -> None:
-        """Validate that source fine-classing evidence exists for the step.
+        """Validate that source bin-definition evidence exists for the step.
 
         Since execution may not be available yet, this is best-effort:
         if there are evidence_edges rows for this step, they must have

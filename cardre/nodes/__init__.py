@@ -1,8 +1,8 @@
 """Built-in node implementations for the Cardre scorecard engine.
 
-This module re-exports all node classes from subpackages for backward
-compatibility.  Nodes are registered in ``cardre.registry.NodeRegistry``
-and divided into two tiers:
+This module re-exports all node classes from subpackages as a convenience
+for the registry and tests.  Nodes are registered in
+``cardre.registry.NodeRegistry`` and divided into two tiers:
 
 - **Launch tier**: executable at launch (logistic regression, binning,
   WOE/IV, score scaling, validation, cutoff, decision tree challenger).
@@ -19,10 +19,10 @@ from cardre.nodes.boosting import (
     XGBoostClassifierNode,
 )
 from cardre.nodes.build import (
+    AutomaticBinningNode,
     BuildSummaryReportNode,
     CalculateWoeIvNode,
     DummyFitNode,
-    FineClassingNode,
     FrozenScorecardBundleNode,
     LogisticRegressionNode,
     ManualBinningNode,
@@ -106,7 +106,7 @@ __all__ = [
     "FairnessReportNode",
     "FeatureSelectionEmbeddedNode",
     "FeatureSelectionFilterNode",
-    "FineClassingNode",
+    "AutomaticBinningNode",
     "FrozenScorecardBundleNode",
     "GradientBoostingClassifierNode",
     "HyperparameterTuningNode",
