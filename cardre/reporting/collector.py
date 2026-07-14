@@ -6,17 +6,14 @@ It must not become a second modelling execution path.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from datetime import UTC, datetime
 from json import JSONDecodeError, loads
 
 from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre.branch_step_resolver import ResolvedStepRef as _ResolvedStepRef
 from cardre.branch_step_resolver import resolve_required_steps
 from cardre.domain.artifacts import (
     json_logical_hash,
 )
-from cardre.domain.run import RunStep
 from cardre.readiness.limitation_codes import LimitationCode
 from cardre.reporting.evidence_contract import REQUIRED_STEPS_COLLECTOR
 from cardre.reporting.schema import (
@@ -37,30 +34,6 @@ CARDRE_VERSION = "0.1.0"
 
 def _utc_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-
-def _resolve_run_step(
-    store: ProjectStore, ref: _ResolvedStepRef, plan_version_id: str,
-    add_limitation: Callable[[Limitation], None] | None = None,
-) -> RunStep | None:
-    from cardre.evidence_locator import EvidenceLocator
-    branch_id = ref.resolved_branch_id if ref.resolution == "ancestor" else None
-    resolved = EvidenceLocator(store).resolve(
-        plan_version_id, ref.step_id, branch_id=branch_id,
-    )
-    rs = resolved.run_step if resolved is not None else None
-    if rs is not None and ref.resolution == "ancestor" and add_limitation is not None:
-        add_limitation(Limitation(
-            severity="warning", code=LimitationCode.INHERITED_BRANCH_EVIDENCE,
-            message=f"Step {ref.canonical_step_id} inherited from branch "
-            f"{ref.resolved_branch_id} (ancestor resolution).",
-        ))
-    return rs
-
-
-def resolve_run_step(ctx: SectionContext, ref: _ResolvedStepRef) -> RunStep | None:
-    """Convenience wrapper that passes ctx.add_limitation to _resolve_run_step."""
-    return _resolve_run_step(ctx.store, ref, ctx.plan_version_id, ctx.add_limitation)
 
 
 class ReportCollector:

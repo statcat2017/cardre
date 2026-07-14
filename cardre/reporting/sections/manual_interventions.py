@@ -63,7 +63,7 @@ class ManualInterventionsSection(SectionCollector):
                         )
                         break
 
-        from cardre.reporting.collector import resolve_run_step
+        from cardre.reporting._resolve import resolve_run_step
         rs = resolve_run_step(ctx, ref)
         if rs is None:
             return

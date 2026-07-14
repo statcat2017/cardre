@@ -1,7 +1,6 @@
 # Evidence Kinds
 
 ## Canonical Step IDs
-## Canonical Step IDs
 
 Evidence is resolved by canonical step IDs defined in `cardre/reporting/evidence_contract.py`:
 
@@ -31,13 +30,42 @@ Evidence is resolved by canonical step IDs defined in `cardre/reporting/evidence
 | Full collector | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis`, `manual-binning`, `variable-clustering` |
 | Comparison | `final-woe-iv`, `model-fit`, `score-scaling`, `validation-metrics`, `cutoff-analysis`, `technical-manifest-stub` |
 
-
 ## Evidence Kinds
 
-The `ArtifactEvidenceReader` (`cardre/evidence/`) supports the following evidence kinds:
+The `ArtifactEvidenceReader` (`cardre/_evidence/`) supports the following evidence kinds,
+defined in `cardre/_evidence/kinds.py`. This table lists the most commonly used kinds;
+the full enum has 43 members covering all artifact types in the engine.
 
-- `SCHEMA_VARIABLE_CLUSTERING_EVIDENCE`
-- Additional kinds defined in `cardre/evidence/` module
+| Kind | Schema | Typed Model |
+|------|--------|-------------|
+| `MODELLING_METADATA` | `cardre.modelling_metadata.v1` | `ModellingMetadata` |
+| `MODEL_ARTIFACT` | `cardre.model_artifact.v1` | `ModelArtifact` |
+| `SCORE_SCALING` | `cardre.score_scaling.v1` | `ScoreScaling` |
+| `BIN_DEFINITION` | `cardre.bin_definition.v1` | `BinDefinition` |
+| `WOE_TABLE` | `cardre.woe_table.v1` | `WoeTable` |
+| `IV_TABLE` | `cardre.iv_table.v1` | `IvTable` |
+| `SELECTION_DEFINITION` | `cardre.selection_definition.v1` | `SelectionDefinition` |
+| `EXCLUSION_SUMMARY` | `cardre.exclusion_summary.v1` | `ExclusionSummary` |
+| `SCORED_DATASET` | `cardre.scored_dataset.v1` | `ScoredDataset` |
+| `EXPLAINABILITY_REPORT` | `cardre.explainability_report.v1` | `ExplainabilityReport` |
+| `CALIBRATION_REPORT` | `cardre.calibration_report.v1` | `CalibrationReport` |
+| `VARIABLE_CLUSTERING` | `cardre.variable_clustering_evidence.v1` | `VariableClustering` |
+| `FROZEN_SCORECARD_BUNDLE` | `cardre.frozen_scorecard_bundle.v1` | `FrozenScorecardBundle` |
+| `MANUAL_BINNING_OVERRIDES` | `cardre.manual_binning_overrides.v1` | `ManualBinningOverrides` |
+| `COEFFICIENT_SIGN_DIAGNOSTICS` | `cardre.coefficient_sign_diagnostics.v1` | `CoefficientSignDiagnostics` |
+| `SEPARATION_DIAGNOSTICS` | `cardre.separation_diagnostics.v1` | `SeparationDiagnostics` |
+| `VIF_DIAGNOSTICS` | `cardre.vif_diagnostics.v1` | `VifDiagnostics` |
+| `CALIBRATION_DIAGNOSTICS` | `cardre.calibration_diagnostics.v1` | `CalibrationDiagnostics` |
+| `FEATURE_SELECTION_EVIDENCE` | `cardre.feature_selection_evidence.v1` | `FeatureSelectionEvidence` |
+| `CUTOFF_ANALYSIS` | `cardre.cutoff_analysis.v1` | `CutoffAnalysis` |
+| `VALIDATION_METRICS` | `cardre.validation_metrics.v1` | `ValidationMetrics` |
+| `SCORE_TABLE` | `cardre.scorecard_table.v1` | `ScoreTable` |
+| `SCORING_EXPORT_PYTHON` | `cardre.scoring_export_python.v1` | `ScoringExportPython` |
+| `SCORING_EXPORT_SQL` | `cardre.scoring_export_sql.v1` | `ScoringExportSQL` |
+
+The 4 diagnostics kinds (`COEFFICIENT_SIGN_DIAGNOSTICS`, `SEPARATION_DIAGNOSTICS`,
+`VIF_DIAGNOSTICS`, `CALIBRATION_DIAGNOSTICS`) and `MANUAL_BINNING_OVERRIDES` were
+added during the thermo-nuclear quality sprint (PR2).
 
 ## Resolution Rules
 
