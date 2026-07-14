@@ -51,43 +51,6 @@ class ReportBundleEvidence:
 
 
 @dataclass(frozen=True)
-class RunManifestEvidence:
-    manifest_version: str
-    run_id: str
-    plan_version_id: str
-    status: str
-    execution_mode: str
-    started_at: str = ""
-    finished_at: str = ""
-    branch_id: str | None = None
-    target_step_id: str | None = None
-    in_scope_step_ids: list[str] = field(default_factory=list)
-    steps: list[JsonDict] = field(default_factory=list)
-    source_artifact_id: str = ""
-
-    @classmethod
-    def from_json(cls, data: JsonDict, artifact_id: str = "") -> RunManifestEvidence:
-        from cardre._evidence.schemas import SCHEMA_RUN_MANIFEST
-        manifest_version = data.get("schema_version", data.get("manifest_version", ""))
-        if not manifest_version:
-            manifest_version = SCHEMA_RUN_MANIFEST
-        return cls(
-            manifest_version=manifest_version,
-            run_id=data.get("run_id", ""),
-            plan_version_id=data.get("plan_version_id", ""),
-            status=data.get("status", ""),
-            execution_mode=data.get("execution_mode", ""),
-            started_at=data.get("started_at", ""),
-            finished_at=data.get("finished_at", ""),
-            branch_id=data.get("branch_id"),
-            target_step_id=data.get("target_step_id"),
-            in_scope_step_ids=list(data.get("in_scope_step_ids", [])),
-            steps=list(data.get("steps", [])),
-            source_artifact_id=artifact_id,
-        )
-
-
-@dataclass(frozen=True)
 class TechnicalManifestIndex:
     manifests: list[JsonDict]
     source_artifact_id: str = ""

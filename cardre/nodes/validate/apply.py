@@ -7,9 +7,9 @@ import polars as pl
 from cardre._evidence.kinds import AmbiguousEvidenceError, EvidenceKind, EvidenceNotFoundError
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import (
+    SCHEMA_APPLY_WOE_EVIDENCE,
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
     SCHEMA_SELECTION_DEFINITION,
-    SCHEMA_WOE_APPLICATION_EVIDENCE,
 )
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.domain.artifacts import ArtifactRef
@@ -204,7 +204,7 @@ class ApplyWoeMappingNode(NodeType):
             }
 
         evidence: JsonDict = {
-            "schema_version": SCHEMA_WOE_APPLICATION_EVIDENCE,
+            "schema_version": SCHEMA_APPLY_WOE_EVIDENCE,
             "policy": {"woe_unmatched_policy": woe_unmatched_policy},
             "roles": roles_evidence,
             "warnings": [],
@@ -220,7 +220,7 @@ class ApplyWoeMappingNode(NodeType):
             store, artifact_type="report", role="report",
             stem=f"woe-apply-evidence-{context.step_spec.step_id}",
             payload=evidence,
-            metadata={"schema_version": SCHEMA_WOE_APPLICATION_EVIDENCE},
+            metadata={"schema_version": SCHEMA_APPLY_WOE_EVIDENCE},
         )
 
         all_artifacts = outputs + [evidence_art]

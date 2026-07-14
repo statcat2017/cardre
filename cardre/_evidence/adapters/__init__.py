@@ -42,7 +42,6 @@ from cardre._evidence.models.governance import (
 from cardre._evidence.models.manifest import (
     ComparisonArtifact,
     ReportBundleEvidence,
-    RunManifestEvidence,
     TechnicalManifestIndex,
 )
 from cardre._evidence.models.model import ModelArtifact, ScoreScaling
@@ -154,10 +153,6 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, AdapterSpec] = {
     EvidenceKind.RESAMPLING_EVIDENCE: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.RESAMPLING_EVIDENCE],
         parse=lambda path, art, store: ResamplingEvidence.from_json(read_json_payload(path), artifact_id=art.artifact_id),
-    ),
-    EvidenceKind.RUN_MANIFEST: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.RUN_MANIFEST],
-        parse=lambda path, art, store: RunManifestEvidence.from_json(read_json_payload(path), artifact_id=art.artifact_id),
     ),
     EvidenceKind.SAMPLE_DEFINITION: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.SAMPLE_DEFINITION],

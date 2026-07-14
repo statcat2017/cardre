@@ -30,12 +30,9 @@ class EvidenceKind(Enum):
     IV_TABLE = "iv_table"
     FROZEN_SCORECARD_BUNDLE = "frozen_scorecard_bundle"
     APPLY_WOE_EVIDENCE = "apply_woe_evidence"
-    WOE_APPLICATION_EVIDENCE = "apply_woe_evidence"  # compat alias
     APPLY_MODEL_EVIDENCE = "apply_model_evidence"
-    SCORE_APPLICATION_EVIDENCE = "apply_model_evidence"  # compat alias
     VALIDATION_EVIDENCE = "validation_evidence"
     REPORT_BUNDLE = "report_bundle"
-    RUN_MANIFEST = "run_manifest"
     TECHNICAL_MANIFEST_INDEX = "technical_manifest_index"
     COMPARISON_ARTIFACT = "comparison_artifact"
     FEATURE_SELECTION_EVIDENCE = "feature_selection_evidence"
@@ -61,10 +58,6 @@ class EvidenceError(Exception):
 
 class EvidenceSchemaError(EvidenceError):
     """Evidence payload did not satisfy schema requirements."""
-
-
-class LegacyEvidenceCompatibilityError(EvidenceSchemaError):
-    """Legacy payload matched only via compatibility heuristics."""
 
 
 class EvidenceNotFoundError(EvidenceError):
