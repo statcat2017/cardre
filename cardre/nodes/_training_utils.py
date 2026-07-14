@@ -90,7 +90,7 @@ def _prepare_training_data(
     features = _resolve_features(df, target_spec.target_column, params)
 
     target_spec.validate_known(df)
-    y_binary = target_spec.encode_binary(df).to_numpy()
+    y_binary = target_spec.encode_binary_strict(df).to_numpy()
     n_bad = int(y_binary.sum())
     n_good = len(y_binary) - n_bad
     if n_bad == 0:

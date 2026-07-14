@@ -214,8 +214,8 @@ class LogisticRegressionNode(NodeType):
         if target_column not in df.columns:
             raise ValueError(f"Target column '{target_column}' not found in training data")
 
-        target_spec.validate_known(df)
-        y_binary = target_spec.encode_binary(df).to_list()
+        target_spec.validate_good_bad_only(df)
+        y_binary = target_spec.encode_binary_strict(df).to_list()
         n_bad = sum(y_binary)
         n_good = len(y_binary) - n_bad
         if n_bad == 0:

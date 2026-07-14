@@ -5,28 +5,18 @@ from __future__ import annotations
 from typing import Any
 
 from cardre._evidence.kinds import EvidenceKind
-from cardre.services.comparison.resolver import find_typed_artifact, get_step_maps
-from cardre.store.db import ProjectStore
+from cardre.services.comparison.resolver import ComparisonContext, find_typed_artifact
 
 
 def build_cutoff_comparison(
-    store: ProjectStore,
-    plan_version_id_baseline: str,
-    plan_version_id_challenger: str,
-    branch_id_baseline: str,
-    branch_id_challenger: str,
+    ctx: ComparisonContext,
     spec: dict[str, Any],
 ) -> dict[str, Any]:
     if not spec.get("include_cutoff"):
         return {"roles": {}}
 
-    step_map_b, step_map_c = get_step_maps(
-        store, plan_version_id_baseline, plan_version_id_challenger,
-        branch_id_baseline, branch_id_challenger,
-    )
-
-    co_b = find_typed_artifact(store, step_map_b, "cutoff-analysis", plan_version_id_baseline, None, (EvidenceKind.CUTOFF_ANALYSIS,))
-    co_c = find_typed_artifact(store, step_map_c, "cutoff-analysis", plan_version_id_challenger, branch_id_challenger, (EvidenceKind.CUTOFF_ANALYSIS,))
+    co_b = find_typed_artifact(ctx.store, ctx.step_map_baseline, "cutoff-analysis", ctx.plan_version_id_baseline, None, (EvidenceKind.CUTOFF_ANALYSIS,))
+    co_c = find_typed_artifact(ctx.store, ctx.step_map_challenger, "cutoff-analysis", ctx.plan_version_id_challenger, ctx.branch_id_challenger, (EvidenceKind.CUTOFF_ANALYSIS,))
 
     roles: dict[str, Any] = {}
     for role_name in ("train", "test", "oot"):
@@ -52,7 +42,7 @@ def build_cutoff_comparison(
                     "capture_rate": b_entry.get("capture_rate"),
                     "population_count": b_entry.get("population_count"),
                 },
-                branch_id_challenger: {
+                ctx.branch_id_challenger: {
                     "approval_rate": c_entry.get("approval_rate"),
                     "bad_rate": c_entry.get("bad_rate"),
                     "capture_rate": c_entry.get("capture_rate"),

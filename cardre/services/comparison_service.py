@@ -95,29 +95,23 @@ def _build_comparison_content(
     """
     from cardre.services.comparison.cutoff import build_cutoff_comparison
     from cardre.services.comparison.model import build_model_comparison
+    from cardre.services.comparison.resolver import build_context
     from cardre.services.comparison.validation import build_validation_comparison
     from cardre.services.comparison.woe_iv import build_woe_iv_comparison
+
+    ctx = build_context(
+        store, plan_version_id_baseline, plan_version_id_challenger,
+        branch_id_baseline, branch_id_challenger,
+    )
 
     return {
         "comparison_type": "challenger_vs_baseline",
         "baseline_branch_id": branch_id_baseline,
         "challenger_branch_id": branch_id_challenger,
-        "woe_iv": build_woe_iv_comparison(
-            store, plan_version_id_baseline, plan_version_id_challenger,
-            branch_id_baseline, branch_id_challenger, spec,
-        ),
-        "model": build_model_comparison(
-            store, plan_version_id_baseline, plan_version_id_challenger,
-            branch_id_baseline, branch_id_challenger, spec,
-        ),
-        "validation": build_validation_comparison(
-            store, plan_version_id_baseline, plan_version_id_challenger,
-            branch_id_baseline, branch_id_challenger, spec,
-        ),
-        "cutoff": build_cutoff_comparison(
-            store, plan_version_id_baseline, plan_version_id_challenger,
-            branch_id_baseline, branch_id_challenger, spec,
-        ),
+        "woe_iv": build_woe_iv_comparison(ctx, spec),
+        "model": build_model_comparison(ctx, spec),
+        "validation": build_validation_comparison(ctx, spec),
+        "cutoff": build_cutoff_comparison(ctx, spec),
         "warnings": [],
     }
 

@@ -5,8 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from cardre._evidence.kinds import EvidenceKind
-from cardre.services.comparison.resolver import find_typed_artifact, get_step_maps
-from cardre.store.db import ProjectStore
+from cardre.services.comparison.resolver import ComparisonContext, find_typed_artifact
 
 
 def _validation_roles(payload: dict[str, Any] | None) -> dict[str, Any]:
@@ -25,23 +24,14 @@ def _validation_roles(payload: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def build_validation_comparison(
-    store: ProjectStore,
-    plan_version_id_baseline: str,
-    plan_version_id_challenger: str,
-    branch_id_baseline: str,
-    branch_id_challenger: str,
+    ctx: ComparisonContext,
     spec: dict[str, Any],
 ) -> dict[str, Any]:
     if not spec.get("include_validation"):
         return {"roles": {"train": {}, "test": {}, "oot": {}}}
 
-    step_map_b, step_map_c = get_step_maps(
-        store, plan_version_id_baseline, plan_version_id_challenger,
-        branch_id_baseline, branch_id_challenger,
-    )
-
-    vm_b = find_typed_artifact(store, step_map_b, "validation-metrics", plan_version_id_baseline, None, (EvidenceKind.VALIDATION_METRICS, EvidenceKind.VALIDATION_EVIDENCE))
-    vm_c = find_typed_artifact(store, step_map_c, "validation-metrics", plan_version_id_challenger, branch_id_challenger, (EvidenceKind.VALIDATION_METRICS, EvidenceKind.VALIDATION_EVIDENCE))
+    vm_b = find_typed_artifact(ctx.store, ctx.step_map_baseline, "validation-metrics", ctx.plan_version_id_baseline, None, (EvidenceKind.VALIDATION_METRICS, EvidenceKind.VALIDATION_EVIDENCE))
+    vm_c = find_typed_artifact(ctx.store, ctx.step_map_challenger, "validation-metrics", ctx.plan_version_id_challenger, ctx.branch_id_challenger, (EvidenceKind.VALIDATION_METRICS, EvidenceKind.VALIDATION_EVIDENCE))
     vm_b_roles = _validation_roles(vm_b)
     vm_c_roles = _validation_roles(vm_c)
 
@@ -58,7 +48,7 @@ def build_validation_comparison(
                 "calibration": b_role.get("calibration", {}),
             }
         if c_role and isinstance(c_role, dict):
-            role_data[branch_id_challenger] = {
+            role_data[ctx.branch_id_challenger] = {
                 "auc": c_role.get("auc"),
                 "gini": c_role.get("gini"),
                 "ks": c_role.get("ks"),

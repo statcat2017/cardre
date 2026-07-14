@@ -5,28 +5,18 @@ from __future__ import annotations
 from typing import Any
 
 from cardre._evidence.kinds import EvidenceKind
-from cardre.services.comparison.resolver import find_typed_artifact, get_step_maps
-from cardre.store.db import ProjectStore
+from cardre.services.comparison.resolver import ComparisonContext, find_typed_artifact
 
 
 def build_woe_iv_comparison(
-    store: ProjectStore,
-    plan_version_id_baseline: str,
-    plan_version_id_challenger: str,
-    branch_id_baseline: str,
-    branch_id_challenger: str,
+    ctx: ComparisonContext,
     spec: dict[str, Any],
 ) -> dict[str, Any]:
     if not spec.get("include_woe_iv"):
         return {"variables": []}
 
-    step_map_b, step_map_c = get_step_maps(
-        store, plan_version_id_baseline, plan_version_id_challenger,
-        branch_id_baseline, branch_id_challenger,
-    )
-
-    woe_b = find_typed_artifact(store, step_map_b, "final-woe-iv", plan_version_id_baseline, None, (EvidenceKind.WOE_IV_EVIDENCE,))
-    woe_c = find_typed_artifact(store, step_map_c, "final-woe-iv", plan_version_id_challenger, branch_id_challenger, (EvidenceKind.WOE_IV_EVIDENCE,))
+    woe_b = find_typed_artifact(ctx.store, ctx.step_map_baseline, "final-woe-iv", ctx.plan_version_id_baseline, None, (EvidenceKind.WOE_IV_EVIDENCE,))
+    woe_c = find_typed_artifact(ctx.store, ctx.step_map_challenger, "final-woe-iv", ctx.plan_version_id_challenger, ctx.branch_id_challenger, (EvidenceKind.WOE_IV_EVIDENCE,))
 
     if not woe_b or not woe_c:
         return {"variables": []}
@@ -55,7 +45,7 @@ def build_woe_iv_comparison(
                 "monotonicity_warning": any("monotonic" in str(w).lower() for w in bv.get("warnings", [])),
             },
             "challengers": {
-                branch_id_challenger: {
+                ctx.branch_id_challenger: {
                     "iv": cv.get("iv", 0),
                     "bin_count": len(cv.get("bins", [])),
                     "zero_cell_warning_count": len([w for w in cv.get("warnings", []) if "zero" in str(w).lower()]),
