@@ -165,7 +165,10 @@ class ModelExplainabilityNode(NodeType):
         }
 
         # Native explanations by model family
-        if model_family == "logistic_regression":
+        from cardre.modeling.families import get as get_family_spec
+        family_spec = get_family_spec(model_family)
+
+        if family_spec is not None and family_spec.native_explanation_type == "coefficients":
             if model_typed is not None:
                 report["coefficients"] = model_typed.coefficients_dict
                 report["intercept"] = model_typed.intercept
@@ -178,7 +181,7 @@ class ModelExplainabilityNode(NodeType):
                 f"Coefficients are directly interpretable as log-odds contributions."
             )
 
-        elif model_family == "decision_tree":
+        elif family_spec is not None and family_spec.native_explanation_type == "tree_rules":
             payload = model.get("model_payload", {})
             report["tree_rules"] = payload.get("tree_rules", [])
             report["tree_depth"] = payload.get("tree_depth", 0)
@@ -190,7 +193,7 @@ class ModelExplainabilityNode(NodeType):
                 f"{report['leaf_count']} leaves. Rules are human-readable."
             )
 
-        elif model_family in ("random_forest", "gbdt"):
+        elif family_spec is not None and family_spec.native_explanation_type == "feature_importance":
             payload = model.get("model_payload", {})
             report["feature_importance"] = payload.get("feature_importance", {})
             report["estimator_count"] = payload.get("estimator_count", 0)
@@ -466,14 +469,17 @@ class ModelExplainabilityNode(NodeType):
 
             model_family = model.get("model_family", "")
 
+            from cardre.modeling.families import get as get_family_spec
+            family_spec = get_family_spec(model_family)
+
             reader = ArtifactEvidenceReader(store)
             df = reader.read_dataframe(data_art)
             X = df.select(features).to_numpy()
 
-            if model_family in ("random_forest", "gbdt", "decision_tree"):
+            if family_spec is not None and family_spec.shap_explainer_kind == "TreeExplainer":
                 explainer = shap.TreeExplainer(estimator)
                 explainer_type = "TreeExplainer"
-            elif model_family == "logistic_regression":
+            elif family_spec is not None and family_spec.shap_explainer_kind == "LinearExplainer":
                 explainer = shap.LinearExplainer(estimator, X)
                 explainer_type = "LinearExplainer"
             else:

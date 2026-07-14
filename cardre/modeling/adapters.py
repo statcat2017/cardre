@@ -28,6 +28,8 @@ from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import JsonDict
 from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.modeling.families import get as get_family_spec
+from cardre.modeling.families import list_families
 from cardre.modeling.serialization import read_estimator_artifact
 from cardre.store import ProjectStore
 from cardre.store.artifact_repo import ArtifactRepository
@@ -503,13 +505,14 @@ def _apply_calibration(
 # Adapter registry
 # ---------------------------------------------------------------------------
 
-_ADAPTERS: dict[str, Callable[..., NodeOutput]] = {}
+_ADAPTERS: dict[str, Callable[..., NodeOutput]] = {
+    "logistic_regression": apply_logistic,
+}
 
-for _fam in ("logistic_regression",):
-    _ADAPTERS[_fam] = apply_logistic
-for _fam in ("decision_tree", "random_forest", "gbdt",
-             "xgboost", "lightgbm", "catboost"):
-    _ADAPTERS[_fam] = apply_sklearn_estimator
+for _fam in list_families():
+    spec = get_family_spec(_fam)
+    if spec is not None and spec.adapter_fn == "apply_sklearn_estimator":
+        _ADAPTERS.setdefault(_fam, apply_sklearn_estimator)
 
 
 def apply_model(
