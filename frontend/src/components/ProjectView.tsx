@@ -58,7 +58,8 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
           <div style={{ textAlign: "right", color: theme.muted, fontSize: 13 }}>
             <div>{ws.projectQuery.data?.cardre_version ?? ""}</div>
             <div>
-              {ws.plansQuery.data?.plans.length ?? 0} plans · {ws.runsQuery.data?.runs.length ?? 0} runs
+              {ws.plansQuery.data?.plans.length ?? 0} plans · {ws.runsQuery.data?.runs.length ?? 0}{" "}
+              runs
             </div>
           </div>
         </header>

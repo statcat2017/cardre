@@ -6,7 +6,6 @@ Generated from `NodeRegistry.with_defaults()`. Nodes are divided into launch and
 
 | Node Type | Category | Description |
 |-----------|----------|-------------|
-| `cardre.binning` | fit | Generic binning |
 | `cardre.apply_exclusions` | transform | Apply exclusion criteria |
 | `cardre.development_sample_definition` | transform | Define development sample |
 | `cardre.define_modelling_metadata` | transform | Define modelling metadata |
@@ -19,7 +18,7 @@ Generated from `NodeRegistry.with_defaults()`. Nodes are divided into launch and
 | `cardre.profile_dataset` | transform | Profile dataset columns and statistics |
 | `cardre.validate_binary_target` | transform | Validate binary target column |
 | `cardre.split_train_test_oot` | transform | Split data into train/test/OOT |
-| `cardre.fine_classing` | fit | Fine classing of variables |
+| `cardre.fine_classing` | fit | Fine classing of variables (supports fine_classing and optbinning methods) |
 | `cardre.calculate_woe_iv` | selection | Calculate WOE and IV |
 | `cardre.variable_clustering` | selection | Variable clustering/correlation grouping |
 | `cardre.variable_selection` | selection | Variable selection |

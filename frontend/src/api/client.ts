@@ -247,36 +247,52 @@ export const api = {
     const pid = scope.projectId;
     return {
       listPlans: () =>
-        fetchJson<components["schemas"]["PlanListResponse"]>(url(`/projects/${pid}/plans`), { headers }),
+        fetchJson<components["schemas"]["PlanListResponse"]>(url(`/projects/${pid}/plans`), {
+          headers,
+        }),
       createPlan: (body: components["schemas"]["PlanCreateRequest"]) =>
         fetchJson<components["schemas"]["PlanResponse"]>(url(`/projects/${pid}/plans`), {
-          method: "POST", headers, body,
+          method: "POST",
+          headers,
+          body,
         }),
       getPlan: (planId: string) =>
-        fetchJson<components["schemas"]["PlanResponse"]>(url(`/projects/${pid}/plans/${planId}`), { headers }),
+        fetchJson<components["schemas"]["PlanResponse"]>(url(`/projects/${pid}/plans/${planId}`), {
+          headers,
+        }),
       listPlanVersions: (planId: string) =>
         fetchJson<components["schemas"]["PlanVersionListResponse"]>(
-          url(`/projects/${pid}/plans/${planId}/versions`), { headers },
+          url(`/projects/${pid}/plans/${planId}/versions`),
+          { headers },
         ),
       getPlanVersion: (planVersionId: string) =>
         fetchJson<components["schemas"]["PlanVersionResponse"]>(
-          url(`/projects/${pid}/plan-versions/${planVersionId}`), { headers },
+          url(`/projects/${pid}/plan-versions/${planVersionId}`),
+          { headers },
         ),
       createRun: (body: components["schemas"]["RunCreateRequest"]) =>
         fetchJson<components["schemas"]["RunResponse"]>(url(`/projects/${pid}/runs`), {
-          method: "POST", headers, body,
+          method: "POST",
+          headers,
+          body,
         }),
       listRuns: () =>
-        fetchJson<components["schemas"]["RunListResponse"]>(url(`/projects/${pid}/runs`), { headers }),
+        fetchJson<components["schemas"]["RunListResponse"]>(url(`/projects/${pid}/runs`), {
+          headers,
+        }),
       getRun: (runId: string) =>
-        fetchJson<components["schemas"]["RunResponse"]>(url(`/projects/${pid}/runs/${runId}`), { headers }),
+        fetchJson<components["schemas"]["RunResponse"]>(url(`/projects/${pid}/runs/${runId}`), {
+          headers,
+        }),
       listRunSteps: (runId: string) =>
         fetchJson<components["schemas"]["RunStepResponse"][]>(
-          url(`/projects/${pid}/runs/${runId}/steps`), { headers },
+          url(`/projects/${pid}/runs/${runId}/steps`),
+          { headers },
         ),
       listRunEvidence: (runId: string) =>
         fetchJson<components["schemas"]["RunEvidenceEdgeResponse"][]>(
-          url(`/projects/${pid}/runs/${runId}/evidence`), { headers },
+          url(`/projects/${pid}/runs/${runId}/evidence`),
+          { headers },
         ),
     };
   },
