@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import uuid
 
-from cardre.api.errors import ErrorCode
+from cardre.domain.errors import ErrorCode
 
 ERROR_CODES = [
     ErrorCode.ARTIFACT_NOT_FOUND,

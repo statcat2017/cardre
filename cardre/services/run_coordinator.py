@@ -18,11 +18,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
-from cardre.api.errors import ErrorCode
 from cardre.config import CardreConfig
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import (
     CardreError,
+    ErrorCode,
     GovernanceNotEnabled,
     PlanVersionNotCommittedError,
     RunScopeNotAvailableForLaunch,
@@ -224,6 +224,38 @@ class RunCoordinator:
     # Internal execution
     # ------------------------------------------------------------------
 
+    def _check_branch_evidence_policy(
+        self,
+        plan_version_id: str,
+        branch_id: str,
+    ) -> RunPlanDecision | None:
+        """Check whether branch execution can short-circuit.
+
+        Returns a ``short_circuit`` decision if the branch is current,
+        raises ``EVIDENCE_POLICY_ERROR`` on error, or returns ``None``
+        if execution should proceed.
+        """
+        from cardre.evidence_locator import EvidenceLocator
+
+        evidence = EvidenceLocator(self._store)
+        result = evidence.check_branch_current(plan_version_id, branch_id)
+        if result.status == "current" and result.run_id is not None:
+            return RunPlanDecision(
+                kind="short_circuit",
+                existing_run_id=result.run_id,
+            )
+        if result.status == "error":
+            raise CardreError(
+                f"Evidence policy check failed for branch {branch_id!r}",
+                code="EVIDENCE_POLICY_ERROR",
+                context={
+                    "plan_version_id": plan_version_id,
+                    "branch_id": branch_id,
+                    "diagnostics": result.diagnostics,
+                },
+            )
+        return None
+
     def _plan_decision(
         self,
         *,
@@ -243,25 +275,9 @@ class RunCoordinator:
         creating a placeholder.
         """
         if not force and run_scope == "branch" and branch_id:
-            from cardre.evidence_locator import EvidenceLocator
-
-            evidence = EvidenceLocator(self._store)
-            result = evidence.check_branch_current(plan_version_id, branch_id)
-            if result.status == "current" and result.run_id is not None:
-                return RunPlanDecision(
-                    kind="short_circuit",
-                    existing_run_id=result.run_id,
-                )
-            if result.status == "error":
-                raise CardreError(
-                    f"Evidence policy check failed for branch {branch_id!r}",
-                    code="EVIDENCE_POLICY_ERROR",
-                    context={
-                        "plan_version_id": plan_version_id,
-                        "branch_id": branch_id,
-                        "diagnostics": result.diagnostics,
-                    },
-                )
+            decision = self._check_branch_evidence_policy(plan_version_id, branch_id)
+            if decision is not None:
+                return decision
         return RunPlanDecision(kind="execute")
 
     def _raise_run_scope_not_available(
@@ -411,28 +427,15 @@ class RunCoordinator:
 
         with self._store.transaction("IMMEDIATE") as conn:
             if not force and run_scope == "branch" and branch_id:
-                from cardre.evidence_locator import EvidenceLocator
-
-                evidence = EvidenceLocator(self._store)
-                result = evidence.check_branch_current(plan_version_id, branch_id)
-                if result.status == "current" and result.run_id is not None:
+                decision = self._check_branch_evidence_policy(plan_version_id, branch_id)
+                if decision is not None and decision.kind == "short_circuit":
                     raise CardreError(
                         "Branch already has a current run; short-circuiting.",
                         code="EVIDENCE_POLICY_CURRENT",
                         context={
                             "plan_version_id": plan_version_id,
                             "branch_id": branch_id,
-                            "existing_run_id": result.run_id,
-                        },
-                    )
-                if result.status == "error":
-                    raise CardreError(
-                        f"Evidence policy check failed for branch {branch_id!r}",
-                        code="EVIDENCE_POLICY_ERROR",
-                        context={
-                            "plan_version_id": plan_version_id,
-                            "branch_id": branch_id,
-                            "diagnostics": result.diagnostics,
+                            "existing_run_id": decision.existing_run_id,
                         },
                     )
 

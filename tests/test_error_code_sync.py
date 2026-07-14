@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from cardre.api.errors import ErrorCode
+from cardre.domain.errors import ErrorCode
 
 
 def _parse_ts_server_codes() -> set[str]:
@@ -45,7 +45,7 @@ class TestErrorCodeSync:
         py_codes = {e.value for e in ErrorCode}
         extra = ts_codes - py_codes
         assert not extra, (
-            f"errorCodes.ts has server codes not in cardre/api/errors.py: "
+            f"errorCodes.ts has server codes not in cardre/domain/errors.py: "
             f"{sorted(extra)}. Add them to ErrorCode in errors.py or remove "
             f"them from errorCodes.ts."
         )
@@ -55,6 +55,6 @@ class TestErrorCodeSync:
         py_codes = {e.value for e in ErrorCode}
         missing = py_codes - ts_codes
         assert not missing, (
-            f"cardre/api/errors.py has codes not in errorCodes.ts: "
+            f"cardre/domain/errors.py has codes not in errorCodes.ts: "
             f"{sorted(missing)}. Add them to errorCodes.ts."
         )
