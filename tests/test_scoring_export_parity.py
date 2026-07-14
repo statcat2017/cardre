@@ -119,7 +119,7 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
             assert "score" in df.columns, f"apply-model {role} missing score column"
 
             ref_scores = df["score"].to_list()
-            records = df.drop(["score", "cardre_scaled_score", "predicted_bad_probability",
+            records = df.drop(["score", "predicted_bad_probability",
                                "raw_model_output", "model_artifact_id", "model_family"]).to_dicts()
 
             # Python parity
@@ -194,7 +194,7 @@ def test_python_scorer_missing_value_handling():
     )
     scorecard_raw = {
         "base_score": 600, "base_odds": 50.0, "points_to_double_odds": 20,
-        "factor": 14.427, "offset": 543.6, "higher_score_is_lower_risk": True,
+        "factor": 14.427, "offset": 543.6, "score_direction": "higher_is_lower_risk",
         "base_points": 543.6, "attributes": [],
     }
     model_raw = {
@@ -254,7 +254,7 @@ def test_python_scorer_single_category_bin():
     )
     scorecard_raw = {
         "base_score": 600, "base_odds": 50.0, "points_to_double_odds": 20,
-        "factor": 14.427, "offset": 543.6, "higher_score_is_lower_risk": True,
+        "factor": 14.427, "offset": 543.6, "score_direction": "higher_is_lower_risk",
         "base_points": 543.6, "attributes": [],
     }
     model_raw = {
@@ -306,7 +306,7 @@ def test_python_scorer_missing_value_no_missing_bin():
     )
     scorecard_raw = {
         "base_score": 600, "base_odds": 50.0, "points_to_double_odds": 20,
-        "factor": 14.427, "offset": 543.6, "higher_score_is_lower_risk": True,
+        "factor": 14.427, "offset": 543.6, "score_direction": "higher_is_lower_risk",
         "base_points": 543.6, "attributes": [],
     }
     model_raw = {
@@ -357,7 +357,7 @@ def test_sql_scorer_single_category_bin():
     )
     scorecard_raw = {
         "base_score": 600, "base_odds": 50.0, "points_to_double_odds": 20,
-        "factor": 14.427, "offset": 543.6, "higher_score_is_lower_risk": True,
+        "factor": 14.427, "offset": 543.6, "score_direction": "higher_is_lower_risk",
         "base_points": 543.6, "attributes": [],
     }
     model_raw = {
@@ -419,7 +419,7 @@ def test_sql_scorer_unmatched_non_null_returns_null():
     )
     scorecard_raw = {
         "base_score": 600, "base_odds": 50.0, "points_to_double_odds": 20,
-        "factor": 14.427, "offset": 543.6, "higher_score_is_lower_risk": True,
+        "factor": 14.427, "offset": 543.6, "score_direction": "higher_is_lower_risk",
         "base_points": 543.6, "attributes": [],
     }
     model_raw = {

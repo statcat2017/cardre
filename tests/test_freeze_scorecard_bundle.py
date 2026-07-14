@@ -123,7 +123,7 @@ def test_freeze_bundle_allows_missing_scorecard_intercept(tmp_path):
         "points_to_double_odds": 20,
         "factor": 28.8539,
         "offset": 487.1229,
-        "higher_score_is_lower_risk": True,
+        "score_direction": "higher_is_lower_risk",
         "base_points": 500.0,
         "target_column": "default_flag",
         "attributes": [{

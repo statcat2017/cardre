@@ -30,7 +30,7 @@ class ScoreScalingSection(SectionCollector):
             ctx.bundle.score_scaling = ScoreScalingInfo(
                 base_score=scaling.base_score,
                 base_odds=scaling.base_odds_text,
-                pdo=scaling.pdo,
+                points_to_double_odds=scaling.points_to_double_odds,
                 factor=scaling.factor,
                 offset=scaling.offset,
                 score_direction=scaling.score_direction,

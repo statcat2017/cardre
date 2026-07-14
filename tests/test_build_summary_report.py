@@ -158,7 +158,7 @@ def _build_score_scaling_context(store, tmp_path, model_payload, bin_def_payload
         step_spec=step_spec, parent_run_steps=[],
         input_artifacts=[model_ref, bin_ref, woe_ref],
         validated_params={"base_score": 600, "base_odds": "50:1", "points_to_double_odds": 20.0,
-                          "higher_score_is_lower_risk": True},
+                          "score_direction": "higher_is_lower_risk"},
         runtime_metadata={},
     )
 
@@ -258,7 +258,7 @@ class TestBuildSummaryReportNode:
         scorecard_payload = {
             "schema_version": SCHEMA_SCORE_SCALING,
             "base_score": 600, "base_odds": 50.0, "points_to_double_odds": 20.0,
-            "factor": 28.85, "offset": 487.0, "higher_score_is_lower_risk": True,
+            "factor": 28.85, "offset": 487.0, "score_direction": "higher_is_lower_risk",
             "intercept": -0.5, "base_points": 500.0, "attributes": [],
         }
         sc_path = tmp_path / "scorecard.json"

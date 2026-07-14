@@ -136,7 +136,7 @@ def apply_logistic(
     if has_scorecard:
         offset = float(scorecard_parsed.get("offset", 0))  # type: ignore[union-attr]  # has_scorecard guards None
         factor_val = float(scorecard_parsed.get("factor", 1))  # type: ignore[union-attr]  # has_scorecard guards None
-        direction = -1.0 if scorecard_parsed.get("higher_score_is_lower_risk", True) else 1.0  # type: ignore[union-attr]  # has_scorecard guards None
+        direction = -1.0 if scorecard_parsed.get("score_direction", "higher_is_lower_risk") == "higher_is_lower_risk" else 1.0  # type: ignore[union-attr]  # has_scorecard guards None
     else:
         offset, factor_val, direction = 0.0, 1.0, -1.0
 
@@ -193,8 +193,7 @@ def apply_logistic(
             # Recompute score from potentially calibrated raw_model_output
             score_expr = pl.lit(offset) + pl.lit(direction * factor_val) * pl.col("raw_model_output")
             add_exprs.append(score_expr.alias("score"))
-            add_exprs.append(score_expr.alias("cardre_scaled_score"))
-            output_cols.extend(["score", "cardre_scaled_score"])
+            output_cols.append("score")
 
         df = df.with_columns(add_exprs)
         art = write_parquet_artifact(
@@ -293,13 +292,12 @@ def apply_sklearn_estimator(
         if has_scorecard:
             offset = float(scorecard_parsed.get("offset", 0))  # type: ignore[union-attr]  # has_scorecard guards None
             factor = float(scorecard_parsed.get("factor", 1))  # type: ignore[union-attr]  # has_scorecard guards None
-            direction = -1.0 if scorecard_parsed.get("higher_score_is_lower_risk", True) else 1.0  # type: ignore[union-attr]  # has_scorecard guards None
+            direction = -1.0 if scorecard_parsed.get("score_direction", "higher_is_lower_risk") == "higher_is_lower_risk" else 1.0  # type: ignore[union-attr]  # has_scorecard guards None
             log_odds = np.log(np.clip(pred_bad / np.maximum(1 - pred_bad, 1e-15), 1e-15, None))
             score_vals = offset + direction * factor * log_odds
             score_series = pl.Series("score", score_vals, dtype=pl.Float64)
             add_exprs.append(score_series)
-            add_exprs.append(score_series.alias("cardre_scaled_score"))
-            output_cols.extend(["score", "cardre_scaled_score"])
+            output_cols.append("score")
 
         df = df.with_columns(add_exprs)
         art = write_parquet_artifact(

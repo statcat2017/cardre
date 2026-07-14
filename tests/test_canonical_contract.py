@@ -67,3 +67,22 @@ def test_no_compat_evidence_aliases_in_source():
                     raise AssertionError(
                         f"{py.relative_to(root)} uses banned identifier {full!r}"
                     )
+
+
+def test_score_scaling_reads_points_to_double_odds():
+    from cardre._evidence.models.model import ScoreScaling
+    s = ScoreScaling.from_json({"points_to_double_odds": 40, "base_score": 600})
+    assert s.points_to_double_odds == 40
+
+
+def test_score_scaling_ignores_pdo_key():
+    from cardre._evidence.models.model import ScoreScaling
+    s = ScoreScaling.from_json({"pdo": 40, "base_score": 600})
+    assert s.points_to_double_odds == 20  # default — pdo was ignored
+
+
+def test_score_scaling_reads_score_direction():
+    from cardre._evidence.models.model import ScoreScaling
+    s = ScoreScaling.from_json({"score_direction": "higher_is_better", "base_score": 600})
+    assert s.score_direction == "higher_is_better"
+    assert s.higher_score_is_lower_risk is False

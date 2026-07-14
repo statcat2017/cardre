@@ -55,7 +55,7 @@ class TestBuildSummaryReportNode:
         scorecard_path = tmp_path / "scorecard.json"
         scorecard_path.write_text(json.dumps({
             "base_score": 600, "base_odds": 50.0, "points_to_double_odds": 20.0,
-            "factor": 28.85, "offset": 487.0, "higher_score_is_lower_risk": True,
+            "factor": 28.85, "offset": 487.0, "score_direction": "higher_is_lower_risk",
             "intercept": -0.5, "base_points": 500.0, "attributes": [],
         }))
         art_id = "sc-art-1"

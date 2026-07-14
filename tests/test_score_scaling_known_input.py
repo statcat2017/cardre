@@ -214,7 +214,7 @@ def test_score_scaling_with_known_input(
         node_version="1",
         category="fit",
         params={"base_score": 600, "base_odds": "50:1", "points_to_double_odds": 20.0,
-                "higher_score_is_lower_risk": True},
+                "score_direction": "higher_is_lower_risk"},
         params_hash="dummy",
         parent_step_ids=[],
     )
@@ -230,7 +230,7 @@ def test_score_scaling_with_known_input(
             "base_score": 600,
             "base_odds": "50:1",
             "points_to_double_odds": 20.0,
-            "higher_score_is_lower_risk": True,
+            "score_direction": "higher_is_lower_risk",
         },
         runtime_metadata={},
     )
@@ -268,7 +268,7 @@ def test_score_scaling_with_known_input(
     assert raw["base_score"] == base_score
     assert raw["base_odds"] == base_odds
     assert raw["points_to_double_odds"] == pdo
-    assert raw["higher_score_is_lower_risk"] is True
+    assert raw["score_direction"] == "higher_is_lower_risk"
     assert raw["intercept"] == intercept
     assert raw["target_column"] == "default_flag"
 

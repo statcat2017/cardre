@@ -198,7 +198,7 @@ class ModelInfo(BaseModel):
 class ScoreScalingInfo(BaseModel):
     base_score: int = 600
     base_odds: str = "50:1"
-    pdo: int = 20
+    points_to_double_odds: int = 20
     factor: float = 0.0
     offset: float = 0.0
     score_direction: str = "higher_is_better"

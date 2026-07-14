@@ -120,8 +120,8 @@ class FrozenScorecardBundleNode(NodeType):
         score_scaling = {
             "base_score": scorecard.base_score,
             "base_odds": base_odds,
-            "points_to_double_odds": scorecard.pdo,
-            "higher_score_is_lower_risk": higher_is_lower_risk,
+            "points_to_double_odds": scorecard.points_to_double_odds,
+            "score_direction": "higher_is_lower_risk" if higher_is_lower_risk else "higher_is_better",
             "factor": scorecard.factor,
             "offset": scorecard.offset,
             "intercept": intercept,
