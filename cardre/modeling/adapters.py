@@ -23,7 +23,7 @@ import joblib
 import numpy as np
 import polars as pl
 
-from cardre._evidence.schemas import SCHEMA_SCORE_APPLICATION_EVIDENCE
+from cardre._evidence.schemas import SCHEMA_APPLY_MODEL_EVIDENCE
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import JsonDict
@@ -68,7 +68,7 @@ def _write_evidence_artifact(
     step_id: str,
 ) -> ArtifactRef:
     evidence: JsonDict = {
-        "schema_version": SCHEMA_SCORE_APPLICATION_EVIDENCE,
+        "schema_version": SCHEMA_APPLY_MODEL_EVIDENCE,
         "model_artifact_id": model_art.artifact_id,
         "roles": roles_evidence,
         "warnings": [],
@@ -81,7 +81,7 @@ def _write_evidence_artifact(
         store, artifact_type="report", role="report",
         stem=f"score-apply-evidence-{step_id}",
         payload=evidence,
-        metadata={"schema_version": SCHEMA_SCORE_APPLICATION_EVIDENCE},
+        metadata={"schema_version": SCHEMA_APPLY_MODEL_EVIDENCE},
     )
 
 

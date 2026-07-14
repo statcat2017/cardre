@@ -37,7 +37,6 @@ from cardre._evidence.models.governance import (
 from cardre._evidence.models.manifest import (
     ComparisonArtifact,
     ReportBundleEvidence,
-    RunManifestEvidence,
     TechnicalManifestIndex,
 )
 from cardre._evidence.models.model import Coefficient, ModelArtifact, ScoreScaling
@@ -101,7 +100,6 @@ __all__ = [
     "ReportBundleEvidence",
     "ResamplingEvidence",
     "RoleMetrics",
-    "RunManifestEvidence",
     "SampleDefinition",
     "ScoreScaling",
     "ScoredDataset",

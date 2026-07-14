@@ -38,3 +38,18 @@ def test_canonical_automatic_binning_has_explicit_method():
     assert auto_step.params_hash == expected_hash, (
         "params_hash must be based on the explicit params"
     )
+
+
+def test_no_compat_evidence_aliases_in_source():
+    import subprocess
+    banned = [
+        "WOE_APPLICATION_EVIDENCE", "SCORE_APPLICATION_EVIDENCE",
+        "SCHEMA_WOE_APPLICATION_EVIDENCE", "SCHEMA_SCORE_APPLICATION_EVIDENCE",
+        "LegacyEvidenceCompatibilityError", "SCHEMA_RUN_MANIFEST",
+        "EvidenceKind.RUN_MANIFEST", "RunManifestEvidence",
+    ]
+    result = subprocess.run(
+        ["rg", "-n", "|".join(banned), "cardre/"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0, f"Banned compat identifiers still in source:\n{result.stdout}"

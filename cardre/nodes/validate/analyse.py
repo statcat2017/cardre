@@ -13,8 +13,8 @@ from sklearn.metrics import (
 
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import (
+    SCHEMA_APPLY_MODEL_EVIDENCE,
     SCHEMA_CUTOFF_ANALYSIS,
-    SCHEMA_SCORE_APPLICATION_EVIDENCE,
     SCHEMA_VALIDATION_METRICS,
 )
 from cardre.artifacts import write_json_artifact
@@ -208,7 +208,7 @@ class ValidationMetricsNode(NodeType):
         bundle_art = context.find_frozen_bundle()
         score_evidence_art = next(
             (a for a in context.input_artifacts
-             if a.metadata.get("schema_version") == SCHEMA_SCORE_APPLICATION_EVIDENCE),
+             if a.metadata.get("schema_version") == SCHEMA_APPLY_MODEL_EVIDENCE),
             None,
         )
 
