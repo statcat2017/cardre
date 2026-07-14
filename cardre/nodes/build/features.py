@@ -111,6 +111,7 @@ class CalculateWoeIvNode(NodeType):
             raise ValueError(f"WOE/IV target column {target_column!r} not found in training data")
         if not good_values or not bad_values:
             raise ValueError("WOE/IV requires non-empty good_values and bad_values")
+        target_spec.validate_good_bad_only(df)
         target_series = df[target_column].cast(pl.String)
         total_good_all = int(target_series.is_in(list(good_values)).sum())
         total_bad_all = int(target_series.is_in(list(bad_values)).sum())

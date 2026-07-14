@@ -97,3 +97,27 @@ class TestTargetSpecEncodeBinary:
         )
         with pytest.raises(ValueError, match="not declared as good, bad, or indeterminate"):
             spec.encode_binary(_make_df(["good", "bad", "unknown"]))
+
+
+class TestTargetSpecWoeIvIntegration:
+    """WOE/IV must reject indeterminate values (uses validate_good_bad_only)."""
+
+    def test_validate_good_bad_only_rejects_indeterminate(self):
+        spec = TargetSpec(
+            target_column="target",
+            good_values=frozenset({"good"}),
+            bad_values=frozenset({"bad"}),
+            indeterminate_values=frozenset({"maybe"}),
+        )
+        with pytest.raises(ValueError, match="not declared as good or bad"):
+            spec.validate_good_bad_only(_make_df(["good", "bad", "maybe"]))
+
+    def test_encode_binary_strict_rejects_indeterminate(self):
+        spec = TargetSpec(
+            target_column="target",
+            good_values=frozenset({"good"}),
+            bad_values=frozenset({"bad"}),
+            indeterminate_values=frozenset({"maybe"}),
+        )
+        with pytest.raises(ValueError, match="not declared as good or bad"):
+            spec.encode_binary_strict(_make_df(["good", "bad", "maybe"]))
