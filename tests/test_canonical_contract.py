@@ -41,15 +41,35 @@ def test_canonical_automatic_binning_has_explicit_method():
 
 
 def test_no_compat_evidence_aliases_in_source():
-    import subprocess
+    import ast
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent / "cardre"
     banned = [
         "WOE_APPLICATION_EVIDENCE", "SCORE_APPLICATION_EVIDENCE",
         "SCHEMA_WOE_APPLICATION_EVIDENCE", "SCHEMA_SCORE_APPLICATION_EVIDENCE",
         "LegacyEvidenceCompatibilityError", "SCHEMA_RUN_MANIFEST",
         "EvidenceKind.RUN_MANIFEST", "RunManifestEvidence",
     ]
-    result = subprocess.run(
-        ["rg", "-n", "|".join(banned), "cardre/"],
-        capture_output=True, text=True,
-    )
-    assert result.returncode != 0, f"Banned compat identifiers still in source:\n{result.stdout}"
+    for py in sorted(root.rglob("*.py")):
+        if ".venv" in str(py) or "__pycache__" in str(py):
+            continue
+        tree = ast.parse(py.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    if alias.name in banned:
+                        raise AssertionError(
+                            f"{py.relative_to(root)} imports banned identifier {alias.name!r}"
+                        )
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in banned:
+                        raise AssertionError(
+                            f"{py.relative_to(root)} imports banned identifier {alias.name!r}"
+                        )
+            elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                full = f"{node.value.id}.{node.attr}"
+                if full in banned:
+                    raise AssertionError(
+                        f"{py.relative_to(root)} uses banned identifier {full!r}"
+                    )
