@@ -15,11 +15,11 @@ for pre-existing plans is required.
 ## Context
 
 This decision was made during the finalization of the OptBinning first-class
-binning path plan (`docs/plans/optbinning-first-class-path-plan.md`). That plan
-switches the default pathway from `cardre.fine_classing` to `cardre.binning`,
-renames the canonical step id from `"fine-classing"` to `"binning"`, removes the
-`quantile` prebinning option, and renames `ManualBinningSourceInfo` DTO fields.
-Each of those would normally require a backward-compatibility strategy.
+binning path. That work switches the default pathway from `cardre.fine_classing`
+to `cardre.binning`, renames the canonical step id from `"fine-classing"` to
+`"binning"`, removes the `quantile` prebinning option, and renames
+`ManualBinningSourceInfo` DTO fields. Each of those would normally require a
+backward-compatibility strategy.
 
 Because the project has never been deployed, no real plans exist to migrate. The
 read-time `_LEGACY_NODE_TYPE_METHOD` map in `cardre/store.py:32-35` is retained

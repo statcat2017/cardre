@@ -26,10 +26,8 @@
 
 ## Architecture Decision Records
 
-ADRs are immutable decision records in [docs/adr/](adr/). They are historical records, not current implementation instructions.
+ADRs are immutable decision records in [docs/adr/](adr/). They explain *why* each structural choice was made.
 
-## Historical Plans
+## Roadmap
 
-- [Error Handling Hardening](plans/error-handling-hardening-batch/README.md) — completed sprint (7 phases, PRs #138-#145). Eliminated hidden failures across backend, sidecar, and frontend with typed error hierarchy, unified API envelope, run diagnostics, workflow guidance degraded-state diagnostics, manual-binning evidence diagnostics, report metadata hardening, and typed branch errors.
-
-Historical implementation plans, sprint prompts, and plan reviews remain under `docs/plans/`, `docs/evidence-hardening/`, and `docs/plan-reviews/`. These are historical design inputs, not current implementation instructions.
+See the [Roadmap](../README.md#roadmap) section in the root README.
