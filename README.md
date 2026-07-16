@@ -111,6 +111,25 @@ The v2 refactor is complete. The engine supports:
 - Evidence lookup centralized in `EvidenceLocator`, with branch-current short-circuit checks at launch time
 - Audit export (evidence trail as the product)
 
+## Roadmap
+
+### Near-term
+
+- **Productionise deferred nodes** — promote the most mature deferred nodes (decision tree, probability calibration, reject inference) from schema-only to executable in launch mode.
+- **First real deployment** — when Cardre has its first deployed user, revisit [ADR 0003](docs/adr/0003-no-legacy-plan-accommodation.md) and establish a persisted-plan compatibility / migration strategy.
+- **Coverage floor to 65–70%** — raise the enforced coverage floor from 60% toward the deferred target (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
+### Medium-term
+
+- **Deferred node graduation** — bring boosting models (XGBoost, LightGBM, CatBoost), fairness, explainability, and hyperparameter tuning to executable status.
+- **Governance graduation** — move governance (branch/comparison/champion) from opt-in (`CARDRE_GOVERNANCE=1`) to default-on once the workflow is proven in real use.
+- **Performance at scale** — chunked processing and lazy evaluation for multi-million-row datasets, which credit scorecards routinely use.
+
+### Long-term
+
+- **Approval workflow** — 4-eyes sign-off pattern (modeller builds, validator reviews, approver signs) for model risk governance.
+- **Reject inference as a first-class phase** — not just a node, but a named phase in the pathway with its own evidence and review surface.
+
 ## Documentation
 
 See `docs/README.md` for the full documentation index.
