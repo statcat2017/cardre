@@ -18,6 +18,10 @@ from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.nodes._training_utils import (
+    prepare_supervised_training_data,
+    resolve_supervised_feature_columns,
+)
 from cardre.nodes.contracts import NodeType
 
 logger = logging.getLogger(__name__)
@@ -103,38 +107,22 @@ class FeatureSelectionFilterNode(NodeType):
         max_correlation = float(params.get("max_correlation", 0.85))
         min_variance = float(params.get("min_variance", 1e-6))
         max_features = params.get("max_features")
-        exclude_columns = list(params.get("exclude_columns", []))
 
-        train_art = context.train_artifact()
-        if train_art is None:
-            raise ValueError("feature_selection_filter requires a train artifact")
-
-        reader = ArtifactEvidenceReader(store)
-        df = reader.read_dataframe(train_art)
-
-        # Resolve target column from modelling metadata — fail closed if missing
-        meta = context.target_metadata()
-        target_column = ""
-        if meta is not None:
-            target_column = meta.target_column or ""
-        if not target_column:
-            target_column = params.get("target_column", "")
-        if not target_column:
-            raise ValueError(
-                "feature_selection_filter requires a target_column. "
-                "Resolve it from modelling metadata or pass it as a parameter."
-            )
-
-        # Resolve candidate columns (exclude target and explicit excludes)
-        all_cols = [c for c in df.columns if c not in exclude_columns]
-        if target_column in all_cols:
-            all_cols.remove(target_column)
-
-        # Keep only numeric columns
-        numeric_cols = [c for c in all_cols if df.schema[c].is_numeric()]
+        prepared = prepare_supervised_training_data(
+            context,
+            operation="feature_selection_filter",
+        )
+        df = prepared.frame
+        train_art = context.require_train_artifact("feature_selection_filter")
+        numeric_cols = resolve_supervised_feature_columns(
+            df,
+            target_column=prepared.target_column,
+            params=params,
+        )
 
         # Read IV data from report artifacts if available
         iv_map: dict[str, float] = {}
+        reader = ArtifactEvidenceReader(store)
         iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
         if iv_lf is not None:
             iv_df = iv_lf.dataframe.collect()
@@ -351,37 +339,18 @@ class FeatureSelectionEmbeddedNode(NodeType):
         max_features = params.get("max_features")
         estimator_type = params.get("estimator", "decision_tree")
         random_seed = int(params.get("random_seed", 42))
-        target_column = params.get("target_column", "")
-        exclude_columns = list(params.get("exclude_columns", []))
 
-        train_art = context.train_artifact()
-        def_art = next((a for a in context.input_artifacts if a.role == "definition"), None)
-        if train_art is None:
-            raise ValueError("feature_selection_embedded requires a train artifact")
+        prepared = prepare_supervised_training_data(
+            context,
+            operation="feature_selection_embedded",
+        )
+        df = prepared.frame
+        features = prepared.feature_columns(params)
+        y_binary = prepared.y_binary
 
+        train_art = context.require_train_artifact("feature_selection_embedded")
         reader = ArtifactEvidenceReader(store)
-        df = reader.read_dataframe(train_art)
-
-        # Read target metadata from definition
-        meta = context.target_metadata()
-        if not target_column:
-            target_column = meta.target_column if meta is not None else ""
-        bad_values = {str(v) for v in (meta.bad_values if meta is not None else [])}
-
-        if not target_column or target_column not in df.columns:
-            raise ValueError(f"Target column {target_column!r} not found in training data")
-        if not bad_values:
-            raise ValueError("bad_values required for embedded feature selection")
-
-        # Resolve features
-        exclude_set = set(exclude_columns + [target_column])
-        features = [c for c in df.columns if c not in exclude_set and df.schema[c].is_numeric()]
-
-        if not features:
-            raise ValueError("No numeric features available for selection")
-
-        # Prepare target
-        y_binary = df[target_column].cast(pl.String).is_in(bad_values).cast(pl.Int64).to_numpy()
+        def_art = next((a for a in context.input_artifacts if a.role == "definition"), None)
 
         X = df.select(features).to_numpy()
 
@@ -544,26 +513,15 @@ class ResampleTrainingDataNode(NodeType):
         sampling_ratio = float(params.get("sampling_ratio", 1.0))
         random_seed = int(params.get("random_seed", 42))
 
-        train_art = context.train_artifact()
-        if train_art is None:
-            raise ValueError("resample_training_data requires a train artifact")
-
-        reader = ArtifactEvidenceReader(store)
-        meta = context.target_metadata()
-        target_col = meta.target_column if meta is not None else ""
-        bad_values = {str(v) for v in (meta.bad_values if meta is not None else [])}
-
-        if not target_col:
-            raise ValueError("Target column required for resampling")
-        if not bad_values:
-            raise ValueError("bad_values required for resampling")
-
-        df = reader.read_dataframe(train_art)
-
-        if target_col not in df.columns:
-            raise ValueError(f"Target column {target_col!r} not found")
-
-        y_bin = df[target_col].cast(pl.String).is_in(bad_values).cast(pl.Int64).to_numpy()
+        prepared = prepare_supervised_training_data(
+            context,
+            operation="resample_training_data",
+        )
+        df = prepared.frame
+        target_col = prepared.target_column
+        y_bin = prepared.y_binary
+        bad_values = prepared.bad_values
+        train_art = context.require_train_artifact("resample_training_data")
 
         n_bad = int(y_bin.sum())
         n_good = len(y_bin) - n_bad
@@ -604,15 +562,22 @@ class ResampleTrainingDataNode(NodeType):
             undersample_idx = rng.choice(good_indices, size=target_majority, replace=False)
             resampled_good_idx = undersample_idx.tolist()
 
-        all_indices = resampled_bad_idx + resampled_good_idx
-        rng.shuffle(all_indices)
+        # Build index array and synthetic-row flag together
+        base_indices = np.array(resampled_bad_idx + resampled_good_idx, dtype=int)
+        n_base = n_bad + min(n_good, target_majority)
+        n_extra = max(0, target_minority - n_bad)
+        synthetic_flags = np.concatenate([
+            np.zeros(n_base, dtype=bool),
+            np.ones(n_extra, dtype=bool),
+        ])
+        perm = rng.permutation(len(base_indices))
+        resampled_df = df[base_indices[perm]].with_columns(
+            pl.Series("_is_synthetic_row", synthetic_flags[perm])
+        )
 
-        resampled_df = df[all_indices]
-
-        # Track synthetic rows and dropped rows separately
-        original_count = n_total
-        n_oversampled_bad = max(0, len(resampled_bad_idx) - n_bad)
+        n_oversampled_bad = n_extra
         n_dropped_good = max(0, n_good - len(resampled_good_idx))
+        original_count = n_total
 
         # Compute class distribution report
         target_series = resampled_df[target_col].cast(pl.String)
@@ -714,34 +679,23 @@ class SmoteTrainingDataNode(NodeType):
         sampling_ratio = float(params.get("sampling_ratio", 1.0))
         random_seed = int(params.get("random_seed", 42))
 
-        train_art = context.train_artifact()
-        if train_art is None:
-            raise ValueError("smote_training_data requires a train artifact")
+        prepared = prepare_supervised_training_data(
+            context,
+            operation="smote_training_data",
+        )
+        df = prepared.frame
+        target_col = prepared.target_column
+        good_values = prepared.good_values
+        bad_values = prepared.bad_values
+        y_binary = prepared.y_binary
+        feature_cols = prepared.feature_columns(params)
+        train_art = context.require_train_artifact("smote_training_data")
 
-        reader = ArtifactEvidenceReader(store)
-        meta = context.target_metadata()
-        target_col = meta.target_column if meta is not None else ""
-        good_values = meta.good_values if meta is not None else frozenset()
-        bad_values = meta.bad_values if meta is not None else frozenset()
-
-        if not target_col or not bad_values:
-            raise ValueError("Target column and bad_values required for SMOTE")
-
-        df = reader.read_dataframe(train_art)
-
-        if target_col not in df.columns:
-            raise ValueError(f"Target column {target_col!r} not found")
-
-        # Separate features and target
-        y_binary = df[target_col].cast(pl.String).is_in(bad_values).cast(pl.Int64).to_numpy()
-
-        feature_cols = [c for c in df.columns if c != target_col and df.schema[c].is_numeric()]
-        if not feature_cols:
-            raise ValueError("No numeric features for SMOTE")
-
-        passthrough_cols = [c for c in df.columns if c != target_col and c not in feature_cols]
-
-        X = df.select(feature_cols).to_numpy()
+        passthrough_cols = [
+            column
+            for column in df.columns
+            if column not in set(feature_cols) | {target_col, "_is_synthetic_row"}
+        ]
 
         n_bad = int(y_binary.sum())
         n_good = len(y_binary) - n_bad
@@ -755,6 +709,7 @@ class SmoteTrainingDataNode(NodeType):
         n_original = len(y_binary)
 
         # Apply SMOTE
+        X = df.select(feature_cols).to_numpy()
         smote = SMOTE(
             sampling_strategy=sampling_ratio,
             k_neighbors=k_neighbors,
@@ -765,11 +720,14 @@ class SmoteTrainingDataNode(NodeType):
         n_resampled = len(y_res)
         n_synthetic = n_resampled - n_original
 
-        # Build output DataFrame (exclude _is_synthetic_row from output to avoid feature leakage)
-        synth_features = X_res[n_original:]
-        synth_targets = y_res[n_original:]
+        # Build original frame with _is_synthetic_row=False
+        orig_df = df.select(feature_cols + [target_col] + passthrough_cols).with_columns(
+            pl.lit(False).alias("_is_synthetic_row")
+        )
 
         if n_synthetic > 0:
+            synth_features = X_res[n_original:]
+            synth_targets = y_res[n_original:]
             synth_df = pl.DataFrame({
                 col: synth_features[:, i]
                 for i, col in enumerate(feature_cols)
@@ -777,15 +735,17 @@ class SmoteTrainingDataNode(NodeType):
             good_label = str(next(iter(good_values), "good"))
             bad_label = str(next(iter(bad_values), "bad"))
             synth_target_str = [bad_label if v == 1 else good_label for v in synth_targets]
-            synth_df = synth_df.with_columns(pl.Series(target_col, synth_target_str))
-
-            # Preserve passthrough columns from original rows; synthetic rows get null
-            orig_df = df.select(feature_cols + [target_col] + passthrough_cols)
+            synth_df = synth_df.with_columns(
+                pl.Series(target_col, synth_target_str),
+            )
             for pc in passthrough_cols:
                 synth_df = synth_df.with_columns(pl.lit(None).alias(pc))
+            synth_df = synth_df.with_columns(
+                pl.lit(True).alias("_is_synthetic_row")
+            )
             resampled_df = pl.concat([orig_df, synth_df])
         else:
-            resampled_df = df.select(feature_cols + [target_col] + passthrough_cols)
+            resampled_df = orig_df
 
         # Class distribution
         target_series = resampled_df[target_col].cast(pl.String)
@@ -809,6 +769,7 @@ class SmoteTrainingDataNode(NodeType):
                 "source_artifact_id": train_art.artifact_id,
                 "smote_report": smote_report,
                 "synthetic_count": n_synthetic,
+                "synthetic_row_column": "_is_synthetic_row",
             },
         )
 
