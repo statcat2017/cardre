@@ -13,24 +13,8 @@ class TestRunRepo:
         run = RunRepository(store).get("nonexistent")
         assert run is None
 
-    def test_create_and_get_run(self, store):
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
+    def test_create_and_get_run(self, committed_plan_version):
+        _, _, pv_id, store, _ = committed_plan_version()
         from cardre.store.run_repo import RunRepository
         repo = RunRepository(store)
         run_id = repo.create(pv_id, run_scope="full_plan", force=True)
@@ -39,51 +23,19 @@ class TestRunRepo:
         assert run["status"] == "running"
         assert run["run_scope"] == "full_plan"
 
-    def test_transition_updates_status(self, store):
+    def test_transition_updates_status(self, committed_plan_version):
         from cardre.domain.run import RunStatus
         from cardre.store.run_repo import RunRepository
+        _, _, pv_id, store, _ = committed_plan_version()
         repo = RunRepository(store)
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
         run_id = repo.create(pv_id)
         repo.transition(run_id, RunStatus.INTERRUPTED)
         run = repo.get(run_id)
         assert run["status"] == "interrupted"
 
-    def test_finish_updates_status(self, store):
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
+    def test_finish_updates_status(self, committed_plan_version):
         from cardre.store.run_repo import RunRepository
+        _, _, pv_id, store, _ = committed_plan_version()
         repo = RunRepository(store)
         run_id = repo.create(pv_id)
         repo.finish(run_id, "succeeded")
@@ -91,84 +43,32 @@ class TestRunRepo:
         assert run["status"] == "succeeded"
         assert run["finished_at"] is not None
 
-    def test_transition_returns_false_when_not_running(self, store):
+    def test_transition_returns_false_when_not_running(self, committed_plan_version):
         from cardre.domain.run import RunStatus
         from cardre.store.run_repo import RunRepository
+        _, _, pv_id, store, _ = committed_plan_version()
         repo = RunRepository(store)
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
         run_id = repo.create(pv_id)
-        # First transition succeeds
         assert repo.transition(run_id, RunStatus.SUCCEEDED)
-        # Second transition returns False — run is already succeeded
         assert not repo.transition(run_id, RunStatus.FAILED)
 
-    def test_transition_rejects_illegal_move(self, store):
+    def test_transition_rejects_illegal_move(self, committed_plan_version):
         from cardre.domain.run import RunStatus
         from cardre.store.run_repo import RunRepository
+        _, _, pv_id, store, _ = committed_plan_version()
         repo = RunRepository(store)
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
         run_id = repo.create(pv_id)
         import pytest
         with pytest.raises(ValueError, match="Invalid run state transition"):
             repo.transition(run_id, RunStatus.CREATED)
 
-    def test_transition_expected_from_guards(self, store):
+    def test_transition_expected_from_guards(self, committed_plan_version):
         from cardre.domain.run import RunStatus
         from cardre.store.run_repo import RunRepository
+        _, _, pv_id, store, _ = committed_plan_version()
         repo = RunRepository(store)
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
         run_id = repo.create(pv_id)
-        # First transition to SUCCEEDED
         assert repo.transition(run_id, RunStatus.SUCCEEDED)
-        # Now try to transition from RUNNING — SQL won't match (run is SUCCEEDED)
         assert not repo.transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
 
     def test_list_for_plan_version_all(self, store):
@@ -177,24 +77,9 @@ class TestRunRepo:
         runs = repo.list_for_plan_version()
         assert isinstance(runs, list)
 
-    def test_get_step_from_run(self, store):
-        project_id = str(uuid.uuid4())
+    def test_get_step_from_run(self, committed_plan_version):
+        _, _, pv_id, store, _ = committed_plan_version()
         now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
         store.execute(
             "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
             " params_json, params_hash, branch_label, position, canonical_step_id) "
@@ -214,28 +99,10 @@ class TestRunRepo:
         step = repo.get_step(rs_id)
         assert step is not None
         assert step["step_id"] == "step-a"
+        assert repo.get_step("nonexistent") is None
 
-        missing = repo.get_step("nonexistent")
-        assert missing is None
-
-    def test_diagnostics_round_trip(self, store):
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
+    def test_diagnostics_round_trip(self, committed_plan_version):
+        _, _, pv_id, store, _ = committed_plan_version()
         from cardre.store.run_repo import RunRepository
         repo = RunRepository(store)
         run_id = repo.create(pv_id)
@@ -258,25 +125,9 @@ class TestRunRepo:
         assert repo.get_latest_successful_step_across_plan("nonexistent", "step") is None
         assert repo.get_latest_successful_id("nonexistent") is None
 
-    def test_run_repo_set_active_step(self, store):
+    def test_run_repo_set_active_step(self, committed_plan_version):
         from cardre.store.run_repo import RunRepository
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
+        _, _, pv_id, store, _ = committed_plan_version()
         repo = RunRepository(store)
         run_id = repo.create(pv_id)
         assert repo.get_active_step(run_id) is None
@@ -285,26 +136,11 @@ class TestRunRepo:
         repo.set_active_step(run_id, None)
         assert repo.get_active_step(run_id) is None
 
-    def test_run_step_repo_latest_successful(self, store):
+    def test_run_step_repo_latest_successful(self, committed_plan_version):
         from cardre.store.run_repo import RunRepository
         from cardre.store.run_step_repo import RunStepRepository
-        project_id = str(uuid.uuid4())
+        _, _, pv_id, store, _ = committed_plan_version()
         now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
         store.execute(
             "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
             " params_json, params_hash, branch_label, position, canonical_step_id) "
@@ -325,30 +161,13 @@ class TestRunRepo:
         rs = rs_repo.get_latest_successful_step(pv_id, "step-x")
         assert rs is not None
         assert rs.step_id == "step-x"
+        assert rs_repo.get_latest_successful_step("nonexistent-pv", "step-x") is None
 
-        rs_none = rs_repo.get_latest_successful_step("nonexistent-pv", "step-x")
-        assert rs_none is None
-
-    def test_run_step_repo_get_and_get_for_run(self, store):
+    def test_run_step_repo_get_and_get_for_run(self, committed_plan_version):
         from cardre.store.run_repo import RunRepository
         from cardre.store.run_step_repo import RunStepRepository
-        project_id = str(uuid.uuid4())
+        _, _, pv_id, store, _ = committed_plan_version()
         now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
         run_id = RunRepository(store).create(pv_id)
         rs_id = str(uuid.uuid4())
         store.execute(
@@ -362,7 +181,6 @@ class TestRunRepo:
         assert rs is not None
         assert rs.step_id == "s1"
         assert rs_repo.get("nonexistent") is None
-
         all_steps = rs_repo.get_for_run(run_id)
         assert len(all_steps) == 1
         assert rs_repo.get_for_run("nonexistent") == []

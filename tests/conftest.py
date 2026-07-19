@@ -202,46 +202,61 @@ def registered_store(store):
 
 @pytest.fixture
 def registered_project(store):
-    """Create a project via ProjectRepository and register it.
-    Returns (project_id, store, root)."""
+    """Factory: call to create a registered project.
+    Returns callable that accepts ``name`` and yields
+    ``(project_id, store, root)``."""
     from cardre.config import CardreConfig
     from cardre.services.project_resolver import ProjectResolver
     from cardre.store.project_repo import ProjectRepository
 
-    project_id = ProjectRepository(store).create("Test Project")
     resolver = ProjectResolver(CardreConfig.from_env().registry_path)
-    resolver.register_project(project_id, store.root)
-    return project_id, store, store.root
+
+    def _create(*, name: str = "Test Project") -> tuple:
+        project_id = ProjectRepository(store).create(name)
+        resolver.register_project(project_id, store.root)
+        return project_id, store, store.root
+
+    return _create
 
 
 @pytest.fixture
 def registered_plan(registered_project):
-    """Create a plan under a registered project via PlanRepository.
-    Returns (project_id, plan_id, store, root)."""
+    """Factory: call to create a plan under a registered project.
+    Returns callable that accepts ``name``, ``plan_name`` and yields
+    ``(project_id, plan_id, store, root)``."""
     from cardre.store.plan_repo import PlanRepository
 
-    project_id, store, root = registered_project
-    plan_id = PlanRepository(store).create_plan(project_id, "test-plan")
-    return project_id, plan_id, store, root
+    def _create(*, name: str = "Test Project", plan_name: str = "test-plan") -> tuple:
+        project_id, store, root = registered_project(name=name)
+        plan_id = PlanRepository(store).create_plan(project_id, plan_name)
+        return project_id, plan_id, store, root
+
+    return _create
 
 
 @pytest.fixture
 def committed_plan_version(registered_plan):
-    """Create a committed plan version via PlanRepository.create_version.
-    Returns (project_id, plan_id, pv_id, store, root)."""
+    """Factory: call to create a committed plan version.
+    Returns callable that yields ``(project_id, plan_id, pv_id, store, root)``."""
     from cardre.store.plan_repo import PlanRepository
 
-    project_id, plan_id, store, root = registered_plan
-    pv_id = PlanRepository(store).create_version(plan_id, is_committed=True)
-    return project_id, plan_id, pv_id, store, root
+    def _create(*, name: str = "Test Project", plan_name: str = "test-plan") -> tuple:
+        project_id, plan_id, store, root = registered_plan(name=name, plan_name=plan_name)
+        pv_id = PlanRepository(store).create_version(plan_id, is_committed=True)
+        return project_id, plan_id, pv_id, store, root
+
+    return _create
 
 
 @pytest.fixture
 def registered_run(committed_plan_version):
-    """Create a run via RunRepository.
-    Returns (project_id, plan_id, pv_id, run_id, store, root)."""
+    """Factory: call to create a run via RunRepository.
+    Returns callable that yields ``(project_id, plan_id, pv_id, run_id, store, root)``."""
     from cardre.store.run_repo import RunRepository
 
-    project_id, plan_id, pv_id, store, root = committed_plan_version
-    run_id = RunRepository(store).create(pv_id)
-    return project_id, plan_id, pv_id, run_id, store, root
+    def _create(*, name: str = "Test Project", plan_name: str = "test-plan") -> tuple:
+        project_id, plan_id, pv_id, store, root = committed_plan_version(name=name, plan_name=plan_name)
+        run_id = RunRepository(store).create(pv_id)
+        return project_id, plan_id, pv_id, run_id, store, root
+
+    return _create

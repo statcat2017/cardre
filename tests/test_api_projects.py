@@ -7,7 +7,7 @@ class TestProjects:
     PROJECT_FIELDS = {"project_id", "name", "created_at", "cardre_version"}
 
     def test_list_projects(self, api_client, registered_project):
-        project_id, store, root = registered_project
+        project_id, store, root = registered_project()
         resp = api_client.get("/projects")
         assert resp.status_code == 200
         data = resp.json()
@@ -15,7 +15,7 @@ class TestProjects:
         assert len(data["projects"]) >= 1
 
     def test_list_projects_response_shape(self, api_client, registered_project):
-        project_id, store, root = registered_project
+        project_id, store, root = registered_project()
         resp = api_client.get("/projects")
         assert resp.status_code == 200
         data = resp.json()
@@ -25,7 +25,7 @@ class TestProjects:
         assert set(data["projects"][0].keys()) == self.PROJECT_FIELDS
 
     def test_get_project(self, api_client, registered_project):
-        project_id, store, root = registered_project
+        project_id, store, root = registered_project()
         resp = api_client.get(f"/projects/{project_id}")
         assert resp.status_code == 200
         data = resp.json()
@@ -33,7 +33,7 @@ class TestProjects:
         assert data["name"] == "Test Project"
 
     def test_get_project_response_shape(self, api_client, registered_project):
-        project_id, store, root = registered_project
+        project_id, store, root = registered_project()
         resp = api_client.get(f"/projects/{project_id}")
         assert resp.status_code == 200
         data = resp.json()
@@ -41,7 +41,7 @@ class TestProjects:
         assert data["project_id"] == project_id
 
     def test_get_project_not_found(self, api_client, registered_project):
-        _, store, root = registered_project
+        _, store, root = registered_project()
         resp = api_client.get("/projects/nonexistent-id")
         assert resp.status_code == 404
         data = resp.json()

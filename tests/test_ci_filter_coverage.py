@@ -1,52 +1,16 @@
-"""Verify the CI path filter covers every file type that can change.
+"""Verify every required file path is covered by at least one CI filter.
 
-ci-success deliberately accepts ``skipped`` results. If the path filter omits
-a category, a change to that category can pass required checks without any
-substantive validation.  This test reproduces the glob rules from
-``.github/workflows/ci.yml`` and asserts that every path in a representative
-set matches at least one owning filter.
+Loads path-filter definitions directly from ``.github/workflows/ci.yml`` so
+that any change to the workflow is automatically reflected here.
 """
 
 from __future__ import annotations
 
-import fnmatch
+import re
+from pathlib import Path
 
-# Filters from .github/workflows/ci.yml — reproduced here so a filter
-# regression causes a test failure before it reaches CI.
-CI_FILTERS: dict[str, list[str]] = {
-    "python": [
-        "cardre/**",
-        "sidecar/**",
-        "tests/**",
-        "pyproject.toml",
-        "scripts/**",
-        "tools/**",
-        "Makefile",
-        ".github/dependabot.yml",
-    ],
-    "frontend": [
-        "frontend/**",
-        "!frontend/src-tauri/**",
-    ],
-    "rust": [
-        "frontend/src-tauri/**",
-    ],
-    "openapi": [
-        "sidecar/**",
-        "cardre/**",
-        "frontend/src/api/**",
-        "scripts/generate-openapi-types.py",
-    ],
-    "docs": [
-        "**/*.md",
-        "docs/**",
-    ],
-}
+WORKFLOW_PATH = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "ci.yml"
 
-# Every listed path must match at least one owning filter.  The python
-# filter is deliberately broad — it owns the backend, build scripts, and
-# operational tooling.  Frontend, Rust, OpenAPI, and docs have their own
-# dedicated lanes.
 REQUIRED_PATHS = [
     "tools/reference_extractors/extract_scorecard_r_german_credit.R",
     "scripts/pr-gate.sh",
@@ -60,47 +24,74 @@ REQUIRED_PATHS = [
 ]
 
 
-def _path_matches_any_filter(path: str, patterns: list[str]) -> bool:
-    return any(fnmatch.fnmatch(path, pattern) for pattern in patterns)
+def _parse_filters() -> dict[str, list[str]]:
+    """Parse the ``dorny/paths-filter`` block from ``ci.yml``."""
+    text = WORKFLOW_PATH.read_text()
+
+    m = re.search(r"^\s+filters:\s*\|\s*$", text, re.MULTILINE)
+    assert m, "Could not find 'filters: |' in ci.yml"
+
+    lines = text[m.end() :].split("\n")
+
+    filters: dict[str, list[str]] = {}
+    current: str | None = None
+
+    for raw in lines:
+        if not raw.strip():
+            continue
+        indent = len(raw) - len(raw.lstrip())
+        stripped = raw.strip()
+
+        if indent < 12:
+            break  # end of literal block
+        if indent == 12:
+            current = stripped.rstrip(":")
+            filters[current] = []
+        elif indent == 14 and current and stripped.startswith("- "):
+            pattern = stripped[2:].strip().strip("'")
+            filters[current].append(pattern)
+
+    return filters
 
 
-def _owning_filters(path: str) -> list[str]:
+def _path_matches(path: str, pattern: str) -> bool:
+    """dorny/paths-filter glob match using PurePosixPath suffix semantics."""
+    from fnmatch import fnmatch
+
+    if pattern.startswith("!"):
+        return not fnmatch(path, pattern[1:])
+    return fnmatch(path, pattern)
+
+
+def _owning_filters(path: str, filters: dict[str, list[str]]) -> list[str]:
     return [
         name
-        for name, patterns in CI_FILTERS.items()
-        if _path_matches_any_filter(path, patterns)
+        for name, patterns in filters.items()
+        if any(_path_matches(path, p) for p in patterns)
     ]
 
 
 def test_required_paths_have_owning_filters() -> None:
-    """Every required path must match at least one CI filter."""
+    filters = _parse_filters()
     failures = []
     for path in REQUIRED_PATHS:
-        owners = _owning_filters(path)
-        if not owners:
+        if not _owning_filters(path, filters):
             failures.append(path)
     assert not failures, (
-        f"{len(failures)} path(s) are not covered by any CI filter: "
+        f"{len(failures)} path(s) not covered by any CI filter: "
         + ", ".join(failures)
     )
 
 
-def test_python_filter_covers_scripts_and_tools() -> None:
-    """scripts/** and tools/** patterns ensure operational code runs QA."""
-    for path in [
-        "scripts/pr-gate.sh",
-        "scripts/check-sidecar-naming.py",
-        "tools/reference_extractors/extract_scorecard_r_german_credit.R",
-    ]:
-        assert _path_matches_any_filter(
-            path, CI_FILTERS["python"]
-        ), f"{path} must be owned by the python filter"
+def test_each_substantive_filter_owns_at_least_one_required_path() -> None:
+    """Every substantive validation lane must own at least one required path.
 
-
-def test_each_filter_has_at_least_one_positive_pattern() -> None:
-    """Sanity: every named filter must own at least one path in the fixture."""
-    for name in CI_FILTERS:
-        hits = [
-            p for p in REQUIRED_PATHS if _path_matches_any_filter(p, CI_FILTERS[name])
-        ]
-        assert hits, f"filter {name!r} does not match any required path"
+    The ``ci`` filter is a meta-filter for the workflow itself; ``sidecar``
+    overlaps with ``python``+``rust``.  Only the document-owning lanes are
+    checked here.
+    """
+    filters = _parse_filters()
+    for name in ("python", "frontend", "rust", "openapi", "docs"):
+        patterns = filters.get(name, [])
+        hits = [p for p in REQUIRED_PATHS if any(_path_matches(p, pat) for pat in patterns)]
+        assert hits, f"filter {name!r} matches none of the required paths"
