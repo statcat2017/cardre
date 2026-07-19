@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
+pytestmark = pytest.mark.governance
+
 
 class TestDependencies:
     def test_missing_x_project_id_returns_400(self, api_client):

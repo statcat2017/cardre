@@ -20,6 +20,8 @@ from cardre.services.branch_service import BranchService
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.plan_repo import PlanRepository
 
+pytestmark = pytest.mark.governance
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import uuid
 
+import pytest
+
 from cardre._evidence.schemas import (
     SCHEMA_EXCLUSION_SUMMARY,
     SCHEMA_EXPLAINABILITY_REPORT,
@@ -24,6 +26,8 @@ from cardre.reporting.evidence_contract import (
 )
 from cardre.reporting.renderer_html import render_report_bundle_to_html
 from cardre.services.report_service import ReportGenerationService
+
+pytestmark = pytest.mark.governance
 
 # ---------------------------------------------------------------------------
 # Evidence contract tests

@@ -23,6 +23,8 @@ from cardre.domain.errors import (
 )
 from cardre.services.staleness_service import StalenessExplanation
 
+pytestmark = pytest.mark.governance
+
 
 def _make_store(project_root: Path):
     from cardre.store.db import ProjectStore

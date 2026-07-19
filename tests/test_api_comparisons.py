@@ -6,6 +6,8 @@ import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
 
+pytestmark = pytest.mark.governance
+
 
 @pytest.fixture
 def project_with_comparison(store):

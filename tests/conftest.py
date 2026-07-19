@@ -198,3 +198,44 @@ def registered_store(store):
     resolver = ProjectResolver(CardreConfig.from_env().registry_path)
     resolver.register_project(project_id, store.root)
     return store, project_id
+
+
+@pytest.fixture
+def registered_project(store):
+    """Register a project in the store. Returns (project_id, store, root)."""
+    from cardre.config import CardreConfig
+    from cardre.services.project_resolver import ProjectResolver
+
+    project_id = str(uuid.uuid4())
+    now = utc_now_iso()
+    store.execute(
+        "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
+        (project_id, "Test Project", now, "0.2.0"),
+    )
+    resolver = ProjectResolver(CardreConfig.from_env().registry_path)
+    resolver.register_project(project_id, store.root)
+    return project_id, store, store.root
+
+
+@pytest.fixture
+def registered_plan(registered_project):
+    """Create a plan under a registered project. Returns (project_id, plan_id, store, root)."""
+    from cardre.store.plan_repo import PlanRepository
+
+    project_id, store, root = registered_project
+    plan_id = PlanRepository(store).create_plan(project_id, "test-plan")
+    return project_id, plan_id, store, root
+
+
+@pytest.fixture
+def committed_plan_version(registered_plan):
+    """Create a committed plan version under a plan. Returns (project_id, plan_id, pv_id, store, root)."""
+    project_id, plan_id, store, root = registered_plan
+    now = utc_now_iso()
+    pv_id = str(uuid.uuid4())
+    store.execute(
+        "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
+        "VALUES (?, ?, 1, 1, ?)",
+        (pv_id, plan_id, now),
+    )
+    return project_id, plan_id, pv_id, store, root

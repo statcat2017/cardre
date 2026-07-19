@@ -13,6 +13,8 @@ import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
 
+pytestmark = pytest.mark.governance
+
 
 @pytest.fixture(autouse=True)
 def enable_governance(monkeypatch):
