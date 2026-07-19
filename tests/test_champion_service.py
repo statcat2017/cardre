@@ -18,6 +18,8 @@ import pytest
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError
 
+pytestmark = pytest.mark.governance
+
 
 def _seed_branch(store, project_id, plan_id, pv_id, branch_id, name="test-branch", status="active"):
     store.execute(

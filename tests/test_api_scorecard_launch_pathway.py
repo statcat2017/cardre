@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 from cardre._evidence.schemas import (
     SCHEMA_CALIBRATION_DIAGNOSTICS,
@@ -26,6 +27,8 @@ from cardre._evidence.schemas import (
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.readiness.limitation_codes import LimitationCode
 from cardre.workflows import build_canonical_scorecard_steps, canonical_scorecard_step_ids
+
+pytestmark = pytest.mark.governance
 
 
 def _write_input_csv(path: Path) -> Path:

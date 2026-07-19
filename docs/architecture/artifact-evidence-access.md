@@ -1,7 +1,7 @@
 # Artifact Evidence Access
 
 This document describes the final artifact/evidence boundary enforced by the
-guardrail in `tests/test_artifact_guardrail.py` and `scripts/audit_artifact_reads.py`.
+guardrail in `scripts/audit_artifact_reads.py`.
 
 See `CONTEXT.md` and the evidence specs in `cardre/_evidence/` for the source
 of truth. This page is the operator-facing guide.

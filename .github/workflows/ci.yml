@@ -43,8 +43,10 @@ jobs:
               - 'sidecar/**'
               - 'tests/**'
               - 'pyproject.toml'
-              - 'scripts/*.py'
+              - 'scripts/**'
+              - 'tools/**'
               - 'Makefile'
+              - '.github/dependabot.yml'
             frontend:
               - 'frontend/**'
               - '!frontend/src-tauri/**'
@@ -162,7 +164,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           extras: sidecar,test
       - name: Run governance tests
-        run: python3 -m pytest tests/test_api_*.py -q --tb=short --no-cov
+        run: python3 -m pytest -m governance -q --tb=short --no-cov
 
   test-frontend:
     needs: [detect-changes, typecheck-frontend]
@@ -286,25 +288,28 @@ jobs:
             ls -la binaries/
             exit 1
           fi
-          echo "Launching $BINARY on port 18000"
-          CARDRE_API_PORT=18000 $BINARY &
+          # Allocate an available ephemeral loopback port
+          PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1]); s.close()")
+          echo "Launching $BINARY on port $PORT"
+          CARDRE_API_PORT=$PORT $BINARY &
           SIDECAR_PID=$!
+          # Install cleanup trap immediately after launch
+          cleanup() { kill "$SIDECAR_PID" 2>/dev/null || true; }
+          trap cleanup EXIT INT TERM
           echo "Sidecar PID: $SIDECAR_PID"
           for i in $(seq 1 30); do
-            if python3 -c "import httpx; r = httpx.get('http://127.0.0.1:18000/health', timeout=2); assert r.json().get('status') == 'ok'; print('HEALTHY')" 2>/dev/null; then
+            if python3 -c "import httpx; r = httpx.get('http://127.0.0.1:$PORT/health', timeout=2); assert r.json().get('status') == 'ok'; print('HEALTHY')" 2>/dev/null; then
               echo "Sidecar is healthy"
               # Naming guard: the artifact must be triple-suffixed for Tauri.
               case "$BINARY" in
                 *cardre-api-*-unknown-linux-gnu) echo "Naming OK: $BINARY" ;;
                 *) echo "ERROR: sidecar not triple-suffixed: $BINARY"; exit 1 ;;
               esac
-              kill $SIDECAR_PID 2>/dev/null || true
               exit 0
             fi
             sleep 1
           done
           echo "ERROR: Sidecar did not become healthy within 30 seconds"
-          kill $SIDECAR_PID 2>/dev/null || true
           exit 1
 
   check-api-contracts:

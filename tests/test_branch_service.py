@@ -20,7 +20,7 @@ from cardre.services.branch_validator import (
 from cardre.store.branch_repo import BranchRepository
 from cardre.store.plan_repo import PlanRepository
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.governance]
 
 
 def _make_steps(count: int = 4) -> list[StepSpec]:

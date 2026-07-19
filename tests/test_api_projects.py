@@ -2,43 +2,20 @@
 
 from __future__ import annotations
 
-import uuid
-
-import pytest
-
-from cardre.domain.diagnostics import utc_now_iso
-
-
-@pytest.fixture
-def project_with_store(store):
-    """Create a project in the store and register it. Returns (project_id, store, root)."""
-    from cardre.config import CardreConfig
-    from cardre.services.project_resolver import ProjectResolver
-
-    project_id = str(uuid.uuid4())
-    now = utc_now_iso()
-    store.execute(
-        "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-        (project_id, "Test Project", now, "0.2.0"),
-    )
-    resolver = ProjectResolver(CardreConfig.from_env().registry_path)
-    resolver.register_project(project_id, store.root)
-    return project_id, store, store.root
-
 
 class TestProjects:
     PROJECT_FIELDS = {"project_id", "name", "created_at", "cardre_version"}
 
-    def test_list_projects(self, api_client, project_with_store):
-        project_id, store, root = project_with_store
+    def test_list_projects(self, api_client, registered_project):
+        project_id, store, root = registered_project()
         resp = api_client.get("/projects")
         assert resp.status_code == 200
         data = resp.json()
         assert "projects" in data
         assert len(data["projects"]) >= 1
 
-    def test_list_projects_response_shape(self, api_client, project_with_store):
-        project_id, store, root = project_with_store
+    def test_list_projects_response_shape(self, api_client, registered_project):
+        project_id, store, root = registered_project()
         resp = api_client.get("/projects")
         assert resp.status_code == 200
         data = resp.json()
@@ -47,24 +24,24 @@ class TestProjects:
         assert data["projects"]
         assert set(data["projects"][0].keys()) == self.PROJECT_FIELDS
 
-    def test_get_project(self, api_client, project_with_store):
-        project_id, store, root = project_with_store
+    def test_get_project(self, api_client, registered_project):
+        project_id, store, root = registered_project()
         resp = api_client.get(f"/projects/{project_id}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["project_id"] == project_id
         assert data["name"] == "Test Project"
 
-    def test_get_project_response_shape(self, api_client, project_with_store):
-        project_id, store, root = project_with_store
+    def test_get_project_response_shape(self, api_client, registered_project):
+        project_id, store, root = registered_project()
         resp = api_client.get(f"/projects/{project_id}")
         assert resp.status_code == 200
         data = resp.json()
         assert set(data.keys()) == self.PROJECT_FIELDS
         assert data["project_id"] == project_id
 
-    def test_get_project_not_found(self, api_client, project_with_store):
-        _, store, root = project_with_store
+    def test_get_project_not_found(self, api_client, registered_project):
+        _, store, root = registered_project()
         resp = api_client.get("/projects/nonexistent-id")
         assert resp.status_code == 404
         data = resp.json()
