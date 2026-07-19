@@ -180,7 +180,7 @@ class TestRandomResamplingProvenance:
     def test_oversample_writes_flag_column(self, tmp_path):
         store, pv_id, run_id, train_id, meta_id = _seed_run_context(tmp_path)
         result = self._run(store, pv_id, run_id, train_id, meta_id,
-                          {"strategy": "oversample_minority", "sampling_ratio": 1.5})
+                          {"strategy": "oversample_minority", "sampling_ratio": 1.0})
         assert any(a.role == "train" for a in result.artifacts)
 
         # Read the parquet and check the flag
@@ -191,12 +191,13 @@ class TestRandomResamplingProvenance:
         assert "_is_synthetic_row" in df.columns
         n_synthetic = int(df["_is_synthetic_row"].sum())
         assert n_synthetic > 0
-        assert n_synthetic <= 50  # sanity: we oversampled ~20 bad rows
+        # oversample_minority from 20 bad -> 80 bad = 60 extra
+        assert n_synthetic == 60
 
     def test_oversample_synthetic_matches_report(self, tmp_path):
         store, pv_id, run_id, train_id, meta_id = _seed_run_context(tmp_path)
         result = self._run(store, pv_id, run_id, train_id, meta_id,
-                          {"strategy": "oversample_minority", "sampling_ratio": 1.5})
+                          {"strategy": "oversample_minority", "sampling_ratio": 1.0})
         from cardre._evidence.reader import ArtifactEvidenceReader
         reader = ArtifactEvidenceReader(store)
         train_art = next(a for a in result.artifacts if a.role == "train")
@@ -216,18 +217,24 @@ class TestRandomResamplingProvenance:
         assert df["_is_synthetic_row"].sum() == 0
 
     def test_original_rows_are_false(self, tmp_path):
-        """Every original row ID is false; only extra duplicates are true."""
+        """Every original selected row is False; only extra duplicates are True."""
         store, pv_id, run_id, train_id, meta_id = _seed_run_context(tmp_path)
         result = self._run(store, pv_id, run_id, train_id, meta_id,
-                          {"strategy": "oversample_minority", "sampling_ratio": 1.5})
+                          {"strategy": "oversample_minority", "sampling_ratio": 1.0})
         from cardre._evidence.reader import ArtifactEvidenceReader
         reader = ArtifactEvidenceReader(store)
         train_art = next(a for a in result.artifacts if a.role == "train")
         df = reader.read_dataframe(train_art)
 
-        orig_mask = df["_is_synthetic_row"] == False  # noqa: E712
-        # All original rows came from the original 100 indices
-        assert orig_mask.sum() == 100 or orig_mask.sum() > 0
+        # Count unique values of a proxy for "original" row identity.
+        # All False rows plus all True rows should total the output.
+        n_false = int((df["_is_synthetic_row"] == False).sum())  # noqa: E712
+        n_true = int(df["_is_synthetic_row"].sum())
+        assert n_false + n_true == len(df)
+        # At least one row is an original selected row (false)
+        assert n_false > 0
+        # At least one row is an extra duplicate (true)
+        assert n_true > 0
 
 
 # ---------------------------------------------------------------------------

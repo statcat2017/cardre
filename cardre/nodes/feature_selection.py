@@ -552,31 +552,38 @@ class ResampleTrainingDataNode(NodeType):
         bad_indices = np.where(y_bin == 1)[0]
         good_indices = np.where(y_bin == 0)[0]
 
-        resampled_bad_idx = list(bad_indices)
-        if target_minority > n_bad:
-            oversample_idx = rng.choice(bad_indices, size=target_minority - n_bad, replace=True)
-            resampled_bad_idx.extend(oversample_idx.tolist())
+        # Original selected indices: all bad + subset good
+        selected_bad_idx = bad_indices
+        selected_good_idx = (
+            rng.choice(good_indices, size=target_majority, replace=False)
+            if target_majority < n_good
+            else good_indices
+        )
+        # Extra duplicate indices (oversampled minority)
+        extra_indices = (
+            rng.choice(bad_indices, size=target_minority - n_bad, replace=True)
+            if target_minority > n_bad
+            else np.array([], dtype=int)
+        )
 
-        resampled_good_idx = list(good_indices)
-        if target_majority < n_good:
-            undersample_idx = rng.choice(good_indices, size=target_majority, replace=False)
-            resampled_good_idx = undersample_idx.tolist()
+        base_indices = np.concatenate([selected_bad_idx, selected_good_idx])
+        all_indices = np.concatenate([base_indices, extra_indices])
 
-        # Build index array and synthetic-row flag together
-        base_indices = np.array(resampled_bad_idx + resampled_good_idx, dtype=int)
-        n_base = n_bad + min(n_good, target_majority)
-        n_extra = max(0, target_minority - n_bad)
+        # Build synthetic-row flags aligned with all_indices
+        incoming_raw = df.get_column("_is_synthetic_row").to_numpy() if "_is_synthetic_row" in df.columns else None
+        incoming_base = incoming_raw[base_indices] if incoming_raw is not None else np.zeros(len(base_indices), dtype=bool)
         synthetic_flags = np.concatenate([
-            np.zeros(n_base, dtype=bool),
-            np.ones(n_extra, dtype=bool),
+            incoming_base,
+            np.ones(len(extra_indices), dtype=bool),
         ])
-        perm = rng.permutation(len(base_indices))
-        resampled_df = df[base_indices[perm]].with_columns(
+
+        perm = rng.permutation(len(all_indices))
+        resampled_df = df[all_indices[perm]].with_columns(
             pl.Series("_is_synthetic_row", synthetic_flags[perm])
         )
 
-        n_oversampled_bad = n_extra
-        n_dropped_good = max(0, n_good - len(resampled_good_idx))
+        n_oversampled_bad = len(extra_indices)
+        n_dropped_good = max(0, n_good - len(selected_good_idx))
         original_count = n_total
 
         # Compute class distribution report
@@ -720,10 +727,19 @@ class SmoteTrainingDataNode(NodeType):
         n_resampled = len(y_res)
         n_synthetic = n_resampled - n_original
 
-        # Build original frame with _is_synthetic_row=False
-        orig_df = df.select(feature_cols + [target_col] + passthrough_cols).with_columns(
-            pl.lit(False).alias("_is_synthetic_row")
-        )
+        # Preserve incoming _is_synthetic_row for original rows
+        incoming_flag_col = "_is_synthetic_row"
+        has_incoming = incoming_flag_col in df.columns
+        base_select = feature_cols + [target_col] + passthrough_cols
+        if incoming_flag_col in base_select:
+            base_select.remove(incoming_flag_col)
+
+        if has_incoming:
+            orig_df = df.select(base_select + [incoming_flag_col])
+        else:
+            orig_df = df.select(base_select).with_columns(
+                pl.lit(False).alias(incoming_flag_col)
+            )
 
         if n_synthetic > 0:
             synth_features = X_res[n_original:]

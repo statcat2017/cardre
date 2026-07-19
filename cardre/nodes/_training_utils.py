@@ -69,6 +69,22 @@ def resolve_supervised_feature_columns(
 
     candidates = include_columns or list(frame.columns)
     excluded = exclude_columns | {target_column}
+
+    # Validate explicit includes for numeric compatibility before filtering
+    if include_columns:
+        non_numeric_includes = [
+            column for column in include_columns
+            if column not in excluded
+            and not column.startswith(INTERNAL_COLUMN_PREFIX)
+            and not frame.schema[column].is_numeric()
+        ]
+        if non_numeric_includes:
+            raise ValueError(
+                "Non-numeric columns not supported without encoding: "
+                f"{non_numeric_includes}. Use include_columns to select only numeric "
+                "features, or add an encoding node."
+            )
+
     features = [
         column
         for column in candidates
@@ -78,19 +94,6 @@ def resolve_supervised_feature_columns(
     ]
 
     if not features:
-        if include_columns:
-            non_numeric = [
-                column for column in include_columns
-                if column not in excluded
-                and not column.startswith(INTERNAL_COLUMN_PREFIX)
-                and not frame.schema[column].is_numeric()
-            ]
-            if non_numeric:
-                raise ValueError(
-                    "Non-numeric columns not supported without encoding: "
-                    f"{non_numeric}. Use include_columns to select only numeric "
-                    "features, or add an encoding node."
-                )
         raise ValueError("No numeric supervised features available after exclusions")
 
     return features

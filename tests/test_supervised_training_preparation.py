@@ -62,6 +62,18 @@ class TestResolveSupervisedFeatureColumns:
                 params={"include_columns": ["numeric_feature", "_is_synthetic_row"]},
             )
 
+    def test_mixed_includes_reports_non_numeric_error(self):
+        """One numeric + one categorical include must raise a clear non-numeric error
+        before any features are returned."""
+        df = _example_frame().with_columns(
+            pl.Series("customer_segment", ["a", "b", "c", "d", "e"]),
+        )
+        with pytest.raises(ValueError, match="Non-numeric"):
+            resolve_supervised_feature_columns(
+                df, target_column="target",
+                params={"include_columns": ["numeric_feature", "customer_segment"]},
+            )
+
     def test_explicit_exclude_removes_feature(self):
         df = _example_frame()
         features = resolve_supervised_feature_columns(
