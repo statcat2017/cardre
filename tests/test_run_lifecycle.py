@@ -317,3 +317,53 @@ class TestFinaliseValidation:
         assert run["status"] == "failed"
         diags = RunRepository(store).get_diagnostics(run_id)
         assert any(d.get("code") == "RUN_FINALISATION_FAILED" for d in diags)
+
+
+class TestConcurrentFinalisation:
+    """When two callers race to finalise the same run, the loser must not
+    leave the manifest inconsistent with the database."""
+
+    def test_loser_rewrites_manifest_to_match_winner(self, tmp_path):
+        """If finalise_run loses the compare-and-set transition, it must
+        rewrite the manifest to match the actual database status."""
+        import pytest
+
+        from cardre.execution.run_lifecycle import (
+            RunFinalisation,
+            RunLifecycleError,
+            finalise_run,
+        )
+        from cardre.store.run_repo import RunRepository
+
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
+
+        # Winner — finalises as succeeded
+        finalise_run(store, RunFinalisation(
+            run_id=run_id, plan_version_id=pv_id,
+            status="succeeded", execution_mode="full_plan",
+            finished_at=utc_now_iso(),
+        ))
+
+        run = RunRepository(store).get(run_id)
+        assert run["status"] == "succeeded"
+
+        # Loser — tries to finalise as interrupted, but the run is already
+        # succeeded. Must raise and rewrite the manifest.
+        with pytest.raises(RunLifecycleError) as exc_info:
+            finalise_run(store, RunFinalisation(
+                run_id=run_id, plan_version_id=pv_id,
+                status="interrupted", execution_mode="full_plan",
+                finished_at=utc_now_iso(),
+            ))
+        assert exc_info.value.code == "RUN_ALREADY_FINALISED"
+        assert exc_info.value.context["actual_status"] == "succeeded"
+
+        # Run status must still be succeeded
+        run = RunRepository(store).get(run_id)
+        assert run["status"] == "succeeded"
+
+        # Manifest must match the database, not the loser's intent
+        manifest_path = store.root / "exports" / f"manifest-{run_id}" / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest["status"] == "succeeded"

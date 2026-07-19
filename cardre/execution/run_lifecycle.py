@@ -164,6 +164,10 @@ def finalise_run(
     The manifest is written *before* the status transition so that a
     manifest write failure does not leave a run marked succeeded without
     audit material.
+
+    Raises ``RunLifecycleError`` if the run was already finalised by
+    another caller (the compare-and-set transition failed). The manifest
+    is rewritten to match the actual database status before raising.
     """
     write_manifest(
         store,
@@ -177,7 +181,38 @@ def finalise_run(
         in_scope_step_ids=finalisation.in_scope_step_ids,
     )
     from cardre.store.run_repo import RunRepository
-    RunRepository(store).transition(finalisation.run_id, RunStatus(finalisation.status), expected_from=(RunStatus.RUNNING,))
+
+    ok = RunRepository(store).transition(
+        finalisation.run_id,
+        RunStatus(finalisation.status),
+        expected_from=(RunStatus.RUNNING,),
+    )
+    if not ok:
+        # Someone else finalised the run first.  Rewrite the manifest to
+        # match the actual database state so the two do not diverge.
+        run = RunRepository(store).get(finalisation.run_id)
+        actual_status = run["status"] if run else "unknown"
+        write_manifest(
+            store,
+            run_id=finalisation.run_id,
+            plan_version_id=finalisation.plan_version_id,
+            execution_mode=finalisation.execution_mode,
+            final_status=actual_status,
+            finished_at=run.get("finished_at", utc_now_iso()) if run else utc_now_iso(),
+            branch_id=finalisation.branch_id,
+            target_step_id=finalisation.target_step_id,
+            in_scope_step_ids=finalisation.in_scope_step_ids,
+        )
+        raise RunLifecycleError(
+            f"Run {finalisation.run_id} was already finalised "
+            f"(expected {RunStatus.RUNNING!r}, got {actual_status!r})",
+            code="RUN_ALREADY_FINALISED",
+            context={
+                "run_id": finalisation.run_id,
+                "expected_status": RunStatus.RUNNING.value,
+                "actual_status": actual_status,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -365,7 +400,9 @@ class RunLifecycle:
                 "traceback": tb,
                 "created_at": utc_now_iso(),
             })
-            RunRepository(self._store).transition(self.run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
+            run = RunRepository(self._store).get(self.run_id)
+            if run and run.get("status") == RunStatus.RUNNING.value:
+                RunRepository(self._store).transition(self.run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
             raise
         self._finalised = True
 
