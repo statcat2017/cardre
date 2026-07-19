@@ -705,9 +705,11 @@ def test_reporting_still_adds_inherited_limitation_for_ancestor(store, monkeypat
     """An ancestor resolution must still produce an INHERITED_BRANCH_EVIDENCE
     limitation even after the locator migration."""
     from cardre.branch_step_resolver import ResolvedStepRef
+    from cardre.domain.evidence import ResolvedEvidence
+    from cardre.domain.run import RunStep, RunStepStatus
     from cardre.evidence_locator import EvidenceLocator
+    from cardre.readiness.limitation_codes import LimitationCode
     from cardre.reporting._resolve import _resolve_run_step
-    from cardre.reporting.schema import Limitation
 
     ancestor_ref = ResolvedStepRef(
         requested_branch_id="branch-child",
@@ -717,18 +719,23 @@ def test_reporting_still_adds_inherited_limitation_for_ancestor(store, monkeypat
         resolution="ancestor",
     )
 
-    calls = []
-    limitations: list[Limitation] = []
+    rs = RunStep(
+        run_step_id="rs-1", run_id="run-1", step_id="step-a",
+        plan_version_id="pv-1", status=RunStepStatus.SUCCEEDED,
+        started_at="2026-01-01T00:00:00Z",
+    )
+    resolved = ResolvedEvidence(
+        run_step_id="rs-1", run_step=rs, edges=[], artifacts=[],
+    )
 
-    def spy_resolve_ref(self, plan_version_id, received_ref, **kwargs):
-        calls.append((plan_version_id, received_ref, kwargs))
-        return None
+    def spy(self, plan_version_id, ref, **kwargs):
+        return resolved
 
-    monkeypatch.setattr(EvidenceLocator, "resolve_ref", spy_resolve_ref)
+    monkeypatch.setattr(EvidenceLocator, "resolve_ref", spy)
 
-    _resolve_run_step(store, ancestor_ref, "plan-version-id", limitations.append)
+    limitations = []
+    result = _resolve_run_step(store, ancestor_ref, "pv-1", limitations.append)
 
-    # The ancestor path must still attempt to add the limitation even when
-    # resolve_ref returns None (the limitation is report content, not
-    # evidence selection).
-    assert calls == [("plan-version-id", ancestor_ref, {})]
+    assert result is rs
+    assert len(limitations) == 1
+    assert limitations[0].code == LimitationCode.INHERITED_BRANCH_EVIDENCE
