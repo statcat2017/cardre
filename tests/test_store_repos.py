@@ -6,8 +6,6 @@ import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
 
-pytestmark = pytest.mark.governance
-
 
 class TestRunRepo:
     def test_get_nonexistent_run(self, store):
@@ -448,6 +446,7 @@ class TestStepRepo:
         assert all_edges[0]["child_step_id"] == "b"
 
 
+@pytest.mark.governance
 class TestBranchRepo:
     def test_get_nonexistent_branch(self, store):
         from cardre.store.branch_repo import BranchRepository

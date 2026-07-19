@@ -4,8 +4,6 @@ import uuid
 
 import pytest
 
-pytestmark = pytest.mark.governance
-
 
 class TestDependencies:
     def test_missing_x_project_id_returns_400(self, api_client):
@@ -41,6 +39,7 @@ class TestDependencies:
         data = resp.json()
         assert "detail" in data
 
+    @pytest.mark.governance
     def test_governance_disabled_on_branch_route(self, api_client, raw_project_path, monkeypatch):
         monkeypatch.setattr("cardre.config.CardreConfig.from_env", lambda: type(
             "MockConfig", (), {

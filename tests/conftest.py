@@ -202,16 +202,13 @@ def registered_store(store):
 
 @pytest.fixture
 def registered_project(store):
-    """Register a project in the store. Returns (project_id, store, root)."""
+    """Create a project via ProjectRepository and register it.
+    Returns (project_id, store, root)."""
     from cardre.config import CardreConfig
     from cardre.services.project_resolver import ProjectResolver
+    from cardre.store.project_repo import ProjectRepository
 
-    project_id = str(uuid.uuid4())
-    now = utc_now_iso()
-    store.execute(
-        "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-        (project_id, "Test Project", now, "0.2.0"),
-    )
+    project_id = ProjectRepository(store).create("Test Project")
     resolver = ProjectResolver(CardreConfig.from_env().registry_path)
     resolver.register_project(project_id, store.root)
     return project_id, store, store.root
@@ -219,7 +216,8 @@ def registered_project(store):
 
 @pytest.fixture
 def registered_plan(registered_project):
-    """Create a plan under a registered project. Returns (project_id, plan_id, store, root)."""
+    """Create a plan under a registered project via PlanRepository.
+    Returns (project_id, plan_id, store, root)."""
     from cardre.store.plan_repo import PlanRepository
 
     project_id, store, root = registered_project
@@ -229,13 +227,21 @@ def registered_plan(registered_project):
 
 @pytest.fixture
 def committed_plan_version(registered_plan):
-    """Create a committed plan version under a plan. Returns (project_id, plan_id, pv_id, store, root)."""
+    """Create a committed plan version via PlanRepository.create_version.
+    Returns (project_id, plan_id, pv_id, store, root)."""
+    from cardre.store.plan_repo import PlanRepository
+
     project_id, plan_id, store, root = registered_plan
-    now = utc_now_iso()
-    pv_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-        "VALUES (?, ?, 1, 1, ?)",
-        (pv_id, plan_id, now),
-    )
+    pv_id = PlanRepository(store).create_version(plan_id, is_committed=True)
     return project_id, plan_id, pv_id, store, root
+
+
+@pytest.fixture
+def registered_run(committed_plan_version):
+    """Create a run via RunRepository.
+    Returns (project_id, plan_id, pv_id, run_id, store, root)."""
+    from cardre.store.run_repo import RunRepository
+
+    project_id, plan_id, pv_id, store, root = committed_plan_version
+    run_id = RunRepository(store).create(pv_id)
+    return project_id, plan_id, pv_id, run_id, store, root
