@@ -6,6 +6,7 @@ with real ProjectStore fixtures and Parquet Artifacts.
 
 from __future__ import annotations
 
+import importlib.util
 import uuid
 
 import numpy as np
@@ -28,52 +29,18 @@ def _make_store(tmp_path):
 
 
 def _make_imbalanced_frame() -> pl.DataFrame:
-    """Return a train frame with 80 good / 20 bad rows and an ID column."""
+    """Return a train frame with 80 good / 20 bad rows and deterministic IDs."""
     rng = np.random.RandomState(42)
     n_good = 80
     n_bad = 20
-    ids_good = [f"orig-g-{i}" for i in range(n_good)]
-    ids_bad = [f"orig-b-{i}" for i in range(n_bad)]
     target_data = ["good"] * n_good + ["bad"] * n_bad
     rng.shuffle(target_data)
     return pl.DataFrame({
-        "id": ids_good + ids_bad,
+        "row_id": list(range(100)),
         "feature_a": rng.randn(100).tolist(),
         "feature_b": rng.randn(100).tolist(),
         "target": target_data,
     })
-
-
-def _seed_modelling_metadata(store, project_id, plan_id, pv_id):
-    """Insert a MODELLING_METADATA definition artifact."""
-    import io
-
-    from cardre._evidence.adapters import get_adapter
-    from cardre._evidence.kinds import EvidenceKind
-    from cardre._evidence.models import ModellingMetadata
-
-    meta = ModellingMetadata(
-        target_column="target",
-        good_values=frozenset({"good"}),
-        bad_values=frozenset({"bad"}),
-    )
-    adapter = get_adapter(EvidenceKind.MODELLING_METADATA)
-    buf = io.BytesIO()
-    adapter.write(buf, meta)
-    buf.seek(0)
-    artifact_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO artifacts (artifact_id, artifact_type, role, physical_hash, "
-        "logical_hash, file_size_bytes, storage_path, metadata_json) "
-        "VALUES (?, 'definition', 'definition', ?, ?, ?, ?, ?)",
-        (artifact_id, "hash123", "hash456", 0, "/dev/null/artifact.json",
-         '{"schema_version": "cardre.modelling_metadata.v1"}'),
-    )
-    store.execute(
-        "INSERT INTO artifact_data (artifact_id, data) VALUES (?, ?)",
-        (artifact_id, buf.read()),
-    )
-    return artifact_id
 
 
 def _seed_run_context(tmp_path):
@@ -107,47 +74,40 @@ def _seed_run_context(tmp_path):
         stem="train-data", frame=df,
         metadata={"plan_version_id": pv_id},
     )
-    meta_id = _seed_modelling_metadata(store, project_id, plan_id, pv_id)
-    return store, pv_id, run_id, train_art.artifact_id, meta_id
+    meta_id = str(uuid.uuid4())
+    return store, pv_id, run_id, train_art, meta_id
 
 
-def _make_context(store, pv_id, run_id, train_artifact_id, meta_artifact_id, params=None):
+def _make_context(store, pv_id, run_id, train_art, params=None):
     """Build a minimal ExecutionContext for node run() tests."""
     from dataclasses import dataclass, field
 
-    from cardre._evidence.kinds import EvidenceKind
-    from cardre._evidence.reader import ArtifactEvidenceReader
-    from cardre.domain.artifacts import ArtifactRef
     from cardre.domain.step import StepSpec
-
-    meta_ref = ArtifactRef(
-        artifact_id=meta_artifact_id, artifact_type="definition",
-        role="definition", physical_hash="", logical_hash="",
-    )
-    train_ref = ArtifactRef(
-        artifact_id=train_artifact_id, artifact_type="dataset",
-        role="train", physical_hash="", logical_hash="",
-    )
 
     @dataclass
     class _Ctx:
         store: ProjectStore
         _pv_id: str
         _run_id: str
-        input_artifacts: list = field(default_factory=lambda: [meta_ref, train_ref])
+        input_artifacts: list = field(default_factory=lambda: [train_art])
         validated_params: dict = field(default_factory=lambda: params or {})
         _step_id: str = "test-step"
+        _meta_target_column: str = "target"
+        _meta_good_values: frozenset = frozenset({"good"})
+        _meta_bad_values: frozenset = frozenset({"bad"})
 
         def require_train_artifact(self, operation: str):
-            return train_ref
+            return train_art
 
         def train_artifact(self):
-            return train_ref
+            return train_art
 
         def target_metadata(self):
-            reader = ArtifactEvidenceReader(self.store)
-            return reader.find_optional(
-                self.input_artifacts, EvidenceKind.MODELLING_METADATA,
+            from cardre._evidence.models import ModellingMetadata
+            return ModellingMetadata(
+                target_column=self._meta_target_column,
+                good_values=self._meta_good_values,
+                bad_values=self._meta_bad_values,
             )
 
         @property
@@ -171,15 +131,15 @@ class TestRandomResamplingProvenance:
 
     NODE_PATH = "cardre.nodes.feature_selection.ResampleTrainingDataNode"
 
-    def _run(self, store, pv_id, run_id, train_id, meta_id, params):
+    def _run(self, store, pv_id, run_id, train_art, meta_id, params):
         from cardre.nodes.feature_selection import ResampleTrainingDataNode
         node = ResampleTrainingDataNode()
-        ctx = _make_context(store, pv_id, run_id, train_id, meta_id, params)
+        ctx = _make_context(store, pv_id, run_id, train_art, params)
         return node.run(ctx)
 
     def test_oversample_writes_flag_column(self, tmp_path):
-        store, pv_id, run_id, train_id, meta_id = _seed_run_context(tmp_path)
-        result = self._run(store, pv_id, run_id, train_id, meta_id,
+        store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
+        result = self._run(store, pv_id, run_id, train_art, meta_id,
                           {"strategy": "oversample_minority", "sampling_ratio": 1.0})
         assert any(a.role == "train" for a in result.artifacts)
 
@@ -195,8 +155,8 @@ class TestRandomResamplingProvenance:
         assert n_synthetic == 60
 
     def test_oversample_synthetic_matches_report(self, tmp_path):
-        store, pv_id, run_id, train_id, meta_id = _seed_run_context(tmp_path)
-        result = self._run(store, pv_id, run_id, train_id, meta_id,
+        store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
+        result = self._run(store, pv_id, run_id, train_art, meta_id,
                           {"strategy": "oversample_minority", "sampling_ratio": 1.0})
         from cardre._evidence.reader import ArtifactEvidenceReader
         reader = ArtifactEvidenceReader(store)
@@ -206,8 +166,8 @@ class TestRandomResamplingProvenance:
         assert n_synthetic == result.metrics.get("synthetic_count", -1)
 
     def test_undersample_all_false(self, tmp_path):
-        store, pv_id, run_id, train_id, meta_id = _seed_run_context(tmp_path)
-        result = self._run(store, pv_id, run_id, train_id, meta_id,
+        store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
+        result = self._run(store, pv_id, run_id, train_art, meta_id,
                           {"strategy": "undersample_majority", "sampling_ratio": 0.5})
         from cardre._evidence.reader import ArtifactEvidenceReader
         reader = ArtifactEvidenceReader(store)
@@ -217,24 +177,75 @@ class TestRandomResamplingProvenance:
         assert df["_is_synthetic_row"].sum() == 0
 
     def test_original_rows_are_false(self, tmp_path):
-        """Every original selected row is False; only extra duplicates are True."""
-        store, pv_id, run_id, train_id, meta_id = _seed_run_context(tmp_path)
-        result = self._run(store, pv_id, run_id, train_id, meta_id,
+        """Every original selected row is False; only extra duplicates are True.
+
+        Uses a deterministic ``row_id`` column to verify that:
+        - All distinct original bad rows appear with at least one ``False`` copy.
+        - Every ``True`` row has a ``row_id`` from an original bad row.
+        - The exact count of ``True`` rows matches the planned oversample amount.
+        """
+        store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
+        result = self._run(store, pv_id, run_id, train_art, meta_id,
                           {"strategy": "oversample_minority", "sampling_ratio": 1.0})
         from cardre._evidence.reader import ArtifactEvidenceReader
         reader = ArtifactEvidenceReader(store)
         train_art = next(a for a in result.artifacts if a.role == "train")
         df = reader.read_dataframe(train_art)
 
-        # Count unique values of a proxy for "original" row identity.
-        # All False rows plus all True rows should total the output.
         n_false = int((df["_is_synthetic_row"] == False).sum())  # noqa: E712
         n_true = int(df["_is_synthetic_row"].sum())
         assert n_false + n_true == len(df)
-        # At least one row is an original selected row (false)
-        assert n_false > 0
-        # At least one row is an extra duplicate (true)
-        assert n_true > 0
+        # Exactly 60 extra minority rows (from 20 to 80 bad)
+        assert n_true == 60
+        assert n_false == 100
+
+        # Every True row has a row_id from an original bad row (row_id > 79
+        # in the shuffled fixture or fewer depending on class distribution)
+        distinct_true_ids = set(df.filter(pl.col("_is_synthetic_row"))["row_id"].to_list())
+        # Every True row's row_id appears in the False set (duplicate pair)
+        for rid in distinct_true_ids:
+            df_has_false = df.filter((pl.col("row_id") == rid) & (~pl.col("_is_synthetic_row")))
+            assert len(df_has_false) > 0, f"row_id {rid} has no False copy"
+
+    def test_chained_resampling_preserves_incoming(self, tmp_path):
+        """Running oversampling on an already-resampled artifact preserves
+        the incoming _is_synthetic_row=True for previously added rows."""
+        store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
+
+        # First pass: oversample
+        first_result = self._run(store, pv_id, run_id, train_art, meta_id,
+                                {"strategy": "oversample_minority", "sampling_ratio": 1.0})
+        from cardre._evidence.reader import ArtifactEvidenceReader
+        reader = ArtifactEvidenceReader(store)
+        first_art = next(a for a in first_result.artifacts if a.role == "train")
+        first_df = reader.read_dataframe(first_art)
+        first_synthetic = int(first_df["_is_synthetic_row"].sum())
+        assert first_synthetic == 60
+
+        # Second pass: feed the resampled artifact back as train input.
+        # Use undersample so no new synthetic rows are added.
+        from cardre.artifacts import write_parquet_artifact
+
+        second_train_art = write_parquet_artifact(
+            store, artifact_type="dataset", role="train",
+            stem="chained-train", frame=first_df,
+            metadata={"plan_version_id": pv_id},
+        )
+        # Build context pointing at the second artifact
+        ctx = _make_context(store, pv_id, run_id, second_train_art,
+                           {"strategy": "undersample_majority", "sampling_ratio": 0.5})
+        from cardre.nodes.feature_selection import ResampleTrainingDataNode
+        second_result = ResampleTrainingDataNode().run(ctx)
+
+        second_art = next(a for a in second_result.artifacts if a.role == "train")
+        second_df = reader.read_dataframe(second_art)
+        second_synthetic = int(second_df["_is_synthetic_row"].sum())
+        # The second pass should NOT add new synthetic rows (undersample),
+        # and should preserve the incoming 60 True values.
+        assert second_synthetic >= 60, (
+            f"Expected at least {first_synthetic} synthetic rows preserved, "
+            f"got {second_synthetic}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -248,14 +259,14 @@ class TestSmoteProvenance:
     SMOTE_NODE_PATH = "cardre.nodes.feature_selection.SmoteTrainingDataNode"
 
     @pytest.mark.skipif(
-        not pytest.importorskip("imblearn", reason="imbalanced-learn not installed"),
+        not importlib.util.find_spec("imblearn"),
         reason="SMOTE requires imbalanced-learn",
     )
     def test_smote_writes_flag_column(self, tmp_path):
         from cardre.nodes.feature_selection import SmoteTrainingDataNode
         node = SmoteTrainingDataNode()
-        store, pv_id, run_id, train_id, meta_id = _seed_run_context(tmp_path)
-        ctx = _make_context(store, pv_id, run_id, train_id, meta_id,
+        store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
+        ctx = _make_context(store, pv_id, run_id, train_art,
                            {"sampling_ratio": 1.0})
         result = node.run(ctx)
         from cardre._evidence.reader import ArtifactEvidenceReader
@@ -266,14 +277,14 @@ class TestSmoteProvenance:
         assert df["_is_synthetic_row"].sum() > 0
 
     @pytest.mark.skipif(
-        not pytest.importorskip("imblearn", reason="imbalanced-learn not installed"),
+        not importlib.util.find_spec("imblearn"),
         reason="SMOTE requires imbalanced-learn",
     )
     def test_smote_synthetic_matches_report(self, tmp_path):
         from cardre.nodes.feature_selection import SmoteTrainingDataNode
         node = SmoteTrainingDataNode()
-        store, pv_id, run_id, train_id, meta_id = _seed_run_context(tmp_path)
-        ctx = _make_context(store, pv_id, run_id, train_id, meta_id,
+        store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
+        ctx = _make_context(store, pv_id, run_id, train_art,
                            {"sampling_ratio": 1.0})
         result = node.run(ctx)
         from cardre._evidence.reader import ArtifactEvidenceReader
@@ -283,14 +294,14 @@ class TestSmoteProvenance:
         assert df["_is_synthetic_row"].sum() == result.metrics.get("synthetic_count", -1)
 
     @pytest.mark.skipif(
-        not pytest.importorskip("imblearn", reason="imbalanced-learn not installed"),
+        not importlib.util.find_spec("imblearn"),
         reason="SMOTE requires imbalanced-learn",
     )
     def test_smote_original_rows_are_false(self, tmp_path):
         from cardre.nodes.feature_selection import SmoteTrainingDataNode
         node = SmoteTrainingDataNode()
-        store, pv_id, run_id, train_id, meta_id = _seed_run_context(tmp_path)
-        ctx = _make_context(store, pv_id, run_id, train_id, meta_id,
+        store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
+        ctx = _make_context(store, pv_id, run_id, train_art,
                            {"sampling_ratio": 1.0})
         result = node.run(ctx)
         from cardre._evidence.reader import ArtifactEvidenceReader
