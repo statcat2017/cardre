@@ -420,6 +420,46 @@ class TestStaleRecovery:
         assert manifest_path.exists()
         assert json.loads(manifest_path.read_text())["status"] == "interrupted"
 
+    def test_stale_recovery_outside_transaction_survives_concurrent_run(self, tmp_path):
+        """When stale recovery commits before a CONCURRENT_RUN failure, the
+        stale run must remain interrupted with a manifest, not rolled back."""
+        import pytest
+
+        store = _make_store(tmp_path)
+        pv_id = _seed_minimal_plan(store)
+        old_time = "2020-01-01T00:00:00"
+
+        # Stale run
+        stale_run_id = str(uuid.uuid4())
+        store.execute(
+            "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, heartbeat_at) "
+            "VALUES (?, ?, 'running', ?, ?, ?)",
+            (stale_run_id, pv_id, old_time, old_time, old_time),
+        )
+        # Healthy running run — will cause CONCURRENT_RUN when creating a new one
+        live_run_id = str(uuid.uuid4())
+        live_time = utc_now_iso()
+        store.execute(
+            "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, heartbeat_at) "
+            "VALUES (?, ?, 'running', ?, ?, ?)",
+            (live_run_id, pv_id, old_time, old_time, live_time),
+        )
+
+        from cardre.services.run_coordinator import RunCoordinator
+        coordinator = RunCoordinator(store)
+        with pytest.raises(Exception) as exc_info:
+            coordinator.run(pv_id, sync=True)
+        assert "already in progress" in str(exc_info.value)
+
+        # The stale run must still be interrupted — sweep committed independently
+        from cardre.store.run_repo import RunRepository
+        stale_run = RunRepository(store).get(stale_run_id)
+        assert stale_run["status"] == "interrupted"
+
+        manifest_path = store.root / "exports" / f"manifest-{stale_run_id}" / "manifest.json"
+        assert manifest_path.exists()
+        assert json.loads(manifest_path.read_text())["status"] == "interrupted"
+
 
 class TestAsyncDispatch:
     """Async dispatch creates run and dispatches to background thread."""

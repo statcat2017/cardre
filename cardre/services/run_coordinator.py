@@ -435,6 +435,8 @@ class RunCoordinator:
 
         run_repo = RunRepository(self._store)
 
+        self._sweep_stale_running_runs(plan_version_id)
+
         with self._store.transaction("IMMEDIATE") as conn:
             if not force and run_scope == "branch" and branch_id:
                 decision = self._check_branch_evidence_policy(plan_version_id, branch_id)
@@ -448,8 +450,6 @@ class RunCoordinator:
                             "existing_run_id": decision.existing_run_id,
                         },
                     )
-
-            self._sweep_stale_running_runs(plan_version_id)
 
             if not force:
                 existing = conn.execute(

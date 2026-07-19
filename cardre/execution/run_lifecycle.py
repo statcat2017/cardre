@@ -329,9 +329,14 @@ class RunLifecycle:
         """
         if self._finalised:
             return
-        terminal_status = RunStatus(status)
         now = utc_now_iso()
         try:
+            terminal_status = RunStatus(status)
+            if terminal_status not in RunStatus.terminal():
+                raise ValueError(
+                    f"{terminal_status!r} is not a terminal Run status. "
+                    f"Expected one of {sorted(s.value for s in RunStatus.terminal())}."
+                )
             if diagnostic is not None:
                 from cardre.store.run_repo import RunRepository
                 RunRepository(self._store).append_diagnostic(self.run_id, diagnostic)

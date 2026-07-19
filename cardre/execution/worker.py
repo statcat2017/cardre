@@ -102,6 +102,7 @@ class RunWorker:
     ) -> None:
         from cardre.domain.run import RunStatus
         from cardre.execution.run_lifecycle import RunLifecycle
+        from cardre.store.run_repo import RunRepository
 
         exc_type, exc_value, _ = exc_info
         tb = traceback.format_exc()
@@ -117,14 +118,18 @@ class RunWorker:
             "created_at": utc_now_iso(),
         }
         try:
-            RunLifecycle.start(
-                store,
-                request.plan_version_id,
-                request.run_id,
-                execution_mode=request.run_scope,
-                branch_id=request.branch_id,
-                target_step_id=request.target_step_id,
-            ).finalise(RunStatus.FAILED, diagnostic=diagnostic)
+            run = RunRepository(store).get(request.run_id)
+            if run and run.get("status") == RunStatus.RUNNING.value:
+                RunLifecycle.start(
+                    store,
+                    request.plan_version_id,
+                    request.run_id,
+                    execution_mode=request.run_scope,
+                    branch_id=request.branch_id,
+                    target_step_id=request.target_step_id,
+                ).finalise(RunStatus.FAILED, diagnostic=diagnostic)
+            else:
+                RunRepository(store).append_diagnostic(request.run_id, diagnostic)
         except Exception:
             logger.exception("Run worker failure finalisation failed for run %s", request.run_id)
 

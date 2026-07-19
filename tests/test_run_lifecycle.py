@@ -267,3 +267,53 @@ class TestStepAction:
         from cardre.execution.run_lifecycle import step_action
         rs = RunStep("rs2", "r", "s", "pv", RunStepStatus.SUCCEEDED, "now", "now", {}, [], [])
         assert step_action(rs) == "executed"
+
+
+class TestFinaliseValidation:
+    """finalise status validation inside the protected block."""
+
+    def test_invalid_status_gets_run_finalisation_failed(self, tmp_path):
+        """An invalid status string must raise and record RUN_FINALISATION_FAILED."""
+        import pytest
+
+        from cardre.execution.run_lifecycle import RunLifecycle
+        from cardre.store.run_repo import RunRepository
+
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
+
+        lifecycle = RunLifecycle(
+            store=store, run_id=run_id, plan_version_id=pv_id,
+            execution_mode="full_plan",
+        )
+        with pytest.raises(ValueError):
+            lifecycle.finalise("not-a-status")
+
+        run = RunRepository(store).get(run_id)
+        assert run["status"] == "failed"
+        diags = RunRepository(store).get_diagnostics(run_id)
+        assert any(d.get("code") == "RUN_FINALISATION_FAILED" for d in diags)
+
+    def test_non_terminal_status_gets_run_finalisation_failed(self, tmp_path):
+        """A valid but non-terminal RunStatus must raise and record
+        RUN_FINALISATION_FAILED, transitioning the run to failed."""
+        import pytest
+
+        from cardre.domain.run import RunStatus
+        from cardre.execution.run_lifecycle import RunLifecycle
+        from cardre.store.run_repo import RunRepository
+
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
+
+        lifecycle = RunLifecycle(
+            store=store, run_id=run_id, plan_version_id=pv_id,
+            execution_mode="full_plan",
+        )
+        with pytest.raises(ValueError):
+            lifecycle.finalise(RunStatus.RUNNING)
+
+        run = RunRepository(store).get(run_id)
+        assert run["status"] == "failed"
+        diags = RunRepository(store).get_diagnostics(run_id)
+        assert any(d.get("code") == "RUN_FINALISATION_FAILED" for d in diags)
