@@ -21,9 +21,9 @@ def _resolve_run_step(
     add_limitation: Callable[[Limitation], None] | None = None,
 ) -> RunStep | None:
     from cardre.evidence_locator import EvidenceLocator
-    branch_id = ref.resolved_branch_id if ref.resolution == "ancestor" else None
-    resolved = EvidenceLocator(store).resolve(
-        plan_version_id, ref.step_id, branch_id=branch_id,
+    resolved = EvidenceLocator(store).resolve_ref(
+        plan_version_id,
+        ref,
     )
     rs = resolved.run_step if resolved is not None else None
     if rs is not None and ref.resolution == "ancestor" and add_limitation is not None:

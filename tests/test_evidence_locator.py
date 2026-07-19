@@ -606,3 +606,137 @@ class TestEvidenceLocatorStalenessIntegration:
         svc = StalenessService(store)
         explanation = svc.explain_step(pv_id, step_id, branch_id="test-branch")
         assert explanation.status == "fresh"
+
+
+def _add_successful_evidence(
+    store,
+    *,
+    plan_version_id: str,
+    step_id: str,
+    parent_step_id: str,
+    branch_id: str | None,
+) -> tuple[str, str]:
+    """Insert a succeeded Run, RunStep, and evidence edge.
+
+    Return ``(run_id, run_step_id)``.
+    """
+    now = utc_now_iso()
+    run_id = str(uuid.uuid4())
+    if branch_id is not None:
+        store.execute(
+            "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, finished_at, branch_id) "
+            "VALUES (?, ?, 'succeeded', ?, ?, ?, ?)",
+            (run_id, plan_version_id, now, now, now, branch_id),
+        )
+    else:
+        store.execute(
+            "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, finished_at) "
+            "VALUES (?, ?, 'succeeded', ?, ?, ?)",
+            (run_id, plan_version_id, now, now, now),
+        )
+    rs_id = str(uuid.uuid4())
+    fp = json.dumps({
+        "params_hash": f"hash-{branch_id or 'baseline'}",
+        "node_type": "cardre.profiler",
+        "node_version": "1",
+        "output_artifact_logical_hashes": [str(uuid.uuid4())],
+    })
+    store.execute(
+        "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, "
+        " started_at, finished_at, execution_fingerprint_json) "
+        "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, ?)",
+        (rs_id, run_id, step_id, plan_version_id, now, now, fp),
+    )
+    store.execute(
+        "INSERT INTO evidence_edges "
+        "(evidence_edge_id, run_id, run_step_id, plan_version_id, step_id, parent_step_id, "
+        " source_run_id, source_run_step_id, policy, source_label, is_reused, is_stale, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'exact', 'parent', 0, 0, ?)",
+        (str(uuid.uuid4()), run_id, rs_id, plan_version_id, step_id, parent_step_id,
+         run_id, rs_id, now),
+    )
+    return run_id, rs_id
+
+
+class TestEvidenceLocatorResolvedRefs:
+    """resolve_ref uses resolved Step provenance to select evidence scope."""
+
+    def test_resolve_ref_prefers_exact_branch_evidence(self, tmp_path):
+        """An exact Branch reference selects that Branch's RunStep
+        ahead of a baseline RunStep with an edge for the same step."""
+        store = _make_store(tmp_path)
+        _, _, pv_id, step_id, _, _ = _seed_with_run_evidence(store)
+        _, owned_rs_id = _add_successful_evidence(
+            store,
+            plan_version_id=pv_id,
+            step_id=step_id,
+            parent_step_id="step-root",
+            branch_id="branch-owned",
+        )
+
+        from cardre.branch_step_resolver import ResolvedStepRef
+        from cardre.evidence_locator import EvidenceLocator
+        ref = ResolvedStepRef(
+            requested_branch_id="branch-owned",
+            resolved_branch_id="branch-owned",
+            canonical_step_id=step_id,
+            step_id=step_id,
+            resolution="exact",
+        )
+
+        resolved = EvidenceLocator(store).resolve_ref(pv_id, ref)
+
+        assert resolved is not None
+        assert resolved.run_step_id == owned_rs_id
+        assert resolved.source_label == "branch"
+
+    def test_resolve_ref_prefers_ancestor_branch_evidence(self, tmp_path):
+        """An ancestor reference selects the ancestor Branch's RunStep
+        ahead of a baseline RunStep."""
+        store = _make_store(tmp_path)
+        _, _, pv_id, step_id, _, _ = _seed_with_run_evidence(store)
+        _, ancestor_rs_id = _add_successful_evidence(
+            store,
+            plan_version_id=pv_id,
+            step_id=step_id,
+            parent_step_id="step-root",
+            branch_id="branch-ancestor",
+        )
+
+        from cardre.branch_step_resolver import ResolvedStepRef
+        from cardre.evidence_locator import EvidenceLocator
+        ref = ResolvedStepRef(
+            requested_branch_id="branch-child",
+            resolved_branch_id="branch-ancestor",
+            canonical_step_id=step_id,
+            step_id=step_id,
+            resolution="ancestor",
+        )
+
+        resolved = EvidenceLocator(store).resolve_ref(pv_id, ref)
+
+        assert resolved is not None
+        assert resolved.run_step_id == ancestor_rs_id
+        assert resolved.source_label == "branch"
+
+    def test_resolve_ref_falls_back_to_baseline_evidence(self, tmp_path):
+        """When the resolved Branch has no evidence, resolve_ref
+        falls back through the canonical chain to baseline evidence."""
+        store = _make_store(tmp_path)
+        _, _, pv_id, step_id, _, baseline_rs_id = _seed_with_run_evidence(store)
+
+        from cardre.branch_step_resolver import ResolvedStepRef
+        from cardre.evidence_locator import EvidenceLocator
+        ref = ResolvedStepRef(
+            requested_branch_id="branch-without-run",
+            resolved_branch_id="branch-without-run",
+            canonical_step_id=step_id,
+            step_id=step_id,
+            resolution="exact",
+        )
+
+        resolved = EvidenceLocator(store).resolve_ref(pv_id, ref)
+
+        assert resolved is not None
+        assert resolved.run_step_id == baseline_rs_id
+        assert resolved.source_label == "full_plan"
