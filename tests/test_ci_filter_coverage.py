@@ -54,28 +54,34 @@ def _parse_filters() -> dict[str, list[str]]:
     return filters
 
 
-def _path_matches(path: str, pattern: str) -> bool:
-    """dorny/paths-filter glob match using PurePosixPath suffix semantics."""
+def _filter_matches(path: str, patterns: list[str]) -> bool:
+    """Does a ``dorny/paths-filter`` lane own *path*?
+
+    A filter matches when at least one positive pattern matches AND no
+    exclusion (!) pattern matches.  This prevents negated patterns from
+    registering as positive ownership.
+    """
     from fnmatch import fnmatch
 
-    if pattern.startswith("!"):
-        return not fnmatch(path, pattern[1:])
-    return fnmatch(path, pattern)
-
-
-def _owning_filters(path: str, filters: dict[str, list[str]]) -> list[str]:
-    return [
-        name
-        for name, patterns in filters.items()
-        if any(_path_matches(path, p) for p in patterns)
-    ]
+    positive = any(
+        fnmatch(path, p)
+        for p in patterns
+        if not p.startswith("!")
+    )
+    excluded = any(
+        fnmatch(path, p[1:])
+        for p in patterns
+        if p.startswith("!")
+    )
+    return positive and not excluded
 
 
 def test_required_paths_have_owning_filters() -> None:
     filters = _parse_filters()
     failures = []
     for path in REQUIRED_PATHS:
-        if not _owning_filters(path, filters):
+        owned = any(_filter_matches(path, pats) for pats in filters.values())
+        if not owned:
             failures.append(path)
     assert not failures, (
         f"{len(failures)} path(s) not covered by any CI filter: "
@@ -93,5 +99,5 @@ def test_each_substantive_filter_owns_at_least_one_required_path() -> None:
     filters = _parse_filters()
     for name in ("python", "frontend", "rust", "openapi", "docs"):
         patterns = filters.get(name, [])
-        hits = [p for p in REQUIRED_PATHS if any(_path_matches(p, pat) for pat in patterns)]
+        hits = [p for p in REQUIRED_PATHS if _filter_matches(p, patterns)]
         assert hits, f"filter {name!r} matches none of the required paths"

@@ -187,34 +187,14 @@ class TestRunRepo:
 
 
 class TestStepRepo:
-    def _seed_project_and_plan(self, store):
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
-        return project_id, plan_id, pv_id
-
     def test_get_steps_empty(self, store):
         from cardre.store.step_repo import StepRepository
         repo = StepRepository(store)
         steps = repo.get_steps("nonexistent")
         assert steps == []
 
-    def test_insert_and_get_edges(self, store):
-        _, _, pv_id = self._seed_project_and_plan(store)
+    def test_insert_and_get_edges(self, committed_plan_version):
+        _, _, pv_id, store, _ = committed_plan_version()
         for sid in ("parent-a", "child-b", "child-c"):
             store.execute(
                 "INSERT OR IGNORE INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
@@ -233,8 +213,8 @@ class TestStepRepo:
         assert len(child_edges) == 2
         assert child_edges[0]["edge_order"] == 0
 
-    def test_get_distinct_node_types(self, store):
-        project_id, _, pv_id = self._seed_project_and_plan(store)
+    def test_get_distinct_node_types(self, committed_plan_version):
+        project_id, _, pv_id, store, _ = committed_plan_version()
         store.execute(
             "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
             " params_json, params_hash, branch_label, position, canonical_step_id) "
@@ -246,8 +226,8 @@ class TestStepRepo:
         types = repo.get_distinct_node_types(project_id)
         assert any(t["node_type"] == "cardre.noop" for t in types)
 
-    def test_get_all_edges(self, store):
-        _, _, pv_id = self._seed_project_and_plan(store)
+    def test_get_all_edges(self, committed_plan_version):
+        _, _, pv_id, store, _ = committed_plan_version()
         for sid in ("a", "b"):
             store.execute(
                 "INSERT OR IGNORE INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
@@ -282,24 +262,8 @@ class TestBranchRepo:
         step_map = BranchRepository(store).get_step_map("nonexistent-branch", "nonexistent-pv")
         assert step_map == []
 
-    def test_create_and_list_branches(self, store):
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
+    def test_create_and_list_branches(self, committed_plan_version):
+        project_id, plan_id, pv_id, store, _ = committed_plan_version()
         from cardre.store.branch_repo import BranchRepository
         repo = BranchRepository(store)
         branch_id = repo.create_branch(
@@ -324,24 +288,8 @@ class TestBranchRepo:
         branches_by_wrong_type = repo.list(project_id=project_id, branch_type="baseline")
         assert len(branches_by_wrong_type) == 0
 
-    def test_create_step_map_and_get(self, store):
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
+    def test_create_step_map_and_get(self, committed_plan_version):
+        project_id, plan_id, pv_id, store, _ = committed_plan_version()
         from cardre.store.branch_repo import BranchRepository
         repo = BranchRepository(store)
         branch_id = repo.create_branch(
@@ -388,24 +336,8 @@ class TestBranchRepo:
         assert repo.get_snapshot_plan_versions("nonexistent") == []
         assert repo.list_for_project("nonexistent") == []
 
-    def test_branch_repo_list_with_status(self, store):
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
+    def test_branch_repo_list_with_status(self, committed_plan_version):
+        project_id, plan_id, pv_id, store, _ = committed_plan_version()
         from cardre.store.branch_repo import BranchRepository
         repo = BranchRepository(store)
         repo.create_branch(project_id, plan_id, "test", "challenger",
@@ -413,24 +345,9 @@ class TestBranchRepo:
         branches = repo.list(project_id=project_id, status="active")
         assert len(branches) >= 1
 
-    def test_branch_repo_update_head(self, store):
-        project_id = str(uuid.uuid4())
+    def test_branch_repo_update_head(self, committed_plan_version):
+        project_id, plan_id, pv_id, store, _ = committed_plan_version()
         now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
         from cardre.store.branch_repo import BranchRepository
         repo = BranchRepository(store)
         branch_id = repo.create_branch(
@@ -460,25 +377,11 @@ class TestBranchRepo:
         assert comparison_repo.get_comparison_snapshot("nonexistent") is None
         assert comparison_repo.get_comparison_snapshots("nonexistent") == []
 
-    def test_comparison_repo_full_lifecycle(self, store):
+    def test_comparison_repo_full_lifecycle(self, committed_plan_version):
+        from cardre.domain.diagnostics import utc_now_iso
         from cardre.store.comparison_repo import ComparisonRepository
-        project_id = str(uuid.uuid4())
+        project_id, plan_id, pv_id, store, _ = committed_plan_version()
         now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
         from cardre.store.branch_repo import BranchRepository
         branch_repo = BranchRepository(store)
         baseline_id = branch_repo.create_branch(
