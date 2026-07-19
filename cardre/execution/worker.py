@@ -46,7 +46,7 @@ class RunRequest:
     project_path: str
     plan_version_id: str
     run_id: str
-    run_scope: Literal["full_plan", "branch", "to_node"] = "full_plan"
+    run_scope: Literal["full_plan", "branch"] = "full_plan"
     branch_id: str | None = None
     target_step_id: str | None = None
     force: bool = False

@@ -3,7 +3,7 @@
 Tests validate:
 - ``run()`` creates and executes runs (sync path)
 - ``execute_created_run(run_id)`` recovers request fields from the runs table
-- Short-circuit logic for branch and to_node scopes
+- Short-circuit logic for branch scopes
 - Stale-run recovery
 """
 
@@ -291,16 +291,11 @@ class TestExecuteCreatedRun:
         assert rejected_run["finished_at"] is not None
 
     def test_execute_created_run_reads_column_not_metadata(self, tmp_path):
-        """execute_created_run reads run_scope from real column, not metadata decoy.
-
-        Current code reads ``metadata.get('run_scope')`` which is 'full_plan'
-        (decoy), so no exception.  Fixed code reads the column which is
-        'to_node' -> raises RunScopeNotAvailableForLaunch.
-        """
+        """execute_created_run reads run_scope from the real column."""
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
-        # Column run_scope='to_node' but metadata decoy says 'full_plan'.
+        # Column run_scope differs from metadata decoy.
         run_id = str(uuid.uuid4())
         now = utc_now_iso()
         metadata_json = json.dumps({"run_scope": "full_plan"})
@@ -323,7 +318,7 @@ class TestExecuteCreatedRun:
 
 
 class TestShortCircuit:
-    """Short-circuit logic for branch and to_node scopes."""
+    """Short-circuit logic for branch scopes."""
 
     def test_branch_short_circuit_returns_existing_run(self, tmp_path, monkeypatch):
         store = _make_store(tmp_path)
@@ -371,22 +366,6 @@ class TestShortCircuit:
 
         assert summary.run_id != branch_run_id
         assert summary.plan_version_id == pv_id
-
-    def test_to_node_short_circuit(self, tmp_path):
-        """A to_node run is rejected early with RunScopeNotAvailableForLaunch."""
-        store = _make_store(tmp_path)
-        pv_id = _seed_minimal_plan(store)
-
-        from cardre.services.run_coordinator import RunCoordinator
-        coordinator = RunCoordinator(store)
-
-        with pytest.raises(RunScopeNotAvailableForLaunch) as exc_info:
-            coordinator.run(
-                pv_id, run_scope="to_node", target_step_id="step-a", sync=True,
-            )
-        assert exc_info.value.code == "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
-        assert exc_info.value.context.get("run_scope") == "to_node"
-        assert exc_info.value.context.get("target_step_id") == "step-a"
 
 
 class TestStaleRecovery:

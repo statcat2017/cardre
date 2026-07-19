@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 from cardre._version import __version__
+from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 from cardre.domain.errors import (
     RunLifecycleError,
@@ -88,6 +89,40 @@ def build_manifest_payload(
     return manifest
 
 
+def build_final_manifest_payload(
+    *,
+    run_id: str,
+    plan_version_id: str,
+    run_record: JsonDict,
+    run_steps: list[Any],
+    execution_mode: str,
+    final_status: str,
+    finished_at: str,
+    branch_id: str | None = None,
+    target_step_id: str | None = None,
+    in_scope_step_ids: list[str] | None = None,
+) -> JsonDict:
+    """Build a complete manifest with a valid self-referential hash."""
+    from cardre.reporting.schema import RunManifest
+
+    payload = build_manifest_payload(
+        run_id=run_id,
+        plan_version_id=plan_version_id,
+        run_record=run_record,
+        run_steps=run_steps,
+        execution_mode=execution_mode,
+        final_status=final_status,
+        finished_at=finished_at,
+        branch_id=branch_id,
+        target_step_id=target_step_id,
+        in_scope_step_ids=in_scope_step_ids,
+    )
+    payload["manifest_hash"] = ""
+    payload["manifest_hash"] = json_logical_hash(payload)
+    RunManifest.model_validate(payload)
+    return payload
+
+
 def write_manifest(
     store: ProjectStore,
     *,
@@ -115,7 +150,7 @@ def write_manifest(
     rs_repo = RunStepRepository(store)
     run_steps = rs_repo.get_for_run(run_id)
 
-    payload = build_manifest_payload(
+    payload = build_final_manifest_payload(
         run_id=run_id,
         plan_version_id=plan_version_id,
         run_record=run_record,
@@ -132,9 +167,10 @@ def write_manifest(
     manifest_dir = store.root / "exports" / f"manifest-{run_id}"
     manifest_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = manifest_dir / "manifest.json"
-    manifest_path.write_text(
-        json.dumps(payload, indent=2, sort_keys=True)
-    )
+    # Atomically write: flush temporary file, then replace destination
+    tmp = manifest_path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True))
+    tmp.replace(manifest_path)
 
 
 # ---------------------------------------------------------------------------

@@ -206,7 +206,9 @@ def test_python_scorer_missing_value_handling():
     }
     feature_contract = {"missing_policy": "separate_bin", "unknown_category_policy": "error"}
 
-    source = _build_python_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    source = _build_python_scorer_source(variables, scorecard_raw, model_raw)
     local_ns: dict[str, Any] = {}
     exec(source, local_ns)
     scorer = local_ns["score_cardre"]
@@ -236,6 +238,7 @@ def test_python_scorer_single_category_bin():
     from cardre._evidence.models.binning import BinDefinition, BinVariable
     from cardre._evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_python_scorer_source
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
     bin_def = BinDefinition(
         source_artifact_id="test",
@@ -266,7 +269,8 @@ def test_python_scorer_single_category_bin():
     }
     feature_contract = {"missing_policy": "error", "unknown_category_policy": "error"}
 
-    source = _build_python_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    source = _build_python_scorer_source(variables, scorecard_raw, model_raw)
     local_ns: dict[str, Any] = {}
     exec(source, local_ns)
     scorer = local_ns["score_cardre"]
@@ -289,6 +293,7 @@ def test_python_scorer_missing_value_no_missing_bin():
     from cardre._evidence.models.binning import BinDefinition, BinVariable
     from cardre._evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_python_scorer_source
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
     bin_def = BinDefinition(
         source_artifact_id="test",
@@ -318,7 +323,8 @@ def test_python_scorer_missing_value_no_missing_bin():
     }
     feature_contract = {"missing_policy": "error", "unknown_category_policy": "error"}
 
-    source = _build_python_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    source = _build_python_scorer_source(variables, scorecard_raw, model_raw)
     local_ns: dict[str, Any] = {}
     exec(source, local_ns)
     scorer = local_ns["score_cardre"]
@@ -339,6 +345,7 @@ def test_sql_scorer_single_category_bin():
     from cardre._evidence.models.binning import BinDefinition, BinVariable
     from cardre._evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_sql_scorer_source
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
     bin_def = BinDefinition(
         source_artifact_id="test",
@@ -369,7 +376,8 @@ def test_sql_scorer_single_category_bin():
     }
     feature_contract = {"missing_policy": "error", "unknown_category_policy": "error"}
 
-    source = _build_sql_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    source = _build_sql_scorer_source(variables, scorecard_raw, model_raw)
 
     conn = sqlite3.connect(":memory:")
     try:
@@ -431,7 +439,9 @@ def test_sql_scorer_unmatched_non_null_returns_null():
     }
     feature_contract = {"missing_policy": "error", "unknown_category_policy": "error"}
 
-    source = _build_sql_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    source = _build_sql_scorer_source(variables, scorecard_raw, model_raw)
 
     conn = sqlite3.connect(":memory:")
     try:

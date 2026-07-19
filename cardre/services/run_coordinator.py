@@ -109,7 +109,7 @@ class RunCoordinator:
         self,
         plan_version_id: str,
         *,
-        run_scope: Literal["full_plan", "branch", "to_node"] = "full_plan",
+        run_scope: Literal["full_plan", "branch"] = "full_plan",
         branch_id: str | None = None,
         target_step_id: str | None = None,
         force: bool = False,
@@ -142,9 +142,6 @@ class RunCoordinator:
                 "Branch execution requires CARDRE_GOVERNANCE=1. "
                 "Set the environment variable to enable challenger governance."
             )
-
-        if run_scope == "to_node":
-            self._raise_run_scope_not_available(run_scope, target_step_id)
 
         # Compute the plan decision once — sync and async must agree.
         decision = self._plan_decision(
