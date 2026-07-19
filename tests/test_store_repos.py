@@ -306,28 +306,6 @@ class TestBranchRepo:
         assert step_map[0]["is_shared_upstream"] == 1
         assert step_map[0]["is_branch_owned"] == 0
 
-    def test_evidence_repo_edge_cases(self, store):
-        from cardre.store.evidence_repo import EvidenceRepository
-        repo = EvidenceRepository(store)
-        assert repo.get_edge_for_child_parent("pv", "child", "parent") is None
-        assert repo.get_edges_for_plan_step("pv", "step") == []
-
-    def test_project_registry_edge_cases(self, tmp_path):
-        from cardre.store.project_registry import ProjectRegistry
-        registry = ProjectRegistry(tmp_path / "registry.json")
-        assert registry.list_all() == {}
-        assert registry.resolve_root("nonexistent") is None
-
-    def test_project_repo_edge_cases(self, store):
-        from cardre.store.project_repo import ProjectRepository
-        repo = ProjectRepository(store)
-        pid = repo.create("Test")
-        p = repo.get(pid)
-        assert p is not None
-        assert repo.get("nonexistent") is None
-        projects = repo.list_all()
-        assert any(x["project_id"] == pid for x in projects)
-
     def test_comparison_repo_edge_cases(self, store):
         from cardre.store.comparison_repo import ComparisonRepository
         repo = ComparisonRepository(store)
@@ -424,6 +402,32 @@ class TestBranchRepo:
         repo.add_snapshot_plan_version(snapshot_id, pv_id, branch_id=challenger_id)
         versions = repo.get_snapshot_plan_versions(snapshot_id)
         assert len(versions) == 1
+
+
+class TestRepoEdgeCases:
+    """Generic repository edge-case tests — not governance-related."""
+
+    def test_evidence_repo_edge_cases(self, store):
+        from cardre.store.evidence_repo import EvidenceRepository
+        repo = EvidenceRepository(store)
+        assert repo.get_edge_for_child_parent("pv", "child", "parent") is None
+        assert repo.get_edges_for_plan_step("pv", "step") == []
+
+    def test_project_registry_edge_cases(self, tmp_path):
+        from cardre.store.project_registry import ProjectRegistry
+        registry = ProjectRegistry(tmp_path / "registry.json")
+        assert registry.list_all() == {}
+        assert registry.resolve_root("nonexistent") is None
+
+    def test_project_repo_edge_cases(self, store):
+        from cardre.store.project_repo import ProjectRepository
+        repo = ProjectRepository(store)
+        pid = repo.create("Test")
+        p = repo.get(pid)
+        assert p is not None
+        assert repo.get("nonexistent") is None
+        projects = repo.list_all()
+        assert any(x["project_id"] == pid for x in projects)
 
 
 class TestSchemaMigration:
