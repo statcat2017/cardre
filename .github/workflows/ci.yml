@@ -298,7 +298,7 @@ jobs:
           trap cleanup EXIT INT TERM
           echo "Sidecar PID: $SIDECAR_PID"
           for i in $(seq 1 30); do
-            if python3 -c "import httpx; r = httpx.get(f'http://127.0.0.1:{PORT}/health', timeout=2); assert r.json().get('status') == 'ok'; print('HEALTHY')" 2>/dev/null; then
+            if python3 -c "import httpx; r = httpx.get('http://127.0.0.1:$PORT/health', timeout=2); assert r.json().get('status') == 'ok'; print('HEALTHY')" 2>/dev/null; then
               echo "Sidecar is healthy"
               # Naming guard: the artifact must be triple-suffixed for Tauri.
               case "$BINARY" in
