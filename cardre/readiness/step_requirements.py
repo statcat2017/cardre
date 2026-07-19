@@ -165,10 +165,10 @@ def check_per_step_evidence(
         if ref is None:
             continue
 
-        branch_id = ref.resolved_branch_id if ref.resolution == "ancestor" else None
         from cardre.evidence_locator import EvidenceLocator
-        resolved_evidence = EvidenceLocator(store).resolve(
-            plan_version_id, ref.step_id, branch_id=branch_id,
+        resolved_evidence = EvidenceLocator(store).resolve_ref(
+            plan_version_id,
+            ref,
         )
         rs = resolved_evidence.run_step if resolved_evidence is not None else None
         if rs is None:

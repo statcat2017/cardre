@@ -22,6 +22,7 @@ from cardre.domain.run import ExecutionFingerprint, RunStep, RunStepStatus
 from cardre.domain.step import StepSpec
 
 if TYPE_CHECKING:
+    from cardre.branch_step_resolver import ResolvedStepRef
     from cardre.store.db import ProjectStore
     from cardre.store.run_step_repo import RunStepRepository
 
@@ -114,6 +115,27 @@ class EvidenceLocator:
                     "severity": "error",
                 }],
             )
+
+    def resolve_ref(
+        self,
+        plan_version_id: str,
+        ref: ResolvedStepRef,
+        *,
+        plan_id: str | None = None,
+        fingerprint_match: StepSpec | None = None,
+    ) -> ResolvedEvidence | None:
+        """Resolve evidence for a resolved Branch Step reference.
+
+        The reference's resolved Branch owns the first lookup. ``resolve``
+        retains the canonical Branch-to-baseline-to-Plan fallback.
+        """
+        return self.resolve(
+            plan_version_id,
+            ref.step_id,
+            branch_id=ref.resolved_branch_id,
+            plan_id=plan_id,
+            fingerprint_match=fingerprint_match,
+        )
 
     def resolve(
         self,
