@@ -312,22 +312,30 @@ class RunCoordinator:
             "full_plan": "full_plan",
         }.get(run_scope, "full_plan")
 
+        from cardre.execution.run_lifecycle import RunLifecycle
+
         if run_scope == "to_node":
-            from cardre.store.run_repo import RunRepository
-            RunRepository(self._store).transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
+            lifecycle = RunLifecycle.start(
+                self._store,
+                plan_version_id,
+                run_id,
+                execution_mode="to_node",
+                branch_id=branch_id,
+                target_step_id=target_step_id,
+            )
+            lifecycle.finalise(RunStatus.FAILED)
             self._raise_run_scope_not_available(run_scope, target_step_id)
 
         from cardre.execution.executor import PlanExecutor
-        from cardre.execution.run_lifecycle import RunLifecycle
 
         executor = PlanExecutor(self._store)
         result = None
 
         try:
-            with RunLifecycle(
-                store=self._store,
-                run_id=run_id,
-                plan_version_id=plan_version_id,
+            with RunLifecycle.start(
+                self._store,
+                plan_version_id,
+                run_id,
                 execution_mode=execution_mode,
                 branch_id=branch_id,
                 target_step_id=target_step_id,
@@ -336,12 +344,7 @@ class RunCoordinator:
                     plan_version_id, run_id,
                     force=force, branch_id=branch_id,
                 )
-                lifecycle.finalise(
-                    status=result.status().value,
-                    execution_mode=execution_mode,
-                    branch_id=branch_id,
-                    target_step_id=target_step_id,
-                )
+                lifecycle.finalise(result.status())
         except CardreError:
             raise
         except Exception as exc:
@@ -387,17 +390,24 @@ class RunCoordinator:
         try:
             self._dispatcher.dispatch(request)
         except CardreError:
-            from cardre.store.run_repo import RunRepository
-            with self._store.transaction("IMMEDIATE"):
-                RunRepository(self._store).append_diagnostic(run_id, {
-                    "code": "RUN_DISPATCH_FAILED",
-                    "message": "Dispatch failed; run marked as failed.",
-                    "severity": "error",
-                    "run_id": run_id,
-                    "plan_version_id": plan_version_id,
-                    "created_at": utc_now_iso(),
-                })
-                RunRepository(self._store).transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
+            from cardre.execution.run_lifecycle import RunLifecycle
+
+            diagnostic = {
+                "code": "RUN_DISPATCH_FAILED",
+                "message": "Dispatch failed; run marked as failed.",
+                "severity": "error",
+                "run_id": run_id,
+                "plan_version_id": plan_version_id,
+                "created_at": utc_now_iso(),
+            }
+            RunLifecycle.start(
+                self._store,
+                plan_version_id,
+                run_id,
+                execution_mode=run_scope,
+                branch_id=branch_id,
+                target_step_id=target_step_id,
+            ).finalise(RunStatus.FAILED, diagnostic=diagnostic)
             raise
         return self.get_summary(run_id)
 
@@ -425,6 +435,8 @@ class RunCoordinator:
 
         run_repo = RunRepository(self._store)
 
+        self._sweep_stale_running_runs(plan_version_id)
+
         with self._store.transaction("IMMEDIATE") as conn:
             if not force and run_scope == "branch" and branch_id:
                 decision = self._check_branch_evidence_policy(plan_version_id, branch_id)
@@ -438,8 +450,6 @@ class RunCoordinator:
                             "existing_run_id": decision.existing_run_id,
                         },
                     )
-
-            self._sweep_stale_running_runs(plan_version_id)
 
             if not force:
                 existing = conn.execute(
@@ -471,6 +481,7 @@ class RunCoordinator:
 
         Returns the list of interrupted run IDs.
         """
+        from cardre.execution.run_lifecycle import RunLifecycle
         from cardre.store.run_repo import RunRepository
 
         run_repo = RunRepository(self._store)
@@ -493,8 +504,14 @@ class RunCoordinator:
                         f"Run {existing_run['run_id']} was stuck in 'running' with stale heartbeat "
                         f"(last active step: {active_step_id}) — recovered as interrupted."
                     )
-                run_repo.transition(existing_run["run_id"], RunStatus.INTERRUPTED, expected_from=(RunStatus.RUNNING,))
-                run_repo.append_diagnostic(existing_run["run_id"], diag)
+                RunLifecycle.start(
+                    self._store,
+                    existing_run.get("plan_version_id", ""),
+                    existing_run["run_id"],
+                    execution_mode=existing_run.get("run_scope", "full_plan"),
+                    branch_id=existing_run.get("branch_id"),
+                    target_step_id=existing_run.get("target_step_id"),
+                ).finalise(RunStatus.INTERRUPTED, diagnostic=diag)
                 interrupted.append(existing_run["run_id"])
 
         return interrupted

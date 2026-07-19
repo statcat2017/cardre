@@ -90,7 +90,7 @@ def test_full_launch_pathway(store):
     executor.run_plan_version(plan_version_id, run_id)
 
     lifecycle = RunLifecycle(store, run_id, plan_version_id, execution_mode="full_plan")
-    lifecycle.finalise(status="succeeded", execution_mode="full_plan")
+    lifecycle.finalise("succeeded")
 
     run_steps = RunStepRepository(store).get_for_run(run_id)
     assert [rs.step_id for rs in run_steps] == ["import-data", "profile", "export"]

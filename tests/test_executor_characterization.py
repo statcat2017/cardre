@@ -205,8 +205,7 @@ class TestSuccessPath:
                 for rs in RunStepRepository(store).get_for_run(run_id)
             )
             lifecycle.finalise(
-                status="failed" if has_failure else "succeeded",
-                execution_mode="full_plan",
+                "failed" if has_failure else "succeeded",
             )
 
         manifest_path = store.root / "exports" / f"manifest-{run_id}" / "manifest.json"

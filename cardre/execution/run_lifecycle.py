@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 from cardre._version import __version__
-from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.diagnostics import JsonDict, utc_now_iso
 from cardre.domain.errors import (
     RunLifecycleError,
     RunNotFoundError,
@@ -164,6 +164,10 @@ def finalise_run(
     The manifest is written *before* the status transition so that a
     manifest write failure does not leave a run marked succeeded without
     audit material.
+
+    Raises ``RunLifecycleError`` if the run was already finalised by
+    another caller (the compare-and-set transition failed). The manifest
+    is rewritten to match the actual database status before raising.
     """
     write_manifest(
         store,
@@ -177,7 +181,38 @@ def finalise_run(
         in_scope_step_ids=finalisation.in_scope_step_ids,
     )
     from cardre.store.run_repo import RunRepository
-    RunRepository(store).transition(finalisation.run_id, RunStatus(finalisation.status), expected_from=(RunStatus.RUNNING,))
+
+    ok = RunRepository(store).transition(
+        finalisation.run_id,
+        RunStatus(finalisation.status),
+        expected_from=(RunStatus.RUNNING,),
+    )
+    if not ok:
+        # Someone else finalised the run first.  Rewrite the manifest to
+        # match the actual database state so the two do not diverge.
+        run = RunRepository(store).get(finalisation.run_id)
+        actual_status = run["status"] if run else "unknown"
+        write_manifest(
+            store,
+            run_id=finalisation.run_id,
+            plan_version_id=finalisation.plan_version_id,
+            execution_mode=finalisation.execution_mode,
+            final_status=actual_status,
+            finished_at=run.get("finished_at", utc_now_iso()) if run else utc_now_iso(),
+            branch_id=finalisation.branch_id,
+            target_step_id=finalisation.target_step_id,
+            in_scope_step_ids=finalisation.in_scope_step_ids,
+        )
+        raise RunLifecycleError(
+            f"Run {finalisation.run_id} was already finalised "
+            f"(expected {RunStatus.RUNNING!r}, got {actual_status!r})",
+            code="RUN_ALREADY_FINALISED",
+            context={
+                "run_id": finalisation.run_id,
+                "expected_status": RunStatus.RUNNING.value,
+                "actual_status": actual_status,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -236,12 +271,12 @@ class RunLifecycle:
         exc_tb: object,
     ) -> bool | None:
         if not self._finalised:
+            diagnostic: JsonDict | None = None
             if exc_val is not None:
                 import traceback
                 import types
 
-                from cardre.store.run_repo import RunRepository
-                RunRepository(self._store).append_diagnostic(self.run_id, {
+                diagnostic = {
                     "code": "RUN_BODY_EXCEPTION",
                     "message": f"{type(exc_val).__name__}: {exc_val}",
                     "severity": "error",
@@ -250,13 +285,10 @@ class RunLifecycle:
                     "branch_id": self._branch_id,
                     "traceback": "".join(traceback.format_exception(type(exc_val), exc_val, cast("types.TracebackType | None", exc_tb))),
                     "created_at": utc_now_iso(),
-                })
+                }
             self.finalise(
-                status=RunStatus.FAILED.value,
-                execution_mode=self._execution_mode,
-                branch_id=self._branch_id,
-                target_step_id=self._target_step_id,
-                in_scope_step_ids=self._in_scope_step_ids,
+                status=RunStatus.FAILED,
+                diagnostic=diagnostic,
             )
         return None
 
@@ -320,27 +352,38 @@ class RunLifecycle:
 
     def finalise(
         self,
-        status: str,
-        execution_mode: str,
+        status: RunStatus | str,
         *,
-        branch_id: str | None = None,
-        target_step_id: str | None = None,
-        in_scope_step_ids: list[str] | None = None,
+        diagnostic: JsonDict | None = None,
     ) -> None:
-        """Finish the run exactly once and write the run manifest."""
+        """Write one terminal Run outcome exactly once.
+
+        The lifecycle owns diagnostic persistence, manifest writing, and the
+        running-to-terminal transition. ``diagnostic`` describes why this caller
+        reached the terminal outcome.
+        """
         if self._finalised:
             return
         now = utc_now_iso()
         try:
+            terminal_status = RunStatus(status)
+            if terminal_status not in RunStatus.terminal():
+                raise ValueError(
+                    f"{terminal_status!r} is not a terminal Run status. "
+                    f"Expected one of {sorted(s.value for s in RunStatus.terminal())}."
+                )
+            if diagnostic is not None:
+                from cardre.store.run_repo import RunRepository
+                RunRepository(self._store).append_diagnostic(self.run_id, diagnostic)
             finalise_run(self._store, RunFinalisation(
                 run_id=self.run_id,
                 plan_version_id=self.plan_version_id,
-                status=status,
-                execution_mode=execution_mode,
+                status=terminal_status.value,
+                execution_mode=self._execution_mode,
                 finished_at=now,
-                branch_id=branch_id or self._branch_id,
-                target_step_id=target_step_id or self._target_step_id,
-                in_scope_step_ids=in_scope_step_ids or self._in_scope_step_ids,
+                branch_id=self._branch_id,
+                target_step_id=self._target_step_id,
+                in_scope_step_ids=self._in_scope_step_ids,
             ))
         except Exception:
             import traceback
@@ -353,11 +396,13 @@ class RunLifecycle:
                 "severity": "error",
                 "run_id": self.run_id,
                 "plan_version_id": self.plan_version_id,
-                "branch_id": branch_id,
+                "branch_id": self._branch_id,
                 "traceback": tb,
                 "created_at": utc_now_iso(),
             })
-            RunRepository(self._store).transition(self.run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
+            run = RunRepository(self._store).get(self.run_id)
+            if run and run.get("status") == RunStatus.RUNNING.value:
+                RunRepository(self._store).transition(self.run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
             raise
         self._finalised = True
 

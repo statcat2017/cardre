@@ -90,7 +90,7 @@ class TestRunLifecycle:
             store=store, run_id=run_id, plan_version_id=pv_id,
             execution_mode="full_plan",
         )
-        lifecycle.finalise(status="succeeded", execution_mode="full_plan")
+        lifecycle.finalise("succeeded")
 
         from cardre.store.run_repo import RunRepository
         run = RunRepository(store).get(run_id)
@@ -105,7 +105,7 @@ class TestRunLifecycle:
             store=store, run_id=run_id, plan_version_id=pv_id,
             execution_mode="to_node",
         )
-        lifecycle.finalise(status="cancelled", execution_mode="to_node")
+        lifecycle.finalise("cancelled")
 
         from cardre.store.run_repo import RunRepository
         run = RunRepository(store).get(run_id)
@@ -119,7 +119,7 @@ class TestRunLifecycle:
             store=store, run_id=run_id, plan_version_id=pv_id,
             execution_mode="full_plan",
         ) as lifecycle:
-            lifecycle.finalise(status="succeeded", execution_mode="full_plan")
+            lifecycle.finalise("succeeded")
 
         # Verify finalised
         from cardre.store.run_repo import RunRepository
@@ -151,8 +151,8 @@ class TestRunLifecycle:
             store=store, run_id=run_id, plan_version_id=pv_id,
             execution_mode="full_plan",
         )
-        lifecycle.finalise(status="succeeded", execution_mode="full_plan")
-        lifecycle.finalise(status="succeeded", execution_mode="full_plan")  # should not raise
+        lifecycle.finalise("succeeded")
+        lifecycle.finalise("succeeded")  # should not raise
 
         from cardre.store.run_repo import RunRepository
         run = RunRepository(store).get(run_id)
@@ -166,7 +166,7 @@ class TestRunLifecycle:
             store=store, run_id=run_id, plan_version_id=pv_id,
             execution_mode="full_plan",
         ) as lifecycle:
-            lifecycle.finalise(status="succeeded", execution_mode="full_plan")
+            lifecycle.finalise("succeeded")
 
         manifest_path = store.root / "exports" / f"manifest-{run_id}" / "manifest.json"
         assert manifest_path.exists()
@@ -267,3 +267,103 @@ class TestStepAction:
         from cardre.execution.run_lifecycle import step_action
         rs = RunStep("rs2", "r", "s", "pv", RunStepStatus.SUCCEEDED, "now", "now", {}, [], [])
         assert step_action(rs) == "executed"
+
+
+class TestFinaliseValidation:
+    """finalise status validation inside the protected block."""
+
+    def test_invalid_status_gets_run_finalisation_failed(self, tmp_path):
+        """An invalid status string must raise and record RUN_FINALISATION_FAILED."""
+        import pytest
+
+        from cardre.execution.run_lifecycle import RunLifecycle
+        from cardre.store.run_repo import RunRepository
+
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
+
+        lifecycle = RunLifecycle(
+            store=store, run_id=run_id, plan_version_id=pv_id,
+            execution_mode="full_plan",
+        )
+        with pytest.raises(ValueError):
+            lifecycle.finalise("not-a-status")
+
+        run = RunRepository(store).get(run_id)
+        assert run["status"] == "failed"
+        diags = RunRepository(store).get_diagnostics(run_id)
+        assert any(d.get("code") == "RUN_FINALISATION_FAILED" for d in diags)
+
+    def test_non_terminal_status_gets_run_finalisation_failed(self, tmp_path):
+        """A valid but non-terminal RunStatus must raise and record
+        RUN_FINALISATION_FAILED, transitioning the run to failed."""
+        import pytest
+
+        from cardre.domain.run import RunStatus
+        from cardre.execution.run_lifecycle import RunLifecycle
+        from cardre.store.run_repo import RunRepository
+
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
+
+        lifecycle = RunLifecycle(
+            store=store, run_id=run_id, plan_version_id=pv_id,
+            execution_mode="full_plan",
+        )
+        with pytest.raises(ValueError):
+            lifecycle.finalise(RunStatus.RUNNING)
+
+        run = RunRepository(store).get(run_id)
+        assert run["status"] == "failed"
+        diags = RunRepository(store).get_diagnostics(run_id)
+        assert any(d.get("code") == "RUN_FINALISATION_FAILED" for d in diags)
+
+
+class TestConcurrentFinalisation:
+    """When two callers race to finalise the same run, the loser must not
+    leave the manifest inconsistent with the database."""
+
+    def test_loser_rewrites_manifest_to_match_winner(self, tmp_path):
+        """If finalise_run loses the compare-and-set transition, it must
+        rewrite the manifest to match the actual database status."""
+        import pytest
+
+        from cardre.execution.run_lifecycle import (
+            RunFinalisation,
+            RunLifecycleError,
+            finalise_run,
+        )
+        from cardre.store.run_repo import RunRepository
+
+        store = _make_store(tmp_path)
+        _, pv_id, run_id = _seed_simple_run(store)
+
+        # Winner — finalises as succeeded
+        finalise_run(store, RunFinalisation(
+            run_id=run_id, plan_version_id=pv_id,
+            status="succeeded", execution_mode="full_plan",
+            finished_at=utc_now_iso(),
+        ))
+
+        run = RunRepository(store).get(run_id)
+        assert run["status"] == "succeeded"
+
+        # Loser — tries to finalise as interrupted, but the run is already
+        # succeeded. Must raise and rewrite the manifest.
+        with pytest.raises(RunLifecycleError) as exc_info:
+            finalise_run(store, RunFinalisation(
+                run_id=run_id, plan_version_id=pv_id,
+                status="interrupted", execution_mode="full_plan",
+                finished_at=utc_now_iso(),
+            ))
+        assert exc_info.value.code == "RUN_ALREADY_FINALISED"
+        assert exc_info.value.context["actual_status"] == "succeeded"
+
+        # Run status must still be succeeded
+        run = RunRepository(store).get(run_id)
+        assert run["status"] == "succeeded"
+
+        # Manifest must match the database, not the loser's intent
+        manifest_path = store.root / "exports" / f"manifest-{run_id}" / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest["status"] == "succeeded"

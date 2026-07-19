@@ -226,7 +226,7 @@ def _run_pathway(tmp_path: Path) -> dict:
     executor = PlanExecutor(store)
     executor.run_plan_version(plan_version_id, run_id)
     lifecycle = RunLifecycle(store, run_id, plan_version_id, execution_mode="full_plan")
-    lifecycle.finalise(status="succeeded", execution_mode="full_plan")
+    lifecycle.finalise("succeeded")
 
     branch_id = BranchRepository(store).create_branch(
         project_id=project_id,

@@ -210,7 +210,7 @@ class TestRunLifecycleStartErrors:
             execution_mode="to_node", target_step_id="step-a",
             in_scope_step_ids=["step-a"],
         ) as lifecycle:
-            lifecycle.finalise(status="succeeded", execution_mode="to_node", target_step_id="step-a")
+            lifecycle.finalise("succeeded")
         import json
         manifest_path = store.root / "exports" / f"manifest-{run_id}" / "manifest.json"
         assert manifest_path.exists()
