@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 from cardre._version import __version__
-from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.diagnostics import JsonDict, utc_now_iso
 from cardre.domain.errors import (
     RunLifecycleError,
     RunNotFoundError,
@@ -236,12 +236,12 @@ class RunLifecycle:
         exc_tb: object,
     ) -> bool | None:
         if not self._finalised:
+            diagnostic: JsonDict | None = None
             if exc_val is not None:
                 import traceback
                 import types
 
-                from cardre.store.run_repo import RunRepository
-                RunRepository(self._store).append_diagnostic(self.run_id, {
+                diagnostic = {
                     "code": "RUN_BODY_EXCEPTION",
                     "message": f"{type(exc_val).__name__}: {exc_val}",
                     "severity": "error",
@@ -250,13 +250,10 @@ class RunLifecycle:
                     "branch_id": self._branch_id,
                     "traceback": "".join(traceback.format_exception(type(exc_val), exc_val, cast("types.TracebackType | None", exc_tb))),
                     "created_at": utc_now_iso(),
-                })
+                }
             self.finalise(
-                status=RunStatus.FAILED.value,
-                execution_mode=self._execution_mode,
-                branch_id=self._branch_id,
-                target_step_id=self._target_step_id,
-                in_scope_step_ids=self._in_scope_step_ids,
+                status=RunStatus.FAILED,
+                diagnostic=diagnostic,
             )
         return None
 
@@ -320,27 +317,33 @@ class RunLifecycle:
 
     def finalise(
         self,
-        status: str,
-        execution_mode: str,
+        status: RunStatus | str,
         *,
-        branch_id: str | None = None,
-        target_step_id: str | None = None,
-        in_scope_step_ids: list[str] | None = None,
+        diagnostic: JsonDict | None = None,
     ) -> None:
-        """Finish the run exactly once and write the run manifest."""
+        """Write one terminal Run outcome exactly once.
+
+        The lifecycle owns diagnostic persistence, manifest writing, and the
+        running-to-terminal transition. ``diagnostic`` describes why this caller
+        reached the terminal outcome.
+        """
         if self._finalised:
             return
+        terminal_status = RunStatus(status)
         now = utc_now_iso()
         try:
+            if diagnostic is not None:
+                from cardre.store.run_repo import RunRepository
+                RunRepository(self._store).append_diagnostic(self.run_id, diagnostic)
             finalise_run(self._store, RunFinalisation(
                 run_id=self.run_id,
                 plan_version_id=self.plan_version_id,
-                status=status,
-                execution_mode=execution_mode,
+                status=terminal_status.value,
+                execution_mode=self._execution_mode,
                 finished_at=now,
-                branch_id=branch_id or self._branch_id,
-                target_step_id=target_step_id or self._target_step_id,
-                in_scope_step_ids=in_scope_step_ids or self._in_scope_step_ids,
+                branch_id=self._branch_id,
+                target_step_id=self._target_step_id,
+                in_scope_step_ids=self._in_scope_step_ids,
             ))
         except Exception:
             import traceback
@@ -353,7 +356,7 @@ class RunLifecycle:
                 "severity": "error",
                 "run_id": self.run_id,
                 "plan_version_id": self.plan_version_id,
-                "branch_id": branch_id,
+                "branch_id": self._branch_id,
                 "traceback": tb,
                 "created_at": utc_now_iso(),
             })

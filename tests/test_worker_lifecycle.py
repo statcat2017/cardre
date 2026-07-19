@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 
 from cardre.domain.diagnostics import utc_now_iso
@@ -176,5 +177,7 @@ def test_worker_exception_produces_failed_run_with_diagnostic(store, monkeypatch
         assert run["status"] == "failed"
         diags = RunRepository(s).get_diagnostics(run_id)
         assert any(d.get("code") == "RUN_WORKER_FAILED" for d in diags)
+        manifest_path = s.root / "exports" / f"manifest-{run_id}" / "manifest.json"
+        assert json.loads(manifest_path.read_text())["status"] == "failed"
     finally:
         s.close()

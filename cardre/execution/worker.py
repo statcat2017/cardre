@@ -4,9 +4,9 @@ RunCoordinator delegates async execution to a :class:`RunDispatcher` rather
 than constructing ``threading.Thread`` directly. This centralises:
 
 * worker **naming** (``cardre-run-{run_id_prefix}``);
-* **exception handling** and diagnostic recording;
-* **final status** handling (fail-if-running);
-* a clear seam for future process/queue-based execution.
+* **exception capture** — the dispatcher raises ``CardreError`` on startup
+  failure; the coordinator writes diagnostic and terminal state through the
+  lifecycle seam.
 
 The default :class:`ThreadRunDispatcher` preserves the previous
 behaviour: a fire-and-forget background ``threading.Thread``. Tests use
@@ -68,7 +68,7 @@ class RunWorker:
 
     * the initial heartbeat;
     * exception capture and diagnostic recording (``RUN_WORKER_FAILED``);
-    * final-status cleanup (fail_run_if_running).
+    * finalisation through the lifecycle seam.
 
     It delegates actual step execution to
     :meth:`RunCoordinator.execute_created_run`, which constructs the
@@ -100,11 +100,13 @@ class RunWorker:
         request: RunRequest,
         exc_info: tuple[Any, ...],
     ) -> None:
-        from cardre.store.run_repo import RunRepository
+        from cardre.domain.run import RunStatus
+        from cardre.execution.run_lifecycle import RunLifecycle
+
         exc_type, exc_value, _ = exc_info
         tb = traceback.format_exc()
         logger.error("RunWorker(%s) failed: %s", request.run_id, tb)
-        RunRepository(store).append_diagnostic(request.run_id, {
+        diagnostic: dict[str, Any] = {
             "code": WORKER_FAILED_CODE,
             "message": f"{exc_type.__name__ if exc_type else 'Exception'}: {exc_value}",
             "severity": "error",
@@ -113,25 +115,18 @@ class RunWorker:
             "branch_id": request.branch_id,
             "traceback": tb,
             "created_at": utc_now_iso(),
-        })
-        _fail_run_if_running(store, request.run_id)
-
-
-def _fail_run_if_running(store: ProjectStore, run_id: str) -> None:
-    """Mark a run ``failed`` iff it is still ``running``.
-
-    Last-resort cleanup: if the run was not finalised by the executor
-    (e.g. an exception escaped before ``RunLifecycle`` could finalise),
-    ensure it is not left ``running``. Never raises.
-    """
-    try:
-        from cardre.domain.run import RunStatus
-        from cardre.store.run_repo import RunRepository
-        run = RunRepository(store).get(run_id)
-        if run and run.get("status") == RunStatus.RUNNING.value:
-            RunRepository(store).transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
-    except Exception as e:
-        logger.exception("_fail_run_if_running failed for run %s: %s", run_id, e)
+        }
+        try:
+            RunLifecycle.start(
+                store,
+                request.plan_version_id,
+                request.run_id,
+                execution_mode=request.run_scope,
+                branch_id=request.branch_id,
+                target_step_id=request.target_step_id,
+            ).finalise(RunStatus.FAILED, diagnostic=diagnostic)
+        except Exception:
+            logger.exception("Run worker failure finalisation failed for run %s", request.run_id)
 
 
 # ---------------------------------------------------------------------------
@@ -147,8 +142,7 @@ class RunDispatcher(Protocol):
     queue, inline). They must:
 
     * raise :class:`cardre.domain.errors.CardreError` (code
-      ``RUN_DISPATCH_FAILED``) if dispatch startup fails, *after*
-      recording a diagnostic;
+      ``RUN_DISPATCH_FAILED``) if dispatch startup fails;
     * never let worker exceptions escape — the worker owns those.
     """
 
@@ -223,7 +217,6 @@ class ThreadRunDispatcher:
         except Exception as exc:
             with self._lock:
                 self._threads.pop(request.run_id, None)
-            self._record_dispatch_failure(request, exc)
             raise CardreError(
                 f"Failed to start background run thread: {exc}",
                 code=DISPATCH_FAILED_CODE,
@@ -260,28 +253,6 @@ class ThreadRunDispatcher:
         for thread in threads:
             thread.join(timeout=30)
 
-    @staticmethod
-    def _record_dispatch_failure(request: RunRequest, exc: Exception) -> None:
-        try:
-            store = ProjectStore(request.project_path)
-            store.open()
-            from cardre.store.run_repo import RunRepository
-            RunRepository(store).append_diagnostic(request.run_id, {
-                "code": DISPATCH_FAILED_CODE,
-                "message": f"Failed to start background worker: {exc}",
-                "severity": "error",
-                "run_id": request.run_id,
-                "plan_version_id": request.plan_version_id,
-                "branch_id": request.branch_id,
-                "created_at": utc_now_iso(),
-            })
-            _fail_run_if_running(store, request.run_id)
-        except Exception:
-            logger.exception(
-                "Failed to record dispatch failure diagnostic for run %s",
-                request.run_id,
-            )
-
 
 # ---------------------------------------------------------------------------
 # SyncRunDispatcher — runs the worker inline (for tests and the sync path)
@@ -310,5 +281,4 @@ __all__ = [
     "RunWorker",
     "SyncRunDispatcher",
     "ThreadRunDispatcher",
-    "_fail_run_if_running",
 ]

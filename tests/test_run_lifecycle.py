@@ -90,7 +90,7 @@ class TestRunLifecycle:
             store=store, run_id=run_id, plan_version_id=pv_id,
             execution_mode="full_plan",
         )
-        lifecycle.finalise(status="succeeded", execution_mode="full_plan")
+        lifecycle.finalise("succeeded")
 
         from cardre.store.run_repo import RunRepository
         run = RunRepository(store).get(run_id)
@@ -105,7 +105,7 @@ class TestRunLifecycle:
             store=store, run_id=run_id, plan_version_id=pv_id,
             execution_mode="to_node",
         )
-        lifecycle.finalise(status="cancelled", execution_mode="to_node")
+        lifecycle.finalise("cancelled")
 
         from cardre.store.run_repo import RunRepository
         run = RunRepository(store).get(run_id)
@@ -119,7 +119,7 @@ class TestRunLifecycle:
             store=store, run_id=run_id, plan_version_id=pv_id,
             execution_mode="full_plan",
         ) as lifecycle:
-            lifecycle.finalise(status="succeeded", execution_mode="full_plan")
+            lifecycle.finalise("succeeded")
 
         # Verify finalised
         from cardre.store.run_repo import RunRepository
@@ -151,8 +151,8 @@ class TestRunLifecycle:
             store=store, run_id=run_id, plan_version_id=pv_id,
             execution_mode="full_plan",
         )
-        lifecycle.finalise(status="succeeded", execution_mode="full_plan")
-        lifecycle.finalise(status="succeeded", execution_mode="full_plan")  # should not raise
+        lifecycle.finalise("succeeded")
+        lifecycle.finalise("succeeded")  # should not raise
 
         from cardre.store.run_repo import RunRepository
         run = RunRepository(store).get(run_id)
@@ -166,7 +166,7 @@ class TestRunLifecycle:
             store=store, run_id=run_id, plan_version_id=pv_id,
             execution_mode="full_plan",
         ) as lifecycle:
-            lifecycle.finalise(status="succeeded", execution_mode="full_plan")
+            lifecycle.finalise("succeeded")
 
         manifest_path = store.root / "exports" / f"manifest-{run_id}" / "manifest.json"
         assert manifest_path.exists()

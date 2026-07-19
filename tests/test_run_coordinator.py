@@ -415,6 +415,11 @@ class TestStaleRecovery:
         stale_run = RunRepository(store).get(run_id)
         assert stale_run["status"] == "interrupted"
 
+        # The stale run should have an interrupted manifest
+        manifest_path = store.root / "exports" / f"manifest-{run_id}" / "manifest.json"
+        assert manifest_path.exists()
+        assert json.loads(manifest_path.read_text())["status"] == "interrupted"
+
 
 class TestAsyncDispatch:
     """Async dispatch creates run and dispatches to background thread."""

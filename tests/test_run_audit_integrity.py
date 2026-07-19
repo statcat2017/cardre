@@ -195,4 +195,4 @@ class TestRunLifecycleFinaliseError:
 
         lifecycle = RunLifecycle(store=store, run_id=run_id, plan_version_id=pv_id, execution_mode="full_plan")
         with pytest.raises((RunLifecycleError, Exception)):
-            lifecycle.finalise(status="succeeded", execution_mode="full_plan")
+            lifecycle.finalise("succeeded")
