@@ -116,7 +116,6 @@ fn resolve_sidecar(resource_dir: Option<&std::path::Path>) -> Result<std::path::
     ))
 }
 
-/// Build a JavaScript snippet that assigns `window.__API_URL__` to the sidecar's URL.
 fn api_url_assignment_script(api_url: &str) -> Result<String, String> {
     let url_str =
         serde_json::to_string(api_url).map_err(|e| format!("URL serialization failed: {e}"))?;
@@ -130,8 +129,6 @@ fn inject_api_url(window: &tauri::WebviewWindow, api_url: &str) -> Result<(), St
         .map_err(|e| format!("failed to inject API URL: {e}"))
 }
 
-/// Store the sidecar child in AppState. Return an error if the lock is poisoned.
-/// On failure, the caller still owns the child and can kill it.
 fn store_sidecar(app: &tauri::App, child: &mut Option<Child>) -> Result<(), String> {
     let state = app.state::<AppState>();
     let mut guard = state
