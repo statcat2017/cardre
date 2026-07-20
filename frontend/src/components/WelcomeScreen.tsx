@@ -24,7 +24,6 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
   const projectsQuery = useQuery({
     queryKey: ["projects"],
     queryFn: () => api.listProjects(),
-    enabled: projectPath.trim().length > 0,
   });
 
   const createMutation = useMutation({
@@ -195,11 +194,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
 
           <section style={{ ...pageCardStyle, padding: 24 }}>
             <h2 style={{ marginTop: 0, fontSize: 18 }}>Existing Projects</h2>
-            {!projectPath.trim() ? (
-              <p style={{ margin: 0, color: theme.muted, fontSize: 14 }}>
-                Enter a project root to load projects in that store.
-              </p>
-            ) : projectsQuery.isLoading ? (
+            {projectsQuery.isLoading ? (
               <p style={{ margin: 0, color: theme.muted, fontSize: 14 }}>Loading projects...</p>
             ) : projectsQuery.data?.projects.length ? (
               <div style={{ display: "grid", gap: 10 }}>

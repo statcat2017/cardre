@@ -62,10 +62,27 @@ export async function fetchResponse(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
-  const opts = init as FetchOptions | undefined;
-  const timeoutMs = opts?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
-  const externalSignal = opts?.signal;
-  const body = opts?.body;
+  // When openapi-fetch passes a Request object, init is undefined.
+  // Use the Request's headers, method, and signal directly.
+  const req = input instanceof Request ? input : undefined;
+
+  let body: BodyInit | null | undefined;
+  let method: string | undefined;
+
+  if (req) {
+    // openapi-fetch path: the Request carries its own headers, body, method.
+    method = req.method;
+    body = req.body;
+  } else {
+    // fetchJson path: extract from init / FetchOptions
+    const opts = init as FetchOptions | undefined;
+    method = init?.method;
+    const rawBody = opts?.body;
+    body = rawBody !== undefined ? JSON.stringify(rawBody) : init?.body;
+  }
+
+  const timeoutMs = (init as FetchOptions | undefined)?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  const externalSignal = req?.signal ?? init?.signal;
 
   const controller = new AbortController();
   const timeoutId =
@@ -74,24 +91,26 @@ export async function fetchResponse(
       : undefined;
 
   const onExternalAbort = () => controller.abort(externalSignal!.reason);
-  if (externalSignal) {
+  if (externalSignal && externalSignal !== controller.signal) {
     externalSignal.addEventListener("abort", onExternalAbort, { once: true });
   }
 
   try {
-    const headers = new Headers(init?.headers);
+    const headers = new Headers(req?.headers ?? init?.headers);
     headers.set("Accept", "application/json");
-
-    if (body !== undefined) {
-      headers.set("Content-Type", "application/json");
+    if (!req) {
+      const rawBody = (init as FetchOptions | undefined)?.body;
+      if (rawBody !== undefined) {
+        headers.set("Content-Type", "application/json");
+      }
     }
 
     let response: Response;
     try {
       response = await fetch(input, {
-        method: init?.method,
+        method,
         headers,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        body,
         signal: controller.signal,
       });
     } catch (err: unknown) {

@@ -178,6 +178,10 @@ fn main() {
             sidecar_child: Mutex::new(None),
         })
         .setup(move |app| -> Result<(), Box<dyn std::error::Error>> {
+            let window = app
+                .get_webview_window("main")
+                .ok_or_else(|| -> Box<dyn std::error::Error> { "no main webview window".into() })?;
+
             let resource_dir = app.path().resource_dir().ok();
             let sidecar_path = resolve_sidecar(resource_dir.as_deref())
                 .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
@@ -193,10 +197,6 @@ fn main() {
                 return Err(e.into());
             }
             eprintln!("sidecar: healthy on port {port}");
-
-            let window = app
-                .get_webview_window("main")
-                .ok_or_else(|| -> Box<dyn std::error::Error> { "no main webview window".into() })?;
 
             if let Err(e) = inject_api_url(&window, &api_url) {
                 kill_child(&mut child);

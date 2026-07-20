@@ -224,3 +224,87 @@ describe("toErrorMessage", () => {
     expect(toErrorMessage(null)).toBe("null");
   });
 });
+
+describe("api operations", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function jsonResponse(data: unknown) {
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("scoped GET sends X-Project-Id header", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ runs: [] }));
+
+    const { api } = await import("../client");
+    const scoped = api.forProject({ projectId: "p-1" });
+    await scoped.listRuns();
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    const headers = new Headers(init?.headers);
+    expect(headers.get("X-Project-Id")).toBe("p-1");
+    expect(headers.get("Accept")).toBe("application/json");
+  });
+
+  it("scoped POST sends X-Project-Id, Content-Type, and JSON body", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        jsonResponse({
+          run_id: "r-1",
+          status: "created",
+          started_at: "",
+          plan_version_id: "v-1",
+          step_count: 0,
+          is_stale: false,
+        }),
+      );
+
+    const { api } = await import("../client");
+    const scoped = api.forProject({ projectId: "p-1" });
+    await scoped.createRun({ plan_version_id: "v-1", force: false, sync: false });
+
+    const [input, init] = fetchMock.mock.calls[0]!;
+    const headers = new Headers(init?.headers);
+    expect(headers.get("X-Project-Id")).toBe("p-1");
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(init?.method ?? "").toBe("POST");
+
+    // Body may be a ReadableStream (openapi-fetch Request path) or a string (fetchJson path)
+    if (init?.body instanceof ReadableStream) {
+      const reader = init.body.getReader();
+      const decoder = new TextDecoder();
+      let text = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      expect(JSON.parse(text)).toEqual({ plan_version_id: "v-1", force: false, sync: false });
+    } else {
+      expect(JSON.parse((init?.body as string) ?? "{}")).toEqual({
+        plan_version_id: "v-1",
+        force: false,
+        sync: false,
+      });
+    }
+  });
+
+  it("global GET sends no project-scoped headers", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ projects: [] }));
+
+    const { api } = await import("../client");
+    await api.listProjects();
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    const headers = new Headers(init?.headers);
+    expect(headers.get("X-Project-Id")).toBeNull();
+    expect(headers.get("Accept")).toBe("application/json");
+  });
+});
