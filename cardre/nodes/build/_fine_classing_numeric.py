@@ -56,7 +56,7 @@ def bin_numeric(
     ]).group_by("_brk", maintain_order=True).agg([
         pl.len().alias("row_count"),
         pl.col("_tgt_str").is_in(bad_list).sum().alias("bad_count"),
-    ])
+    ]).sort("_brk")
 
     bin_counter = 0
     for i in range(len(bin_stats)):
