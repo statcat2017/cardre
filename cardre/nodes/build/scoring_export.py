@@ -362,13 +362,21 @@ def _build_sql_scorer_source(
         var = sv.name
         log_odds_parts.append(f"{sv.coefficient!r} * woe_{var}")
 
+        has_missing = any(b.is_missing for b in sv.bins)
         has_other = any(b.is_other for b in sv.bins)
         case_lines: list[str] = []
         case_lines.append("    CASE")
+        if has_missing:
+            missing_woe = next((b.woe for b in sv.bins if b.is_missing), None)
+            case_lines.append(f"        WHEN {var} IS NULL THEN {missing_woe!r}")
+        elif sv.missing_policy == "error":
+            case_lines.append(f"        WHEN {var} IS NULL THEN NULL")
+        else:
+            case_lines.append(f"        WHEN {var} IS NULL THEN 0.0")
         for b in sv.bins:
             if b.is_missing:
-                case_lines.append(f"        WHEN {var} IS NULL THEN {b.woe!r}")
-            elif b.kind == "numeric":
+                continue
+            if b.kind == "numeric":
                 cond_parts: list[str] = []
                 if b.lower is not None:
                     op = ">=" if b.lower_inclusive else ">"

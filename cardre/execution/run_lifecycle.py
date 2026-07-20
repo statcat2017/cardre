@@ -176,16 +176,21 @@ def write_manifest(
     manifest_path = manifest_dir / "manifest.json"
     tmp = manifest_path.with_suffix(".tmp")
     json_bytes = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
-    with open(tmp, "wb") as f:
-        f.write(json_bytes)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, manifest_path)
-    dir_fd = os.open(str(manifest_dir), os.O_RDONLY)
     try:
-        os.fsync(dir_fd)
-    finally:
-        os.close(dir_fd)
+        with open(tmp, "wb") as f:
+            f.write(json_bytes)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, manifest_path)
+        dir_fd = os.open(str(manifest_dir), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except BaseException:
+        if tmp.exists():
+            tmp.unlink()
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -443,7 +448,7 @@ class RunLifecycle:
             tb = traceback.format_exc()
             RunRepository(self._store).append_diagnostic(self.run_id, {
                 "code": "RUN_FINALISATION_FAILED",
-                "message": "Run finalisation failed.",
+                "message": "Run finalisation failed — manifest not published. Run left non-terminal.",
                 "severity": "error",
                 "run_id": self.run_id,
                 "plan_version_id": self.plan_version_id,
@@ -451,9 +456,6 @@ class RunLifecycle:
                 "traceback": tb,
                 "created_at": utc_now_iso(),
             })
-            run = RunRepository(self._store).get(self.run_id)
-            if run and run.get("status") == RunStatus.RUNNING.value:
-                RunRepository(self._store).transition(self.run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
             raise
         self._finalised = True
 

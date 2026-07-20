@@ -197,7 +197,7 @@ class SplitTrainTestOotNode(NodeType):
         dataset_artifact = next(a for a in context.input_artifacts if a.role == "input")
         store = context.store
         params = context.validated_params
-        strategy = params.get("strategy", "random_stratified")
+        method = params.get("method", "random_stratified")
         train_frac = float(params.get("train_fraction", 0.6))
         test_frac = float(params.get("test_fraction", 0.2))
         oot_frac = float(params.get("oot_fraction", 0.2))
@@ -210,9 +210,9 @@ class SplitTrainTestOotNode(NodeType):
 
         df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
 
-        if strategy == "preassigned_role_column":
+        if method == "preassigned_role_column":
             if not role_column or role_column not in df.columns:
-                raise ValueError(f"preassigned_role_column '{role_column}' not found in dataset")
+                raise ValueError(f"Role column '{role_column}' not found in dataset for 'preassigned_role_column' method")
             role_map = {}
             for role_val in ("train", "test", "oot"):
                 mask = df[role_column] == role_val
@@ -220,19 +220,19 @@ class SplitTrainTestOotNode(NodeType):
                 if count == 0:
                     raise ValueError(f"Role column {role_column} has no rows with value '{role_val}'")
                 role_map[role_val] = df[mask]
-        elif strategy == "random_stratified":
+        elif method == "random_stratified":
             if target_column not in df.columns:
                 raise ValueError(f"Target column '{target_column}' not found in dataset")
             role_map = self._stratified_split(df, target_column, train_frac, test_frac, oot_frac, seed)
         else:
-            raise ValueError(f"Unknown split strategy: {strategy}")
+            raise ValueError(f"Unknown split method: {method}")
 
         artifacts = []
         for role in ("train", "test", "oot"):
             subset = role_map[role]
             artifact = write_parquet_artifact(
                 store, artifact_type="dataset", role=role, stem=f"split-{role}", frame=subset,
-                metadata={"source_artifact_id": dataset_artifact.artifact_id, "strategy": strategy, "row_count": subset.height},
+                metadata={"source_artifact_id": dataset_artifact.artifact_id, "method": method, "row_count": subset.height},
             )
             artifacts.append(artifact)
 
@@ -251,8 +251,8 @@ class SplitTrainTestOotNode(NodeType):
                 raise ValueError(f"Train split has {len(train_classes)} non-null target class(es), expected at least 2")
 
         split_report = {
-            "strategy": strategy,
-            "random_seed": seed if strategy != "preassigned_role_column" else None,
+            "method": method,
+            "random_seed": seed if method != "preassigned_role_column" else None,
             "fractions": {"train": train_frac, "test": test_frac, "oot": oot_frac},
             "row_counts": {role: subset.height for role, subset in role_map.items()},
             "target_rates": target_rates, "warnings": split_warnings,

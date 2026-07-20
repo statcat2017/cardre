@@ -19,7 +19,6 @@ from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import (
     CardreError,
     PlanVersionNotCommittedError,
-    RunScopeNotAvailableForLaunch,
 )
 from cardre.services.staleness_service import StalenessExplanation
 
@@ -232,88 +231,6 @@ class TestExecuteCreatedRun:
         run = RunRepository(store).get(summary.run_id)
         assert run is not None
         assert run["run_scope"] == "full_plan"
-
-    def test_to_node_in_column_raises(self, tmp_path):
-        """Execute-created-run safety net: to_node in column raises."""
-        store = _make_store(tmp_path)
-        pv_id = _seed_minimal_plan(store)
-
-        run_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, run_scope, target_step_id, "
-            " created_at, started_at) "
-            "VALUES (?, ?, 'running', ?, ?, ?, ?)",
-            (run_id, pv_id, "to_node", "step-a", now, now),
-        )
-
-        from cardre.services.run_coordinator import RunCoordinator
-        coordinator = RunCoordinator(store)
-
-        with pytest.raises(RunScopeNotAvailableForLaunch) as exc_info:
-            coordinator.execute_created_run(run_id)
-        assert exc_info.value.code == "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
-        assert exc_info.value.context.get("run_scope") == "to_node"
-        assert exc_info.value.context.get("target_step_id") == "step-a"
-        from cardre.store.run_repo import RunRepository
-        rejected_run = RunRepository(store).get(run_id)
-        assert rejected_run is not None
-        assert rejected_run["status"] == "failed"
-        assert rejected_run["finished_at"] is not None
-
-    def test_to_node_in_column_without_target(self, tmp_path):
-        """Safety net also fires for to_node without target_step_id."""
-        store = _make_store(tmp_path)
-        pv_id = _seed_minimal_plan(store)
-
-        run_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, run_scope, "
-            " created_at, started_at) "
-            "VALUES (?, ?, 'running', ?, ?, ?)",
-            (run_id, pv_id, "to_node", now, now),
-        )
-
-        from cardre.services.run_coordinator import RunCoordinator
-        coordinator = RunCoordinator(store)
-
-        with pytest.raises(RunScopeNotAvailableForLaunch) as exc_info:
-            coordinator.execute_created_run(run_id)
-        assert exc_info.value.code == "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
-        assert exc_info.value.context.get("run_scope") == "to_node"
-        # target_step_id should NOT be present in context
-        assert "target_step_id" not in exc_info.value.context
-        from cardre.store.run_repo import RunRepository
-        rejected_run = RunRepository(store).get(run_id)
-        assert rejected_run is not None
-        assert rejected_run["status"] == "failed"
-        assert rejected_run["finished_at"] is not None
-
-    def test_execute_created_run_reads_column_not_metadata(self, tmp_path):
-        """execute_created_run reads run_scope from the real column."""
-        store = _make_store(tmp_path)
-        pv_id = _seed_minimal_plan(store)
-
-        # Column run_scope differs from metadata decoy.
-        run_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        metadata_json = json.dumps({"run_scope": "full_plan"})
-        store.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, run_scope, target_step_id, "
-            " created_at, started_at, metadata_json) "
-            "VALUES (?, ?, 'running', ?, ?, ?, ?, ?)",
-            (run_id, pv_id, "to_node", "step-a", now, now, metadata_json),
-        )
-
-        from cardre.services.run_coordinator import RunCoordinator
-        coordinator = RunCoordinator(store)
-
-        # Current code reads metadata -> no error (WRONG).
-        # After fix reads column 'to_node' -> raises RunScopeNotAvailableForLaunch.
-        with pytest.raises(RunScopeNotAvailableForLaunch) as exc_info:
-            coordinator.execute_created_run(run_id)
-        assert exc_info.value.context.get("target_step_id") == "step-a"
 
 
 

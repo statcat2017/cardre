@@ -25,7 +25,6 @@ from cardre.domain.errors import (
     ErrorCode,
     GovernanceNotEnabled,
     PlanVersionNotCommittedError,
-    RunScopeNotAvailableForLaunch,
 )
 from cardre.domain.run import RunStatus
 
@@ -277,24 +276,6 @@ class RunCoordinator:
                 return decision
         return RunPlanDecision(kind="execute")
 
-    def _raise_run_scope_not_available(
-        self,
-        run_scope: str,
-        target_step_id: str | None = None,
-    ) -> None:
-        """Raise RunScopeNotAvailableForLaunch with a consistent message and context.
-
-        Suggests ``full_plan`` as the alternative (branch may not be available
-        when governance is disabled).
-        """
-        ctx: dict[str, object] = {"run_scope": run_scope}
-        if target_step_id is not None:
-            ctx["target_step_id"] = target_step_id
-        raise RunScopeNotAvailableForLaunch(
-            f"run_scope={run_scope!r} is currently disabled for launch. Use full_plan instead.",
-            context=ctx,
-        )
-
     def _execute_existing_running_run(
         self,
         run_id: str,
@@ -309,21 +290,8 @@ class RunCoordinator:
             "full_plan": "full_plan",
         }.get(run_scope, "full_plan")
 
-        from cardre.execution.run_lifecycle import RunLifecycle
-
-        if run_scope == "to_node":
-            lifecycle = RunLifecycle.start(
-                self._store,
-                plan_version_id,
-                run_id,
-                execution_mode="to_node",
-                branch_id=branch_id,
-                target_step_id=target_step_id,
-            )
-            lifecycle.finalise(RunStatus.FAILED)
-            self._raise_run_scope_not_available(run_scope, target_step_id)
-
         from cardre.execution.executor import PlanExecutor
+        from cardre.execution.run_lifecycle import RunLifecycle
 
         executor = PlanExecutor(self._store)
         result = None

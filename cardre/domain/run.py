@@ -54,7 +54,6 @@ class RunScope(enum.StrEnum):
     """Execution scope discriminator for a run."""
     FULL_PLAN = "full_plan"
     BRANCH = "branch"
-    TO_NODE = "to_node"
 
 
 _VALID_TRANSITIONS: dict[RunStatus, set[RunStatus]] = {

@@ -62,6 +62,7 @@ def compile_scorecard(
     var_defs = bin_def.variables
 
     variables: list[ScoringVariable] = []
+    consumed_coefficient_keys: set[str] = set()
     for vd in var_defs:
         var = vd.variable
         kind = vd.kind
@@ -70,6 +71,7 @@ def compile_scorecard(
         raw_coef = coefficients.get(woe_key)
         if raw_coef is None:
             continue
+        consumed_coefficient_keys.add(woe_key)
         coef = float(raw_coef)
         var_woe_map = woe_map.get(var, {})
         if not var_woe_map:
@@ -123,6 +125,13 @@ def compile_scorecard(
             unmatched_policy=unmatched_policy,
             bins=tuple(compiled_bins),
         ))
+
+    unconsumed = set(coefficients) - consumed_coefficient_keys
+    if unconsumed:
+        raise ValueError(
+            f"compile_scorecard: model coefficient(s) {sorted(unconsumed)} have no "
+            f"corresponding bin variable in the bin definition"
+        )
 
     return variables
 
