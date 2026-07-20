@@ -58,29 +58,70 @@ export interface FetchOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
+async function errorFromResponse(response: Response): Promise<ApiError> {
+  const contentType = response.headers.get("content-type") ?? "";
+  const bodyText = await response.text();
+
+  if (contentType.includes("json") && bodyText) {
+    try {
+      const parsed = JSON.parse(bodyText);
+      const detail = parsed?.detail ?? parsed;
+      const rawCode = detail?.code;
+      const code: ErrorCode = isErrorCode(rawCode) ? rawCode : ErrorCodes.NON_JSON_ERROR_RESPONSE;
+      const context: Record<string, unknown> = detail?.context ?? {};
+      if (rawCode !== undefined && !isErrorCode(rawCode)) {
+        context.originalCode = rawCode;
+      }
+      return new ApiError(code, detail?.message ?? response.statusText, response.status, context);
+    } catch {
+      // fall through
+    }
+  }
+
+  if (contentType.includes("html")) {
+    return new ApiError(
+      ErrorCodes.HTML_ERROR_RESPONSE,
+      `Server returned HTML (HTTP ${response.status})`,
+      response.status,
+    );
+  }
+  if (bodyText) {
+    return new ApiError(
+      ErrorCodes.NON_JSON_ERROR_RESPONSE,
+      bodyText.slice(0, 500),
+      response.status,
+    );
+  }
+  return new ApiError(
+    ErrorCodes.EMPTY_ERROR_RESPONSE,
+    response.statusText || "Empty error response",
+    response.status,
+  );
+}
+
+function networkError(err: unknown, url: RequestInfo | URL, timeoutMs: number): ApiError {
+  if (err instanceof DOMException && err.name === "TimeoutError") {
+    return new ApiError(
+      ErrorCodes.REQUEST_TIMEOUT,
+      `Request to ${url} timed out after ${timeoutMs}ms`,
+      408,
+    );
+  }
+  if (err instanceof DOMException && err.name === "AbortError") {
+    return new ApiError(ErrorCodes.REQUEST_ABORTED, `Request to ${url} was aborted`, 499);
+  }
+  return new ApiError(
+    ErrorCodes.SIDECAR_UNREACHABLE,
+    `Cannot reach ${url}: ${(err as Error).message ?? "network error"}`,
+    503,
+  );
+}
+
 export async function fetchResponse(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
-  // When openapi-fetch passes a Request object, init is undefined.
-  // Use the Request's headers, method, and signal directly.
   const req = input instanceof Request ? input : undefined;
-
-  let body: BodyInit | null | undefined;
-  let method: string | undefined;
-
-  if (req) {
-    // openapi-fetch path: the Request carries its own headers, body, method.
-    method = req.method;
-    body = req.body;
-  } else {
-    // fetchJson path: extract from init / FetchOptions
-    const opts = init as FetchOptions | undefined;
-    method = init?.method;
-    const rawBody = opts?.body;
-    body = rawBody !== undefined ? JSON.stringify(rawBody) : init?.body;
-  }
-
   const timeoutMs = (init as FetchOptions | undefined)?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   const externalSignal = req?.signal ?? init?.signal;
 
@@ -96,93 +137,45 @@ export async function fetchResponse(
   }
 
   try {
-    const headers = new Headers(req?.headers ?? init?.headers);
-    headers.set("Accept", "application/json");
-    if (!req) {
-      const rawBody = (init as FetchOptions | undefined)?.body;
+    let response: Response;
+
+    if (req) {
+      // openapi-fetch path: construct a new Request from the original to
+      // preserve its body ReadableStream without needing `duplex: "half"`.
+      const headers = new Headers(req.headers);
+      headers.set("Accept", "application/json");
+      const forwarded = new Request(req, { headers, signal: controller.signal });
+      try {
+        response = await fetch(forwarded);
+      } catch (err: unknown) {
+        throw networkError(err, input, timeoutMs);
+      }
+    } else {
+      const opts = init as FetchOptions | undefined;
+      const rawBody = opts?.body;
+      const body: BodyInit | null | undefined =
+        rawBody !== undefined ? JSON.stringify(rawBody) : init?.body;
+
+      const headers = new Headers(init?.headers);
+      headers.set("Accept", "application/json");
       if (rawBody !== undefined) {
         headers.set("Content-Type", "application/json");
       }
-    }
 
-    let response: Response;
-    try {
-      response = await fetch(input, {
-        method,
-        headers,
-        body,
-        signal: controller.signal,
-      });
-    } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === "TimeoutError") {
-        throw new ApiError(
-          ErrorCodes.REQUEST_TIMEOUT,
-          `Request to ${input} timed out after ${timeoutMs}ms`,
-          408,
-        );
+      try {
+        response = await fetch(input, {
+          method: init?.method,
+          headers,
+          body,
+          signal: controller.signal,
+        });
+      } catch (err: unknown) {
+        throw networkError(err, input, timeoutMs);
       }
-      if (err instanceof DOMException && err.name === "AbortError") {
-        throw new ApiError(ErrorCodes.REQUEST_ABORTED, `Request to ${input} was aborted`, 499);
-      }
-      throw new ApiError(
-        ErrorCodes.SIDECAR_UNREACHABLE,
-        `Cannot reach ${input}: ${(err as Error).message ?? "network error"}`,
-        503,
-      );
     }
-
-    const contentType = response.headers.get("content-type") ?? "";
 
     if (!response.ok) {
-      const isJson = contentType.includes("json");
-      const bodyText = await response.text();
-
-      if (isJson && bodyText) {
-        try {
-          const parsed = JSON.parse(bodyText);
-          const detail = parsed?.detail ?? parsed;
-          const rawCode = detail?.code;
-          const code: ErrorCode = isErrorCode(rawCode)
-            ? rawCode
-            : ErrorCodes.NON_JSON_ERROR_RESPONSE;
-          const context: Record<string, unknown> = detail?.context ?? {};
-          if (rawCode !== undefined && !isErrorCode(rawCode)) {
-            context.originalCode = rawCode;
-          }
-          throw new ApiError(
-            code,
-            detail?.message ?? response.statusText,
-            response.status,
-            context,
-          );
-        } catch (parseErr) {
-          if (parseErr instanceof ApiError) {
-            throw parseErr;
-          }
-        }
-      }
-
-      if (contentType.includes("html")) {
-        throw new ApiError(
-          ErrorCodes.HTML_ERROR_RESPONSE,
-          `Server returned HTML (HTTP ${response.status})`,
-          response.status,
-        );
-      }
-
-      if (bodyText) {
-        throw new ApiError(
-          ErrorCodes.NON_JSON_ERROR_RESPONSE,
-          bodyText.slice(0, 500),
-          response.status,
-        );
-      }
-
-      throw new ApiError(
-        ErrorCodes.EMPTY_ERROR_RESPONSE,
-        response.statusText || "Empty error response",
-        response.status,
-      );
+      throw await errorFromResponse(response);
     }
 
     return response;

@@ -184,17 +184,41 @@ describe("useProjectWorkspace", () => {
     await waitFor(() => {
       expect(result.current.effectiveSelectedRunId).toBe("r-2");
     });
+
     await waitFor(() => {
-      // The selected run query fires, returning the running status
       expect(mockScoped.getRun).toHaveBeenCalled();
     });
 
-    // After the second getRun resolves to terminal, the polling interval
-    // should eventually stop. This is verified by checking that the
-    // selectedRunQuery data eventually shows the terminal status.
-    await waitFor(() => {
-      expect(result.current.selectedRunQuery.data?.status).toBe("succeeded");
-    });
+    const runsBefore = mockScoped.listRuns.mock.calls.length;
+    const getRunBefore = mockScoped.getRun.mock.calls.length;
+    const stepsBefore = mockScoped.listRunSteps.mock.calls.length;
+    const evBefore = mockScoped.listRunEvidence.mock.calls.length;
+
+    await waitFor(
+      () => {
+        expect(mockScoped.listRuns.mock.calls.length).toBeGreaterThan(runsBefore);
+      },
+      { timeout: 3_000, interval: 200 },
+    );
+    expect(mockScoped.getRun.mock.calls.length).toBeGreaterThan(getRunBefore);
+    expect(mockScoped.listRunSteps.mock.calls.length).toBeGreaterThan(stepsBefore);
+    expect(mockScoped.listRunEvidence.mock.calls.length).toBeGreaterThan(evBefore);
+
+    const runsAfterTerminal = mockScoped.listRuns.mock.calls.length;
+    const getRunAfterTerminal = mockScoped.getRun.mock.calls.length;
+    const stepsAfterTerminal = mockScoped.listRunSteps.mock.calls.length;
+    const evAfterTerminal = mockScoped.listRunEvidence.mock.calls.length;
+
+    await waitFor(
+      () => {
+        expect(mockScoped.listRuns.mock.calls.length).toBe(runsAfterTerminal);
+      },
+      { timeout: 2_000, interval: 200 },
+    );
+
+    expect(mockScoped.getRun.mock.calls.length).toBe(getRunAfterTerminal);
+    expect(mockScoped.listRunSteps.mock.calls.length).toBe(stepsAfterTerminal);
+    expect(mockScoped.listRunEvidence.mock.calls.length).toBe(evAfterTerminal);
   });
 
   it("project selection never carries the typed creation path", async () => {

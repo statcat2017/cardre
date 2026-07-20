@@ -244,10 +244,9 @@ describe("api operations", () => {
     const scoped = api.forProject({ projectId: "p-1" });
     await scoped.listRuns();
 
-    const [, init] = fetchMock.mock.calls[0]!;
-    const headers = new Headers(init?.headers);
-    expect(headers.get("X-Project-Id")).toBe("p-1");
-    expect(headers.get("Accept")).toBe("application/json");
+    const req = fetchMock.mock.calls[0]![0] as Request;
+    expect(req.headers.get("X-Project-Id")).toBe("p-1");
+    expect(req.headers.get("Accept")).toBe("application/json");
   });
 
   it("scoped POST sends X-Project-Id, Content-Type, and JSON body", async () => {
@@ -266,30 +265,13 @@ describe("api operations", () => {
     const scoped = api.forProject({ projectId: "p-1" });
     await scoped.createRun({ plan_version_id: "v-1", force: false, sync: false });
 
-    const [, init] = fetchMock.mock.calls[0]!;
-    const headers = new Headers(init?.headers);
-    expect(headers.get("X-Project-Id")).toBe("p-1");
-    expect(headers.get("Content-Type")).toBe("application/json");
-    expect(init?.method ?? "").toBe("POST");
+    const req = fetchMock.mock.calls[0]![0] as Request;
+    expect(req.headers.get("X-Project-Id")).toBe("p-1");
+    expect(req.headers.get("Content-Type")).toBe("application/json");
+    expect(req.method).toBe("POST");
 
-    // Body may be a ReadableStream (openapi-fetch Request path) or a string (fetchJson path)
-    if (init?.body instanceof ReadableStream) {
-      const reader = init.body.getReader();
-      const decoder = new TextDecoder();
-      let text = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        text += decoder.decode(value, { stream: true });
-      }
-      expect(JSON.parse(text)).toEqual({ plan_version_id: "v-1", force: false, sync: false });
-    } else {
-      expect(JSON.parse((init?.body as string) ?? "{}")).toEqual({
-        plan_version_id: "v-1",
-        force: false,
-        sync: false,
-      });
-    }
+    const body = await req.clone().json();
+    expect(body).toEqual({ plan_version_id: "v-1", force: false, sync: false });
   });
 
   it("global GET sends no project-scoped headers", async () => {
@@ -300,9 +282,8 @@ describe("api operations", () => {
     const { api } = await import("../client");
     await api.listProjects();
 
-    const [, init] = fetchMock.mock.calls[0]!;
-    const headers = new Headers(init?.headers);
-    expect(headers.get("X-Project-Id")).toBeNull();
-    expect(headers.get("Accept")).toBe("application/json");
+    const req = fetchMock.mock.calls[0]![0] as Request;
+    expect(req.headers.get("X-Project-Id")).toBeNull();
+    expect(req.headers.get("Accept")).toBe("application/json");
   });
 });
