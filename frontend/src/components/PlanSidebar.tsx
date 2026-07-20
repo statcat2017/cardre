@@ -13,8 +13,8 @@ interface Props {
   onNewPlanNameChange: (name: string) => void;
   onCreatePlan: () => void;
   createPlanPending: boolean;
-  runsForVersion: Run[];
-  allRuns: Run[] | undefined;
+  runs: Run[];
+  versionSelected: boolean;
   effectiveSelectedRunId: string | null;
   onSelectRun: (runId: string) => void;
 }
@@ -28,12 +28,12 @@ export function PlanSidebar({
   onNewPlanNameChange,
   onCreatePlan,
   createPlanPending,
-  runsForVersion,
-  allRuns,
+  runs,
+  versionSelected,
   effectiveSelectedRunId,
   onSelectRun,
 }: Props) {
-  const displayRuns = runsForVersion.length > 0 ? runsForVersion : (allRuns ?? []);
+  const displayRuns = runs;
 
   return (
     <aside style={{ ...pageCardStyle, padding: 16, display: "grid", gap: 16 }}>
@@ -106,25 +106,31 @@ export function PlanSidebar({
       <div>
         <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>Runs</h2>
         <div style={{ display: "grid", gap: 8 }}>
-          {displayRuns.map((run) => (
-            <button
-              key={run.run_id}
-              type="button"
-              onClick={() => onSelectRun(run.run_id)}
-              style={{
-                textAlign: "left",
-                padding: 12,
-                borderRadius: 12,
-                border: `1px solid ${run.run_id === effectiveSelectedRunId ? theme.text : theme.border}`,
-                background:
-                  run.run_id === effectiveSelectedRunId ? theme.canvasSoft : theme.surface,
-                cursor: "pointer",
-              }}
-            >
-              <div style={{ fontWeight: 600 }}>{run.status}</div>
-              <div style={{ color: theme.muted, fontSize: 12 }}>{run.run_id}</div>
-            </button>
-          ))}
+          {displayRuns.length > 0 ? (
+            displayRuns.map((run) => (
+              <button
+                key={run.run_id}
+                type="button"
+                onClick={() => onSelectRun(run.run_id)}
+                style={{
+                  textAlign: "left",
+                  padding: 12,
+                  borderRadius: 12,
+                  border: `1px solid ${run.run_id === effectiveSelectedRunId ? theme.text : theme.border}`,
+                  background:
+                    run.run_id === effectiveSelectedRunId ? theme.canvasSoft : theme.surface,
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ fontWeight: 600 }}>{run.status}</div>
+                <div style={{ color: theme.muted, fontSize: 12 }}>{run.run_id}</div>
+              </button>
+            ))
+          ) : (
+            <div style={{ color: theme.muted, fontSize: 14 }}>
+              {versionSelected ? "No runs for this version." : "No runs yet."}
+            </div>
+          )}
         </div>
       </div>
     </aside>

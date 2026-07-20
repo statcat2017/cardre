@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from cardre._version import __version__
+from cardre.domain.diagnostics import JsonDict
 
 # ---------------------------------------------------------------------------
 # Error envelope
@@ -116,6 +117,19 @@ class PlanStepResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Diagnostics
+# ---------------------------------------------------------------------------
+
+class DiagnosticResponse(BaseModel):
+    code: str = "UNKNOWN"
+    message: str = ""
+    severity: str = "error"
+    source: str | None = None
+    context: JsonDict = Field(default_factory=dict)
+    created_at: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # Runs
 # ---------------------------------------------------------------------------
 
@@ -128,8 +142,8 @@ class RunResponse(BaseModel):
     step_count: int = 0
     branch_id: str | None = None
     executed_step_ids: list[str] = Field(default_factory=list)
-    diagnostics: list[dict[str, Any]] = Field(default_factory=list)
-    latest_error: dict[str, Any] | None = None
+    diagnostics: list[DiagnosticResponse] = Field(default_factory=list)
+    latest_error: DiagnosticResponse | None = None
     heartbeat_at: str | None = None
     is_stale: bool = False
 
@@ -153,8 +167,8 @@ class RunStepResponse(BaseModel):
     started_at: str
     finished_at: str | None = None
     execution_fingerprint: dict[str, Any] = Field(default_factory=dict)
-    warnings: list[dict[str, Any]] = Field(default_factory=list)
-    errors: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[DiagnosticResponse] = Field(default_factory=list)
+    errors: list[DiagnosticResponse] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

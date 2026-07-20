@@ -22,10 +22,6 @@ struct AppState {
 fn find_free_port() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to ephemeral port");
     let port = listener.local_addr().unwrap().port();
-    // Drop the listener immediately. This creates a brief TOCTOU window
-    // where another process could bind the port before the sidecar starts.
-    // A production fix would pass the listener fd directly, but that
-    // requires platform-specific code.
     drop(listener);
     port
 }
@@ -53,7 +49,6 @@ fn wait_for_health(port: u16, max_retries: u32) -> Result<(), String> {
         if healthy {
             return Ok(());
         }
-        // Responded but not healthy yet — retry
         thread::sleep(Duration::from_millis(500));
     }
     Err(format!(
@@ -100,7 +95,6 @@ fn bundled_sidecar_path(resource_dir: &std::path::Path) -> std::path::PathBuf {
 }
 
 /// Resolve the sidecar binary path. Bundled first; dev PATH fallback second.
-/// Returns Err with both attempted paths so the failure is diagnosable.
 fn resolve_sidecar(resource_dir: Option<&std::path::Path>) -> Result<std::path::PathBuf, String> {
     if let Some(rd) = resource_dir {
         let bundled = bundled_sidecar_path(rd);
@@ -110,8 +104,6 @@ fn resolve_sidecar(resource_dir: Option<&std::path::Path>) -> Result<std::path::
         eprintln!("sidecar: bundled path not found: {}", bundled.display());
     }
 
-    // Dev-only fallback: cardre-api on PATH (pip install -e ".[sidecar]").
-    // In release builds (packaged app), fail hard if the bundled binary is missing.
     #[cfg(debug_assertions)]
     if let Ok(p) = which::which(SIDECAR_NAME) {
         eprintln!("sidecar: dev fallback using PATH entry: {}", p.display());
@@ -124,6 +116,57 @@ fn resolve_sidecar(resource_dir: Option<&std::path::Path>) -> Result<std::path::
     ))
 }
 
+fn api_url_assignment_script(api_url: &str) -> Result<String, String> {
+    let url_str =
+        serde_json::to_string(api_url).map_err(|e| format!("URL serialization failed: {e}"))?;
+    Ok(format!("window.__API_URL__ = {url_str}"))
+}
+
+fn inject_api_url(window: &tauri::WebviewWindow, api_url: &str) -> Result<(), String> {
+    let script = api_url_assignment_script(api_url)?;
+    window
+        .eval(&script)
+        .map_err(|e| format!("failed to inject API URL: {e}"))
+}
+
+fn store_sidecar(app: &tauri::App, child: &mut Option<Child>) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut guard = state
+        .sidecar_child
+        .lock()
+        .map_err(|_| "sidecar state lock poisoned".to_owned())?;
+    let taken = child
+        .take()
+        .ok_or_else(|| "sidecar child already taken".to_owned())?;
+    *guard = Some(taken);
+    Ok(())
+}
+
+fn spawn_sidecar(sidecar_path: &std::path::Path, port: u16) -> Result<Child, String> {
+    let child = Command::new(sidecar_path)
+        .env("CARDRE_API_PORT", port.to_string())
+        .env("CARDRE_API_HOST", "127.0.0.1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Could not start sidecar at {}: {e}", sidecar_path.display()))?;
+    eprintln!(
+        "sidecar: started {} (pid {})",
+        sidecar_path.display(),
+        child.id()
+    );
+    Ok(child)
+}
+
+fn attach_log_readers(child: &mut Child) {
+    if let Some(stdout) = child.stdout.take() {
+        spawn_line_reader(stdout, "[sidecar] ");
+    }
+    if let Some(stderr) = child.stderr.take() {
+        spawn_line_reader(stderr, "[sidecar:err] ");
+    }
+}
+
 fn main() {
     let port = find_free_port();
     eprintln!("Reserved port: {port}");
@@ -134,79 +177,40 @@ fn main() {
         .manage(AppState {
             sidecar_child: Mutex::new(None),
         })
-        .setup(move |app| {
-            // Resolve the sidecar binary: bundled first (packaged), then dev PATH fallback.
+        .setup(move |app| -> Result<(), Box<dyn std::error::Error>> {
+            let window = app
+                .get_webview_window("main")
+                .ok_or_else(|| -> Box<dyn std::error::Error> { "no main webview window".into() })?;
+
             let resource_dir = app.path().resource_dir().ok();
-            let sidecar_path = match resolve_sidecar(resource_dir.as_deref()) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("FATAL: {e}");
-                    std::process::exit(1);
-                }
-            };
+            let sidecar_path = resolve_sidecar(resource_dir.as_deref())
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
             eprintln!("sidecar: resolved path: {}", sidecar_path.display());
             eprintln!("sidecar: port: {port}");
 
-            let mut child: Child = match Command::new(&sidecar_path)
-                .env("CARDRE_API_PORT", port.to_string())
-                .env("CARDRE_API_HOST", "127.0.0.1")
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-            {
-                Ok(c) => {
-                    eprintln!(
-                        "sidecar: started {} (pid {})",
-                        sidecar_path.display(),
-                        c.id()
-                    );
-                    c
+            let mut child = spawn_sidecar(&sidecar_path, port)
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+            attach_log_readers(&mut child);
+
+            if let Err(e) = wait_for_health(port, 30) {
+                kill_child(&mut child);
+                return Err(e.into());
+            }
+            eprintln!("sidecar: healthy on port {port}");
+
+            if let Err(e) = inject_api_url(&window, &api_url) {
+                kill_child(&mut child);
+                return Err(e.into());
+            }
+
+            let mut opt_child = Some(child);
+            if let Err(e) = store_sidecar(app, &mut opt_child) {
+                if let Some(mut c) = opt_child {
+                    kill_child(&mut c);
                 }
-                Err(e) => {
-                    eprintln!(
-                        "FATAL: Could not start sidecar at {}: {e}",
-                        sidecar_path.display()
-                    );
-                    std::process::exit(1);
-                }
-            };
-
-            // Capture stdout
-            if let Some(stdout) = child.stdout.take() {
-                spawn_line_reader(stdout, "[sidecar] ");
+                return Err(e.into());
             }
 
-            // Capture stderr
-            if let Some(stderr) = child.stderr.take() {
-                spawn_line_reader(stderr, "[sidecar:err] ");
-            }
-
-            // Store child handle for lifecycle management
-            if let Ok(mut guard) = app.state::<AppState>().sidecar_child.lock() {
-                *guard = Some(child);
-            }
-
-            // Wait for health before declaring setup complete.
-            // The Child handle remains in AppState for cleanup.
-            match wait_for_health(port, 30) {
-                Ok(()) => eprintln!("sidecar: healthy on port {port}"),
-                Err(e) => {
-                    eprintln!(
-                        "FATAL: sidecar health check failed: {e} (path={}, port={port})",
-                        sidecar_path.display()
-                    );
-                    if let Ok(mut guard) = app.state::<AppState>().sidecar_child.lock() {
-                        if let Some(ref mut c) = *guard {
-                            kill_child(c);
-                        }
-                    }
-                    std::process::exit(1);
-                }
-            }
-
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.eval(format!("window.__API_URL__ = '{api_url}'").as_str());
-            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -283,5 +287,12 @@ mod tests {
                 "windows name must end .exe, got {name}"
             );
         }
+    }
+
+    #[test]
+    fn api_url_assignment_uses_the_selected_loopback_port() {
+        let script = api_url_assignment_script("http://127.0.0.1:43129").unwrap();
+        assert!(script.contains("http://127.0.0.1:43129"));
+        assert!(!script.contains("8752"));
     }
 }

@@ -5,7 +5,7 @@ import { api, toErrorMessage } from "../api/client";
 import { theme, pageCardStyle } from "../styles";
 
 interface Props {
-  onProjectCreated: (projectId: string, projectPath: string) => void;
+  onProjectCreated: (projectId: string) => void;
 }
 
 export function WelcomeScreen({ onProjectCreated }: Props) {
@@ -22,16 +22,15 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
   }, [projectPath]);
 
   const projectsQuery = useQuery({
-    queryKey: ["projects", projectPath],
+    queryKey: ["projects"],
     queryFn: () => api.listProjects(),
-    enabled: projectPath.trim().length > 0,
   });
 
   const createMutation = useMutation({
     mutationFn: () => api.createProject({ name: projectName.trim(), path: projectPath.trim() }),
     onSuccess: (project) => {
       setError(null);
-      onProjectCreated(project.project_id, projectPath.trim());
+      onProjectCreated(project.project_id);
     },
     onError: (err) => {
       setError(toErrorMessage(err));
@@ -195,11 +194,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
 
           <section style={{ ...pageCardStyle, padding: 24 }}>
             <h2 style={{ marginTop: 0, fontSize: 18 }}>Existing Projects</h2>
-            {!projectPath.trim() ? (
-              <p style={{ margin: 0, color: theme.muted, fontSize: 14 }}>
-                Enter a project root to load projects in that store.
-              </p>
-            ) : projectsQuery.isLoading ? (
+            {projectsQuery.isLoading ? (
               <p style={{ margin: 0, color: theme.muted, fontSize: 14 }}>Loading projects...</p>
             ) : projectsQuery.data?.projects.length ? (
               <div style={{ display: "grid", gap: 10 }}>
@@ -207,7 +202,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
                   <button
                     key={project.project_id}
                     type="button"
-                    onClick={() => onProjectCreated(project.project_id, projectPath.trim())}
+                    onClick={() => onProjectCreated(project.project_id)}
                     style={{
                       textAlign: "left",
                       border: `1px solid ${theme.border}`,
