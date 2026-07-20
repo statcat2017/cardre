@@ -128,6 +128,7 @@ class SplitTrainTestOotNode(NodeType):
             node_type=cls.node_type,
             node_version=cls.version,
             title="Split Train / Test / OOT",
+            default_method="random_stratified",
             methods=[
                 MethodOption(
                     id="random_stratified",

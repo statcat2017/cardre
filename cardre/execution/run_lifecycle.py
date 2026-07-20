@@ -9,6 +9,7 @@ leakage rules, or parent evidence resolution.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
     from cardre.domain.run import RunStep
     from cardre.store.db import ProjectStore
 
-MANIFEST_VERSION = "1.0.0"
+MANIFEST_VERSION = "cardre.run_manifest.v1"
 
 
 # ---------------------------------------------------------------------------
@@ -102,10 +103,15 @@ def build_final_manifest_payload(
     target_step_id: str | None = None,
     in_scope_step_ids: list[str] | None = None,
 ) -> JsonDict:
-    """Build a complete manifest with a valid self-referential hash."""
+    """Build a complete canonical manifest with a valid self-referential hash.
+
+    Constructs a payload, validates it against ``RunManifest``, serializes
+    the validated model (which includes canonical defaulted fields), then
+    hashes the exact canonical payload.
+    """
     from cardre.reporting.schema import RunManifest
 
-    payload = build_manifest_payload(
+    raw = build_manifest_payload(
         run_id=run_id,
         plan_version_id=plan_version_id,
         run_record=run_record,
@@ -117,9 +123,10 @@ def build_final_manifest_payload(
         target_step_id=target_step_id,
         in_scope_step_ids=in_scope_step_ids,
     )
+    validated = RunManifest.model_validate(raw)
+    payload: JsonDict = validated.model_dump(mode="json", by_alias=True)
     payload["manifest_hash"] = ""
     payload["manifest_hash"] = json_logical_hash(payload)
-    RunManifest.model_validate(payload)
     return payload
 
 
@@ -163,14 +170,22 @@ def write_manifest(
         in_scope_step_ids=in_scope_step_ids,
     )
 
-    # Write manifest as a JSON file
+    # Write manifest as a JSON file — flushed, fsynced, atomic.
     manifest_dir = store.root / "exports" / f"manifest-{run_id}"
     manifest_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = manifest_dir / "manifest.json"
-    # Atomically write: flush temporary file, then replace destination
     tmp = manifest_path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True))
-    tmp.replace(manifest_path)
+    json_bytes = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
+    with open(tmp, "wb") as f:
+        f.write(json_bytes)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, manifest_path)
+    dir_fd = os.open(str(manifest_dir), os.O_RDONLY)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
 
 
 # ---------------------------------------------------------------------------

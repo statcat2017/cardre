@@ -189,11 +189,16 @@ def _build_python_scorer_source(
             woe_var_lines.append(f"        _woe_{var} = 0.0")
             woe_var_lines.append("    else:")
 
-        has_other = any(b.is_other for b in sv.bins)
-        conditions: list[str] = []
-        for b in sv.bins:
-            if b.is_missing:
-                continue
+        # Build an if/elif/else chain for non-missing bins.
+        non_missing = [b for b in sv.bins if not b.is_missing]
+        has_other = any(b.is_other for b in non_missing)
+        first_cond = True
+        for b in non_missing:
+            if b.is_other:
+                woe_var_lines.append("        else:")
+                woe_var_lines.append(f"            _woe_{var} = {b.woe!r}")
+                break
+            kw = "if" if first_cond else "elif"
             if b.kind == "numeric":
                 parts: list[str] = []
                 if b.lower is not None:
@@ -203,18 +208,28 @@ def _build_python_scorer_source(
                     op = "<=" if b.upper_inclusive else "<"
                     parts.append(f"_val {op} {b.upper!r}")
                 cond = " and ".join(parts)
-                conditions.append(f"        if {cond}:\n            _woe_{var} = {b.woe!r}")
-            else:
-                if b.is_other:
-                    conditions.append(f"        else:\n            _woe_{var} = {b.woe!r}")
-                elif b.categories:
-                    conditions.append(f"        if _val in {b.categories!r}:\n            _woe_{var} = {b.woe!r}")
+                woe_var_lines.append(f"        {kw} {cond}:")
+                woe_var_lines.append(f"            _woe_{var} = {b.woe!r}")
+                first_cond = False
+            elif b.categories:
+                woe_var_lines.append(f"        {kw} _val in {b.categories!r}:")
+                woe_var_lines.append(f"            _woe_{var} = {b.woe!r}")
+                first_cond = False
 
-        if conditions:
-            woe_var_lines.append(conditions[0])
-            for c in conditions[1:]:
-                woe_var_lines.append(c)
-        elif not has_other and not has_missing:
+        if non_missing and not has_other:
+            # Unmatched fallback when no "other" bin catches the value.
+            if sv.unmatched_policy == "error":
+                woe_var_lines.append("        else:")
+                woe_var_lines.append(
+                    '            raise ValueError(f"score_cardre: unmatched value for '
+                    + var
+                    + ': {_val!r}"' + ')'
+                )
+            else:
+                woe_var_lines.append("        else:")
+                woe_var_lines.append(f"            _woe_{var} = 0.0")
+        elif not non_missing and not has_missing:
+            # No bins at all — value never contributes.
             woe_var_lines.append(f"        _woe_{var} = 0.0")
         woe_var_lines.append("")
 
@@ -370,7 +385,7 @@ def _build_sql_scorer_source(
                     cats_sql = ", ".join(repr(c) for c in b.categories)
                     case_lines.append(f"        WHEN {var} IN ({cats_sql}) THEN {b.woe!r}")
         if not has_other:
-            if sv.missing_policy == "error":
+            if sv.unmatched_policy == "error":
                 case_lines.append("        ELSE NULL")
             else:
                 case_lines.append("        ELSE 0.0")

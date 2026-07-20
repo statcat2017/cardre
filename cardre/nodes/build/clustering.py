@@ -33,6 +33,7 @@ class VariableClusteringNode(NodeType):
             node_type=cls.node_type,
             node_version=cls.version,
             title="Variable Clustering",
+            default_method="correlation_threshold",
             methods=[
                 MethodOption(
                     id="correlation_threshold",

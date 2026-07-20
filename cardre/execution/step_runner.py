@@ -26,6 +26,7 @@ from cardre.domain.run import RunStep, RunStepStatus
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.execution.failure_classification import classify_step_failure
 from cardre.execution.fingerprints import _json_ready, build_execution_fingerprint
+from cardre.node_parameters import normalize_node_params
 from cardre.nodes.registry import NodeRegistry
 
 if TYPE_CHECKING:
@@ -109,7 +110,14 @@ class StepRunner:
             resolved_input_artifacts = self._resolve_inputs(spec, step_outputs)
 
             node = self._node_registry.instantiate(spec.node_type)
-            validation_errors = node.validate_params(dict(spec.params))
+
+            schema = node.parameter_schema()
+            if schema is not None:
+                normalized_params = normalize_node_params(schema, dict(spec.params))
+            else:
+                normalized_params = dict(spec.params)
+
+            validation_errors = node.validate_params(normalized_params)
             if validation_errors:
                 raise ParameterValidationError(
                     f"Step {spec.step_id!r} parameter validation "
@@ -139,7 +147,7 @@ class StepRunner:
                 step_spec=spec,
                 parent_run_steps=parent_run_steps,
                 input_artifacts=input_artifacts,
-                validated_params=dict(spec.params),
+                validated_params=normalized_params,
                 runtime_metadata={
                     "run_id": run_id,
                     "plan_version_id": plan_version_id,

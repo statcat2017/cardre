@@ -30,6 +30,7 @@ class ScoringVariable:
     name: str
     coefficient: float
     missing_policy: Literal["error", "zero"]
+    unmatched_policy: Literal["error", "zero"]
     bins: tuple[ScoringBin, ...]
 
 
@@ -42,14 +43,19 @@ def compile_scorecard(
 ) -> list[ScoringVariable]:
     """Compile bin definitions, WOE mapping, and coefficients into a typed IR.
 
-    Returns one ``ScoringVariable`` per model coefficient.  Variables
-    present in bins but absent from the coefficient map are silently
-    excluded (they do not contribute to the score).
+    Returns one ``ScoringVariable`` per model coefficient.  Raises
+    ``ValueError`` if a coefficient exists but has no matching WOE map
+    or a scored bin lacks a WOE entry.  Variables present in bins
+    but absent from the coefficient map are silently excluded.
     """
     missing_policy: Literal["error", "zero"] = "error"
     if feature_contract:
         mp = feature_contract.get("missing_policy", "error")
         missing_policy = "zero" if mp == "zero" else "error"
+
+    unknown_category_policy = "error"
+    if feature_contract:
+        unknown_category_policy = feature_contract.get("unknown_category_policy", "error")
 
     woe_map = woe_table.mapping
     coefficients = model_dict.get("coefficients", {})
@@ -67,14 +73,20 @@ def compile_scorecard(
         coef = float(raw_coef)
         var_woe_map = woe_map.get(var, {})
         if not var_woe_map:
-            continue
+            raise ValueError(
+                f"compile_scorecard: coefficient '{woe_key}' has no WOE mapping "
+                f"for variable '{var}'"
+            )
 
         compiled_bins: list[ScoringBin] = []
         for be in bins:
             bid = be["bin_id"]
             wv = var_woe_map.get(bid)
             if wv is None:
-                continue
+                raise ValueError(
+                    f"compile_scorecard: bin '{bid}' for variable '{var}' "
+                    f"has no WOE entry in WOE table"
+                )
             if kind == "numeric":
                 compiled_bins.append(ScoringBin(
                     bin_id=bid,
@@ -97,10 +109,18 @@ def compile_scorecard(
                     is_other=be.get("is_other_bin", False),
                 ))
 
+        # Determine unmatched fallback policy from bin structure and feature contract.
+        has_other = any(b.is_other for b in compiled_bins)
+        if has_other:
+            unmatched_policy: Literal["error", "zero"] = "zero"
+        else:
+            unmatched_policy = "zero" if unknown_category_policy == "zero" else "error"
+
         variables.append(ScoringVariable(
             name=var,
             coefficient=coef,
             missing_policy=missing_policy,
+            unmatched_policy=unmatched_policy,
             bins=tuple(compiled_bins),
         ))
 

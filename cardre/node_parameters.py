@@ -7,8 +7,11 @@ rendering and parameter validation.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
+
+_VALID_BOOLEAN_STRINGS = frozenset({"true", "1", "yes", "false", "0", "no"})
 
 
 @dataclass
@@ -62,12 +65,18 @@ def normalize_node_params(
 ) -> dict[str, Any]:
     """Normalize raw persisted parameters against a declared schema.
 
-    Coerces types, applies defaults, and enforces constraints for declared
-    parameters.  Unknown keys are preserved (not rejected) for backward
-    compatibility with saved plans.  Node-local ``validate_params`` should
-    only handle cross-field or data-dependent rules after this.
+    Selects the declared method, coerces types, applies defaults through
+    coercion and constraint validation, enforces all constraints, and
+    rejects unknown keys.  Node-local ``validate_params`` should only
+    handle cross-field or data-dependent rules after this.
     """
-    method_id = raw.get("method", schema.default_method)
+    if schema.default_method:
+        method_id = raw.get("method", schema.default_method)
+    elif len(schema.methods) == 1:
+        method_id = raw.get("method", schema.methods[0].id)
+    else:
+        method_id = raw.get("method", "")
+
     method = next((m for m in schema.methods if m.id == method_id), None)
     if method is None:
         raise ValueError(
@@ -76,24 +85,34 @@ def normalize_node_params(
         )
 
     definitions = {p.name: p for p in method.params}
+    defined_names = set(definitions) | {"method"}
 
     result: dict[str, Any] = {}
-    for k, v in raw.items():
-        if k == "method":
-            continue
-        if k in definitions:
-            value = _coerce(definitions[k].kind, v)
-            _validate_constraint(k, value, definitions[k].constraint)
-            result[k] = value
-        else:
-            # Preserve unknown keys for backward compatibility with saved plans.
-            result[k] = v
+
+    # Reject unknown keys first — prevents silent typos.
+    for k in raw:
+        if k not in defined_names:
+            raise ValueError(
+                f"Unknown parameter {k!r} for {schema.node_type} method {method_id!r}"
+            )
+
+    # Process declared parameters (including method).
+    if "method" in raw:
+        result["method"] = raw["method"]
 
     for name, param in definitions.items():
-        if name not in result:
-            if param.required and param.default is None:
-                raise ValueError(f"Required parameter {name!r} is missing for {schema.node_type}")
-            result[name] = param.default
+        value = raw.get(name, param.default)
+
+        if value is not None:
+            value = _coerce(param.kind, value)
+            _validate_constraint(name, value, param.constraint)
+        elif param.required:
+            raise ValueError(
+                f"Required parameter {name!r} is missing for "
+                f"{schema.node_type} method {method_id!r}"
+            )
+
+        result[name] = value
 
     return result
 
@@ -109,9 +128,12 @@ def _coerce(kind: str, value: Any) -> Any:
         if isinstance(value, bool):
             return value
         if isinstance(value, str):
-            return value.lower() in ("true", "1", "yes")
+            lowered = value.lower()
+            if lowered not in _VALID_BOOLEAN_STRINGS:
+                raise ValueError(f"Cannot coerce {value!r} to boolean")
+            return lowered in ("true", "1", "yes")
         return bool(value)
-    return value  # "string" or "enum"
+    return value
 
 
 def _validate_constraint(name: str, value: Any, constraint: ParameterConstraint | None) -> None:
@@ -130,6 +152,14 @@ def _validate_constraint(name: str, value: Any, constraint: ParameterConstraint 
             raise ValueError(f"Parameter {name!r}: {value} <= exclusive_min={constraint.exclusive_min}")
         if constraint.exclusive_max is not None and value >= constraint.exclusive_max:
             raise ValueError(f"Parameter {name!r}: {value} >= exclusive_max={constraint.exclusive_max}")
+    if isinstance(value, (list, tuple)):
+        if constraint.min_items is not None and len(value) < constraint.min_items:
+            raise ValueError(f"Parameter {name!r}: length {len(value)} < min_items={constraint.min_items}")
+        if constraint.max_items is not None and len(value) > constraint.max_items:
+            raise ValueError(f"Parameter {name!r}: length {len(value)} > max_items={constraint.max_items}")
+    if constraint.pattern is not None and isinstance(value, str):
+        if not re.search(constraint.pattern, value):
+            raise ValueError(f"Parameter {name!r}: {value!r} does not match pattern {constraint.pattern!r}")
 
 
 __all__ = [
