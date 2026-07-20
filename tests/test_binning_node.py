@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from cardre.nodes.build.bins import AutomaticBinningNode
+from cardre.nodes.build.automatic import AutomaticBinningNode
 
 
 class TestAutomaticBinningNodeValidateParams:
@@ -100,7 +100,7 @@ class TestAutomaticBinningNodeRun:
 
     def test_run_optbinning_dispatch(self, monkeypatch):
         """Assert that method='optbinning' dispatches to _run_optbinning."""
-        import cardre.nodes.build.bins as bins_mod
+        import cardre.nodes.build.automatic as automatic_mod
         called = False
 
         def fake_optbinning(ctx):
@@ -109,7 +109,7 @@ class TestAutomaticBinningNodeRun:
             from cardre.execution.context import NodeOutput
             return NodeOutput(artifacts=[], metrics={})
 
-        monkeypatch.setattr(bins_mod, "_run_optbinning", fake_optbinning)
+        monkeypatch.setattr(automatic_mod, "_run_optbinning", fake_optbinning)
         node = AutomaticBinningNode()
         from cardre.execution.context import ExecutionContext
         node.run(

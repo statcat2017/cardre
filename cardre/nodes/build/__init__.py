@@ -1,9 +1,4 @@
-from cardre.nodes.build.bins import (
-    AutomaticBinningNode,
-    ManualBinningNode,
-    apply_manual_binning_overrides,
-    validate_manual_binning_overrides,
-)
+from cardre.nodes.build.automatic import AutomaticBinningNode
 from cardre.nodes.build.clustering import VariableClusteringNode
 from cardre.nodes.build.diagnostics import (
     CalibrationDiagnosticsNode,
@@ -14,6 +9,11 @@ from cardre.nodes.build.diagnostics import (
 from cardre.nodes.build.export import TechnicalManifestExportNode
 from cardre.nodes.build.features import CalculateWoeIvNode, WoeTransformTrainNode
 from cardre.nodes.build.freeze import FrozenScorecardBundleNode
+from cardre.nodes.build.manual import (
+    ManualBinningNode,
+    apply_manual_binning_overrides,
+    validate_manual_binning_overrides,
+)
 from cardre.nodes.build.models import (
     BuildSummaryReportNode,
     DummyFitNode,
