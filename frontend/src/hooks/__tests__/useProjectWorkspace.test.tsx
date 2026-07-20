@@ -48,8 +48,7 @@ describe("useProjectWorkspace", () => {
       name: "Test",
       cardre_version: "0.1.0",
       created_at: "",
-      root: "",
-    });
+    } as never);
     vi.spyOn(api, "forProject").mockReturnValue(
       mockScoped as unknown as ReturnType<typeof api.forProject>,
     );
