@@ -115,7 +115,7 @@ class StepRunner:
             if schema is not None:
                 try:
                     normalized_params = normalize_node_params(schema, dict(spec.params))
-                except ValueError as e:
+                except (ValueError, TypeError) as e:
                     raise ParameterValidationError(
                         f"Step {spec.step_id!r} parameter normalization "
                         f"failed: {e}",

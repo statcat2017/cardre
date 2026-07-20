@@ -61,6 +61,8 @@ def classify_step_failure(exc_value: BaseException | None, traceback_str: str) -
                 category = cat
                 break
     code = _CODE_MAP.get(category, _DEFAULT_CODE)
+    if isinstance(exc_value, CardreError) and exc_value.code:
+        code = exc_value.code
     exc_type_name = type(exc_value).__name__ if exc_value is not None else "Unknown"
     return {
         "code": code,

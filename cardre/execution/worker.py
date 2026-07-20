@@ -48,7 +48,6 @@ class RunRequest:
     run_id: str
     run_scope: Literal["full_plan", "branch"] = "full_plan"
     branch_id: str | None = None
-    target_step_id: str | None = None
     force: bool = False
 
     def worker_name(self) -> str:

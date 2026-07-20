@@ -110,7 +110,6 @@ class RunCoordinator:
         *,
         run_scope: Literal["full_plan", "branch"] = "full_plan",
         branch_id: str | None = None,
-        target_step_id: str | None = None,
         force: bool = False,
         sync: bool = False,
         requested_by: str | None = None,
@@ -147,7 +146,6 @@ class RunCoordinator:
             plan_version_id=plan_version_id,
             run_scope=run_scope,
             branch_id=branch_id,
-            target_step_id=target_step_id,
             force=force,
             requested_by=requested_by,
             request_id=request_id,
@@ -163,7 +161,7 @@ class RunCoordinator:
             run_id = self._create_persisted_run(
                 plan_version_id=plan_version_id,
                 run_scope=run_scope, branch_id=branch_id,
-                target_step_id=target_step_id, force=force,
+                force=force,
                 requested_by=requested_by, request_id=request_id,
             )
         except CardreError as exc:
@@ -174,9 +172,9 @@ class RunCoordinator:
             raise
 
         if sync:
-            return self._execute_sync(run_id, plan_version_id, run_scope, branch_id, target_step_id, force)
+            return self._execute_sync(run_id, plan_version_id, run_scope, branch_id, force)
 
-        return self._dispatch_async(run_id, plan_version_id, run_scope, branch_id, target_step_id, force)
+        return self._dispatch_async(run_id, plan_version_id, run_scope, branch_id, force)
 
     def execute_created_run(self, run_id: str) -> RunSummary:
         """Execute a previously created run, recovering request fields from the DB.
@@ -212,7 +210,6 @@ class RunCoordinator:
             plan_version_id=plan_version_id,
             run_scope=run["run_scope"],
             branch_id=run["branch_id"],
-            target_step_id=run["target_step_id"],
             force=bool(run["force"]),
         )
 
@@ -258,7 +255,6 @@ class RunCoordinator:
         plan_version_id: str,
         run_scope: str,
         branch_id: str | None,
-        target_step_id: str | None,
         force: bool,
         requested_by: str | None,
         request_id: str | None,
@@ -282,7 +278,6 @@ class RunCoordinator:
         plan_version_id: str,
         run_scope: str,
         branch_id: str | None,
-        target_step_id: str | None,
         force: bool,
     ) -> RunSummary:
         from cardre.domain.run import RunScope
@@ -339,16 +334,16 @@ class RunCoordinator:
 
     def _execute_sync(
         self, run_id: str, plan_version_id: str,
-        run_scope: str, branch_id: str | None, target_step_id: str | None,
+        run_scope: str, branch_id: str | None,
         force: bool,
     ) -> RunSummary:
         return self._execute_existing_running_run(
-            run_id, plan_version_id, run_scope, branch_id, target_step_id, force,
+            run_id, plan_version_id, run_scope, branch_id, force,
         )
 
     def _dispatch_async(
         self, run_id: str, plan_version_id: str,
-        run_scope: str, branch_id: str | None, target_step_id: str | None,
+        run_scope: str, branch_id: str | None,
         force: bool,
     ) -> RunSummary:
         from cardre.execution.worker import RunRequest
@@ -360,7 +355,6 @@ class RunCoordinator:
             run_id=run_id,
             run_scope=run_scope,  # type: ignore[arg-type]
             branch_id=branch_id,
-            target_step_id=target_step_id,
             force=force,
         )
         try:
@@ -395,14 +389,13 @@ class RunCoordinator:
         plan_version_id: str,
         run_scope: str,
         branch_id: str | None,
-        target_step_id: str | None,
         force: bool,
         requested_by: str | None = None,
         request_id: str | None = None,
     ) -> str:
         """Create a run in the database with all request fields persisted.
 
-        Request fields (run_scope, branch_id, target_step_id, force,
+        Request fields (run_scope, branch_id, force,
         requested_by, request_id) are stored in dedicated columns.
         ``metadata_json`` is reserved for execution metadata only.
         """
@@ -440,7 +433,6 @@ class RunCoordinator:
                 plan_version_id,
                 run_scope=run_scope,
                 branch_id=branch_id,
-                target_step_id=target_step_id,
                 force=force,
                 requested_by=requested_by,
                 request_id=request_id,

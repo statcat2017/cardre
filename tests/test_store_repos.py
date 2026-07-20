@@ -462,7 +462,7 @@ class TestSchemaMigration:
             "CREATE TABLE runs ("
             "run_id TEXT PRIMARY KEY, plan_version_id TEXT, status TEXT NOT NULL, "
             "run_scope TEXT NOT NULL DEFAULT 'full_plan', branch_id TEXT, "
-            "target_step_id TEXT, force INTEGER NOT NULL DEFAULT 0, "
+            "force INTEGER NOT NULL DEFAULT 0, "
             "requested_by TEXT, request_id TEXT, created_at TEXT NOT NULL, "
             "queued_at TEXT, started_at TEXT NOT NULL, finished_at TEXT, "
             "heartbeat_at TEXT, metadata_json TEXT NOT NULL DEFAULT '{}')"

@@ -11,7 +11,7 @@ def test_runs_table_has_request_columns(tmp_path):
     s.close()
     required = {
         "run_id", "plan_version_id", "status",
-        "run_scope", "branch_id", "target_step_id", "force",
+        "run_scope", "branch_id", "force",
         "requested_by", "request_id",
         "created_at", "queued_at", "started_at", "finished_at",
         "heartbeat_at",
