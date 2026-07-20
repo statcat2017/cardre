@@ -6,8 +6,18 @@ import { api } from "../../api/client";
 import { useProjectWorkspace } from "../useProjectWorkspace";
 
 const SAMPLE_RUNS = [
-  { run_id: "r-1", plan_version_id: "v-empty", status: "succeeded", started_at: "2024-01-01T00:00:00" },
-  { run_id: "r-2", plan_version_id: "v-other", status: "running", started_at: "2024-01-01T00:00:00" },
+  {
+    run_id: "r-1",
+    plan_version_id: "v-empty",
+    status: "succeeded",
+    started_at: "2024-01-01T00:00:00",
+  },
+  {
+    run_id: "r-2",
+    plan_version_id: "v-other",
+    status: "running",
+    started_at: "2024-01-01T00:00:00",
+  },
 ];
 
 function createWrapper() {
@@ -33,24 +43,46 @@ describe("useProjectWorkspace", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(api, "getProject").mockResolvedValue({ project_id: "p-1", name: "Test", cardre_version: "0.1.0", created_at: "", root: "" });
-    vi.spyOn(api, "forProject").mockReturnValue(mockScoped as unknown as ReturnType<typeof api.forProject>);
+    vi.spyOn(api, "getProject").mockResolvedValue({
+      project_id: "p-1",
+      name: "Test",
+      cardre_version: "0.1.0",
+      created_at: "",
+      root: "",
+    });
+    vi.spyOn(api, "forProject").mockReturnValue(
+      mockScoped as unknown as ReturnType<typeof api.forProject>,
+    );
   });
 
   it("shows empty visibleRuns when selected version has no runs", async () => {
     mockScoped.listRuns.mockResolvedValue({ runs: SAMPLE_RUNS });
-    mockScoped.listPlans.mockResolvedValue({ plans: [{ plan_id: "pl-1", name: "Plan", project_id: "p-1", created_at: "" }] });
+    mockScoped.listPlans.mockResolvedValue({
+      plans: [{ plan_id: "pl-1", name: "Plan", project_id: "p-1", created_at: "" }],
+    });
     mockScoped.listPlanVersions.mockResolvedValue({
-      versions: [{ plan_version_id: "v-empty", plan_id: "pl-1", is_committed: true, version_number: 1, created_at: "" }],
+      versions: [
+        {
+          plan_version_id: "v-empty",
+          plan_id: "pl-1",
+          is_committed: true,
+          version_number: 1,
+          created_at: "",
+        },
+      ],
     });
 
-    const { result } = renderHook(() => useProjectWorkspace({ projectId: "p-1" }), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useProjectWorkspace({ projectId: "p-1" }), {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => {
       expect(result.current.effectiveSelectedPlanId).toBe("pl-1");
     });
 
-    act(() => { result.current.setSelectedVersionId("v-empty"); });
+    act(() => {
+      result.current.setSelectedVersionId("v-empty");
+    });
 
     await waitFor(() => {
       expect(result.current.effectiveSelectedVersionId).toBe("v-empty");
@@ -62,25 +94,41 @@ describe("useProjectWorkspace", () => {
 
   it("selects a run from visible runs and loads details", async () => {
     mockScoped.listRuns.mockResolvedValue({ runs: SAMPLE_RUNS });
-    mockScoped.listPlans.mockResolvedValue({ plans: [{ plan_id: "pl-1", name: "Plan", project_id: "p-1", created_at: "" }] });
+    mockScoped.listPlans.mockResolvedValue({
+      plans: [{ plan_id: "pl-1", name: "Plan", project_id: "p-1", created_at: "" }],
+    });
     mockScoped.listPlanVersions.mockResolvedValue({
-      versions: [{ plan_version_id: "v-other", plan_id: "pl-1", is_committed: true, version_number: 1, created_at: "" }],
+      versions: [
+        {
+          plan_version_id: "v-other",
+          plan_id: "pl-1",
+          is_committed: true,
+          version_number: 1,
+          created_at: "",
+        },
+      ],
     });
     mockScoped.getRun.mockResolvedValue(SAMPLE_RUNS[1]);
 
-    const { result } = renderHook(() => useProjectWorkspace({ projectId: "p-1" }), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useProjectWorkspace({ projectId: "p-1" }), {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => {
       expect(result.current.effectiveSelectedPlanId).toBe("pl-1");
     });
 
-    act(() => { result.current.setSelectedVersionId("v-other"); });
+    act(() => {
+      result.current.setSelectedVersionId("v-other");
+    });
 
     await waitFor(() => {
       expect(result.current.effectiveSelectedVersionId).toBe("v-other");
     });
 
-    act(() => { result.current.setSelectedRunId("r-2"); });
+    act(() => {
+      result.current.setSelectedRunId("r-2");
+    });
 
     await waitFor(() => {
       expect(result.current.effectiveSelectedRunId).toBe("r-2");
