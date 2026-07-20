@@ -58,7 +58,7 @@ def bin_numeric(
     while len(edges) < 2 and n > 1:
         mx = col_vals.max()
         if mx is not None:
-            edges.append(float(mx))
+            edges.append(float(mx))  # type: ignore[arg-type]
 
     bins: list[dict[str, Any]] = []
     bin_counter = 0
