@@ -50,7 +50,7 @@ from cardre.nodes.fairness import (
     FairnessReportNode,
     ProxyRiskReportNode,
 )
-from cardre.nodes.feature_selection import (
+from cardre.nodes.selection import (
     FeatureSelectionEmbeddedNode,
     FeatureSelectionFilterNode,
     ResampleTrainingDataNode,

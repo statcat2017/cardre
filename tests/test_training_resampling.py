@@ -129,10 +129,10 @@ def _make_context(store, pv_id, run_id, train_art, params=None):
 class TestRandomResamplingProvenance:
     """Random resampling writes _is_synthetic_row correctly."""
 
-    NODE_PATH = "cardre.nodes.feature_selection.ResampleTrainingDataNode"
+    NODE_PATH = "cardre.nodes.selection.ResampleTrainingDataNode"
 
     def _run(self, store, pv_id, run_id, train_art, meta_id, params):
-        from cardre.nodes.feature_selection import ResampleTrainingDataNode
+        from cardre.nodes.selection import ResampleTrainingDataNode
         node = ResampleTrainingDataNode()
         ctx = _make_context(store, pv_id, run_id, train_art, params)
         return node.run(ctx)
@@ -234,7 +234,7 @@ class TestRandomResamplingProvenance:
         # Build context pointing at the second artifact
         ctx = _make_context(store, pv_id, run_id, second_train_art,
                            {"strategy": "undersample_majority", "sampling_ratio": 0.5})
-        from cardre.nodes.feature_selection import ResampleTrainingDataNode
+        from cardre.nodes.selection import ResampleTrainingDataNode
         second_result = ResampleTrainingDataNode().run(ctx)
 
         second_art = next(a for a in second_result.artifacts if a.role == "train")
@@ -256,14 +256,14 @@ class TestRandomResamplingProvenance:
 class TestSmoteProvenance:
     """SMOTE writes _is_synthetic_row correctly when imblearn is available."""
 
-    SMOTE_NODE_PATH = "cardre.nodes.feature_selection.SmoteTrainingDataNode"
+    SMOTE_NODE_PATH = "cardre.nodes.selection.SmoteTrainingDataNode"
 
     @pytest.mark.skipif(
         not importlib.util.find_spec("imblearn"),
         reason="SMOTE requires imbalanced-learn",
     )
     def test_smote_writes_flag_column(self, tmp_path):
-        from cardre.nodes.feature_selection import SmoteTrainingDataNode
+        from cardre.nodes.selection import SmoteTrainingDataNode
         node = SmoteTrainingDataNode()
         store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
         ctx = _make_context(store, pv_id, run_id, train_art,
@@ -281,7 +281,7 @@ class TestSmoteProvenance:
         reason="SMOTE requires imbalanced-learn",
     )
     def test_smote_synthetic_matches_report(self, tmp_path):
-        from cardre.nodes.feature_selection import SmoteTrainingDataNode
+        from cardre.nodes.selection import SmoteTrainingDataNode
         node = SmoteTrainingDataNode()
         store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
         ctx = _make_context(store, pv_id, run_id, train_art,
@@ -298,7 +298,7 @@ class TestSmoteProvenance:
         reason="SMOTE requires imbalanced-learn",
     )
     def test_smote_original_rows_are_false(self, tmp_path):
-        from cardre.nodes.feature_selection import SmoteTrainingDataNode
+        from cardre.nodes.selection import SmoteTrainingDataNode
         node = SmoteTrainingDataNode()
         store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
         ctx = _make_context(store, pv_id, run_id, train_art,
