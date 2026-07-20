@@ -126,7 +126,6 @@ class RunWorker:
                     request.run_id,
                     execution_mode=request.run_scope,
                     branch_id=request.branch_id,
-                    target_step_id=request.target_step_id,
                 ).finalise(RunStatus.FAILED, diagnostic=diagnostic)
             else:
                 RunRepository(store).append_diagnostic(request.run_id, diagnostic)

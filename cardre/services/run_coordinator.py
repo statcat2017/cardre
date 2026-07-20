@@ -285,6 +285,18 @@ class RunCoordinator:
         target_step_id: str | None,
         force: bool,
     ) -> RunSummary:
+        from cardre.domain.run import RunScope
+
+        try:
+            RunScope(run_scope)
+        except ValueError:
+            raise CardreError(
+                f"Invalid run_scope={run_scope!r} in persisted run {run_id}. "
+                "This run was created by an older version and cannot be executed.",
+                code="RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH",
+                context={"run_id": run_id, "run_scope": run_scope},
+            ) from None
+
         execution_mode = {
             "branch": "branch",
             "full_plan": "full_plan",
@@ -303,7 +315,6 @@ class RunCoordinator:
                 run_id,
                 execution_mode=execution_mode,
                 branch_id=branch_id,
-                target_step_id=target_step_id,
             ) as lifecycle:
                 result = executor.run_plan_version(
                     plan_version_id, run_id,
@@ -371,7 +382,6 @@ class RunCoordinator:
                 run_id,
                 execution_mode=run_scope,
                 branch_id=branch_id,
-                target_step_id=target_step_id,
             ).finalise(RunStatus.FAILED, diagnostic=diagnostic)
             raise
         return self.get_summary(run_id)
@@ -475,7 +485,6 @@ class RunCoordinator:
                     existing_run["run_id"],
                     execution_mode=existing_run.get("run_scope", "full_plan"),
                     branch_id=existing_run.get("branch_id"),
-                    target_step_id=existing_run.get("target_step_id"),
                 ).finalise(RunStatus.INTERRUPTED, diagnostic=diag)
                 interrupted.append(existing_run["run_id"])
 

@@ -113,7 +113,19 @@ class StepRunner:
 
             schema = node.parameter_schema()
             if schema is not None:
-                normalized_params = normalize_node_params(schema, dict(spec.params))
+                try:
+                    normalized_params = normalize_node_params(schema, dict(spec.params))
+                except ValueError as e:
+                    raise ParameterValidationError(
+                        f"Step {spec.step_id!r} parameter normalization "
+                        f"failed: {e}",
+                        context={
+                            "plan_version_id": plan_version_id,
+                            "step_id": spec.step_id,
+                            "node_type": spec.node_type,
+                            "error": str(e),
+                        },
+                    ) from e
             else:
                 normalized_params = dict(spec.params)
 

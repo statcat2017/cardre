@@ -8,7 +8,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
-from cardre.domain.run import _VALID_TRANSITIONS, RunStatus
+from cardre.domain.run import _VALID_TRANSITIONS, RunScope, RunStatus
 from cardre.store._base import _branch_filter
 
 if TYPE_CHECKING:
@@ -64,6 +64,7 @@ class RunRepository:
         requested_by: str | None = None,
         request_id: str | None = None,
     ) -> str:
+        RunScope(run_scope)  # validate — raises ValueError for unknown scopes
         run_id = str(uuid.uuid4())
         now = utc_now_iso()
         self._store.execute(
