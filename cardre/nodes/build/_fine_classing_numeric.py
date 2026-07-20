@@ -66,10 +66,7 @@ def bin_numeric(
     for i in range(len(edges) - 1):
         lower = edges[i]
         upper = edges[i + 1]
-        if i == 0:
-            mask = pl.col(col) >= lower
-        else:
-            mask = pl.col(col) > lower
+        mask = pl.col(col) >= lower if i == 0 else pl.col(col) > lower
         mask = mask & (pl.col(col) <= upper)
 
         bin_df = df.filter(mask)
