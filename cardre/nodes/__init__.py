@@ -50,12 +50,6 @@ from cardre.nodes.fairness import (
     FairnessReportNode,
     ProxyRiskReportNode,
 )
-from cardre.nodes.feature_selection import (
-    FeatureSelectionEmbeddedNode,
-    FeatureSelectionFilterNode,
-    ResampleTrainingDataNode,
-    SmoteTrainingDataNode,
-)
 from cardre.nodes.ml_models import (
     DecisionTreeNode,
     GradientBoostingClassifierNode,
@@ -75,6 +69,12 @@ from cardre.nodes.reject_inference import (
     DefineRejectPopulationNode,
     RejectInferenceAugmentationNode,
     RejectInferenceNoneNode,
+)
+from cardre.nodes.selection import (
+    FeatureSelectionEmbeddedNode,
+    FeatureSelectionFilterNode,
+    ResampleTrainingDataNode,
+    SmoteTrainingDataNode,
 )
 from cardre.nodes.tuning import (
     HyperparameterTuningNode,

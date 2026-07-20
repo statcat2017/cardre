@@ -675,108 +675,96 @@ class VariableClusteringNode(NodeType):
                 })
             return clusters_out, singleton_variables, warnings_list
 
-        try:
-            if input_representation == "woe_train":
-                if bin_def is None or woe_table is None:
+        if input_representation == "woe_train":
+            if bin_def is None or woe_table is None:
+                for col in candidates:
+                    singleton_variables.append(col)
+                warnings_list.append({
+                    "code": "WOE_EVIDENCE_MISSING",
+                    "severity": "warning",
+                    "variable_a": "",
+                    "variable_b": "",
+                    "message": "WOE train representation requested but bin definition or WOE table not found; using singleton pass-through on raw variables",
+                })
+                return clusters_out, singleton_variables, warnings_list
+            woe_exprs = self._build_woe_columns(df, bin_def, woe_table)
+            if woe_exprs:
+                woe_df = df.with_columns(woe_exprs)
+                woe_cols = [str(e.meta.output_name) for e in woe_exprs]
+                woe_cols = [c for c in woe_cols if c.replace("_woe", "") in candidates]
+                woe_cols = woe_cols[:candidate_limit]
+                if len(woe_cols) < 2:
                     for col in candidates:
                         singleton_variables.append(col)
                     warnings_list.append({
-                        "code": "WOE_EVIDENCE_MISSING",
+                        "code": "INSUFFICIENT_WOE_COLUMNS",
                         "severity": "warning",
                         "variable_a": "",
                         "variable_b": "",
-                        "message": "WOE train representation requested but bin definition or WOE table not found; using singleton pass-through on raw variables",
+                        "message": "Fewer than 2 WOE-transformed columns available; using singleton pass-through",
                     })
-                    return clusters_out, singleton_variables, warnings_list
-                woe_exprs = self._build_woe_columns(df, bin_def, woe_table)
-                if woe_exprs:
-                    woe_df = df.with_columns(woe_exprs)
-                    woe_cols = [str(e.meta.output_name) for e in woe_exprs]
-                    woe_cols = [c for c in woe_cols if c.replace("_woe", "") in candidates]
-                    woe_cols = woe_cols[:candidate_limit]
-                    if len(woe_cols) < 2:
-                        for col in candidates:
-                            singleton_variables.append(col)
-                        warnings_list.append({
-                            "code": "INSUFFICIENT_WOE_COLUMNS",
-                            "severity": "warning",
-                            "variable_a": "",
-                            "variable_b": "",
-                            "message": "Fewer than 2 WOE-transformed columns available; using singleton pass-through",
-                        })
-                    else:
-                        corr_matrix, corr_warnings = self._compute_correlation_matrix(
-                            woe_df, woe_cols, similarity_metric, missing_handling, absolute_correlation,
-                            minimum_pair_count=minimum_pair_count,
+                else:
+                    corr_matrix, corr_warnings = self._compute_correlation_matrix(
+                        woe_df, woe_cols, similarity_metric, missing_handling, absolute_correlation,
+                        minimum_pair_count=minimum_pair_count,
+                    )
+                    warnings_list.extend(corr_warnings)
+                    woe_candidate_map: dict[str, str] = {c: c.replace("_woe", "") for c in woe_cols}
+                    iv_map_woe: dict[str, float] = {wc: iv_map.get(oc, 0.0) for wc, oc in woe_candidate_map.items()}
+                    missing_map_woe: dict[str, float] = {wc: missing_map.get(oc, 0.0) for wc, oc in woe_candidate_map.items()}
+
+                    if method == "hierarchical":
+                        clusters_out, singleton_variables, cluster_warnings = self._hierarchical_clusters(
+                            woe_cols, corr_matrix, cast(str, linkage), threshold,
+                            iv_map_woe, missing_map_woe, representative_rule,
                         )
-                        warnings_list.extend(corr_warnings)
-                        woe_candidate_map: dict[str, str] = {c: c.replace("_woe", "") for c in woe_cols}
-                        iv_map_woe: dict[str, float] = {wc: iv_map.get(oc, 0.0) for wc, oc in woe_candidate_map.items()}
-                        missing_map_woe: dict[str, float] = {wc: missing_map.get(oc, 0.0) for wc, oc in woe_candidate_map.items()}
+                    else:
+                        clusters_out, singleton_variables, cluster_warnings = self._correlation_threshold_clusters(
+                            woe_cols, corr_matrix, threshold,
+                            iv_map_woe, missing_map_woe, representative_rule,
+                        )
+                    warnings_list.extend(cluster_warnings)
 
-                        if method == "hierarchical":
-                            clusters_out, singleton_variables, cluster_warnings = self._hierarchical_clusters(
-                                woe_cols, corr_matrix, cast(str, linkage), threshold,
-                                iv_map_woe, missing_map_woe, representative_rule,
-                            )
-                        else:
-                            clusters_out, singleton_variables, cluster_warnings = self._correlation_threshold_clusters(
-                                woe_cols, corr_matrix, threshold,
-                                iv_map_woe, missing_map_woe, representative_rule,
-                            )
-                        warnings_list.extend(cluster_warnings)
-
-                        for cl in clusters_out:
-                            mapped_vars: list[dict[str, Any]] = []
-                            for mv in cl["variables"]:
-                                orig = mv["variable"].replace("_woe", "")
-                                mapped_vars.append({
-                                    "variable": orig,
-                                    "iv": mv["iv"],
-                                    "missing_rate": mv["missing_rate"],
-                                })
-                            cl["variables"] = mapped_vars
-                            if cl.get("representative_suggestion"):
-                                cl["representative_suggestion"] = cl["representative_suggestion"].replace("_woe", "")
-                        singleton_variables = [v.replace("_woe", "") for v in singleton_variables]
-                else:
-                    for col in candidates:
-                        singleton_variables.append(col)
-                    warnings_list.append({
-                        "code": "NO_WOE_COLUMNS",
-                        "severity": "warning",
-                        "variable_a": "",
-                        "variable_b": "",
-                        "message": "No WOE-transformed columns could be built; using singleton pass-through on raw variables",
-                    })
+                    for cl in clusters_out:
+                        mapped_vars: list[dict[str, Any]] = []
+                        for mv in cl["variables"]:
+                            orig = mv["variable"].replace("_woe", "")
+                            mapped_vars.append({
+                                "variable": orig,
+                                "iv": mv["iv"],
+                                "missing_rate": mv["missing_rate"],
+                            })
+                        cl["variables"] = mapped_vars
+                        if cl.get("representative_suggestion"):
+                            cl["representative_suggestion"] = cl["representative_suggestion"].replace("_woe", "")
+                    singleton_variables = [v.replace("_woe", "") for v in singleton_variables]
             else:
-                corr_matrix, corr_warnings = self._compute_correlation_matrix(
-                    df, candidates, similarity_metric, missing_handling, absolute_correlation,
-                    minimum_pair_count=minimum_pair_count,
+                for col in candidates:
+                    singleton_variables.append(col)
+                warnings_list.append({
+                    "code": "NO_WOE_COLUMNS",
+                    "severity": "warning",
+                    "variable_a": "",
+                    "variable_b": "",
+                    "message": "No WOE-transformed columns could be built; using singleton pass-through on raw variables",
+                })
+        else:
+            corr_matrix, corr_warnings = self._compute_correlation_matrix(
+                df, candidates, similarity_metric, missing_handling, absolute_correlation,
+                minimum_pair_count=minimum_pair_count,
+            )
+            warnings_list.extend(corr_warnings)
+
+            if method == "hierarchical":
+                clusters_out, singleton_variables, cluster_warnings = self._hierarchical_clusters(
+                    candidates, corr_matrix, cast(str, linkage), threshold,
+                    iv_map, missing_map, representative_rule,
                 )
-                warnings_list.extend(corr_warnings)
-
-                if method == "hierarchical":
-                    clusters_out, singleton_variables, cluster_warnings = self._hierarchical_clusters(
-                        candidates, corr_matrix, cast(str, linkage), threshold,
-                        iv_map, missing_map, representative_rule,
-                    )
-                else:
-                    clusters_out, singleton_variables, cluster_warnings = self._correlation_threshold_clusters(
-                        candidates, corr_matrix, threshold,
-                        iv_map, missing_map, representative_rule,
-                    )
-                warnings_list.extend(cluster_warnings)
-
-        except ValueError:
-            for col in candidates:
-                singleton_variables.append(col)
-            warnings_list.append({
-                "code": "CLUSTERING_FAILED",
-                "severity": "warning",
-                "variable_a": "",
-                "variable_b": "",
-                "message": "Clustering computation failed; using singleton pass-through",
-            })
+            else:
+                clusters_out, singleton_variables, cluster_warnings = self._correlation_threshold_clusters(
+                    candidates, corr_matrix, threshold,
+                    iv_map, missing_map, representative_rule,
+                )
+            warnings_list.extend(cluster_warnings)
 
         return clusters_out, singleton_variables, warnings_list

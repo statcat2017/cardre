@@ -203,10 +203,12 @@ def _build_python_scorer_source(
                 parts: list[str] = []
                 if b.lower is not None:
                     op = ">=" if b.lower_inclusive else ">"
-                    parts.append(f"_val {op} {b.lower!r}")
+                    lower_str = "float('-inf')" if b.lower == float("-inf") else repr(b.lower)
+                    parts.append(f"_val {op} {lower_str}")
                 if b.upper is not None:
                     op = "<=" if b.upper_inclusive else "<"
-                    parts.append(f"_val {op} {b.upper!r}")
+                    upper_str = "float('inf')" if b.upper == float("inf") else repr(b.upper)
+                    parts.append(f"_val {op} {upper_str}")
                 cond = " and ".join(parts)
                 woe_var_lines.append(f"        {kw} {cond}:")
                 woe_var_lines.append(f"            _woe_{var} = {b.woe!r}")
@@ -380,10 +382,12 @@ def _build_sql_scorer_source(
                 cond_parts: list[str] = []
                 if b.lower is not None:
                     op = ">=" if b.lower_inclusive else ">"
-                    cond_parts.append(f"{var} {op} {b.lower!r}")
+                    lower_str = "-1e100" if b.lower == float("-inf") else repr(b.lower)
+                    cond_parts.append(f"{var} {op} {lower_str}")
                 if b.upper is not None:
                     op = "<=" if b.upper_inclusive else "<"
-                    cond_parts.append(f"{var} {op} {b.upper!r}")
+                    upper_str = "1e100" if b.upper == float("inf") else repr(b.upper)
+                    cond_parts.append(f"{var} {op} {upper_str}")
                 cond = " AND ".join(cond_parts)
                 case_lines.append(f"        WHEN {cond} THEN {b.woe!r}")
             else:
