@@ -67,7 +67,6 @@ def bin_numeric(
         lower = edges[i]
         upper = edges[i + 1]
         if i == 0:
-            # First bin includes the minimum value
             mask = pl.col(col) >= lower
         else:
             mask = pl.col(col) > lower

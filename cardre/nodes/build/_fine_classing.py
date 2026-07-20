@@ -9,8 +9,8 @@ from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
 from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.build._fine_classing_numeric import bin_numeric
 from cardre.nodes.build._fine_classing_categorical import bin_categorical
+from cardre.nodes.build._fine_classing_numeric import bin_numeric
 
 
 def run_fine_classing(context: ExecutionContext) -> NodeOutput:

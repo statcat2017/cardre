@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 import polars as pl
 
 from cardre.artifacts import write_json_artifact, write_parquet_artifact

@@ -3,9 +3,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import numpy as np
-import polars as pl
-
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput

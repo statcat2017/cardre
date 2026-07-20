@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
-import polars as pl
 from polars.exceptions import ComputeError, SchemaError
 
 from cardre._evidence.kinds import EvidenceKind

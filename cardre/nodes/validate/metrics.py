@@ -13,7 +13,6 @@ from sklearn.metrics import (
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import (
     SCHEMA_APPLY_MODEL_EVIDENCE,
-    SCHEMA_CUTOFF_ANALYSIS,
     SCHEMA_VALIDATION_METRICS,
 )
 from cardre.artifacts import write_json_artifact
@@ -28,10 +27,10 @@ from cardre.node_parameters import (
 )
 from cardre.nodes.contracts import NodeType
 from cardre.nodes.validate._metrics_calculation import (
-    derive_binary_target,
     calibration_summary,
-    score_distribution,
+    derive_binary_target,
     population_stability_index,
+    score_distribution,
 )
 
 
@@ -262,7 +261,6 @@ class ValidationMetricsNode(NodeType):
 
             y_prob = y_prob_all[known_mask]
             scores = scores_series_all.to_numpy()[known_mask]
-            scores_series = pl.Series(scores)
 
             n_bad = int(sum(y_bin))
             n_good = int(len(y_bin) - n_bad)
@@ -422,7 +420,6 @@ class ValidationMetricsNode(NodeType):
         gates: list[JsonDict], all_psi_warnings: list[JsonDict],
         bundle_art: Any, score_evidence_art: Any,
     ) -> JsonDict:
-        from cardre._evidence.schemas import SCHEMA_CUTOFF_ANALYSIS
 
         payload: JsonDict = {
             "schema_version": SCHEMA_VALIDATION_METRICS,
@@ -436,6 +433,9 @@ class ValidationMetricsNode(NodeType):
         }
         for role, m in roles_metrics.items():
             payload["row_counts"][role] = m.get("row_count", 0)
+
+        all_failing = [g for g in gates if g.get("status") == "fail"]
+        payload["status"] = "failed" if all_failing else "passed"
 
         if all_psi_warnings:
             payload["psi_warnings"] = all_psi_warnings
