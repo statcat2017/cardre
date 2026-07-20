@@ -80,47 +80,43 @@ def derive_binary_target(
 def calibration_summary(
     frame: pl.DataFrame, target_column: str, bad_list: list[str], n_bins: int = 10,
 ) -> JsonDict:
-    calib: JsonDict = {}
-    try:
-        from sklearn.calibration import calibration_curve
+    import polars as pl
 
-        all_str = frame[target_column].cast(pl.String)
-        y_true = frame.with_columns(
-            pl.when(all_str.is_in(bad_list)).then(1).otherwise(0).alias("_y_calib")
-        )["_y_calib"].to_numpy()
-        y_prob = frame["predicted_bad_probability"].to_numpy()
+    calib_df = frame.with_columns(
+        pl.col("predicted_bad_probability").qcut(n_bins, allow_duplicates=True).alias("_calib_bin"),
+        pl.when(pl.col(target_column).cast(pl.String).is_in(bad_list))
+        .then(pl.lit(1)).otherwise(pl.lit(0)).alias("_y_binary"),
+    ).group_by("_calib_bin", maintain_order=True).agg([
+        pl.len().alias("count"),
+        pl.col("predicted_bad_probability").mean().alias("avg_predicted_probability"),
+        pl.col("_y_binary").mean().alias("actual_bad_rate"),
+    ]).with_columns(
+        pl.col("avg_predicted_probability").round(6),
+        pl.col("actual_bad_rate").round(6),
+    )
 
-        if len(y_true) < n_bins:
-            return {"note": f"Too few rows ({len(y_true)}) for calibration."}
-
-        prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=n_bins, strategy="quantile")
-        calib = {
-            "prob_true": [float(v) for v in prob_true],
-            "prob_pred": [float(v) for v in prob_pred],
-            "n_bins": n_bins,
-            "strategy": "quantile",
-        }
-    except Exception:
-        calib = {"note": "Calibration computation failed."}
-    return calib
+    bins: list[JsonDict] = []
+    for row in calib_df.iter_rows():
+        bins.append({
+            "bin": len(bins),
+            "count": row[1],
+            "avg_predicted_probability": row[2],
+            "actual_bad_rate": row[3],
+        })
+    return {"bins": bins}
 
 
 def score_distribution(scores: np.ndarray) -> JsonDict:
-    if len(scores) == 0:
-        return {}
     return {
-        "min": round(float(scores.min()), 6),
-        "max": round(float(scores.max()), 6),
-        "mean": round(float(scores.mean()), 6),
-        "median": round(float(np.median(scores)), 6),
-        "std": round(float(scores.std()), 6),
-        "p1": round(float(np.percentile(scores, 1)), 6),
-        "p5": round(float(np.percentile(scores, 5)), 6),
-        "p25": round(float(np.percentile(scores, 25)), 6),
-        "p75": round(float(np.percentile(scores, 75)), 6),
-        "p95": round(float(np.percentile(scores, 95)), 6),
-        "p99": round(float(np.percentile(scores, 99)), 6),
-        "n": int(len(scores)),
+        "mean": round(float(np.mean(scores)), 2),
+        "median": round(float(np.median(scores)), 2),
+        "min": round(float(np.min(scores)), 2),
+        "max": round(float(np.max(scores)), 2),
+        "std": round(float(np.std(scores)), 2),
+        "p5": round(float(np.percentile(scores, 5)), 2),
+        "p25": round(float(np.percentile(scores, 25)), 2),
+        "p75": round(float(np.percentile(scores, 75)), 2),
+        "p95": round(float(np.percentile(scores, 95)), 2),
     }
 
 

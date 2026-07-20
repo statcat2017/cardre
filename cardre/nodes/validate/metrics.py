@@ -350,8 +350,7 @@ class ValidationMetricsNode(NodeType):
                 "warnings": warnings,
             }
 
-            if has_score:
-                psi_data[role] = scores_series
+            psi_data[role] = scores_series
 
         return roles_metrics, psi_data, gates
 
