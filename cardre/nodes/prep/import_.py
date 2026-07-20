@@ -67,6 +67,7 @@ class ImportTabularDatasetNode(NodeType):
                             name="delimiter",
                             label="Delimiter",
                             kind="string",
+                            required=False,
                             help_text="Column delimiter for text files. Inferred from format if omitted",
                         ),
                         ParameterDefinition(
@@ -102,6 +103,7 @@ class ImportTabularDatasetNode(NodeType):
                             name="max_rows",
                             label="Max Rows",
                             kind="integer",
+                            required=False,
                             help_text="Maximum rows to read (None = no limit). Useful for sampling large files.",
                         ),
                     ],

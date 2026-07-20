@@ -441,7 +441,6 @@ class RunManifest(BaseModel):
     cardre_version: str = "0.1.0"
     pathway_hash: str = ""
     artifact_root: str = ""
-    target_step_id: str | None = None
     in_scope_step_ids: list[str] = Field(default_factory=list)
     steps: list[RunManifestStep] = Field(default_factory=list)
     diagnostics: list[dict[str, Any]] = Field(default_factory=list)

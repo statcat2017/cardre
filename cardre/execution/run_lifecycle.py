@@ -9,10 +9,13 @@ leakage rules, or parent evidence resolution.
 from __future__ import annotations
 
 import json
+import os
+import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 from cardre._version import __version__
+from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 from cardre.domain.errors import (
     RunLifecycleError,
@@ -27,7 +30,7 @@ if TYPE_CHECKING:
     from cardre.domain.run import RunStep
     from cardre.store.db import ProjectStore
 
-MANIFEST_VERSION = "1.0.0"
+MANIFEST_VERSION = "cardre.run_manifest.v1"
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +55,6 @@ def build_manifest_payload(
     final_status: str,
     finished_at: str,
     branch_id: str | None = None,
-    target_step_id: str | None = None,
     in_scope_step_ids: list[str] | None = None,
 ) -> JsonDict:
     """Build a run manifest payload from run metadata and step records."""
@@ -81,11 +83,47 @@ def build_manifest_payload(
             for rs in run_steps
         ],
     }
-    if target_step_id is not None:
-        manifest["target_step_id"] = target_step_id
     if in_scope_step_ids is not None:
         manifest["in_scope_step_ids"] = in_scope_step_ids
     return manifest
+
+
+def build_final_manifest_payload(
+    *,
+    run_id: str,
+    plan_version_id: str,
+    run_record: JsonDict,
+    run_steps: list[Any],
+    execution_mode: str,
+    final_status: str,
+    finished_at: str,
+    branch_id: str | None = None,
+    in_scope_step_ids: list[str] | None = None,
+) -> JsonDict:
+    """Build a complete canonical manifest with a valid self-referential hash.
+
+    Constructs a payload, validates it against ``RunManifest``, serializes
+    the validated model (which includes canonical defaulted fields), then
+    hashes the exact canonical payload.
+    """
+    from cardre.reporting.schema import RunManifest
+
+    raw = build_manifest_payload(
+        run_id=run_id,
+        plan_version_id=plan_version_id,
+        run_record=run_record,
+        run_steps=run_steps,
+        execution_mode=execution_mode,
+        final_status=final_status,
+        finished_at=finished_at,
+        branch_id=branch_id,
+        in_scope_step_ids=in_scope_step_ids,
+    )
+    validated = RunManifest.model_validate(raw)
+    payload: JsonDict = validated.model_dump(mode="json", by_alias=True)
+    payload["manifest_hash"] = ""
+    payload["manifest_hash"] = json_logical_hash(payload)
+    return payload
 
 
 def write_manifest(
@@ -97,7 +135,6 @@ def write_manifest(
     final_status: str,
     finished_at: str,
     branch_id: str | None = None,
-    target_step_id: str | None = None,
     in_scope_step_ids: list[str] | None = None,
 ) -> None:
     """Read current run state and write a manifest artifact."""
@@ -115,7 +152,7 @@ def write_manifest(
     rs_repo = RunStepRepository(store)
     run_steps = rs_repo.get_for_run(run_id)
 
-    payload = build_manifest_payload(
+    payload = build_final_manifest_payload(
         run_id=run_id,
         plan_version_id=plan_version_id,
         run_record=run_record,
@@ -124,17 +161,31 @@ def write_manifest(
         final_status=final_status,
         finished_at=finished_at,
         branch_id=branch_id,
-        target_step_id=target_step_id,
         in_scope_step_ids=in_scope_step_ids,
     )
 
-    # Write manifest as a JSON file
+    # Write manifest as a JSON file — flushed, fsynced, atomic.
     manifest_dir = store.root / "exports" / f"manifest-{run_id}"
     manifest_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = manifest_dir / "manifest.json"
-    manifest_path.write_text(
-        json.dumps(payload, indent=2, sort_keys=True)
-    )
+    tmp = manifest_path.with_suffix(".tmp")
+    json_bytes = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
+    try:
+        with open(tmp, "wb") as f:
+            f.write(json_bytes)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, manifest_path)
+        if sys.platform != "win32":
+            dir_fd = os.open(str(manifest_dir), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+    except BaseException:
+        if tmp.exists():
+            tmp.unlink()
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +202,6 @@ class RunFinalisation:
     execution_mode: str
     finished_at: str
     branch_id: str | None = None
-    target_step_id: str | None = None
     in_scope_step_ids: list[str] | None = None
 
 
@@ -177,7 +227,6 @@ def finalise_run(
         final_status=finalisation.status,
         finished_at=finalisation.finished_at,
         branch_id=finalisation.branch_id,
-        target_step_id=finalisation.target_step_id,
         in_scope_step_ids=finalisation.in_scope_step_ids,
     )
     from cardre.store.run_repo import RunRepository
@@ -188,8 +237,6 @@ def finalise_run(
         expected_from=(RunStatus.RUNNING,),
     )
     if not ok:
-        # Someone else finalised the run first.  Rewrite the manifest to
-        # match the actual database state so the two do not diverge.
         run = RunRepository(store).get(finalisation.run_id)
         actual_status = run["status"] if run else "unknown"
         write_manifest(
@@ -200,7 +247,6 @@ def finalise_run(
             final_status=actual_status,
             finished_at=run.get("finished_at", utc_now_iso()) if run else utc_now_iso(),
             branch_id=finalisation.branch_id,
-            target_step_id=finalisation.target_step_id,
             in_scope_step_ids=finalisation.in_scope_step_ids,
         )
         raise RunLifecycleError(
@@ -245,7 +291,6 @@ class RunLifecycle:
         plan_version_id: str,
         execution_mode: str = "unknown",
         branch_id: str | None = None,
-        target_step_id: str | None = None,
         in_scope_step_ids: list[str] | None = None,
     ) -> None:
         self._store = store
@@ -254,7 +299,6 @@ class RunLifecycle:
         self._finalised = False
         self._execution_mode = execution_mode
         self._branch_id = branch_id
-        self._target_step_id = target_step_id
         self._in_scope_step_ids = in_scope_step_ids
 
     # ------------------------------------------------------------------
@@ -305,7 +349,6 @@ class RunLifecycle:
         *,
         branch_id: str | None = None,
         execution_mode: str = "unknown",
-        target_step_id: str | None = None,
         in_scope_step_ids: list[str] | None = None,
         force: bool = False,
     ) -> RunLifecycle:
@@ -342,7 +385,7 @@ class RunLifecycle:
         return cls(
             store=store, run_id=run_id, plan_version_id=plan_version_id,
             execution_mode=execution_mode,
-            branch_id=branch_id, target_step_id=target_step_id,
+            branch_id=branch_id,
             in_scope_step_ids=in_scope_step_ids,
         )
 
@@ -382,7 +425,6 @@ class RunLifecycle:
                 execution_mode=self._execution_mode,
                 finished_at=now,
                 branch_id=self._branch_id,
-                target_step_id=self._target_step_id,
                 in_scope_step_ids=self._in_scope_step_ids,
             ))
         except Exception:
@@ -392,7 +434,7 @@ class RunLifecycle:
             tb = traceback.format_exc()
             RunRepository(self._store).append_diagnostic(self.run_id, {
                 "code": "RUN_FINALISATION_FAILED",
-                "message": "Run finalisation failed.",
+                "message": "Run finalisation failed — manifest not published. Run left non-terminal.",
                 "severity": "error",
                 "run_id": self.run_id,
                 "plan_version_id": self.plan_version_id,
@@ -400,9 +442,6 @@ class RunLifecycle:
                 "traceback": tb,
                 "created_at": utc_now_iso(),
             })
-            run = RunRepository(self._store).get(self.run_id)
-            if run and run.get("status") == RunStatus.RUNNING.value:
-                RunRepository(self._store).transition(self.run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
             raise
         self._finalised = True
 

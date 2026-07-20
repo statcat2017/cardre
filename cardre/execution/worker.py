@@ -46,9 +46,8 @@ class RunRequest:
     project_path: str
     plan_version_id: str
     run_id: str
-    run_scope: Literal["full_plan", "branch", "to_node"] = "full_plan"
+    run_scope: Literal["full_plan", "branch"] = "full_plan"
     branch_id: str | None = None
-    target_step_id: str | None = None
     force: bool = False
 
     def worker_name(self) -> str:
@@ -126,7 +125,6 @@ class RunWorker:
                     request.run_id,
                     execution_mode=request.run_scope,
                     branch_id=request.branch_id,
-                    target_step_id=request.target_step_id,
                 ).finalise(RunStatus.FAILED, diagnostic=diagnostic)
             else:
                 RunRepository(store).append_diagnostic(request.run_id, diagnostic)

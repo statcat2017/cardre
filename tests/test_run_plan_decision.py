@@ -16,7 +16,6 @@ import pytest
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import (
     PlanVersionNotCommittedError,
-    RunScopeNotAvailableForLaunch,
 )
 
 
@@ -89,18 +88,6 @@ class TestRunPlanDecision:
             coordinator.run(pv_id, sync=True)
         with pytest.raises(PlanVersionNotCommittedError):
             coordinator.run(pv_id, sync=False)
-
-    def test_disabled_to_node_sync_and_async_raise_same_error(self, tmp_path):
-        from cardre.services.run_coordinator import RunCoordinator
-
-        store = _make_store(tmp_path)
-        pv_id = _seed_minimal_plan(store)
-        coordinator = RunCoordinator(store)
-
-        with pytest.raises(RunScopeNotAvailableForLaunch):
-            coordinator.run(pv_id, run_scope="to_node", target_step_id="step-a", sync=True)
-        with pytest.raises(RunScopeNotAvailableForLaunch):
-            coordinator.run(pv_id, run_scope="to_node", target_step_id="step-a", sync=False)
 
     def test_plan_decision_type_exists(self, tmp_path):
         from cardre.services.run_coordinator import RunPlanDecision

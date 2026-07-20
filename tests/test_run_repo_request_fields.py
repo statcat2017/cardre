@@ -61,7 +61,6 @@ def test_create_run_defaults(store):
     assert row is not None
     assert row["run_scope"] == "full_plan"
     assert row["branch_id"] is None
-    assert row["target_step_id"] is None
     assert row["force"] == 0
     assert row["requested_by"] is None
     assert row["request_id"] is None

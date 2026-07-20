@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from cardre.execution.context import ExecutionContext, NodeOutput
+    from cardre.node_parameters import NodeParameterSchema
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,16 @@ class NodeType(ABC):
             input_roles=getattr(cls, "input_roles", []),
             output_roles=getattr(cls, "output_roles", []),
         )
+
+    @classmethod
+    def parameter_schema(cls) -> NodeParameterSchema | None:
+        """Return the parameter schema for this node type, or ``None``.
+
+        Nodes that declare a schema benefit from central validation
+        (defaults, type coercion, bounds, enums, unknown-key rejection).
+        Nodes without a schema fall back to their own ``validate_params``.
+        """
+        return None
 
 
 __all__ = ["ArtifactContract", "NodeType", "RolePolicy"]

@@ -3,7 +3,7 @@
 Tests validate:
 - ``run()`` creates and executes runs (sync path)
 - ``execute_created_run(run_id)`` recovers request fields from the runs table
-- Short-circuit logic for branch and to_node scopes
+- Short-circuit logic for branch scopes
 - Stale-run recovery
 """
 
@@ -19,7 +19,6 @@ from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import (
     CardreError,
     PlanVersionNotCommittedError,
-    RunScopeNotAvailableForLaunch,
 )
 from cardre.services.staleness_service import StalenessExplanation
 
@@ -233,97 +232,10 @@ class TestExecuteCreatedRun:
         assert run is not None
         assert run["run_scope"] == "full_plan"
 
-    def test_to_node_in_column_raises(self, tmp_path):
-        """Execute-created-run safety net: to_node in column raises."""
-        store = _make_store(tmp_path)
-        pv_id = _seed_minimal_plan(store)
-
-        run_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, run_scope, target_step_id, "
-            " created_at, started_at) "
-            "VALUES (?, ?, 'running', ?, ?, ?, ?)",
-            (run_id, pv_id, "to_node", "step-a", now, now),
-        )
-
-        from cardre.services.run_coordinator import RunCoordinator
-        coordinator = RunCoordinator(store)
-
-        with pytest.raises(RunScopeNotAvailableForLaunch) as exc_info:
-            coordinator.execute_created_run(run_id)
-        assert exc_info.value.code == "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
-        assert exc_info.value.context.get("run_scope") == "to_node"
-        assert exc_info.value.context.get("target_step_id") == "step-a"
-        from cardre.store.run_repo import RunRepository
-        rejected_run = RunRepository(store).get(run_id)
-        assert rejected_run is not None
-        assert rejected_run["status"] == "failed"
-        assert rejected_run["finished_at"] is not None
-
-    def test_to_node_in_column_without_target(self, tmp_path):
-        """Safety net also fires for to_node without target_step_id."""
-        store = _make_store(tmp_path)
-        pv_id = _seed_minimal_plan(store)
-
-        run_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, run_scope, "
-            " created_at, started_at) "
-            "VALUES (?, ?, 'running', ?, ?, ?)",
-            (run_id, pv_id, "to_node", now, now),
-        )
-
-        from cardre.services.run_coordinator import RunCoordinator
-        coordinator = RunCoordinator(store)
-
-        with pytest.raises(RunScopeNotAvailableForLaunch) as exc_info:
-            coordinator.execute_created_run(run_id)
-        assert exc_info.value.code == "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
-        assert exc_info.value.context.get("run_scope") == "to_node"
-        # target_step_id should NOT be present in context
-        assert "target_step_id" not in exc_info.value.context
-        from cardre.store.run_repo import RunRepository
-        rejected_run = RunRepository(store).get(run_id)
-        assert rejected_run is not None
-        assert rejected_run["status"] == "failed"
-        assert rejected_run["finished_at"] is not None
-
-    def test_execute_created_run_reads_column_not_metadata(self, tmp_path):
-        """execute_created_run reads run_scope from real column, not metadata decoy.
-
-        Current code reads ``metadata.get('run_scope')`` which is 'full_plan'
-        (decoy), so no exception.  Fixed code reads the column which is
-        'to_node' -> raises RunScopeNotAvailableForLaunch.
-        """
-        store = _make_store(tmp_path)
-        pv_id = _seed_minimal_plan(store)
-
-        # Column run_scope='to_node' but metadata decoy says 'full_plan'.
-        run_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        metadata_json = json.dumps({"run_scope": "full_plan"})
-        store.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, run_scope, target_step_id, "
-            " created_at, started_at, metadata_json) "
-            "VALUES (?, ?, 'running', ?, ?, ?, ?, ?)",
-            (run_id, pv_id, "to_node", "step-a", now, now, metadata_json),
-        )
-
-        from cardre.services.run_coordinator import RunCoordinator
-        coordinator = RunCoordinator(store)
-
-        # Current code reads metadata -> no error (WRONG).
-        # After fix reads column 'to_node' -> raises RunScopeNotAvailableForLaunch.
-        with pytest.raises(RunScopeNotAvailableForLaunch) as exc_info:
-            coordinator.execute_created_run(run_id)
-        assert exc_info.value.context.get("target_step_id") == "step-a"
-
 
 
 class TestShortCircuit:
-    """Short-circuit logic for branch and to_node scopes."""
+    """Short-circuit logic for branch scopes."""
 
     def test_branch_short_circuit_returns_existing_run(self, tmp_path, monkeypatch):
         store = _make_store(tmp_path)
@@ -371,22 +283,6 @@ class TestShortCircuit:
 
         assert summary.run_id != branch_run_id
         assert summary.plan_version_id == pv_id
-
-    def test_to_node_short_circuit(self, tmp_path):
-        """A to_node run is rejected early with RunScopeNotAvailableForLaunch."""
-        store = _make_store(tmp_path)
-        pv_id = _seed_minimal_plan(store)
-
-        from cardre.services.run_coordinator import RunCoordinator
-        coordinator = RunCoordinator(store)
-
-        with pytest.raises(RunScopeNotAvailableForLaunch) as exc_info:
-            coordinator.run(
-                pv_id, run_scope="to_node", target_step_id="step-a", sync=True,
-            )
-        assert exc_info.value.code == "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
-        assert exc_info.value.context.get("run_scope") == "to_node"
-        assert exc_info.value.context.get("target_step_id") == "step-a"
 
 
 class TestStaleRecovery:

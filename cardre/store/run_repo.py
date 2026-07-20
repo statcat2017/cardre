@@ -8,7 +8,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
-from cardre.domain.run import _VALID_TRANSITIONS, RunStatus
+from cardre.domain.run import _VALID_TRANSITIONS, RunScope, RunStatus
 from cardre.store._base import _branch_filter
 
 if TYPE_CHECKING:
@@ -59,20 +59,20 @@ class RunRepository:
         plan_version_id: str,
         run_scope: str = "full_plan",
         branch_id: str | None = None,
-        target_step_id: str | None = None,
         force: bool = False,
         requested_by: str | None = None,
         request_id: str | None = None,
     ) -> str:
+        RunScope(run_scope)  # validate — raises ValueError for unknown scopes
         run_id = str(uuid.uuid4())
         now = utc_now_iso()
         self._store.execute(
             """INSERT INTO runs
                (run_id, plan_version_id, status, run_scope, branch_id,
-                target_step_id, force, requested_by, request_id,
+                force, requested_by, request_id,
                 created_at, started_at, heartbeat_at)
-               VALUES (?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (run_id, plan_version_id, run_scope, branch_id, target_step_id,
+               VALUES (?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (run_id, plan_version_id, run_scope, branch_id,
              int(force), requested_by, request_id, now, now, now),
         )
         return run_id

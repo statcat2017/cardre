@@ -16,6 +16,7 @@ from cardre.domain.errors import (
     NodeNotAvailableForLaunch,
     NodeRoleAccessViolation,
     OptionalDependencyNotInstalled,
+    ParameterValidationError,
     PlanContainsUnavailableNodesError,
 )
 
@@ -23,6 +24,7 @@ from cardre.domain.errors import (
 _CATEGORY_MAP: tuple[tuple[type[CardreError], str], ...] = (
     (GraphValidationError, "GraphValidationError"),
     (PlanContainsUnavailableNodesError, "PlanContainsUnavailableNodesError"),
+    (ParameterValidationError, "ParameterValidationError"),
     (ArtifactReadError, "ArtifactReadError"),
     (ArtifactWriteError, "ArtifactWriteError"),
     (NodeRoleAccessViolation, "NodeRoleAccessViolation"),
@@ -34,6 +36,7 @@ _CATEGORY_MAP: tuple[tuple[type[CardreError], str], ...] = (
 _CODE_MAP: dict[str, str] = {
     "GraphValidationError": "GRAPH_VALIDATION_ERROR",
     "PlanContainsUnavailableNodesError": "PLAN_CONTAINS_UNAVAILABLE_NODES",
+    "ParameterValidationError": "PARAMETER_VALIDATION_ERROR",
     "ArtifactReadError": "ARTIFACT_READ_ERROR",
     "ArtifactWriteError": "ARTIFACT_WRITE_ERROR",
     "NodeRoleAccessViolation": "NODE_ROLE_ACCESS_VIOLATION",
@@ -58,6 +61,8 @@ def classify_step_failure(exc_value: BaseException | None, traceback_str: str) -
                 category = cat
                 break
     code = _CODE_MAP.get(category, _DEFAULT_CODE)
+    if isinstance(exc_value, CardreError) and exc_value.code:
+        code = exc_value.code
     exc_type_name = type(exc_value).__name__ if exc_value is not None else "Unknown"
     return {
         "code": code,

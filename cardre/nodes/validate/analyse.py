@@ -84,6 +84,7 @@ class ValidationMetricsNode(NodeType):
                             label="Minimum AUC",
                             kind="float",
                             default=None,
+                            required=False,
                             help_text="Minimum acceptable AUC (null = no threshold).",
                         ),
                         ParameterDefinition(
@@ -91,6 +92,7 @@ class ValidationMetricsNode(NodeType):
                             label="Maximum PSI",
                             kind="float",
                             default=None,
+                            required=False,
                             help_text="Maximum acceptable PSI (null = no threshold).",
                         ),
                         ParameterDefinition(

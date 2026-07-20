@@ -25,7 +25,6 @@ from cardre.domain.errors import (
     ErrorCode,
     GovernanceNotEnabled,
     PlanVersionNotCommittedError,
-    RunScopeNotAvailableForLaunch,
 )
 from cardre.domain.run import RunStatus
 
@@ -109,9 +108,8 @@ class RunCoordinator:
         self,
         plan_version_id: str,
         *,
-        run_scope: Literal["full_plan", "branch", "to_node"] = "full_plan",
+        run_scope: Literal["full_plan", "branch"] = "full_plan",
         branch_id: str | None = None,
-        target_step_id: str | None = None,
         force: bool = False,
         sync: bool = False,
         requested_by: str | None = None,
@@ -143,15 +141,11 @@ class RunCoordinator:
                 "Set the environment variable to enable challenger governance."
             )
 
-        if run_scope == "to_node":
-            self._raise_run_scope_not_available(run_scope, target_step_id)
-
         # Compute the plan decision once — sync and async must agree.
         decision = self._plan_decision(
             plan_version_id=plan_version_id,
             run_scope=run_scope,
             branch_id=branch_id,
-            target_step_id=target_step_id,
             force=force,
             requested_by=requested_by,
             request_id=request_id,
@@ -167,7 +161,7 @@ class RunCoordinator:
             run_id = self._create_persisted_run(
                 plan_version_id=plan_version_id,
                 run_scope=run_scope, branch_id=branch_id,
-                target_step_id=target_step_id, force=force,
+                force=force,
                 requested_by=requested_by, request_id=request_id,
             )
         except CardreError as exc:
@@ -178,9 +172,9 @@ class RunCoordinator:
             raise
 
         if sync:
-            return self._execute_sync(run_id, plan_version_id, run_scope, branch_id, target_step_id, force)
+            return self._execute_sync(run_id, plan_version_id, run_scope, branch_id, force)
 
-        return self._dispatch_async(run_id, plan_version_id, run_scope, branch_id, target_step_id, force)
+        return self._dispatch_async(run_id, plan_version_id, run_scope, branch_id, force)
 
     def execute_created_run(self, run_id: str) -> RunSummary:
         """Execute a previously created run, recovering request fields from the DB.
@@ -216,7 +210,6 @@ class RunCoordinator:
             plan_version_id=plan_version_id,
             run_scope=run["run_scope"],
             branch_id=run["branch_id"],
-            target_step_id=run["target_step_id"],
             force=bool(run["force"]),
         )
 
@@ -262,7 +255,6 @@ class RunCoordinator:
         plan_version_id: str,
         run_scope: str,
         branch_id: str | None,
-        target_step_id: str | None,
         force: bool,
         requested_by: str | None,
         request_id: str | None,
@@ -280,53 +272,33 @@ class RunCoordinator:
                 return decision
         return RunPlanDecision(kind="execute")
 
-    def _raise_run_scope_not_available(
-        self,
-        run_scope: str,
-        target_step_id: str | None = None,
-    ) -> None:
-        """Raise RunScopeNotAvailableForLaunch with a consistent message and context.
-
-        Suggests ``full_plan`` as the alternative (branch may not be available
-        when governance is disabled).
-        """
-        ctx: dict[str, object] = {"run_scope": run_scope}
-        if target_step_id is not None:
-            ctx["target_step_id"] = target_step_id
-        raise RunScopeNotAvailableForLaunch(
-            f"run_scope={run_scope!r} is currently disabled for launch. Use full_plan instead.",
-            context=ctx,
-        )
-
     def _execute_existing_running_run(
         self,
         run_id: str,
         plan_version_id: str,
         run_scope: str,
         branch_id: str | None,
-        target_step_id: str | None,
         force: bool,
     ) -> RunSummary:
+        from cardre.domain.run import RunScope
+
+        try:
+            RunScope(run_scope)
+        except ValueError:
+            raise CardreError(
+                f"Invalid run_scope={run_scope!r} in persisted run {run_id}. "
+                "This run was created by an older version and cannot be executed.",
+                code="RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH",
+                context={"run_id": run_id, "run_scope": run_scope},
+            ) from None
+
         execution_mode = {
             "branch": "branch",
             "full_plan": "full_plan",
         }.get(run_scope, "full_plan")
 
-        from cardre.execution.run_lifecycle import RunLifecycle
-
-        if run_scope == "to_node":
-            lifecycle = RunLifecycle.start(
-                self._store,
-                plan_version_id,
-                run_id,
-                execution_mode="to_node",
-                branch_id=branch_id,
-                target_step_id=target_step_id,
-            )
-            lifecycle.finalise(RunStatus.FAILED)
-            self._raise_run_scope_not_available(run_scope, target_step_id)
-
         from cardre.execution.executor import PlanExecutor
+        from cardre.execution.run_lifecycle import RunLifecycle
 
         executor = PlanExecutor(self._store)
         result = None
@@ -338,7 +310,6 @@ class RunCoordinator:
                 run_id,
                 execution_mode=execution_mode,
                 branch_id=branch_id,
-                target_step_id=target_step_id,
             ) as lifecycle:
                 result = executor.run_plan_version(
                     plan_version_id, run_id,
@@ -363,16 +334,16 @@ class RunCoordinator:
 
     def _execute_sync(
         self, run_id: str, plan_version_id: str,
-        run_scope: str, branch_id: str | None, target_step_id: str | None,
+        run_scope: str, branch_id: str | None,
         force: bool,
     ) -> RunSummary:
         return self._execute_existing_running_run(
-            run_id, plan_version_id, run_scope, branch_id, target_step_id, force,
+            run_id, plan_version_id, run_scope, branch_id, force,
         )
 
     def _dispatch_async(
         self, run_id: str, plan_version_id: str,
-        run_scope: str, branch_id: str | None, target_step_id: str | None,
+        run_scope: str, branch_id: str | None,
         force: bool,
     ) -> RunSummary:
         from cardre.execution.worker import RunRequest
@@ -384,7 +355,6 @@ class RunCoordinator:
             run_id=run_id,
             run_scope=run_scope,  # type: ignore[arg-type]
             branch_id=branch_id,
-            target_step_id=target_step_id,
             force=force,
         )
         try:
@@ -406,7 +376,6 @@ class RunCoordinator:
                 run_id,
                 execution_mode=run_scope,
                 branch_id=branch_id,
-                target_step_id=target_step_id,
             ).finalise(RunStatus.FAILED, diagnostic=diagnostic)
             raise
         return self.get_summary(run_id)
@@ -420,14 +389,13 @@ class RunCoordinator:
         plan_version_id: str,
         run_scope: str,
         branch_id: str | None,
-        target_step_id: str | None,
         force: bool,
         requested_by: str | None = None,
         request_id: str | None = None,
     ) -> str:
         """Create a run in the database with all request fields persisted.
 
-        Request fields (run_scope, branch_id, target_step_id, force,
+        Request fields (run_scope, branch_id, force,
         requested_by, request_id) are stored in dedicated columns.
         ``metadata_json`` is reserved for execution metadata only.
         """
@@ -465,7 +433,6 @@ class RunCoordinator:
                 plan_version_id,
                 run_scope=run_scope,
                 branch_id=branch_id,
-                target_step_id=target_step_id,
                 force=force,
                 requested_by=requested_by,
                 request_id=request_id,
@@ -510,7 +477,6 @@ class RunCoordinator:
                     existing_run["run_id"],
                     execution_mode=existing_run.get("run_scope", "full_plan"),
                     branch_id=existing_run.get("branch_id"),
-                    target_step_id=existing_run.get("target_step_id"),
                 ).finalise(RunStatus.INTERRUPTED, diagnostic=diag)
                 interrupted.append(existing_run["run_id"])
 

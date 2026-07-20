@@ -31,6 +31,7 @@ NON_DETERMINISTIC_SUFFIXES: set[str] = {
     "branch_id", "requested_branch_id", "resolved_branch_id",
     "dataset_id", "artifact_id",
     "logical_hash", "physical_hash", "config_hash",
+    "manifest_hash", "run_manifest_hash", "run_manifest_path",
     "generated_at", "started_at", "finished_at",
     # Model outputs vary per run (random train/test split on 60-row dataset)
     "coefficient", "intercept", "abs_coefficient",

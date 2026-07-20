@@ -40,6 +40,7 @@ class ProfileDatasetNode(NodeType):
                             name="profile_max_rows",
                             label="Profile Max Rows",
                             kind="integer",
+                            required=False,
                             help_text="Maximum rows to read for profiling (None = all rows). "
                                       "Reduces memory for large datasets; statistics will be based on a sample.",
                         ),

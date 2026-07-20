@@ -54,7 +54,6 @@ class RunScope(enum.StrEnum):
     """Execution scope discriminator for a run."""
     FULL_PLAN = "full_plan"
     BRANCH = "branch"
-    TO_NODE = "to_node"
 
 
 _VALID_TRANSITIONS: dict[RunStatus, set[RunStatus]] = {
@@ -86,7 +85,6 @@ class Run:
     started_at: str
     finished_at: str | None = None
     branch_id: str | None = None
-    target_step_id: str | None = None
     force: bool = False
     metadata: JsonDict = field(default_factory=dict)
 
@@ -103,7 +101,6 @@ class Run:
             started_at=self.started_at,
             finished_at=utc_now_iso() if new_status in terminal_statuses else None,
             branch_id=self.branch_id,
-            target_step_id=self.target_step_id,
             force=self.force,
             metadata=copy.deepcopy(self.metadata),
         )

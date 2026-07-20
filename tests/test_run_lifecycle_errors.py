@@ -147,7 +147,7 @@ class TestRunLifecycleStartErrors:
         run_id = RunRepository(store).create(pv_id, branch_id="test-branch")
         lifecycle = RunLifecycle.start(
             store, pv_id, run_id=run_id, branch_id="test-branch",
-            execution_mode="branch", target_step_id=None,
+            execution_mode="branch",
         )
         assert lifecycle.run_id == run_id
 
@@ -174,7 +174,7 @@ class TestRunLifecycleStartErrors:
         run_id = RunRepository(store).create(pv_id, branch_id="test-branch")
         lifecycle = RunLifecycle.start(
             store, pv_id, run_id=run_id, branch_id="test-branch",
-            execution_mode="branch", target_step_id=None,
+            execution_mode="branch",
         )
         assert lifecycle.run_id == run_id
         assert lifecycle.plan_version_id == pv_id
@@ -207,7 +207,7 @@ class TestRunLifecycleStartErrors:
         from cardre.execution.run_lifecycle import RunLifecycle
         with RunLifecycle(
             store=store, run_id=run_id, plan_version_id=pv_id,
-            execution_mode="to_node", target_step_id="step-a",
+            execution_mode="to_node",
             in_scope_step_ids=["step-a"],
         ) as lifecycle:
             lifecycle.finalise("succeeded")
@@ -215,7 +215,7 @@ class TestRunLifecycleStartErrors:
         manifest_path = store.root / "exports" / f"manifest-{run_id}" / "manifest.json"
         assert manifest_path.exists()
         manifest = json.loads(manifest_path.read_text())
-        assert manifest["target_step_id"] == "step-a"
+        assert "target_step_id" not in manifest
         assert manifest["in_scope_step_ids"] == ["step-a"]
         assert manifest["execution_mode"] == "to_node"
 
@@ -234,7 +234,7 @@ class TestWriteManifestErrors:
 
 
 class TestBuildManifestPayload:
-    def test_builds_manifest_with_target_and_scope(self, tmp_path):
+    def test_builds_manifest_with_scope(self, tmp_path):
         store = _make_store(tmp_path)
         now = utc_now_iso()
         project_id = str(uuid.uuid4())
@@ -274,10 +274,10 @@ class TestBuildManifestPayload:
             run_id=run_id, plan_version_id=pv_id,
             run_record=run_record, run_steps=[fake_step],
             execution_mode="to_node", final_status="succeeded",
-            finished_at=now, target_step_id="step-a",
+            finished_at=now,
             in_scope_step_ids=["step-a"],
         )
-        assert payload["target_step_id"] == "step-a"
+        assert "target_step_id" not in payload
         assert payload["in_scope_step_ids"] == ["step-a"]
         assert payload["steps"][0]["action"] == "executed"
 

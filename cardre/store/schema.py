@@ -83,7 +83,6 @@ CREATE TABLE IF NOT EXISTS runs (
     status TEXT NOT NULL,
     run_scope TEXT NOT NULL DEFAULT 'full_plan',
     branch_id TEXT,
-    target_step_id TEXT,
     force INTEGER NOT NULL DEFAULT 0,
     requested_by TEXT,
     request_id TEXT,

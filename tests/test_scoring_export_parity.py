@@ -165,6 +165,197 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
         store.close()
 
 
+def test_python_sql_parity_missing_without_bin_zero_policy():
+    """Python and SQL produce the same score for missing values when no
+    missing bin exists and missing_policy='zero'."""
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export import (
+        _build_python_scorer_source,
+        _build_sql_scorer_source,
+    )
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="age", dtype="int64", kind="numeric",
+                bins=[
+                    {"bin_id": "b1", "label": "18-30", "lower": 18, "upper": 30, "lower_inclusive": True, "upper_inclusive": True},
+                ],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={"age": {"b1": 0.3}},
+        columns=["age", "bin_id", "woe"],
+    )
+    scorecard_raw = {"factor": 1, "offset": 0, "score_direction": "higher_is_lower_risk"}
+    model_raw = {"intercept": 0.0, "coefficients": {"age_woe": 1.0}}
+    feature_contract = {"missing_policy": "zero", "unknown_category_policy": "error"}
+
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    py_source = _build_python_scorer_source(variables, scorecard_raw, model_raw)
+    sql_source = _build_sql_scorer_source(variables, scorecard_raw, model_raw)
+
+    local_ns: dict = {}
+    exec(py_source, local_ns)
+    py_scorer = local_ns["score_cardre"]
+    py_score = py_scorer({"age": None})
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE input_data (age REAL)")
+        conn.execute("INSERT INTO input_data VALUES (NULL)")
+        conn.commit()
+        cursor = conn.execute(f"SELECT * FROM (\n{sql_source}\n)")
+        col_names = [desc[0] for desc in cursor.description]
+        score_idx = col_names.index("score")
+        sql_score = cursor.fetchone()[score_idx]
+    finally:
+        conn.close()
+
+    assert abs(py_score - sql_score) <= 1e-9, (
+        f"Missing-without-bin zero-policy mismatch: py={py_score}, sql={sql_score}"
+    )
+
+
+def test_python_sql_parity_unmatched_non_null_zero_policy():
+    """Python and SQL produce the same score for unmatched non-null values
+    when unmatched_policy='zero'."""
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export import (
+        _build_python_scorer_source,
+        _build_sql_scorer_source,
+    )
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="age", dtype="int64", kind="numeric",
+                bins=[
+                    {"bin_id": "b1", "label": "18-30", "lower": 18, "upper": 30, "lower_inclusive": True, "upper_inclusive": True},
+                ],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={"age": {"b1": 0.3}},
+        columns=["age", "bin_id", "woe"],
+    )
+    scorecard_raw = {"factor": 1, "offset": 0, "score_direction": "higher_is_lower_risk"}
+    model_raw = {"intercept": 0.0, "coefficients": {"age_woe": 1.0}}
+    feature_contract = {"missing_policy": "error", "unknown_category_policy": "zero"}
+
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    py_source = _build_python_scorer_source(variables, scorecard_raw, model_raw)
+    sql_source = _build_sql_scorer_source(variables, scorecard_raw, model_raw)
+
+    local_ns: dict = {}
+    exec(py_source, local_ns)
+    py_scorer = local_ns["score_cardre"]
+    py_score = py_scorer({"age": 99})
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE input_data (age REAL)")
+        conn.execute("INSERT INTO input_data VALUES (99)")
+        conn.commit()
+        cursor = conn.execute(f"SELECT * FROM (\n{sql_source}\n)")
+        col_names = [desc[0] for desc in cursor.description]
+        score_idx = col_names.index("score")
+        sql_score = cursor.fetchone()[score_idx]
+    finally:
+        conn.close()
+
+    assert abs(py_score - sql_score) <= 1e-9, (
+        f"Unmatched zero-policy mismatch: py={py_score}, sql={sql_score}"
+    )
+
+
+def test_sql_scorer_missing_without_bin_error_policy_returns_null():
+    """SQL returns NULL for missing value when no missing bin and
+    missing_policy='error'."""
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export import _build_sql_scorer_source
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="age", dtype="int64", kind="numeric",
+                bins=[
+                    {"bin_id": "b1", "label": "18-30", "lower": 18, "upper": 30, "lower_inclusive": True, "upper_inclusive": True},
+                ],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={"age": {"b1": 0.3}},
+        columns=["age", "bin_id", "woe"],
+    )
+    scorecard_raw = {"factor": 1, "offset": 0, "score_direction": "higher_is_lower_risk"}
+    model_raw = {"intercept": 0.0, "coefficients": {"age_woe": 1.0}}
+    feature_contract = {"missing_policy": "error", "unknown_category_policy": "error"}
+
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    source = _build_sql_scorer_source(variables, scorecard_raw, model_raw)
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE input_data (age REAL)")
+        conn.execute("INSERT INTO input_data VALUES (NULL)")
+        conn.commit()
+        cursor = conn.execute(f"SELECT * FROM (\n{source}\n)")
+        col_names = [desc[0] for desc in cursor.description]
+        woe_idx = col_names.index("woe_age")
+        score_idx = col_names.index("score")
+        row = cursor.fetchone()
+        assert row[woe_idx] is None, (
+            f"Missing-without-bin error-policy should produce NULL WOE, got {row[woe_idx]}"
+        )
+        assert row[score_idx] is None, (
+            f"Missing-without-bin error-policy should produce NULL score, got {row[score_idx]}"
+        )
+    finally:
+        conn.close()
+
+
+def test_compile_scorecard_raises_on_unconsumed_coefficient():
+    """When a model has a coefficient for a variable that has no bin
+    definition, compilation fails rather than silently dropping it."""
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="age", dtype="int64", kind="numeric",
+                bins=[
+                    {"bin_id": "b1", "label": "18-30", "lower": 18, "upper": 30, "lower_inclusive": True, "upper_inclusive": True},
+                ],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={"age": {"b1": 0.3}},
+        columns=["age", "bin_id", "woe"],
+    )
+    scorecard_raw = {"factor": 1, "offset": 0, "score_direction": "higher_is_lower_risk"}
+    model_raw = {"intercept": 0.0, "coefficients": {"age_woe": 1.0, "income_woe": 0.5}}
+    import pytest
+    with pytest.raises(ValueError, match="no corresponding bin variable"):
+        compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw)
+
+
 def test_python_scorer_missing_value_handling():
     """Verify the generated Python scorer handles missing bins correctly.
 
@@ -206,7 +397,9 @@ def test_python_scorer_missing_value_handling():
     }
     feature_contract = {"missing_policy": "separate_bin", "unknown_category_policy": "error"}
 
-    source = _build_python_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    source = _build_python_scorer_source(variables, scorecard_raw, model_raw)
     local_ns: dict[str, Any] = {}
     exec(source, local_ns)
     scorer = local_ns["score_cardre"]
@@ -236,6 +429,7 @@ def test_python_scorer_single_category_bin():
     from cardre._evidence.models.binning import BinDefinition, BinVariable
     from cardre._evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_python_scorer_source
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
     bin_def = BinDefinition(
         source_artifact_id="test",
@@ -266,7 +460,8 @@ def test_python_scorer_single_category_bin():
     }
     feature_contract = {"missing_policy": "error", "unknown_category_policy": "error"}
 
-    source = _build_python_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    source = _build_python_scorer_source(variables, scorecard_raw, model_raw)
     local_ns: dict[str, Any] = {}
     exec(source, local_ns)
     scorer = local_ns["score_cardre"]
@@ -289,6 +484,7 @@ def test_python_scorer_missing_value_no_missing_bin():
     from cardre._evidence.models.binning import BinDefinition, BinVariable
     from cardre._evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_python_scorer_source
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
     bin_def = BinDefinition(
         source_artifact_id="test",
@@ -318,7 +514,8 @@ def test_python_scorer_missing_value_no_missing_bin():
     }
     feature_contract = {"missing_policy": "error", "unknown_category_policy": "error"}
 
-    source = _build_python_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    source = _build_python_scorer_source(variables, scorecard_raw, model_raw)
     local_ns: dict[str, Any] = {}
     exec(source, local_ns)
     scorer = local_ns["score_cardre"]
@@ -326,6 +523,231 @@ def test_python_scorer_missing_value_no_missing_bin():
     import pytest
     with pytest.raises(ValueError, match="missing value for age"):
         scorer({"age": None})
+
+
+def test_python_sql_parity_on_missing_unmatched_known():
+    """Python and SQL scorers produce identical scores for missing,
+    unmatched non-null, and known values with the same input."""
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export import (
+        _build_python_scorer_source,
+        _build_sql_scorer_source,
+    )
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="age",
+                dtype="int64",
+                kind="numeric",
+                bins=[
+                    {"bin_id": "b1", "label": "missing", "is_missing_bin": True},
+                    {"bin_id": "b2", "label": "18-30", "lower": 18, "upper": 30, "lower_inclusive": True, "upper_inclusive": True},
+                    {"bin_id": "b3", "label": "31+", "lower": 31, "upper_inclusive": True, "lower_inclusive": True},
+                ],
+            ),
+            BinVariable(
+                variable="product_type",
+                dtype="str",
+                kind="categorical",
+                bins=[
+                    {"bin_id": "c1", "label": "loan", "categories": ["loan"]},
+                ],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={
+            "age": {"b1": -0.5, "b2": 0.3, "b3": 0.7},
+            "product_type": {"c1": 0.5},
+        },
+        columns=["variable", "bin_id", "woe"],
+    )
+    scorecard_raw = {
+        "base_score": 600, "base_odds": 50.0, "points_to_double_odds": 20,
+        "factor": 14.427, "offset": 543.6, "score_direction": "higher_is_lower_risk",
+        "base_points": 543.6, "attributes": [],
+    }
+    model_raw = {
+        "intercept": -0.5, "coefficients": {"age_woe": 0.8, "product_type_woe": 1.0},
+        "model_family": "logistic_regression",
+    }
+    feature_contract = {"missing_policy": "separate_bin", "unknown_category_policy": "error"}
+
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    py_source = _build_python_scorer_source(variables, scorecard_raw, model_raw)
+    sql_source = _build_sql_scorer_source(variables, scorecard_raw, model_raw)
+
+    test_cases = [
+        {"age": None, "product_type": "loan", "label": "missing age"},
+        {"age": 25, "product_type": "loan", "label": "known age + known product"},
+        {"age": 40, "product_type": "loan", "label": "other known age + known product"},
+    ]
+
+    # Python scorer
+    local_ns: dict = {}
+    exec(py_source, local_ns)
+    py_scorer = local_ns["score_cardre"]
+
+    for tc in test_cases:
+        py_score = py_scorer({"age": tc["age"], "product_type": tc["product_type"]})
+        # SQL scorer
+        conn = sqlite3.connect(":memory:")
+        try:
+            conn.execute("CREATE TABLE input_data (age REAL, product_type TEXT)")
+            conn.execute(
+                "INSERT INTO input_data VALUES (?, ?)",
+                (tc["age"], tc["product_type"]),
+            )
+            conn.commit()
+            full_sql = f"SELECT * FROM (\n{sql_source}\n)"
+            cursor = conn.execute(full_sql)
+            rows = cursor.fetchall()
+            col_names = [desc[0] for desc in cursor.description]
+            score_idx = col_names.index("score")
+            sql_score = rows[0][score_idx]
+        finally:
+            conn.close()
+
+        assert abs(py_score - sql_score) <= 1e-9, (
+            f"Python/SQL mismatch for {tc['label']}: py={py_score}, sql={sql_score}"
+        )
+
+
+def test_compile_scorecard_raises_on_missing_woe_map_for_coefficient():
+    """When a model coefficient exists but the variable has no WOE map,
+    compilation fails with a useful error rather than silently skipping."""
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="age", dtype="int64", kind="numeric",
+                bins=[{"bin_id": "b1", "label": "18-30", "lower": 18, "upper": 30, "lower_inclusive": True, "upper_inclusive": True}],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={},  # No WOE for age!
+        columns=["variable", "bin_id", "woe"],
+    )
+    scorecard_raw = {"factor": 1, "offset": 0, "score_direction": "higher_is_lower_risk"}
+    model_raw = {"intercept": 0.0, "coefficients": {"age_woe": 1.0}}
+
+    import pytest
+    with pytest.raises(ValueError, match="no WOE mapping"):
+        compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw)
+
+
+def test_compile_scorecard_raises_on_bin_without_woe():
+    """When a bin definition exists but the WOE table has no entry for that
+    bin, compilation fails with a useful error."""
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="age", dtype="int64", kind="numeric",
+                bins=[
+                    {"bin_id": "b1", "label": "18-30", "lower": 18, "upper": 30, "lower_inclusive": True, "upper_inclusive": True},
+                    {"bin_id": "b2", "label": "31+", "lower": 31, "upper_inclusive": True, "lower_inclusive": True},
+                ],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={"age": {"b1": 0.3}},  # b2 missing!
+        columns=["variable", "bin_id", "woe"],
+    )
+    scorecard_raw = {"factor": 1, "offset": 0, "score_direction": "higher_is_lower_risk"}
+    model_raw = {"intercept": 0.0, "coefficients": {"age_woe": 1.0}}
+
+    import pytest
+    with pytest.raises(ValueError, match="no WOE entry"):
+        compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw)
+
+
+def test_python_unmatched_numeric_raises():
+    """An out-of-range numeric value raises ValueError in the Python scorer,
+    matching the SQL ELSE NULL behavior (error propagation)."""
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export import _build_python_scorer_source
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="age", dtype="int64", kind="numeric",
+                bins=[
+                    {"bin_id": "b1", "label": "18-30", "lower": 18, "upper": 30, "lower_inclusive": True, "upper_inclusive": True},
+                ],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={"age": {"b1": 0.3}},
+        columns=["variable", "bin_id", "woe"],
+    )
+    scorecard_raw = {"factor": 1, "offset": 0, "score_direction": "higher_is_lower_risk"}
+    model_raw = {"intercept": 0.0, "coefficients": {"age_woe": 1.0}}
+
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw)
+    source = _build_python_scorer_source(variables, scorecard_raw, model_raw)
+    local_ns: dict = {}
+    exec(source, local_ns)
+    scorer = local_ns["score_cardre"]
+
+    import pytest
+    with pytest.raises(ValueError, match="unmatched value for age"):
+        scorer({"age": 99})
+
+
+def test_python_unmatched_categorical_raises():
+    """An unknown category raises ValueError in the Python scorer,
+    matching the SQL ELSE NULL behavior."""
+    from cardre._evidence.models.binning import BinDefinition, BinVariable
+    from cardre._evidence.models.woe import WoeTable
+    from cardre.nodes.build.scoring_export import _build_python_scorer_source
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
+
+    bin_def = BinDefinition(
+        source_artifact_id="test",
+        variables=[
+            BinVariable(
+                variable="product_type", dtype="str", kind="categorical",
+                bins=[
+                    {"bin_id": "c1", "label": "loan", "categories": ["loan"]},
+                ],
+            ),
+        ],
+    )
+    woe_table = WoeTable(
+        mapping={"product_type": {"c1": 0.5}},
+        columns=["variable", "bin_id", "woe"],
+    )
+    scorecard_raw = {"factor": 1, "offset": 0, "score_direction": "higher_is_lower_risk"}
+    model_raw = {"intercept": 0.0, "coefficients": {"product_type_woe": 1.0}}
+
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw)
+    source = _build_python_scorer_source(variables, scorecard_raw, model_raw)
+    local_ns: dict = {}
+    exec(source, local_ns)
+    scorer = local_ns["score_cardre"]
+
+    import pytest
+    with pytest.raises(ValueError, match="unmatched value for product_type"):
+        scorer({"product_type": "unknown_category"})
 
 
 def test_sql_scorer_single_category_bin():
@@ -339,6 +761,7 @@ def test_sql_scorer_single_category_bin():
     from cardre._evidence.models.binning import BinDefinition, BinVariable
     from cardre._evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_sql_scorer_source
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
     bin_def = BinDefinition(
         source_artifact_id="test",
@@ -369,7 +792,8 @@ def test_sql_scorer_single_category_bin():
     }
     feature_contract = {"missing_policy": "error", "unknown_category_policy": "error"}
 
-    source = _build_sql_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    source = _build_sql_scorer_source(variables, scorecard_raw, model_raw)
 
     conn = sqlite3.connect(":memory:")
     try:
@@ -431,7 +855,9 @@ def test_sql_scorer_unmatched_non_null_returns_null():
     }
     feature_contract = {"missing_policy": "error", "unknown_category_policy": "error"}
 
-    source = _build_sql_scorer_source(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    from cardre.nodes.build.scoring_export_ir import compile_scorecard
+    variables = compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw, feature_contract)
+    source = _build_sql_scorer_source(variables, scorecard_raw, model_raw)
 
     conn = sqlite3.connect(":memory:")
     try:
