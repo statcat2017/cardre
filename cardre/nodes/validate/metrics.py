@@ -261,6 +261,7 @@ class ValidationMetricsNode(NodeType):
 
             y_prob = y_prob_all[known_mask]
             scores = scores_series_all.to_numpy()[known_mask]
+            scores_series = pl.Series(scores)  # used by psi_data below
 
             n_bad = int(sum(y_bin))
             n_good = int(len(y_bin) - n_bad)
@@ -350,7 +351,7 @@ class ValidationMetricsNode(NodeType):
             }
 
             if has_score:
-                psi_data[role] = scores
+                psi_data[role] = scores_series
 
         return roles_metrics, psi_data, gates
 
