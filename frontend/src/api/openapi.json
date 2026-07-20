@@ -3085,6 +3085,54 @@
         ],
         "title": "ComparisonResponse"
       },
+      "DiagnosticResponse": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "default": "UNKNOWN"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "default": "error"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Context"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "title": "DiagnosticResponse"
+      },
       "EvidenceArtifactResponse": {
         "properties": {
           "evidence_artifact_id": {
@@ -3967,8 +4015,7 @@
           },
           "diagnostics": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/DiagnosticResponse"
             },
             "type": "array",
             "title": "Diagnostics"
@@ -3976,14 +4023,12 @@
           "latest_error": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/DiagnosticResponse"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Latest Error"
+            ]
           },
           "heartbeat_at": {
             "anyOf": [
@@ -4055,16 +4100,14 @@
           },
           "warnings": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/DiagnosticResponse"
             },
             "type": "array",
             "title": "Warnings"
           },
           "errors": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/DiagnosticResponse"
             },
             "type": "array",
             "title": "Errors"

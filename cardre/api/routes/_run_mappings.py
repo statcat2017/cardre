@@ -15,6 +15,7 @@ from cardre.api.schemas import (
     BranchResponse,
     ChampionAssignmentResponse,
     ComparisonResponse,
+    DiagnosticResponse,
     EvidenceArtifactResponse,
     EvidenceEdgeResponse,
     ManualBinningReviewResponse,
@@ -32,6 +33,19 @@ from cardre.domain.manual_binning import ManualBinningReview
 from cardre.domain.run import RunStep
 from cardre.services.run_coordinator import RunSummary
 
+_DIAGNOSTIC_FIELDS = {"code", "message", "severity", "source", "created_at"}
+
+
+def diagnostic_to_response(value: Mapping[str, Any]) -> DiagnosticResponse:
+    return DiagnosticResponse(
+        code=str(value.get("code", "UNKNOWN")),
+        message=str(value.get("message", "")),
+        severity=str(value.get("severity", "error")),
+        source=value.get("source"),
+        created_at=value.get("created_at"),
+        context={k: v for k, v in value.items() if k not in _DIAGNOSTIC_FIELDS},
+    )
+
 
 def run_summary_to_response(summary: RunSummary) -> RunResponse:
     """Map a ``RunSummary`` dataclass to a ``RunResponse`` model."""
@@ -44,8 +58,8 @@ def run_summary_to_response(summary: RunSummary) -> RunResponse:
         step_count=summary.step_count,
         branch_id=summary.branch_id,
         executed_step_ids=summary.executed_step_ids or [],
-        diagnostics=summary.diagnostics or [],
-        latest_error=summary.latest_error,
+        diagnostics=[diagnostic_to_response(d) for d in (summary.diagnostics or [])],
+        latest_error=diagnostic_to_response(summary.latest_error) if summary.latest_error else None,
         heartbeat_at=summary.heartbeat_at,
         is_stale=summary.is_stale,
     )
@@ -62,8 +76,8 @@ def run_step_to_response(rs: RunStep) -> RunStepResponse:
         started_at=rs.started_at,
         finished_at=rs.finished_at,
         execution_fingerprint=rs.execution_fingerprint,
-        warnings=rs.warnings,
-        errors=rs.errors,
+        warnings=[diagnostic_to_response(w) for w in rs.warnings],
+        errors=[diagnostic_to_response(e) for e in rs.errors],
     )
 
 

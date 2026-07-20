@@ -1,8 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api, toErrorMessage, type ProjectScope } from "../api/client";
 import { useSelectedEntity } from "./useSelectedEntity";
+
+const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled", "interrupted"]);
+
+function isTerminalRun(status: string): boolean {
+  return TERMINAL_RUN_STATUSES.has(status);
+}
 
 export function useProjectWorkspace(scope: ProjectScope) {
   const queryClient = useQueryClient();
@@ -51,15 +57,13 @@ export function useProjectWorkspace(scope: ProjectScope) {
     queryFn: () => scoped.listRuns(),
   });
 
-  const runsForSelectedVersion =
-    runsQuery.data?.runs.filter((run) => run.plan_version_id === effectiveSelectedVersionId) ?? [];
+  const allRuns = runsQuery.data?.runs ?? [];
 
-  const effectiveSelectedRunId = useSelectedEntity(
-    selectedRunId,
-    runsForSelectedVersion,
-    "run_id",
-    "first",
-  );
+  const visibleRuns = effectiveSelectedVersionId
+    ? allRuns.filter((run) => run.plan_version_id === effectiveSelectedVersionId)
+    : allRuns;
+
+  const effectiveSelectedRunId = useSelectedEntity(selectedRunId, visibleRuns, "run_id", "first");
 
   const selectedRunQuery = useQuery({
     queryKey: ["run", scope.projectId, effectiveSelectedRunId],
@@ -78,6 +82,27 @@ export function useProjectWorkspace(scope: ProjectScope) {
     queryFn: () => scoped.listRunEvidence(effectiveSelectedRunId!),
     enabled: !!effectiveSelectedRunId,
   });
+
+  const selectedRunStatus = selectedRunQuery.data?.status;
+
+  useEffect(() => {
+    const runId = effectiveSelectedRunId;
+    if (!runId || !selectedRunStatus || isTerminalRun(selectedRunStatus)) {
+      return;
+    }
+
+    const refresh = () => {
+      void Promise.all([
+        queryClient.refetchQueries({ queryKey: ["runs", scope.projectId] }),
+        queryClient.refetchQueries({ queryKey: ["run", scope.projectId, runId] }),
+        queryClient.refetchQueries({ queryKey: ["runSteps", scope.projectId, runId] }),
+        queryClient.refetchQueries({ queryKey: ["runEvidence", scope.projectId, runId] }),
+      ]);
+    };
+
+    const intervalId = window.setInterval(refresh, 1_000);
+    return () => window.clearInterval(intervalId);
+  }, [effectiveSelectedRunId, selectedRunStatus, queryClient, scope.projectId]);
 
   const createPlanMutation = useMutation({
     mutationFn: () => scoped.createPlan({ name: newPlanName.trim() }),
@@ -146,7 +171,7 @@ export function useProjectWorkspace(scope: ProjectScope) {
     selectedPlan,
     selectedVersion,
     planVersions,
-    runsForSelectedVersion,
+    visibleRuns,
     newPlanName,
     setNewPlanName,
     error,

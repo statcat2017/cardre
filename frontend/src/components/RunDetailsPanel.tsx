@@ -53,11 +53,9 @@ export function RunDetailsPanel({
                   background: theme.redBg,
                   color: theme.redText,
                 }}
+                role="alert"
               >
-                {(() => {
-                  const le = run.latest_error as { message?: string; code?: string } | null;
-                  return String(le?.message ?? le?.code ?? "Unknown error");
-                })()}
+                <strong>{run.latest_error.code}</strong>: {run.latest_error.message}
               </div>
             )}
           </div>

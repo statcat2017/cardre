@@ -5,7 +5,7 @@ import { api, toErrorMessage } from "../api/client";
 import { theme, pageCardStyle } from "../styles";
 
 interface Props {
-  onProjectCreated: (projectId: string, projectPath: string) => void;
+  onProjectCreated: (projectId: string) => void;
 }
 
 export function WelcomeScreen({ onProjectCreated }: Props) {
@@ -22,7 +22,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
   }, [projectPath]);
 
   const projectsQuery = useQuery({
-    queryKey: ["projects", projectPath],
+    queryKey: ["projects"],
     queryFn: () => api.listProjects(),
     enabled: projectPath.trim().length > 0,
   });
@@ -31,7 +31,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
     mutationFn: () => api.createProject({ name: projectName.trim(), path: projectPath.trim() }),
     onSuccess: (project) => {
       setError(null);
-      onProjectCreated(project.project_id, projectPath.trim());
+      onProjectCreated(project.project_id);
     },
     onError: (err) => {
       setError(toErrorMessage(err));
@@ -207,7 +207,7 @@ export function WelcomeScreen({ onProjectCreated }: Props) {
                   <button
                     key={project.project_id}
                     type="button"
-                    onClick={() => onProjectCreated(project.project_id, projectPath.trim())}
+                    onClick={() => onProjectCreated(project.project_id)}
                     style={{
                       textAlign: "left",
                       border: `1px solid ${theme.border}`,

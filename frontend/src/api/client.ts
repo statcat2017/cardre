@@ -2,9 +2,11 @@
  * Robust HTTP client for the Cardre v2 API.
  *
  * Ported from v1's fetchJson<T> + ApiError with canonical error codes.
+ * Uses openapi-fetch for generated path/request/response typing.
  */
 
-import type { components } from "./schema.d";
+import type { paths, components } from "./schema.d";
+import createClient from "openapi-fetch";
 import { ErrorCodes, isErrorCode, type ErrorCode } from "./errorCodes";
 
 // ---------------------------------------------------------------------------
@@ -47,22 +49,24 @@ export function toErrorMessage(err: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
-// Typed fetch
+// Transport layer — shared by fetchJson and openapi-fetch adapters
 // ---------------------------------------------------------------------------
 
 export interface FetchOptions extends Omit<RequestInit, "body"> {
-  /** Default 30_000 */
   timeoutMs?: number;
-  /** Signal preempts the timeout */
   signal?: AbortSignal;
-  /** JSON body — sets Content-Type and serialises */
   body?: unknown;
 }
 
-export async function fetchJson<T>(url: string, options: FetchOptions = {}): Promise<T> {
-  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, signal: externalSignal, body, ...init } = options;
+export async function fetchResponse(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const opts = init as FetchOptions | undefined;
+  const timeoutMs = opts?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  const externalSignal = opts?.signal;
+  const body = opts?.body;
 
-  // Build composite signal (external + timeout)
   const controller = new AbortController();
   const timeoutId =
     timeoutMs > 0
@@ -75,19 +79,17 @@ export async function fetchJson<T>(url: string, options: FetchOptions = {}): Pro
   }
 
   try {
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      ...(init.headers as Record<string, string> | undefined),
-    };
+    const headers = new Headers(init?.headers);
+    headers.set("Accept", "application/json");
 
     if (body !== undefined) {
-      headers["Content-Type"] = "application/json";
+      headers.set("Content-Type", "application/json");
     }
 
     let response: Response;
     try {
-      response = await fetch(url, {
-        ...init,
+      response = await fetch(input, {
+        method: init?.method,
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: controller.signal,
@@ -96,16 +98,16 @@ export async function fetchJson<T>(url: string, options: FetchOptions = {}): Pro
       if (err instanceof DOMException && err.name === "TimeoutError") {
         throw new ApiError(
           ErrorCodes.REQUEST_TIMEOUT,
-          `Request to ${url} timed out after ${timeoutMs}ms`,
+          `Request to ${input} timed out after ${timeoutMs}ms`,
           408,
         );
       }
       if (err instanceof DOMException && err.name === "AbortError") {
-        throw new ApiError(ErrorCodes.REQUEST_ABORTED, `Request to ${url} was aborted`, 499);
+        throw new ApiError(ErrorCodes.REQUEST_ABORTED, `Request to ${input} was aborted`, 499);
       }
       throw new ApiError(
         ErrorCodes.SIDECAR_UNREACHABLE,
-        `Cannot reach ${url}: ${(err as Error).message ?? "network error"}`,
+        `Cannot reach ${input}: ${(err as Error).message ?? "network error"}`,
         503,
       );
     }
@@ -116,7 +118,6 @@ export async function fetchJson<T>(url: string, options: FetchOptions = {}): Pro
       const isJson = contentType.includes("json");
       const bodyText = await response.text();
 
-      // Try to parse structured error
       if (isJson && bodyText) {
         try {
           const parsed = JSON.parse(bodyText);
@@ -136,14 +137,12 @@ export async function fetchJson<T>(url: string, options: FetchOptions = {}): Pro
             context,
           );
         } catch (parseErr) {
-          // Re-throw ApiError (thrown above on success), fall through on parse failure
           if (parseErr instanceof ApiError) {
             throw parseErr;
           }
         }
       }
 
-      // HTML error
       if (contentType.includes("html")) {
         throw new ApiError(
           ErrorCodes.HTML_ERROR_RESPONSE,
@@ -152,7 +151,6 @@ export async function fetchJson<T>(url: string, options: FetchOptions = {}): Pro
         );
       }
 
-      // Non-JSON error
       if (bodyText) {
         throw new ApiError(
           ErrorCodes.NON_JSON_ERROR_RESPONSE,
@@ -168,34 +166,7 @@ export async function fetchJson<T>(url: string, options: FetchOptions = {}): Pro
       );
     }
 
-    // 204 No Content
-    if (response.status === 204) {
-      return undefined as unknown as T;
-    }
-
-    // Parse JSON body
-    if (!contentType.includes("json")) {
-      throw new ApiError(
-        ErrorCodes.MALFORMED_JSON_RESPONSE,
-        `Expected JSON but got ${contentType}`,
-        502,
-      );
-    }
-
-    const text = await response.text();
-    if (!text) {
-      throw new ApiError(ErrorCodes.EMPTY_OK_BODY, "Response was 200 OK with empty body", 502);
-    }
-
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      throw new ApiError(
-        ErrorCodes.MALFORMED_JSON_RESPONSE,
-        "Response body is not valid JSON",
-        502,
-      );
-    }
+    return response;
   } finally {
     clearTimeout(timeoutId);
     if (externalSignal) {
@@ -204,16 +175,64 @@ export async function fetchJson<T>(url: string, options: FetchOptions = {}): Pro
   }
 }
 
+export async function fetchJson<T>(url: string, options: FetchOptions = {}): Promise<T> {
+  const response = await fetchResponse(url, options as RequestInit);
+
+  if (response.status === 204) {
+    return undefined as unknown as T;
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("json")) {
+    throw new ApiError(
+      ErrorCodes.MALFORMED_JSON_RESPONSE,
+      `Expected JSON but got ${contentType}`,
+      502,
+    );
+  }
+
+  const text = await response.text();
+  if (!text) {
+    throw new ApiError(ErrorCodes.EMPTY_OK_BODY, "Response was 200 OK with empty body", 502);
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiError(ErrorCodes.MALFORMED_JSON_RESPONSE, "Response body is not valid JSON", 502);
+  }
+}
+
 // ---------------------------------------------------------------------------
-// API wrapper
+// openapi-fetch adapter & helpers
 // ---------------------------------------------------------------------------
 
-export type ProjectScope = {
-  projectId: string;
-  projectPath?: string;
-};
+async function typedTransport(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const response = await fetchResponse(input, init);
 
-type ProjectScopedOptions = ProjectScope;
+  if (response.status === 204) {
+    return response;
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("json")) {
+    throw new ApiError(
+      ErrorCodes.MALFORMED_JSON_RESPONSE,
+      `Expected JSON but got ${contentType}`,
+      502,
+    );
+  }
+  const text = await response.clone().text();
+  if (!text) {
+    throw new ApiError(ErrorCodes.EMPTY_OK_BODY, "Response was 200 OK with empty body", 502);
+  }
+  try {
+    JSON.parse(text);
+  } catch {
+    throw new ApiError(ErrorCodes.MALFORMED_JSON_RESPONSE, "Response body is not valid JSON", 502);
+  }
+  return response;
+}
 
 function getBaseUrl(): string {
   return (
@@ -221,79 +240,164 @@ function getBaseUrl(): string {
   ).replace(/\/$/, "");
 }
 
-function projectHeaders(options: ProjectScopedOptions): Record<string, string> {
-  const headers: Record<string, string> = { "X-Project-Id": options.projectId };
-  if (options.projectPath) {
-    headers["X-Project-Path"] = options.projectPath;
-  }
-  return headers;
+function makeClient() {
+  return createClient<paths>({ baseUrl: getBaseUrl(), fetch: typedTransport });
 }
 
-function url(path: string): string {
-  return `${getBaseUrl()}${path}`;
+function requireData<T>(result: { data?: T; error?: unknown; response: Response }): T {
+  if (result.data !== undefined) return result.data;
+  if (result.error instanceof ApiError) throw result.error;
+  throw new ApiError(
+    ErrorCodes.NON_JSON_ERROR_RESPONSE,
+    `API operation failed`,
+    result.response.status,
+  );
 }
+
+const projectHeaders = (projectId: string) => ({
+  "X-Project-Id": projectId,
+});
+
+// ---------------------------------------------------------------------------
+// API wrapper
+// ---------------------------------------------------------------------------
+
+export type ProjectScope = {
+  projectId: string;
+};
 
 export const api = {
-  listProjects: () => fetchJson<components["schemas"]["ProjectListResponse"]>(url("/projects"), {}),
-  createProject: (body: components["schemas"]["ProjectCreateRequest"]) =>
-    fetchJson<components["schemas"]["ProjectResponse"]>(url("/projects"), {
-      method: "POST",
-      body,
-    }),
-  getProject: (projectId: string) =>
-    fetchJson<components["schemas"]["ProjectResponse"]>(url(`/projects/${projectId}`), {}),
+  listProjects: async () => {
+    const client = makeClient();
+    return requireData(await client.GET("/projects"));
+  },
+  createProject: async (body: components["schemas"]["ProjectCreateRequest"]) => {
+    const client = makeClient();
+    return requireData(await client.POST("/projects", { body }));
+  },
+  getProject: async (projectId: string) => {
+    const client = makeClient();
+    return requireData(
+      await client.GET("/projects/{project_id}", {
+        params: { path: { project_id: projectId } },
+      }),
+    );
+  },
   forProject: (scope: ProjectScope) => {
-    const headers = projectHeaders(scope);
     const pid = scope.projectId;
     return {
-      listPlans: () =>
-        fetchJson<components["schemas"]["PlanListResponse"]>(url(`/projects/${pid}/plans`), {
-          headers,
-        }),
-      createPlan: (body: components["schemas"]["PlanCreateRequest"]) =>
-        fetchJson<components["schemas"]["PlanResponse"]>(url(`/projects/${pid}/plans`), {
-          method: "POST",
-          headers,
-          body,
-        }),
-      getPlan: (planId: string) =>
-        fetchJson<components["schemas"]["PlanResponse"]>(url(`/projects/${pid}/plans/${planId}`), {
-          headers,
-        }),
-      listPlanVersions: (planId: string) =>
-        fetchJson<components["schemas"]["PlanVersionListResponse"]>(
-          url(`/projects/${pid}/plans/${planId}/versions`),
-          { headers },
-        ),
-      getPlanVersion: (planVersionId: string) =>
-        fetchJson<components["schemas"]["PlanVersionResponse"]>(
-          url(`/projects/${pid}/plan-versions/${planVersionId}`),
-          { headers },
-        ),
-      createRun: (body: components["schemas"]["RunCreateRequest"]) =>
-        fetchJson<components["schemas"]["RunResponse"]>(url(`/projects/${pid}/runs`), {
-          method: "POST",
-          headers,
-          body,
-        }),
-      listRuns: () =>
-        fetchJson<components["schemas"]["RunListResponse"]>(url(`/projects/${pid}/runs`), {
-          headers,
-        }),
-      getRun: (runId: string) =>
-        fetchJson<components["schemas"]["RunResponse"]>(url(`/projects/${pid}/runs/${runId}`), {
-          headers,
-        }),
-      listRunSteps: (runId: string) =>
-        fetchJson<components["schemas"]["RunStepResponse"][]>(
-          url(`/projects/${pid}/runs/${runId}/steps`),
-          { headers },
-        ),
-      listRunEvidence: (runId: string) =>
-        fetchJson<components["schemas"]["RunEvidenceEdgeResponse"][]>(
-          url(`/projects/${pid}/runs/${runId}/evidence`),
-          { headers },
-        ),
+      listPlans: async () => {
+        const client = makeClient();
+        return requireData(
+          await client.GET("/projects/{project_id}/plans", {
+            params: {
+              path: { project_id: pid },
+              header: projectHeaders(pid),
+            },
+          }),
+        );
+      },
+      createPlan: async (body: components["schemas"]["PlanCreateRequest"]) => {
+        const client = makeClient();
+        return requireData(
+          await client.POST("/projects/{project_id}/plans", {
+            params: {
+              path: { project_id: pid },
+              header: projectHeaders(pid),
+            },
+            body,
+          }),
+        );
+      },
+      getPlan: async (planId: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.GET("/projects/{project_id}/plans/{plan_id}", {
+            params: {
+              path: { project_id: pid, plan_id: planId },
+              header: projectHeaders(pid),
+            },
+          }),
+        );
+      },
+      listPlanVersions: async (planId: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.GET("/projects/{project_id}/plans/{plan_id}/versions", {
+            params: {
+              path: { project_id: pid, plan_id: planId },
+              header: projectHeaders(pid),
+            },
+          }),
+        );
+      },
+      getPlanVersion: async (planVersionId: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.GET("/projects/{project_id}/plan-versions/{plan_version_id}", {
+            params: {
+              path: { project_id: pid, plan_version_id: planVersionId },
+              header: projectHeaders(pid),
+            },
+          }),
+        );
+      },
+      createRun: async (body: components["schemas"]["RunCreateRequest"]) => {
+        const client = makeClient();
+        return requireData(
+          await client.POST("/projects/{project_id}/runs", {
+            params: {
+              path: { project_id: pid },
+              header: projectHeaders(pid),
+            },
+            body,
+          }),
+        );
+      },
+      listRuns: async () => {
+        const client = makeClient();
+        return requireData(
+          await client.GET("/projects/{project_id}/runs", {
+            params: {
+              path: { project_id: pid },
+              header: projectHeaders(pid),
+            },
+          }),
+        );
+      },
+      getRun: async (runId: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.GET("/projects/{project_id}/runs/{run_id}", {
+            params: {
+              path: { project_id: pid, run_id: runId },
+              header: projectHeaders(pid),
+            },
+          }),
+        );
+      },
+      listRunSteps: async (runId: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.GET("/projects/{project_id}/runs/{run_id}/steps", {
+            params: {
+              path: { project_id: pid, run_id: runId },
+              header: projectHeaders(pid),
+            },
+          }),
+        );
+      },
+      listRunEvidence: async (runId: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.GET("/projects/{project_id}/runs/{run_id}/evidence", {
+            params: {
+              path: { project_id: pid, run_id: runId },
+              header: projectHeaders(pid),
+            },
+          }),
+        );
+      },
     };
   },
 };

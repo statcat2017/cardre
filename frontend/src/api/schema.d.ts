@@ -745,6 +745,32 @@ export interface components {
             /** Latest Ready */
             latest_ready?: boolean | null;
         };
+        /** DiagnosticResponse */
+        DiagnosticResponse: {
+            /**
+             * Code
+             * @default UNKNOWN
+             */
+            code: string;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /**
+             * Severity
+             * @default error
+             */
+            severity: string;
+            /** Source */
+            source?: string | null;
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at?: string | null;
+        };
         /** EvidenceArtifactResponse */
         EvidenceArtifactResponse: {
             /** Evidence Artifact Id */
@@ -1147,13 +1173,8 @@ export interface components {
             /** Executed Step Ids */
             executed_step_ids?: string[];
             /** Diagnostics */
-            diagnostics?: {
-                [key: string]: unknown;
-            }[];
-            /** Latest Error */
-            latest_error?: {
-                [key: string]: unknown;
-            } | null;
+            diagnostics?: components["schemas"]["DiagnosticResponse"][];
+            latest_error?: components["schemas"]["DiagnosticResponse"] | null;
             /** Heartbeat At */
             heartbeat_at?: string | null;
             /**
@@ -1183,13 +1204,9 @@ export interface components {
                 [key: string]: unknown;
             };
             /** Warnings */
-            warnings?: {
-                [key: string]: unknown;
-            }[];
+            warnings?: components["schemas"]["DiagnosticResponse"][];
             /** Errors */
-            errors?: {
-                [key: string]: unknown;
-            }[];
+            errors?: components["schemas"]["DiagnosticResponse"][];
         };
         /** StalenessExplanationResponse */
         StalenessExplanationResponse: {

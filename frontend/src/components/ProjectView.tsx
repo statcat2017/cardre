@@ -5,13 +5,12 @@ import { RunDetailsPanel } from "./RunDetailsPanel";
 import { VersionPanel } from "./VersionPanel";
 
 interface Props {
-  projectPath: string;
   projectId: string;
   onBack: () => void;
 }
 
-export function ProjectView({ projectPath, projectId, onBack }: Props) {
-  const scope = { projectId, projectPath };
+export function ProjectView({ projectId, onBack }: Props) {
+  const scope = { projectId };
   const ws = useProjectWorkspace(scope);
 
   return (
@@ -53,7 +52,7 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
             <h1 style={{ margin: 0, fontFamily: theme.fontSerif, fontSize: 28 }}>
               {ws.projectQuery.data?.name ?? "Project"}
             </h1>
-            <p style={{ margin: "6px 0 0", color: theme.muted, fontSize: 13 }}>{projectPath}</p>
+            <p style={{ margin: "6px 0 0", color: theme.muted, fontSize: 13 }}>{projectId}</p>
           </div>
           <div style={{ textAlign: "right", color: theme.muted, fontSize: 13 }}>
             <div>{ws.projectQuery.data?.cardre_version ?? ""}</div>
@@ -114,8 +113,8 @@ export function ProjectView({ projectPath, projectId, onBack }: Props) {
               ws.createPlanMutation.mutate();
             }}
             createPlanPending={ws.createPlanMutation.isPending}
-            runsForVersion={ws.runsForSelectedVersion}
-            allRuns={ws.runsQuery.data?.runs}
+            runs={ws.visibleRuns}
+            versionSelected={!!ws.effectiveSelectedVersionId}
             effectiveSelectedRunId={ws.effectiveSelectedRunId}
             onSelectRun={ws.setSelectedRunId}
           />
