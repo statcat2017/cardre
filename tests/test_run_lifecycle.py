@@ -273,7 +273,8 @@ class TestFinaliseValidation:
     """finalise status validation inside the protected block."""
 
     def test_invalid_status_gets_run_finalisation_failed(self, tmp_path):
-        """An invalid status string must raise and record RUN_FINALISATION_FAILED."""
+        """An invalid status string must raise and record RUN_FINALISATION_FAILED
+        but leave the run non-terminal (not transitioned to failed)."""
         import pytest
 
         from cardre.execution.run_lifecycle import RunLifecycle
@@ -290,13 +291,15 @@ class TestFinaliseValidation:
             lifecycle.finalise("not-a-status")
 
         run = RunRepository(store).get(run_id)
-        assert run["status"] == "failed"
+        assert run["status"] == "running", (
+            f"Run should remain running when finalisation fails, got {run['status']}"
+        )
         diags = RunRepository(store).get_diagnostics(run_id)
         assert any(d.get("code") == "RUN_FINALISATION_FAILED" for d in diags)
 
     def test_non_terminal_status_gets_run_finalisation_failed(self, tmp_path):
         """A valid but non-terminal RunStatus must raise and record
-        RUN_FINALISATION_FAILED, transitioning the run to failed."""
+        RUN_FINALISATION_FAILED but leave the run non-terminal."""
         import pytest
 
         from cardre.domain.run import RunStatus
@@ -314,7 +317,9 @@ class TestFinaliseValidation:
             lifecycle.finalise(RunStatus.RUNNING)
 
         run = RunRepository(store).get(run_id)
-        assert run["status"] == "failed"
+        assert run["status"] == "running", (
+            f"Run should remain running when finalisation fails, got {run['status']}"
+        )
         diags = RunRepository(store).get_diagnostics(run_id)
         assert any(d.get("code") == "RUN_FINALISATION_FAILED" for d in diags)
 
