@@ -7,7 +7,7 @@ import polars as pl
 from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
-from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION
+from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION, LifecycleBinDefinition
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.build._fine_classing_categorical import bin_categorical
 from cardre.nodes.build._fine_classing_numeric import bin_numeric
@@ -83,23 +83,28 @@ def run_fine_classing(context: ExecutionContext) -> NodeOutput:
             })
         else:
             bins = bin_categorical(df, col, target_column, good_values, bad_values,
-                                   max_categorical_levels, warnings)
+                                   max_categorical_levels, missing_policy, warnings)
             variables.append({
                 "variable": col,
                 "kind": "categorical",
                 "bins": bins,
             })
 
-    definition = {
-        "schema_version": SCHEMA_BIN_DEFINITION,
+    bin_def = LifecycleBinDefinition.from_payload({
         "variables": variables,
         "warnings": warnings,
-    }
-
-    art = write_json_artifact(
+    }).to_payload()
+    artifact = write_json_artifact(
         store, artifact_type="definition", role="definition",
-        stem=f"fine-classing-{context.step_spec.step_id}",
-        payload=definition,
-        metadata={"schema_version": SCHEMA_BIN_DEFINITION},
+        stem=f"automatic-binning-{context.step_spec.step_id}",
+        payload=bin_def,
+        metadata={
+            "source_artifact_id": train_artifact.artifact_id,
+            "target_column": target_column,
+            "schema_version": SCHEMA_BIN_DEFINITION,
+        },
     )
-    return NodeOutput(artifacts=[art], metrics={"variable_count": len(variables)})
+
+    return NodeOutput(
+        artifacts=[artifact],
+        metrics={"variable_count": len(variables)})

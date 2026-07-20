@@ -342,7 +342,7 @@ class ValidationMetricsNode(NodeType):
                 "auc": auc_val,
                 "gini": gini_val,
                 "ks": ks_val,
-                "ks_at": ks_at,
+                "ks_at_score": round(ks_at, 2) if ks_val else None,
                 "calibration": calib,
                 "calibration_display": calib_display,
                 "score_distribution": score_dist,
@@ -358,28 +358,20 @@ class ValidationMetricsNode(NodeType):
     def _compute_stability(
         self, psi_data: dict[str, pl.Series],
     ) -> tuple[JsonDict, list[JsonDict]]:
+        stability: JsonDict = {"psi_train_vs_test": None, "psi_train_vs_oot": None}
         all_psi_warnings: list[JsonDict] = []
-        stability: JsonDict = {}
-
         if "train" in psi_data and "test" in psi_data:
             psi_val, psi_warnings = population_stability_index(
                 psi_data["train"], psi_data["test"],
             )
-            stability["train_vs_test"] = psi_val
+            stability["psi_train_vs_test"] = psi_val
             all_psi_warnings.extend(psi_warnings)
         if "train" in psi_data and "oot" in psi_data:
             psi_val, psi_warnings = population_stability_index(
                 psi_data["train"], psi_data["oot"],
             )
-            stability["train_vs_oot"] = psi_val
+            stability["psi_train_vs_oot"] = psi_val
             all_psi_warnings.extend(psi_warnings)
-        if "test" in psi_data and "oot" in psi_data:
-            psi_val, psi_warnings = population_stability_index(
-                psi_data["test"], psi_data["oot"],
-            )
-            stability["test_vs_oot"] = psi_val
-            all_psi_warnings.extend(psi_warnings)
-
         return stability, all_psi_warnings
 
     def _apply_threshold_gates(
@@ -389,13 +381,13 @@ class ValidationMetricsNode(NodeType):
         if minimum_auc is not None:
             try:
                 threshold_auc = float(minimum_auc)
-                for role, m in roles_metrics.items():
-                    actual_auc = m.get("auc")
-                    if actual_auc is not None and actual_auc < threshold_auc:
+                for role_name, rm in roles_metrics.items():
+                    role_auc = rm.get("auc")
+                    if role_auc is not None and role_auc < threshold_auc:
                         gates.append({
-                            "code": "MINIMUM_AUC",
+                            "code": f"MINIMUM_AUC_{role_name.upper()}",
                             "status": "fail",
-                            "message": f"Role {role!r}: AUC {actual_auc} < {threshold_auc}",
+                            "message": f"AUC ({role_auc}) below minimum ({threshold_auc}) for role {role_name!r}",
                         })
             except (ValueError, TypeError):
                 pass
@@ -403,12 +395,13 @@ class ValidationMetricsNode(NodeType):
         if maximum_psi is not None:
             try:
                 threshold_psi = float(maximum_psi)
-                for comparison, actual_psi in stability.items():
-                    if actual_psi is not None and actual_psi > threshold_psi:
+                for key in ("psi_train_vs_test", "psi_train_vs_oot"):
+                    val = stability.get(key)
+                    if val is not None and val > threshold_psi:
                         gates.append({
-                            "code": "MAXIMUM_PSI",
+                            "code": f"MAXIMUM_PSI_{key.upper()}",
                             "status": "fail",
-                            "message": f"Stability {comparison}: PSI {actual_psi} > {threshold_psi}",
+                            "message": f"PSI ({val}) exceeds maximum ({threshold_psi}) for {key}",
                         })
             except (ValueError, TypeError):
                 pass
@@ -421,40 +414,23 @@ class ValidationMetricsNode(NodeType):
         gates: list[JsonDict], all_psi_warnings: list[JsonDict],
         bundle_art: Any, score_evidence_art: Any,
     ) -> JsonDict:
-
+        target_payload: JsonDict = {
+            "target_column": target_col,
+            "good_values": [str(v) for v in good],
+            "bad_values": [str(v) for v in bad],
+        }
+        failing_gates = [gate for gate in gates if gate.get("status") == "fail"]
         payload: JsonDict = {
             "schema_version": SCHEMA_VALIDATION_METRICS,
-            "target_column": target_col,
-            "good_values": list(good),
-            "bad_values": list(bad),
-            "gates": gates,
-            "stability": stability,
+            "target": target_payload,
             "roles": roles_metrics,
-            "row_counts": {},
+            "stability": stability,
+            "gates": gates,
+            "warnings": all_psi_warnings,
+            "status": "failed" if failing_gates else "passed",
         }
-        for role, m in roles_metrics.items():
-            payload["row_counts"][role] = m.get("row_count", 0)
-
-        all_failing = [g for g in gates if g.get("status") == "fail"]
-        payload["status"] = "failed" if all_failing else "passed"
-
-        if all_psi_warnings:
-            payload["psi_warnings"] = all_psi_warnings
-
-        bundle_source = None
-        if bundle_art:
-            bundle_source = {
-                "bundle_artifact_id": str(bundle_art.artifact_id),
-                "schema_version": str(bundle_art.metadata.get("schema_version", "")),
-            }
-        payload["frozen_bundle"] = bundle_source
-
-        score_source = None
-        if score_evidence_art:
-            score_source = {
-                "artifact_id": str(score_evidence_art.artifact_id),
-                "schema_version": SCHEMA_APPLY_MODEL_EVIDENCE,
-            }
-        payload["score_evidence"] = score_source
-
+        if bundle_art is not None:
+            payload["frozen_bundle_artifact_id"] = bundle_art.artifact_id
+        if score_evidence_art is not None:
+            payload["score_application_evidence_artifact_id"] = score_evidence_art.artifact_id
         return payload

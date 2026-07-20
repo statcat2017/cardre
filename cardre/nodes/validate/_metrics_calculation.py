@@ -130,26 +130,25 @@ def population_stability_index(
     import numpy as np
 
     psi_warnings: list[JsonDict] = []
-
-    if len(expected) == 0 or len(actual) == 0:
+    if expected.is_empty() or actual.is_empty():
         return 0.0, psi_warnings
 
-    min_val = float(expected.min())  # type: ignore[arg-type]
-    max_val = float(expected.max())  # type: ignore[arg-type]
-    min_val = min(min_val, float(actual.min()))  # type: ignore[arg-type]
-    max_val = max(max_val, float(actual.max()))  # type: ignore[arg-type]
-    if max_val == min_val:
-        return 0.0, psi_warnings
+    expected_arr = expected.to_numpy()
+    actual_arr = actual.to_numpy()
+    bin_edges = np.percentile(expected_arr, [i * 100 / n_bins for i in range(1, n_bins)])
+    bin_edges = np.unique(bin_edges)
+    if len(bin_edges) <= 1:
+        expected_counts = np.array([len(expected_arr)])
+        actual_counts = np.array([len(actual_arr)])
+    else:
+        extended_edges = np.concatenate([[-np.inf], bin_edges, [np.inf]])
+        expected_counts = np.histogram(expected_arr, bins=extended_edges)[0]
+        actual_counts = np.histogram(actual_arr, bins=extended_edges)[0]
 
-    bins = np.linspace(min_val, max_val, n_bins + 1)
-    exp_counts, _ = np.histogram(expected.to_numpy(), bins=bins)
-    act_counts, _ = np.histogram(actual.to_numpy(), bins=bins)
-
-    n_exp = len(expected)
-    n_act = len(actual)
     psi = 0.0
-
-    for bin_idx, (ec, ac) in enumerate(zip(exp_counts, act_counts, strict=False)):
+    n_exp = len(expected_arr)
+    n_act = len(actual_arr)
+    for bin_idx, (ec, ac) in enumerate(zip(expected_counts, actual_counts, strict=False)):
         ep = ec / n_exp
         ap = ac / n_act
         if ap == 0 or ep == 0:
@@ -163,5 +162,4 @@ def population_stability_index(
                 "message": f"Bin {bin_idx} had zero count; floored for PSI computation",
             })
         psi += (ap - ep) * np.log(ap / ep)
-
     return round(float(psi), 6), psi_warnings

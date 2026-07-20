@@ -13,32 +13,33 @@ def bin_numeric(
     max_bins: int, min_bin_fraction: float,
     missing_policy: str, warnings: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    non_null = df.filter(pl.col(col).is_not_null())
+    missing = df.filter(pl.col(col).is_null())
+
+    good_list = list(good_values)
     bad_list = list(bad_values)
 
-    non_null = df.filter(pl.col(col).is_not_null())
-    null_count = df.height - non_null.height
-
     bins: list[dict[str, Any]] = []
+    bin_counter = 0
 
-    if non_null.height == 0:
-        warnings.append({
-            "variable": col, "code": "ALL_NULL",
-            "message": f"Column {col!r} is entirely null; assigning a singleton missing bin.",
-        })
-        bc = make_bin_counts(df, col, target_column, good_values, bad_values)
+    if missing.height > 0 and missing_policy == "separate_bin":
+        bin_counter += 1
+        mb = make_bin_counts(missing, col, target_column, good_values, bad_values)
         bins.append({
-            "bin_id": f"{col}_bin_001",
+            "bin_id": f"{col}_bin_{bin_counter:03d}",
             "label": "Missing",
             "lower": None, "upper": None,
             "lower_inclusive": False, "upper_inclusive": False,
-            "categories": [], "is_missing_bin": True, "is_other_bin": False,
-            **bc,
+            "categories": None, "is_missing_bin": True,
+            "row_count": mb["row_count"], "good_count": mb["good_count"], "bad_count": mb["bad_count"],
         })
+
+    if non_null.height == 0:
         return bins
 
     n = non_null.height
     n_bins = min(max_bins, n)
-    pre_count = 1 if null_count > 0 and missing_policy == "separate_bin" else 0
+    pre_count = 1 if missing.height > 0 and missing_policy == "separate_bin" else 0
     max_non_missing = max_bins - pre_count
 
     if max_non_missing <= 0:
@@ -56,57 +57,65 @@ def bin_numeric(
     ]).group_by("_brk", maintain_order=True).agg([
         pl.len().alias("row_count"),
         pl.col("_tgt_str").is_in(bad_list).sum().alias("bad_count"),
+        pl.col("_tgt_str").is_in(good_list).sum().alias("good_count"),
     ]).sort("_brk")
 
-    bin_counter = 0
-    for i in range(len(bin_stats)):
-        brk = bin_stats["_brk"][i]
-        rc = bin_stats["row_count"][i]
-        bc = bin_stats["bad_count"][i]
-        gc = rc - bc
+    _all_bk = bin_stats["_brk"].to_list()
 
+    for i, rec in enumerate(bin_stats.to_dicts()):
         bin_counter += 1
-        lower = bin_stats["_brk"][i - 1] if i > 0 else float("-inf")
-        upper = brk
+        brk = rec["_brk"]
+        row_count = rec["row_count"]
+        bad_count = rec["bad_count"]
+        good_count = rec["good_count"]
 
-        if rc / n < min_bin_fraction and actual_n_bins > 2:
+        is_last = i == len(bin_stats) - 1
+        hi = None if brk == float("inf") else float(brk)
+        if i == 0:
+            lo = None
+            lower_inc = False
+        else:
+            lower_inc = False
+            lo = float(_all_bk[i - 1]) if _all_bk[i - 1] != float("inf") else None
+
+        if lo is not None and hi is not None:
+            label = f"({lo:.4g}, {hi:.4g}]"
+        elif lo is not None:
+            label = f"({lo:.4g}, +inf)"
+        elif hi is not None:
+            label = f"(-inf, {hi:.4g}]"
+        else:
+            label = "All values"
+
+        bins.append({
+            "bin_id": f"{col}_bin_{bin_counter:03d}",
+            "label": label,
+            "lower": lo,
+            "upper": hi,
+            "lower_inclusive": lower_inc,
+            "upper_inclusive": not is_last,
+            "categories": None,
+            "is_missing_bin": False,
+            "row_count": row_count,
+            "good_count": good_count,
+            "bad_count": bad_count,
+        })
+
+        if row_count / n < min_bin_fraction:
             warnings.append({
-                "variable": col, "code": "SPARSE_BIN",
-                "message": f"Bin {lower:.4f}–{upper:.4f} has {rc} rows "
-                           f"({rc / n:.1%}), below min_bin_fraction {min_bin_fraction:.0%}.",
+                "variable": col, "bin_id": bins[-1]["bin_id"],
+                "message": f"Bin fraction {row_count / n:.4f} is below min_bin_fraction {min_bin_fraction}",
             })
 
-        is_first = i == 0
+    if bin_counter == 0 and non_null.height > 0:
+        bc = make_bin_counts(df.filter(pl.col(col).is_not_null()), col, target_column, good_values, bad_values)
         bins.append({
             "bin_id": f"{col}_bin_{bin_counter:03d}",
-            "label": f"[{lower:.4f}, {upper:.4f}]",
-            "upper": round(float(upper), 6),
-            "lower": round(float(lower), 6),
-            "lower_inclusive": is_first,
-            "upper_inclusive": True,
-            "categories": [],
-            "is_missing_bin": False,
-            "is_other_bin": False,
-            "row_count": rc,
-            "good_count": gc,
-            "bad_count": int(bc),
-        })
-
-    if null_count > 0 and missing_policy == "separate_bin":
-        bin_counter += 1
-        mb = make_bin_counts(df.filter(pl.col(col).is_null()), col, target_column, good_values, bad_values)
-        bins.append({
-            "bin_id": f"{col}_bin_{bin_counter:03d}",
-            "label": "Missing",
+            "label": "All values",
             "lower": None, "upper": None,
-            "lower_inclusive": False, "upper_inclusive": False,
-            "categories": [], "is_missing_bin": True, "is_other_bin": False,
-            **mb,
-        })
-    elif null_count > 0:
-        warnings.append({
-            "variable": col, "code": "MISSING_IGNORED",
-            "message": f"Column {col!r} has {null_count} null(s) and missing_policy is 'ignore'.",
+            "lower_inclusive": False, "upper_inclusive": True,
+            "categories": None, "is_missing_bin": False,
+            "row_count": bc["row_count"], "good_count": bc["good_count"], "bad_count": bc["bad_count"],
         })
 
     return bins
