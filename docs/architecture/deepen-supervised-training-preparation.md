@@ -54,7 +54,7 @@ Change these production modules:
 
 - `cardre/nodes/_training_utils.py`
 - `cardre/nodes/_classifier_base.py`
-- `cardre/nodes/feature_selection.py`
+- `cardre/nodes/selection/filter.py`
 
 Add focused tests in new files:
 
@@ -284,7 +284,7 @@ do not redesign estimator-family adapters here.
 
 ### 3. Migrate Filter Feature Selection
 
-File: `cardre/nodes/feature_selection.py`
+File: `cardre/nodes/selection/filter.py`
 
 Import the shared preparation module:
 
@@ -332,7 +332,7 @@ column or the target from reaching selection.
 
 ### 4. Migrate Embedded Feature Selection
 
-File: `cardre/nodes/feature_selection.py`
+File: `cardre/nodes/selection/filter.py`
 
 In `FeatureSelectionEmbeddedNode.run`, replace local target fallback,
 `bad_values` extraction, and `features = [...] numeric` filtering with:
@@ -358,7 +358,7 @@ must report it as unsupported rather than silently using it as a fallback.
 
 ### 5. Materialise Random-Resampling Provenance
 
-File: `cardre/nodes/feature_selection.py`
+File: `cardre/nodes/selection/filter.py`
 
 In `ResampleTrainingDataNode.run`, replace local metadata parsing with:
 
@@ -407,7 +407,7 @@ existing report schema has a suitable location.
 
 ### 6. Materialise SMOTE Provenance
 
-File: `cardre/nodes/feature_selection.py`
+File: `cardre/nodes/selection/filter.py`
 
 In `SmoteTrainingDataNode.run`, replace local metadata parsing with
 `prepare_supervised_training_data(...)` as above. Use the shared feature

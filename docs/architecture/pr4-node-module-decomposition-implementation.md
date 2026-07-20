@@ -14,9 +14,9 @@ not a feature change.
 
 | Existing module | New ownership boundary | Required outcome |
 | --- | --- | --- |
-| `cardre/nodes/feature_selection.py` | one module per filter, embedded, resampling, and SMOTE node; one narrow definition helper | Keep all four node identifiers and results unchanged. |
-| `cardre/nodes/validate/analyse.py` | validation metrics, threshold optimization, cutoff analysis, and metrics-only calculation helpers | Keep metric formulas, gates, artifact schemas, and role-priority behavior unchanged. |
-| `cardre/nodes/build/bins.py` | automatic-binning orchestration, fine-classing helpers, and manual-binning application | Keep schemas, bin IDs, bin payloads, override behavior, and optional optbinning dispatch unchanged. |
+| cardre/nodes/feature_selection.py | one module per filter, embedded, resampling, and SMOTE node; one narrow definition helper | Keep all four node identifiers and results unchanged. |
+| cardre/nodes/validate/analyse.py | validation metrics, threshold optimization, cutoff analysis, and metrics-only calculation helpers | Keep metric formulas, gates, artifact schemas, and role-priority behavior unchanged. |
+| cardre/nodes/build/bins.py | automatic-binning orchestration, fine-classing helpers, and manual-binning application | Keep schemas, bin IDs, bin payloads, override behavior, and optional optbinning dispatch unchanged. |
 | `cardre/nodes/build/clustering.py` | no structural extraction required | Remove the broad `ValueError` recovery that hides real computation failures. |
 
 ## Hard Constraints
@@ -152,7 +152,7 @@ cardre/nodes/selection/
   smote.py
 ```
 
-Delete `cardre/nodes/feature_selection.py` after all imports and tests have
+Delete cardre/nodes/feature_selection.py after all imports and tests have
 moved. Do not leave a file that imports everything from the new package.
 
 ### 1.1 Narrow Shared Definition Policy
@@ -341,7 +341,7 @@ cardre/nodes/validate/
   cutoff.py                        # CutoffAnalysisNode only
 ```
 
-Delete `cardre/nodes/validate/analyse.py` after imports move. Do not preserve
+Delete cardre/nodes/validate/analyse.py after imports move. Do not preserve
 the old module as a forwarding import.
 
 ### 2.1 Keep Validation Metrics Node Thin
@@ -503,7 +503,7 @@ cardre/nodes/build/
   manual.py
 ```
 
-Delete `cardre/nodes/build/bins.py` after all imports move.
+Delete cardre/nodes/build/bins.py after all imports move.
 
 ### 3.1 Automatic Binning Ownership
 
