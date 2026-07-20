@@ -7,12 +7,6 @@ import { useProjectWorkspace } from "../useProjectWorkspace";
 
 const SAMPLE_RUNS = [
   {
-    run_id: "r-1",
-    plan_version_id: "v-empty",
-    status: "succeeded",
-    started_at: "2024-01-01T00:00:00",
-  },
-  {
     run_id: "r-2",
     plan_version_id: "v-other",
     status: "running",
