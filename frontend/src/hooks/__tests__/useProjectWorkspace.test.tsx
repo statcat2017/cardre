@@ -189,9 +189,6 @@ describe("useProjectWorkspace", () => {
       expect(mockScoped.getRun).toHaveBeenCalled();
     });
 
-    // Wait for the 1s polling interval to trigger after the running response
-    const callsAfterPoll = mockScoped.listRuns.mock.calls.length;
-
     // After the second getRun resolves to terminal, the polling interval
     // should eventually stop. This is verified by checking that the
     // selectedRunQuery data eventually shows the terminal status.

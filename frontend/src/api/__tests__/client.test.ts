@@ -251,24 +251,22 @@ describe("api operations", () => {
   });
 
   it("scoped POST sends X-Project-Id, Content-Type, and JSON body", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
-        jsonResponse({
-          run_id: "r-1",
-          status: "created",
-          started_at: "",
-          plan_version_id: "v-1",
-          step_count: 0,
-          is_stale: false,
-        }),
-      );
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        run_id: "r-1",
+        status: "created",
+        started_at: "",
+        plan_version_id: "v-1",
+        step_count: 0,
+        is_stale: false,
+      }),
+    );
 
     const { api } = await import("../client");
     const scoped = api.forProject({ projectId: "p-1" });
     await scoped.createRun({ plan_version_id: "v-1", force: false, sync: false });
 
-    const [input, init] = fetchMock.mock.calls[0]!;
+    const [, init] = fetchMock.mock.calls[0]!;
     const headers = new Headers(init?.headers);
     expect(headers.get("X-Project-Id")).toBe("p-1");
     expect(headers.get("Content-Type")).toBe("application/json");
