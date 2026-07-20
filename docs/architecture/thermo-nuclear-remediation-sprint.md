@@ -47,7 +47,7 @@ checks just to make the current branch pass.
 
 ### 0.1 Use one artifact-read policy
 
-`scripts/scan-direct-artifact-reads.py` is a stale pattern ratchet with a
+_scripts/scan-direct-artifact-reads.py_ is a stale pattern ratchet with a
 baseline of 278 historical violations. `scripts/audit_artifact_reads.py` is
 the context-aware production audit already used in `preflight`. Delete the
 scanner and `.artifact-read-baseline.json`; update documentation; make both
@@ -74,7 +74,7 @@ path filter omits `tools/**`, most shell scripts, root operational files, and
 some GitHub configuration. A skipped result is safe only when another job owns
 the changed path.
 
-Preferred design: make the Python quality lane match `scripts/**`, `tools/**`,
+Preferred design: make the Python quality lane match _scripts/**_, _tools/**_,
 root build/config files, and GitHub workflow/config changes in addition to its
 current paths. Add an explicit `unclassified` filter only if its complement
 semantics are tested; do not rely on an untested glob negation.
@@ -308,7 +308,7 @@ validator temporarily. Do not create empty schemas that accept everything.
 
 Change `nodes/validate/apply.py`, `modeling/adapters.py`, `nodes/ensembles.py`,
 `services/comparison/model.py`, and model/comparison tests. Add a focused
-module such as `cardre/modeling/prediction.py` if it reduces ownership drift.
+module such as _cardre/modeling/prediction.py_ if it reduces ownership drift.
 
 ### Design
 
