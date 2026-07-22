@@ -40,25 +40,25 @@ class PlanRepo:
         ).fetchall()
         return [Plan(plan_id=r["plan_id"], project_id=r["project_id"], name=r["name"], created_at=r["created_at"]) for r in rows]
 
-    def create_version(self, conn: Any, plan_id: str, steps: list[StepSpec] | None = None,
+    def create_version(self, plan_id: str, steps: list[StepSpec] | None = None,
                        description: str = "", *, is_committed: bool = False) -> str:
         import uuid
 
         from cardre.domain.diagnostics import utc_now_iso
         plan_version_id = str(uuid.uuid4())
         now = utc_now_iso()
-        max_ver = conn.execute(
+        max_ver = self._conn.execute(
             "SELECT COALESCE(MAX(version_number), 0) + 1 FROM plan_versions WHERE plan_id = ?",
             (plan_id,),
         ).fetchone()[0]
-        conn.execute(
+        self._conn.execute(
             "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at, description) "
             "VALUES (?, ?, ?, ?, ?, ?)",
             (plan_version_id, plan_id, max_ver, 1 if is_committed else 0, now, description),
         )
         if steps:
             from cardre.adapters.sqlite.step_repo import StepRepo
-            StepRepo(conn).insert_steps_and_edges(conn, plan_version_id, steps)
+            StepRepo(self._conn).insert_steps_and_edges(plan_version_id, steps)
         return plan_version_id
 
     def get_version(self, plan_version_id: str) -> PlanVersion | None:

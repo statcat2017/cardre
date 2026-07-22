@@ -12,8 +12,8 @@ class RunStepRepo:
     def __init__(self, conn: Any) -> None:
         self._conn = conn
 
-    def insert(self, conn: Any, run_step: RunStep) -> None:
-        conn.execute(
+    def insert(self, run_step: RunStep) -> None:
+        self._conn.execute(
             "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, "
             "started_at, finished_at, execution_fingerprint_json, warnings_json, errors_json) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -32,7 +32,7 @@ class RunStepRepo:
             run_step_id=row["run_step_id"], run_id=row["run_id"],
             step_id=row["step_id"], plan_version_id=row["plan_version_id"],
             status=RunStepStatus(row["status"]), started_at=row["started_at"],
-            finished_at=row.get("finished_at"),
+            finished_at=row["finished_at"],
             execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
             warnings=json.loads(row["warnings_json"]),
             errors=json.loads(row["errors_json"]),
@@ -47,7 +47,7 @@ class RunStepRepo:
             run_step_id=r["run_step_id"], run_id=r["run_id"],
             step_id=r["step_id"], plan_version_id=r["plan_version_id"],
             status=RunStepStatus(r["status"]), started_at=r["started_at"],
-            finished_at=r.get("finished_at"),
+            finished_at=r["finished_at"],
             execution_fingerprint=json.loads(r["execution_fingerprint_json"]),
             warnings=json.loads(r["warnings_json"]),
             errors=json.loads(r["errors_json"]),
@@ -73,7 +73,7 @@ class RunStepRepo:
             run_step_id=row["run_step_id"], run_id=row["run_id"],
             step_id=row["step_id"], plan_version_id=row["plan_version_id"],
             status=RunStepStatus(row["status"]), started_at=row["started_at"],
-            finished_at=row.get("finished_at"),
+            finished_at=row["finished_at"],
             execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
             warnings=json.loads(row["warnings_json"]),
             errors=json.loads(row["errors_json"]),

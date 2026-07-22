@@ -13,14 +13,14 @@ class ArtifactRepo:
     def __init__(self, conn: Any) -> None:
         self._conn = conn
 
-    def register(self, conn: Any, artifact: ArtifactRef) -> str:
-        existing = conn.execute(
+    def register(self, artifact: ArtifactRef) -> str:
+        existing = self._conn.execute(
             "SELECT artifact_id FROM artifacts WHERE physical_hash = ?", (artifact.physical_hash,)
         ).fetchone()
         if existing is not None:
             return str(existing["artifact_id"])
         from cardre.domain.diagnostics import utc_now_iso
-        conn.execute(
+        self._conn.execute(
             "INSERT INTO artifacts (artifact_id, artifact_type, role, storage_key, "
             "physical_hash, logical_hash, media_type, schema_version, created_at, metadata_json) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -45,7 +45,7 @@ class ArtifactRepo:
             artifact_id=row["artifact_id"], artifact_type=row["artifact_type"],
             role=row["role"], path=row["storage_key"],
             physical_hash=row["physical_hash"], logical_hash=row["logical_hash"],
-            media_type=row["media_type"],
+            media_type=row["media_type"], created_at=row["created_at"],
             metadata={"schema_version": row["schema_version"]} | (json.loads(row["metadata_json"]) if row["metadata_json"] else {}),
         )
 
@@ -65,7 +65,7 @@ class ArtifactRepo:
             artifact_id=row["artifact_id"], artifact_type=row["artifact_type"],
             role=row["role"], path=row["storage_key"],
             physical_hash=row["physical_hash"], logical_hash=row["logical_hash"],
-            media_type=row["media_type"],
+            media_type=row["media_type"], created_at=row["created_at"],
             metadata={"schema_version": row["schema_version"]} | (json.loads(row["metadata_json"]) if row["metadata_json"] else {}),
         )
 
@@ -92,14 +92,14 @@ class ArtifactRepo:
             artifact_id=r["artifact_id"], artifact_type=r["artifact_type"],
             role=r["role"], path=r["storage_key"],
             physical_hash=r["physical_hash"], logical_hash=r["logical_hash"],
-            media_type=r["media_type"],
+            media_type=r["media_type"], created_at=r["created_at"],
             metadata={"schema_version": r["schema_version"]} | (json.loads(r["metadata_json"]) if r["metadata_json"] else {}),
         ) for r in rows]
 
-    def register_lineage(self, conn: Any, run_id: str, run_step_id: str, plan_version_id: str,
+    def register_lineage(self, run_id: str, run_step_id: str, plan_version_id: str,
                          step_id: str, artifact_id: str, direction: str, branch_id: str | None = None) -> None:
         from cardre.domain.diagnostics import utc_now_iso
-        conn.execute(
+        self._conn.execute(
             "INSERT OR IGNORE INTO artifact_lineage (lineage_id, run_id, run_step_id, plan_version_id, "
             "step_id, branch_id, artifact_id, direction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(uuid.uuid4()), run_id, run_step_id, plan_version_id, step_id,

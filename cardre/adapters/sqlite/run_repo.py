@@ -45,7 +45,7 @@ class RunRepo:
         return Run(
             run_id=row["run_id"], plan_version_id=row["plan_version_id"],
             status=RunStatus(row["status"]), started_at=row["started_at"],
-            finished_at=row.get("finished_at"), branch_id=row.get("branch_id"),
+            finished_at=row["finished_at"], branch_id=row["branch_id"],
             force=bool(row["force"]),
         )
 
@@ -113,7 +113,7 @@ class RunRepo:
             ).fetchall()
         return [Run(run_id=r["run_id"], plan_version_id=r["plan_version_id"],
                     status=RunStatus(r["status"]), started_at=r["started_at"],
-                    finished_at=r.get("finished_at"), branch_id=r.get("branch_id"),
+                    finished_at=r["finished_at"], branch_id=r["branch_id"],
                     force=bool(r["force"])) for r in rows]
 
     def list_for_project(self, project_id: str) -> list[Run]:
@@ -124,7 +124,7 @@ class RunRepo:
         ).fetchall()
         return [Run(run_id=r["run_id"], plan_version_id=r["plan_version_id"],
                     status=RunStatus(r["status"]), started_at=r["started_at"],
-                    finished_at=r.get("finished_at"), branch_id=r.get("branch_id"),
+                    finished_at=r["finished_at"], branch_id=r["branch_id"],
                     force=bool(r["force"])) for r in rows]
 
     def get_latest_successful_id(self, plan_version_id: str, branch_id: str | None = None) -> str | None:
@@ -158,7 +158,7 @@ class RunRepo:
             run_step_id=row["run_step_id"], run_id=row["run_id"],
             step_id=row["step_id"], plan_version_id=row["plan_version_id"],
             status=RunStepStatus(row["status"]), started_at=row["started_at"],
-            finished_at=row.get("finished_at"),
+            finished_at=row["finished_at"],
             execution_fingerprint=json.loads(row["execution_fingerprint_json"]),
             warnings=json.loads(row["warnings_json"]),
             errors=json.loads(row["errors_json"]),

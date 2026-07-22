@@ -11,12 +11,8 @@ class EvidenceRepo:
     def __init__(self, conn: Any) -> None:
         self._conn = conn
 
-    def _exec(self, conn: Any, sql: str, params: tuple[Any, ...] = ()) -> Any:
-        target = conn if conn is not None else self._conn
-        return target.execute(sql, params)
-
-    def insert_edge(self, conn: Any, edge: EvidenceEdge) -> None:
-        self._exec(conn,
+    def insert_edge(self, edge: EvidenceEdge) -> None:
+        self._conn.execute(
             "INSERT INTO evidence_edges (evidence_edge_id, run_id, run_step_id, plan_version_id, "
             "step_id, parent_step_id, source_run_id, source_run_step_id, "
             "policy, source_label, is_reused, is_stale, stale_reason, created_at) "
@@ -27,8 +23,8 @@ class EvidenceRepo:
              edge.stale_reason, edge.created_at),
         )
 
-    def insert_artifact(self, conn: Any, artifact: EvidenceArtifact) -> None:
-        self._exec(conn,
+    def insert_artifact(self, artifact: EvidenceArtifact) -> None:
+        self._conn.execute(
             "INSERT INTO evidence_artifacts (evidence_artifact_id, evidence_edge_id, artifact_id, role, created_at) "
             "VALUES (?, ?, ?, ?, ?)",
             (artifact.evidence_artifact_id, artifact.evidence_edge_id, artifact.artifact_id, artifact.role, artifact.created_at),

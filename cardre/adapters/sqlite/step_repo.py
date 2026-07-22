@@ -25,9 +25,9 @@ class StepRepo:
             branch_id=r["branch_id"],
         ) for r in rows]
 
-    def insert_steps_and_edges(self, conn: Any, plan_version_id: str, steps: list[Any]) -> None:
+    def insert_steps_and_edges(self, plan_version_id: str, steps: list[Any]) -> None:
         for step in steps:
-            conn.execute(
+            self._conn.execute(
                 "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
                 "params_json, params_hash, branch_label, position, canonical_step_id, branch_id) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -36,7 +36,7 @@ class StepRepo:
                  step.position, step.canonical_step_id, step.branch_id),
             )
             for idx, pid in enumerate(step.parent_step_ids):
-                conn.execute(
+                self._conn.execute(
                     "INSERT INTO plan_step_edges (plan_version_id, parent_step_id, child_step_id, edge_order) "
                     "VALUES (?, ?, ?, ?)", (plan_version_id, pid, step.step_id, idx),
                 )
