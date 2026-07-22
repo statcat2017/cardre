@@ -10,18 +10,35 @@ from cardre.adapters.sqlite.schema import (
     V3_STORE_SCHEMA_FAMILY,
     V3_STORE_SCHEMA_VERSION,
 )
-from cardre.domain.errors import SchemaVersionError
+from cardre.domain.errors import CardreError
 
 
 class SqliteProjectProvisioner:
-    """Creates a fresh project store at the given root path."""
+    """Creates a fresh project store at the given root path.
+
+    The target directory must NOT already exist. This ensures that any
+    compensation after a partial failure can safely remove the entire
+    project directory tree without touching pre-existing files.
+    """
 
     def initialize(self, root: Path) -> None:
         db_path = root / "project.sqlite"
-        if db_path.exists():
-            raise SchemaVersionError(
-                f"Store already exists at {db_path}. Use open() to connect."
+
+        if root.exists():
+            raise CardreError(
+                f"Target directory {root} already exists. "
+                "Choose a path that does not exist, or remove it first.",
+                code="STORE_ALREADY_EXISTS",
+                context={"path": str(root)},
             )
+
+        if db_path.exists():
+            raise CardreError(
+                f"Store already exists at {db_path}. Use open() to connect.",
+                code="STORE_ALREADY_EXISTS",
+                context={"path": str(db_path)},
+            )
+
         root.mkdir(parents=True, exist_ok=True)
         for sub in ("objects", "manifests/runs", "exports"):
             (root / sub).mkdir(parents=True, exist_ok=True)
