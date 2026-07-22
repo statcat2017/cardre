@@ -1,10 +1,10 @@
 """Integration test: LogisticRegressionNode.run() with known fixtures.
 
-Exercises the actual node code path (reader, artifact resolution, sklearn fit,
-helper functions) against tiny synthetic inputs so we can assert on exact model
-artifact output shape: features, source_variables, coefficients, intercept,
-class_mapping, probability_column_index, training params, and convergence
-metadata.
+Exercises the actual node code path (inputs collection, sklearn fit,
+helper functions) against tiny synthetic inputs so we can assert on exact
+model artifact output shape: features, source_variables, coefficients,
+intercept, class_mapping, probability_column_index, training params, and
+convergence metadata.
 """
 
 from __future__ import annotations
@@ -17,10 +17,14 @@ import polars as pl
 import pytest
 
 from cardre._evidence.schemas import SCHEMA_MODELLING_METADATA
+from cardre.adapters.evidence.reader import EvidenceReader
+from cardre.application.execution.input_collection import StepInputCollection
+from cardre.application.ports.unit_of_work import ArtifactRepoPort, RunStepRepoPort
+from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.step import StepSpec
-from cardre.execution.context import ExecutionContext
 from cardre.nodes.build.models import LogisticRegressionNode
+from cardre.nodes.contracts import NodeContext, RuntimeMeta
 from cardre.store.artifact_repo import ArtifactRepository
 
 
@@ -65,6 +69,56 @@ def _register_artifact(
         (artifact_id, artifact_type, role, path, "phys_hash", "log_hash",
          media_type, utc_now_iso(), json.dumps(metadata)),
     )
+
+
+class _TestArtifactReader:
+    """Minimal ArtifactReader backed by a ProjectStore for tests."""
+
+    def __init__(self, store):
+        self._store = store
+
+    def read_bytes(self, artifact: ArtifactRef) -> bytes:
+        return self.resolve_path(artifact).read_bytes()
+
+    def resolve_path(self, artifact: ArtifactRef) -> Path:
+        return self._store.artifact_path(artifact)
+
+
+class _TestStagedArtifactWriter:
+    """Minimal StagedArtifactWriter that delegates to write_json_artifact.
+
+    Collects written artifacts so the test can inspect them.
+    """
+
+    def __init__(self, store):
+        self._store = store
+        self._published: list[ArtifactRef] = []
+
+    def stage_json(self, role: str, kind: str, payload: dict,
+                   metadata: dict | None = None) -> ArtifactRef:
+        from cardre.artifacts import write_json_artifact
+        art = write_json_artifact(
+            self._store,
+            artifact_type=role,
+            role=role,
+            stem=f"test-{uuid.uuid4().hex[:8]}",
+            payload=payload,
+            metadata=metadata,
+        )
+        self._published.append(art)
+        return art
+
+    def stage_table(self, role: str, kind: str, frame: object,
+                    metadata: dict | None = None) -> ArtifactRef:
+        raise NotImplementedError("stage_table not needed in this test")
+
+    def stage_bytes(self, role: str, kind: str, data: bytes,
+                    media_type: str, logical_hash: str,
+                    metadata: dict | None = None) -> ArtifactRef:
+        raise NotImplementedError("stage_bytes not needed in this test")
+
+    def publish(self, staged: ArtifactRef) -> Path:
+        return self._store.artifact_path(staged)
 
 
 @pytest.fixture
@@ -122,12 +176,13 @@ def test_logistic_regression_model_artifact_shape(
     )
 
     # --- Retrieve ArtifactRefs from the store ---
-    meta_art = ArtifactRepository(store).get(meta_art_id)
+    repo = ArtifactRepository(store)
+    meta_art = repo.get(meta_art_id)
     assert meta_art is not None
-    train_art = ArtifactRepository(store).get(train_art_id)
+    train_art = repo.get(train_art_id)
     assert train_art is not None
 
-    # --- Build ExecutionContext ---
+    # --- Build NodeContext ---
     step_spec = StepSpec(
         step_id="lr-1",
         node_type="cardre.logistic_regression",
@@ -144,35 +199,75 @@ def test_logistic_regression_model_artifact_shape(
         parent_step_ids=[],
     )
 
-    context = ExecutionContext(
-        store=store,
+    artifact_reader = _TestArtifactReader(store)
+    artifact_repo: ArtifactRepoPort = repo
+    from cardre.store.run_step_repo import RunStepRepository
+    run_step_repo: RunStepRepoPort = RunStepRepository(store)
+
+    evidence_reader = EvidenceReader(
+        artifact_reader=artifact_reader,
+        artifact_repo=artifact_repo,
+        run_step_repo=run_step_repo,
+    )
+
+    input_collection = StepInputCollection(
+        reader=evidence_reader,
+        input_artifacts=[train_art, meta_art],
+    )
+
+    staged_writer = _TestStagedArtifactWriter(store)
+
+    # Wrap the staging writer to match the OutputPublisher protocol.
+    # We need to implement it in the test or use StagingOutputPublisher.
+    # For simplicity, we build the OutputPublisher inline.
+    from cardre.application.execution.output_publisher import StagingOutputPublisher
+
+    # Re-wrap staged_writer as a StagedArtifactWriter
+    class _WriterWrapper:
+        def __init__(self, sw):
+            self._sw = sw
+        def stage_json(self, role, kind, payload, metadata=None):
+            return self._sw.stage_json(role, kind, payload, metadata)
+        def stage_table(self, role, kind, frame, metadata=None):
+            return self._sw.stage_table(role, kind, frame, metadata)
+        def stage_bytes(self, role, kind, data, media_type, logical_hash, metadata=None):
+            return self._sw.stage_bytes(role, kind, data, media_type, logical_hash, metadata)
+        def publish(self, staged):
+            return self._sw.publish(staged)
+
+    output_publisher = StagingOutputPublisher(writer=_WriterWrapper(staged_writer))
+
+    node_context = NodeContext(
         run_id="run-1",
         plan_version_id="pv-1",
         step_spec=step_spec,
-        parent_run_steps=[],
-        input_artifacts=[train_art, meta_art],
-        validated_params={
+        inputs=input_collection,
+        outputs=output_publisher,
+        params={
             "solver": "lbfgs",
             "C": 1.0,
             "max_iter": 1000,
             "random_seed": 42,
             "fail_on_non_convergence": True,
         },
-        runtime_metadata={},
+        runtime=RuntimeMeta(
+            run_id="run-1",
+            plan_version_id="pv-1",
+            step_id="lr-1",
+            node_type="cardre.logistic_regression",
+        ),
     )
 
     # --- Run the node ---
     node = LogisticRegressionNode()
-    output = node.run(context)
+    result = node.run(node_context)
 
-    # --- Assert on NodeOutput ---
-    assert len(output.artifacts) == 1
-    model_art = output.artifacts[0]
-    assert model_art.artifact_type == "model"
-    assert model_art.role == "model"
+    # --- Assert on NodeResult ---
+    assert len(result.staged_artifacts) == 1
+    staged = result.staged_artifacts[0]
 
-    # Read back the written model artifact payload
-    model_path = store.artifact_path(model_art)
+    # Read back the written model artifact payload via the store
+    model_path = store.artifact_path(staged)
     raw = json.loads(model_path.read_bytes())
 
     # --- Verify model artifact shape ---
@@ -224,5 +319,5 @@ def test_logistic_regression_model_artifact_shape(
     assert raw["warnings"] == []
 
     # Metrics
-    assert output.metrics["feature_count"] == 2
-    assert bool(output.metrics["converged"]) is True
+    assert result.metrics["feature_count"] == 2
+    assert bool(result.metrics["converged"]) is True

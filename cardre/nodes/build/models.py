@@ -5,18 +5,15 @@ import math
 import warnings
 from typing import Any
 
-from cardre._evidence.kinds import EvidenceKind, EvidenceNotFoundError
+from cardre._evidence.kinds import (
+    EvidenceKind,
+    EvidenceNotFoundError,
+)
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import SCHEMA_MODEL_ARTIFACT, SCHEMA_SCORE_SCALING
 from cardre.artifacts import write_json_artifact
 from cardre.domain.artifacts import json_logical_hash
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.node_parameters import (
-    MethodOption,
-    NodeParameterSchema,
-    ParameterConstraint,
-    ParameterDefinition,
-)
 from cardre.nodes.build._logit_helpers import (
     COEF_ROUND,
     POINTS_ROUND,
@@ -27,7 +24,13 @@ from cardre.nodes.build._logit_helpers import (
     parse_base_odds,
     resolve_features,
 )
-from cardre.nodes.contracts import NodeType
+from cardre.nodes.contracts import NodeContext, NodeResult, NodeType
+from cardre.nodes.parameters import (
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
+)
 
 
 class LogisticRegressionNode(NodeType):
@@ -182,7 +185,151 @@ class LogisticRegressionNode(NodeType):
             errors.append("max_iter must be an integer")
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
+    def run(self, context: Any) -> Any:
+        """Dispatch to NodeContext or ExecutionContext implementation.
+
+        Backward compat: step runner still passes ``ExecutionContext``.
+        New callers should pass ``NodeContext``.
+        """
+        if hasattr(context, 'inputs'):
+            return self._run_node_context(context)
+        return self._run_execution_context(context)
+
+    def _run_node_context(self, context: NodeContext) -> NodeResult:
+        import numpy as np
+        from sklearn.exceptions import ConvergenceWarning
+        from sklearn.linear_model import LogisticRegression as SkLearnLR
+
+        params = context.params
+        train_artifact = context.inputs.require("train", "LogisticRegressionNode")
+
+        meta = context.inputs.target_metadata()
+        from cardre.modeling.target import TargetSpec
+        target_spec = TargetSpec.from_metadata(meta)
+        if target_spec is None:
+            raise ValueError("Target metadata is required for logistic regression")
+
+        sel_def_list = context.inputs.by_kind(EvidenceKind.SELECTION_DEFINITION)  # type: ignore[arg-type]
+        sel_def = sel_def_list[0] if sel_def_list else None
+
+        target_column = target_spec.target_column
+        good_values = target_spec.good_values
+        bad_values = target_spec.bad_values
+
+        df = context.inputs.read_dataframe(train_artifact)
+        woe_cols = [c for c in df.columns if c.endswith("_woe")]
+        if not woe_cols:
+            raise ValueError("No WOE-transformed columns found in training data")
+
+        X = df.select(woe_cols).to_numpy()
+
+        if target_column not in df.columns:
+            raise ValueError(f"Target column '{target_column}' not found in training data")
+
+        target_spec.validate_good_bad_only(df)
+        y_binary = target_spec.encode_binary_strict(df).to_list()
+        n_bad = sum(y_binary)
+        n_good = len(y_binary) - n_bad
+        if n_bad == 0:
+            raise ValueError(f"Logistic regression: no bad-class rows found (bad_values={sorted(bad_values)})")
+        if n_good == 0:
+            raise ValueError(f"Logistic regression: no good-class rows found (good_values={sorted(good_values)})")
+
+        lr_params = build_lr_params(params)
+
+        lr = SkLearnLR(**lr_params)
+        with warnings.catch_warnings(record=True) as fit_warnings:
+            warnings.simplefilter("always")
+            lr.fit(X, y_binary)
+
+        bad_class = sorted(bad_values)[0] if bad_values else "1"
+        good_class = sorted(good_values)[0] if good_values else "0"
+        class_mapping = build_class_mapping(good_class, bad_class)
+
+        features_list, source_variables = resolve_features(woe_cols, sel_def)
+        coefficients: dict[str, float] = {
+            col: round(float(coef), COEF_ROUND) for col, coef in zip(features_list, lr.coef_[0], strict=False)
+        }
+
+        max_iter = int(params.get("max_iter", 1000))
+        fail_on_non_convergence = bool(params.get("fail_on_non_convergence", True))
+        has_sklearn_warning = any(issubclass(w.category, ConvergenceWarning) for w in fit_warnings)
+        converged = not has_sklearn_warning and bool(lr.n_iter_[0] <= max_iter)
+        warnings_list: list[dict[str, Any]] = []
+        if not converged:
+            msg = f"Logistic regression did not converge after {max_iter} iterations"
+            if fail_on_non_convergence:
+                raise ValueError(f"{msg} (set fail_on_non_convergence=False to warn only)")
+            warnings_list.append({
+                "code": "CONVERGENCE_FAILURE",
+                "message": msg,
+            })
+        training_params: dict[str, Any] = {}
+        for k, v in lr_params.items():
+            if isinstance(v, np.bool_):
+                training_params[k] = bool(v)
+            elif isinstance(v, np.integer):
+                training_params[k] = int(v)
+            elif isinstance(v, np.floating):
+                training_params[k] = float(v)
+            else:
+                training_params[k] = v
+
+        prob_col_idx = 1
+        for idx, cls_label in enumerate(lr.classes_):
+            if str(cls_label) == str(bad_class):
+                prob_col_idx = idx
+                break
+
+        feature_order_hash = json_logical_hash(
+            {"features": features_list}
+        )
+
+        model = {
+            "schema_version": SCHEMA_MODEL_ARTIFACT,
+            "model_family": "logistic_regression",
+            "target_column": target_column,
+            "source_variables": source_variables,
+            "class_mapping": class_mapping,
+            "bad_class_label": str(bad_class),
+            "target_event_value": str(bad_class),
+            "probability_column_index": prob_col_idx,
+            "feature_contract": {
+                "features": features_list,
+                "transformation_strategy": "woe",
+                "order_hash": feature_order_hash,
+                "missing_policy": "error",
+                "unknown_category_policy": "error",
+            },
+            "feature_order_hash": feature_order_hash,
+            "model_payload": {
+                "intercept": round(float(lr.intercept_[0]), COEF_ROUND),
+                "coefficients": coefficients,
+            },
+            "training": {
+                "row_count": X.shape[0],
+                "converged": converged,
+                "iterations": int(lr.n_iter_[0]),
+                "params": training_params,
+            },
+            "warnings": warnings_list,
+        }
+
+        context.outputs.publish_json(
+            role="model",
+            kind=EvidenceKind.MODEL_ARTIFACT,  # type: ignore[arg-type]
+            payload=model,
+            metadata={
+                "feature_count": len(features_list),
+                "target_column": target_column,
+                "schema_version": SCHEMA_MODEL_ARTIFACT,
+            },
+        )
+        context.outputs.add_metric("feature_count", len(features_list))
+        context.outputs.add_metric("converged", converged)
+        return context.outputs.build_result()  # type: ignore[no-any-return]
+
+    def _run_execution_context(self, context: ExecutionContext) -> NodeOutput:
         import numpy as np
         from sklearn.exceptions import ConvergenceWarning
         from sklearn.linear_model import LogisticRegression as SkLearnLR

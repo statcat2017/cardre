@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.node_parameters import NodeParameterSchema
 from cardre.nodes.build._automatic_params import (
     automatic_binning_parameter_schema,
     validate_automatic_binning_params,
@@ -11,6 +10,7 @@ from cardre.nodes.build._automatic_params import (
 from cardre.nodes.build._fine_classing import run_fine_classing
 from cardre.nodes.build._optbinning import _run_optbinning
 from cardre.nodes.contracts import NodeType
+from cardre.nodes.parameters import NodeParameterSchema
 
 
 class AutomaticBinningNode(NodeType):

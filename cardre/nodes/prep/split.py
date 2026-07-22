@@ -6,13 +6,13 @@ import polars as pl
 from cardre._evidence.schemas import SCHEMA_SPLIT_SUMMARY
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.node_parameters import (
+from cardre.nodes.contracts import NodeType
+from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.nodes.contracts import NodeType
 
 
 class ValidateBinaryTargetNode(NodeType):

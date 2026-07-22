@@ -11,13 +11,13 @@ from typing import Any, cast
 
 import polars as pl
 
-from cardre.node_parameters import (
+from cardre.nodes._classifier_base import BaseClassifierNode, _ClassifierResult
+from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.nodes._classifier_base import BaseClassifierNode, _ClassifierResult
 
 
 def _check_optional_dependency(package_name: str, install_name: str) -> None:

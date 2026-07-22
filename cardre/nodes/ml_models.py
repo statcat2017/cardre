@@ -12,13 +12,13 @@ import numpy as np
 import polars as pl
 from sklearn.tree import DecisionTreeClassifier
 
-from cardre.node_parameters import (
+from cardre.nodes._classifier_base import BaseClassifierNode, _ClassifierResult
+from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.nodes._classifier_base import BaseClassifierNode, _ClassifierResult
 
 
 def _extract_rules_from_tree(

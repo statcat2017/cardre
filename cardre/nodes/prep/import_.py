@@ -8,13 +8,13 @@ import polars as pl
 from cardre.artifacts import write_parquet_artifact
 from cardre.domain.diagnostics import JsonDict
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.node_parameters import (
+from cardre.nodes.contracts import NodeType
+from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.nodes.contracts import NodeType
 
 _DTYPE_MAP: dict[str, type[pl.DataType]] = {
     "str": pl.Utf8, "string": pl.Utf8, "utf8": pl.Utf8, "Utf8": pl.Utf8,

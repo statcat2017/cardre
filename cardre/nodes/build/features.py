@@ -16,14 +16,14 @@ from cardre._evidence.schemas import (
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.engine.binning.diagnostics import MonotonicStatus, check_pure_bins, monotonicity_status
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.node_parameters import (
+from cardre.nodes._bin_mask import build_bin_condition
+from cardre.nodes.contracts import NodeType
+from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.nodes._bin_mask import build_bin_condition
-from cardre.nodes.contracts import NodeType
 from cardre.store.plan_repo import PlanRepository
 
 

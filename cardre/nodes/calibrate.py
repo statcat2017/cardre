@@ -31,13 +31,13 @@ from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import JsonDict
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.modeling.serialization import write_estimator_artifact
-from cardre.node_parameters import (
+from cardre.nodes.contracts import NodeType
+from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.nodes.contracts import NodeType
 
 
 def _safe_logit(probability: np.ndarray, eps: float = 1e-6) -> np.ndarray:

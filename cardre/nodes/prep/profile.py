@@ -8,13 +8,13 @@ from cardre._evidence.schemas import SCHEMA_PROFILE_SUMMARY
 from cardre.artifacts import write_json_artifact
 from cardre.domain.diagnostics import JsonDict
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.node_parameters import (
+from cardre.nodes._dataset_quality import quality_warnings as _quality_warnings
+from cardre.nodes.contracts import NodeType
+from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterDefinition,
 )
-from cardre.nodes._dataset_quality import quality_warnings as _quality_warnings
-from cardre.nodes.contracts import NodeType
 
 
 class ProfileDatasetNode(NodeType):

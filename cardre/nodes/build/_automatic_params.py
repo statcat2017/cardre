@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre.node_parameters import (
+from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sys
 import traceback
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -26,7 +27,7 @@ from cardre.domain.run import RunStep, RunStepStatus
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.execution.failure_classification import classify_step_failure
 from cardre.execution.fingerprints import _json_ready, build_execution_fingerprint
-from cardre.node_parameters import normalize_node_params
+from cardre.nodes.parameters import normalize_node_params
 from cardre.nodes.registry import NodeRegistry
 
 if TYPE_CHECKING:
@@ -281,7 +282,7 @@ class StepRunner:
     @staticmethod
     def _filter_input_artifacts(
         spec: StepSpec,
-        allowed_roles: list[str],
+        allowed_roles: Sequence[str],
         artifacts: list[ArtifactRef],
     ) -> list[ArtifactRef]:
         if not artifacts:
