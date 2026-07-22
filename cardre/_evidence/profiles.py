@@ -30,6 +30,7 @@ from cardre._evidence.schemas import (
     SCHEMA_REJECT_POPULATION_CONFIG,
     SCHEMA_REPORT_BUNDLE,
     SCHEMA_RESAMPLING_EVIDENCE,
+    SCHEMA_RUN_SUMMARY,
     SCHEMA_SAMPLE_DEFINITION,
     SCHEMA_SCORE_SCALING,
     SCHEMA_SCORE_TABLE,
@@ -219,6 +220,12 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"report"},
         schema_version=SCHEMA_REPORT_BUNDLE,
         required_keys={"project_id", "run_id", "source", "summary"},
+    ),
+    EvidenceKind.RUN_SUMMARY: _Profile(
+        expected_roles={"manifest"},
+        expected_artifact_types={"run_summary"},
+        schema_version=SCHEMA_RUN_SUMMARY,
+        required_keys={"run_id", "steps"},
     ),
     EvidenceKind.TECHNICAL_MANIFEST_INDEX: _Profile(
         expected_roles={"report"},

@@ -239,6 +239,10 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, AdapterSpec] = {
         profile=EVIDENCE_PROFILES[EvidenceKind.CALIBRATION_DIAGNOSTICS],
         parse=lambda path, art, store: CalibrationDiagnostics.from_json(read_json_payload(path), artifact_id=art.artifact_id),
     ),
+    EvidenceKind.RUN_SUMMARY: AdapterSpec(
+        profile=EVIDENCE_PROFILES[EvidenceKind.RUN_SUMMARY],
+        parse=lambda path, art, store: read_json_payload(path),
+    ),
 }
 
 

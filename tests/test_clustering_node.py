@@ -5,11 +5,11 @@ import json
 import polars as pl
 import pytest
 
+from cardre.application.execution.step_runner import StepRunner
 from cardre.artifacts import write_parquet_artifact
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.run import RunStepStatus
 from cardre.domain.step import StepSpec
-from cardre.execution.step_runner import StepRunner
 from cardre.nodes.registry import NodeRegistry
 from cardre.store.artifact_repo import ArtifactRepository
 

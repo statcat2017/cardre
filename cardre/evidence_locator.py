@@ -57,7 +57,7 @@ class EvidenceLocator:
         branch_id: str,
     ) -> EvidenceCheckResult:
         """Check whether branch execution can short-circuit to an existing run."""
-        from cardre.execution.topology import validate_topology
+        from cardre.application.execution.topology import validate_topology
         from cardre.services.staleness_service import StalenessService
         from cardre.store.run_repo import RunRepository
         from cardre.store.step_repo import StepRepository
