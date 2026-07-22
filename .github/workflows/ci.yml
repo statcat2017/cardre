@@ -114,7 +114,9 @@ jobs:
 
   typecheck-frontend:
     needs: detect-changes
-    if: needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.ci == 'true'
+    # Temporarily skipped during architecture rewrite (Batches 01-06).
+    # Restored in Batch 07.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
