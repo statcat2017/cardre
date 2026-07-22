@@ -133,15 +133,22 @@ def comparison_to_response(comparison: Mapping[str, Any]) -> ComparisonResponse:
 
 
 def project_to_response(
-    project: Mapping[str, Any],
+    project: Any,
     *,
     cardre_version: str | None = None,
 ) -> ProjectResponse:
+    if isinstance(project, dict):
+        return ProjectResponse(
+            project_id=project["project_id"],
+            name=project["name"],
+            created_at=project["created_at"],
+            cardre_version=project.get("cardre_version", cardre_version or __version__),
+        )
     return ProjectResponse(
-        project_id=project["project_id"],
-        name=project["name"],
-        created_at=project["created_at"],
-        cardre_version=project.get("cardre_version", cardre_version or __version__),
+        project_id=project.project_id,
+        name=project.name,
+        created_at=project.created_at,
+        cardre_version=project.cardre_version,
     )
 
 

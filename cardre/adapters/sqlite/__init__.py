@@ -1,0 +1,1 @@
+"""SQLite adapters — persistence implementations."""

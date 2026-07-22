@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import uvicorn
 
-from cardre.api.app import app
-from cardre.config import CardreConfig
+from cardre.bootstrap.build_app import build_app
 
 
 def main() -> None:
-    config = CardreConfig.from_env()
+    app, _shutdown = build_app()
+    settings = app.state.container.settings
     uvicorn.run(
         app,
-        host=config.api_host,
-        port=config.api_port,
+        host=settings.api_host,
+        port=settings.api_port,
         log_level="info",
     )
 

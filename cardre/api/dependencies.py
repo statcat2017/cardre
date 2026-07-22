@@ -1,118 +1,49 @@
-"""FastAPI dependency injection for the Cardre v2 API."""
+"""FastAPI dependency injection for the Cardre hexagonal architecture."""
 
 from __future__ import annotations
 
-import os
-from collections.abc import Generator
-from pathlib import Path
+from typing import Any
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Request
 
-from cardre.api.errors import ErrorCode
-from cardre.config import CardreConfig
-from cardre.services.project_resolver import ProjectResolver
-from cardre.services.run_coordinator import RunCoordinator
-from cardre.store.db import ProjectStore
+from cardre.bootstrap.container import Container
 
 
-def get_project_store(
-    project_id_header: str | None = Header(None, alias="X-Project-Id"),
-    project_path: str | None = Header(None, alias="X-Project-Path"),
-) -> Generator[ProjectStore, None, None]:
-    """Resolve a ``ProjectStore`` from a trusted project id or a dev-only path."""
-    config = CardreConfig.from_env()
-    resolver = ProjectResolver(config.registry_path)
-
-    if project_id_header:
-        root = resolver.resolve_root(project_id_header)
-        store = get_project_store_by_root(root)
-        try:
-            yield store
-        finally:
-            store.close()
-        return
-
-    if project_path:
-        if not _raw_project_path_allowed():
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "code": ErrorCode.RAW_PROJECT_PATH_DISABLED,
-                    "message": (
-                        "X-Project-Path is disabled by default. Set CARDRE_ALLOW_RAW_PROJECT_PATH=1 "
-                        "for development-only access or send X-Project-Id instead."
-                    ),
-                },
-            )
-        root = Path(project_path).resolve()
-        if not root.exists():
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "code": ErrorCode.PROJECT_NOT_FOUND,
-                    "message": f"Project not found at {project_path}.",
-                },
-            )
-        store = get_project_store_by_root(root)
-        try:
-            yield store
-        finally:
-            store.close()
-        return
-
-    if not project_id_header:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "code": ErrorCode.MISSING_PROJECT_ID,
-                "message": "X-Project-Id header is required.",
-            },
-        )
-
-    return
+def get_container(request: Request) -> Container:
+    """Return the application container from app state."""
+    container: Container = request.app.state.container
+    return container
 
 
-def _raw_project_path_allowed() -> bool:
-    return os.environ.get("CARDRE_ALLOW_RAW_PROJECT_PATH", "0").strip().lower() in (
-        "1",
-        "true",
-    )
+def get_create_project(container: Container = Depends(get_container)) -> Any:
+    return container.create_project
 
 
-def get_project_store_by_root(root: Path) -> ProjectStore:
-    """Open a fresh store for a given root path."""
-    store = ProjectStore(root)
-    store.open()
-    return store
+def get_list_projects(container: Container = Depends(get_container)) -> Any:
+    return container.list_projects
 
 
-def require_governance() -> None:
-    """Raise ``GOVERNANCE_DISABLED`` (403) if governance is not enabled."""
-    config = CardreConfig.from_env()
-    if not config.governance_enabled:
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "code": ErrorCode.GOVERNANCE_DISABLED,
-                "message": (
-                    "This endpoint requires CARDRE_GOVERNANCE=1. "
-                    "Set the environment variable to enable governance features."
-                ),
-                "context": {},
-            },
-        )
+def get_get_project(container: Container = Depends(get_container)) -> Any:
+    return container.get_project
 
 
-def get_run_coordinator(
-    store: ProjectStore = Depends(get_project_store),
-) -> RunCoordinator:
-    """Create a ``RunCoordinator`` for the current project store."""
-    return RunCoordinator(store)
+# ---------------------------------------------------------------------------
+# Legacy stubs — kept for backward compatibility during migration.
+# Old route files import these; they are not registered in the new app.
+# ---------------------------------------------------------------------------
 
 
-__all__ = [
-    "get_project_store",
-    "get_project_store_by_root",
-    "get_run_coordinator",
-    "require_governance",
-]
+def get_project_store(*args: Any, **kwargs: Any) -> Any:
+    raise NotImplementedError("get_project_store removed; use use-case deps")
+
+
+def get_project_store_by_root(*args: Any, **kwargs: Any) -> Any:
+    raise NotImplementedError("get_project_store_by_root removed; use use-case deps")
+
+
+def get_run_coordinator(*args: Any, **kwargs: Any) -> Any:
+    raise NotImplementedError("get_run_coordinator removed; use use-case deps")
+
+
+def require_governance(*args: Any, **kwargs: Any) -> Any:
+    raise NotImplementedError("require_governance removed; use use-case deps")

@@ -1,5 +1,15 @@
 # Extend PlanExecutor — Do Not Rewrite the Execution Core
 
+> **Status: Superseded by [ADR-0014](0014-supersede-0002-authorise-hexagonal-re-encapsulation.md).**
+> ADR-0014 authorises the hexagonal re-encapsulation and overturns this ADR's
+> "extend, do not rewrite" conclusion. The preserved design commitments
+> (dual hashing, computed staleness, build/validate role enforcement, settled
+> vocabulary, single execution path) are reaffirmed in ADR-0014 and carried
+> forward unchanged. This ADR is retained as a historical record of the
+> incremental "deepening" programme and the reasoning that held the
+> greenfield rewrite at bay until the structural validation of 2026-07-21
+> showed the dependency direction itself was the problem.
+
 A proposal was made to replace Cardre's execution system with a new
 `cardre/engine/execution/runner.py` + planner, node registry, artifact store, and
 metadata repositories under `cardre/engine/`. That plan frames the existing

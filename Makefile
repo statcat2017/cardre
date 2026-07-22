@@ -1,4 +1,4 @@
-.PHONY: test test-cov test-fail-fast test-evidence test-launch-core test-governance test-python-ci typecheck typecheck-python lint lint-line-counts lint-artifact-reads audit-artifact-reads preflight v2-phase-check
+.PHONY: test test-cov test-fail-fast test-evidence test-launch-core test-governance test-python-ci typecheck typecheck-python lint lint-line-counts lint-artifact-reads audit-artifact-reads arch-check preflight v2-phase-check
 
 # Next target: 65 after more characterization tests land.
 PYTEST_COV_FAIL_UNDER ?= 60
@@ -30,7 +30,10 @@ typecheck:
 typecheck-python:
 	python3 -m mypy
 
-lint: lint-line-counts lint-artifact-reads
+lint: lint-line-counts lint-artifact-reads arch-check
+
+arch-check:
+	lint-imports
 
 preflight:
 	ruff check
@@ -38,6 +41,7 @@ preflight:
 	python3 scripts/check-line-counts.py
 	python3 scripts/check_doc_references.py
 	python3 scripts/check-sidecar-naming.py
+	$(MAKE) arch-check
 	python3 -m pytest tests/ -q --tb=short --cov-fail-under=$(PYTEST_COV_FAIL_UNDER)
 	$(MAKE) test-governance
 	$(MAKE) lint-artifact-reads

@@ -34,6 +34,9 @@ class ErrorResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str = "ok"
     version: str = __version__
+    launch_node_count: int = 0
+    deferred_node_count: int = 0
+    governance_enabled: bool = False
 
 
 # ---------------------------------------------------------------------------

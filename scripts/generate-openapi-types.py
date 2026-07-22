@@ -18,9 +18,10 @@ def main() -> None:
     sys.path.insert(0, str(REPO_ROOT))
 
     try:
-        from cardre.api.app import app
+        from cardre.bootstrap.build_app import build_app
+        app, _shutdown = build_app()
     except ImportError as exc:
-        print(f"Cannot import cardre.api.app: {exc}")
+        print(f"Cannot import cardre.bootstrap.build_app: {exc}")
         print("Install sidecar deps: pip install -e '.[sidecar]'")
         sys.exit(1)
 
