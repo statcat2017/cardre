@@ -4,12 +4,17 @@ from typing import Any, cast
 
 import polars as pl
 
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import SCHEMA_CUTOFF_ANALYSIS
-from cardre.artifacts import write_json_artifact
 from cardre.domain.diagnostics import JsonDict
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_CUTOFF_ANALYSIS
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -69,29 +74,31 @@ class CutoffAnalysisNode(NodeType):
             errors.append("band_count must be an integer")
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        params = context.validated_params
-        reader = ArtifactEvidenceReader(store)
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         band_count = int(params.get("band_count", 20))
         cutoffs = list(params.get("cutoffs", []))
 
         if band_count < 2:
             raise ValueError(f"band_count must be at least 2, got {band_count}")
 
-        meta = context.target_metadata()
+        meta = context.inputs.target_metadata()
         target_col = meta.target_column if meta is not None else ""
         good = meta.good_values if meta is not None else frozenset()
         bad = meta.bad_values if meta is not None else frozenset()
         bad_list = list(bad)
 
-        data_arts = context.data_artifacts()
+        train_arts = context.inputs.by_role("train")
+        test_arts = context.inputs.by_role("test")
+        oot_arts = context.inputs.by_role("oot")
+        data_arts = train_arts + test_arts + oot_arts
+
         cutoff_tables: dict[str, list[JsonDict]] = {}
         warnings: list[JsonDict] = []
 
         for data_art in data_arts:
             role = data_art.role
-            df = reader.read_dataframe(data_art)
+            df = context.inputs.read_dataframe(data_art)
             if "score" not in df.columns or "predicted_bad_probability" not in df.columns:
                 continue
 
@@ -172,10 +179,29 @@ class CutoffAnalysisNode(NodeType):
         }
         if warnings:
             payload["warnings"] = warnings
-        art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"cutoff-analysis-{context.step_spec.step_id}",
+
+        context.outputs.publish_json(
+            role="report", kind=EvidenceKind.CUTOFF_ANALYSIS,
             payload=payload,
             metadata={"schema_version": SCHEMA_CUTOFF_ANALYSIS},
         )
-        return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
+
+        context.outputs.add_metric("role_count", len(data_arts))
+        return context.outputs.build_result()
+
+
+__definition__ = NodeDefinition(
+    node_type=CutoffAnalysisNode.node_type,
+    version=CutoffAnalysisNode.version,
+    category=CutoffAnalysisNode.category,
+    description="Analyse approval rate, bad rate, and capture rate across score bands / cutoffs",
+    input_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in CutoffAnalysisNode.input_roles),
+    ),
+    output_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in CutoffAnalysisNode.output_roles),
+    ),
+    parameter_schema=None,
+    optional_dependencies=(),
+    tier="launch",
+)

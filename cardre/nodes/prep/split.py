@@ -3,10 +3,16 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
-from cardre._evidence.schemas import SCHEMA_SPLIT_SUMMARY
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_SPLIT_SUMMARY
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -21,6 +27,18 @@ class ValidateBinaryTargetNode(NodeType):
     category = "transform"
     input_roles: list[str] = ["input", "train"]
     output_roles: list[str] = ["report"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.validate_binary_target",
+        version="1",
+        category="transform",
+        description="Validate binary target column constraints",
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)),)),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("report", required=True, kinds=("report",)),)),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -74,12 +92,11 @@ class ValidateBinaryTargetNode(NodeType):
             ],
         )
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        input_artifact = context.input_artifacts[0]
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        input_artifact = context.inputs.first("input") or context.inputs.first("train")
+        params = context.params
         target_col = params.get("target_column", "credit_risk_class")
-        df = pl.read_parquet(store.artifact_path(input_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+        df = context.inputs.read_dataframe(input_artifact)
         values = df[target_col].unique().to_list()
         unique_values = sorted(str(v) for v in values)
 
@@ -100,18 +117,15 @@ class ValidateBinaryTargetNode(NodeType):
                 f"Target column {target_col!r} has {len(unique_values)} unique values, expected 2"
             )
 
-        artifact = write_json_artifact(
-            store,
-            artifact_type="report",
+        context.outputs.publish_json(
             role="report",
-            stem=f"target-validate-{context.step_spec.step_id}",
+            kind=EvidenceKind.SPLIT_SUMMARY,
             payload=report,
-            metadata={"source_artifact_id": input_artifact.artifact_id},
+            metadata={"source_artifact_id": getattr(input_artifact, "artifact_id", "")},
         )
 
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"is_binary": report["is_binary"]})
+        context.outputs.add_metric("is_binary", report["is_binary"])
+        return context.outputs.build_result()
 
 
 class SplitTrainTestOotNode(NodeType):
@@ -120,6 +134,18 @@ class SplitTrainTestOotNode(NodeType):
     category = "transform"
     input_roles: list[str] = ["input", "definition"]
     output_roles: list[str] = ["train", "test", "oot"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.split_train_test_oot",
+        version="2",
+        category="transform",
+        description="Split dataset into train/test/oot partitions",
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)), ArtifactRoleSpec("definition", required=False, kinds=("definition",)))),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=("dataset",)), ArtifactRoleSpec("test", required=True, kinds=("dataset",)), ArtifactRoleSpec("oot", required=True, kinds=("dataset",)))),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -193,10 +219,9 @@ class SplitTrainTestOotNode(NodeType):
             ],
         )
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        dataset_artifact = next(a for a in context.input_artifacts if a.role == "input")
-        store = context.store
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        dataset_artifact = context.inputs.first("input")
+        params = context.params
         method = params.get("method", "random_stratified")
         train_frac = float(params.get("train_fraction", 0.6))
         test_frac = float(params.get("test_fraction", 0.2))
@@ -208,7 +233,7 @@ class SplitTrainTestOotNode(NodeType):
         if abs(total - 1.0) > 0.001:
             raise ValueError(f"Split fractions sum to {total}, expected 1.0")
 
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+        df = context.inputs.read_dataframe(dataset_artifact)
 
         if method == "preassigned_role_column":
             if not role_column or role_column not in df.columns:
@@ -227,14 +252,14 @@ class SplitTrainTestOotNode(NodeType):
         else:
             raise ValueError(f"Unknown split method: {method}")
 
-        artifacts = []
         for role in ("train", "test", "oot"):
             subset = role_map[role]
-            artifact = write_parquet_artifact(
-                store, artifact_type="dataset", role=role, stem=f"split-{role}", frame=subset,
-                metadata={"source_artifact_id": dataset_artifact.artifact_id, "method": method, "row_count": subset.height},
+            context.outputs.publish_table(
+                role=role,
+                kind=EvidenceKind.MODELLING_METADATA,
+                frame=subset,
+                metadata={"source_artifact_id": getattr(dataset_artifact, "artifact_id", ""), "method": method, "row_count": subset.height},
             )
-            artifacts.append(artifact)
 
         target_rates = {}
         split_warnings = []
@@ -256,18 +281,20 @@ class SplitTrainTestOotNode(NodeType):
             "fractions": {"train": train_frac, "test": test_frac, "oot": oot_frac},
             "row_counts": {role: subset.height for role, subset in role_map.items()},
             "target_rates": target_rates, "warnings": split_warnings,
-            "source_artifact_id": dataset_artifact.artifact_id,
+            "source_artifact_id": getattr(dataset_artifact, "artifact_id", ""),
         }
-        split_report_artifact = write_json_artifact(
-            store, artifact_type="report", role="report", stem=f"split-report-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.SPLIT_SUMMARY,
             payload=split_report,
-            metadata={"source_artifact_id": dataset_artifact.artifact_id, "schema_version": SCHEMA_SPLIT_SUMMARY},
+            metadata={"source_artifact_id": getattr(dataset_artifact, "artifact_id", ""), "schema_version": SCHEMA_SPLIT_SUMMARY},
         )
-        artifacts.append(split_report_artifact)
-
-        return NodeOutput(
-            artifacts=artifacts,
-            metrics={"train_count": role_map["train"].height, "test_count": role_map["test"].height, "oot_count": role_map["oot"].height})
+        for w in split_warnings:
+            context.outputs.add_warning(w)
+        context.outputs.add_metric("train_count", role_map["train"].height)
+        context.outputs.add_metric("test_count", role_map["test"].height)
+        context.outputs.add_metric("oot_count", role_map["oot"].height)
+        return context.outputs.build_result()
 
     def _stratified_split(self, df: pl.DataFrame, target_column: str, train_frac: float, test_frac: float, oot_frac: float, seed: int) -> dict[str, pl.DataFrame]:
         rng = np.random.default_rng(seed)

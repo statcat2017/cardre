@@ -10,10 +10,10 @@ from typing import Any
 
 import polars as pl
 
-from cardre._evidence.kinds import EvidenceKind
 from cardre._evidence.schemas import SCHEMA_FROZEN_SCORECARD_BUNDLE
 from cardre.adapters.evidence.reader import EvidenceReader
 from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.execution.context import TargetMeta
 
 
@@ -78,6 +78,12 @@ class StepInputCollection:
              if a.metadata.get("schema_version") == SCHEMA_FROZEN_SCORECARD_BUNDLE),
             None,
         )
+
+    def artifact_ref(self, artifact_id: str) -> Any | None:
+        for a in self._input_artifacts:
+            if a.artifact_id == artifact_id:
+                return a
+        return None
 
 
 __all__ = ["StepInputCollection"]

@@ -10,16 +10,18 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import (
-    SCHEMA_APPLY_MODEL_EVIDENCE,
-    SCHEMA_VALIDATION_METRICS,
-)
-from cardre.artifacts import write_json_artifact
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.errors import NodeFailedWithArtifacts
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_VALIDATION_METRICS
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -128,16 +130,14 @@ class ValidationMetricsNode(NodeType):
             default_method="default",
         )
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        meta = context.target_metadata()
+    def run(self, context: NodeContext) -> NodeResult:
+        meta = context.inputs.target_metadata()
         target_col = meta.target_column if meta is not None else ""
         good = meta.good_values if meta is not None else frozenset()
         bad = meta.bad_values if meta is not None else frozenset()
         bad_list = list(bad)
 
-        params = context.validated_params
+        params = context.params
         cutoffs = list(params.get("cutoffs", [0.5]))
         include_calibration_display = params.get("include_calibration_display", False)
         require_test = params.get("require_test", True)
@@ -147,16 +147,17 @@ class ValidationMetricsNode(NodeType):
         fail_on_missing_score = params.get("fail_on_missing_score", True)
         fail_on_missing_target = params.get("fail_on_missing_target", True)
 
-        bundle_art = context.find_frozen_bundle()
-        score_evidence_art = next(
-            (a for a in context.input_artifacts
-             if a.metadata.get("schema_version") == SCHEMA_APPLY_MODEL_EVIDENCE),
-            None,
-        )
+        bundle_art = context.inputs.find_frozen_bundle()
+        score_evidence_arts = context.inputs.by_kind(EvidenceKind.APPLY_MODEL_EVIDENCE)
+        score_evidence_art = score_evidence_arts[0] if score_evidence_arts else None
 
-        data_arts = context.data_artifacts()
+        train_arts = context.inputs.by_role("train")
+        test_arts = context.inputs.by_role("test")
+        oot_arts = context.inputs.by_role("oot")
+        data_arts = train_arts + test_arts + oot_arts
+
         roles_metrics, psi_data, gates = self._compute_role_metrics(
-            reader, data_arts, target_col, set(good), set(bad), bad_list,
+            context.inputs, data_arts, target_col, set(good), set(bad), bad_list,
             cutoffs, include_calibration_display,
             require_test, require_oot,
             fail_on_missing_score, fail_on_missing_target,
@@ -171,9 +172,8 @@ class ValidationMetricsNode(NodeType):
             bundle_art, score_evidence_art,
         )
 
-        art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"validation-metrics-{context.step_spec.step_id}",
+        art = context.outputs.publish_json(
+            role="report", kind=EvidenceKind.VALIDATION_METRICS,
             payload=payload,
             metadata={"schema_version": SCHEMA_VALIDATION_METRICS},
         )
@@ -189,10 +189,11 @@ class ValidationMetricsNode(NodeType):
                 artifacts=[art],
             )
 
-        return NodeOutput(artifacts=[art], metrics={"role_count": len(data_arts)})
+        context.outputs.add_metric("role_count", len(data_arts))
+        return context.outputs.build_result()
 
     def _compute_role_metrics(
-        self, reader: ArtifactEvidenceReader, data_arts: list[Any],
+        self, inputs: Any, data_arts: list[Any],
         target_col: str, good: set[str], bad: set[str], bad_list: list[str],
         cutoffs: list[float], include_calibration_display: bool,
         require_test: bool, require_oot: bool,
@@ -225,7 +226,7 @@ class ValidationMetricsNode(NodeType):
 
         for data_art in data_arts:
             role = data_art.role
-            df = reader.read_dataframe(data_art)
+            df = inputs.read_dataframe(data_art)
             n = df.height
 
             if "predicted_bad_probability" not in df.columns:
@@ -261,7 +262,7 @@ class ValidationMetricsNode(NodeType):
 
             y_prob = y_prob_all[known_mask]
             scores = scores_series_all.to_numpy()[known_mask]
-            scores_series = pl.Series(scores)  # used by psi_data below
+            scores_series = pl.Series(scores)
 
             n_bad = int(sum(y_bin))
             n_good = int(len(y_bin) - n_bad)
@@ -431,5 +432,22 @@ class ValidationMetricsNode(NodeType):
         if bundle_art is not None:
             payload["frozen_bundle_artifact_id"] = bundle_art.artifact_id
         if score_evidence_art is not None:
-            payload["score_application_evidence_artifact_id"] = score_evidence_art.artifact_id
+            payload["score_application_evidence_artifact_id"] = score_evidence_art.source_artifact_id
         return payload
+
+
+__definition__ = NodeDefinition(
+    node_type=ValidationMetricsNode.node_type,
+    version=ValidationMetricsNode.version,
+    category=ValidationMetricsNode.category,
+    description="Compute validation metrics (AUC, KS, Gini, precision, recall, F1, G-Mean) at given cutoffs",
+    input_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ValidationMetricsNode.input_roles),
+    ),
+    output_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ValidationMetricsNode.output_roles),
+    ),
+    parameter_schema=None,
+    optional_dependencies=(),
+    tier="launch",
+)

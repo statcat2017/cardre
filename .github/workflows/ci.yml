@@ -110,7 +110,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           extras: dev,sidecar
       - name: Mypy
-        run: python3 -m mypy
+        run: python3 -m mypy --explicit-package-bases cardre
 
   typecheck-frontend:
     needs: detect-changes

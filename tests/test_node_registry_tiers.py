@@ -1,4 +1,4 @@
-"""Tests for NodeRegistry tier enforcement.
+"""Tests for NodeCatalogue tier enforcement.
 
 - Launch nodes are executable (instantiate returns a node).
 - Deferred nodes raise NodeNotAvailableForLaunch in launch mode.
@@ -11,115 +11,92 @@ from pathlib import Path
 
 import pytest
 
-from cardre.config import CardreConfig
+from cardre.bootstrap.node_catalogue import NodeCatalogue, build_default_catalogue
+from cardre.bootstrap.settings import Settings
 from cardre.domain.errors import NodeNotAvailableForLaunch
-from cardre.nodes.registry import NodeRegistry
 
 
-def test_registry_launch_nodes_available():
+def _default_catalogue() -> NodeCatalogue:
+    return build_default_catalogue(Settings(launch_mode=True))
+
+
+def _non_launch_catalogue() -> NodeCatalogue:
+    return build_default_catalogue(Settings(launch_mode=False))
+
+
+def test_catalogue_launch_nodes_available():
     """All launch-tier nodes should be available (instantiable) in launch mode."""
-    reg = NodeRegistry.with_defaults()
+    cat = _default_catalogue()
 
-    for node_type in reg.list_launch_nodes():
-        av = reg.availability(node_type)
+    for node_type in cat.list_launch_types():
+        av = cat.availability(node_type)
         assert av.available, f"Launch node {node_type} should be available but got {av}"
         assert av.tier == "launch", f"Launch node {node_type} should have tier='launch' got {av.tier}"
 
-        node = reg.instantiate(node_type)
+        node = cat.instantiate(node_type)
         assert node is not None
         assert node.node_type == node_type
 
 
-def test_registry_deferred_nodes_not_available():
+def test_catalogue_deferred_nodes_not_available():
     """Deferred nodes should raise NodeNotAvailableForLaunch in launch mode."""
-    reg = NodeRegistry.with_defaults()
+    cat = _default_catalogue()
 
-    for node_type in reg.list_deferred_nodes():
-        av = reg.availability(node_type)
+    for node_type in cat.list_deferred_types():
+        av = cat.availability(node_type)
         assert not av.available, f"Deferred node {node_type} should not be available"
         assert av.tier == "deferred", f"Deferred node {node_type} should have tier='deferred'"
 
         with pytest.raises(NodeNotAvailableForLaunch) as exc:
-            reg.instantiate(node_type)
+            cat.instantiate(node_type)
         assert node_type in str(exc.value) or "launch mode" in str(exc.value)
 
 
-def test_registry_unknown_node_raises_key_error():
-    """Unknown node types should raise KeyError."""
-    reg = NodeRegistry()
+def test_catalogue_unknown_node_raises_key_error():
+    cat = NodeCatalogue(Settings(), [])
     with pytest.raises(KeyError):
-        reg.resolve("cardre.nonexistent_node")
+        cat.resolve("cardre.nonexistent_node")
 
 
-def test_registry_has_and_list_types():
-    """has() and list_types() should work correctly."""
-    reg = NodeRegistry.with_defaults()
-    launch = reg.list_launch_nodes()
-    deferred = reg.list_deferred_nodes()
+def test_catalogue_has_and_list_types():
+    cat = _default_catalogue()
+    launch = cat.list_launch_types()
+    deferred = cat.list_deferred_types()
 
     assert len(launch) > 0
     assert len(deferred) > 0
 
     for nt in launch:
-        assert reg.has(nt)
-        av = reg.availability(nt)
+        assert cat.has(nt)
+        av = cat.availability(nt)
         assert av.available
 
     for nt in deferred:
-        assert reg.has(nt)
+        assert cat.has(nt)
 
 
-def test_registry_outside_launch_mode(monkeypatch):
+def test_catalogue_outside_launch_mode():
     """When launch_mode=False, deferred nodes should still be marked deferred."""
-    monkeypatch.setattr(CardreConfig, "from_env", lambda: CardreConfig(launch_mode=False))
-    reg = NodeRegistry.with_defaults()
+    cat = _non_launch_catalogue()
 
-    for node_type in reg.list_deferred_nodes():
-        av = reg.availability(node_type)
-        # Outside launch mode, deferred nodes should be available
-        # (assuming no missing optional deps)
-        deps = getattr(type(reg.resolve(node_type)), "optional_dependencies", None)
+    for node_type in cat.list_deferred_types():
+        av = cat.availability(node_type)
+        deps = getattr(type(cat.resolve(node_type)), "optional_dependencies", None)
         if deps:
-            # Skip nodes that need optional deps not installed
             pass
         else:
             if not av.available:
                 assert "Optional dependency" in (av.disabled_reason or "")
 
 
-def test_registry_duplicate_register():
-    """Registering the same node_type twice should overwrite (last-wins)."""
-    reg = NodeRegistry()
-    from cardre.nodes.prep import ProfileDatasetNode
-
-    reg.register(ProfileDatasetNode)
-    assert reg.has("cardre.profile_dataset")
-
-    # Re-register should not raise
-    reg.register(ProfileDatasetNode)
-    assert reg.has("cardre.profile_dataset")
+def test_catalogue_is_available():
+    cat = _default_catalogue()
+    for nt in cat.list_types():
+        assert cat.is_available(nt) == cat.availability(nt).available
 
 
-def test_registry_node_type_required():
-    """A class without node_type should raise ValueError on register."""
-    reg = NodeRegistry()
-
-    class FakeNode:
-        pass
-
-    with pytest.raises(ValueError, match="must define node_type"):
-        reg.register(FakeNode)  # type: ignore[arg-type]
-
-
-def test_registry_is_available():
-    """is_available should be consistent with availability()."""
-    reg = NodeRegistry.with_defaults()
-    for nt in reg.list_types():
-        assert reg.is_available(nt) == reg.availability(nt).available
-
-
-def test_registry_exposes_issue_273_prep_nodes_as_launch_nodes():
-    reg = NodeRegistry.with_defaults()
+def test_catalogue_exposes_issue_273_prep_nodes_as_launch_nodes():
+    cat = _default_catalogue()
 
     for node_type in [
         "cardre.apply_exclusions",
@@ -130,7 +107,7 @@ def test_registry_exposes_issue_273_prep_nodes_as_launch_nodes():
         "cardre.vif_diagnostics",
         "cardre.calibration_diagnostics",
     ]:
-        availability = reg.availability(node_type)
+        availability = cat.availability(node_type)
         assert availability.available, availability
         assert availability.tier == "launch"
 
@@ -154,15 +131,15 @@ def _catalogue_rows(section_header: str) -> dict[str, str]:
 
 def test_node_catalogue_matches_registry_tiers_and_categories():
     """The published node catalogue is a contract, not hand-written folklore."""
-    reg = NodeRegistry.with_defaults()
+    cat = _default_catalogue()
 
     launch_rows = _catalogue_rows("## Launch Nodes (executable at launch)")
     deferred_rows = _catalogue_rows("## Deferred Nodes (schema only, not executable at launch)")
 
-    assert set(launch_rows) == set(reg.list_launch_nodes())
-    assert set(deferred_rows) == set(reg.list_deferred_nodes())
+    assert set(launch_rows) == set(cat.list_launch_types())
+    assert set(deferred_rows) == set(cat.list_deferred_types())
 
     for node_type, category in launch_rows.items():
-        assert category == reg.resolve(node_type).category
+        assert category == cat.resolve(node_type).category
     for node_type, category in deferred_rows.items():
-        assert category == reg.resolve(node_type).category
+        assert category == cat.resolve(node_type).category

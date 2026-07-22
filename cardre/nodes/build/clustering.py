@@ -5,13 +5,18 @@ from typing import Any, cast
 import numpy as np
 import polars as pl
 
-from cardre._evidence.kinds import EvidenceKind, EvidenceNotFoundError
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import SCHEMA_VARIABLE_CLUSTERING_EVIDENCE
-from cardre.artifacts import write_json_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.evidence.kinds import EvidenceKind, EvidenceNotFoundError
+from cardre.domain.evidence.schemas import SCHEMA_VARIABLE_CLUSTERING_EVIDENCE
 from cardre.nodes._bin_mask import build_bin_condition
-from cardre.nodes.contracts import NodeType
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    InputCollection,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -26,6 +31,25 @@ class VariableClusteringNode(NodeType):
     category = "selection"
     input_roles: list[str] = ["train", "report"]
     output_roles: list[str] = ["report"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.variable_clustering",
+        version="1",
+        category="selection",
+        description="Cluster variables based on correlation",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train", kinds=(EvidenceKind.MODELLING_METADATA,)),
+                ArtifactRoleSpec("report"),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("report"),
+            ),
+        ),
+        parameter_schema=None,
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -253,7 +277,6 @@ class VariableClusteringNode(NodeType):
 
     @staticmethod
     def _tie_aware_rank(values: np.ndarray) -> np.ndarray:
-        """Assign average ranks, handling ties correctly."""
         from scipy.stats import rankdata
 
         return cast(np.ndarray[Any, Any], rankdata(values, method="average").astype(float))
@@ -514,11 +537,8 @@ class VariableClusteringNode(NodeType):
         best = max(variables, key=lambda v: iv_map.get(v, 0.0))
         return {"variable": best, "reason": "highest IV"}
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
 
         method = str(params.get("method", "correlation_threshold"))
         similarity_metric = str(params.get("similarity_metric", "pearson"))
@@ -538,13 +558,14 @@ class VariableClusteringNode(NodeType):
 
         input_representation = params.get("input_representation", "raw_train")
 
-        train_artifact = context.require_train_artifact("VariableClusteringNode")
-        df = reader.read_dataframe(train_artifact)
+        train_artifact = context.inputs.require("train", "VariableClusteringNode")
+        df = context.inputs.read_dataframe(train_artifact)
+        inputs = context.inputs
 
-        iv_map = self._load_iv_map(reader, context)
+        iv_map = self._load_iv_map(inputs)
         missing_map = {col: df[col].null_count() / df.height for col in df.columns if df.height > 0}
 
-        bin_def, woe_table = self._load_binning_artifacts(reader, context, input_representation)
+        bin_def, woe_table = self._load_binning_artifacts(inputs, input_representation)
 
         candidates = self._select_candidates(df, bin_def, woe_table, iv_map, input_representation, candidate_limit)
 
@@ -571,9 +592,9 @@ class VariableClusteringNode(NodeType):
             "warnings": warnings_list,
         }
 
-        artifact = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"clustering-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.VARIABLE_CLUSTERING,
             payload=clustering_report,
             metadata={
                 "candidate_count": len(candidates),
@@ -584,20 +605,17 @@ class VariableClusteringNode(NodeType):
             },
         )
 
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={
-                "candidate_count": len(candidates),
-                "cluster_count": len(clusters_out),
-                "singleton_count": len(singleton_variables),
-                "warning_count": len(warnings_list),
-            },
-        )
+        context.outputs.add_metric("candidate_count", len(candidates))
+        context.outputs.add_metric("cluster_count", len(clusters_out))
+        context.outputs.add_metric("singleton_count", len(singleton_variables))
+        context.outputs.add_metric("warning_count", len(warnings_list))
+        return context.outputs.build_result()
 
-    def _load_iv_map(self, reader: ArtifactEvidenceReader, context: ExecutionContext) -> dict[str, float]:
+    def _load_iv_map(self, inputs: InputCollection) -> dict[str, float]:
         iv_map: dict[str, float] = {}
         try:
-            iv_table = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
+            iv_list = inputs.by_kind(EvidenceKind.IV_TABLE)
+            iv_table = iv_list[0] if iv_list else None
         except (KeyError, TypeError):
             iv_table = None
         if iv_table is not None:
@@ -610,13 +628,15 @@ class VariableClusteringNode(NodeType):
         return iv_map
 
     def _load_binning_artifacts(
-        self, reader: ArtifactEvidenceReader, context: ExecutionContext, input_representation: str,
+        self, inputs: InputCollection, input_representation: str,
     ) -> tuple[Any, Any]:
         if input_representation != "woe_train":
             return None, None
         try:
-            bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
-            woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
+            bin_list = inputs.by_kind(EvidenceKind.BIN_DEFINITION)
+            woe_list = inputs.by_kind(EvidenceKind.WOE_TABLE)
+            bin_def = bin_list[0] if bin_list else None
+            woe_table = woe_list[0] if woe_list else None
         except (KeyError, TypeError, EvidenceNotFoundError):
             bin_def = None
             woe_table = None

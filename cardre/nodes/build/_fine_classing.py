@@ -4,18 +4,16 @@ from typing import Any
 
 import polars as pl
 
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre.artifacts import write_json_artifact
-from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION, LifecycleBinDefinition
-from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_BIN_DEFINITION
+from cardre.engine.binning.definition import LifecycleBinDefinition
 from cardre.nodes.build._fine_classing_categorical import bin_categorical
 from cardre.nodes.build._fine_classing_numeric import bin_numeric
+from cardre.nodes.contracts import NodeContext, NodeResult
 
 
-def run_fine_classing(context: ExecutionContext) -> NodeOutput:
-    store = context.store
-    params = context.validated_params
+def run_fine_classing(context: NodeContext) -> NodeResult:
+    params = context.params
     max_bins = int(params.get("max_bins", 20))
     min_bin_fraction = float(params.get("min_bin_fraction", 0.05))
     missing_policy = params.get("missing_policy", "separate_bin")
@@ -31,14 +29,13 @@ def run_fine_classing(context: ExecutionContext) -> NodeOutput:
     if max_categorical_levels < 1:
         raise ValueError("max_categorical_levels must be >= 1")
 
-    reader = ArtifactEvidenceReader(store)
-    train_artifact = context.require_train_artifact("cardre.automatic_binning")
-    meta_def = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+    train_artifact = context.inputs.require("train", "cardre.automatic_binning")
+    meta = context.inputs.target_metadata()
 
-    df = reader.read_dataframe(train_artifact)
-    target_column = meta_def.target_column
-    good_values = {str(v) for v in meta_def.good_values}
-    bad_values = {str(v) for v in meta_def.bad_values}
+    df = context.inputs.read_dataframe(train_artifact)
+    target_column = meta.target_column
+    good_values = {str(v) for v in meta.good_values}
+    bad_values = {str(v) for v in meta.bad_values}
 
     if not target_column:
         raise ValueError("Fine classing requires non-empty target_column in modelling metadata")
@@ -94,9 +91,9 @@ def run_fine_classing(context: ExecutionContext) -> NodeOutput:
         "variables": variables,
         "warnings": warnings,
     }).to_payload()
-    artifact = write_json_artifact(
-        store, artifact_type="definition", role="definition",
-        stem=f"automatic-binning-{context.step_spec.step_id}",
+    context.outputs.publish_json(
+        role="definition",
+        kind=EvidenceKind.BIN_DEFINITION,
         payload=bin_def,
         metadata={
             "source_artifact_id": train_artifact.artifact_id,
@@ -105,6 +102,5 @@ def run_fine_classing(context: ExecutionContext) -> NodeOutput:
         },
     )
 
-    return NodeOutput(
-        artifacts=[artifact],
-        metrics={"variable_count": len(variables)})
+    context.outputs.add_metric("variable_count", len(variables))
+    return context.outputs.build_result()

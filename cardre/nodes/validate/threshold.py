@@ -5,11 +5,16 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre.artifacts import write_json_artifact
 from cardre.domain.diagnostics import JsonDict
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -105,26 +110,28 @@ class ThresholdOptimizationNode(NodeType):
 
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        params = context.validated_params
-        reader = ArtifactEvidenceReader(store)
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         objective = params.get("objective", "youden")
         n_thresholds = int(params.get("n_thresholds", 200))
         cost_fp = float(params.get("cost_fp", 1.0))
         cost_fn = float(params.get("cost_fn", 10.0))
 
-        meta = context.target_metadata()
+        meta = context.inputs.target_metadata()
         target_col = meta.target_column if meta is not None else ""
         bad = meta.bad_values if meta is not None else frozenset()
         bad_list = list(bad)
 
-        data_arts = context.data_artifacts()
+        train_arts = context.inputs.by_role("train")
+        test_arts = context.inputs.by_role("test")
+        oot_arts = context.inputs.by_role("oot")
+        data_arts = train_arts + test_arts + oot_arts
+
         report: JsonDict = {"objective": objective, "cost_fp": cost_fp, "cost_fn": cost_fn, "roles": {}}
 
         for data_art in data_arts:
             role = data_art.role
-            df = reader.read_dataframe(data_art)
+            df = context.inputs.read_dataframe(data_art)
 
             if "predicted_bad_probability" not in df.columns:
                 report["roles"][role] = {"error": "Missing predicted_bad_probability"}
@@ -197,12 +204,28 @@ class ThresholdOptimizationNode(NodeType):
 
         report["selected_threshold"] = selected_threshold
 
-        art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"threshold-optimization-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",             kind=EvidenceKind.VALIDATION_EVIDENCE,
             payload=report,
             metadata={"objective": objective, "selected_threshold": selected_threshold},
         )
-        return NodeOutput(
-            artifacts=[art],
-            metrics={"selected_threshold": selected_threshold})
+
+        context.outputs.add_metric("selected_threshold", selected_threshold)
+        return context.outputs.build_result()
+
+
+__definition__ = NodeDefinition(
+    node_type=ThresholdOptimizationNode.node_type,
+    version=ThresholdOptimizationNode.version,
+    category=ThresholdOptimizationNode.category,
+    description="Optimize probability threshold for binary classification decisions",
+    input_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ThresholdOptimizationNode.input_roles),
+    ),
+    output_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ThresholdOptimizationNode.output_roles),
+    ),
+    parameter_schema=None,
+    optional_dependencies=(),
+    tier="launch",
+)

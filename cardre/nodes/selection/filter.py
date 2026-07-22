@@ -5,15 +5,19 @@ from typing import Any, cast
 
 from polars.exceptions import ComputeError, SchemaError
 
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre.artifacts import write_json_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.nodes._training_utils import (
     prepare_supervised_training_data,
     resolve_supervised_feature_columns,
 )
-from cardre.nodes.contracts import NodeType
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.selection._definition import merge_selection_definition
 
 logger = logging.getLogger(__name__)
@@ -68,9 +72,8 @@ class FeatureSelectionFilterNode(NodeType):
 
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         min_iv = float(params.get("min_iv", 0.02))
         max_missingness = float(params.get("max_missingness", 0.5))
         max_correlation = float(params.get("max_correlation", 0.85))
@@ -78,11 +81,11 @@ class FeatureSelectionFilterNode(NodeType):
         max_features = params.get("max_features")
 
         prepared = prepare_supervised_training_data(
-            context,
+            context.inputs,
             operation="feature_selection_filter",
         )
         df = prepared.frame
-        train_art = context.require_train_artifact("feature_selection_filter")
+        train_art = context.inputs.require("train", "feature_selection_filter")
         numeric_cols = resolve_supervised_feature_columns(
             df,
             target_column=prepared.target_column,
@@ -90,10 +93,9 @@ class FeatureSelectionFilterNode(NodeType):
         )
 
         iv_map: dict[str, float] = {}
-        reader = ArtifactEvidenceReader(store)
-        iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
-        if iv_lf is not None:
-            iv_df = iv_lf.dataframe.collect()
+        iv_ev = context.inputs.by_kind(EvidenceKind.IV_TABLE)
+        if iv_ev:
+            iv_df = iv_ev[0].dataframe.collect()
             for row in iv_df.iter_rows():
                 var_name = str(row[0])
                 iv_val = float(row[1])
@@ -212,22 +214,39 @@ class FeatureSelectionFilterNode(NodeType):
             "source_artifact_id": train_art.artifact_id,
         }
 
-        def_art = next((a for a in context.input_artifacts if a.role == "definition"), None)
+        def_art = context.inputs.first("definition")
         if def_art:
             try:
                 selection = merge_selection_definition(
-                    reader, def_art.artifact_id,
+                    context.inputs, def_art,
                     key="selection_filter", selection=selection,
                 )
             except (KeyError, TypeError, AttributeError):
                 logger.warning("Could not merge existing selection definition", exc_info=True)
 
-        art = write_json_artifact(
-            store, artifact_type="definition", role="definition",
-            stem=f"feature-selection-filter-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="definition",
+            kind=EvidenceKind.SELECTION_DEFINITION,
             payload=selection,
             metadata={"method": "filter", "selected_count": len(selected)},
         )
-        return NodeOutput(
-            artifacts=[art],
-            metrics={"selected_count": len(selected), "rejected_count": len(rejected)})
+        context.outputs.add_metric("selected_count", len(selected))
+        context.outputs.add_metric("rejected_count", len(rejected))
+        return context.outputs.build_result()
+
+
+__definition__ = NodeDefinition(
+    node_type=FeatureSelectionFilterNode.node_type,
+    version=FeatureSelectionFilterNode.version,
+    category=FeatureSelectionFilterNode.category,
+    description="",
+    input_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in FeatureSelectionFilterNode.input_roles),
+    ),
+    output_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in FeatureSelectionFilterNode.output_roles),
+    ),
+    parameter_schema=None,
+    optional_dependencies=(),
+    tier="launch",
+)

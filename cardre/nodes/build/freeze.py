@@ -1,16 +1,21 @@
 from __future__ import annotations
 
-import json  # noqa: F401 — imported for monkeypatch compatibility in tests
 from typing import Any
 
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import SCHEMA_FROZEN_SCORECARD_BUNDLE, SCHEMA_SELECTION_DEFINITION
-from cardre.artifacts import write_json_artifact
 from cardre.domain.artifacts import json_logical_hash
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
-from cardre.store.artifact_repo import ArtifactRepository
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import (
+    SCHEMA_FROZEN_SCORECARD_BUNDLE,
+    SCHEMA_SELECTION_DEFINITION,
+)
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 
 
 class FrozenScorecardBundleNode(NodeType):
@@ -20,18 +25,57 @@ class FrozenScorecardBundleNode(NodeType):
     input_roles: list[str] = ["definition", "report", "model", "scorecard"]
     output_roles: list[str] = ["scorecard"]
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
+    __definition__ = NodeDefinition(
+        node_type="cardre.freeze_scorecard_bundle",
+        version="1",
+        category="fit",
+        description="Freeze a scorecard bundle for deployment",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.BIN_DEFINITION, EvidenceKind.SELECTION_DEFINITION)),
+                ArtifactRoleSpec("report"),
+                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
+                ArtifactRoleSpec("scorecard", kinds=(EvidenceKind.SCORE_SCALING,)),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("scorecard", kinds=(EvidenceKind.FROZEN_SCORECARD_BUNDLE,)),
+            ),
+        ),
+        parameter_schema=None,
+    )
 
-        meta = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
-        bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
-        woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
-        model = reader.find(context.input_artifacts, EvidenceKind.MODEL_ARTIFACT)
-        scorecard = reader.find(context.input_artifacts, EvidenceKind.SCORE_SCALING)
+    def run(self, context: NodeContext) -> NodeResult:
+
+        meta_list = context.inputs.by_kind(EvidenceKind.MODELLING_METADATA)
+        meta = meta_list[0] if meta_list else None
+        if meta is None:
+            raise ValueError("No modelling metadata found")
+
+        bin_list = context.inputs.by_kind(EvidenceKind.BIN_DEFINITION)
+        if not bin_list:
+            raise ValueError("No bin definition found")
+        bin_def = bin_list[0]
+
+        woe_list = context.inputs.by_kind(EvidenceKind.WOE_TABLE)
+        if not woe_list:
+            raise ValueError("No WOE table found")
+        woe_table = woe_list[0]
+
+        model_list = context.inputs.by_kind(EvidenceKind.MODEL_ARTIFACT)
+        if not model_list:
+            raise ValueError("No model artifact found")
+        model = model_list[0]
+
+        scorecard_list = context.inputs.by_kind(EvidenceKind.SCORE_SCALING)
+        if not scorecard_list:
+            raise ValueError("No score scaling found")
+        scorecard = scorecard_list[0]
+
+        definition_arts = context.inputs.by_role("definition")
         selection_candidates = [
-            a
-            for a in context.input_artifacts
+            a for a in definition_arts
             if a.metadata.get("schema_version") == SCHEMA_SELECTION_DEFINITION
         ]
         if len(selection_candidates) > 1:
@@ -40,23 +84,23 @@ class FrozenScorecardBundleNode(NodeType):
             )
         selection_art = selection_candidates[0] if selection_candidates else None
         selection_def = (
-            reader.read_optional(selection_art.artifact_id, EvidenceKind.SELECTION_DEFINITION)
+            context.inputs.read(selection_art, EvidenceKind.SELECTION_DEFINITION)
             if selection_art is not None
             else None
         )
 
-        scorecard_art = ArtifactRepository(store).get(scorecard.source_artifact_id)
-        model_art = ArtifactRepository(store).get(model.source_artifact_id)
-        bin_def_art = ArtifactRepository(store).get(bin_def.source_artifact_id)
-        woe_table_art = ArtifactRepository(store).get(woe_table.source_artifact_id)
-        selection_art = ArtifactRepository(store).get(selection_def.source_artifact_id) if selection_def is not None else None
+        scorecard_art = context.inputs.artifact_ref(scorecard.source_artifact_id)
+        model_art = context.inputs.artifact_ref(model.source_artifact_id)
+        bin_def_art = context.inputs.artifact_ref(bin_def.source_artifact_id)
+        woe_table_art = context.inputs.artifact_ref(woe_table.source_artifact_id)
+        selection_art_ref = context.inputs.artifact_ref(selection_def.source_artifact_id) if selection_def is not None else None
         if scorecard_art is None or model_art is None or bin_def_art is None or woe_table_art is None:
             raise ValueError("Frozen scorecard bundle cannot be created: missing source artifact reference")
 
         created_from = {
-            "run_id": context.run_id,
-            "plan_version_id": context.plan_version_id,
-            "step_id": context.step_spec.step_id,
+            "run_id": context.runtime.run_id,
+            "plan_version_id": context.runtime.plan_version_id,
+            "step_id": context.runtime.step_id,
             "canonical_step_id": context.step_spec.canonical_step_id,
             "branch_id": context.step_spec.branch_id or "",
         }
@@ -78,9 +122,9 @@ class FrozenScorecardBundleNode(NodeType):
             "scorecard_logical_hash": scorecard_art.logical_hash,
             "scorecard_physical_hash": scorecard_art.physical_hash,
         }
-        if selection_def is not None and selection_art is not None:
-            components["selection_logical_hash"] = selection_art.logical_hash
-            components["selection_physical_hash"] = selection_art.physical_hash
+        if selection_def is not None and selection_art_ref is not None:
+            components["selection_logical_hash"] = selection_art_ref.logical_hash
+            components["selection_physical_hash"] = selection_art_ref.physical_hash
 
         model_features = model.features
         raw_fc = model.feature_contract
@@ -139,7 +183,7 @@ class FrozenScorecardBundleNode(NodeType):
             raise ValueError(
                 f"Frozen scorecard bundle cannot be created: feature order hash "
                 f"({order_hash}) does not match computed hash ({expected_order_hash})"
-        )
+            )
 
         model_intercept = model.intercept
         if scorecard.has_explicit_intercept:
@@ -186,21 +230,17 @@ class FrozenScorecardBundleNode(NodeType):
             "woe_table_artifact_id": woe_table_art.artifact_id,
             "feature_count": len(model_features),
         }
-        if selection_art is not None:
+        if selection_art_ref is not None:
             sidecar_metadata["selection_artifact_id"] = (
-                selection_art.artifact_id
+                selection_art_ref.artifact_id
             )
 
-        artifact = write_json_artifact(
-            store,
-            artifact_type="scorecard",
+        context.outputs.publish_json(
             role="scorecard",
-            stem=f"frozen-scorecard-bundle-{context.step_spec.step_id}",
+            kind=EvidenceKind.FROZEN_SCORECARD_BUNDLE,
             payload=bundle,
             metadata=sidecar_metadata,
         )
 
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"feature_count": len(model_features)},
-        )
+        context.outputs.add_metric("feature_count", len(model_features))
+        return context.outputs.build_result()
