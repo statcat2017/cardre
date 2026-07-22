@@ -25,7 +25,7 @@ class ExecuteRun:
         node_catalogue: Any,
         step_runner: Any,
         finalize_run: FinalizeRun,
-        artifact_store_factory: Callable[[], Any] | None = None,
+        artifact_store_factory: Callable[[], Any],
     ) -> None:
         self._uow_factory = uow_factory
         self._node_catalogue = node_catalogue
@@ -121,12 +121,10 @@ class ExecuteRun:
 
                 persist_uow = self._uow_factory()
                 try:
-                    artifact_store = self._artifact_store_factory() if self._artifact_store_factory else None
+                    artifact_store = self._artifact_store_factory()
                     output_refs: list[ArtifactRef] = []
                     for staged in result.staged_artifacts:
-                        published_path = str(staged.staging_path)
-                        if artifact_store is not None and hasattr(artifact_store, "publish"):
-                            published_path = str(artifact_store.publish(staged))
+                        published_path = str(artifact_store.publish(staged))
                         art_ref = ArtifactRef(
                             artifact_id=staged.provisional_artifact_id,
                             artifact_type=staged.artifact_type,
