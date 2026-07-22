@@ -6,6 +6,8 @@ import json
 import tempfile
 from pathlib import Path
 
+from cardre.domain.errors import CardreError
+
 
 class JsonProjectRegistry:
     """Persist project-id to project-root mappings in a JSON file."""
@@ -33,10 +35,19 @@ class JsonProjectRegistry:
             return {}
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, ValueError):
-            return {}
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise CardreError(
+                f"Project registry at {self.path} is corrupted: {exc}",
+                code="REGISTRY_CORRUPTED",
+                context={"path": str(self.path)},
+            ) from exc
         if not isinstance(payload, dict):
-            return {}
+            raise CardreError(
+                f"Project registry at {self.path} contains non-dict payload "
+                f"(got {type(payload).__name__})",
+                code="REGISTRY_CORRUPTED",
+                context={"path": str(self.path), "type": type(payload).__name__},
+            )
         return {str(key): str(value) for key, value in payload.items()}
 
     def _write(self, data: dict[str, str]) -> None:

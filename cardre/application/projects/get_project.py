@@ -20,14 +20,7 @@ class GetProject:
         self._uow_factory = uow_factory
 
     def __call__(self, project_id: str) -> Project:
-        root = self._registry.resolve_root(project_id)
-        if root is None:
-            raise CardreError(
-                f"Project {project_id!r} not found.",
-                code="PROJECT_NOT_FOUND",
-                context={"project_id": project_id},
-            )
-        with self._uow_factory.for_root(root) as uow:
+        with self._uow_factory.read_only(project_id) as uow:
             project = uow.projects.get(project_id)
             if project is None:
                 raise CardreError(

@@ -35,7 +35,7 @@ class ListProjects:
                 })
                 continue
             try:
-                with self._uow_factory.for_root(root) as uow:
+                with self._uow_factory.for_root_readonly(root) as uow:
                     project = uow.projects.get(project_id)
                     if project is not None:
                         projects.append(project)

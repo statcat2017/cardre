@@ -44,7 +44,14 @@ class CreateProject:
         with self._uow_factory.for_root(root) as uow:
             project_id = uow.projects.create(name)
 
-        self._registry.register(project_id, root)
+        try:
+            self._registry.register(project_id, root)
+        except Exception:
+            # Compensation: registry write failed — remove the orphan project
+            # directory that is now undiscoverable.
+            import shutil
+            shutil.rmtree(root, ignore_errors=True)
+            raise
 
         with self._uow_factory.for_root(root) as uow:
             project = uow.projects.get(project_id)

@@ -45,13 +45,15 @@ preflight:
 	python3 -m pytest tests/ -q --tb=short --cov-fail-under=$(PYTEST_COV_FAIL_UNDER)
 	$(MAKE) test-governance
 	$(MAKE) lint-artifact-reads
-	# Frontend checks and OpenAPI regen temporarily skipped during architecture
-	# rewrite (Batch 01-06). The new API only has /health and /projects; the
-	# frontend references plans/runs/evidence schemas not yet registered.
-	# Restored in Batch 07.
-	# cd frontend && npm ci && npm run lint && npm run format:check && npm run build && npx tsc --noEmit && npm test
-	# python3 scripts/generate-openapi-types.py
-	# git diff --exit-code -- frontend/src/api/openapi.json frontend/src/api/schema.d.ts
+	# Frontend checks partially enabled during architecture rewrite (Batches 01-06).
+	# The new API only has /health and /projects; building and type-checking the
+	# frontend against the transitional OpenAPI would produce errors. Lint, format,
+	# and unit tests are kept active to catch unrelated regressions. Build, tsc, and
+	# OpenAPI regeneration are skipped until Batch 07 restores the full API surface.
+	cd frontend && npm ci && npm run lint && npm run format:check && npm test
+	# npm run build && npx tsc --noEmit — skipped during migration
+	# python3 scripts/generate-openapi-types.py — skipped during migration
+	# git diff --exit-code -- frontend/src/api/openapi.json frontend/src/api/schema.d.ts — skipped during migration
 
 v2-phase-check:
 	bash scripts/v2-phase-check.sh "$(PHASE)"

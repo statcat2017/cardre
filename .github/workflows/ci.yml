@@ -114,9 +114,7 @@ jobs:
 
   typecheck-frontend:
     needs: detect-changes
-    # Temporarily skipped during architecture rewrite (Batches 01-06).
-    # Restored in Batch 07.
-    if: false
+    if: needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -127,13 +125,19 @@ jobs:
       - uses: ./.github/actions/setup-frontend
         with:
           node-version: ${{ env.NODE_VERSION }}
+      # TypeScript check and Vite build skipped during architecture rewrite
+      # (Batches 01-06). The new API only has /health and /projects; the
+      # frontend references plans/runs/evidence schemas not yet registered.
+      # Restored in Batch 07.
       - name: TypeScript check
+        if: false
         run: npx tsc --noEmit
       - name: ESLint
         run: npm run lint
       - name: Prettier check
         run: npm run format:check
       - name: Vite build
+        if: false
         run: npm run build
 
   test-python:
