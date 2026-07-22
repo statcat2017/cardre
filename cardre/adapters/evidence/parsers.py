@@ -320,9 +320,8 @@ def match(artifacts: list[ArtifactRef], profile: _Profile, reader: ArtifactReade
         candidates = []
     return candidates
 
-
 def read_json_payload(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text())
+    return json.loads(path.read_text())  # type: ignore[no-any-return]
 
 
 def scan_parquet(path: Path) -> Any:

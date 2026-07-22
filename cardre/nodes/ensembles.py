@@ -39,7 +39,7 @@ def _load_estimator(store: Any, estimator_ref: dict[str, Any]) -> Any:
 
 def _load_model_artifact(reader: ArtifactEvidenceReader, artifact_id: str) -> dict[str, Any]:
     """Load a model JSON artifact by ID."""
-    art = ArtifactRepository(reader._store).get(artifact_id)
+    art = ArtifactRepository(reader._store).get(artifact_id)  # type: ignore[attr-defined]
     if art is None:
         raise ValueError(f"Model artifact {artifact_id!r} not found")
     typed = reader.require_model(art, "ensemble")

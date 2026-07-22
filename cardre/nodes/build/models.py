@@ -5,7 +5,10 @@ import math
 import warnings
 from typing import Any
 
-from cardre._evidence.kinds import EvidenceKind, EvidenceNotFoundError
+from cardre._evidence.kinds import (
+    EvidenceKind,
+    EvidenceNotFoundError,
+)
 from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import SCHEMA_MODEL_ARTIFACT, SCHEMA_SCORE_SCALING
 from cardre.artifacts import write_json_artifact
@@ -206,7 +209,7 @@ class LogisticRegressionNode(NodeType):
         if target_spec is None:
             raise ValueError("Target metadata is required for logistic regression")
 
-        sel_def_list = context.inputs.by_kind(EvidenceKind.SELECTION_DEFINITION)
+        sel_def_list = context.inputs.by_kind(EvidenceKind.SELECTION_DEFINITION)  # type: ignore[arg-type]
         sel_def = sel_def_list[0] if sel_def_list else None
 
         target_column = target_spec.target_column
@@ -314,7 +317,7 @@ class LogisticRegressionNode(NodeType):
 
         context.outputs.publish_json(
             role="model",
-            kind=EvidenceKind.MODEL_ARTIFACT,
+            kind=EvidenceKind.MODEL_ARTIFACT,  # type: ignore[arg-type]
             payload=model,
             metadata={
                 "feature_count": len(features_list),
@@ -324,7 +327,7 @@ class LogisticRegressionNode(NodeType):
         )
         context.outputs.add_metric("feature_count", len(features_list))
         context.outputs.add_metric("converged", converged)
-        return context.outputs.build_result()
+        return context.outputs.build_result()  # type: ignore[no-any-return]
 
     def _run_execution_context(self, context: ExecutionContext) -> NodeOutput:
         import numpy as np

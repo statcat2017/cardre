@@ -113,11 +113,12 @@ class NodeType(ABC):
     description: str = ""
     optional_dependencies: list[str] | None = None
     _deferred: bool = False
+    __definition_cached: NodeDefinition | None = None
 
     @property
     def __definition__(self) -> NodeDefinition:
-        """Backward-compatible accessor for nodes that don't set __definition__ explicitly."""
-        if hasattr(self, '__definition_cached'):
+        """Backward-compatible accessor. Caches after first computation."""
+        if self.__definition_cached is not None:
             return self.__definition_cached
         defn = NodeDefinition(
             node_type=self.node_type,
@@ -130,11 +131,11 @@ class NodeType(ABC):
             optional_dependencies=tuple(self.optional_dependencies or []),
             tier="deferred" if self._deferred else "launch",
         )
-        self.__definition_cached = defn  # type: ignore[attr-defined]
+        self.__definition_cached = defn
         return defn
 
     @abstractmethod
-    def run(self, context: Any) -> NodeResult: ...
+    def run(self, context: Any) -> Any: ...
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         return []

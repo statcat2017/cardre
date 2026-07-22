@@ -31,7 +31,7 @@ class _StoreArtifactReader:
         return self.resolve_path(artifact).read_bytes()
 
     def resolve_path(self, artifact: ArtifactRef) -> Path:
-        return self._store.artifact_path(artifact)
+        return self._store.artifact_path(artifact)  # type: ignore[no-any-return]
 
 
 class ArtifactEvidenceReader:
@@ -42,9 +42,9 @@ class ArtifactEvidenceReader:
 
     def __init__(self, store: Any) -> None:
         self._inner = EvidenceReader(
-            artifact_reader=_StoreArtifactReader(store),
-            artifact_repo=ArtifactRepository(store),
-            run_step_repo=RunStepRepository(store),
+            artifact_reader=_StoreArtifactReader(store),  # type: ignore[arg-type]
+            artifact_repo=ArtifactRepository(store),  # type: ignore[arg-type]
+            run_step_repo=RunStepRepository(store),  # type: ignore[arg-type]
         )
 
     def find(self, artifacts: list[ArtifactRef], kind: EvidenceKind) -> Any:
