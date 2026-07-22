@@ -87,7 +87,14 @@ class SubmitRun:
                     message="Failed to dispatch run",
                 ))
 
-        return SubmitRunResult(run_id=run_id, status="created")
+        # Reload run to return actual status after sync execution or dispatch failure
+        uow4 = self._uow_factory()
+        try:
+            final_run = uow4.runs.get(run_id)
+            actual_status = final_run.status if final_run is not None else "created"
+        finally:
+            uow4.close()
+        return SubmitRunResult(run_id=run_id, status=actual_status)
 
     def _sweep_stale(self) -> None:
         from datetime import UTC, datetime

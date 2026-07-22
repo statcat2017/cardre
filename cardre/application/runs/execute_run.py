@@ -1,4 +1,5 @@
 """ExecuteRun — execute a run's steps in topological order."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -24,11 +25,13 @@ class ExecuteRun:
         node_catalogue: Any,
         step_runner: Any,
         finalize_run: FinalizeRun,
+        artifact_store_factory: Callable[[], Any] | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._node_catalogue = node_catalogue
         self._step_runner = step_runner
         self._finalize_run = finalize_run
+        self._artifact_store_factory = artifact_store_factory
 
     def __call__(self, command: ExecuteRunCommand) -> None:
         uow = self._uow_factory()
@@ -54,30 +57,39 @@ class ExecuteRun:
             uow2.close()
 
         from cardre.application.execution.topology import validate_topology
-        validate_topology(steps)
 
-        unavailable = []
-        for step in steps:
-            av = self._node_catalogue.availability(step.node_type)
-            if not av.available:
-                unavailable.append(step.step_id)
-        if unavailable:
-            from cardre.domain.errors import PlanContainsUnavailableNodesError
-            raise PlanContainsUnavailableNodesError(
-                [{"step_id": sid, "node_type": "", "node_version": "", "reason": "Node is unavailable."}
-                 for sid in unavailable]
-            )
-
-        uow3 = self._uow_factory()
         try:
-            uow3.runs.transition(command.run_id, RunStatus.RUNNING,
-                                expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
-            uow3.commit()
+            validate_topology(steps)
+
+            unavailable = []
+            for step in steps:
+                av = self._node_catalogue.availability(step.node_type)
+                if not av.available:
+                    unavailable.append(step.step_id)
+            if unavailable:
+                from cardre.domain.errors import PlanContainsUnavailableNodesError
+
+                raise PlanContainsUnavailableNodesError(
+                    [{"step_id": sid, "node_type": "", "node_version": "", "reason": "Node is unavailable."}
+                     for sid in unavailable]
+                )
+
+            uow3 = self._uow_factory()
+            try:
+                uow3.runs.transition(command.run_id, RunStatus.RUNNING,
+                                    expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+                uow3.commit()
+            except Exception:
+                uow3.rollback()
+                raise
+            finally:
+                uow3.close()
         except Exception:
-            uow3.rollback()
-            raise
-        finally:
-            uow3.close()
+            self._finalize_run(command.run_id, "failed", diagnostic=FinalizeDiagnostic(
+                code="RUN_VALIDATION_FAILED",
+                message="Pre-execution validation failed",
+            ))
+            return
 
         step_outputs: dict[str, list[Any]] = {}
         run_step_records: dict[str, RunStep] = {}
@@ -109,13 +121,17 @@ class ExecuteRun:
 
                 persist_uow = self._uow_factory()
                 try:
+                    artifact_store = self._artifact_store_factory() if self._artifact_store_factory else None
                     output_refs: list[ArtifactRef] = []
                     for staged in result.staged_artifacts:
+                        published_path = str(staged.staging_path)
+                        if artifact_store is not None and hasattr(artifact_store, "publish"):
+                            published_path = str(artifact_store.publish(staged))
                         art_ref = ArtifactRef(
                             artifact_id=staged.provisional_artifact_id,
                             artifact_type=staged.artifact_type,
                             role=staged.role,
-                            path=str(staged.staging_path),
+                            path=published_path,
                             physical_hash=staged.physical_hash,
                             logical_hash=staged.logical_hash,
                             media_type=staged.media_type,
