@@ -24,13 +24,13 @@ class ComparisonRepo:
         )
         return comparison_id
 
-    def get_comparison(self, comparison_id: str) -> dict | None:
+    def get_comparison(self, comparison_id: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT * FROM branch_comparisons WHERE comparison_id = ?", (comparison_id,)
         ).fetchone()
         return None if row is None else dict(row)
 
-    def list_for_project(self, project_id: str, plan_id: str | None = None) -> list[dict]:
+    def list_for_project(self, project_id: str, plan_id: str | None = None) -> list[dict[str, Any]]:
         if plan_id:
             rows = self._conn.execute(
                 "SELECT * FROM branch_comparisons WHERE project_id = ? AND plan_id = ? ORDER BY created_at",
@@ -49,7 +49,7 @@ class ComparisonRepo:
             (comparison_id, branch_id, position),
         )
 
-    def get_challenger_branches(self, comparison_id: str) -> list[dict]:
+    def get_challenger_branches(self, comparison_id: str) -> list[dict[str, Any]]:
         rows = self._conn.execute(
             "SELECT * FROM comparison_challenger_branches WHERE comparison_id = ? ORDER BY position",
             (comparison_id,),
@@ -77,21 +77,21 @@ class ComparisonRepo:
             (comparison_snapshot_id, plan_version_id, branch_id),
         )
 
-    def get_snapshot_plan_versions(self, comparison_snapshot_id: str) -> list[dict]:
+    def get_snapshot_plan_versions(self, comparison_snapshot_id: str) -> list[dict[str, Any]]:
         rows = self._conn.execute(
             "SELECT * FROM comparison_snapshot_plan_versions WHERE comparison_snapshot_id = ?",
             (comparison_snapshot_id,),
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_comparison_snapshot(self, snapshot_id: str) -> dict | None:
+    def get_comparison_snapshot(self, snapshot_id: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT * FROM branch_comparison_snapshots WHERE comparison_snapshot_id = ?",
             (snapshot_id,),
         ).fetchone()
         return None if row is None else dict(row)
 
-    def get_comparison_snapshots(self, comparison_id: str) -> list[dict]:
+    def get_comparison_snapshots(self, comparison_id: str) -> list[dict[str, Any]]:
         rows = self._conn.execute(
             "SELECT * FROM branch_comparison_snapshots WHERE comparison_id = ? ORDER BY created_at",
             (comparison_id,),

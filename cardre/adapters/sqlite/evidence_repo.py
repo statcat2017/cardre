@@ -11,7 +11,7 @@ class EvidenceRepo:
     def __init__(self, conn: Any) -> None:
         self._conn = conn
 
-    def _exec(self, conn: Any, sql: str, params: tuple = ()) -> Any:
+    def _exec(self, conn: Any, sql: str, params: tuple[Any, ...] = ()) -> Any:
         target = conn if conn is not None else self._conn
         return target.execute(sql, params)
 
@@ -57,7 +57,7 @@ class EvidenceRepo:
 
     def get_edges_for_plan_step_branch(self, plan_version_id: str, step_id: str, branch_id: str | None) -> list[EvidenceEdge]:
         clause = "AND r.branch_id = ?" if branch_id is not None else "AND r.branch_id IS NULL"
-        params: list = [plan_version_id, step_id]
+        params: list[str] = [plan_version_id, step_id]
         if branch_id is not None:
             params.append(branch_id)
         rows = self._conn.execute(

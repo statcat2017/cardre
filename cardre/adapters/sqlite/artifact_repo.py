@@ -18,7 +18,7 @@ class ArtifactRepo:
             "SELECT artifact_id FROM artifacts WHERE physical_hash = ?", (artifact.physical_hash,)
         ).fetchone()
         if existing is not None:
-            return existing["artifact_id"]
+            return str(existing["artifact_id"])
         from cardre.domain.diagnostics import utc_now_iso
         conn.execute(
             "INSERT INTO artifacts (artifact_id, artifact_type, role, storage_key, "
@@ -72,7 +72,7 @@ class ArtifactRepo:
     def list_for_project(self, project_id: str, *, role: str | None = None,
                          artifact_type: str | None = None, limit: int = 100, offset: int = 0) -> list[ArtifactRef]:
         clauses = ["p.project_id = ?"]
-        params: list = [project_id]
+        params: list[str] = [project_id]
         if role:
             clauses.append("a.role = ?")
             params.append(role)

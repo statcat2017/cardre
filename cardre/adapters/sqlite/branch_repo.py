@@ -34,16 +34,16 @@ class BranchRepo:
         )
         return branch_id
 
-    def get_branch(self, branch_id: str) -> dict | None:
+    def get_branch(self, branch_id: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT * FROM plan_branches WHERE branch_id = ?", (branch_id,)
         ).fetchone()
         return None if row is None else dict(row)
 
-    def list(self, project_id: str, plan_id: str | None = None,
-             branch_type: str | None = None, status: str | None = None) -> list[dict]:
+    def list_branches(self, project_id: str, plan_id: str | None = None,
+             branch_type: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
         clauses = ["project_id = ?"]
-        params: list = [project_id]
+        params: list[str] = [project_id]
         if plan_id:
             clauses.append("plan_id = ?")
             params.append(plan_id)
@@ -81,7 +81,7 @@ class BranchRepo:
         )
         return map_id
 
-    def get_step_map(self, branch_id: str, plan_version_id: str) -> list[dict]:
+    def get_step_map(self, branch_id: str, plan_version_id: str) -> list[dict[str, Any]]:
         rows = self._conn.execute(
             "SELECT * FROM branch_step_map WHERE branch_id = ? AND plan_version_id = ? ORDER BY created_at",
             (branch_id, plan_version_id),

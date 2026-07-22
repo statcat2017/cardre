@@ -16,7 +16,7 @@ class RunRepo:
     def __init__(self, conn: Any) -> None:
         self._conn = conn
 
-    def _branch_filter(self, branch_id: str | None) -> tuple[str, list]:
+    def _branch_filter(self, branch_id: str | None) -> tuple[str, list[str]]:
         if branch_id is not None:
             return "AND branch_id = ?", [branch_id]
         return "AND branch_id IS NULL", []
@@ -61,7 +61,7 @@ class RunRepo:
             f"UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ? AND status IN ({placeholders})",
             (to_status.value, now, run_id) + tuple(s.value for s in expected_from),
         )
-        return cursor.rowcount > 0
+        return bool(cursor.rowcount > 0)
 
     def heartbeat(self, run_id: str) -> None:
         from cardre.domain.diagnostics import utc_now_iso

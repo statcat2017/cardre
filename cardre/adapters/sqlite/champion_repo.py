@@ -12,16 +12,16 @@ class ChampionRepo:
     def __init__(self, conn: Any) -> None:
         self._conn = conn
 
-    def get_champion_assignment_for_project(self, project_id: str) -> dict | None:
+    def get_champion_assignment_for_project(self, project_id: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT * FROM champion_assignments WHERE project_id = ? AND superseded_at IS NULL ORDER BY assigned_at DESC LIMIT 1",
             (project_id,),
         ).fetchone()
         return None if row is None else dict(row)
 
-    def get_champion_assignment(self, plan_id: str, champion_branch_id: str | None = None) -> dict | None:
+    def get_champion_assignment(self, plan_id: str, champion_branch_id: str | None = None) -> dict[str, Any] | None:
         clauses = ["plan_id = ?", "superseded_at IS NULL"]
-        params: list = [plan_id]
+        params: list[str] = [plan_id]
         if champion_branch_id:
             clauses.append("champion_branch_id = ?")
             params.append(champion_branch_id)
@@ -31,7 +31,7 @@ class ChampionRepo:
         ).fetchone()
         return None if row is None else dict(row)
 
-    def get_champion_assignment_by_branch(self, branch_id: str) -> dict | None:
+    def get_champion_assignment_by_branch(self, branch_id: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT * FROM champion_assignments WHERE champion_branch_id = ? AND superseded_at IS NULL ORDER BY assigned_at DESC LIMIT 1",
             (branch_id,),

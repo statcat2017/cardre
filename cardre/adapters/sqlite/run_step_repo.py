@@ -55,7 +55,7 @@ class RunStepRepo:
 
     def get_latest_successful_step(self, plan_version_id: str, step_id: str, branch_id: str | None = None) -> RunStep | None:
         clause = ""
-        params: list = [plan_version_id, step_id]
+        params: list[str] = [plan_version_id, step_id]
         if branch_id is not None:
             clause = "AND r.branch_id = ?"
             params.append(branch_id)

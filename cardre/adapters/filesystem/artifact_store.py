@@ -1,10 +1,9 @@
-"""Filesystem-backed artifact store with staging and atomic publish."""
-
 from __future__ import annotations
 
 import json
 import uuid
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -25,7 +24,7 @@ class FsArtifactStore:
 
     def _stage(self, data: bytes, logical_hash: str, media_type: str,
                schema_version: str, role: str, artifact_type: str,
-               metadata: dict | None) -> StagedArtifact:
+               metadata: dict[str, Any] | None) -> StagedArtifact:
         self._staging_dir.mkdir(parents=True, exist_ok=True)
         staging = self._staging_dir / uuid.uuid4().hex
         staging.write_bytes(data)
@@ -42,14 +41,14 @@ class FsArtifactStore:
             metadata=metadata or {},
         )
 
-    def stage_json(self, role: str, kind: str, payload: dict,
-                   metadata: dict | None = None) -> StagedArtifact:
+    def stage_json(self, role: str, kind: str, payload: dict[str, Any],
+                   metadata: dict[str, Any] | None = None) -> StagedArtifact:
         logical = json_logical_hash(payload)
         data = json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False).encode("utf-8")
         return self._stage(data, logical, "application/json", kind, role, kind.split(".")[-1] if "." in kind else kind, metadata)
 
     def stage_table(self, role: str, kind: str, frame: pl.DataFrame,
-                    metadata: dict | None = None) -> StagedArtifact:
+                    metadata: dict[str, Any] | None = None) -> StagedArtifact:
         logical = table_logical_hash(frame)
         import io
         buf = io.BytesIO()
@@ -59,7 +58,7 @@ class FsArtifactStore:
 
     def stage_bytes(self, role: str, kind: str, data: bytes,
                     media_type: str, logical_hash: str,
-                    metadata: dict | None = None) -> StagedArtifact:
+                    metadata: dict[str, Any] | None = None) -> StagedArtifact:
         return self._stage(data, logical_hash, media_type, kind, role,
                            kind.split(".")[-1] if "." in kind else kind, metadata)
 
@@ -70,27 +69,22 @@ class FsArtifactStore:
         return dest
 
     def read_bytes(self, artifact: object) -> bytes:
-        if isinstance(artifact, dict):
-            storage_key = artifact.get("storage_key", artifact.get("physical_hash", ""))
-        elif hasattr(artifact, "storage_key"):
-            storage_key = artifact.storage_key
-        elif hasattr(artifact, "physical_hash"):
-            storage_key = artifact.physical_hash
-        else:
-            storage_key = str(artifact)
-        path = self._root / "objects" / storage_key[:2] / storage_key
-        return path.read_bytes()
+        key = self._storage_key(artifact)
+        return (self._root / "objects" / key[:2] / key).read_bytes()
 
     def resolve_path(self, artifact: object) -> Path:
+        key = self._storage_key(artifact)
+        return self._root / "objects" / key[:2] / key
+
+    @staticmethod
+    def _storage_key(artifact: object) -> str:
         if isinstance(artifact, dict):
-            storage_key = artifact.get("storage_key", artifact.get("physical_hash", ""))
-        elif hasattr(artifact, "storage_key"):
-            storage_key = artifact.storage_key
-        elif hasattr(artifact, "physical_hash"):
-            storage_key = artifact.physical_hash
-        else:
-            storage_key = str(artifact)
-        return self._root / "objects" / storage_key[:2] / storage_key
+            return str(artifact.get("storage_key") or artifact.get("physical_hash") or "")
+        if hasattr(artifact, "storage_key"):
+            return str(artifact.storage_key)
+        if hasattr(artifact, "physical_hash"):
+            return str(artifact.physical_hash)
+        return str(artifact)
 
     def gc_staging(self) -> None:
         import shutil
