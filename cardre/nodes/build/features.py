@@ -5,26 +5,33 @@ from typing import Any, cast
 
 import polars as pl
 
-from cardre._evidence.kinds import AmbiguousEvidenceError, EvidenceKind, EvidenceNotFoundError
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import (
+from cardre.domain.evidence.kinds import (
+    AmbiguousEvidenceError,
+    EvidenceKind,
+    EvidenceNotFoundError,
+)
+from cardre.domain.evidence.schemas import (
     SCHEMA_IV_TABLE,
     SCHEMA_WOE_IV_EVIDENCE,
     SCHEMA_WOE_TABLE,
     SCHEMA_WOE_TRANSFORM_EVIDENCE,
 )
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.engine.binning.diagnostics import MonotonicStatus, check_pure_bins, monotonicity_status
-from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes._bin_mask import build_bin_condition
-from cardre.nodes.contracts import NodeType
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.store.plan_repo import PlanRepository
 
 
 class CalculateWoeIvNode(NodeType):
@@ -33,6 +40,25 @@ class CalculateWoeIvNode(NodeType):
     category = "selection"
     input_roles: list[str] = ["train", "definition"]
     output_roles: list[str] = ["report"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.calculate_woe_iv",
+        version="1",
+        category="selection",
+        description="Calculate WOE and IV for binned variables",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train", kinds=(EvidenceKind.MODELLING_METADATA,)),
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.BIN_DEFINITION,)),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("report"),
+            ),
+        ),
+        parameter_schema=None,
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -82,26 +108,26 @@ class CalculateWoeIvNode(NodeType):
             ],
         )
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         zero_cell_policy = params.get("zero_cell_policy", "block")
         smoothing = params.get("smoothing")
         purpose = params.get("purpose", "initial")
         enforce_monotonic_woe = bool(params.get("enforce_monotonic_woe", False))
 
-        train_artifact = context.require_train_artifact("CalculateWoeIvNode")
-        bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
-        meta_def = context.target_metadata()
+        train_artifact = context.inputs.require("train", "CalculateWoeIvNode")
+        bin_list = context.inputs.by_kind(EvidenceKind.BIN_DEFINITION)
+        if not bin_list:
+            raise ValueError("No bin definition found")
+        bin_def = bin_list[0]
+        meta_def = context.inputs.target_metadata()
 
         from cardre.modeling.target import TargetSpec
         target_spec = TargetSpec.from_metadata(meta_def)
         if target_spec is None:
             raise ValueError("WOE/IV requires target metadata")
 
-        df = reader.read_dataframe(train_artifact)
+        df = context.inputs.read_dataframe(train_artifact)
 
         target_column = target_spec.target_column
         good_values = target_spec.good_values
@@ -123,7 +149,6 @@ class CalculateWoeIvNode(NodeType):
         iv_rows: dict[str, dict[str, Any]] = {}
         warnings_list: list[dict[str, Any]] = []
 
-        # Track per-variable smoothing for controlled evidence artifact
         evidence_variables: list[dict[str, Any]] = []
 
         for var_def in bin_def.variables:
@@ -146,11 +171,11 @@ class CalculateWoeIvNode(NodeType):
             zero_cell_encountered = False
             affected_bins: list[dict[str, Any]] = []
 
-            for bin_def in bins:
-                bin_id = bin_def["bin_id"]
-                label = bin_def["label"]
+            for bin_entry in bins:
+                bin_id = bin_entry["bin_id"]
+                label = bin_entry["label"]
 
-                bin_mask = build_bin_condition(bin_def, col_values, kind, bins, variable=variable, bin_id=bin_id)
+                bin_mask = build_bin_condition(bin_entry, col_values, kind, bins, variable=variable, bin_id=bin_id)
 
                 row_count = int(cast(Any, bin_mask.sum()))
 
@@ -158,8 +183,8 @@ class CalculateWoeIvNode(NodeType):
                     bin_good = int(target_series.filter(cast(pl.Series, bin_mask)).is_in(list(good_values)).sum())
                     bin_bad = int(target_series.filter(cast(pl.Series, bin_mask)).is_in(list(bad_values)).sum())
                 else:
-                    bin_good = bin_def.get("good_count", 0)
-                    bin_bad = bin_def.get("bad_count", 0)
+                    bin_good = bin_entry.get("good_count", 0)
+                    bin_bad = bin_entry.get("bad_count", 0)
 
                 raw_good_dist = bin_good / total_good if total_good > 0 else 0.0
                 raw_bad_dist = bin_bad / total_bad if total_bad > 0 else 0.0
@@ -315,15 +340,15 @@ class CalculateWoeIvNode(NodeType):
             "zero_cell_count": [], "warning_count": [],
         })
 
-        woe_art = write_parquet_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"woe-table-{purpose}-{context.step_spec.step_id}",
+        context.outputs.publish_table(
+            role="report",
+            kind=EvidenceKind.WOE_TABLE,
             frame=woe_table,
             metadata={"purpose": purpose, "zero_cell_policy": zero_cell_policy, "schema_version": SCHEMA_WOE_TABLE},
         )
-        iv_art = write_parquet_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"iv-ranking-{purpose}-{context.step_spec.step_id}",
+        context.outputs.publish_table(
+            role="report",
+            kind=EvidenceKind.IV_TABLE,
             frame=iv_table,
             metadata={"purpose": purpose, "zero_cell_policy": zero_cell_policy, "schema_version": SCHEMA_IV_TABLE},
         )
@@ -338,27 +363,19 @@ class CalculateWoeIvNode(NodeType):
             "variable_count": len(iv_rows),
             "warnings": warnings_list,
         }
-        summary_art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"woe-summary-{purpose}-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.WOE_IV_EVIDENCE,
             payload=summary,
             metadata={"purpose": purpose},
         )
 
-        # Controlled WOE/IV evidence artifact (Phase 5, cardre.woe_iv_evidence.v1)
-        project_id = ""
-        plan_id = PlanRepository(store).get_plan_id_for_version(context.plan_version_id)
-        if plan_id:
-            plan = PlanRepository(store).get_plan(plan_id)
-            if plan:
-                project_id = plan["project_id"]
-
         woe_evidence: dict[str, Any] = {
             "schema_version": SCHEMA_WOE_IV_EVIDENCE,
-            "project_id": project_id,
-            "run_id": context.run_id,
+            "project_id": "",
+            "run_id": context.runtime.run_id,
             "branch_id": context.step_spec.branch_id or "",
-            "step_id": context.step_spec.step_id,
+            "step_id": context.runtime.step_id,
             "canonical_step_id": context.step_spec.canonical_step_id,
             "dataset_role": "train",
             "target_column": target_column,
@@ -372,21 +389,16 @@ class CalculateWoeIvNode(NodeType):
             },
             "variables": evidence_variables,
         }
-        evidence_art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"woe-iv-evidence-{purpose}-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.WOE_IV_EVIDENCE,
             payload=woe_evidence,
             metadata={"purpose": purpose, "schema_version": SCHEMA_WOE_IV_EVIDENCE},
         )
 
-        all_artifacts = [woe_art, iv_art, summary_art, evidence_art]
-
-        return NodeOutput(
-            artifacts=all_artifacts,
-            metrics={
-                "variable_count": len(iv_rows),
-                "zero_cell_warning_count": len(warnings_list),
-            })
+        context.outputs.add_metric("variable_count", len(iv_rows))
+        context.outputs.add_metric("zero_cell_warning_count", len(warnings_list))
+        return context.outputs.build_result()
 
 
 class WoeTransformTrainNode(NodeType):
@@ -396,26 +408,52 @@ class WoeTransformTrainNode(NodeType):
     input_roles: list[str] = ["train", "definition", "report"]
     output_roles: list[str] = ["train"]
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
+    __definition__ = NodeDefinition(
+        node_type="cardre.woe_transform_train",
+        version="1",
+        category="fit",
+        description="Apply WOE transformation to training dataset",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train", kinds=(EvidenceKind.MODELLING_METADATA,)),
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.BIN_DEFINITION,)),
+                ArtifactRoleSpec("report"),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train"),
+            ),
+        ),
+        parameter_schema=None,
+    )
 
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        train_artifact = context.require_train_artifact("cardre.woe_transform_train")
+    def run(self, context: NodeContext) -> NodeResult:
+        train_artifact = context.inputs.require("train", "cardre.woe_transform_train")
 
-        bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
-        woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
+        bin_list = context.inputs.by_kind(EvidenceKind.BIN_DEFINITION)
+        if not bin_list:
+            raise ValueError("No bin definition found")
+        bin_def = bin_list[0]
+
+        woe_list = context.inputs.by_kind(EvidenceKind.WOE_TABLE)
+        if not woe_list:
+            raise ValueError("No WOE table found")
+        woe_table = woe_list[0]
 
         try:
-            meta = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+            meta = context.inputs.target_metadata()
         except (EvidenceNotFoundError, AmbiguousEvidenceError):
             meta = None
-        sel = reader.find_optional(context.input_artifacts, EvidenceKind.SELECTION_DEFINITION)
+
+        sel_list = context.inputs.by_kind(EvidenceKind.SELECTION_DEFINITION)
+        sel = sel_list[0] if sel_list else None
 
         if not bin_def.variables:
             raise ValueError("WOE transform received an empty bin definition")
         target_column = meta.target_column if meta is not None else ""
 
-        df = reader.read_dataframe(train_artifact)
+        df = context.inputs.read_dataframe(train_artifact)
         woe_map = woe_table.mapping
 
         missing_woe_bins: list[str] = []
@@ -495,16 +533,16 @@ class WoeTransformTrainNode(NodeType):
             "selected_only": selected_names is not None,
             "row_count": df.height,
         }
-        report_artifact_ref = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"woe-transform-report-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.WOE_TRANSFORM_EVIDENCE,
             payload=transform_report,
             metadata={"schema_version": SCHEMA_WOE_TRANSFORM_EVIDENCE},
         )
 
-        dataset_artifact = write_parquet_artifact(
-            store, artifact_type="dataset", role="train",
-            stem=f"woe-transformed-train-{context.step_spec.step_id}",
+        context.outputs.publish_table(
+            role="train",
+            kind=EvidenceKind.WOE_TABLE,
             frame=result_df,
             metadata={
                 "source_artifact_id": train_artifact.artifact_id,
@@ -513,7 +551,5 @@ class WoeTransformTrainNode(NodeType):
             },
         )
 
-        all_outputs = [dataset_artifact, report_artifact_ref]
-        return NodeOutput(
-            artifacts=all_outputs,
-            metrics={"variable_count": len(woe_columns)})
+        context.outputs.add_metric("variable_count", len(woe_columns))
+        return context.outputs.build_result()

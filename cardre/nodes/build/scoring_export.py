@@ -4,46 +4,67 @@ from typing import Any
 
 import polars as pl
 
-from cardre._evidence.kinds import EvidenceKind, EvidenceNotFoundError
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import (
+from cardre.domain.evidence.kinds import EvidenceKind, EvidenceNotFoundError
+from cardre.domain.evidence.schemas import (
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
     SCHEMA_SCORE_TABLE,
     SCHEMA_SCORING_EXPORT_PYTHON,
     SCHEMA_SCORING_EXPORT_SQL,
 )
-from cardre.artifacts import write_csv_artifact, write_json_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.build.scoring_export_ir import (
     ScoringVariable,
     compile_scorecard,
     compute_log_odds_and_direction,
 )
-from cardre.nodes.contracts import NodeType
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 
 
 class ScorecardTableExportNode(NodeType):
     node_type = "cardre.scorecard_table_export"
     version = "1"
     category = "export"
+    description = "Export scorecard as a table (CSV equivalent + JSON)"
     input_roles: list[str] = ["scorecard", "report"]
     output_roles: list[str] = ["report"]
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
+    __definition__ = NodeDefinition(
+        node_type="cardre.scorecard_table_export",
+        version="1",
+        category="export",
+        description="Export scorecard as a table (CSV equivalent + JSON)",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("scorecard", required=True),
+                ArtifactRoleSpec("report", required=True),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("report", required=True),),
+        ),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
+    def run(self, context: NodeContext) -> NodeResult:
+        scorecard_list = context.inputs.by_role("scorecard")
         scorecard_art = next(
-            (a for a in context.input_artifacts if a.role == "scorecard"
-             and a.metadata.get("schema_version") != SCHEMA_FROZEN_SCORECARD_BUNDLE),
+            (a for a in scorecard_list if a.metadata.get("schema_version") != SCHEMA_FROZEN_SCORECARD_BUNDLE),
             None,
         )
         if scorecard_art is None:
             raise EvidenceNotFoundError(
                 EvidenceKind.SCORE_SCALING,
-                candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
+                candidate_artifact_ids=[a.artifact_id for a in scorecard_list],
             )
-        scorecard = reader.read(scorecard_art.artifact_id, EvidenceKind.SCORE_SCALING)
+        scorecard = context.inputs.read(scorecard_art, EvidenceKind.SCORE_SCALING)
         attributes = scorecard.attributes
         if not attributes:
             raise ValueError("Scorecard table export: no attributes found in score scaling artifact")
@@ -61,9 +82,9 @@ class ScorecardTableExportNode(NodeType):
 
         df = pl.DataFrame(table_rows)
 
-        csv_artifact = write_csv_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"scorecard-table-csv-{context.step_spec.step_id}",
+        context.outputs.publish_table(
+            role="report",
+            kind=EvidenceKind.SCORE_TABLE,
             frame=df,
             metadata={"schema_version": SCHEMA_SCORE_TABLE, "row_count": len(table_rows)},
         )
@@ -79,55 +100,50 @@ class ScorecardTableExportNode(NodeType):
             "rows": table_rows,
         }
 
-        json_artifact = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"scorecard-table-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.SCORE_TABLE,
             payload=table_payload,
             metadata={
                 "schema_version": SCHEMA_SCORE_TABLE,
                 "row_count": len(table_rows),
-                "csv_artifact_id": csv_artifact.artifact_id,
             },
         )
-
-        return NodeOutput(
-            artifacts=[json_artifact, csv_artifact],
-            metrics={"row_count": len(table_rows)},
-        )
+        context.outputs.add_metric("row_count", len(table_rows))
+        return context.outputs.build_result()
 
 
 def _validate_bundle_components(
-    bundle_art: Any,
-    model_art: Any,
+    bundle_meta: dict[str, Any],
+    model_evidence: Any,
     scorecard_evidence: Any,
     bin_def_evidence: Any,
     woe_table_evidence: Any,
 ) -> None:
-    bundle_meta = bundle_art.metadata
     expected_model = bundle_meta.get("model_artifact_id")
     expected_scorecard = bundle_meta.get("scorecard_artifact_id")
     expected_bin_def = bundle_meta.get("bin_definition_artifact_id")
     expected_woe_table = bundle_meta.get("woe_table_artifact_id")
 
-    if expected_model and model_art and expected_model != model_art.artifact_id:
+    if expected_model and model_evidence and expected_model != getattr(model_evidence, "source_artifact_id", None):
         raise ValueError(
             f"Frozen bundle model_artifact_id ({expected_model}) "
-            f"does not match input model artifact ({model_art.artifact_id})"
+            f"does not match input model artifact ({getattr(model_evidence, 'source_artifact_id', None)})"
         )
-    if expected_scorecard and scorecard_evidence and expected_scorecard != scorecard_evidence.source_artifact_id:
+    if expected_scorecard and scorecard_evidence and expected_scorecard != getattr(scorecard_evidence, "source_artifact_id", None):
         raise ValueError(
             f"Frozen bundle scorecard_artifact_id ({expected_scorecard}) "
-            f"does not match input scorecard artifact ({scorecard_evidence.source_artifact_id})"
+            f"does not match input scorecard artifact ({getattr(scorecard_evidence, 'source_artifact_id', None)})"
         )
-    if expected_bin_def and bin_def_evidence and expected_bin_def != bin_def_evidence.source_artifact_id:
+    if expected_bin_def and bin_def_evidence and expected_bin_def != getattr(bin_def_evidence, "source_artifact_id", None):
         raise ValueError(
             f"Frozen bundle bin_definition_artifact_id ({expected_bin_def}) "
-            f"does not match input bin definition artifact ({bin_def_evidence.source_artifact_id})"
+            f"does not match input bin definition artifact ({getattr(bin_def_evidence, 'source_artifact_id', None)})"
         )
-    if expected_woe_table and woe_table_evidence and expected_woe_table != woe_table_evidence.source_artifact_id:
+    if expected_woe_table and woe_table_evidence and expected_woe_table != getattr(woe_table_evidence, "source_artifact_id", None):
         raise ValueError(
             f"Frozen bundle woe_table_artifact_id ({expected_woe_table}) "
-            f"does not match input WOE table artifact ({woe_table_evidence.source_artifact_id})"
+            f"does not match input WOE table artifact ({getattr(woe_table_evidence, 'source_artifact_id', None)})"
         )
 
 
@@ -253,48 +269,82 @@ class PythonScoringExportNode(NodeType):
     node_type = "cardre.scoring_export_python"
     version = "1"
     category = "export"
+    description = "Export a standalone Python scorer from a frozen scorecard bundle"
     input_roles: list[str] = ["scorecard", "model", "report", "definition"]
     output_roles: list[str] = ["report"]
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
+    __definition__ = NodeDefinition(
+        node_type="cardre.scoring_export_python",
+        version="1",
+        category="export",
+        description="Export a standalone Python scorer from a frozen scorecard bundle",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("scorecard", required=True),
+                ArtifactRoleSpec("model", required=True),
+                ArtifactRoleSpec("report", required=True),
+                ArtifactRoleSpec("definition", required=True),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("report", required=True),),
+        ),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
-        bundle_art = context.find_frozen_bundle()
+    def run(self, context: NodeContext) -> NodeResult:
+        bundle_art = context.inputs.find_frozen_bundle()
         if bundle_art is None:
             raise EvidenceNotFoundError(
                 EvidenceKind.FROZEN_SCORECARD_BUNDLE,
-                candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
+                candidate_artifact_ids=[],
             )
 
-        bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
-        woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
+        bin_def_list = context.inputs.by_kind(EvidenceKind.BIN_DEFINITION)
+        if not bin_def_list:
+            raise EvidenceNotFoundError(
+                EvidenceKind.BIN_DEFINITION,
+                candidate_artifact_ids=[],
+            )
+        bin_def = bin_def_list[0]
 
-        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
-        if model_art is None:
+        woe_table_list = context.inputs.by_kind(EvidenceKind.WOE_TABLE)
+        if not woe_table_list:
+            raise EvidenceNotFoundError(
+                EvidenceKind.WOE_TABLE,
+                candidate_artifact_ids=[],
+            )
+        woe_table = woe_table_list[0]
+
+        model_arts = context.inputs.by_role("model")
+        if not model_arts:
             raise EvidenceNotFoundError(
                 EvidenceKind.MODEL_ARTIFACT,
-                candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
+                candidate_artifact_ids=[],
             )
-        model = reader.read(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        model_art = model_arts[0]
+        model = context.inputs.read(model_art, EvidenceKind.MODEL_ARTIFACT)
 
-        scorecard_candidates = [
-            a for a in context.input_artifacts
-            if a.role == "scorecard"
-            and a.metadata.get("schema_version") != SCHEMA_FROZEN_SCORECARD_BUNDLE
+        scorecard_candidates = context.inputs.by_role("scorecard")
+        non_bundle_scorecards = [
+            a for a in scorecard_candidates
+            if a.metadata.get("schema_version") != SCHEMA_FROZEN_SCORECARD_BUNDLE
         ]
-        if not scorecard_candidates:
+        if not non_bundle_scorecards:
             raise EvidenceNotFoundError(
                 EvidenceKind.SCORE_SCALING,
-                candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
+                candidate_artifact_ids=[a.artifact_id for a in scorecard_candidates],
             )
-        scorecard = reader.find(scorecard_candidates, EvidenceKind.SCORE_SCALING)
+        scorecard_art = non_bundle_scorecards[0]
+        scorecard = context.inputs.read(scorecard_art, EvidenceKind.SCORE_SCALING)
 
         _validate_bundle_components(
-            bundle_art, model_art, scorecard, bin_def, woe_table,
+            bundle_art.metadata, model, scorecard, bin_def, woe_table,
         )
 
-        bundle_payload = reader.read(bundle_art.artifact_id, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
+        bundle_payload = context.inputs.read(bundle_art, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
         feature_contract = bundle_payload.get("feature_contract", {})
 
         scorecard_for_source = {
@@ -330,20 +380,17 @@ class PythonScoringExportNode(NodeType):
             },
         }
 
-        artifact = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"scoring-export-python-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.SCORING_EXPORT_PYTHON,
             payload=payload,
             metadata={
                 "schema_version": SCHEMA_SCORING_EXPORT_PYTHON,
                 "function_name": "score_cardre",
             },
         )
-
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"function_name": "score_cardre"},
-        )
+        context.outputs.add_metric("function_name", "score_cardre")
+        return context.outputs.build_result()
 
 
 def _build_sql_scorer_source(
@@ -427,48 +474,82 @@ class SqlScoringExportNode(NodeType):
     node_type = "cardre.scoring_export_sql"
     version = "1"
     category = "export"
+    description = "Export a generic SQL scorer from a frozen scorecard bundle"
     input_roles: list[str] = ["scorecard", "model", "report", "definition"]
     output_roles: list[str] = ["report"]
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
+    __definition__ = NodeDefinition(
+        node_type="cardre.scoring_export_sql",
+        version="1",
+        category="export",
+        description="Export a generic SQL scorer from a frozen scorecard bundle",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("scorecard", required=True),
+                ArtifactRoleSpec("model", required=True),
+                ArtifactRoleSpec("report", required=True),
+                ArtifactRoleSpec("definition", required=True),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("report", required=True),),
+        ),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
-        bundle_art = context.find_frozen_bundle()
+    def run(self, context: NodeContext) -> NodeResult:
+        bundle_art = context.inputs.find_frozen_bundle()
         if bundle_art is None:
             raise EvidenceNotFoundError(
                 EvidenceKind.FROZEN_SCORECARD_BUNDLE,
-                candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
+                candidate_artifact_ids=[],
             )
 
-        bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
-        woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
+        bin_def_list = context.inputs.by_kind(EvidenceKind.BIN_DEFINITION)
+        if not bin_def_list:
+            raise EvidenceNotFoundError(
+                EvidenceKind.BIN_DEFINITION,
+                candidate_artifact_ids=[],
+            )
+        bin_def = bin_def_list[0]
 
-        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
-        if model_art is None:
+        woe_table_list = context.inputs.by_kind(EvidenceKind.WOE_TABLE)
+        if not woe_table_list:
+            raise EvidenceNotFoundError(
+                EvidenceKind.WOE_TABLE,
+                candidate_artifact_ids=[],
+            )
+        woe_table = woe_table_list[0]
+
+        model_arts = context.inputs.by_role("model")
+        if not model_arts:
             raise EvidenceNotFoundError(
                 EvidenceKind.MODEL_ARTIFACT,
-                candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
+                candidate_artifact_ids=[],
             )
-        model = reader.read(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
+        model_art = model_arts[0]
+        model = context.inputs.read(model_art, EvidenceKind.MODEL_ARTIFACT)
 
-        scorecard_candidates = [
-            a for a in context.input_artifacts
-            if a.role == "scorecard"
-            and a.metadata.get("schema_version") != SCHEMA_FROZEN_SCORECARD_BUNDLE
+        scorecard_candidates = context.inputs.by_role("scorecard")
+        non_bundle_scorecards = [
+            a for a in scorecard_candidates
+            if a.metadata.get("schema_version") != SCHEMA_FROZEN_SCORECARD_BUNDLE
         ]
-        if not scorecard_candidates:
+        if not non_bundle_scorecards:
             raise EvidenceNotFoundError(
                 EvidenceKind.SCORE_SCALING,
-                candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
+                candidate_artifact_ids=[a.artifact_id for a in scorecard_candidates],
             )
-        scorecard = reader.find(scorecard_candidates, EvidenceKind.SCORE_SCALING)
+        scorecard_art = non_bundle_scorecards[0]
+        scorecard = context.inputs.read(scorecard_art, EvidenceKind.SCORE_SCALING)
 
         _validate_bundle_components(
-            bundle_art, model_art, scorecard, bin_def, woe_table,
+            bundle_art.metadata, model, scorecard, bin_def, woe_table,
         )
 
-        bundle_payload = reader.read(bundle_art.artifact_id, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
+        bundle_payload = context.inputs.read(bundle_art, EvidenceKind.FROZEN_SCORECARD_BUNDLE)
         feature_contract = bundle_payload.get("feature_contract", {})
 
         scorecard_for_source = {
@@ -504,20 +585,17 @@ class SqlScoringExportNode(NodeType):
             },
         }
 
-        artifact = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"scoring-export-sql-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.SCORING_EXPORT_SQL,
             payload=payload,
             metadata={
                 "schema_version": SCHEMA_SCORING_EXPORT_SQL,
                 "dialect": "generic",
             },
         )
-
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"dialect": "generic"},
-        )
+        context.outputs.add_metric("dialect", "generic")
+        return context.outputs.build_result()
 
 
 __all__ = [

@@ -1,3 +1,4 @@
+# Deferred to Batch 05 — requires ExecuteRun and ArtifactRepoPort plumbing
 from __future__ import annotations
 
 import json  # noqa: F401 — imported for monkeypatch/patch compatibility in tests

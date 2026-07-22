@@ -5,10 +5,16 @@ from typing import Any
 
 import polars as pl
 
-from cardre.artifacts import write_parquet_artifact
 from cardre.domain.diagnostics import JsonDict
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -30,6 +36,18 @@ class ImportTabularDatasetNode(NodeType):
     category = "transform"
     input_roles: list[str] = []
     output_roles: list[str] = ["input"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.import_dataset",
+        version="1",
+        category="transform",
+        description="Import tabular dataset from file",
+        input_contract=ArtifactContract(),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)),)),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
     SUPPORTED_FORMATS = frozenset({"csv", "tsv", "parquet"})
 
@@ -144,8 +162,8 @@ class ImportTabularDatasetNode(NodeType):
                 errors.append(f"max_rows must be a positive integer, got {max_rows!r}")
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         source_path = Path(params["source_path"])
         if not source_path.exists() or not source_path.is_file():
             raise FileNotFoundError(f"Import source_path does not exist or is not a file: {source_path}")
@@ -182,7 +200,6 @@ class ImportTabularDatasetNode(NodeType):
         if df.is_empty():
             raise ValueError(f"Import produced zero rows from {source_path.name}")
 
-        store = context.store
         metadata: dict[str, Any] = {}
         warnings: list[JsonDict] = []
 
@@ -202,20 +219,17 @@ class ImportTabularDatasetNode(NodeType):
         }
         art_metadata.update(metadata)
 
-        artifact = write_parquet_artifact(
-            store,
-            artifact_type="dataset",
+        context.outputs.publish_table(
             role="input",
-            stem="imported-dataset",
+            kind=EvidenceKind.MODELLING_METADATA,
             frame=df,
             metadata=art_metadata,
         )
-
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"row_count": df.height, "column_count": df.width},
-            warnings=warnings or None,
-        )
+        for w in warnings:
+            context.outputs.add_warning(w)
+        context.outputs.add_metric("row_count", df.height)
+        context.outputs.add_metric("column_count", df.width)
+        return context.outputs.build_result()
 
     @staticmethod
     def _resolve_format(params: dict[str, Any], src: Path) -> str:

@@ -4,20 +4,21 @@ from typing import Any
 
 import polars as pl
 
-from cardre._evidence.kinds import AmbiguousEvidenceError, EvidenceKind, EvidenceNotFoundError
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import (
-    SCHEMA_APPLY_WOE_EVIDENCE,
-    SCHEMA_FROZEN_SCORECARD_BUNDLE,
-    SCHEMA_SELECTION_DEFINITION,
-)
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import JsonDict
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.modeling.adapters import apply_model as _apply_model_adapter
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import (
+    SCHEMA_APPLY_MODEL_EVIDENCE,
+    SCHEMA_APPLY_WOE_EVIDENCE,
+)
 from cardre.nodes._bin_mask import build_bin_condition
-from cardre.nodes.contracts import NodeType
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -69,21 +70,31 @@ class ApplyWoeMappingNode(NodeType):
             )
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         woe_unmatched_policy = params.get("woe_unmatched_policy", "fail")
 
-        # Detect frozen scorecard bundle for governed-path defaults
-        bundle_art = context.find_frozen_bundle()
+        bundle_art = context.inputs.find_frozen_bundle()
         if bundle_art is not None and "woe_unmatched_policy" not in params:
             woe_unmatched_policy = "fail"
 
-        data_arts = context.data_artifacts()
-        bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
-        woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
-        sel_def = reader.find_optional(context.input_artifacts, EvidenceKind.SELECTION_DEFINITION)
+        train_arts = context.inputs.by_role("train")
+        test_arts = context.inputs.by_role("test")
+        oot_arts = context.inputs.by_role("oot")
+        data_arts = train_arts + test_arts + oot_arts
+
+        bin_def_arts = context.inputs.by_kind(EvidenceKind.BIN_DEFINITION)
+        if not bin_def_arts:
+            raise ValueError("No bin definition artifact found")
+        bin_def = bin_def_arts[0]
+
+        woe_table_arts = context.inputs.by_kind(EvidenceKind.WOE_TABLE)
+        if not woe_table_arts:
+            raise ValueError("No WOE table artifact found")
+        woe_table = woe_table_arts[0]
+
+        sel_def_arts = context.inputs.by_kind(EvidenceKind.SELECTION_DEFINITION)
+        sel_def = sel_def_arts[0] if sel_def_arts else None
 
         selected_names: set[str] | None = None
         if sel_def is not None:
@@ -95,15 +106,8 @@ class ApplyWoeMappingNode(NodeType):
         if selected_names is not None:
             var_defs = [v for v in var_defs if v.variable in selected_names]
 
-        # Find referenced artifact ids for evidence
-        # (source_artifact_id is populated by the evidence reader's typed parsers)
-        sel_art = next(
-            (a for a in context.input_artifacts
-             if a.metadata.get("schema_version") == SCHEMA_SELECTION_DEFINITION),
-            None,
-        )
+        sel_art_id = sel_def.source_artifact_id if sel_def is not None else None
 
-        # Verify bundle components against actual artifacts being applied
         if bundle_art is not None:
             bundle_meta = bundle_art.metadata
             if bundle_meta.get("bin_definition_artifact_id") != bin_def.source_artifact_id:
@@ -122,26 +126,25 @@ class ApplyWoeMappingNode(NodeType):
                 )
             expected_selection_id = bundle_meta.get("selection_artifact_id")
             if expected_selection_id:
-                if sel_art is None:
+                if sel_art_id is None:
                     raise ValueError(
                         f"Frozen bundle requires selection artifact "
                         f"{expected_selection_id}, but no selection artifact was provided"
                     )
-                if expected_selection_id != sel_art.artifact_id:
+                if expected_selection_id != sel_art_id:
                     raise ValueError(
                         f"Frozen bundle selection_artifact_id "
                         f"({expected_selection_id}) "
                         f"does not match the selection being applied "
-                        f"({sel_art.artifact_id})"
+                        f"({sel_art_id})"
                     )
 
-        # Per-role evidence tracking
         roles_evidence: dict[str, JsonDict] = {}
-        outputs: list[ArtifactRef] = []
+        output_count = 0
         unmatched_total = 0
 
         for data_art in data_arts:
-            df = reader.read_dataframe(data_art)
+            df = context.inputs.read_dataframe(data_art)
             role = data_art.role
             fallback_counts: dict[str, int] = {}
             woe_columns_created: list[str] = []
@@ -183,17 +186,16 @@ class ApplyWoeMappingNode(NodeType):
                             )
                         df = df.with_columns(pl.col(woe_col).fill_null(0.0))
 
-            art = write_parquet_artifact(
-                store, artifact_type="dataset", role=role,
-                stem=f"woe-apply-{role}-{context.step_spec.step_id}",
+            out_art = context.outputs.publish_table(
+                role=role, kind=EvidenceKind.SCORED_DATASET,
                 frame=df,
                 metadata={"source_artifact_id": data_art.artifact_id},
             )
-            outputs.append(art)
+            output_count += 1
 
             roles_evidence[role] = {
                 "source_artifact_id": data_art.artifact_id,
-                "output_artifact_id": art.artifact_id,
+                "output_artifact_id": getattr(out_art, "artifact_id", getattr(out_art, "provisional_artifact_id", "")),
                 "source_physical_hash": data_art.physical_hash,
                 "source_logical_hash": data_art.logical_hash,
                 "row_count": df.height,
@@ -213,24 +215,20 @@ class ApplyWoeMappingNode(NodeType):
             evidence["frozen_bundle_artifact_id"] = bundle_art.artifact_id
         evidence["bin_definition_artifact_id"] = bin_def.source_artifact_id
         evidence["woe_table_artifact_id"] = woe_table.source_artifact_id
-        if sel_art is not None:
-            evidence["selection_artifact_id"] = sel_art.artifact_id
+        if sel_art_id is not None:
+            evidence["selection_artifact_id"] = sel_art_id
 
-        evidence_art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"woe-apply-evidence-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report", kind=EvidenceKind.APPLY_WOE_EVIDENCE,
             payload=evidence,
             metadata={"schema_version": SCHEMA_APPLY_WOE_EVIDENCE},
         )
 
-        all_artifacts = outputs + [evidence_art]
-        return NodeOutput(
-            artifacts=all_artifacts,
-            metrics={
-                "output_count": len(outputs),
-                "unmatched_row_count": unmatched_total,
-                "woe_unmatched_policy": woe_unmatched_policy,
-            })
+        context.outputs.add_metric("output_count", output_count)
+        context.outputs.add_metric("unmatched_row_count", unmatched_total)
+        context.outputs.add_metric("woe_unmatched_policy", woe_unmatched_policy)
+
+        return context.outputs.build_result()
 
 
 class ApplyModelNode(NodeType):
@@ -239,6 +237,8 @@ class ApplyModelNode(NodeType):
     category = "apply"
     input_roles: list[str] = ["train", "test", "oot", "model", "scorecard"]
     output_roles: list[str] = ["train", "test", "oot"]
+
+    _DATA_ROLES = ("train", "test", "oot")
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -257,52 +257,23 @@ class ApplyModelNode(NodeType):
             ],
         )
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        step_id = context.step_spec.step_id
+    def run(self, context: NodeContext) -> NodeResult:
+        model_art = context.inputs.require("model", self.node_type)
+        typed_model = context.inputs.read(model_art, EvidenceKind.MODEL_ARTIFACT)
+        model = typed_model.to_dict()
 
-        def read_typed_evidence(artifact_id: str, kind: EvidenceKind, source: str) -> Any:
+        scorecard_arts = context.inputs.by_role("scorecard")
+        scorecard_evidence = None
+        scorecard_artifact_id = None
+        if scorecard_arts:
             try:
-                return reader.read(artifact_id, kind)
-            except EvidenceNotFoundError as exc:
-                raise ValueError(
-                    f"apply_model step {step_id}: missing {source} evidence for artifact {artifact_id!r}"
-                ) from exc
-            except AmbiguousEvidenceError as exc:
-                raise ValueError(
-                    f"apply_model step {step_id}: ambiguous {source} evidence for artifact {artifact_id!r}"
-                ) from exc
+                scorecard_evidence = context.inputs.read(scorecard_arts[0], EvidenceKind.SCORE_SCALING)
+                scorecard_artifact_id = scorecard_arts[0].artifact_id
+            except Exception:
+                scorecard_evidence = None
+                scorecard_artifact_id = None
 
-        def find_typed_evidence(candidates: list[ArtifactRef], kind: EvidenceKind, source: str) -> Any | None:
-            if not candidates:
-                return None
-            try:
-                return reader.find(candidates, kind)
-            except EvidenceNotFoundError as exc:
-                candidate_ids = [a.artifact_id for a in candidates]
-                raise ValueError(
-                    f"apply_model step {step_id}: missing {source} evidence in candidates {candidate_ids}"
-                ) from exc
-            except AmbiguousEvidenceError as exc:
-                candidate_ids = [a.artifact_id for a in candidates]
-                raise ValueError(
-                    f"apply_model step {step_id}: ambiguous {source} evidence in candidates {candidate_ids}"
-                ) from exc
-
-        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
-        if model_art is None:
-            raise ValueError("apply_model requires a model artifact")
-
-        scorecard_candidates = [
-            a for a in context.input_artifacts
-            if a.role == "scorecard"
-            and a.metadata.get("schema_version") != SCHEMA_FROZEN_SCORECARD_BUNDLE
-        ]
-        scorecard_evidence = find_typed_evidence(scorecard_candidates, EvidenceKind.SCORE_SCALING, "scorecard scaling")
-
-        # Detect frozen bundle
-        bundle_art = context.find_frozen_bundle()
+        bundle_art = context.inputs.find_frozen_bundle()
         if bundle_art is not None:
             bundle_meta = bundle_art.metadata
             if bundle_meta.get("model_artifact_id") != model_art.artifact_id:
@@ -312,30 +283,190 @@ class ApplyModelNode(NodeType):
                 )
             expected_scorecard_id = bundle_meta.get("scorecard_artifact_id")
             if expected_scorecard_id:
-                if not scorecard_candidates:
+                if not scorecard_arts:
                     raise ValueError(
                         f"Frozen bundle requires scorecard artifact "
                         f"{expected_scorecard_id}, but no scorecard scaling artifact was provided"
                     )
-                if expected_scorecard_id != getattr(scorecard_evidence, "source_artifact_id", None):
+                if expected_scorecard_id != scorecard_artifact_id:
                     raise ValueError(
                         f"Frozen bundle scorecard_artifact_id ({expected_scorecard_id}) "
-                        f"does not match input scorecard artifact ({getattr(scorecard_evidence, 'source_artifact_id', None)})"
+                        f"does not match input scorecard artifact ({scorecard_artifact_id})"
                     )
-        typed_model = read_typed_evidence(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT, "model")
-        model: dict[str, Any] = typed_model.to_dict()
+        bundle_artifact_id = bundle_art.artifact_id if bundle_art else None
 
-        scorecard_parsed: dict[str, Any] | None = None
-        if scorecard_evidence is not None:
-            scorecard_parsed = scorecard_evidence.to_dict()
+        model_family = model.get("model_family", "logistic_regression")
+        data_arts = []
+        for role in self._DATA_ROLES:
+            data_arts.extend(context.inputs.by_role(role))
 
-        scorecard_artifact_id: str | None = getattr(scorecard_evidence, "source_artifact_id", None)
-        bundle_artifact_id: str | None = bundle_art.artifact_id if bundle_art else None
+        staged: list[Any] = []
+        roles_evidence: dict[str, JsonDict] = {}
 
-        return _apply_model_adapter(
-            context, model, model_art,
-            scorecard_parsed, scorecard_artifact_id, bundle_artifact_id,
+        for data_art in data_arts:
+            df = context.inputs.read_dataframe(data_art)
+            role = data_art.role
+
+            if model_family == "logistic_regression":
+                fc = model.get("feature_contract", {})
+                features = fc.get("features", [])
+                mp = model.get("model_payload", {})
+                intercept = float(mp.get("intercept", 0))
+                coefficients = mp.get("coefficients", {})
+
+                has_scorecard = scorecard_evidence is not None
+                if has_scorecard:
+                    scorecard_parsed = scorecard_evidence.to_dict() if hasattr(scorecard_evidence, 'to_dict') else scorecard_evidence
+                    offset = float(scorecard_parsed.get("offset", 0))
+                    factor_val = float(scorecard_parsed.get("factor", 1))
+                    direction = -1.0 if scorecard_parsed.get("score_direction", "higher_is_lower_risk") == "higher_is_lower_risk" else 1.0
+                else:
+                    offset, factor_val, direction = 0.0, 1.0, -1.0
+
+                missing = [f for f in features if f not in df.columns]
+                if missing:
+                    raise ValueError(f"apply_model: role {role!r} missing features {missing}")
+
+                log_odds_expr = pl.lit(intercept)
+                for feat in features:
+                    log_odds_expr = log_odds_expr + pl.col(feat) * pl.lit(float(coefficients.get(feat, 0)))
+
+                prob_expr = (1.0 / (1.0 + (-log_odds_expr).exp())).alias("predicted_bad_probability")
+                raw_expr = log_odds_expr.alias("raw_model_output")
+
+                df = df.with_columns([prob_expr, raw_expr])
+
+                base_metadata: JsonDict = {
+                    "model_artifact_id": model_art.artifact_id,
+                    "model_family": "logistic_regression",
+                }
+                if scorecard_artifact_id:
+                    base_metadata["scorecard_artifact_id"] = scorecard_artifact_id
+                if bundle_artifact_id:
+                    base_metadata["frozen_bundle_artifact_id"] = bundle_artifact_id
+
+                output_cols = ["predicted_bad_probability", "raw_model_output", "model_artifact_id", "model_family"]
+                add_exprs = [
+                    pl.lit(model_art.artifact_id).alias("model_artifact_id"),
+                    pl.lit("logistic_regression").alias("model_family"),
+                ]
+                if has_scorecard:
+                    score_expr = pl.lit(offset) + pl.lit(direction * factor_val) * pl.col("raw_model_output")
+                    add_exprs.append(score_expr.alias("score"))
+                    output_cols.append("score")
+
+                df = df.with_columns(add_exprs)
+                art = context.outputs.publish_table(
+                    role=role, kind=EvidenceKind.SCORED_DATASET,
+                    frame=df, metadata=base_metadata,
+                )
+                staged.append(art)
+
+                roles_evidence[role] = _role_entry_from_df(
+                    df, data_art, art, features, missing, output_cols, has_scorecard,
+                )
+
+            elif model_family in _SKLEARN_FAMILIES:
+                raise NotImplementedError(
+                    f"apply_model: model_family {model_family!r} requires ArtifactReader for "
+                    f"estimator binary loading, which is not yet available through NodeContext. "
+                    f"This will be supported when ArtifactReader is plumbed through NodeContext."
+                )
+            elif model_family in _ENSEMBLE_FAMILIES:
+                raise NotImplementedError(
+                    f"apply_model: model_family {model_family!r} requires ArtifactReader for "
+                    f"ensemble base-model loading, which is not yet available through NodeContext. "
+                    f"This will be supported when ArtifactReader is plumbed through NodeContext."
+                )
+            else:
+                raise ValueError(
+                    f"apply_model: unsupported model_family {model_family!r}. "
+                    f"Supported families: logistic_regression"
+                )
+
+        evidence: JsonDict = {
+            "schema_version": SCHEMA_APPLY_MODEL_EVIDENCE,
+            "model_artifact_id": model_art.artifact_id,
+            "roles": roles_evidence,
+            "warnings": [],
+        }
+        if bundle_artifact_id is not None:
+            evidence["frozen_bundle_artifact_id"] = bundle_artifact_id
+        if scorecard_artifact_id is not None:
+            evidence["scorecard_artifact_id"] = scorecard_artifact_id
+
+        context.outputs.publish_json(
+            role="report", kind=EvidenceKind.APPLY_MODEL_EVIDENCE,
+            payload=evidence,
+            metadata={"schema_version": SCHEMA_APPLY_MODEL_EVIDENCE},
         )
 
+        context.outputs.add_metric("output_count", len(staged))
+        return context.outputs.build_result()
 
 
+_SKLEARN_FAMILIES = {"random_forest", "xgboost", "lightgbm", "catboost", "gradient_boosting", "svm", "mlp"}
+_ENSEMBLE_FAMILIES = {"voting_ensemble", "stacking_ensemble", "blending_ensemble"}
+
+
+def _role_entry_from_df(
+    df: pl.DataFrame,
+    data_art: Any,
+    art: Any,
+    features: list[str],
+    missing: list[str],
+    output_cols: list[str],
+    has_scorecard: bool,
+) -> JsonDict:
+    pd_series = df["predicted_bad_probability"]
+    art_id = getattr(art, "artifact_id", getattr(art, "provisional_artifact_id", ""))
+    entry: JsonDict = {
+        "source_artifact_id": data_art.artifact_id,
+        "output_artifact_id": art_id,
+        "row_count": df.height,
+        "required_features": features,
+        "missing_features": missing,
+        "output_columns": output_cols,
+        "pd_min": round(float(pd_series.min()), 6),
+        "pd_max": round(float(pd_series.max()), 6),
+        "pd_mean": round(float(pd_series.mean()), 6),
+    }
+    if has_scorecard and "score" in df.columns:
+        score_series = df["score"]
+        entry["score_min"] = round(float(score_series.min()), 2)
+        entry["score_max"] = round(float(score_series.max()), 2)
+        entry["score_mean"] = round(float(score_series.mean()), 2)
+    return entry
+
+
+__definition__ = NodeDefinition(
+    node_type=ApplyWoeMappingNode.node_type,
+    version=ApplyWoeMappingNode.version,
+    category=ApplyWoeMappingNode.category,
+    description="Apply WOE mapping to transform raw features into WOE values",
+    input_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ApplyWoeMappingNode.input_roles),
+    ),
+    output_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ApplyWoeMappingNode.output_roles),
+    ),
+    parameter_schema=None,
+    optional_dependencies=(),
+    tier="launch",
+)
+
+__definition_apply_model = NodeDefinition(
+    node_type=ApplyModelNode.node_type,
+    version=ApplyModelNode.version,
+    category=ApplyModelNode.category,
+    description="Apply a fitted model to score datasets across train/test/oot roles",
+    input_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ApplyModelNode.input_roles),
+    ),
+    output_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ApplyModelNode.output_roles),
+    ),
+    parameter_schema=None,
+    optional_dependencies=(),
+    tier="launch",
+)

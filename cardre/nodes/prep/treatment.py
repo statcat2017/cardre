@@ -4,10 +4,16 @@ from typing import Any
 
 import polars as pl
 
-from cardre._evidence.schemas import SCHEMA_EXCLUSION_SUMMARY
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_EXCLUSION_SUMMARY
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 
 
 class ApplyExclusionsNode(NodeType):
@@ -17,14 +23,24 @@ class ApplyExclusionsNode(NodeType):
     input_roles: list[str] = ["input", "train", "definition"]
     output_roles: list[str] = ["input", "train"]
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
+    __definition__ = NodeDefinition(
+        node_type="cardre.apply_exclusions",
+        version="1",
+        category="transform",
+        description="Apply exclusion rules to filter rows",
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)), ArtifactRoleSpec("train", required=False, kinds=("dataset",)), ArtifactRoleSpec("definition", required=False, kinds=("definition",)))),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)), ArtifactRoleSpec("train", required=False, kinds=("dataset",)))),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
-        store = context.store
-        params = context.validated_params
-        dataset_artifact = next(a for a in context.input_artifacts if a.role in ("input", "train"))
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
+        dataset_artifact = context.inputs.first("input") or context.inputs.first("train")
         rules = params.get("rules", [])
 
-        df = pl.read_parquet(store.artifact_path(dataset_artifact))  # cardre-allow-artifact-read: dataset-frame-input
+        df = context.inputs.read_dataframe(dataset_artifact)
         n_before = df.height
 
         rule_counts = []
@@ -79,13 +95,12 @@ class ApplyExclusionsNode(NodeType):
                 "rows_removed": removed,
             })
 
-        dataset_artifact = write_parquet_artifact(
-            store, artifact_type="dataset",
-            role=dataset_artifact.role,
-            stem=f"excluded-{context.step_spec.step_id}",
+        context.outputs.publish_table(
+            role=getattr(dataset_artifact, "role", "input"),
+            kind=EvidenceKind.MODELLING_METADATA,
             frame=df,
             metadata={
-                "source_artifact_id": dataset_artifact.artifact_id,
+                "source_artifact_id": getattr(dataset_artifact, "artifact_id", ""),
                 "rows_before": n_before,
                 "rows_after": df.height,
             },
@@ -97,16 +112,16 @@ class ApplyExclusionsNode(NodeType):
             "rows_excluded": n_before - df.height,
             "rules": rule_counts,
         }
-        exclusion_report_artifact = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"exclusion-report-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.EXCLUSION_SUMMARY,
             payload=exclusion_report,
-            metadata={"source_artifact_id": dataset_artifact.artifact_id, "schema_version": SCHEMA_EXCLUSION_SUMMARY},
+            metadata={"source_artifact_id": getattr(dataset_artifact, "artifact_id", ""), "schema_version": SCHEMA_EXCLUSION_SUMMARY},
         )
 
-        return NodeOutput(
-            artifacts=[dataset_artifact, exclusion_report_artifact],
-            metrics={"rows_before": n_before, "rows_after": df.height})
+        context.outputs.add_metric("rows_before", n_before)
+        context.outputs.add_metric("rows_after", df.height)
+        return context.outputs.build_result()
 
 
 class ExplicitMissingOutlierTreatmentNode(NodeType):
@@ -116,24 +131,32 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
     input_roles: list[str] = ["train", "test", "oot"]
     output_roles: list[str] = ["train", "test", "oot"]
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
+    __definition__ = NodeDefinition(
+        node_type="cardre.explicit_missing_outlier_treatment",
+        version="1",
+        category="apply",
+        description="Apply explicit missing value imputation and outlier capping/floating",
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=("dataset",)), ArtifactRoleSpec("test", required=False, kinds=("dataset",)), ArtifactRoleSpec("oot", required=False, kinds=("dataset",)))),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=("dataset",)), ArtifactRoleSpec("test", required=False, kinds=("dataset",)), ArtifactRoleSpec("oot", required=False, kinds=("dataset",)))),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
-        store = context.store
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         imputations = params.get("imputations", {})
         caps = params.get("caps", {})
         floors = params.get("floors", {})
 
         treatment_report: dict[str, Any] = {"imputations": {}, "caps": {}, "floors": {}}
 
-        output_artifacts = []
-        data_inputs = [
-            input_art
-            for input_art in context.input_artifacts
-            if input_art.role in ("train", "test", "oot")
-        ]
+        all_roles = []
+        for role in ("train", "test", "oot"):
+            all_roles.extend(context.inputs.by_role(role))
+        data_inputs = all_roles
         for input_art in data_inputs:
-            df = pl.read_parquet(store.artifact_path(input_art))  # cardre-allow-artifact-read: dataset-frame-input
+            df = context.inputs.read_dataframe(input_art)
             affected: dict[str, dict[str, Any]] = {"imputations": {}, "caps": {}, "floors": {}}
 
             for col_name, config in imputations.items():
@@ -173,29 +196,25 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
                 df = df.with_columns(pl.when(pl.col(col_name) < val).then(val).otherwise(pl.col(col_name)).alias(col_name))
                 affected["floors"][col_name] = {"floored_count": floored_count, "value": val, "reason": reason}
 
-            output_art = write_parquet_artifact(
-                store, artifact_type="dataset",
-                role=input_art.role,
-                stem=f"treated-{input_art.role}-{context.step_spec.step_id}",
+            context.outputs.publish_table(
+                role=getattr(input_art, "role", "train"),
+                kind=EvidenceKind.MODELLING_METADATA,
                 frame=df,
                 metadata={
-                    "source_artifact_id": input_art.artifact_id,
+                    "source_artifact_id": getattr(input_art, "artifact_id", ""),
                     "treatment": {k: list(v.keys()) for k, v in affected.items() if v},
                 },
             )
-            output_artifacts.append(output_art)
             treatment_report["imputations"].update(affected["imputations"])
             treatment_report["caps"].update(affected["caps"])
             treatment_report["floors"].update(affected["floors"])
 
-        treatment_report_artifact = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"treatment-report-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.EXCLUSION_SUMMARY,
             payload=treatment_report,
             metadata={},
         )
-        output_artifacts.append(treatment_report_artifact)
 
-        return NodeOutput(
-            artifacts=output_artifacts,
-            metrics={"output_count": len(output_artifacts)})
+        context.outputs.add_metric("output_count", len(data_inputs))
+        return context.outputs.build_result()

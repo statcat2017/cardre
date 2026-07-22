@@ -6,6 +6,8 @@ import json
 import uuid
 from pathlib import Path
 
+import pytest
+
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.execution.run_lifecycle import (
     RunFinalisation,
@@ -275,7 +277,6 @@ class TestFinaliseValidation:
     def test_invalid_status_gets_run_finalisation_failed(self, tmp_path):
         """An invalid status string must raise and record RUN_FINALISATION_FAILED
         but leave the run non-terminal (not transitioned to failed)."""
-        import pytest
 
         from cardre.execution.run_lifecycle import RunLifecycle
         from cardre.store.run_repo import RunRepository
@@ -300,7 +301,6 @@ class TestFinaliseValidation:
     def test_non_terminal_status_gets_run_finalisation_failed(self, tmp_path):
         """A valid but non-terminal RunStatus must raise and record
         RUN_FINALISATION_FAILED but leave the run non-terminal."""
-        import pytest
 
         from cardre.domain.run import RunStatus
         from cardre.execution.run_lifecycle import RunLifecycle
@@ -331,7 +331,6 @@ class TestConcurrentFinalisation:
     def test_loser_rewrites_manifest_to_match_winner(self, tmp_path):
         """If finalise_run loses the compare-and-set transition, it must
         rewrite the manifest to match the actual database status."""
-        import pytest
 
         from cardre.execution.run_lifecycle import (
             RunFinalisation,

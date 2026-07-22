@@ -3,9 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from cardre.bootstrap.node_catalogue import build_default_catalogue
+from cardre.bootstrap.settings import Settings
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.step import StepSpec
-from cardre.nodes.registry import NodeRegistry
 
 _CANONICAL_SCORECARD_STEPS: list[tuple[str, str, list[str], dict[str, Any]]] = [
     (
@@ -256,7 +257,7 @@ def canonical_scorecard_step_ids() -> list[str]:
 
 
 def build_canonical_scorecard_steps(source_path: str | Path) -> list[StepSpec]:
-    registry = NodeRegistry.with_defaults()
+    registry = build_default_catalogue(Settings(launch_mode=True))
     resolved_source_path = str(source_path)
     result: list[StepSpec] = []
 

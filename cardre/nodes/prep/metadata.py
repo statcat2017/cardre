@@ -2,11 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION
-from cardre.artifacts import write_json_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 
 
 class DefineModellingMetadataNode(NodeType):
@@ -15,6 +20,18 @@ class DefineModellingMetadataNode(NodeType):
     category = "transform"
     input_roles: list[str] = ["input", "train"]
     output_roles: list[str] = ["definition"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.define_modelling_metadata",
+        version="1",
+        category="transform",
+        description="Define modelling metadata including target specification",
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)),)),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("definition", required=True, kinds=("definition",)),)),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
     VALID_REJECT_INFERENCE_POSITIONS = {
         "not_applied",
@@ -38,13 +55,10 @@ class DefineModellingMetadataNode(NodeType):
             )
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        params = context.validated_params
-        dataset_artifact = context.input_artifacts[0]
-        df = reader.read_dataframe(dataset_artifact)
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
+        dataset_artifact = context.inputs.first("input") or context.inputs.first("train")
+        df = context.inputs.read_dataframe(dataset_artifact)
 
         target_column = params.get("target_column", "")
         good_values = params.get("good_values", [])
@@ -95,16 +109,15 @@ class DefineModellingMetadataNode(NodeType):
         }
 
         metadata["schema_version"] = SCHEMA_MODELLING_METADATA
-        artifact = write_json_artifact(
-            store, artifact_type="definition", role="definition",
-            stem=f"modelling-metadata-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="definition",
+            kind=EvidenceKind.MODELLING_METADATA,
             payload=metadata,
-            metadata={"source_artifact_id": dataset_artifact.artifact_id, "schema_version": SCHEMA_MODELLING_METADATA},
+            metadata={"source_artifact_id": getattr(dataset_artifact, "artifact_id", ""), "schema_version": SCHEMA_MODELLING_METADATA},
         )
 
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"target_column": target_column})
+        context.outputs.add_metric("target_column", target_column)
+        return context.outputs.build_result()
 
 
 class DevelopmentSampleDefinitionNode(NodeType):
@@ -113,6 +126,18 @@ class DevelopmentSampleDefinitionNode(NodeType):
     category = "transform"
     input_roles: list[str] = ["input", "train", "definition"]
     output_roles: list[str] = ["definition"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.development_sample_definition",
+        version="1",
+        category="transform",
+        description="Define development sample population and weighting",
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)), ArtifactRoleSpec("train", required=False, kinds=("dataset",)), ArtifactRoleSpec("definition", required=False, kinds=("definition",)))),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("definition", required=True, kinds=("definition",)),)),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -127,11 +152,8 @@ class DevelopmentSampleDefinitionNode(NodeType):
             errors.append("approval_column is required for otb sample domain")
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
 
         sample_domain = params.get("sample_domain", "ttd")
         rejection_source = params.get("rejection_source")
@@ -141,8 +163,8 @@ class DevelopmentSampleDefinitionNode(NodeType):
         approval_values = params.get("approval_values", [])
         weight_column = params.get("weight_column")
 
-        dataset_artifact = next(a for a in context.input_artifacts if a.role in ("input", "train"))
-        df = reader.read_dataframe(dataset_artifact)
+        dataset_artifact = context.inputs.first("input") or context.inputs.first("train")
+        df = context.inputs.read_dataframe(dataset_artifact)
         total_rows = df.height
 
         if weight_column:
@@ -169,13 +191,12 @@ class DevelopmentSampleDefinitionNode(NodeType):
             "sample_description": params.get("sample_description", ""),
         }
 
-        artifact = write_json_artifact(
-            store, artifact_type="definition", role="definition",
-            stem=f"sample-definition-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="definition",
+            kind=EvidenceKind.SAMPLE_DEFINITION,
             payload=sample_def,
             metadata={"schema_version": SCHEMA_SAMPLE_DEFINITION},
         )
 
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"sample_method": sample_def["sample_method"]})
+        context.outputs.add_metric("sample_method", sample_def["sample_method"])
+        return context.outputs.build_result()

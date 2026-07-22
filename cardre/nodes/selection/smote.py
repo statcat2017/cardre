@@ -4,10 +4,16 @@ from typing import Any
 
 import polars as pl
 
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.nodes._training_utils import prepare_supervised_training_data
-from cardre.nodes.contracts import NodeType
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 
 
 class SmoteTrainingDataNode(NodeType):
@@ -43,7 +49,7 @@ class SmoteTrainingDataNode(NodeType):
 
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
+    def run(self, context: NodeContext) -> NodeResult:
         try:
             from imblearn.over_sampling import SMOTE
         except ImportError:
@@ -52,14 +58,13 @@ class SmoteTrainingDataNode(NodeType):
                 "Install it with: pip install imbalanced-learn"
             ) from None
 
-        store = context.store
-        params = context.validated_params
+        params = context.params
         k_neighbors = int(params.get("k_neighbors", 5))
         sampling_ratio = float(params.get("sampling_ratio", 1.0))
         random_seed = int(params.get("random_seed", 42))
 
         prepared = prepare_supervised_training_data(
-            context,
+            context.inputs,
             operation="smote_training_data",
         )
         df = prepared.frame
@@ -68,7 +73,7 @@ class SmoteTrainingDataNode(NodeType):
         bad_values = prepared.bad_values
         y_binary = prepared.y_binary
         feature_cols = prepared.feature_columns(params)
-        train_art = context.require_train_artifact("smote_training_data")
+        train_art = context.inputs.require("train", "smote_training_data")
 
         passthrough_cols = [
             column
@@ -146,9 +151,9 @@ class SmoteTrainingDataNode(NodeType):
             "sampling_ratio": sampling_ratio,
         }
 
-        art = write_parquet_artifact(
-            store, artifact_type="dataset", role="train",
-            stem=f"smote-train-{context.step_spec.step_id}",
+        context.outputs.publish_table(
+            role="train",
+            kind=EvidenceKind.RESAMPLING_EVIDENCE,
             frame=resampled_df,
             metadata={
                 "source_artifact_id": train_art.artifact_id,
@@ -158,17 +163,31 @@ class SmoteTrainingDataNode(NodeType):
             },
         )
 
-        report_art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"smote-report-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.RESAMPLING_EVIDENCE,
             payload=smote_report,
             metadata={"method": "smote"},
         )
 
-        return NodeOutput(
-            artifacts=[art, report_art],
-            metrics={
-                "original_count": n_original,
-                "resampled_count": len(resampled_df),
-                "synthetic_count": n_synthetic,
-            })
+        context.outputs.add_metric("original_count", n_original)
+        context.outputs.add_metric("resampled_count", len(resampled_df))
+        context.outputs.add_metric("synthetic_count", n_synthetic)
+        return context.outputs.build_result()
+
+
+__definition__ = NodeDefinition(
+    node_type=SmoteTrainingDataNode.node_type,
+    version=SmoteTrainingDataNode.version,
+    category=SmoteTrainingDataNode.category,
+    description="",
+    input_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in SmoteTrainingDataNode.input_roles),
+    ),
+    output_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in SmoteTrainingDataNode.output_roles),
+    ),
+    parameter_schema=None,
+    optional_dependencies=("imbalance",),
+    tier="launch",
+)

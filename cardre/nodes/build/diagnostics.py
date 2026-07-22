@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import math
 from typing import Any
 
@@ -8,22 +7,26 @@ import numpy as np
 import polars as pl
 from sklearn.metrics import roc_auc_score
 
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import (
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import (
     SCHEMA_CALIBRATION_DIAGNOSTICS,
     SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS,
     SCHEMA_SEPARATION_DIAGNOSTICS,
     SCHEMA_VIF_DIAGNOSTICS,
     SCHEMA_WOE_IV_EVIDENCE,
 )
-from cardre.artifacts import write_json_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    InputCollection,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 
 
 def _json_float(value: float | None) -> float | None:
-    """Return a JSON-safe float, or None if non-finite."""
     if value is None:
         return None
     if math.isinf(value) or math.isnan(value):
@@ -31,17 +34,11 @@ def _json_float(value: float | None) -> float | None:
     return value
 
 
-def _find_model_artifact(
-    reader: ArtifactEvidenceReader, context: ExecutionContext
-) -> Any:
-    """Find the model artifact, excluding frozen scorecard bundle artifacts."""
-
-    bundle = context.find_frozen_bundle()
-    non_bundle_artifacts = [
-        a for a in context.input_artifacts
-        if a.artifact_id != (bundle.artifact_id if bundle else "")
-    ]
-    return reader.find(non_bundle_artifacts, EvidenceKind.MODEL_ARTIFACT)
+def _find_model_artifact(inputs: InputCollection) -> Any:
+    model_list = inputs.by_kind(EvidenceKind.MODEL_ARTIFACT)
+    if not model_list:
+        raise ValueError("No model artifact found")
+    return model_list[0]
 
 
 class CoefficientSignCheckNode(NodeType):
@@ -51,36 +48,44 @@ class CoefficientSignCheckNode(NodeType):
     input_roles: list[str] = ["model", "report"]
     output_roles: list[str] = ["report"]
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        model = _find_model_artifact(reader, context)
-
-        woe_evidence_candidates = [
-            artifact
-            for artifact in context.input_artifacts
-            if artifact.metadata.get("schema_version") == SCHEMA_WOE_IV_EVIDENCE
-        ]
-        final_woe_artifact = next(
-            (
-                artifact
-                for artifact in woe_evidence_candidates
-                if artifact.metadata.get("purpose") == "final"
+    __definition__ = NodeDefinition(
+        node_type="cardre.coefficient_sign_check",
+        version="1",
+        category="fit",
+        description="Check coefficient signs against WOE expectations",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
+                ArtifactRoleSpec("report"),
             ),
-            None,
-        )
-        if final_woe_artifact is None:
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("report"),
+            ),
+        ),
+        parameter_schema=None,
+    )
+
+    def run(self, context: NodeContext) -> NodeResult:
+        model = _find_model_artifact(context.inputs)
+
+        report_arts = context.inputs.by_role("report")
+        final_woe_candidates = [
+            a for a in report_arts
+            if a.metadata.get("schema_version") == SCHEMA_WOE_IV_EVIDENCE
+            and a.metadata.get("purpose") == "final"
+        ]
+        if not final_woe_candidates:
             raise ValueError(
                 "Coefficient sign check requires a final WOE/IV evidence artifact"
             )
 
-        woe_evidence = json.loads(
-            store.artifact_path(final_woe_artifact).read_text(encoding="utf-8")  # cardre-allow-artifact-read: low-level-evidence-parser
-        )
+        woe_evidence = context.inputs.read(final_woe_candidates[0], EvidenceKind.WOE_IV_EVIDENCE)
         variables_by_name = {
-            str(variable.get("variable_name", "")): variable
-            for variable in list(woe_evidence.get("variables", []))
-            if variable.get("variable_name")
+            v.variable_name: v
+            for v in woe_evidence.variables
+            if v.variable_name
         }
 
         variable_results: list[dict[str, Any]] = []
@@ -121,7 +126,7 @@ class CoefficientSignCheckNode(NodeType):
                     "expected_sign": "negative",
                     "status": status,
                     "reason": reason,
-                    "woe_variable_status": variable_evidence.get("status", "unknown"),
+                    "woe_variable_status": getattr(variable_evidence, "status", "unknown"),
                 }
             )
 
@@ -140,21 +145,15 @@ class CoefficientSignCheckNode(NodeType):
                 "warning_count": warning_count,
             },
         }
-        artifact = write_json_artifact(
-            store,
-            artifact_type="report",
+        context.outputs.publish_json(
             role="report",
-            stem=f"coefficient-sign-check-{context.step_spec.step_id}",
+            kind=EvidenceKind.COEFFICIENT_SIGN_DIAGNOSTICS,
             payload=payload,
             metadata={"schema_version": SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS},
         )
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={
-                "checked_variable_count": checked_variable_count,
-                "warning_count": warning_count,
-            },
-        )
+        context.outputs.add_metric("checked_variable_count", checked_variable_count)
+        context.outputs.add_metric("warning_count", warning_count)
+        return context.outputs.build_result()
 
 
 class SeparationDiagnosticsNode(NodeType):
@@ -164,12 +163,28 @@ class SeparationDiagnosticsNode(NodeType):
     input_roles: list[str] = ["model"]
     output_roles: list[str] = ["report"]
 
+    __definition__ = NodeDefinition(
+        node_type="cardre.separation_diagnostics",
+        version="1",
+        category="fit",
+        description="Check model coefficients for separation",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("report"),
+            ),
+        ),
+        parameter_schema=None,
+    )
+
     SEPARATION_COEFFICIENT_THRESHOLD = 10.0
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        model = _find_model_artifact(reader, context)
+    def run(self, context: NodeContext) -> NodeResult:
+        model = _find_model_artifact(context.inputs)
 
         variable_results: list[dict[str, Any]] = []
         warning_count = 0
@@ -226,21 +241,15 @@ class SeparationDiagnosticsNode(NodeType):
                 "warning_count": warning_count,
             },
         }
-        artifact = write_json_artifact(
-            store,
-            artifact_type="report",
+        context.outputs.publish_json(
             role="report",
-            stem=f"separation-diagnostics-{context.step_spec.step_id}",
+            kind=EvidenceKind.SEPARATION_DIAGNOSTICS,
             payload=payload,
             metadata={"schema_version": SCHEMA_SEPARATION_DIAGNOSTICS},
         )
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={
-                "checked_variable_count": len(variable_results),
-                "warning_count": warning_count,
-            },
-        )
+        context.outputs.add_metric("checked_variable_count", len(variable_results))
+        context.outputs.add_metric("warning_count", warning_count)
+        return context.outputs.build_result()
 
 
 class VifDiagnosticsNode(NodeType):
@@ -250,18 +259,35 @@ class VifDiagnosticsNode(NodeType):
     input_roles: list[str] = ["train", "model"]
     output_roles: list[str] = ["report"]
 
+    __definition__ = NodeDefinition(
+        node_type="cardre.vif_diagnostics",
+        version="1",
+        category="fit",
+        description="VIF multicollinearity diagnostics",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train"),
+                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("report"),
+            ),
+        ),
+        parameter_schema=None,
+    )
+
     VIF_WARNING_THRESHOLD = 10.0
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        model = _find_model_artifact(reader, context)
+    def run(self, context: NodeContext) -> NodeResult:
+        model = _find_model_artifact(context.inputs)
 
-        train_artifact = context.train_artifact()
+        train_artifact = context.inputs.first("train")
         if train_artifact is None:
             raise ValueError("VIF diagnostics requires a WOE-transformed train dataset")
 
-        df = reader.read_dataframe(train_artifact)
+        df = context.inputs.read_dataframe(train_artifact)
         woe_features = [f for f in model.features if f.endswith("_woe") and f in df.columns]
 
         if len(woe_features) < 2:
@@ -276,33 +302,26 @@ class VifDiagnosticsNode(NodeType):
                     "note": "Fewer than 2 WOE features available; VIF not computed.",
                 },
             }
-            artifact = write_json_artifact(
-                store,
-                artifact_type="report",
+            context.outputs.publish_json(
                 role="report",
-                stem=f"vif-diagnostics-{context.step_spec.step_id}",
+                kind=EvidenceKind.VIF_DIAGNOSTICS,
                 payload=payload,
                 metadata={"schema_version": SCHEMA_VIF_DIAGNOSTICS},
             )
-            return NodeOutput(
-                artifacts=[artifact],
-                metrics={"checked_variable_count": len(woe_features), "warning_count": 0},
-            )
+            context.outputs.add_metric("checked_variable_count", len(woe_features))
+            context.outputs.add_metric("warning_count", 0)
+            return context.outputs.build_result()
 
         X = df.select(woe_features).to_numpy()
         variable_results: list[dict[str, Any]] = []
         warning_count = 0
 
-        # Correlation-matrix VIF: VIF_j = diagonal of inv(cor(X))
         try:
             corr = np.corrcoef(X, rowvar=False)
             if corr.ndim == 0 or corr.shape[0] < 2:
                 raise ValueError("Insufficient features for correlation matrix")
             corr = corr.reshape(len(woe_features), len(woe_features))
 
-            # Handle exact collinearity: if any column has zero variance,
-            # corr will have NaN; if columns are perfectly correlated,
-            # inv will fail.
             has_nan = np.isnan(corr).any()
             if has_nan:
                 for _i, feature in enumerate(woe_features):
@@ -385,21 +404,15 @@ class VifDiagnosticsNode(NodeType):
                 "warning_count": warning_count,
             },
         }
-        artifact = write_json_artifact(
-            store,
-            artifact_type="report",
+        context.outputs.publish_json(
             role="report",
-            stem=f"vif-diagnostics-{context.step_spec.step_id}",
+            kind=EvidenceKind.VIF_DIAGNOSTICS,
             payload=payload,
             metadata={"schema_version": SCHEMA_VIF_DIAGNOSTICS},
         )
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={
-                "checked_variable_count": len(variable_results),
-                "warning_count": warning_count,
-            },
-        )
+        context.outputs.add_metric("checked_variable_count", len(variable_results))
+        context.outputs.add_metric("warning_count", warning_count)
+        return context.outputs.build_result()
 
 
 class CalibrationDiagnosticsNode(NodeType):
@@ -409,23 +422,45 @@ class CalibrationDiagnosticsNode(NodeType):
     input_roles: list[str] = ["train", "test", "oot", "model", "definition"]
     output_roles: list[str] = ["report"]
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        model = _find_model_artifact(reader, context)
-        meta = context.target_metadata()
+    __definition__ = NodeDefinition(
+        node_type="cardre.calibration_diagnostics",
+        version="1",
+        category="fit",
+        description="Calibration diagnostics using Hosmer-Lemeshow",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("train"),
+                ArtifactRoleSpec("test"),
+                ArtifactRoleSpec("oot"),
+                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.BIN_DEFINITION,)),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("report"),
+            ),
+        ),
+        parameter_schema=None,
+    )
+
+    def run(self, context: NodeContext) -> NodeResult:
+        model = _find_model_artifact(context.inputs)
+        meta = context.inputs.target_metadata()
 
         target_col = meta.target_column if meta is not None else model.target_column
         good = meta.good_values if meta is not None else frozenset()
         bad = meta.bad_values if meta is not None else frozenset()
         bad_list = list(bad)
 
-        data_arts = context.data_artifacts()
+        data_arts = []
+        for role in ("train", "test", "oot"):
+            data_arts.extend(context.inputs.by_role(role))
         roles_results: dict[str, dict[str, Any]] = {}
 
         for data_art in data_arts:
             role = data_art.role
-            df = reader.read_dataframe(data_art)
+            df = context.inputs.read_dataframe(data_art)
 
             if "predicted_bad_probability" not in df.columns or not target_col or target_col not in df.columns:
                 roles_results[role] = {
@@ -463,9 +498,6 @@ class CalibrationDiagnosticsNode(NodeType):
             n = len(y_bin)
             target_n_bins = max(2, min(10, n // 5))
 
-            # Sort by predicted probability and form tie-aware quantile groups.
-            # Rows with identical predicted probabilities are never split across
-            # groups, ensuring the grouping is invariant to row order within ties.
             sort_idx = np.argsort(y_prob, kind="stable")
             group_size = max(1, math.ceil(n / target_n_bins))
             groups: list[np.ndarray] = []
@@ -480,9 +512,6 @@ class CalibrationDiagnosticsNode(NodeType):
 
             actual_min_bins = len(groups)
 
-            # Hosmer-Lemeshow statistic:
-            # H = sum_g [ (O_g - E_g)^2 / E_g + (N_g - O_g - N_g + E_g)^2 / (N_g - E_g) ]
-            #   = sum_g [ (O_g - E_g)^2 / E_g + (O_non_g - E_non_g)^2 / E_non_g ]
             hl_stat = 0.0
             decile_bins: list[dict[str, Any]] = []
 
@@ -493,7 +522,6 @@ class CalibrationDiagnosticsNode(NodeType):
                 observed_non_events = n_g - observed_events
                 expected_non_events = n_g - expected_events
 
-                # HL component: (O-E)^2/E for both event and non-event
                 hl_events = 0.0
                 hl_non_events = 0.0
                 if expected_events > 1e-12:
@@ -521,7 +549,6 @@ class CalibrationDiagnosticsNode(NodeType):
                     "abs_deviation": round(abs(obs_rate - pred_rate), 6),
                 })
 
-            # Degrees of freedom: groups - 2 (for intercept and slope)
             dof = max(1, actual_min_bins - 2)
             try:
                 from scipy.stats import chi2
@@ -569,15 +596,11 @@ class CalibrationDiagnosticsNode(NodeType):
                 ),
             },
         }
-        artifact = write_json_artifact(
-            store,
-            artifact_type="report",
+        context.outputs.publish_json(
             role="report",
-            stem=f"calibration-diagnostics-{context.step_spec.step_id}",
+            kind=EvidenceKind.CALIBRATION_DIAGNOSTICS,
             payload=payload,
             metadata={"schema_version": SCHEMA_CALIBRATION_DIAGNOSTICS},
         )
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"role_count": len(roles_results)},
-        )
+        context.outputs.add_metric("role_count", len(roles_results))
+        return context.outputs.build_result()

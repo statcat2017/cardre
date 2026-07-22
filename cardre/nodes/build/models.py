@@ -5,14 +5,14 @@ import math
 import warnings
 from typing import Any
 
-from cardre._evidence.kinds import (
+from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre.artifacts import write_json_artifact
+from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.evidence.kinds import (
     EvidenceKind,
     EvidenceNotFoundError,
 )
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import SCHEMA_MODEL_ARTIFACT, SCHEMA_SCORE_SCALING
-from cardre.artifacts import write_json_artifact
-from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.evidence.schemas import SCHEMA_MODEL_ARTIFACT, SCHEMA_SCORE_SCALING
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.build._logit_helpers import (
     COEF_ROUND,
@@ -24,7 +24,14 @@ from cardre.nodes.build._logit_helpers import (
     parse_base_odds,
     resolve_features,
 )
-from cardre.nodes.contracts import NodeContext, NodeResult, NodeType
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -470,8 +477,29 @@ class ScoreScalingNode(NodeType):
     node_type = "cardre.score_scaling"
     version = "1"
     category = "fit"
+    description = "Scale model log-odds into a credit scorecard"
     input_roles: list[str] = ["model", "definition", "report"]
     output_roles: list[str] = ["scorecard"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.score_scaling",
+        version="1",
+        category="fit",
+        description="Scale model log-odds into a credit scorecard",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("model", required=True),
+                ArtifactRoleSpec("definition", required=True),
+                ArtifactRoleSpec("report", required=True),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("scorecard", required=True),),
+        ),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -537,21 +565,17 @@ class ScoreScalingNode(NodeType):
             errors.append("points_to_double_odds must be a number")
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
 
-        store = context.store
-        params = context.validated_params
-        reader = ArtifactEvidenceReader(store)
-
-        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
-        if model_art is None:
+        model_arts = context.inputs.by_role("model")
+        if not model_arts:
             raise EvidenceNotFoundError(
                 EvidenceKind.MODEL_ARTIFACT,
-                candidate_artifact_ids=[a.artifact_id for a in context.input_artifacts],
+                candidate_artifact_ids=[],
             )
-        model = reader.require_model(model_art, "ScoreScalingNode")
+        model = context.inputs.read(model_arts[0], EvidenceKind.MODEL_ARTIFACT)
 
-        # Detect calibration compatibility before building additive scorecard points.
         calibration = model.calibration
         if calibration:
             application_mode = calibration.get("application_mode", "")
@@ -564,8 +588,21 @@ class ScoreScalingNode(NodeType):
                     "with additive scorecard points."
                 )
 
-        bin_def = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
-        woe_table = reader.find(context.input_artifacts, EvidenceKind.WOE_TABLE)
+        bin_def_list = context.inputs.by_kind(EvidenceKind.BIN_DEFINITION)
+        if not bin_def_list:
+            raise EvidenceNotFoundError(
+                EvidenceKind.BIN_DEFINITION,
+                candidate_artifact_ids=[],
+            )
+        bin_def = bin_def_list[0]
+
+        woe_table_list = context.inputs.by_kind(EvidenceKind.WOE_TABLE)
+        if not woe_table_list:
+            raise EvidenceNotFoundError(
+                EvidenceKind.WOE_TABLE,
+                candidate_artifact_ids=[],
+            )
+        woe_table = woe_table_list[0]
 
         if not bin_def.variables:
             raise ValueError("Score scaling received an empty bin definition")
@@ -622,9 +659,9 @@ class ScoreScalingNode(NodeType):
         }
 
         scorecard["schema_version"] = SCHEMA_SCORE_SCALING
-        artifact = write_json_artifact(
-            store, artifact_type="scorecard", role="scorecard",
-            stem=f"scorecard-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="scorecard",
+            kind=EvidenceKind.SCORE_SCALING,
             payload=scorecard,
             metadata={
                 "base_score": base_score,
@@ -632,35 +669,53 @@ class ScoreScalingNode(NodeType):
                 "schema_version": SCHEMA_SCORE_SCALING,
             },
         )
-
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"attribute_count": len(attributes)})
+        context.outputs.add_metric("attribute_count", len(attributes))
+        return context.outputs.build_result()
 
 
 class BuildSummaryReportNode(NodeType):
     node_type = "cardre.build_summary_report"
     version = "1"
     category = "fit"
+    description = "Compile a build summary report from model, scorecard, and WOE/IV evidence"
     input_roles: list[str] = ["scorecard", "model", "report"]
     output_roles: list[str] = ["report"]
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
+    __definition__ = NodeDefinition(
+        node_type="cardre.build_summary_report",
+        version="1",
+        category="fit",
+        description="Compile a build summary report from model, scorecard, and WOE/IV evidence",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("scorecard", required=True),
+                ArtifactRoleSpec("model", required=True),
+                ArtifactRoleSpec("report", required=True),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("report", required=True),),
+        ),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-
-        scorecard_art = next((a for a in context.input_artifacts if a.role == "scorecard"), None)
-        if scorecard_art is None:
+    def run(self, context: NodeContext) -> NodeResult:
+        scorecard_arts = context.inputs.by_role("scorecard")
+        if not scorecard_arts:
             raise ValueError("Build summary requires a scorecard artifact")
-        scorecard = reader.read_optional(scorecard_art.artifact_id, EvidenceKind.SCORE_SCALING)
+        scorecard = context.inputs.read_optional(scorecard_arts[0], EvidenceKind.SCORE_SCALING)
         if scorecard is None:
-            raise ValueError(f"Build summary requires scorecard artifact {scorecard_art.artifact_id!r} to be readable as SCORE_SCALING evidence")
+            raise ValueError(
+                f"Build summary requires scorecard artifact {scorecard_arts[0].artifact_id!r} "
+                "to be readable as SCORE_SCALING evidence"
+            )
 
-        model_art = next((a for a in context.input_artifacts if a.role == "model"), None)
-        if model_art is None:
+        model_arts = context.inputs.by_role("model")
+        if not model_arts:
             raise ValueError("Build summary requires a model artifact")
-        model = reader.require_model(model_art, "BuildSummaryNode")
+        model = context.inputs.read(model_arts[0], EvidenceKind.MODEL_ARTIFACT)
 
         model_features = model.features
         model_intercept = model.intercept
@@ -671,8 +726,9 @@ class BuildSummaryReportNode(NodeType):
         model_target = model.target_column
 
         woe_summaries: list[dict[str, Any]] = []
-        iv_lf = reader.find_optional(context.input_artifacts, EvidenceKind.IV_TABLE)
-        if iv_lf is not None:
+        iv_list = context.inputs.by_kind(EvidenceKind.IV_TABLE)
+        if iv_list:
+            iv_lf = iv_list[0]
             iv_df = iv_lf.dataframe.collect()
             woe_summaries.append({
                 "artifact_id": iv_lf.source_artifact_id,
@@ -680,14 +736,16 @@ class BuildSummaryReportNode(NodeType):
                 "row_count": iv_df.height,
                 "columns": list(iv_df.columns),
             })
-        woe_table = reader.find_optional(context.input_artifacts, EvidenceKind.WOE_TABLE)
-        if woe_table is not None and woe_table.dataframe is not None:
-            woe_summaries.append({
-                "artifact_id": woe_table.source_artifact_id,
-                "type": "woe_table",
-                "row_count": woe_table.dataframe.collect().height,
-                "columns": list(woe_table.columns),
-            })
+        woe_list = context.inputs.by_kind(EvidenceKind.WOE_TABLE)
+        if woe_list:
+            woe_table = woe_list[0]
+            if woe_table.dataframe is not None:
+                woe_summaries.append({
+                    "artifact_id": woe_table.source_artifact_id,
+                    "type": "woe_table",
+                    "row_count": woe_table.dataframe.collect().height,
+                    "columns": list(woe_table.columns),
+                })
 
         scorecard_base_odds = scorecard.base_odds
 
@@ -711,32 +769,44 @@ class BuildSummaryReportNode(NodeType):
             "warnings": model_warnings,
         }
 
-        artifact = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"build-summary-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.MODELLING_METADATA,
             payload=report,
             metadata={},
         )
-
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"feature_count": len(model_features)})
+        context.outputs.add_metric("feature_count", len(model_features))
+        return context.outputs.build_result()
 
 
 class DummyFitNode(NodeType):
     node_type = "cardre.dummy_fit"
     version = "1"
     category = "fit"
+    description = "Create a dummy fit definition from training data"
     input_roles: list[str] = ["train"]
     output_roles: list[str] = ["definition"]
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        input_artifact = context.input_artifacts[0]
-        params = context.validated_params
+    __definition__ = NodeDefinition(
+        node_type="cardre.dummy_fit",
+        version="1",
+        category="fit",
+        description="Create a dummy fit definition from training data",
+        input_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("train", required=True),),
+        ),
+        output_contract=ArtifactContract(
+            roles=(ArtifactRoleSpec("definition", required=True),),
+        ),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
-        df = reader.read_dataframe(input_artifact)
+    def run(self, context: NodeContext) -> NodeResult:
+        input_art = context.inputs.require("train", "DummyFitNode")
+        params = context.params
+        df = context.inputs.read_dataframe(input_art)
         dummy_def = {
             "model_type": "dummy",
             "version": self.version,
@@ -745,24 +815,21 @@ class DummyFitNode(NodeType):
             "row_count": df.height,
         }
 
-        artifact = write_json_artifact(
-            store,
-            artifact_type="definition",
+        context.outputs.publish_json(
             role="definition",
-            stem=f"dummy-fit-{context.step_spec.step_id}",
+            kind=EvidenceKind.MODELLING_METADATA,
             payload=dummy_def,
-            metadata={"source_artifact_id": input_artifact.artifact_id},
+            metadata={"source_artifact_id": input_art.artifact_id},
         )
-
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"row_count": df.height})
+        context.outputs.add_metric("row_count", df.height)
+        return context.outputs.build_result()
 
 
 class NoopNode(NodeType):
     node_type = "cardre.noop"
     version = "1"
     category = "transform"
+    description = "Pass-through node that produces no outputs"
     input_roles: list[str] = [
         "input",
         "train",
@@ -776,5 +843,29 @@ class NoopNode(NodeType):
     ]
     output_roles: list[str] = []
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        return NodeOutput(artifacts=[], metrics={})
+    __definition__ = NodeDefinition(
+        node_type="cardre.noop",
+        version="1",
+        category="transform",
+        description="Pass-through node that produces no outputs",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("input", required=True),
+                ArtifactRoleSpec("train", required=True),
+                ArtifactRoleSpec("test", required=True),
+                ArtifactRoleSpec("oot", required=True),
+                ArtifactRoleSpec("definition", required=True),
+                ArtifactRoleSpec("report", required=True),
+                ArtifactRoleSpec("model", required=True),
+                ArtifactRoleSpec("scorecard", required=True),
+                ArtifactRoleSpec("manifest", required=True),
+            ),
+        ),
+        output_contract=ArtifactContract(roles=()),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
+
+    def run(self, context: NodeContext) -> NodeResult:
+        return context.outputs.build_result()

@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre.artifacts import write_json_artifact
-from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION
-from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.nodes.contracts import NodeType
+from cardre.domain.binning.definition import SCHEMA_BIN_DEFINITION
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -21,6 +25,24 @@ class ManualBinningNode(NodeType):
     category = "refinement"
     input_roles: list[str] = ["definition"]
     output_roles: list[str] = ["definition"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.manual_binning",
+        version="1",
+        category="refinement",
+        description="Apply manual binning overrides (merge, group, reject, reorder)",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.BIN_DEFINITION, EvidenceKind.SELECTION_DEFINITION)),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.BIN_DEFINITION,)),
+            ),
+        ),
+        parameter_schema=None,
+    )
 
     VALID_ACTIONS = {
         "merge_bins", "group_categories",
@@ -106,14 +128,17 @@ class ManualBinningNode(NodeType):
             errors.append("reviewed and accept_automated cannot both be true.")
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         overrides = params.get("overrides", [])
-        reader = ArtifactEvidenceReader(store)
 
-        bin_def_obj = reader.find(context.input_artifacts, EvidenceKind.BIN_DEFINITION)
-        sel_def = reader.find_optional(context.input_artifacts, EvidenceKind.SELECTION_DEFINITION)
+        bin_def_list = context.inputs.by_kind(EvidenceKind.BIN_DEFINITION)
+        if not bin_def_list:
+            raise ValueError("No bin definition found")
+        bin_def_obj = bin_def_list[0]
+
+        sel_def_list = context.inputs.by_kind(EvidenceKind.SELECTION_DEFINITION)
+        sel_def = sel_def_list[0] if sel_def_list else None
 
         bin_def = bin_def_obj.to_dict()
 
@@ -128,22 +153,21 @@ class ManualBinningNode(NodeType):
         refined = apply_manual_binning_overrides(bin_def, overrides, selected_vars if sel_def else None)
 
         refined["schema_version"] = SCHEMA_BIN_DEFINITION
-        artifact = write_json_artifact(
-            store, artifact_type="definition", role="definition",
-            stem=f"manual-binning-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="definition",
+            kind=EvidenceKind.BIN_DEFINITION,
             payload=refined,
             metadata={"override_count": len(overrides), "schema_version": SCHEMA_BIN_DEFINITION},
         )
 
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"override_count": len(overrides)})
+        context.outputs.add_metric("override_count", len(overrides))
+        return context.outputs.build_result()
 
 
 def validate_manual_binning_overrides(
     bin_def: dict[str, Any], overrides: list[dict[str, Any]], selected_vars: set[str] | None = None
 ) -> list[str]:
-    from cardre.engine.binning.definition import LifecycleBinDefinition
+    from cardre.domain.binning.definition import LifecycleBinDefinition
     typed = LifecycleBinDefinition.from_payload(bin_def)
     return LifecycleBinDefinition.validate_overrides(typed, overrides, selected_vars)
 
@@ -151,7 +175,7 @@ def validate_manual_binning_overrides(
 def apply_manual_binning_overrides(
     bin_def: dict[str, Any], overrides: list[dict[str, Any]], selected_vars: set[str] | None = None
 ) -> dict[str, Any]:
-    from cardre.engine.binning.definition import LifecycleBinDefinition
+    from cardre.domain.binning.definition import LifecycleBinDefinition
     typed = LifecycleBinDefinition.from_payload(bin_def)
     result = LifecycleBinDefinition.apply_overrides(typed, overrides, selected_vars)
     return result.to_payload()

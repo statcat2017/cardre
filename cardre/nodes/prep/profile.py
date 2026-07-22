@@ -4,12 +4,18 @@ from typing import Any
 
 import polars as pl
 
-from cardre._evidence.schemas import SCHEMA_PROFILE_SUMMARY
-from cardre.artifacts import write_json_artifact
 from cardre.domain.diagnostics import JsonDict
-from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_PROFILE_SUMMARY
 from cardre.nodes._dataset_quality import quality_warnings as _quality_warnings
-from cardre.nodes.contracts import NodeType
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -23,6 +29,18 @@ class ProfileDatasetNode(NodeType):
     category = "transform"
     input_roles: list[str] = ["input", "train", "test", "oot"]
     output_roles: list[str] = ["report"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.profile_dataset",
+        version="1",
+        category="transform",
+        description="Profile dataset columns and detect quality issues",
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)),)),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("report", required=True, kinds=("report",)),)),
+        parameter_schema=None,
+        optional_dependencies=(),
+        tier="launch",
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -57,13 +75,14 @@ class ProfileDatasetNode(NodeType):
                 errors.append(f"profile_max_rows must be a positive integer, got {profile_max_rows!r}")
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        input_artifact = context.input_artifacts[0]
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        input_artifact = context.inputs.first("input")
+        if input_artifact is None:
+            input_artifact = context.inputs.first("train") or context.inputs.first("test") or context.inputs.first("oot")
+        params = context.params
         profile_max_rows: int | None = params.get("profile_max_rows")
 
-        df = pl.read_parquet(store.artifact_path(input_artifact), n_rows=profile_max_rows)  # cardre-allow-artifact-read: dataset-frame-input
+        df = context.inputs.read_dataframe(input_artifact)
 
         quality_warnings: list[JsonDict] = []
         recommended_exclude: list[str] = []
@@ -71,7 +90,7 @@ class ProfileDatasetNode(NodeType):
         quality_warnings, recommended_exclude = _quality_warnings(df)
 
         node_warnings: list[JsonDict] = []
-        metadata: dict[str, Any] = {"source_artifact_id": input_artifact.artifact_id}
+        metadata: dict[str, Any] = {"source_artifact_id": getattr(input_artifact, "artifact_id", "")}
 
         if profile_max_rows is not None:
             metadata["profile_sampled"] = True
@@ -104,20 +123,16 @@ class ProfileDatasetNode(NodeType):
             "numeric_stats": report["numeric_stats"],
         }]
 
-        artifact = write_json_artifact(
-            store,
-            artifact_type="report",
+        context.outputs.publish_json(
             role="report",
-            stem=f"profile-{context.step_spec.step_id}",
+            kind=EvidenceKind.PROFILE_SUMMARY,
             payload=report,
             metadata={**metadata, "schema_version": SCHEMA_PROFILE_SUMMARY},
         )
-
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"row_count": df.height},
-            warnings=node_warnings or None,
-        )
+        for w in node_warnings:
+            context.outputs.add_warning(w)
+        context.outputs.add_metric("row_count", df.height)
+        return context.outputs.build_result()
 
     def _numeric_stats(self, df: pl.DataFrame) -> dict[str, dict[str, float | None]]:
         numeric_cols = [c for c in df.columns if df.schema[c].is_numeric()]

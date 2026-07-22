@@ -2,18 +2,22 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import SCHEMA_SELECTION_DEFINITION
-from cardre.artifacts import write_json_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_SELECTION_DEFINITION
 from cardre.nodes.build.selection_policy import (
     ClusterPolicy,
     ManualOverridePolicy,
     NoClusterPolicy,
     RepresentativePolicy,
 )
-from cardre.nodes.contracts import NodeType
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -28,6 +32,24 @@ class VariableSelectionNode(NodeType):
     category = "selection"
     input_roles: list[str] = ["report"]
     output_roles: list[str] = ["definition"]
+
+    __definition__ = NodeDefinition(
+        node_type="cardre.variable_selection",
+        version="1",
+        category="selection",
+        description="Select variables based on IV and clustering evidence",
+        input_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("report"),
+            ),
+        ),
+        output_contract=ArtifactContract(
+            roles=(
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.SELECTION_DEFINITION,)),
+            ),
+        ),
+        parameter_schema=None,
+    )
 
     @classmethod
     def parameter_schema(cls) -> NodeParameterSchema:
@@ -121,10 +143,8 @@ class VariableSelectionNode(NodeType):
 
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        reader = ArtifactEvidenceReader(store)
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         min_iv = float(params.get("min_iv", 0.02))
         max_variables = int(params.get("max_variables", 15))
         manual_entries_raw = list(params.get("manual_includes", []))
@@ -148,13 +168,17 @@ class VariableSelectionNode(NodeType):
         manual_includes = {v["variable"]: v["reason"] for v in manual_entries_raw}
         manual_excludes = {v["variable"]: v["reason"] for v in manual_excludes_raw}
 
-        iv_table = reader.find(context.input_artifacts, EvidenceKind.IV_TABLE)
+        iv_list = context.inputs.by_kind(EvidenceKind.IV_TABLE)
+        if not iv_list:
+            raise ValueError("No IV table found")
+        iv_table = iv_list[0]
         iv_map: dict[str, float] = {}
         iv_df = iv_table.dataframe.collect()
         for row in iv_df.iter_rows():
             iv_map[str(row[0])] = float(row[1])
 
-        clustering_evidence = reader.find_optional(context.input_artifacts, EvidenceKind.VARIABLE_CLUSTERING)
+        clustering_list = context.inputs.by_kind(EvidenceKind.VARIABLE_CLUSTERING)
+        clustering_evidence = clustering_list[0] if clustering_list else None
         clusters: list[dict[str, Any]] = []
         if clustering_evidence is not None:
             for cl in clustering_evidence.clusters:
@@ -200,16 +224,14 @@ class VariableSelectionNode(NodeType):
             if var in manual_excludes:
                 rejected.append({"variable": var, "reason": manual_excludes[var]})
 
-        # Select the cluster policy for this run
         policy_map = {
             "none": NoClusterPolicy(),
             "one_per_cluster_highest_iv": RepresentativePolicy("one_per_cluster_highest_iv"),
             "one_per_cluster_lowest_missing": RepresentativePolicy("one_per_cluster_lowest_missing"),
             "manual_override": ManualOverridePolicy(),
         }
-        policy: ClusterPolicy = policy_map.get(cluster_rule, NoClusterPolicy())  # type: ignore[assignment]  # dict.get returns Optional, but we have a default
+        policy: ClusterPolicy = policy_map.get(cluster_rule, NoClusterPolicy())
 
-        # Cluster preselection: run policy per cluster
         for cl in clusters:
             cid = cl["cluster_id"]
             vars_in_cluster = cluster_vars.get(cid, [])
@@ -229,7 +251,6 @@ class VariableSelectionNode(NodeType):
                     "candidate_variables": preselect.eligible,
                 })
 
-        # Shared candidate-selection loop — replaces the three ad-hoc branches
         has_cluster_policy = cluster_rule != "none"
         for var in candidates:
             if not has_cluster_policy and len(selected) >= max_variables:
@@ -258,8 +279,6 @@ class VariableSelectionNode(NodeType):
             if has_cluster_policy and cid and cid not in seen_clusters:
                 seen_clusters.add(cid)
 
-        # Post-loop truncation for clustered modes: preselected cluster
-        # representatives may have pushed selected past max_variables.
         if has_cluster_policy and len(selected) > max_variables:
             extra_vars = selected[max_variables:]
             selected = selected[:max_variables]
@@ -277,9 +296,9 @@ class VariableSelectionNode(NodeType):
         if cluster_decisions:
             selection["cluster_decisions"] = cluster_decisions
 
-        artifact = write_json_artifact(
-            store, artifact_type="definition", role="definition",
-            stem=f"variable-selection-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="definition",
+            kind=EvidenceKind.SELECTION_DEFINITION,
             payload=selection,
             metadata={
                 "selected_count": len(selected),
@@ -288,7 +307,6 @@ class VariableSelectionNode(NodeType):
             },
         )
 
-        return NodeOutput(
-            artifacts=[artifact],
-            metrics={"selected_count": len(selected), "rejected_count": len(rejected)},
-        )
+        context.outputs.add_metric("selected_count", len(selected))
+        context.outputs.add_metric("rejected_count", len(rejected))
+        return context.outputs.build_result()

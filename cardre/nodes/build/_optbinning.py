@@ -1,22 +1,15 @@
-"""Private optbinning adapter — _run_optbinning and helpers.
-
-Moved from auto_binning_fit.py (deleted) to keep bins.py under the
-line-count limit.  Imported by AutomaticBinningNode.run.
-"""
 from __future__ import annotations
 
 from typing import Any
 
 import polars as pl
 
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.domain.artifacts import ArtifactRef
-from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION, LifecycleBinDefinition
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_BIN_DEFINITION
+from cardre.engine.binning.definition import LifecycleBinDefinition
 from cardre.engine.binning.diagnostics import run_all as run_diagnostics
 from cardre.engine.binning.optbinning_adapter import fit_variables
-from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.nodes.contracts import NodeContext, NodeResult
 
 _NUMERIC_TYPES = {
     pl.Float64, pl.Float32, pl.Int64, pl.Int32,
@@ -24,8 +17,8 @@ _NUMERIC_TYPES = {
 }
 
 
-def _resolve_train_input(context: ExecutionContext) -> ArtifactRef:
-    train_artifacts = [a for a in context.input_artifacts if a.role == "train"]
+def _resolve_train_input(context: NodeContext):
+    train_artifacts = context.inputs.by_role("train")
     if len(train_artifacts) != 1:
         raise ValueError(
             f"OptBinning requires exactly one train artifact, found {len(train_artifacts)}."
@@ -33,18 +26,16 @@ def _resolve_train_input(context: ExecutionContext) -> ArtifactRef:
     return train_artifacts[0]
 
 
-def _run_optbinning(context: ExecutionContext) -> NodeOutput:
-    store = context.store
-    params = context.validated_params
-    reader = ArtifactEvidenceReader(store)
+def _run_optbinning(context: NodeContext) -> NodeResult:
+    params = context.params
 
     train_artifact = _resolve_train_input(context)
-    meta_def = reader.find(context.input_artifacts, EvidenceKind.MODELLING_METADATA)
+    meta = context.inputs.target_metadata()
 
-    df = reader.read_dataframe(train_artifact)
-    target_column = meta_def.target_column
-    good_values = {str(v) for v in meta_def.good_values}
-    bad_values = {str(v) for v in meta_def.bad_values}
+    df = context.inputs.read_dataframe(train_artifact)
+    target_column = meta.target_column
+    good_values = {str(v) for v in meta.good_values}
+    bad_values = {str(v) for v in meta.bad_values}
 
     if not target_column or target_column not in df.columns:
         raise ValueError(f"target_column '{target_column}' not found in training data")
@@ -168,7 +159,7 @@ def _run_optbinning(context: ExecutionContext) -> NodeOutput:
             "engine": "optbinning",
             "engine_version": result.engine_version,
             "method": "optbinning",
-            "node_id": context.step_spec.step_id,
+            "node_id": context.runtime.step_id,
             "fit_sample_role": "train",
             "train_artifact_id": train_artifact.artifact_id,
             "train_physical_hash": train_artifact.physical_hash,
@@ -176,13 +167,13 @@ def _run_optbinning(context: ExecutionContext) -> NodeOutput:
             "target_column": target_column,
             "good_values": sorted(good_values),
             "bad_values": sorted(bad_values),
-            "params": context.validated_params,
+            "params": context.params,
         },
     }).to_payload()
 
-    bin_artifact = write_json_artifact(
-        store, artifact_type="definition", role="definition",
-        stem=f"automatic-binning-{context.step_spec.step_id}",
+    context.outputs.publish_json(
+        role="definition",
+        kind=EvidenceKind.BIN_DEFINITION,
         payload=bin_def,
         metadata={
             "source_artifact_id": train_artifact.artifact_id,
@@ -215,24 +206,22 @@ def _run_optbinning(context: ExecutionContext) -> NodeOutput:
 
     if var_summary_rows:
         var_summary_df = pl.DataFrame(var_summary_rows)
-        var_summary_artifact = write_parquet_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"automatic-binning-summary-{context.step_spec.step_id}",
+        context.outputs.publish_table(
+            role="report",
+            kind=EvidenceKind.BIN_DEFINITION,
             frame=var_summary_df,
             metadata={
                 "engine": "optbinning",
                 "variable_count": len(var_summary_rows),
             },
-            directory="artifacts",
         )
     else:
         empty_df = pl.DataFrame({"placeholder": []})
-        var_summary_artifact = write_parquet_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"automatic-binning-summary-{context.step_spec.step_id}",
+        context.outputs.publish_table(
+            role="report",
+            kind=EvidenceKind.BIN_DEFINITION,
             frame=empty_df,
             metadata={"engine": "optbinning", "variable_count": 0},
-            directory="artifacts",
         )
 
     manifest = dict(result.manifest)
@@ -247,9 +236,9 @@ def _run_optbinning(context: ExecutionContext) -> NodeOutput:
         "good_values": sorted(good_values),
         "bad_values": sorted(bad_values),
     })
-    manifest_artifact = write_json_artifact(
-        store, artifact_type="report", role="report",
-        stem=f"automatic-binning-manifest-{context.step_spec.step_id}",
+    context.outputs.publish_json(
+        role="report",
+        kind=EvidenceKind.BIN_DEFINITION,
         payload=manifest,
         metadata={
             "engine": "optbinning",
@@ -257,14 +246,8 @@ def _run_optbinning(context: ExecutionContext) -> NodeOutput:
         },
     )
 
-    metrics = {
-        "variable_count": len(feature_cols),
-        "succeeded": len(result.manifest.get("succeeded", [])),
-        "failed": len(result.manifest.get("failed", [])),
-        "warnings_count": len(all_warnings),
-    }
-
-    return NodeOutput(
-        artifacts=[bin_artifact, var_summary_artifact, manifest_artifact],
-        metrics=metrics,
-    )
+    context.outputs.add_metric("variable_count", len(feature_cols))
+    context.outputs.add_metric("succeeded", len(result.manifest.get("succeeded", [])))
+    context.outputs.add_metric("failed", len(result.manifest.get("failed", [])))
+    context.outputs.add_metric("warnings_count", len(all_warnings))
+    return context.outputs.build_result()

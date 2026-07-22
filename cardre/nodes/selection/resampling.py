@@ -5,10 +5,16 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.nodes._training_utils import prepare_supervised_training_data
-from cardre.nodes.contracts import NodeType
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 
 
 class ResampleTrainingDataNode(NodeType):
@@ -42,22 +48,21 @@ class ResampleTrainingDataNode(NodeType):
 
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        store = context.store
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         strategy = params.get("strategy", "combined")
         sampling_ratio = float(params.get("sampling_ratio", 1.0))
         random_seed = int(params.get("random_seed", 42))
 
         prepared = prepare_supervised_training_data(
-            context,
+            context.inputs,
             operation="resample_training_data",
         )
         df = prepared.frame
         target_col = prepared.target_column
         y_bin = prepared.y_binary
         bad_values = prepared.bad_values
-        train_art = context.require_train_artifact("resample_training_data")
+        train_art = context.inputs.require("train", "resample_training_data")
 
         n_bad = int(y_bin.sum())
         n_good = len(y_bin) - n_bad
@@ -130,9 +135,9 @@ class ResampleTrainingDataNode(NodeType):
             "sampling_ratio": sampling_ratio,
         }
 
-        art = write_parquet_artifact(
-            store, artifact_type="dataset", role="train",
-            stem=f"resampled-train-{context.step_spec.step_id}",
+        context.outputs.publish_table(
+            role="train",
+            kind=EvidenceKind.RESAMPLING_EVIDENCE,
             frame=resampled_df,
             metadata={
                 "source_artifact_id": train_art.artifact_id,
@@ -141,17 +146,31 @@ class ResampleTrainingDataNode(NodeType):
             },
         )
 
-        report_art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"resample-report-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.RESAMPLING_EVIDENCE,
             payload=resample_report,
             metadata={"strategy": strategy},
         )
 
-        return NodeOutput(
-            artifacts=[art, report_art],
-            metrics={
-                "original_count": original_count,
-                "resampled_count": len(resampled_df),
-                "synthetic_count": n_oversampled_bad,
-            })
+        context.outputs.add_metric("original_count", original_count)
+        context.outputs.add_metric("resampled_count", len(resampled_df))
+        context.outputs.add_metric("synthetic_count", n_oversampled_bad)
+        return context.outputs.build_result()
+
+
+__definition__ = NodeDefinition(
+    node_type=ResampleTrainingDataNode.node_type,
+    version=ResampleTrainingDataNode.version,
+    category=ResampleTrainingDataNode.category,
+    description="",
+    input_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ResampleTrainingDataNode.input_roles),
+    ),
+    output_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ResampleTrainingDataNode.output_roles),
+    ),
+    parameter_schema=None,
+    optional_dependencies=(),
+    tier="launch",
+)

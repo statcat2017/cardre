@@ -1,72 +1,37 @@
-"""Model family adapters for applying fitted models to score datasets.
-
-NOTE: The original design intended all artifact file I/O to be done by the
-caller before calling these adapters. In practice, the adapters currently
-read parquet datasets, estimator artifacts, and calibrator artifacts
-directly from the store. This is a known boundary violation (#218); a
-future ModelApplyService extraction will move I/O out of the adapters.
-Until then, callers must pass a store-backed ExecutionContext and the
-adapters will read artifacts from it.
-
-The probability-column-index validation is enforced: an out-of-range
-index raises ValueError instead of silently falling back to the last
-column.
-"""
-
 from __future__ import annotations
 
 import io
 from collections.abc import Callable
-from typing import Any, Protocol, cast
+from typing import Any, cast
 
 import joblib
 import numpy as np
 import polars as pl
 
-from cardre._evidence.schemas import SCHEMA_APPLY_MODEL_EVIDENCE
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
+from cardre.application.ports.artifact_store import (
+    ArtifactReader,
+    StagedArtifact,
+    StagedArtifactWriter,
+)
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import JsonDict
-from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_APPLY_MODEL_EVIDENCE
 from cardre.modeling.families import get as get_family_spec
 from cardre.modeling.families import list_families
-from cardre.modeling.serialization import read_estimator_artifact
-from cardre.store import ProjectStore
-from cardre.store.artifact_repo import ArtifactRepository
-
-
-class ModelApplyAdapter(Protocol):
-    """Interface for applying a fitted model to score datasets."""
-
-    model_family: str
-
-    def apply(
-        self,
-        context: ExecutionContext,
-        model: dict[str, Any],
-        model_art: ArtifactRef,
-        scorecard_parsed: dict[str, Any] | None = None,
-        scorecard_artifact_id: str | None = None,
-        bundle_artifact_id: str | None = None,
-    ) -> NodeOutput:
-        ...
-
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
+from cardre.nodes.contracts import NodeResult
 
 _DATA_ROLES = ("train", "test", "oot")
 
 
 def _write_evidence_artifact(
-    store: ProjectStore,
+    writer: StagedArtifactWriter,
     roles_evidence: dict[str, JsonDict],
     model_art: ArtifactRef,
     scorecard_artifact_id: str | None,
     bundle_artifact_id: str | None,
     step_id: str,
-) -> ArtifactRef:
+) -> StagedArtifact:
     evidence: JsonDict = {
         "schema_version": SCHEMA_APPLY_MODEL_EVIDENCE,
         "model_artifact_id": model_art.artifact_id,
@@ -77,9 +42,8 @@ def _write_evidence_artifact(
         evidence["frozen_bundle_artifact_id"] = bundle_artifact_id
     if scorecard_artifact_id is not None:
         evidence["scorecard_artifact_id"] = scorecard_artifact_id
-    return write_json_artifact(
-        store, artifact_type="report", role="report",
-        stem=f"score-apply-evidence-{step_id}",
+    return writer.stage_json(
+        role="report", kind=EvidenceKind.APPLY_MODEL_EVIDENCE.value,
         payload=evidence,
         metadata={"schema_version": SCHEMA_APPLY_MODEL_EVIDENCE},
     )
@@ -88,7 +52,7 @@ def _write_evidence_artifact(
 def _role_entry_from_df(
     df: pl.DataFrame,
     data_art: ArtifactRef,
-    art: ArtifactRef,
+    art: StagedArtifact,
     features: list[str],
     missing: list[str],
     output_cols: list[str],
@@ -97,37 +61,34 @@ def _role_entry_from_df(
     pd_series = df["predicted_bad_probability"]
     entry: JsonDict = {
         "source_artifact_id": data_art.artifact_id,
-        "output_artifact_id": art.artifact_id,
+        "output_artifact_id": art.provisional_artifact_id,
         "row_count": df.height,
         "required_features": features,
         "missing_features": missing,
         "output_columns": output_cols,
-        "pd_min": round(float(pd_series.min()), 6),  # type: ignore[arg-type]  # polars Series.min() returns Any
-        "pd_max": round(float(pd_series.max()), 6),  # type: ignore[arg-type]  # polars Series.max() returns Any
-        "pd_mean": round(float(pd_series.mean()), 6),  # type: ignore[arg-type]  # polars Series.mean() returns Any
+        "pd_min": round(float(pd_series.min()), 6),
+        "pd_max": round(float(pd_series.max()), 6),
+        "pd_mean": round(float(pd_series.mean()), 6),
     }
     if has_scorecard and "score" in df.columns:
         score_series = df["score"]
-        entry["score_min"] = round(float(score_series.min()), 2)  # type: ignore[arg-type]  # polars Series.min() returns Any
-        entry["score_max"] = round(float(score_series.max()), 2)  # type: ignore[arg-type]  # polars Series.max() returns Any
-        entry["score_mean"] = round(float(score_series.mean()), 2)  # type: ignore[arg-type]  # polars Series.mean() returns Any
+        entry["score_min"] = round(float(score_series.min()), 2)
+        entry["score_max"] = round(float(score_series.max()), 2)
+        entry["score_mean"] = round(float(score_series.mean()), 2)
     return entry
 
 
-# ---------------------------------------------------------------------------
-# Logistic regression adapter
-# ---------------------------------------------------------------------------
-
-
 def apply_logistic(
-    context: ExecutionContext,
+    artifact_reader: ArtifactReader,
+    artifact_writer: StagedArtifactWriter,
     model: dict[str, Any],
     model_art: ArtifactRef,
+    input_artifacts: list[ArtifactRef],
+    step_id: str,
     scorecard_parsed: dict[str, Any] | None = None,
     scorecard_artifact_id: str | None = None,
     bundle_artifact_id: str | None = None,
-) -> NodeOutput:
-    store = context.store
+) -> NodeResult:
     fc = model.get("feature_contract", {})
     features = fc.get("features", [])
     mp = model.get("model_payload", {})
@@ -136,18 +97,19 @@ def apply_logistic(
     has_scorecard = scorecard_parsed is not None
 
     if has_scorecard:
-        offset = float(scorecard_parsed.get("offset", 0))  # type: ignore[union-attr]  # has_scorecard guards None
-        factor_val = float(scorecard_parsed.get("factor", 1))  # type: ignore[union-attr]  # has_scorecard guards None
-        direction = -1.0 if scorecard_parsed.get("score_direction", "higher_is_lower_risk") == "higher_is_lower_risk" else 1.0  # type: ignore[union-attr]  # has_scorecard guards None
+        offset = float(scorecard_parsed.get("offset", 0))
+        factor_val = float(scorecard_parsed.get("factor", 1))
+        direction = -1.0 if scorecard_parsed.get("score_direction", "higher_is_lower_risk") == "higher_is_lower_risk" else 1.0
     else:
         offset, factor_val, direction = 0.0, 1.0, -1.0
 
-    data_arts = [a for a in context.input_artifacts if a.role in _DATA_ROLES]
-    outputs: list[ArtifactRef] = []
+    data_arts = [a for a in input_artifacts if a.role in _DATA_ROLES]
+    staged: list[StagedArtifact] = []
     roles_evidence: dict[str, JsonDict] = {}
 
     for data_art in data_arts:
-        df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
+        data = artifact_reader.read_bytes(data_art)
+        df = pl.read_parquet(io.BytesIO(data))
         role = data_art.role
         missing = [f for f in features if f not in df.columns]
         if missing:
@@ -160,20 +122,16 @@ def apply_logistic(
         prob_expr = (1.0 / (1.0 + (-log_odds_expr).exp())).alias("predicted_bad_probability")
         raw_expr = log_odds_expr.alias("raw_model_output")
 
-        # Compute raw probability column first
         df = df.with_columns([prob_expr, raw_expr])
 
-        # Apply runtime calibration if present. Folded Platt is a no-op here
-        # because coefficients are already calibrated.
         if model.get("calibration"):
             raw_probs = df["predicted_bad_probability"].to_numpy()
-            cal_probs = _apply_calibration(model, store, raw_probs)
+            cal_probs = _apply_calibration(model, artifact_reader, raw_probs)
             df = df.with_columns([
                 pl.Series("predicted_bad_probability", cal_probs, dtype=pl.Float64),
             ])
-            # Recompute raw_model_output as calibrated log-odds for scorecard scoring
             cal_log_odds = np.log(
-                np.clip(cal_probs / np.maximum(1 - cal_probs, 1e-15), 1e-15, None)
+                np.clip(cal_probs / np.maximum(1 - cal_probs, 1e-15), 1e-15, None),
             )
             df = df.with_columns([
                 pl.Series("raw_model_output", cal_log_odds, dtype=pl.Float64),
@@ -185,52 +143,52 @@ def apply_logistic(
             **({"scorecard_artifact_id": scorecard_artifact_id} if scorecard_artifact_id else {}),
             **({"frozen_bundle_artifact_id": bundle_artifact_id} if bundle_artifact_id else {}),
         }
-        output_cols = ["predicted_bad_probability", "raw_model_output",
-                       "model_artifact_id", "model_family"]
+        output_cols = [
+            "predicted_bad_probability", "raw_model_output",
+            "model_artifact_id", "model_family",
+        ]
         add_exprs = [
             pl.lit(model_art.artifact_id).alias("model_artifact_id"),
             pl.lit("logistic_regression").alias("model_family"),
         ]
         if has_scorecard:
-            # Recompute score from potentially calibrated raw_model_output
             score_expr = pl.lit(offset) + pl.lit(direction * factor_val) * pl.col("raw_model_output")
             add_exprs.append(score_expr.alias("score"))
             output_cols.append("score")
 
         df = df.with_columns(add_exprs)
-        art = write_parquet_artifact(
-            store, artifact_type="dataset", role=role,
-            stem=f"scored-{role}-{context.step_spec.step_id}",
+        art = artifact_writer.stage_table(
+            role=role, kind=EvidenceKind.SCORED_DATASET.value,
             frame=df, metadata=base_metadata,
         )
-        outputs.append(art)
+        staged.append(art)
         roles_evidence[role] = _role_entry_from_df(
             df, data_art, art, features, missing, output_cols, has_scorecard,
         )
 
     evidence_art = _write_evidence_artifact(
-        store, roles_evidence, model_art,
-        scorecard_artifact_id, bundle_artifact_id,
-        context.step_spec.step_id,
+        artifact_writer, roles_evidence, model_art,
+        scorecard_artifact_id, bundle_artifact_id, step_id,
     )
-    return NodeOutput(artifacts=outputs + [evidence_art], metrics={"output_count": len(outputs)})
+    staged.append(evidence_art)
 
-
-# ---------------------------------------------------------------------------
-# Sklearn estimator adapter
-# ---------------------------------------------------------------------------
+    return NodeResult(
+        staged_artifacts=staged,
+        metrics={"output_count": len(data_arts)},
+    )
 
 
 def apply_sklearn_estimator(
-    context: ExecutionContext,
+    artifact_reader: ArtifactReader,
+    artifact_writer: StagedArtifactWriter,
     model: dict[str, Any],
     model_art: ArtifactRef,
+    input_artifacts: list[ArtifactRef],
+    step_id: str,
     scorecard_parsed: dict[str, Any] | None = None,
     scorecard_artifact_id: str | None = None,
     bundle_artifact_id: str | None = None,
-) -> NodeOutput:
-    store = context.store
-
+) -> NodeResult:
     estimator_ref = model.get("estimator_reference", {})
     estimator_artifact_id = estimator_ref.get("artifact_id", "")
     features = model.get("feature_contract", {}).get("features", [])
@@ -239,25 +197,19 @@ def apply_sklearn_estimator(
     if not estimator_artifact_id:
         raise ValueError("Non-logistic model requires estimator_reference.artifact_id")
 
-    estimator_art = ArtifactRepository(store).get(estimator_artifact_id)
-    if estimator_art is None:
-        raise ValueError(f"Estimator artifact {estimator_artifact_id!r} not found")
-
-    estimator_bytes = read_estimator_artifact(
-        store, estimator_art,
-        expected_logical_hash=estimator_ref.get("logical_hash"),
-    )
+    estimator_bytes = artifact_reader.read_bytes(estimator_artifact_id)
     estimator = joblib.load(io.BytesIO(estimator_bytes))
 
     model_family = model.get("model_family", "unknown")
     has_scorecard = scorecard_parsed is not None
 
-    data_arts = [a for a in context.input_artifacts if a.role in _DATA_ROLES]
-    outputs: list[ArtifactRef] = []
+    data_arts = [a for a in input_artifacts if a.role in _DATA_ROLES]
+    staged: list[StagedArtifact] = []
     roles_evidence: dict[str, JsonDict] = {}
 
     for data_art in data_arts:
-        df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
+        data = artifact_reader.read_bytes(data_art)
+        df = pl.read_parquet(io.BytesIO(data))
         role = data_art.role
         missing = [f for f in features if f not in df.columns]
         if missing:
@@ -269,15 +221,14 @@ def apply_sklearn_estimator(
             if prob_col_idx < 0 or prob_col_idx >= proba.shape[1]:
                 raise ValueError(
                     f"probability_column_index {prob_col_idx} is out of range "
-                    f"for predict_proba output with {proba.shape[1]} columns"
+                    f"for predict_proba output with {proba.shape[1]} columns",
                 )
             pred_bad = proba[:, prob_col_idx]
         else:
             pred_bad = estimator.predict(X).astype(np.float64)
 
-        # Apply runtime calibration if present
         if model.get("calibration"):
-            pred_bad = _apply_calibration(model, store, pred_bad)
+            pred_bad = _apply_calibration(model, artifact_reader, pred_bad)
 
         base_metadata: JsonDict = {
             "model_artifact_id": model_art.artifact_id,
@@ -292,54 +243,50 @@ def apply_sklearn_estimator(
             pl.lit(model_family).alias("model_family"),
         ]
         if has_scorecard:
-            offset = float(scorecard_parsed.get("offset", 0))  # type: ignore[union-attr]  # has_scorecard guards None
-            factor = float(scorecard_parsed.get("factor", 1))  # type: ignore[union-attr]  # has_scorecard guards None
-            direction = -1.0 if scorecard_parsed.get("score_direction", "higher_is_lower_risk") == "higher_is_lower_risk" else 1.0  # type: ignore[union-attr]  # has_scorecard guards None
+            offset = float(scorecard_parsed.get("offset", 0))
+            factor = float(scorecard_parsed.get("factor", 1))
+            direction = -1.0 if scorecard_parsed.get("score_direction", "higher_is_lower_risk") == "higher_is_lower_risk" else 1.0
             log_odds = np.log(np.clip(pred_bad / np.maximum(1 - pred_bad, 1e-15), 1e-15, None))
             score_vals = offset + direction * factor * log_odds
-            score_series = pl.Series("score", score_vals, dtype=pl.Float64)
-            add_exprs.append(score_series)
+            add_exprs.append(pl.Series("score", score_vals, dtype=pl.Float64))
             output_cols.append("score")
 
         df = df.with_columns(add_exprs)
-        art = write_parquet_artifact(
-            store, artifact_type="dataset", role=role,
-            stem=f"scored-{role}-{context.step_spec.step_id}",
+        art = artifact_writer.stage_table(
+            role=role, kind=EvidenceKind.SCORED_DATASET.value,
             frame=df, metadata=base_metadata,
         )
-        outputs.append(art)
+        staged.append(art)
         roles_evidence[role] = _role_entry_from_df(
             df, data_art, art, features, missing, output_cols, has_scorecard,
         )
 
     evidence_art = _write_evidence_artifact(
-        store, roles_evidence, model_art,
-        scorecard_artifact_id, bundle_artifact_id,
-        context.step_spec.step_id,
+        artifact_writer, roles_evidence, model_art,
+        scorecard_artifact_id, bundle_artifact_id, step_id,
     )
-    return NodeOutput(artifacts=outputs + [evidence_art], metrics={"output_count": len(outputs)})
+    staged.append(evidence_art)
 
-
-# ---------------------------------------------------------------------------
-# Ensemble adapter (voting / weighted)
-# ---------------------------------------------------------------------------
+    return NodeResult(
+        staged_artifacts=staged,
+        metrics={"output_count": len(data_arts)},
+    )
 
 
 def apply_ensemble(
-    context: ExecutionContext,
+    artifact_reader: ArtifactReader,
+    artifact_writer: StagedArtifactWriter,
     model: dict[str, Any],
     model_art: ArtifactRef,
+    input_artifacts: list[ArtifactRef],
+    step_id: str,
     scorecard_parsed: dict[str, Any] | None = None,
     scorecard_artifact_id: str | None = None,
     bundle_artifact_id: str | None = None,
-) -> NodeOutput:
-    """Apply ensemble model. scorecard_parsed is accepted for interface
-    compatibility but ignored — ensemble scoring does not support
-    scorecard scaling."""
-    store = context.store
+) -> NodeResult:
     model_payload = model.get("model_payload", {})
     ensemble_type = model_payload.get("ensemble_type", "voting")
-    weights_list = model_payload.get("weights", None)
+    weights_list = model_payload.get("weights")
     voting = model_payload.get("voting", "soft")
     threshold = model_payload.get("threshold", 0.5)
     features = model.get("features", [])
@@ -348,12 +295,13 @@ def apply_ensemble(
         raise ValueError("No base model data available for ensemble apply")
 
     model_family = model.get("model_family", "unknown")
-    data_arts = [a for a in context.input_artifacts if a.role in _DATA_ROLES]
-    outputs: list[ArtifactRef] = []
+    data_arts = [a for a in input_artifacts if a.role in _DATA_ROLES]
+    staged: list[StagedArtifact] = []
     roles_evidence: dict[str, JsonDict] = {}
 
     for data_art in data_arts:
-        df = pl.read_parquet(store.artifact_path(data_art))  # cardre-allow-artifact-read: dataset-frame-input
+        data = artifact_reader.read_bytes(data_art)
+        df = pl.read_parquet(io.BytesIO(data))
         role = data_art.role
 
         all_probs = []
@@ -368,35 +316,29 @@ def apply_ensemble(
 
             if bm_family == "logistic_regression":
                 coefs = bm_art.get("coefficients", {})
-                intercept = float(bm_art.get("intercept", 0))
-                log_odds_expr = pl.lit(intercept)
+                bm_intercept = float(bm_art.get("intercept", 0))
+                log_odds_expr = pl.lit(bm_intercept)
                 for feat in bm_features:
                     log_odds_expr = log_odds_expr + pl.col(feat) * pl.lit(float(coefs.get(feat, 0)))
                 probs = df.select((1.0 / (1.0 + (-log_odds_expr).exp())).alias("_probs"))["_probs"].to_numpy()
             else:
                 estimator_ref = bm_art.get("estimator_reference", {})
-                estimator_art_id = estimator_ref.get("artifact_id", "")
-                if not estimator_art_id:
+                est_art_id = estimator_ref.get("artifact_id", "")
+                if not est_art_id:
                     raise ValueError("Ensemble base model missing estimator_reference")
-                est_art = ArtifactRepository(store).get(estimator_art_id)
-                if est_art is None:
-                    raise ValueError(f"Base model estimator artifact {estimator_art_id!r} not found")
-                est_bytes = read_estimator_artifact(
-                    store, est_art,
-                    expected_logical_hash=estimator_ref.get("logical_hash"),
-                )
-                estimator = joblib.load(io.BytesIO(est_bytes))
+                est_bytes = artifact_reader.read_bytes(est_art_id)
+                bm_estimator = joblib.load(io.BytesIO(est_bytes))
                 X = df.select(bm_features).to_numpy()
-                if hasattr(estimator, "predict_proba"):
-                    proba = estimator.predict_proba(X)
+                if hasattr(bm_estimator, "predict_proba"):
+                    proba = bm_estimator.predict_proba(X)
                     if bm_prob_col < 0 or bm_prob_col >= proba.shape[1]:
                         raise ValueError(
                             f"ensemble base model probability_column_index {bm_prob_col} "
-                            f"is out of range for predict_proba output with {proba.shape[1]} columns"
+                            f"is out of range for predict_proba output with {proba.shape[1]} columns",
                         )
                     probs = proba[:, bm_prob_col]
                 else:
-                    probs = estimator.predict(X).astype(np.float64)
+                    probs = bm_estimator.predict(X).astype(np.float64)
             all_probs.append(probs)
 
         prob_matrix = np.column_stack(all_probs)
@@ -420,76 +362,44 @@ def apply_ensemble(
             pl.lit(model_family).alias("model_family"),
         ]
         df = df.with_columns(add_exprs)
-        art = write_parquet_artifact(
-            store, artifact_type="dataset", role=role,
-            stem=f"scored-{role}-{context.step_spec.step_id}",
+        art = artifact_writer.stage_table(
+            role=role, kind=EvidenceKind.SCORED_DATASET.value,
             frame=df, metadata=base_metadata,
         )
-        outputs.append(art)
+        staged.append(art)
         roles_evidence[role] = _role_entry_from_df(df, data_art, art, features, [], output_cols, False)
 
     evidence_art = _write_evidence_artifact(
-        store, roles_evidence, model_art, None, bundle_artifact_id,
-        context.step_spec.step_id,
+        artifact_writer, roles_evidence, model_art, None, bundle_artifact_id, step_id,
     )
-    return NodeOutput(artifacts=outputs + [evidence_art], metrics={"output_count": len(outputs)})
+    staged.append(evidence_art)
 
-
-# ---------------------------------------------------------------------------
-# Calibration helper
-# ---------------------------------------------------------------------------
+    return NodeResult(
+        staged_artifacts=staged,
+        metrics={"output_count": len(data_arts)},
+    )
 
 
 def _apply_calibration(
     model: dict[str, Any],
-    store: ProjectStore,
+    artifact_reader: ArtifactReader,
     y_prob: np.ndarray,
 ) -> np.ndarray:
-    """If the model artifact has a runtime calibration block, load and apply
-    the calibrator.
-
-    Folded Platt calibration (application_mode="folded_linear_log_odds") is
-    a no-op here because the model artifact's intercept and coefficients have
-    already been adjusted during calibration node execution.
-
-    Args:
-        model: The parsed model artifact dict.
-        store: The project store.
-        y_prob: Raw predicted_bad_probability array (shape (n,)).
-
-    Returns:
-        Calibrated probability array (shape (n,)).
-
-    Raises:
-        ValueError: If calibration block references a missing calibrator.
-    """
     calibration = model.get("calibration")
     if not calibration:
         return y_prob
 
     application_mode = calibration.get("application_mode", "runtime_probability_transform")
     if application_mode == "folded_linear_log_odds":
-        # Intercept/coefficients are already calibrated; no runtime transform needed.
         return y_prob
 
     calibrator_id = calibration.get("calibrator_artifact_id")
     if not calibrator_id:
         raise ValueError("Model has calibration block but no calibrator_artifact_id")
 
-    calibrator_art = ArtifactRepository(store).get(calibrator_id)
-    if calibrator_art is None:
-        raise ValueError(
-            f"Calibrator artifact {calibrator_id!r} not found in store"
-        )
-
-    calibrator_bytes = read_estimator_artifact(
-        store,
-        calibrator_art,
-        expected_logical_hash=calibration.get("calibrator_logical_hash"),
-    )
+    calibrator_bytes = artifact_reader.read_bytes(calibrator_id)
     calibrator = joblib.load(io.BytesIO(calibrator_bytes))
 
-    # Package raw probs as shape (n, 2) for sklearn calibrators that expect it.
     X_cal = np.column_stack([1.0 - y_prob, y_prob])
 
     if hasattr(calibrator, "predict_proba"):
@@ -498,19 +408,15 @@ def _apply_calibration(
     else:
         calibrated = calibrator.predict(y_prob)
 
-    return cast(np.ndarray[Any, Any], np.asarray(calibrated, dtype=np.float64))
+    return cast(np.ndarray, np.asarray(calibrated, dtype=np.float64))
 
 
-# ---------------------------------------------------------------------------
-# Adapter registry
-# ---------------------------------------------------------------------------
-
-_ADAPTER_FNS: dict[str, Callable[..., NodeOutput]] = {
+_ADAPTER_FNS: dict[str, Callable[..., NodeResult]] = {
     "apply_logistic": apply_logistic,
     "apply_sklearn_estimator": apply_sklearn_estimator,
 }
 
-_ADAPTERS: dict[str, Callable[..., NodeOutput]] = {}
+_ADAPTERS: dict[str, Callable[..., NodeResult]] = {}
 
 for _fam in list_families():
     spec = get_family_spec(_fam)
@@ -519,23 +425,25 @@ for _fam in list_families():
 
 
 def apply_model(
-    context: ExecutionContext,
+    artifact_reader: ArtifactReader,
+    artifact_writer: StagedArtifactWriter,
     model: dict[str, Any],
     model_art: ArtifactRef,
+    input_artifacts: list[ArtifactRef],
+    step_id: str,
     scorecard_parsed: dict[str, Any] | None = None,
     scorecard_artifact_id: str | None = None,
     bundle_artifact_id: str | None = None,
-) -> NodeOutput:
-    """Apply a model using the registered adapter for its family.
-
-    All artifact file I/O must be done before calling this function.
-    Adapters receive already-parsed payloads.
-    """
+) -> NodeResult:
     model_family = model.get("model_family", "logistic_regression")
     adapter = _ADAPTERS.get(model_family)
     if adapter is None:
         raise ValueError(
             f"apply_model: unsupported model_family {model_family!r}. "
-            f"Supported families: {sorted(_ADAPTERS)}"
+            f"Supported families: {sorted(_ADAPTERS)}",
         )
-    return adapter(context, model, model_art, scorecard_parsed, scorecard_artifact_id, bundle_artifact_id)
+    return adapter(
+        artifact_reader, artifact_writer, model, model_art,
+        input_artifacts, step_id,
+        scorecard_parsed, scorecard_artifact_id, bundle_artifact_id,
+    )

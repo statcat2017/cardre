@@ -11,21 +11,22 @@ from pathlib import Path
 
 import pytest
 
-from cardre.nodes.registry import NodeRegistry
+from cardre.bootstrap.node_catalogue import build_default_catalogue
+from cardre.bootstrap.settings import Settings
 from cardre.workflows.scorecard import build_canonical_scorecard_steps
 
 
 def test_only_one_automatic_binning_node_registered():
-    reg = NodeRegistry.with_defaults()
-    assert reg.has("cardre.automatic_binning")
-    assert not reg.has("cardre.fine_classing")
-    assert not reg.has("cardre.auto_binning_fit")
-    assert not reg.has("cardre.binning")
+    cat = build_default_catalogue(Settings(launch_mode=True))
+    assert cat.has("cardre.automatic_binning")
+    assert not cat.has("cardre.fine_classing")
+    assert not cat.has("cardre.auto_binning_fit")
+    assert not cat.has("cardre.binning")
 
 
 def test_manual_binning_distinct_node():
-    reg = NodeRegistry.with_defaults()
-    manual = reg.resolve("cardre.manual_binning")
+    cat = build_default_catalogue(Settings(launch_mode=True))
+    manual = cat.resolve("cardre.manual_binning")
     assert manual.category == "refinement"
     assert manual.node_type == "cardre.manual_binning"
 
@@ -223,6 +224,8 @@ ALLOWED_PREFIXES = {
     "cardre.adapters.sqlite": {"sqlite3"},
     "cardre.bootstrap.settings": {"os.environ", "os.getenv"},
     "cardre.adapters.evidence": {"ArtifactEvidenceReader"},
+    "cardre.workflows": {"build_default_catalogue", "Settings"},
+    "cardre.nodes.registry": {"NodeType"},
 }
 
 

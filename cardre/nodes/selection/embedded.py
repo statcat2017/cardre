@@ -3,11 +3,16 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre.artifacts import write_json_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.nodes._training_utils import prepare_supervised_training_data
-from cardre.nodes.contracts import NodeType
+from cardre.nodes.contracts import (
+    ArtifactContract,
+    ArtifactRoleSpec,
+    NodeContext,
+    NodeDefinition,
+    NodeResult,
+    NodeType,
+)
 from cardre.nodes.selection._definition import merge_selection_definition
 
 logger = logging.getLogger(__name__)
@@ -49,28 +54,26 @@ class FeatureSelectionEmbeddedNode(NodeType):
 
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
+    def run(self, context: NodeContext) -> NodeResult:
         from sklearn.ensemble import RandomForestClassifier
         from sklearn.tree import DecisionTreeClassifier
 
-        store = context.store
-        params = context.validated_params
+        params = context.params
         importance_threshold = float(params.get("importance_threshold", 0.01))
         max_features = params.get("max_features")
         estimator_type = params.get("estimator", "decision_tree")
         random_seed = int(params.get("random_seed", 42))
 
         prepared = prepare_supervised_training_data(
-            context,
+            context.inputs,
             operation="feature_selection_embedded",
         )
         df = prepared.frame
         features = prepared.feature_columns(params)
         y_binary = prepared.y_binary
 
-        train_art = context.require_train_artifact("feature_selection_embedded")
-        reader = ArtifactEvidenceReader(store)
-        def_art = next((a for a in context.input_artifacts if a.role == "definition"), None)
+        train_art = context.inputs.require("train", "feature_selection_embedded")
+        def_art = context.inputs.first("definition")
 
         X = df.select(features).to_numpy()
 
@@ -137,15 +140,15 @@ class FeatureSelectionEmbeddedNode(NodeType):
         if def_art:
             try:
                 selection = merge_selection_definition(
-                    reader, def_art.artifact_id,
+                    context.inputs, def_art,
                     key="selection_embedded", selection=selection,
                 )
             except (KeyError, TypeError, AttributeError):
                 logger.warning("Could not merge existing selection definition", exc_info=True)
 
-        def_art_out = write_json_artifact(
-            store, artifact_type="definition", role="definition",
-            stem=f"feature-selection-embedded-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="definition",
+            kind=EvidenceKind.SELECTION_DEFINITION,
             payload=selection,
             metadata={"method": "embedded", "selected_count": len(selected)},
         )
@@ -158,13 +161,30 @@ class FeatureSelectionEmbeddedNode(NodeType):
             "rejected_count": len(rejected),
             "importance_threshold": importance_threshold,
         }
-        report_art = write_json_artifact(
-            store, artifact_type="report", role="report",
-            stem=f"embedded-importance-{context.step_spec.step_id}",
+        context.outputs.publish_json(
+            role="report",
+            kind=EvidenceKind.FEATURE_SELECTION_EVIDENCE,
             payload=importance_report,
             metadata={"estimator": estimator_type},
         )
 
-        return NodeOutput(
-            artifacts=[def_art_out, report_art],
-            metrics={"selected_count": len(selected), "rejected_count": len(rejected)})
+        context.outputs.add_metric("selected_count", len(selected))
+        context.outputs.add_metric("rejected_count", len(rejected))
+        return context.outputs.build_result()
+
+
+__definition__ = NodeDefinition(
+    node_type=FeatureSelectionEmbeddedNode.node_type,
+    version=FeatureSelectionEmbeddedNode.version,
+    category=FeatureSelectionEmbeddedNode.category,
+    description="",
+    input_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in FeatureSelectionEmbeddedNode.input_roles),
+    ),
+    output_contract=ArtifactContract(
+        roles=tuple(ArtifactRoleSpec(r, required=True) for r in FeatureSelectionEmbeddedNode.output_roles),
+    ),
+    parameter_schema=None,
+    optional_dependencies=(),
+    tier="launch",
+)
