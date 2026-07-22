@@ -6,6 +6,9 @@ and compatibility mechanisms that have been removed.
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 import pytest
 
 from cardre.nodes.registry import NodeRegistry
@@ -190,3 +193,89 @@ def test_model_artifact_rejects_wrong_schema_version():
     }
     with pytest.raises(ValueError, match="requires schema_version"):
         ModelArtifactV1.from_dict(payload)
+
+
+# ---------------------------------------------------------------------------
+# Forbidden imports — migration guard
+# ---------------------------------------------------------------------------
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+BANNED_IDENTIFIERS = {
+    "ProjectStore",
+    "CardreConfig",
+    "ArtifactEvidenceReader",
+}
+
+BANNED_IMPORTS = {
+    "sqlite3",
+    "os.environ",
+    "os.getenv",
+}
+
+BANNED_ATTRIBUTES = {
+    "context.store",
+    "store.root",
+}
+
+ALLOWED_PREFIXES = {
+    "cardre.adapters.sqlite": {"sqlite3"},
+    "cardre.bootstrap.settings": {"os.environ", "os.getenv"},
+    "cardre.adapters.evidence": {"ArtifactEvidenceReader"},
+}
+
+
+def _is_allowed(filepath: str, symbol: str) -> bool:
+    for prefix, allowed in ALLOWED_PREFIXES.items():
+        if filepath.startswith(prefix) and symbol in allowed:
+            return True
+    return False
+
+
+@pytest.mark.xfail(
+    strict=False,
+    reason="Migration in progress; enforced after Batch 07",
+)
+def test_forbidden_imports_outside_adapters() -> None:
+    """AST-walk cardre/ and ban forbidden identifiers outside allowed packages."""
+    cardre_dir = REPO_ROOT / "cardre"
+    violations: list[str] = []
+
+    for pyfile in sorted(cardre_dir.rglob("*.py")):
+        rel = pyfile.relative_to(REPO_ROOT)
+        rel_str = str(rel)
+        try:
+            tree = ast.parse(pyfile.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in BANNED_IMPORTS and not _is_allowed(rel_str, alias.name):
+                        violations.append(f"{rel_str}:{node.lineno}: import {alias.name}")
+
+            if isinstance(node, ast.ImportFrom):
+                if node.module in BANNED_IMPORTS and not _is_allowed(rel_str, node.module):
+                    violations.append(f"{rel_str}:{node.lineno}: from {node.module} import ...")
+                if node.module and node.module.startswith("cardre.store"):
+                    violations.append(f"{rel_str}:{node.lineno}: from {node.module} import ... (store)")
+                if node.module and node.module.startswith("cardre.config"):
+                    violations.append(f"{rel_str}:{node.lineno}: from {node.module} import ... (config)")
+
+            if isinstance(node, ast.Name):
+                if node.id in BANNED_IDENTIFIERS and not _is_allowed(rel_str, node.id):
+                    violations.append(f"{rel_str}:{node.lineno}: reference to {node.id}")
+
+            if isinstance(node, ast.Attribute):
+                if isinstance(node.value, ast.Name):
+                    full = f"{node.value.id}.{node.attr}"
+                    if full in BANNED_ATTRIBUTES:
+                        violations.append(f"{rel_str}:{node.lineno}: {full}")
+
+    if violations:
+        pytest.fail(
+            "Forbidden imports/symbols found (xfail during migration):\n"
+            + "\n".join(violations)
+        )

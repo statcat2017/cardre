@@ -24,7 +24,7 @@ cardre-api = "sidecar.__main__:main"
 [project.optional-dependencies]
 sidecar = ["fastapi", "uvicorn"]
 test = ["pytest", "pytest-cov", "pytest-mock", "httpx"]
-dev = ["ruff==0.15.22", "mypy"]
+dev = ["ruff==0.15.22", "mypy", "import-linter>=2.0"]
 boosting = ["xgboost", "lightgbm", "catboost"]
 imbalance = ["imbalanced-learn"]
 explain = ["shap"]
@@ -110,4 +110,80 @@ markers = [
     "unit: unit tests",
     "integration: integration tests",
     "governance: tests requiring CARDRE_GOVERNANCE=1 (branch/comparison/champion routes and store tables)",
+]
+
+[tool.importlinter]
+root_packages = ["cardre"]
+
+[[tool.importlinter.contracts]]
+name = "Domain must not import internal packages"
+type = "forbidden"
+source_modules = ["cardre.domain"]
+forbidden_modules = [
+    "cardre.application",
+    "cardre.nodes",
+    "cardre.adapters",
+    "cardre.api",
+    "cardre.bootstrap",
+]
+
+[[tool.importlinter.contracts]]
+name = "Application must not import adapters, api, or bootstrap"
+type = "forbidden"
+source_modules = ["cardre.application"]
+forbidden_modules = [
+    "cardre.adapters",
+    "cardre.api",
+    "cardre.bootstrap",
+]
+
+[[tool.importlinter.contracts]]
+name = "Nodes must not import application, adapters, api, or bootstrap"
+type = "forbidden"
+source_modules = ["cardre.nodes"]
+forbidden_modules = [
+    "cardre.application",
+    "cardre.adapters",
+    "cardre.api",
+    "cardre.bootstrap",
+]
+
+[[tool.importlinter.contracts]]
+name = "Adapters must not import api, bootstrap, or nodes"
+type = "forbidden"
+source_modules = ["cardre.adapters"]
+forbidden_modules = [
+    "cardre.api",
+    "cardre.bootstrap",
+    "cardre.nodes",
+]
+
+[[tool.importlinter.contracts]]
+name = "API must not import adapters or nodes"
+type = "forbidden"
+source_modules = ["cardre.api"]
+forbidden_modules = [
+    "cardre.adapters",
+    "cardre.nodes",
+]
+allow_indirect_imports = true
+
+[tool.importlinter.independent_modules]
+modules = [
+    "cardre._version",
+    "cardre._evidence",
+    "cardre.artifacts",
+    "cardre.branch_step_resolver",
+    "cardre.capabilities",
+    "cardre.config",
+    "cardre.engine",
+    "cardre.evidence_locator",
+    "cardre.modeling",
+    "cardre.node_parameters",
+    "cardre.readiness",
+    "cardre.reporting",
+    "cardre.services",
+    "cardre.store",
+    "cardre.workflows",
+    "sidecar",
 ]
