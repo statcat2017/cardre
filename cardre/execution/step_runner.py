@@ -26,7 +26,7 @@ from cardre.domain.run import RunStep, RunStepStatus
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.execution.failure_classification import classify_step_failure
 from cardre.execution.fingerprints import _json_ready, build_execution_fingerprint
-from cardre.node_parameters import normalize_node_params
+from cardre.nodes.parameters import normalize_node_params
 from cardre.nodes.registry import NodeRegistry
 
 if TYPE_CHECKING:

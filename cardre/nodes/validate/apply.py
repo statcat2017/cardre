@@ -16,14 +16,14 @@ from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import JsonDict
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.modeling.adapters import apply_model as _apply_model_adapter
-from cardre.node_parameters import (
+from cardre.nodes._bin_mask import build_bin_condition
+from cardre.nodes.contracts import NodeType
+from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.nodes._bin_mask import build_bin_condition
-from cardre.nodes.contracts import NodeType
 
 
 class ApplyWoeMappingNode(NodeType):

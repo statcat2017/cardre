@@ -8,10 +8,10 @@ from typing import Any, Protocol, runtime_checkable
 
 import polars as pl
 
-from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.diagnostics import JsonDict
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.step import StepSpec
-from cardre.node_parameters import NodeParameterSchema
+from cardre.nodes.parameters import NodeParameterSchema
 
 
 @dataclass(frozen=True)
@@ -111,7 +111,6 @@ class NodeType(ABC):
         """Backward-compatible accessor for nodes that don't set __definition__ explicitly."""
         if hasattr(self, '__definition_cached'):
             return self.__definition_cached
-        from cardre.node_parameters import NodeParameterSchema
         defn = NodeDefinition(
             node_type=self.node_type,
             version=self.version,

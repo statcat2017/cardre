@@ -9,13 +9,13 @@ from cardre._evidence.schemas import SCHEMA_CUTOFF_ANALYSIS
 from cardre.artifacts import write_json_artifact
 from cardre.domain.diagnostics import JsonDict
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.node_parameters import (
+from cardre.nodes.contracts import NodeType
+from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.nodes.contracts import NodeType
 
 
 class CutoffAnalysisNode(NodeType):

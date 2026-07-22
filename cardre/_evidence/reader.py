@@ -1,172 +1,86 @@
-"""ArtifactEvidenceReader — typed evidence access from immutable artifacts.
+"""Backward-compat adapter — wraps new EvidenceReader for old ProjectStore callers.
 
-The reader is a thin dispatcher over the EvidenceAdapter registry
-(``cardre._evidence.adapters``). Each ``EvidenceKind`` has an adapter that
-owns matching and parsing; the reader resolves artifacts via ``ProjectStore``
-and delegates to the adapter.
+Deprecated: use ``cardre.adapters.evidence.reader.EvidenceReader`` instead.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import polars as pl
 
-from cardre._evidence.adapters import get_adapter
-from cardre._evidence.adapters._base import match
 from cardre._evidence.kinds import (
-    AmbiguousEvidenceError,
     EvidenceKind,
-    EvidenceNotFoundError,
     EvidenceParseError,
 )
-from cardre._evidence.profiles import EVIDENCE_PROFILES
+from cardre.adapters.evidence.parsers import get_adapter, match
+from cardre.adapters.evidence.reader import EvidenceReader
 from cardre.domain.artifacts import ArtifactRef
-from cardre.store import ProjectStore
+from cardre.store.artifact_repo import ArtifactRepository
+from cardre.store.run_step_repo import RunStepRepository
+
+
+class _StoreArtifactReader:
+    """Adapts a ProjectStore to the ArtifactReader protocol."""
+
+    def __init__(self, store: Any) -> None:
+        self._store = store
+
+    def read_bytes(self, artifact: ArtifactRef) -> bytes:
+        return self.resolve_path(artifact).read_bytes()
+
+    def resolve_path(self, artifact: ArtifactRef) -> Path:
+        return self._store.artifact_path(artifact)
 
 
 class ArtifactEvidenceReader:
-    """Reads typed evidence from immutable Artifacts through a ProjectStore.
+    """Backward-compatible reader that wraps the new EvidenceReader.
 
-    Two usage patterns::
-
-        # 1) Find evidence within a mixed list (Node input_artifacts):
-        reader.find(artifacts, EvidenceKind.BIN_DEFINITION)
-
-        # 2) Read a known artifact by ID (reporting/comparison):
-        reader.read(artifact_id, EvidenceKind.WOE_IV_EVIDENCE)
+    Constructed with a ``ProjectStore``, just like the original.
     """
 
-    def __init__(self, store: ProjectStore) -> None:
-        self._store = store
-
-    # ------------------------------------------------------------------
-    # Public: find
-    # ------------------------------------------------------------------
+    def __init__(self, store: Any) -> None:
+        self._inner = EvidenceReader(
+            artifact_reader=_StoreArtifactReader(store),
+            artifact_repo=ArtifactRepository(store),
+            run_step_repo=RunStepRepository(store),
+        )
 
     def find(self, artifacts: list[ArtifactRef], kind: EvidenceKind) -> Any:
-        """Return typed evidence from the single matching Artifact.
-
-        Raises ``EvidenceNotFoundError`` or ``AmbiguousEvidenceError``.
-        """
-        spec = get_adapter(kind)
-        candidates = match(artifacts, spec.profile, self._store)
-        if not candidates:
-            profile = EVIDENCE_PROFILES.get(kind)
-            raise EvidenceNotFoundError(
-                kind,
-                candidate_artifact_ids=[a.artifact_id for a in artifacts],
-                expected_schema=profile.schema_version if profile else None,
-                expected_role=",".join(sorted(profile.expected_roles)) if profile else None,
-                expected_artifact_type=",".join(sorted(profile.expected_artifact_types)) if profile else None,
-                expected_media_type=",".join(sorted(profile.expected_media_types)) if profile else None,
-            )
-        if len(candidates) > 1:
-            profile = EVIDENCE_PROFILES.get(kind)
-            raise AmbiguousEvidenceError(
-                kind,
-                candidates,
-                expected_schema=profile.schema_version if profile else None,
-                expected_role=",".join(sorted(profile.expected_roles)) if profile else None,
-                expected_artifact_type=",".join(sorted(profile.expected_artifact_types)) if profile else None,
-                expected_media_type=",".join(sorted(profile.expected_media_types)) if profile else None,
-            )
-        return self._parse(candidates[0], kind)
+        return self._inner.find(artifacts, kind)
 
     def find_optional(self, artifacts: list[ArtifactRef], kind: EvidenceKind) -> Any | None:
-        """Like ``find`` but returns ``None`` when no match or ambiguity."""
-        try:
-            return self.find(artifacts, kind)
-        except (EvidenceNotFoundError, AmbiguousEvidenceError):
-            return None
-
-    # ------------------------------------------------------------------
-    # Public: read by artifact ID
-    # ------------------------------------------------------------------
+        return self._inner.find_optional(artifacts, kind)
 
     def read(self, artifact_id: str, kind: EvidenceKind) -> Any:
-        """Read typed evidence from a known artifact ID.
-
-        Raises ``EvidenceNotFoundError`` if the artifact does not exist
-        or does not match the expected profile.
-        """
-        from cardre.store.artifact_repo import ArtifactRepository
-        art = ArtifactRepository(self._store).get(artifact_id)
-        if art is None:
-            profile = EVIDENCE_PROFILES.get(kind)
-            raise EvidenceNotFoundError(
-                kind,
-                artifact_id=artifact_id,
-                expected_schema=profile.schema_version if profile else None,
-                expected_role=",".join(sorted(profile.expected_roles)) if profile else None,
-                expected_artifact_type=",".join(sorted(profile.expected_artifact_types)) if profile else None,
-                expected_media_type=",".join(sorted(profile.expected_media_types)) if profile else None,
-            )
-        spec = get_adapter(kind)
-        matched = match([art], spec.profile, self._store)
-        if not matched:
-            profile = EVIDENCE_PROFILES.get(kind)
-            raise EvidenceNotFoundError(
-                kind,
-                artifact_id=artifact_id,
-                expected_schema=profile.schema_version if profile else None,
-                actual_schema=art.metadata.get("schema_version", ""),
-                expected_role=",".join(sorted(profile.expected_roles)) if profile else None,
-                expected_artifact_type=",".join(sorted(profile.expected_artifact_types)) if profile else None,
-                expected_media_type=",".join(sorted(profile.expected_media_types)) if profile else None,
-            )
-        return self._parse(matched[0], kind)
+        return self._inner.read(artifact_id, kind)
 
     def read_optional(self, artifact_id: str, kind: EvidenceKind) -> Any | None:
-        """Like ``read`` but returns ``None`` when no match exists."""
-        try:
-            return self.read(artifact_id, kind)
-        except EvidenceNotFoundError:
-            return None
+        return self._inner.read_optional(artifact_id, kind)
 
     def require_model(self, model_art: ArtifactRef, node_type: str) -> Any:
-        """Read and parse a model artifact; raise ValueError on failure."""
-        try:
-            model_typed = self.read_optional(model_art.artifact_id, EvidenceKind.MODEL_ARTIFACT)
-        except EvidenceParseError as exc:
-            raise ValueError(
-                f"{node_type} requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
-            ) from exc
-        if model_typed is None or not model_typed.model_family:
-            raise ValueError(
-                f"{node_type} requires model artifact {model_art.artifact_id!r} to be readable as MODEL_ARTIFACT evidence"
-            )
-        return model_typed
+        return self._inner.require_model(model_art, node_type)
 
     def read_dataframe(self, art: ArtifactRef) -> pl.DataFrame:
-        """Read a parquet dataset artifact."""
-        return pl.read_parquet(self._store.artifact_path(art))
+        return self._inner.read_dataframe(art)
 
-    def read_step_output_optional(
-        self,
-        run_step_id: str,
-        kind: EvidenceKind,
-    ) -> Any | None:
-        """Resolve output artifact IDs via artifact_lineage and scan for the given kind."""
-        from cardre.store.artifact_repo import ArtifactRepository
-        for aid in ArtifactRepository(self._store).output_artifact_ids_for_run_step(run_step_id):
-            result = self.read_optional(aid, kind)
-            if result is not None:
-                return result
-        return None
+    def read_step_output_optional(self, run_step_id: str, kind: EvidenceKind) -> Any | None:
+        return self._inner.read_step_output_optional(run_step_id, kind)
 
     # ------------------------------------------------------------------
-    # Internal: delegate to adapter registry
+    # Internal (exposed for test parity — deprecated)
     # ------------------------------------------------------------------
 
     def _match(self, artifacts: list[ArtifactRef], kind: EvidenceKind) -> list[ArtifactRef]:
-        """Delegate matching to the adapter spec's profile."""
         spec = get_adapter(kind)
-        return match(artifacts, spec.profile, self._store)
+        return match(artifacts, spec.profile, self._inner._reader)
 
     def _parse(self, art: ArtifactRef, kind: EvidenceKind) -> Any:
-        """Delegate parsing to the adapter for this evidence kind."""
-        path = self._store.artifact_path(art)
+        path = self._inner._reader.resolve_path(art)
         if not path.exists():
             raise EvidenceParseError(f"Artifact file not found: {path}")
-        return get_adapter(kind).parse(path, art, self._store)
+        return get_adapter(kind).parse(path, art, self._inner._reader)
+
+
+__all__ = ["ArtifactEvidenceReader"]

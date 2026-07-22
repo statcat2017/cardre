@@ -19,13 +19,13 @@ from cardre.artifacts import write_json_artifact
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.errors import NodeFailedWithArtifacts
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.node_parameters import (
+from cardre.nodes.contracts import NodeType
+from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.nodes.contracts import NodeType
 from cardre.nodes.validate._metrics_calculation import (
     calibration_summary,
     derive_binary_target,

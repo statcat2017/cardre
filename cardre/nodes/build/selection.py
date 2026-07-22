@@ -7,12 +7,6 @@ from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre._evidence.schemas import SCHEMA_SELECTION_DEFINITION
 from cardre.artifacts import write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.node_parameters import (
-    MethodOption,
-    NodeParameterSchema,
-    ParameterConstraint,
-    ParameterDefinition,
-)
 from cardre.nodes.build.selection_policy import (
     ClusterPolicy,
     ManualOverridePolicy,
@@ -20,6 +14,12 @@ from cardre.nodes.build.selection_policy import (
     RepresentativePolicy,
 )
 from cardre.nodes.contracts import NodeType
+from cardre.nodes.parameters import (
+    MethodOption,
+    NodeParameterSchema,
+    ParameterConstraint,
+    ParameterDefinition,
+)
 
 
 class VariableSelectionNode(NodeType):

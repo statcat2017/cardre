@@ -7,12 +7,12 @@ from cardre._evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
 from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION
 from cardre.execution.context import ExecutionContext, NodeOutput
-from cardre.node_parameters import (
+from cardre.nodes.contracts import NodeType
+from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
     ParameterDefinition,
 )
-from cardre.nodes.contracts import NodeType
 
 
 class ManualBinningNode(NodeType):
