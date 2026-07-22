@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sys
 import traceback
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -281,7 +282,7 @@ class StepRunner:
     @staticmethod
     def _filter_input_artifacts(
         spec: StepSpec,
-        allowed_roles: list[str],
+        allowed_roles: Sequence[str],
         artifacts: list[ArtifactRef],
     ) -> list[ArtifactRef]:
         if not artifacts:

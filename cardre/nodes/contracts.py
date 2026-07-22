@@ -29,6 +29,14 @@ class ArtifactContract:
     input_roles: tuple[str, ...] = ()
     output_roles: tuple[str, ...] = ()
 
+    @property
+    def input_roles_list(self) -> list[str]:
+        return list(self.input_roles)
+
+    @property
+    def output_roles_list(self) -> list[str]:
+        return list(self.output_roles)
+
 
 @dataclass(frozen=True)
 class NodeDefinition:
@@ -126,7 +134,7 @@ class NodeType(ABC):
         return defn
 
     @abstractmethod
-    def run(self, context: NodeContext) -> NodeResult: ...
+    def run(self, context: Any) -> NodeResult: ...
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
         return []
