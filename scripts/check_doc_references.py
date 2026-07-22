@@ -40,6 +40,8 @@ KNOWN_EXCEPTIONS: set[str] = {
     "docs/reference/",
     "docs/adr/",
     "docs/archive/",
+    "docs/architecture-rewrite/",
+    "docs/architecture-rewrite/batches/",
     "tests/",
     "scripts/",
     ".github/",
@@ -92,6 +94,7 @@ HISTORICAL_DIRS: set[str] = {
     "docs/plan-reviews",
     "docs/risk",
     "docs/data-sources",
+    "docs/architecture-rewrite",
 }
 
 # Pattern matches backtick-quoted paths that look like repo files
