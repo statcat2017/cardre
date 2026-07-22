@@ -146,12 +146,12 @@ jobs:
       - uses: ./.github/actions/setup-python-env
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          extras: sidecar,test
+          extras: sidecar,dev,test
       - name: Audit artifact reads
         run: make audit-artifact-reads
       - name: Run tests
         run: make test-python-ci
-
+    
   test-python-governance:
     needs: [detect-changes, lint, typecheck-python]
     if: needs.detect-changes.outputs.python == 'true' || needs.detect-changes.outputs.ci == 'true'
