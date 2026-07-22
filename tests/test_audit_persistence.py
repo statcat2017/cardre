@@ -14,8 +14,6 @@ import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
 
-pytestmark = pytest.mark.xfail(reason="Old StepRunner/execution path; needs NodeContext update")
-
 
 def _make_store(project_root: Path):
     from cardre.store.db import ProjectStore

@@ -13,8 +13,6 @@ from cardre.execution.worker import (
     ThreadRunDispatcher,
 )
 
-pytestmark = pytest.mark.xfail(reason="Execution path broken during Batch 04; restored in Batch 05")
-
 
 def _request(run_id: str = "run-1") -> RunRequest:
     return RunRequest(

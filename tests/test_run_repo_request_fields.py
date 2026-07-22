@@ -3,12 +3,8 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.store.run_repo import RunRepository
-
-pytestmark = pytest.mark.xfail(reason="Execution path broken during Batch 04; restored in Batch 05")
 
 
 def _seed_committed_plan_version(store):

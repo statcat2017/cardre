@@ -1,10 +1,6 @@
 .PHONY: test test-cov test-fail-fast test-evidence test-launch-core test-governance test-python-ci typecheck typecheck-python lint lint-line-counts lint-artifact-reads audit-artifact-reads arch-check preflight v2-phase-check
 
-# Next target: 60 after characterization tests land.
-# Temporarily lowered from 60 to 55 during Batch 04 because the old execution
-# path tests are xfailed and the new node tests need NodeContext wiring.
-# Restored in Batch 05.
-PYTEST_COV_FAIL_UNDER ?= 55
+PYTEST_COV_FAIL_UNDER ?= 60
 
 test:
 	python3 -m pytest tests/ -q --tb=short

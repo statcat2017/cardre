@@ -45,24 +45,162 @@ class NodeRegistry:
         return list(self._nodes.keys())
 
     def availability(self, node_type: str) -> Any:
-        return _NodeAvailability(available=False, tier="unknown", disabled_reason="Shim stub — use NodeCatalogue")
+        cls = self._nodes.get(node_type)
+        if cls is None:
+            return _NodeAvailability(available=False, tier="unknown", disabled_reason=f"Unknown node type {node_type!r}.")
+        return _NodeAvailability(available=True, tier="launch")
 
     def is_available(self, node_type: str) -> bool:
-        return False
+        return self.availability(node_type).available
 
     def instantiate(self, node_type: str) -> NodeType:
-        raise RuntimeError("NodeRegistry stub — use NodeCatalogue")
+        cls = self.resolve(node_type)
+        return cls()
 
     @classmethod
     def with_defaults(cls) -> NodeRegistry:
-        return cls()
+        reg = cls()
+        _register_launch_nodes(reg)
+        _register_deferred_nodes(reg)
+        return reg
 
     def list_launch_nodes(self) -> list[str]:
-        return []
+        return [nt for nt, cls in self._nodes.items() if not getattr(cls, "_deferred", False)]
 
     def list_deferred_nodes(self) -> list[str]:
-        return []
+        return [nt for nt, cls in self._nodes.items() if getattr(cls, "_deferred", False)]
 
     @property
     def catalogue(self) -> Any:
         raise RuntimeError("NodeRegistry stub — use NodeCatalogue")
+
+
+def _deferred(cls: type[NodeType]) -> type[NodeType]:
+    cls._deferred = True
+    return cls
+
+
+def _register_launch_nodes(reg: NodeRegistry) -> None:
+    from cardre.nodes.build import (
+        AutomaticBinningNode,
+        BuildSummaryReportNode,
+        CalculateWoeIvNode,
+        CalibrationDiagnosticsNode,
+        CoefficientSignCheckNode,
+        FrozenScorecardBundleNode,
+        LogisticRegressionNode,
+        ManualBinningNode,
+        NoopNode,
+        PythonScoringExportNode,
+        ScorecardTableExportNode,
+        ScoreScalingNode,
+        SeparationDiagnosticsNode,
+        SqlScoringExportNode,
+        TechnicalManifestExportNode,
+        VariableClusteringNode,
+        VariableSelectionNode,
+        VifDiagnosticsNode,
+        WoeTransformTrainNode,
+    )
+    from cardre.nodes.prep import (
+        ApplyExclusionsNode,
+        DefineModellingMetadataNode,
+        DevelopmentSampleDefinitionNode,
+        ExplicitMissingOutlierTreatmentNode,
+        ImportTabularDatasetNode,
+        ProfileDatasetNode,
+        SplitTrainTestOotNode,
+        ValidateBinaryTargetNode,
+    )
+    from cardre.nodes.validate import (
+        ApplyModelNode,
+        ApplyWoeMappingNode,
+        CutoffAnalysisNode,
+        ValidationMetricsNode,
+    )
+
+    for n in [
+        ApplyExclusionsNode,
+        DevelopmentSampleDefinitionNode,
+        DefineModellingMetadataNode,
+        ExplicitMissingOutlierTreatmentNode,
+        CoefficientSignCheckNode,
+        CalibrationDiagnosticsNode,
+        SeparationDiagnosticsNode,
+        VifDiagnosticsNode,
+        ImportTabularDatasetNode,
+        ProfileDatasetNode,
+        ValidateBinaryTargetNode,
+        SplitTrainTestOotNode,
+        AutomaticBinningNode,
+        CalculateWoeIvNode,
+        VariableClusteringNode,
+        VariableSelectionNode,
+        ManualBinningNode,
+        NoopNode,
+        TechnicalManifestExportNode,
+        WoeTransformTrainNode,
+        LogisticRegressionNode,
+        ScoreScalingNode,
+        FrozenScorecardBundleNode,
+        BuildSummaryReportNode,
+        ScorecardTableExportNode,
+        PythonScoringExportNode,
+        SqlScoringExportNode,
+        ApplyWoeMappingNode,
+        ApplyModelNode,
+        ValidationMetricsNode,
+        CutoffAnalysisNode,
+    ]:
+        reg.register(n)
+
+
+def _register_deferred_nodes(reg: NodeRegistry) -> None:
+    from cardre.nodes import (
+        AlternativeDataManifestNode,
+        CalibrateProbabilitiesNode,
+        CatBoostClassifierNode,
+        DecisionTreeNode,
+        DefineRejectPopulationNode,
+        FairnessReportNode,
+        FeatureSelectionEmbeddedNode,
+        FeatureSelectionFilterNode,
+        GradientBoostingClassifierNode,
+        HyperparameterTuningNode,
+        LightGBMClassifierNode,
+        ModelExplainabilityNode,
+        ModelLimitationsNode,
+        ProxyRiskReportNode,
+        RandomForestClassifierNode,
+        RejectInferenceAugmentationNode,
+        RejectInferenceNoneNode,
+        ResampleTrainingDataNode,
+        SmoteTrainingDataNode,
+        ThresholdOptimizationNode,
+        XGBoostClassifierNode,
+    )
+
+    for n in [
+        RandomForestClassifierNode,
+        GradientBoostingClassifierNode,
+        XGBoostClassifierNode,
+        LightGBMClassifierNode,
+        CatBoostClassifierNode,
+        FeatureSelectionFilterNode,
+        FeatureSelectionEmbeddedNode,
+        HyperparameterTuningNode,
+        ResampleTrainingDataNode,
+        SmoteTrainingDataNode,
+        ModelExplainabilityNode,
+        ModelLimitationsNode,
+        FairnessReportNode,
+        ProxyRiskReportNode,
+        AlternativeDataManifestNode,
+        RejectInferenceNoneNode,
+        RejectInferenceAugmentationNode,
+        DecisionTreeNode,
+        CalibrateProbabilitiesNode,
+        DefineRejectPopulationNode,
+        ThresholdOptimizationNode,
+    ]:
+        reg.register(_deferred(n))

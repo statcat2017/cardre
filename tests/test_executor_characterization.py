@@ -12,8 +12,6 @@ import json
 import uuid
 from pathlib import Path
 
-import pytest
-
 from cardre.domain.run import RunStepStatus
 from cardre.domain.step import StepSpec
 from cardre.execution.action_planner import _StepAction
@@ -21,8 +19,6 @@ from cardre.execution.executor import PlanExecutor
 from cardre.store.plan_repo import PlanRepository
 from cardre.store.run_repo import RunRepository
 from cardre.store.run_step_repo import RunStepRepository
-
-pytestmark = pytest.mark.xfail(reason="Execution path broken during Batch 04; restored in Batch 05")
 
 # ---------------------------------------------------------------------------
 # Helpers (self-contained — no shared mutating state)

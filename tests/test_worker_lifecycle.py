@@ -5,15 +5,11 @@ from __future__ import annotations
 import json
 import uuid
 
-import pytest
-
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.execution.executor import _HeartbeatWatchdog
 from cardre.execution.worker import RunRequest, RunWorker
 from cardre.store.db import ProjectStore
 from cardre.store.run_repo import RunRepository
-
-pytestmark = pytest.mark.xfail(reason="Execution path broken during Batch 04; restored in Batch 05")
 
 
 def test_worker_closes_store_on_success(store, monkeypatch):

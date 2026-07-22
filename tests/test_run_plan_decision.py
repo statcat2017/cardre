@@ -18,8 +18,6 @@ from cardre.domain.errors import (
     PlanVersionNotCommittedError,
 )
 
-pytestmark = pytest.mark.xfail(reason="Execution path broken during Batch 04; restored in Batch 05")
-
 
 def _make_store(project_root: Path):
     from cardre.store.db import ProjectStore

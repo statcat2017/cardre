@@ -10,11 +10,7 @@ import json
 import uuid
 from pathlib import Path
 
-import pytest
-
 from cardre.domain.diagnostics import utc_now_iso
-
-pytestmark = pytest.mark.xfail(reason="Execution path broken during Batch 04; restored in Batch 05")
 
 
 def _make_store(project_root: Path):
