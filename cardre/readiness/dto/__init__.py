@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from pydantic import BaseModel, Field, computed_field
 
-from cardre.reporting.types import ReportMode
+
+class ReportMode(StrEnum):
+    FULL = "full"
+    SUMMARY = "summary"
 
 
 class ReadinessFinding(BaseModel):

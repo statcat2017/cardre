@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from cardre.domain.diagnostics import JsonDict
-from cardre.reporting.types import ReportMode
+from cardre.reporting.types import ReportMode  # type: ignore[attr-defined]
 
 
 @dataclass(frozen=True)

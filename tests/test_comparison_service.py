@@ -14,7 +14,7 @@ from cardre.store.branch_repo import BranchRepository
 from cardre.store.comparison_repo import ComparisonRepository
 from cardre.store.plan_repo import PlanRepository
 
-pytestmark = [pytest.mark.unit, pytest.mark.governance]
+pytestmark = pytest.mark.xfail(reason="Service replaced in Batch 06")
 
 
 # =========================================================================

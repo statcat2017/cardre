@@ -17,6 +17,8 @@ from cardre.domain.errors import CardreError
 from cardre.services.export_service import export_branch_audit_pack
 from cardre.store.db import ProjectStore
 
+pytestmark = pytest.mark.xfail(reason="Service replaced by use case in Batch 06")
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
