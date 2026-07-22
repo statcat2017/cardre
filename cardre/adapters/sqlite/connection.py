@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from cardre.adapters.sqlite.artifact_repo import ArtifactRepo
 from cardre.adapters.sqlite.branch_repo import BranchRepo
 from cardre.adapters.sqlite.champion_repo import ChampionRepo
 from cardre.adapters.sqlite.comparison_repo import ComparisonRepo
