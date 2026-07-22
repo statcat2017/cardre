@@ -5,7 +5,17 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from cardre.adapters.sqlite.artifact_repo import ArtifactRepo
+from cardre.adapters.sqlite.branch_repo import BranchRepo
+from cardre.adapters.sqlite.champion_repo import ChampionRepo
+from cardre.adapters.sqlite.comparison_repo import ComparisonRepo
+from cardre.adapters.sqlite.evidence_repo import EvidenceRepo
+from cardre.adapters.sqlite.manual_binning_repo import ManualBinningRepo
+from cardre.adapters.sqlite.plan_repo import PlanRepo
 from cardre.adapters.sqlite.project_repo import ProjectRepo
+from cardre.adapters.sqlite.run_repo import RunRepo
+from cardre.adapters.sqlite.run_step_repo import RunStepRepo
+from cardre.adapters.sqlite.step_repo import StepRepo
 from cardre.application.ports.project_registry import ProjectRegistryPort
 from cardre.application.ports.unit_of_work import UnitOfWork
 
@@ -20,6 +30,46 @@ class SqliteUnitOfWork:
     @property
     def projects(self) -> ProjectRepo:
         return ProjectRepo(self._conn)
+
+    @property
+    def plans(self) -> PlanRepo:
+        return PlanRepo(self._conn)
+
+    @property
+    def steps(self) -> StepRepo:
+        return StepRepo(self._conn)
+
+    @property
+    def runs(self) -> RunRepo:
+        return RunRepo(self._conn)
+
+    @property
+    def run_steps(self) -> RunStepRepo:
+        return RunStepRepo(self._conn)
+
+    @property
+    def artifacts(self) -> ArtifactRepo:
+        return ArtifactRepo(self._conn)
+
+    @property
+    def evidence(self) -> EvidenceRepo:
+        return EvidenceRepo(self._conn)
+
+    @property
+    def branches(self) -> BranchRepo:
+        return BranchRepo(self._conn)
+
+    @property
+    def comparisons(self) -> ComparisonRepo:
+        return ComparisonRepo(self._conn)
+
+    @property
+    def champion(self) -> ChampionRepo:
+        return ChampionRepo(self._conn)
+
+    @property
+    def manual_binning(self) -> ManualBinningRepo:
+        return ManualBinningRepo(self._conn)
 
     def commit(self) -> None:
         if self._begun:
@@ -66,6 +116,46 @@ class SqliteReadOnlyUnitOfWork:
     @property
     def projects(self) -> ProjectRepo:
         return ProjectRepo(self._conn)
+
+    @property
+    def plans(self) -> PlanRepo:
+        return PlanRepo(self._conn)
+
+    @property
+    def steps(self) -> StepRepo:
+        return StepRepo(self._conn)
+
+    @property
+    def runs(self) -> RunRepo:
+        return RunRepo(self._conn)
+
+    @property
+    def run_steps(self) -> RunStepRepo:
+        return RunStepRepo(self._conn)
+
+    @property
+    def artifacts(self) -> ArtifactRepo:
+        return ArtifactRepo(self._conn)
+
+    @property
+    def evidence(self) -> EvidenceRepo:
+        return EvidenceRepo(self._conn)
+
+    @property
+    def branches(self) -> BranchRepo:
+        return BranchRepo(self._conn)
+
+    @property
+    def comparisons(self) -> ComparisonRepo:
+        return ComparisonRepo(self._conn)
+
+    @property
+    def champion(self) -> ChampionRepo:
+        return ChampionRepo(self._conn)
+
+    @property
+    def manual_binning(self) -> ManualBinningRepo:
+        return ManualBinningRepo(self._conn)
 
     def commit(self) -> None:
         pass
