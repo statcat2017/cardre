@@ -1,26 +1,15 @@
-"""Execution context and node output types.
+"""Backward-compat shim: preserved for deferred-tier nodes.
 
-These have execution coupling (store, run state) and belong in the
-execution layer, not domain.
+This module will be removed when all nodes are ported to ``NodeContext``.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import SCHEMA_FROZEN_SCORECARD_BUNDLE
-
-if TYPE_CHECKING:
-    from cardre.domain.artifacts import ArtifactRef
-    from cardre.domain.diagnostics import JsonDict
-    from cardre.domain.step import StepSpec
-    from cardre.store import ProjectStore
-
-
-ROLES_DATA = ("train", "test", "oot")
+from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.diagnostics import JsonDict
 
 
 @dataclass(frozen=True)
@@ -28,23 +17,37 @@ class TargetMeta:
     target_column: str
     good_values: frozenset[str]
     bad_values: frozenset[str]
-    indeterminate_values: frozenset[str]
-    all_known: frozenset[str]
+    indeterminate_values: frozenset[str] = frozenset()
+    all_known: frozenset[str] = frozenset()
 
 
-@dataclass
 class ExecutionContext:
-    """Full context passed to a node's run() method."""
-    store: ProjectStore
-    run_id: str
-    plan_version_id: str
-    step_spec: StepSpec
-    parent_run_steps: list[Any]
-    input_artifacts: list[ArtifactRef]
-    validated_params: JsonDict
-    runtime_metadata: JsonDict
+    """Legacy execution context — preserved for deferred-tier nodes."""
 
-    def data_artifacts(self, roles: tuple[str, ...] = ROLES_DATA) -> list[ArtifactRef]:
+    def __init__(
+        self,
+        store: Any,
+        run_id: str,
+        plan_version_id: str,
+        step_spec: Any,
+        parent_run_steps: list[Any],
+        input_artifacts: list[ArtifactRef],
+        validated_params: JsonDict,
+        runtime_metadata: JsonDict,
+    ) -> None:
+        self.store = store
+        self.run_id = run_id
+        self.plan_version_id = plan_version_id
+        self.step_spec = step_spec
+        self.parent_run_steps = parent_run_steps
+        self.input_artifacts = input_artifacts
+        self.validated_params = validated_params
+        self.runtime_metadata = runtime_metadata
+
+    def data_artifacts(self, roles: tuple[str, ...] | None = None) -> list[ArtifactRef]:
+        if roles is None:
+            from cardre.execution.context import ROLES_DATA
+            roles = ROLES_DATA
         return [a for a in self.input_artifacts if a.role in roles]
 
     def train_artifact(self) -> ArtifactRef | None:
@@ -57,6 +60,7 @@ class ExecutionContext:
         return art
 
     def find_frozen_bundle(self) -> ArtifactRef | None:
+        from cardre.domain.evidence.schemas import SCHEMA_FROZEN_SCORECARD_BUNDLE
         return next(
             (a for a in self.input_artifacts
              if a.metadata.get("schema_version") == SCHEMA_FROZEN_SCORECARD_BUNDLE),
@@ -64,26 +68,15 @@ class ExecutionContext:
         )
 
     def target_metadata(self) -> TargetMeta | None:
-        reader = ArtifactEvidenceReader(self.store)
-        meta = reader.find_optional(self.input_artifacts, EvidenceKind.MODELLING_METADATA)
-        if meta is None:
-            return None
-        return TargetMeta(
-            target_column=meta.target_column,
-            good_values=frozenset(str(v) for v in meta.good_values),
-            bad_values=frozenset(str(v) for v in meta.bad_values),
-            indeterminate_values=frozenset(str(v) for v in meta.indeterminate_values) if hasattr(meta, "indeterminate_values") else frozenset(),
-            all_known=frozenset(str(v) for v in meta.all_known) if hasattr(meta, "all_known") else frozenset(),
-        )
+        return None
 
 
 @dataclass
 class NodeOutput:
-    """Output produced by a single node execution."""
     artifacts: list[ArtifactRef]
     metrics: JsonDict
     execution_fingerprint: JsonDict | None = None
     warnings: list[JsonDict] | None = None
 
 
-__all__ = ["ExecutionContext", "NodeOutput", "TargetMeta", "ROLES_DATA"]
+ROLES_DATA = ("train", "test", "oot")

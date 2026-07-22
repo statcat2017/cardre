@@ -175,6 +175,10 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, AdapterSpec] = {
         profile=EVIDENCE_PROFILES[EvidenceKind.SPLIT_SUMMARY],
         parse=lambda path, art, reader: SplitSummary.from_json(read_json_payload(path), artifact_id=art.artifact_id),
     ),
+    EvidenceKind.RUN_SUMMARY: AdapterSpec(
+        profile=EVIDENCE_PROFILES[EvidenceKind.RUN_SUMMARY],
+        parse=lambda path, art, reader: read_json_payload(path),
+    ),
     EvidenceKind.TECHNICAL_MANIFEST_INDEX: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.TECHNICAL_MANIFEST_INDEX],
         parse=lambda path, art, reader: TechnicalManifestIndex.from_json(read_json_payload(path), artifact_id=art.artifact_id),

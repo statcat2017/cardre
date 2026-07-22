@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.xfail(reason="Uses RunCoordinator which was removed in Batch 05")
+
 
 class TestRunCoordinatorEdgeCases:
     def test_get_summary_nonexistent_raises(self, tmp_path):

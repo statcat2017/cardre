@@ -33,6 +33,7 @@ class EvidenceKind(Enum):
     APPLY_MODEL_EVIDENCE = "apply_model_evidence"
     VALIDATION_EVIDENCE = "validation_evidence"
     REPORT_BUNDLE = "report_bundle"
+    RUN_SUMMARY = "run_summary"
     TECHNICAL_MANIFEST_INDEX = "technical_manifest_index"
     COMPARISON_ARTIFACT = "comparison_artifact"
     FEATURE_SELECTION_EVIDENCE = "feature_selection_evidence"

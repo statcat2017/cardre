@@ -6,10 +6,10 @@ import uuid
 
 import pytest
 
+from cardre.application.execution.step_graph import descendant_closure as _descendant_closure
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import BranchValidationError
 from cardre.domain.step import StepSpec
-from cardre.execution.step_graph import descendant_closure as _descendant_closure
 from cardre.services.branch_service import (
     BranchService,
 )

@@ -12,8 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from cardre.application.execution.step_graph import descendant_closure
 from cardre.domain.step import StepSpec
-from cardre.execution.step_graph import descendant_closure
 
 if TYPE_CHECKING:
     from cardre.services.branch_validator import ValidatedBranchData

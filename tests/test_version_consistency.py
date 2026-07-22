@@ -21,7 +21,7 @@ def test_health_response_uses_central_version():
 def test_fingerprints_uses_central_version():
     """fingerprints.CARDRE_VERSION matches the central version."""
     from cardre._version import __version__
-    from cardre.execution.fingerprints import CARDRE_VERSION
+    from cardre.application.execution.fingerprints import CARDRE_VERSION
 
     assert __version__ == CARDRE_VERSION
 

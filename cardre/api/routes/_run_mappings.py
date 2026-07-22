@@ -27,11 +27,11 @@ from cardre.api.schemas import (
     RunResponse,
     RunStepResponse,
 )
+from cardre.application.runs.run_summary import RunSummary
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge
 from cardre.domain.manual_binning import ManualBinningReview
 from cardre.domain.run import RunStep
-from cardre.services.run_coordinator import RunSummary
 
 _DIAGNOSTIC_FIELDS = {"code", "message", "severity", "source", "created_at"}
 
@@ -59,7 +59,7 @@ def run_summary_to_response(summary: RunSummary) -> RunResponse:
         branch_id=summary.branch_id,
         executed_step_ids=summary.executed_step_ids or [],
         diagnostics=[diagnostic_to_response(d) for d in (summary.diagnostics or [])],
-        latest_error=diagnostic_to_response(summary.latest_error) if summary.latest_error else None,
+        latest_error=summary.latest_error,
         heartbeat_at=summary.heartbeat_at,
         is_stale=summary.is_stale,
     )
