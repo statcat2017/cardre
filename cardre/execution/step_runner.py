@@ -145,8 +145,10 @@ class StepRunner:
                         "errors": validation_errors,
                     },
                 )
+            _is_new_style = '__definition__' in type(node).__dict__
             input_artifacts = self._filter_input_artifacts(
                 spec, node.contract().input_roles, resolved_input_artifacts,
+                new_style=_is_new_style,
             )
 
             for pid in spec.parent_step_ids:
@@ -156,19 +158,10 @@ class StepRunner:
                     if a in input_artifacts
                 ]
 
-            # Build the context: new-style nodes that have an explicit
-            # __definition__ class variable get a NodeContext; old-style
-            # nodes that rely on the backward-compat property get the
-            # legacy ExecutionContext.
-            if '__definition__' in type(node).__dict__:
-                try:
-                    bridge = _build_node_context_bridge(self._store, run_id, plan_version_id, spec, input_artifacts, normalized_params)
-                    node_output_raw = node.run(bridge.node_context)
-                    node_output = _node_result_to_output(node_output_raw, bridge)
-                except Exception as exc:
-                    raise RuntimeError(
-                        f"Bridge execution failed for {spec.node_type!r}: {exc}"
-                    ) from exc
+            if _is_new_style:
+                bridge = _build_node_context_bridge(self._store, run_id, plan_version_id, spec, input_artifacts, normalized_params)
+                node_output_raw = node.run(bridge.node_context)
+                node_output = _node_result_to_output(node_output_raw, bridge)
             else:
                 context = ExecutionContext(
                     store=self._store,
@@ -326,7 +319,13 @@ class StepRunner:
         spec: StepSpec,
         allowed: list[str],
         artifacts: list[ArtifactRef],
+        *,
+        new_style: bool = False,
     ) -> list[ArtifactRef]:
+        # New-style nodes with an explicit input contract but no declared
+        # roles should not receive any parent artifacts.
+        if new_style and not allowed:
+            return []
         if not allowed:
             return artifacts
         if not artifacts:
