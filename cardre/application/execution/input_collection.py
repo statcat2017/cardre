@@ -33,6 +33,9 @@ class StepInputCollection:
         return [a for a in self._input_artifacts if a.role == role]
 
     def by_kind(self, kind: EvidenceKind) -> list[Any]:
+        """Return all artifacts matching *kind*. Raises ``AmbiguousEvidenceError``
+        if multiple artifacts match (they should be disambiguated by the caller
+        or the plan author)."""
         result = self._reader.find_optional(self._input_artifacts, kind)
         if result is None:
             return []

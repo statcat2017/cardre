@@ -76,9 +76,14 @@ class EvidenceReader:
         return self._parse(candidates[0], kind)
 
     def find_optional(self, artifacts: list[ArtifactRef], kind: EvidenceKind) -> Any | None:
+        """Like ``find`` but returns ``None`` on not-found.
+
+        ``AmbiguousEvidenceError`` is NOT caught — ambiguity is always an error
+        and must be surfaced to the caller.
+        """
         try:
             return self.find(artifacts, kind)
-        except (EvidenceNotFoundError, AmbiguousEvidenceError):
+        except EvidenceNotFoundError:
             return None
 
     # ------------------------------------------------------------------
