@@ -51,10 +51,12 @@ class RunRepo:
 
     def transition(self, run_id: str, to_status: RunStatus, *,
                    expected_from: tuple[RunStatus, ...] = (RunStatus.RUNNING,)) -> bool:
-        from cardre.domain.run import _VALID_TRANSITIONS, RunStatus
-        if not any(to_status in _VALID_TRANSITIONS.get(s, set()) for s in expected_from):
-            raise ValueError(f"Invalid run state transition: {expected_from} -> {to_status!r}")
-        terminal = to_status in RunStatus.terminal()
+        from cardre.domain.run import _VALID_TRANSITIONS
+        from cardre.domain.run import RunStatus as RS
+        for s in expected_from:
+            if to_status not in _VALID_TRANSITIONS.get(s, set()):
+                raise ValueError(f"Invalid run state transition: {s!r} -> {to_status!r}")
+        terminal = to_status in RS.terminal()
         placeholders = ", ".join("?" for _ in expected_from)
         if terminal:
             from cardre.domain.diagnostics import utc_now_iso

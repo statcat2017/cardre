@@ -233,19 +233,15 @@ class ExportAuditPack:
             self._write_json(export_dir / "champion_assignment.json", champion)
             file_count += 1
         if command.include_report and run_id is not None:
-            try:
-                result = self._generate_report(GenerateReportCommand(
-                    project_id=command.project_id,
-                    run_id=run_id,
-                    target_branch_id=command.branch_id,
-                    report_mode=command.report_mode,
-                    output_dir=export_dir / "report",
-                ))
-                file_count += 2
-                diagnostics.append({"code": "REPORT_GENERATED", "path": result.html_path})
-            except Exception as exc:
-                diagnostics.append({"code": "REPORT_FAILED", "message": str(exc), "run_id": run_id})
-                partial = True
+            result = self._generate_report(GenerateReportCommand(
+                project_id=command.project_id,
+                run_id=run_id,
+                target_branch_id=command.branch_id,
+                report_mode=command.report_mode,
+                output_dir=export_dir / "report",
+            ))
+            file_count += 2
+            diagnostics.append({"code": "REPORT_GENERATED", "path": result.html_path})
         return file_count, partial
 
     def _resolve_export_dir(self, command: ExportAuditPackCommand) -> Path:

@@ -223,6 +223,24 @@ class TestFinalizeRunManifest:
             run = uow.runs.get(run_id)
             assert str(run.status) == "failed"
 
+    def test_created_run_cannot_be_succeeded(self, provisioned_project):
+        """A run in 'created' state cannot be finalised as succeeded without executing."""
+        project_id, plan_id, pv_id, run_id, root, uow_factory, registry = provisioned_project
+
+        publisher = FsManifestPublisher(root)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+
+        with pytest.raises(Exception, match="already finalised"):
+            finalize(run_id, "succeeded")
+
+        result = publisher.verify(run_id)
+        assert result["valid"] is False
+        assert result["error"] == "CANONICAL_MANIFEST_MISSING"
+
+        with uow_factory.read_only(project_id) as uow:
+            run = uow.runs.get(run_id)
+            assert str(run.status) == "created"
+
 
 class TestManifestHashing:
     """Unit tests for the shared manifest hashing functions."""
