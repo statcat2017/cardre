@@ -3,7 +3,7 @@
 # Coverage threshold. The original Batch 06 target was 60%, which assumes
 # Batch 05 execution-path tests (SubmitRun → ExecuteRun → FinalizeRun) are
 # un-xfailed. Those tests are deferred to a separate Batch 05 closeout PR.
-# 55% reflects the current state after Batch 06 cleanup (legacy code deleted,
+# 54% reflects the current state after Batch 06 cleanup (legacy code deleted,
 # new use-case tests ported). Restore to 60 after the Batch 05 closeout PR
 # adds the composed execution-path tests.
 PYTEST_COV_FAIL_UNDER ?= 54

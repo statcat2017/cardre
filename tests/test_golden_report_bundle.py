@@ -23,7 +23,10 @@ import pytest
 
 from cardre.workflows import build_canonical_scorecard_steps
 
-pytestmark = pytest.mark.xfail(reason="TechnicalManifestExportNode deferred to Batch 05")
+pytestmark = pytest.mark.xfail(
+    reason="Requires full execution pathway (PlanExecutor + legacy collector) which is Batch 05 closeout work. "
+           "Deferred to the Batch 05 closeout PR per sprint contract revision."
+)
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 GOLDEN_REPORT_BUNDLE = FIXTURE_DIR / "golden_report_bundle.json"
