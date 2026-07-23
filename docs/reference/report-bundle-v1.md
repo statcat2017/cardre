@@ -1,6 +1,6 @@
 # Report Bundle v1
 
-The report bundle is a Pydantic model (`cardre/reporting/schema.py`) that represents a complete governance-quality report.
+The report bundle is a Pydantic model (`cardre/application/reporting/schema.py`) that represents a complete governance-quality report.
 
 ## Top-Level Fields
 

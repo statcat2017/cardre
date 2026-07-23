@@ -6,8 +6,6 @@ now in cardre/application/plans/manual_binning_preview.py.
 
 from __future__ import annotations
 
-import math
-
 from cardre.application.plans.manual_binning_preview import (
     extract_event_rate_by_bin,
     extract_iv,

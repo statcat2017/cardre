@@ -146,8 +146,8 @@ def registered_project(store: ProjectStore) -> Callable[..., Project]:
 
 ### Scope
 
-Change `cardre/execution/run_lifecycle.py`, `cardre/reporting/schema.py`,
-`cardre/reporting/collector.py`, and lifecycle/report integrity tests. Do not
+Change `cardre/execution/run_lifecycle.py`, `cardre/application/reporting/schema.py`,
+`cardre/adapters/reporting/collector.py`, and lifecycle/report integrity tests. Do not
 put producer logic in the report collector.
 
 ### Design

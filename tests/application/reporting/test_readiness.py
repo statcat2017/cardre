@@ -6,8 +6,6 @@ persistence stack.
 
 from __future__ import annotations
 
-import pytest
-
 from cardre.application.reporting.readiness import check_report_readiness
 
 
@@ -36,7 +34,6 @@ class TestCheckReportReadiness:
     def test_missing_run_blocks(self, provisioned_project):
         project_id, uow_factory, _, _ = provisioned_project
         with uow_factory.for_project(project_id) as uow:
-            from cardre.domain.diagnostics import utc_now_iso
             plan_id = uow.plans.create_plan(project_id, "P")
             pv_id = uow.plans.create_version(plan_id, is_committed=True)
             branch_id = uow.branches.create_branch(

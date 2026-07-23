@@ -48,7 +48,7 @@ This work implements ADR-0004 without reopening ADR-0002.
 Change these production modules:
 
 - `cardre/execution/run_lifecycle.py`
-- `cardre/services/run_coordinator.py`
+- `cardre/application/runs/execute_run.py`
 - `cardre/execution/worker.py`
 
 Extend these tests:
@@ -65,7 +65,7 @@ Do not change:
 - `cardre/execution/executor.py` node execution semantics;
 - `cardre/store/run_repo.py` persistence schema or transition rules;
 - `cardre/domain/run.py` status values or state graph;
-- `cardre/services/staleness_service.py` staleness computation;
+- `cardre/application/evidence/explain_staleness.py` staleness computation;
 - `CONTEXT.md` or ADRs.
 
 ## Current Terminal-Path Map
@@ -214,7 +214,7 @@ The method must still return `None` so the original exception propagates.
 
 ### 3. Simplify normal Run execution
 
-File: `cardre/services/run_coordinator.py`
+File: `cardre/application/runs/execute_run.py`
 
 In `_execute_existing_running_run`, create the lifecycle with
 `RunLifecycle.start(...)`, not a direct constructor. This validates the
@@ -266,7 +266,7 @@ failure diagnostic and manifest before the error is re-raised.
 
 ### 4. Finalise persisted unavailable `to_node` Runs through the lifecycle
 
-File: `cardre/services/run_coordinator.py`
+File: `cardre/application/runs/execute_run.py`
 
 `run()` rejects new `to_node` requests before persistence, but
 `execute_created_run()` can load a persisted `to_node` Run. Replace the direct
@@ -292,7 +292,7 @@ in this work. It must gain a failed manifest whose `execution_mode` is
 
 ### 5. Finalise dispatcher startup failures through the lifecycle
 
-File: `cardre/services/run_coordinator.py`
+File: `cardre/application/runs/execute_run.py`
 
 In `_dispatch_async`, keep dispatch ownership in the dispatcher. When dispatch
 raises `CardreError`, construct the existing `RUN_DISPATCH_FAILED` diagnostic,
@@ -382,7 +382,7 @@ path has direct tests.
 
 ### 8. Finalise stale recovery through the lifecycle
 
-File: `cardre/services/run_coordinator.py`
+File: `cardre/application/runs/execute_run.py`
 
 In `_sweep_stale_running_runs`, construct the existing `RUN_RECOVERED_STALE`
 diagnostic first, including the optional `active_step_id`. Then replace the
