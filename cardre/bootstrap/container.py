@@ -8,6 +8,7 @@ from typing import Any
 
 from cardre.adapters.evidence.reader import EvidenceReader
 from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
 from cardre.adapters.rendering.html_report import HtmlReportRenderer
 from cardre.adapters.reporting.collector import ReportCollector
 from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
@@ -22,6 +23,7 @@ from cardre.application.projects.get_project import GetProject
 from cardre.application.projects.list_projects import ListProjects
 from cardre.application.reporting.export_audit_pack import ExportAuditPack
 from cardre.application.reporting.generate_report import GenerateReport
+from cardre.application.runs.finalize_run import FinalizeRun
 from cardre.bootstrap.settings import Settings
 
 
@@ -36,6 +38,8 @@ class Container:
     get_project: Any = None
     generate_report: Any = None
     export_audit_pack: Any = None
+    finalize_run: Any = None
+    manifest_publisher_factory: Any = None
 
 
 def build_container(settings: Settings) -> Container:
@@ -66,6 +70,15 @@ def build_container(settings: Settings) -> Container:
     ) -> ReportCollectorPort:
         return ReportCollector(reader, artifact_reader)
 
+    def manifest_publisher_factory(project_id: str) -> FsManifestPublisher:
+        return FsManifestPublisher(project_root(project_id))
+
+    def finalize_run_factory(project_id: str) -> FinalizeRun:
+        return FinalizeRun(
+            lambda: uow_factory.for_project(project_id),
+            manifest_publisher_factory(project_id),
+        )
+
     renderer = HtmlReportRenderer()
     generate_report = GenerateReport(
         uow_factory,
@@ -91,4 +104,6 @@ def build_container(settings: Settings) -> Container:
         get_project=GetProject(registry, uow_factory),
         generate_report=generate_report,
         export_audit_pack=export_audit_pack,
+        finalize_run=finalize_run_factory,
+        manifest_publisher_factory=manifest_publisher_factory,
     )

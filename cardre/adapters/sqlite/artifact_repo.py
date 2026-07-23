@@ -21,32 +21,31 @@ class ArtifactRepo:
             return str(existing["artifact_id"])
         from cardre.domain.diagnostics import utc_now_iso
         self._conn.execute(
-            "INSERT INTO artifacts (artifact_id, artifact_type, role, storage_key, "
-            "physical_hash, logical_hash, media_type, schema_version, created_at, metadata_json) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO artifacts (artifact_id, artifact_type, role, path, "
+            "physical_hash, logical_hash, media_type, created_at, metadata_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (artifact.artifact_id, artifact.artifact_type, artifact.role,
-             artifact.storage_key if hasattr(artifact, 'storage_key') and artifact.storage_key else artifact.physical_hash,
-             artifact.physical_hash, artifact.logical_hash, artifact.media_type,
-             artifact.metadata.get("schema_version", "") if hasattr(artifact, 'metadata') else "",
-             artifact.created_at or utc_now_iso(),
-             json.dumps(artifact.metadata) if hasattr(artifact, 'metadata') else "{}"),
+             artifact.path, artifact.physical_hash, artifact.logical_hash,
+             artifact.media_type, artifact.created_at or utc_now_iso(),
+             json.dumps(artifact.metadata)),
         )
         return artifact.artifact_id
 
     def get(self, artifact_id: str) -> ArtifactRef | None:
         row = self._conn.execute(
-            "SELECT artifact_id, artifact_type, role, storage_key, physical_hash, "
-            "logical_hash, media_type, schema_version, created_at, metadata_json "
+            "SELECT artifact_id, artifact_type, role, path, physical_hash, "
+            "logical_hash, media_type, created_at, metadata_json "
             "FROM artifacts WHERE artifact_id = ?", (artifact_id,)
         ).fetchone()
         if row is None:
             return None
+        metadata = json.loads(row["metadata_json"]) if row["metadata_json"] else {}
         return ArtifactRef(
             artifact_id=row["artifact_id"], artifact_type=row["artifact_type"],
-            role=row["role"], path=row["storage_key"],
+            role=row["role"], path=row["path"],
             physical_hash=row["physical_hash"], logical_hash=row["logical_hash"],
             media_type=row["media_type"], created_at=row["created_at"],
-            metadata={"schema_version": row["schema_version"]} | (json.loads(row["metadata_json"]) if row["metadata_json"] else {}),
+            metadata=metadata,
         )
 
     def get_for_project(self, project_id: str, artifact_id: str) -> ArtifactRef | None:
@@ -63,10 +62,10 @@ class ArtifactRepo:
             return None
         return ArtifactRef(
             artifact_id=row["artifact_id"], artifact_type=row["artifact_type"],
-            role=row["role"], path=row["storage_key"],
+            role=row["role"], path=row["path"],
             physical_hash=row["physical_hash"], logical_hash=row["logical_hash"],
             media_type=row["media_type"], created_at=row["created_at"],
-            metadata={"schema_version": row["schema_version"]} | (json.loads(row["metadata_json"]) if row["metadata_json"] else {}),
+            metadata=json.loads(row["metadata_json"]) if row["metadata_json"] else {},
         )
 
     def list_for_project(self, project_id: str, *, role: str | None = None,
@@ -90,10 +89,10 @@ class ArtifactRepo:
         ).fetchall()
         return [ArtifactRef(
             artifact_id=r["artifact_id"], artifact_type=r["artifact_type"],
-            role=r["role"], path=r["storage_key"],
+            role=r["role"], path=r["path"],
             physical_hash=r["physical_hash"], logical_hash=r["logical_hash"],
             media_type=r["media_type"], created_at=r["created_at"],
-            metadata={"schema_version": r["schema_version"]} | (json.loads(r["metadata_json"]) if r["metadata_json"] else {}),
+            metadata=json.loads(r["metadata_json"]) if r["metadata_json"] else {},
         ) for r in rows]
 
     def register_lineage(self, run_id: str, run_step_id: str, plan_version_id: str,
