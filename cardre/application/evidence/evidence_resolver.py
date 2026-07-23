@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge
+from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge, ResolvedEvidence
 from cardre.domain.run import ExecutionFingerprint, RunStep, RunStepStatus
 from cardre.domain.step import StepSpec
 
@@ -98,4 +98,48 @@ def resolve_evidence(
     return []
 
 
-__all__ = ["resolve_evidence"]
+def resolve_run_step_evidence(
+    uow: Any,
+    plan_version_id: str,
+    step_id: str,
+    *,
+    branch_id: str | None = None,
+    plan_id: str | None = None,
+    fingerprint_match: StepSpec | None = None,
+) -> ResolvedEvidence | None:
+    """Resolve one successful step and preserve how its evidence was found.
+
+    ``resolve_evidence`` predates audit exports and returns only edge/artifact
+    pairs.  Audit packs need the selected run step and provenance as well, so
+    this companion preserves that information without making callers infer it
+    from the returned edges.
+    """
+    candidates: list[tuple[RunStep | None, str]] = [
+        (uow.run_steps.get_latest_successful_step(plan_version_id, step_id, branch_id), "branch")
+    ]
+    if branch_id is not None:
+        candidates.append((uow.run_steps.get_latest_successful_step(plan_version_id, step_id, None), "full_plan"))
+    resolved_plan_id = plan_id or uow.plans.get_plan_id_for_version(plan_version_id)
+    if resolved_plan_id is not None:
+        candidates.append((uow.runs.get_latest_successful_step_across_plan(resolved_plan_id, step_id), "across_plan"))
+
+    for run_step, source_label in candidates:
+        if run_step is None or not _matches_fingerprint(run_step, fingerprint_match):
+            continue
+        edges = uow.evidence.get_edges_for_run_step(run_step.run_step_id)
+        artifacts = [
+            artifact
+            for edge in edges
+            for artifact in uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id)
+        ]
+        return ResolvedEvidence(
+            run_step_id=run_step.run_step_id,
+            run_step=run_step,
+            edges=edges,
+            artifacts=artifacts,
+            source_label=source_label,
+        )
+    return None
+
+
+__all__ = ["resolve_evidence", "resolve_run_step_evidence"]

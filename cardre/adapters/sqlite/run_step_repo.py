@@ -64,7 +64,7 @@ class RunStepRepo:
         row = self._conn.execute(
             f"SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
             f"WHERE rs.plan_version_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' "
-            f"{clause} ORDER BY rs.started_at DESC LIMIT 1",
+            f"AND r.status = 'succeeded' {clause} ORDER BY rs.started_at DESC LIMIT 1",
             params,
         ).fetchone()
         if row is None:

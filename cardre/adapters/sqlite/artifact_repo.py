@@ -121,3 +121,15 @@ class ArtifactRepo:
             "SELECT artifact_id FROM artifact_lineage WHERE run_id = ? AND direction = 'output'",
             (run_id,),
         ).fetchall()]
+
+    def artifacts_for_run_step(self, run_step_id: str) -> list[tuple[str, ArtifactRef]]:
+        rows = self._conn.execute(
+            "SELECT artifact_id, direction FROM artifact_lineage WHERE run_step_id = ? "
+            "ORDER BY created_at, lineage_id",
+            (run_step_id,),
+        ).fetchall()
+        return [
+            (row["direction"], artifact)
+            for row in rows
+            if (artifact := self.get(row["artifact_id"])) is not None
+        ]

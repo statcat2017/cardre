@@ -139,11 +139,6 @@ forbidden_modules = [
 ignore_imports = [
     "cardre.application.execution.input_collection -> cardre.adapters.evidence.reader",
     "cardre.application.execution.input_collection -> cardre.execution.context",
-    "cardre.application.reporting.generate_report -> cardre.reporting.collector",
-    "cardre.application.reporting.export_audit_pack -> cardre.reporting.types",
-    "cardre.application.reporting.readiness -> cardre.reporting.types",
-    "cardre.application.reporting.schema -> cardre.reporting.types",
-    "cardre.application.reporting.readiness -> cardre.branch_step_resolver",
 
 
 ]

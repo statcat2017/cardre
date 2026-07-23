@@ -13,9 +13,9 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from cardre._evidence.kinds import EvidenceKind
+from cardre.application.reporting.contracts import REQUIRED_STEPS_COMPARISON
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError, GovernanceNotEnabled
-from cardre.reporting.evidence_contract import REQUIRED_STEPS_COMPARISON
 
 
 @runtime_checkable

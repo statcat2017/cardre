@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, computed_field
 
-from cardre.reporting.types import ReportMode
+from cardre.application.reporting.contracts import ReportMode
 
 # ---------------------------------------------------------------------------
 # Source step reference — tracks exact vs inherited resolution
