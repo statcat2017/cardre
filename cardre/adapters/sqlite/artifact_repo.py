@@ -21,28 +21,32 @@ class ArtifactRepo:
             return str(existing["artifact_id"])
         from cardre.domain.diagnostics import utc_now_iso
         self._conn.execute(
-            "INSERT INTO artifacts (artifact_id, artifact_type, role, path, "
-            "physical_hash, logical_hash, media_type, created_at, metadata_json) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO artifacts (artifact_id, artifact_type, role, storage_key, "
+            "physical_hash, logical_hash, media_type, schema_version, created_at, metadata_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (artifact.artifact_id, artifact.artifact_type, artifact.role,
              artifact.path, artifact.physical_hash, artifact.logical_hash,
-             artifact.media_type, artifact.created_at or utc_now_iso(),
+             artifact.media_type,
+             artifact.metadata.get("schema_version", ""),
+             artifact.created_at or utc_now_iso(),
              json.dumps(artifact.metadata)),
         )
         return artifact.artifact_id
 
     def get(self, artifact_id: str) -> ArtifactRef | None:
         row = self._conn.execute(
-            "SELECT artifact_id, artifact_type, role, path, physical_hash, "
-            "logical_hash, media_type, created_at, metadata_json "
+            "SELECT artifact_id, artifact_type, role, storage_key, physical_hash, "
+            "logical_hash, media_type, schema_version, created_at, metadata_json "
             "FROM artifacts WHERE artifact_id = ?", (artifact_id,)
         ).fetchone()
         if row is None:
             return None
         metadata = json.loads(row["metadata_json"]) if row["metadata_json"] else {}
+        if row["schema_version"]:
+            metadata["schema_version"] = row["schema_version"]
         return ArtifactRef(
             artifact_id=row["artifact_id"], artifact_type=row["artifact_type"],
-            role=row["role"], path=row["path"],
+            role=row["role"], path=row["storage_key"],
             physical_hash=row["physical_hash"], logical_hash=row["logical_hash"],
             media_type=row["media_type"], created_at=row["created_at"],
             metadata=metadata,
@@ -60,12 +64,15 @@ class ArtifactRepo:
         ).fetchone()
         if row is None:
             return None
+        metadata = json.loads(row["metadata_json"]) if row["metadata_json"] else {}
+        if row["schema_version"]:
+            metadata["schema_version"] = row["schema_version"]
         return ArtifactRef(
             artifact_id=row["artifact_id"], artifact_type=row["artifact_type"],
-            role=row["role"], path=row["path"],
+            role=row["role"], path=row["storage_key"],
             physical_hash=row["physical_hash"], logical_hash=row["logical_hash"],
             media_type=row["media_type"], created_at=row["created_at"],
-            metadata=json.loads(row["metadata_json"]) if row["metadata_json"] else {},
+            metadata=metadata,
         )
 
     def list_for_project(self, project_id: str, *, role: str | None = None,
@@ -87,13 +94,19 @@ class ArtifactRepo:
             f"WHERE {' AND '.join(clauses)} ORDER BY a.created_at DESC LIMIT ? OFFSET ?",
             params + [limit, offset],
         ).fetchall()
-        return [ArtifactRef(
-            artifact_id=r["artifact_id"], artifact_type=r["artifact_type"],
-            role=r["role"], path=r["path"],
-            physical_hash=r["physical_hash"], logical_hash=r["logical_hash"],
-            media_type=r["media_type"], created_at=r["created_at"],
-            metadata=json.loads(r["metadata_json"]) if r["metadata_json"] else {},
-        ) for r in rows]
+        result = []
+        for r in rows:
+            metadata = json.loads(r["metadata_json"]) if r["metadata_json"] else {}
+            if r["schema_version"]:
+                metadata["schema_version"] = r["schema_version"]
+            result.append(ArtifactRef(
+                artifact_id=r["artifact_id"], artifact_type=r["artifact_type"],
+                role=r["role"], path=r["storage_key"],
+                physical_hash=r["physical_hash"], logical_hash=r["logical_hash"],
+                media_type=r["media_type"], created_at=r["created_at"],
+                metadata=metadata,
+            ))
+        return result
 
     def register_lineage(self, run_id: str, run_step_id: str, plan_version_id: str,
                          step_id: str, artifact_id: str, direction: str, branch_id: str | None = None) -> None:

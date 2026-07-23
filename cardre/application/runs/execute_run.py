@@ -154,6 +154,31 @@ class ExecuteRun:
                     )
                     persist_uow.run_steps.insert(run_step)
                     run_step_records[step.step_id] = run_step
+
+                    for art_ref in output_refs:
+                        persist_uow.artifacts.register_lineage(
+                            run_id=command.run_id,
+                            run_step_id=run_step.run_step_id,
+                            plan_version_id=pv_id,
+                            step_id=step.step_id,
+                            artifact_id=art_ref.artifact_id,
+                            direction="output",
+                            branch_id=run.branch_id if hasattr(run, "branch_id") else None,
+                        )
+                    for parent_step_id, parent_outputs in step_outputs.items():
+                        if parent_step_id == step.step_id:
+                            continue
+                        for parent_art in parent_outputs:
+                            persist_uow.artifacts.register_lineage(
+                                run_id=command.run_id,
+                                run_step_id=run_step.run_step_id,
+                                plan_version_id=pv_id,
+                                step_id=step.step_id,
+                                artifact_id=parent_art.artifact_id,
+                                direction="input",
+                                branch_id=run.branch_id if hasattr(run, "branch_id") else None,
+                            )
+
                     persist_uow.commit()
                 except Exception:
                     persist_uow.rollback()
