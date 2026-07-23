@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import json
 from typing import Any
 
 from cardre.application.evidence.evidence_resolver import resolve_run_step_evidence
@@ -38,6 +39,7 @@ from cardre.application.reporting.schema import (
     VariableInfo,
     WoeSmoothingInfo,
 )
+from cardre.domain.artifacts import json_logical_hash
 from cardre.application.reporting.schema import (
     ResolvedStepRef as ReportStepRef,
 )
@@ -190,6 +192,22 @@ class ReportCollector:
                     ))
 
         bundle.reproducibility.run_id = run.run_id
+        manifest_path = self._artifact_reader.root / "exports" / f"manifest-{run.run_id}" / "manifest.json"
+        if not manifest_path.exists():
+            limitations.append(Limitation(code="CANONICAL_MANIFEST_MISSING", message="Canonical run manifest is missing."))
+        else:
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                recorded_hash = manifest.get("manifest_hash", "")
+                hashed = dict(manifest)
+                hashed["manifest_hash"] = ""
+                if not recorded_hash or recorded_hash != json_logical_hash(hashed):
+                    limitations.append(Limitation(severity="blocker", code="ARTIFACT_HASH_UNRESOLVED", message="Canonical run manifest hash does not verify."))
+                else:
+                    bundle.reproducibility.manifest_hash = recorded_hash
+                    bundle.reproducibility.pathway_hash = manifest.get("pathway_hash", "")
+            except (OSError, ValueError, TypeError):
+                limitations.append(Limitation(severity="blocker", code="CANONICAL_MANIFEST_UNREADABLE", message="Canonical run manifest cannot be read."))
         bundle.limitations = limitations
         return bundle
 
