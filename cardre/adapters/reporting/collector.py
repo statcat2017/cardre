@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import json
 from typing import Any
 
 from cardre.application.evidence.evidence_resolver import resolve_run_step_evidence
@@ -39,10 +39,10 @@ from cardre.application.reporting.schema import (
     VariableInfo,
     WoeSmoothingInfo,
 )
-from cardre.domain.artifacts import json_logical_hash
 from cardre.application.reporting.schema import (
     ResolvedStepRef as ReportStepRef,
 )
+from cardre.domain.artifacts import json_logical_hash
 
 
 @dataclass(frozen=True)
