@@ -76,8 +76,11 @@ class ExecuteRun:
 
             uow3 = self._uow_factory()
             try:
-                uow3.runs.transition(command.run_id, RunStatus.RUNNING,
-                                    expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+                claimed = uow3.runs.transition(command.run_id, RunStatus.RUNNING,
+                                              expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+                if not claimed:
+                    uow3.rollback()
+                    return
                 uow3.commit()
             except Exception:
                 uow3.rollback()

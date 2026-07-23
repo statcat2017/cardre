@@ -51,16 +51,23 @@ class RunRepo:
 
     def transition(self, run_id: str, to_status: RunStatus, *,
                    expected_from: tuple[RunStatus, ...] = (RunStatus.RUNNING,)) -> bool:
-        from cardre.domain.run import _VALID_TRANSITIONS
+        from cardre.domain.run import _VALID_TRANSITIONS, RunStatus
         if not any(to_status in _VALID_TRANSITIONS.get(s, set()) for s in expected_from):
             raise ValueError(f"Invalid run state transition: {expected_from} -> {to_status!r}")
-        from cardre.domain.diagnostics import utc_now_iso
-        now = utc_now_iso()
+        terminal = to_status in RunStatus.terminal()
         placeholders = ", ".join("?" for _ in expected_from)
-        cursor = self._conn.execute(
-            f"UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ? AND status IN ({placeholders})",
-            (to_status.value, now, run_id) + tuple(s.value for s in expected_from),
-        )
+        if terminal:
+            from cardre.domain.diagnostics import utc_now_iso
+            now = utc_now_iso()
+            cursor = self._conn.execute(
+                f"UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ? AND status IN ({placeholders})",
+                (to_status.value, now, run_id) + tuple(s.value for s in expected_from),
+            )
+        else:
+            cursor = self._conn.execute(
+                f"UPDATE runs SET status = ? WHERE run_id = ? AND status IN ({placeholders})",
+                (to_status.value, run_id) + tuple(s.value for s in expected_from),
+            )
         return bool(cursor.rowcount > 0)
 
     def heartbeat(self, run_id: str) -> None:

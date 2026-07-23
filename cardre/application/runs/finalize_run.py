@@ -53,14 +53,19 @@ class FinalizeRun:
                     context={"run_id": run_id},
                 )
 
+            target = RunStatus(status)
+            if target in RunStatus.terminal():
+                expected_from = (RunStatus.CREATED, RunStatus.QUEUED, RunStatus.RUNNING)
+            else:
+                expected_from = (RunStatus.RUNNING,)
+
             if diagnostic is not None:
                 uow.runs.append_diagnostic(run_id, {"code": diagnostic.code, "message": diagnostic.message})
 
-            transitioned = uow.runs.transition(
-                run_id, RunStatus(status), expected_from=(RunStatus.RUNNING,),
-            )
+            transitioned = uow.runs.transition(run_id, target, expected_from=expected_from)
             if not transitioned:
-                raise RunAlreadyFinalised(run_id, str(uow.runs.get(run_id).status) if uow.runs.get(run_id) else "unknown")
+                actual = uow.runs.get(run_id)
+                raise RunAlreadyFinalised(run_id, str(actual.status) if actual else "unknown")
 
             manifest_steps = self._build_manifest_steps(uow, run_id)
             payload = self._build_manifest(
@@ -146,7 +151,10 @@ class FinalizeRun:
                 diagnostics = list(uow.runs.get_diagnostics(run_id))
             except Exception:
                 diagnostics = []
-        if diagnostic is not None:
+        if diagnostic is not None and not any(
+            d.get("code") == diagnostic.code and d.get("message") == diagnostic.message
+            for d in diagnostics
+        ):
             diagnostics.append({"code": diagnostic.code, "message": diagnostic.message})
 
         step_ids = [s["step_id"] for s in steps]

@@ -205,6 +205,24 @@ class TestFinalizeRunManifest:
         second_manifest = publisher.read(run_id)
         assert second_manifest == first_manifest
 
+    def test_pre_execution_failure_finalises_created_run(self, provisioned_project):
+        """A run in 'created' state can be finalised as failed without transitioning to running."""
+        project_id, plan_id, pv_id, run_id, root, uow_factory, registry = provisioned_project
+
+        publisher = FsManifestPublisher(root)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize(run_id, "failed", diagnostic=FinalizeDiagnostic(
+            code="RUN_VALIDATION_FAILED", message="Pre-execution validation failed",
+        ))
+
+        result = publisher.verify(run_id)
+        assert result["valid"] is True
+        assert result["manifest"]["status"] == "failed"
+
+        with uow_factory.read_only(project_id) as uow:
+            run = uow.runs.get(run_id)
+            assert str(run.status) == "failed"
+
 
 class TestManifestHashing:
     """Unit tests for the shared manifest hashing functions."""
