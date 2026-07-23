@@ -60,7 +60,7 @@ GENERATED_FILES: set[str] = {
 # ── Architectural seam watchlist ─────────────────────────────────────
 
 SEAM_WATCHLIST: dict[str, dict[str, Any]] = {
-    "cardre/reporting/collector.py": {
+    "cardre/adapters/reporting/collector.py": {
         "threshold": 1400,
         "owner": "report bundle collector",
         "split_only_on": [
@@ -68,7 +68,7 @@ SEAM_WATCHLIST: dict[str, dict[str, Any]] = {
             "shared evidence lookup moves to evidence seam",
         ],
     },
-    "cardre/services/comparison_service.py": {
+    "cardre/application/governance/refresh_comparison.py": {
         "threshold": 1200,
         "owner": "comparison materialisation",
         "split_only_on": [

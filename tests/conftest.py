@@ -229,14 +229,14 @@ def registered_store(store):
     registering the project.
     """
     from cardre.config import CardreConfig
-    from cardre.services.project_resolver import ProjectResolver
+    from cardre.store.project_registry import ProjectRegistry
 
     rows = store.execute("SELECT project_id FROM projects").fetchall()
     if not rows:
         return store, None
     project_id = rows[0]["project_id"]
-    resolver = ProjectResolver(CardreConfig.from_env().registry_path)
-    resolver.register_project(project_id, store.root)
+    registry = ProjectRegistry(CardreConfig.from_env().registry_path)
+    registry.register(project_id, store.root)
     return store, project_id
 
 
@@ -246,14 +246,14 @@ def registered_project(store):
     Returns callable that accepts ``name`` and yields
     ``(project_id, store, root)``."""
     from cardre.config import CardreConfig
-    from cardre.services.project_resolver import ProjectResolver
+    from cardre.store.project_registry import ProjectRegistry
     from cardre.store.project_repo import ProjectRepository
 
-    resolver = ProjectResolver(CardreConfig.from_env().registry_path)
+    registry = ProjectRegistry(CardreConfig.from_env().registry_path)
 
     def _create(*, name: str = "Test Project") -> tuple:
         project_id = ProjectRepository(store).create(name)
-        resolver.register_project(project_id, store.root)
+        registry.register(project_id, store.root)
         return project_id, store, store.root
 
     return _create

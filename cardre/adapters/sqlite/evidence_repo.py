@@ -104,7 +104,8 @@ class EvidenceRepo:
             source_run_id=r["source_run_id"], source_run_step_id=r["source_run_step_id"],
             policy=r["policy"], source_label=r["source_label"],
             is_reused=bool(r["is_reused"]), is_stale=bool(r["is_stale"]),
-            stale_reason=r.get("stale_reason"), created_at=r["created_at"],
+            stale_reason=r["stale_reason"] if "stale_reason" in r.keys() else None,  # noqa: F841, SIM118
+            created_at=r["created_at"],
         )
 
     @staticmethod

@@ -25,7 +25,6 @@ from cardre._evidence.schemas import (
     SCHEMA_VIF_DIAGNOSTICS,
 )
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.readiness.limitation_codes import LimitationCode
 from cardre.workflows import build_canonical_scorecard_steps, canonical_scorecard_step_ids
 
 pytestmark = pytest.mark.governance
@@ -397,8 +396,10 @@ def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_pa
     store.open()
     try:
         from cardre.readiness import check_report_readiness
+        from cardre.readiness.limitation_codes import LimitationCode
         from cardre.reporting.collector import generate_report_bundle
         from cardre.reporting.renderer_html import render_report_bundle_to_html
+
         from cardre.store.branch_repo import BranchRepository
 
         branch_repo = BranchRepository(store)

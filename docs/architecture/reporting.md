@@ -8,24 +8,25 @@ The reporting system produces governance-quality report bundles from immutable r
 
 | Module | File | Responsibility |
 |--------|------|----------------|
-| `schema.py` | `cardre/reporting/schema.py` | Pydantic models for `ReportBundle` and all sub-sections |
-| `collector.py` | `cardre/reporting/collector.py` | Builds `ReportBundle` from run artifacts via `ArtifactEvidenceReader` |
-| `renderer_html.py` | `cardre/reporting/renderer_html.py` | Renders `ReportBundle` to HTML |
-| `evidence_contract.py` | `cardre/reporting/evidence_contract.py` | Canonical step IDs and evidence resolution rules |
-| `templates/` | `cardre/reporting/templates/` | HTML report templates |
+| `schema.py` | `cardre/application/reporting/schema.py` | Pydantic models for `ReportBundle` and all sub-sections |
+| `contracts.py` | `cardre/application/reporting/contracts.py` | Canonical step IDs, report modes, and required-steps constants |
+| `readiness.py` | `cardre/application/reporting/readiness.py` | Readiness checks verifying required evidence is available |
+| `generate_report.py` | `cardre/application/reporting/generate_report.py` | `GenerateReport` use case — orchestrates collection and rendering |
+| `export_audit_pack.py` | `cardre/application/reporting/export_audit_pack.py` | `ExportAuditPack` use case — exports audit pack bundles |
+| `collector.py` | `cardre/adapters/reporting/collector.py` | Adapter building `ReportBundle` from run artifacts via ports |
+| `html_report.py` | `cardre/adapters/rendering/html_report.py` | HTML renderer adapter for `ReportBundle` |
 
-## Report Generation Service
+## Report Generation Use Case
 
-The `ReportGenerationService` (`cardre/services/report_generation_service.py`) orchestrates the full report lifecycle:
+The `GenerateReport` use case (`cardre/application/reporting/generate_report.py`) orchestrates the full report lifecycle:
 
 1. **Readiness check**: verifies all required evidence is available for the requested report mode.
-2. **Collection**: builds the `ReportBundle` from run artifacts.
-3. **Rendering**: produces `report.html` from the bundle.
-4. **Writing**: saves `report_bundle.json` and `report.html` as artifacts.
+2. **Collection**: builds the `ReportBundle` from run artifacts via the `ReportCollectorPort`.
+3. **Rendering**: produces `report.html` from the bundle via the `ReportRendererPort`.
 
 ## Report Bundle Schema
 
-The `ReportBundle` Pydantic model (`cardre/reporting/schema.py`) has these top-level fields:
+The `ReportBundle` Pydantic model (`cardre/application/reporting/schema.py`) has these top-level fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -56,7 +57,7 @@ The `ReportBundle` Pydantic model (`cardre/reporting/schema.py`) has these top-l
 
 ## Canonical Step IDs
 
-Evidence is resolved by canonical step IDs defined in `evidence_contract.py`:
+Evidence is resolved by canonical step IDs defined in `cardre/application/reporting/contracts.py`:
 
 - `final-woe-iv`
 - `model-fit`
