@@ -55,7 +55,7 @@ class FinalizeRun:
 
             target = RunStatus(status)
             if target in RunStatus.terminal():
-                expected_from = (RunStatus.CREATED, RunStatus.QUEUED, RunStatus.RUNNING)
+                expected_from: tuple[RunStatus, ...] = (RunStatus.CREATED, RunStatus.QUEUED, RunStatus.RUNNING)
             else:
                 expected_from = (RunStatus.RUNNING,)
 
