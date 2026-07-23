@@ -11,8 +11,9 @@ from cardre.store.db import ProjectStore
 
 
 def test_api_request_closes_store_after_dependency_exit(raw_project_path, api_client, store, monkeypatch):
-    from cardre.config import CardreConfig
     from cardre.services.project_resolver import ProjectResolver
+
+    from cardre.config import CardreConfig
 
     project_id = str(uuid.uuid4())
     now = utc_now_iso()

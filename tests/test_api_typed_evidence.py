@@ -42,8 +42,9 @@ def test_run_evidence_endpoint_returns_typed_model():
 
 def test_run_evidence_route_uses_typed_response(api_client, store):
     """GET /runs/{run_id}/evidence returns a list of typed objects via X-Project-Id."""
-    from cardre.config import CardreConfig
     from cardre.services.project_resolver import ProjectResolver
+
+    from cardre.config import CardreConfig
 
     project_id = str(uuid.uuid4())
     now = utc_now_iso()

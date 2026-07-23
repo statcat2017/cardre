@@ -192,10 +192,11 @@ def _write_input_csv(path: Path) -> Path:
 def _run_pathway(tmp_path: Path) -> dict:
     import uuid
 
+    from cardre.reporting.collector import generate_report_bundle
+
     from cardre.application.runs.finalize_run import FinalizeRun as RunLifecycle
     from cardre.domain.diagnostics import utc_now_iso
     from cardre.execution.executor import PlanExecutor
-    from cardre.reporting.collector import generate_report_bundle
     from cardre.store.branch_repo import BranchRepository
     from cardre.store.db import ProjectStore
     from cardre.store.plan_repo import PlanRepository
