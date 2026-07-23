@@ -40,6 +40,7 @@ class ComparisonEvidencePort(Protocol):
 
 @dataclass
 class RefreshComparisonCommand:
+    project_id: str
     comparison_id: str
 
 
@@ -80,7 +81,7 @@ class RefreshComparison:
         if not self._governance_enabled:
             raise GovernanceNotEnabled()
 
-        with self._uow_factory.for_project(None) as uow:  # project_id resolved from comparison
+        with self._uow_factory.for_project(command.project_id) as uow:
             comparison = uow.comparisons.get_comparison(command.comparison_id)
             if comparison is None:
                 raise CardreError(
@@ -91,6 +92,13 @@ class RefreshComparison:
                 )
 
             project_id: str = comparison["project_id"]
+            if project_id != command.project_id:
+                raise CardreError(
+                    "Comparison does not belong to the requested project.",
+                    code="COMPARISON_SCOPE_MISMATCH",
+                    context={"comparison_id": command.comparison_id, "project_id": command.project_id},
+                    status_code=404,
+                )
             plan_id: str = comparison["plan_id"]
             baseline_branch_id: str = comparison["baseline_branch_id"]
             spec = json.loads(comparison["comparison_spec_json"])

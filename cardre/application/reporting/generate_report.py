@@ -18,6 +18,7 @@ from cardre.application.ports.unit_of_work import (
 from cardre.application.reporting.contracts import ReportMode
 from cardre.application.reporting.readiness import check_report_readiness
 from cardre.application.reporting.schema import Limitation, ReportBundle
+from cardre.domain.errors import CardreError
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,19 @@ class GenerateReport:
                 uow, evidence_reader, command.project_id, command.run_id,
                 command.target_branch_id, command.report_mode,
             )
+            if not readiness.ready:
+                raise CardreError(
+                    "Report generation is blocked by readiness checks.",
+                    code="REPORT_BLOCKED",
+                    context={
+                        "run_id": command.run_id,
+                        "branch_id": command.target_branch_id,
+                        "blockers": [
+                            {"code": finding.code, "message": finding.message}
+                            for finding in readiness.blockers
+                        ],
+                    },
+                )
             bundle = collector.collect(
                 uow,
                 command.project_id,
@@ -75,7 +89,7 @@ class GenerateReport:
                     code=finding.code,
                     message=finding.message,
                 )
-                for finding in [*readiness.blockers, *readiness.warnings]
+                for finding in readiness.warnings
             )
         html_path = self._renderer.render(bundle, output_dir)
         bundle_path = output_dir / "report_bundle.json"

@@ -148,7 +148,7 @@ class RunRepo:
         row = self._conn.execute(
             "SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
             "JOIN plan_versions pv ON rs.plan_version_id = pv.plan_version_id "
-            "WHERE pv.plan_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' "
+            "WHERE pv.plan_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' AND r.status = 'succeeded' "
             f"{clause} ORDER BY rs.started_at DESC LIMIT 1",
             [plan_id, step_id] + params,
         ).fetchone()

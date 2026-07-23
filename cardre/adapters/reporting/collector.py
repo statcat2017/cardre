@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from cardre.application.evidence.evidence_resolver import resolve_run_step_evidence
 from cardre.application.ports.artifact_store import ArtifactReader
@@ -16,12 +17,28 @@ from cardre.application.reporting.contracts import (
     resolve_required_steps,
 )
 from cardre.application.reporting.schema import (
+    AffectedBinDetail,
     ArtifactEntry,
     BranchInfo,
+    CutoffInfo,
+    CutoffRow,
+    CutoffTable,
     DiagnosticEntry,
     Limitation,
+    MetricsByRole,
+    ModelFeature,
+    ModelInfo,
     PathwayStep,
+    PsiEntry,
     ReportBundle,
+    ScoreScalingInfo,
+    ValidationInfo,
+    VariableBin,
+    VariableInfo,
+    WoeSmoothingInfo,
+)
+from cardre.application.reporting.schema import (
+    ResolvedStepRef as ReportStepRef,
 )
 
 
@@ -111,6 +128,7 @@ class ReportCollector:
                     )
                     if typed_evidence is not None:
                         bundle.modelling_metadata[canonical_step_id] = self._to_json(typed_evidence)
+                        self._apply_typed_evidence(bundle, canonical_step_id, ref, typed_evidence)
             step = plan_steps.get(ref.step_id)
             bundle.pathway.steps.append(PathwayStep(
                 canonical_step_id=canonical_step_id,
@@ -176,6 +194,115 @@ class ReportCollector:
         if hasattr(value, "to_dict"):
             return value.to_dict()
         return value
+
+    @staticmethod
+    def _report_ref(ref: Any) -> ReportStepRef:
+        return ReportStepRef(
+            requested_branch_id=ref.requested_branch_id,
+            resolved_branch_id=ref.resolved_branch_id,
+            canonical_step_id=ref.canonical_step_id,
+            step_id=ref.step_id,
+            resolution=ref.resolution,
+        )
+
+    def _apply_typed_evidence(
+        self,
+        bundle: ReportBundle,
+        canonical_step_id: str,
+        ref: Any,
+        evidence: Any,
+    ) -> None:
+        source_refs = [self._report_ref(ref)]
+        if canonical_step_id == "final-woe-iv":
+            smoothing = evidence.smoothing
+            for variable in evidence.variables:
+                bins = [
+                    VariableBin(
+                        bin_id=item.bin_id, label=item.label, lower=item.lower, upper=item.upper,
+                        good_count=item.good_count, bad_count=item.bad_count, bad_rate=item.bad_rate,
+                        woe=item.woe, iv_contribution=item.iv_contribution,
+                    )
+                    for item in variable.bins
+                ]
+                bundle.variables.append(VariableInfo(
+                    variable_name=variable.variable_name,
+                    role=variable.status,
+                    branch_id=ref.resolved_branch_id,
+                    final_bin_count=len(bins),
+                    iv=variable.iv,
+                    woe_smoothing=WoeSmoothingInfo(
+                        enabled=smoothing.enabled, method=smoothing.method, alpha=smoothing.alpha,
+                        zero_cell_policy=smoothing.zero_cell_policy,
+                        smoothing_applied=variable.smoothing_applied,
+                        zero_cell_encountered=variable.zero_cell_encountered,
+                        affected_bin_count=len(variable.affected_bins),
+                    ),
+                    source_step_refs=source_refs,
+                    bins=bins,
+                    affected_bins=[AffectedBinDetail(**item.detail) for item in variable.affected_bins],
+                ))
+        elif canonical_step_id == "model-fit":
+            target = evidence.target_column or bundle.summary.target_column
+            bundle.summary.target_column = target
+            bundle.model = ModelInfo(
+                branch_id=ref.resolved_branch_id,
+                target=target,
+                features=[
+                    ModelFeature(
+                        variable_name=item.variable_name,
+                        coefficient=item.coefficient,
+                        standard_error=item.standard_error,
+                        p_value=item.p_value,
+                    )
+                    for item in evidence.coefficients
+                ],
+                intercept=evidence.intercept,
+                source_step_refs=source_refs,
+            )
+        elif canonical_step_id == "score-scaling":
+            bundle.score_scaling = ScoreScalingInfo(
+                base_score=evidence.base_score,
+                base_odds=evidence.base_odds_text,
+                points_to_double_odds=evidence.points_to_double_odds,
+                factor=evidence.factor,
+                offset=evidence.offset,
+                score_direction=evidence.score_direction,
+                rounding=evidence.rounding,
+                min_score=evidence.min_score,
+                max_score=evidence.max_score,
+                source_step_refs=source_refs,
+            )
+        elif canonical_step_id == "validation-metrics":
+            validation = ValidationInfo(source_step_refs=source_refs)
+            for role, metrics in evidence.metrics_by_role.items():
+                validation.metrics_by_role.append(MetricsByRole(
+                    role=role, row_count=metrics.row_count, auc=metrics.auc, gini=metrics.gini,
+                    ks=metrics.ks, bad_rate=metrics.bad_rate,
+                ))
+            validation.stability.psi_by_role = [
+                PsiEntry(comparison=comparison, score_psi=value)
+                for comparison, value in evidence.psi.items()
+            ]
+            bundle.validation = validation
+        elif canonical_step_id == "cutoff-analysis":
+            bundle.cutoffs = CutoffInfo(
+                cutoff_tables=[
+                    CutoffTable(
+                        role=role,
+                        rows=[
+                            CutoffRow(
+                                score_cutoff=row.score_cutoff,
+                                approval_rate=row.approval_rate,
+                                bad_rate=row.bad_rate,
+                                capture_rate=row.capture_rate,
+                            )
+                            for row in rows
+                        ],
+                    )
+                    for role, rows in evidence.cutoff_tables.items()
+                ],
+                source_step_refs=source_refs,
+            )
 
 
 __all__ = ["CollectReportCommand", "ReportCollector"]

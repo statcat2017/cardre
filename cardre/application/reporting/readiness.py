@@ -58,6 +58,8 @@ def check_report_readiness(
     if blockers:
         return ReportReadinessResult(blockers, warnings, target_branch_id, run_id, report_mode, datetime.now(UTC).isoformat())
     assert branch is not None and run is not None
+    if branch.get("status") != "active":
+        blockers.append(ReadinessFinding("blocker", "TARGET_BRANCH_INCOMPLETE", "Target branch is not active."))
     if str(run.status) != "succeeded":
         blockers.append(ReadinessFinding("blocker", "RUN_NOT_SUCCEEDED", "Run must have succeeded."))
     if branch.get("project_id") != project_id:
@@ -65,6 +67,8 @@ def check_report_readiness(
     step_map = uow.branches.get_step_map(target_branch_id, run.plan_version_id)
     if not step_map and branch.get("head_plan_version_id"):
         step_map = uow.branches.get_step_map(target_branch_id, branch["head_plan_version_id"])
+    if not step_map:
+        blockers.append(ReadinessFinding("blocker", "TARGET_BRANCH_INCOMPLETE", "Target branch has no step map."))
     required = REQUIRED_STEPS_CHAMPION if report_mode == "champion" else REQUIRED_STEPS_BRANCH
     resolved = resolve_required_steps(target_branch_id, required, step_map)
     plan_id = uow.plans.get_plan_id_for_version(run.plan_version_id)
@@ -103,12 +107,24 @@ def check_report_readiness(
             ))
     if report_mode == "champion" and (plan_id is None or uow.champion.get_champion_assignment(plan_id, target_branch_id) is None):
         blockers.append(ReadinessFinding("blocker", "CHAMPION_ASSIGNMENT_MISSING", "No champion assignment for this branch."))
+    if report_mode == "branch" and plan_id is not None:
+        champion = uow.champion.get_champion_assignment(plan_id)
+        if champion is None:
+            warnings.append(ReadinessFinding("warning", "NO_CHAMPION_ASSIGNMENT", "No champion branch has been assigned."))
+        elif champion.get("champion_branch_id") != target_branch_id:
+            warnings.append(ReadinessFinding("warning", "TARGET_BRANCH_NOT_CHAMPION", "Target branch is not the champion."))
     if report_mode == "champion" and not any(
         artifact.role == "oot"
         for run_step in uow.run_steps.get_for_run(run_id)
         for artifact in uow.artifacts.output_artifacts_for_run_step(run_step.run_step_id)
     ):
         blockers.append(ReadinessFinding("blocker", "NO_OOT_SAMPLE_CHAMPION", "Champion reports require an OOT dataset."))
+    if report_mode == "branch" and not any(
+        artifact.role == "oot"
+        for run_step in uow.run_steps.get_for_run(run_id)
+        for artifact in uow.artifacts.output_artifacts_for_run_step(run_step.run_step_id)
+    ):
+        warnings.append(ReadinessFinding("warning", "NO_OOT_SAMPLE", "No OOT dataset is available."))
     return ReportReadinessResult(blockers, warnings, target_branch_id, run_id, report_mode, datetime.now(UTC).isoformat())
 
 

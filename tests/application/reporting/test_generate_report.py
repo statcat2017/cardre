@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from cardre.application.reporting.generate_report import GenerateReport, GenerateReportCommand
 from cardre.application.reporting.schema import ReportBundle
+from cardre.domain.errors import CardreError
 
 
 class _Context:
@@ -49,9 +52,30 @@ def test_generate_report_collects_and_renders_through_ports(tmp_path: Path, monk
         lambda evidence_reader, artifact_reader: _Collector(),
         renderer,
     )
-    monkeypatch.setattr("cardre.application.reporting.generate_report.check_report_readiness", lambda *args: type("Ready", (), {"blockers": [], "warnings": []})())
+    monkeypatch.setattr("cardre.application.reporting.generate_report.check_report_readiness", lambda *args: type("Ready", (), {"ready": True, "blockers": [], "warnings": []})())
 
     result = use_case(GenerateReportCommand("project", "run", "branch", output_dir=tmp_path))
 
     assert result.html_path == str(tmp_path / "report.html")
     assert renderer.bundle is result.bundle
+
+
+def test_generate_report_rejects_readiness_blockers(tmp_path: Path, monkeypatch):
+    renderer = _Renderer()
+    use_case = GenerateReport(
+        _Factory(),
+        lambda project_id: object(),
+        lambda reader, artifacts, run_steps: object(),
+        lambda evidence_reader, artifact_reader: _Collector(),
+        renderer,
+    )
+    monkeypatch.setattr(
+        "cardre.application.reporting.generate_report.check_report_readiness",
+        lambda *args: type("Blocked", (), {"ready": False, "blockers": [type("Finding", (), {"code": "MISSING", "message": "Missing evidence"})()], "warnings": []})(),
+    )
+
+    with pytest.raises(CardreError) as exc_info:
+        use_case(GenerateReportCommand("project", "run", "branch", output_dir=tmp_path))
+
+    assert exc_info.value.code == "REPORT_BLOCKED"
+    assert renderer.bundle is None
