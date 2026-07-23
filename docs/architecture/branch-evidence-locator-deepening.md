@@ -28,7 +28,7 @@ Change only these production modules:
 Add or extend tests only in:
 
 - `tests/test_evidence_locator.py`
-- `tests/test_reporting.py`
+- `tests/application/reporting/test_generate_report.py`
 
 Do not modify these modules in this work item:
 
@@ -342,7 +342,7 @@ translation locally.
 
 #### Readiness forwards the complete reference
 
-File: `tests/test_reporting.py`
+File: `tests/application/reporting/test_generate_report.py`
 
 Test `check_per_step_evidence(...)` directly. Use `monkeypatch` to replace
 `EvidenceLocator.resolve_ref` with a spy that returns a known
@@ -386,7 +386,7 @@ the readiness module hands the unmodified reference to the locator interface.
 
 #### Reporting forwards the complete reference
 
-Also in `tests/test_reporting.py`, test `_resolve_run_step(...)` directly with
+Also in `tests/application/reporting/test_generate_report.py`, test `_resolve_run_step(...)` directly with
 the same spy pattern. Return a constructed `ResolvedEvidence` containing a
 real or minimal `RunStep`, then assert the returned RunStep is the one supplied
 by the locator.
