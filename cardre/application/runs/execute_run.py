@@ -125,7 +125,7 @@ class ExecuteRun:
                     output_refs: list[ArtifactRef] = []
                     for staged in result.staged_artifacts:
                         published_path = str(artifact_store.publish(staged))
-                        art_ref = ArtifactRef(
+                        provisional_ref = ArtifactRef(
                             artifact_id=staged.provisional_artifact_id,
                             artifact_type=staged.artifact_type,
                             role=staged.role,
@@ -135,8 +135,15 @@ class ExecuteRun:
                             media_type=staged.media_type,
                             metadata=staged.metadata,
                         )
-                        persist_uow.artifacts.register(art_ref)
-                        output_refs.append(art_ref)
+                        canonical_id = persist_uow.artifacts.register(provisional_ref)
+                        if canonical_id != provisional_ref.artifact_id:
+                            canonical_ref = persist_uow.artifacts.get(canonical_id)
+                            if canonical_ref is not None:
+                                output_refs.append(canonical_ref)
+                            else:
+                                output_refs.append(provisional_ref)
+                        else:
+                            output_refs.append(provisional_ref)
 
                     step_outputs[step.step_id] = output_refs
 
@@ -165,19 +172,19 @@ class ExecuteRun:
                             direction="output",
                             branch_id=run.branch_id if hasattr(run, "branch_id") else None,
                         )
-                    for parent_step_id, parent_outputs in step_outputs.items():
-                        if parent_step_id == step.step_id:
-                            continue
-                        for parent_art in parent_outputs:
-                            persist_uow.artifacts.register_lineage(
-                                run_id=command.run_id,
-                                run_step_id=run_step.run_step_id,
-                                plan_version_id=pv_id,
-                                step_id=step.step_id,
-                                artifact_id=parent_art.artifact_id,
-                                direction="input",
-                                branch_id=run.branch_id if hasattr(run, "branch_id") else None,
-                            )
+                    input_id_set = set(result.input_artifact_ids)
+                    for parent_step_id in step.parent_step_ids:
+                        for parent_art in step_outputs.get(parent_step_id, []):
+                            if parent_art.artifact_id in input_id_set:
+                                persist_uow.artifacts.register_lineage(
+                                    run_id=command.run_id,
+                                    run_step_id=run_step.run_step_id,
+                                    plan_version_id=pv_id,
+                                    step_id=step.step_id,
+                                    artifact_id=parent_art.artifact_id,
+                                    direction="input",
+                                    branch_id=run.branch_id if hasattr(run, "branch_id") else None,
+                                )
 
                     persist_uow.commit()
                 except Exception:

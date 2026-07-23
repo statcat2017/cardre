@@ -32,7 +32,7 @@ class RunRepo:
         self._conn.execute(
             "INSERT INTO runs (run_id, plan_version_id, status, run_scope, branch_id, "
             "force, requested_by, request_id, created_at, started_at, heartbeat_at) "
-            "VALUES (?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, 'created', ?, ?, ?, ?, ?, ?, ?, ?)",
             (run_id, plan_version_id, run_scope, branch_id,
              int(force), requested_by, request_id, now, now, now),
         )

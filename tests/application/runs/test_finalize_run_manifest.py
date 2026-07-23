@@ -47,12 +47,13 @@ def provisioned_project(tmp_path):
 
 
 def _insert_run_step(uow_factory, project_id, run_id, pv_id, step_id):
-    """Insert a run step through the production UoW."""
+    """Insert a run step through the production UoW, after transitioning to running."""
     from cardre.domain.diagnostics import utc_now_iso
-    from cardre.domain.run import RunStep, RunStepStatus
+    from cardre.domain.run import RunStatus, RunStep, RunStepStatus
     now = utc_now_iso()
     rs_id = f"{run_id}-{step_id}"
     with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
         uow.run_steps.insert(RunStep(
             run_step_id=rs_id, run_id=run_id, step_id=step_id,
             plan_version_id=pv_id, status=RunStepStatus.SUCCEEDED,
@@ -188,7 +189,7 @@ class TestFinalizeRunManifest:
         recomputed = compute_pathway_hash(data["steps"])
         assert data["pathway_hash"] == recomputed
 
-    def test_double_finalisation_raises_and_republishes_actual_status(self, provisioned_project):
+    def test_double_finalisation_raises_without_republishing(self, provisioned_project):
         project_id, plan_id, pv_id, run_id, root, uow_factory, registry = provisioned_project
         _insert_run_step(uow_factory, project_id, run_id, pv_id, "step-1")
 
@@ -196,11 +197,13 @@ class TestFinalizeRunManifest:
         finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
         finalize(run_id, "succeeded")
 
+        first_manifest = publisher.read(run_id)
+
         with pytest.raises(Exception, match="already finalised"):
             finalize(run_id, "failed")
 
-        data = publisher.read(run_id)
-        assert data["status"] == "succeeded"
+        second_manifest = publisher.read(run_id)
+        assert second_manifest == first_manifest
 
 
 class TestManifestHashing:

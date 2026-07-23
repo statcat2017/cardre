@@ -57,7 +57,7 @@ class RunScope(enum.StrEnum):
 
 
 _VALID_TRANSITIONS: dict[RunStatus, set[RunStatus]] = {
-    RunStatus.CREATED: {RunStatus.QUEUED},
+    RunStatus.CREATED: {RunStatus.QUEUED, RunStatus.RUNNING},
     RunStatus.QUEUED: {RunStatus.RUNNING},
     RunStatus.RUNNING: {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.INTERRUPTED},
     RunStatus.SUCCEEDED: set(),

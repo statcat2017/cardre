@@ -60,14 +60,7 @@ class FinalizeRun:
                 run_id, RunStatus(status), expected_from=(RunStatus.RUNNING,),
             )
             if not transitioned:
-                actual_record = uow.runs.get(run_id)
-                actual_status = str(actual_record.status) if actual_record is not None else "unknown"
-                manifest_steps = self._build_manifest_steps(uow, run_id)
-                payload = self._build_manifest(
-                    run_id, actual_status, manifest_steps, diagnostic, actual_record, uow,
-                )
-                self._manifest_publisher.publish(run_id, payload)
-                raise RunAlreadyFinalised(run_id, actual_status)
+                raise RunAlreadyFinalised(run_id, str(uow.runs.get(run_id).status) if uow.runs.get(run_id) else "unknown")
 
             manifest_steps = self._build_manifest_steps(uow, run_id)
             payload = self._build_manifest(
