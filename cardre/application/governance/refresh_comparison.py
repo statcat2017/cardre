@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from cardre._evidence.kinds import EvidenceKind
+from cardre.application.evidence.evidence_resolver import resolve_run_step_evidence
 from cardre.application.reporting.contracts import REQUIRED_STEPS_COMPARISON
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError, GovernanceNotEnabled
@@ -227,13 +228,16 @@ class RefreshComparison:
             canon_to_actual[row["canonical_step_id"]] = row["step_id"]
 
         missing: list[dict[str, str]] = []
+        plan_id = uow.plans.get_plan_id_for_version(plan_version_id)
+        specs = {step.step_id: step for step in uow.plans.get_version_steps(plan_version_id)}
         for cs in REQUIRED_STEPS_COMPARISON:
             actual_id = canon_to_actual.get(cs, cs)
-            evidence_branch = branch_id if not is_baseline else None
-            edges = uow.evidence.get_edges_for_plan_step_branch(
-                plan_version_id, actual_id, evidence_branch,
+            resolved = resolve_run_step_evidence(
+                uow, plan_version_id, actual_id,
+                branch_id=None if is_baseline else branch_id,
+                plan_id=plan_id, fingerprint_match=specs.get(actual_id),
             )
-            if not edges:
+            if resolved is None:
                 missing.append({
                     "branch_id": branch_id,
                     "canonical_step_id": cs,

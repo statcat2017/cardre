@@ -105,6 +105,40 @@ def check_report_readiness(
                 "blocker", "MISSING_REQUIRED_EVIDENCE",
                 f"No {evidence_kind.value} evidence for {canonical_step_id}.", ref.step_id,
             ))
+        if report_mode == "champion" and canonical_step_id == "apply-model":
+            roles = {artifact.role for artifact in uow.artifacts.output_artifacts_for_run_step(run_step.run_step_id)}
+            missing_roles = {"train", "test", "oot"} - roles
+            if missing_roles:
+                blockers.append(ReadinessFinding(
+                    "blocker", "APPLY_MODEL_REQUIRED_ROLES_MISSING",
+                    f"apply-model is missing scored outputs for: {', '.join(sorted(missing_roles))}.", ref.step_id,
+                ))
+    if report_mode == "champion":
+        for step in uow.plans.get_version_steps(run.plan_version_id):
+            if step.node_type != "cardre.manual_binning":
+                continue
+            overrides = step.params.get("overrides", [])
+            if not (step.params.get("reviewed") or step.params.get("accept_automated")):
+                blockers.append(ReadinessFinding(
+                    "blocker", "MANUAL_BINNING_REVIEW_REQUIRED",
+                    "Manual binning must be reviewed or automated bins explicitly accepted.", step.step_id,
+                ))
+            if any(not isinstance(item, dict) or not str(item.get("reason", "")).strip() for item in overrides):
+                blockers.append(ReadinessFinding(
+                    "blocker", "MANUAL_BINNING_RATIONALE_REQUIRED",
+                    "Every manual binning override requires a rationale.", step.step_id,
+                ))
+        final_woe = resolved.get("final-woe-iv")
+        if final_woe is not None:
+            final_run_step = requested_steps.get(final_woe.step_id) or resolve_run_step_evidence(
+                uow, run.plan_version_id, final_woe.step_id,
+                branch_id=final_woe.resolved_branch_id, plan_id=plan_id,
+            )
+            final_run_step = getattr(final_run_step, "run_step", final_run_step)
+            if final_run_step is not None:
+                evidence = evidence_reader.read_step_output_optional(final_run_step.run_step_id, EVIDENCE_KIND_BY_STEP["final-woe-iv"])
+                if evidence is not None and any(getattr(variable, "monotonicity_status", "") == "non_monotonic" for variable in evidence.variables):
+                    blockers.append(ReadinessFinding("blocker", "FINAL_WOE_NOT_MONOTONIC", "Champion reports require monotonic final WOE."))
     if report_mode == "champion" and (plan_id is None or uow.champion.get_champion_assignment(plan_id, target_branch_id) is None):
         blockers.append(ReadinessFinding("blocker", "CHAMPION_ASSIGNMENT_MISSING", "No champion assignment for this branch."))
     if report_mode == "branch" and plan_id is not None:
