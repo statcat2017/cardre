@@ -14,6 +14,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from cardre._evidence.kinds import EvidenceKind
 from cardre.application.evidence.evidence_resolver import resolve_run_step_evidence
+from cardre.application.evidence.explain_staleness import step_is_stale
 from cardre.application.reporting.contracts import REQUIRED_STEPS_COMPARISON
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError, GovernanceNotEnabled
@@ -229,7 +230,8 @@ class RefreshComparison:
 
         missing: list[dict[str, str]] = []
         plan_id = uow.plans.get_plan_id_for_version(plan_version_id)
-        specs = {step.step_id: step for step in uow.plans.get_version_steps(plan_version_id)}
+        steps = uow.plans.get_version_steps(plan_version_id)
+        specs = {step.step_id: step for step in steps}
         for cs in REQUIRED_STEPS_COMPARISON:
             actual_id = canon_to_actual.get(cs, cs)
             resolved = resolve_run_step_evidence(
@@ -237,12 +239,16 @@ class RefreshComparison:
                 branch_id=None if is_baseline else branch_id,
                 plan_id=plan_id, fingerprint_match=specs.get(actual_id),
             )
-            if resolved is None:
+            stale = resolved is not None and specs.get(actual_id) is not None and step_is_stale(
+                uow, specs[actual_id], steps, plan_version_id,
+                None if is_baseline else branch_id, plan_id,
+            )
+            if resolved is None or stale:
                 missing.append({
                     "branch_id": branch_id,
                     "canonical_step_id": cs,
                     "step_id": actual_id,
-                    "status": "not_run",
+                    "status": "stale" if stale else "not_run",
                 })
         return missing
 

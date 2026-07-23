@@ -185,4 +185,12 @@ def _step_is_stale(
     return False
 
 
-__all__ = ["ExplainStaleness", "ExplainStalenessCommand", "StalenessExplanation"]
+def step_is_stale(
+    uow: Any, spec: StepSpec, all_steps: list[StepSpec], plan_version_id: str,
+    branch_id: str | None, plan_id: str | None,
+) -> bool:
+    """Determine whether a step or any of its recorded upstream inputs is stale."""
+    return _step_is_stale(uow, spec, all_steps, plan_version_id, branch_id, plan_id, {})
+
+
+__all__ = ["ExplainStaleness", "ExplainStalenessCommand", "StalenessExplanation", "step_is_stale"]

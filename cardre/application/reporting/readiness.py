@@ -15,6 +15,7 @@ from cardre.application.reporting.contracts import (
     ReportMode,
     resolve_required_steps,
 )
+from cardre.engine.binning.diagnostics import MonotonicStatus, monotonicity_status
 
 
 @dataclass(frozen=True)
@@ -137,7 +138,11 @@ def check_report_readiness(
             final_run_step = getattr(final_run_step, "run_step", final_run_step)
             if final_run_step is not None:
                 evidence = evidence_reader.read_step_output_optional(final_run_step.run_step_id, EVIDENCE_KIND_BY_STEP["final-woe-iv"])
-                if evidence is not None and any(getattr(variable, "monotonicity_status", "") == "non_monotonic" for variable in evidence.variables):
+                if evidence is not None and any(
+                    monotonicity_status({bin_.bin_id: bin_.woe for bin_ in variable.bins if bin_.woe is not None})
+                    == MonotonicStatus.non_monotonic
+                    for variable in evidence.variables
+                ):
                     blockers.append(ReadinessFinding("blocker", "FINAL_WOE_NOT_MONOTONIC", "Champion reports require monotonic final WOE."))
     if report_mode == "champion" and (plan_id is None or uow.champion.get_champion_assignment(plan_id, target_branch_id) is None):
         blockers.append(ReadinessFinding("blocker", "CHAMPION_ASSIGNMENT_MISSING", "No champion assignment for this branch."))
