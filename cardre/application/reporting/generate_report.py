@@ -83,6 +83,23 @@ class GenerateReport:
                 command.target_branch_id,
                 command.report_mode,
             )
+            blockers = [
+                limitation for limitation in bundle.limitations
+                if limitation.severity == "blocker"
+            ]
+            if blockers:
+                raise CardreError(
+                    "Report generation is blocked by collected evidence.",
+                    code="REPORT_BLOCKED",
+                    context={
+                        "run_id": command.run_id,
+                        "branch_id": command.target_branch_id,
+                        "blockers": [
+                            {"code": limitation.code, "message": limitation.message}
+                            for limitation in blockers
+                        ],
+                    },
+                )
             bundle.limitations.extend(
                 Limitation(
                     severity=finding.severity,

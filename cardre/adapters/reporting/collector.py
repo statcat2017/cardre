@@ -194,7 +194,7 @@ class ReportCollector:
         bundle.reproducibility.run_id = run.run_id
         manifest_path = self._artifact_reader.root / "exports" / f"manifest-{run.run_id}" / "manifest.json"
         if not manifest_path.exists():
-            limitations.append(Limitation(code="CANONICAL_MANIFEST_MISSING", message="Canonical run manifest is missing."))
+            limitations.append(Limitation(severity="blocker", code="CANONICAL_MANIFEST_MISSING", message="Canonical run manifest is missing."))
         else:
             try:
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -204,6 +204,13 @@ class ReportCollector:
                 if not recorded_hash or recorded_hash != json_logical_hash(hashed):
                     limitations.append(Limitation(severity="blocker", code="ARTIFACT_HASH_UNRESOLVED", message="Canonical run manifest hash does not verify."))
                 else:
+                    if (
+                        manifest.get("run_id") != run.run_id
+                        or manifest.get("plan_version_id") != run.plan_version_id
+                        or manifest.get("branch_id") != run.branch_id
+                        or manifest.get("status") != str(run.status)
+                    ):
+                        limitations.append(Limitation(severity="blocker", code="CANONICAL_MANIFEST_MISMATCH", message="Canonical run manifest does not match the requested run."))
                     bundle.reproducibility.manifest_hash = recorded_hash
                     bundle.reproducibility.pathway_hash = manifest.get("pathway_hash", "")
             except (OSError, ValueError, TypeError):
