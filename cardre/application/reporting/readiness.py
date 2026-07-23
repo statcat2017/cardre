@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from cardre.application.evidence.evidence_resolver import resolve_run_step_evidence
+from cardre.application.evidence.explain_staleness import step_is_stale
 from cardre.application.ports.evidence_reader import EvidenceReaderPort
 from cardre.application.ports.unit_of_work import UnitOfWork
 from cardre.application.reporting.contracts import (
@@ -73,6 +74,8 @@ def check_report_readiness(
     required = REQUIRED_STEPS_CHAMPION if report_mode == "champion" else REQUIRED_STEPS_BRANCH
     resolved = resolve_required_steps(target_branch_id, required, step_map)
     plan_id = uow.plans.get_plan_id_for_version(run.plan_version_id)
+    plan_steps = uow.plans.get_version_steps(run.plan_version_id)
+    specs = {step.step_id: step for step in plan_steps}
     requested_steps = {step.step_id: step for step in uow.run_steps.get_for_run(run.run_id)}
     for canonical_step_id in required:
         ref = resolved.get(canonical_step_id)
@@ -84,8 +87,12 @@ def check_report_readiness(
             result = resolve_run_step_evidence(
                 uow, run.plan_version_id, ref.step_id,
                 branch_id=ref.resolved_branch_id, plan_id=plan_id,
+                fingerprint_match=specs.get(ref.step_id),
             )
-            run_step = result.run_step if result is not None else None
+            run_step = result.run_step if result is not None and not step_is_stale(
+                uow, specs[ref.step_id], plan_steps, run.plan_version_id,
+                ref.resolved_branch_id, plan_id,
+            ) else None
         if run_step is None:
             blockers.append(ReadinessFinding(
                 "blocker", "MISSING_REQUIRED_CANONICAL_STEP",
@@ -134,6 +141,7 @@ def check_report_readiness(
             final_run_step = requested_steps.get(final_woe.step_id) or resolve_run_step_evidence(
                 uow, run.plan_version_id, final_woe.step_id,
                 branch_id=final_woe.resolved_branch_id, plan_id=plan_id,
+                fingerprint_match=specs.get(final_woe.step_id),
             )
             final_run_step = getattr(final_run_step, "run_step", final_run_step)
             if final_run_step is not None:

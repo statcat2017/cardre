@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from cardre.application.evidence.evidence_resolver import resolve_run_step_evidence
+from cardre.application.evidence.explain_staleness import step_is_stale
 from cardre.application.ports.artifact_store import ArtifactReader
 from cardre.application.ports.evidence_reader import EvidenceReaderPort
 from cardre.application.ports.unit_of_work import UnitOfWork
@@ -117,8 +118,12 @@ class ReportCollector:
                 evidence = resolve_run_step_evidence(
                     uow, run.plan_version_id, ref.step_id,
                     branch_id=ref.resolved_branch_id, plan_id=plan_id,
+                    fingerprint_match=plan_steps.get(ref.step_id),
                 )
-                run_step = evidence.run_step if evidence is not None else None
+                run_step = evidence.run_step if evidence is not None and not step_is_stale(
+                    uow, plan_steps[ref.step_id], list(plan_steps.values()), run.plan_version_id,
+                    ref.resolved_branch_id, plan_id,
+                ) else None
             if run_step is not None:
                 report_steps[run_step.run_step_id] = run_step
                 evidence_kind = EVIDENCE_KIND_BY_STEP.get(canonical_step_id)
