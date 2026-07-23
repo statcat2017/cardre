@@ -125,22 +125,18 @@ def _step_is_stale(
     branch_id: str | None,
     plan_id: str | None,
     stale_cache: dict[str, bool],
+    selected_run_step: Any | None = None,
 ) -> bool:
     if spec.step_id in stale_cache:
         return stale_cache[spec.step_id]
 
-    pairs = resolve_evidence(
-        uow,
-        plan_version_id, spec.step_id,
-        branch_id=branch_id, plan_id=plan_id,
-        fingerprint_match=spec,
-    )
-
-    if not pairs:
-        stale_cache[spec.step_id] = True
-        return True
-
-    rs = uow.run_steps.get(pairs[0][0].run_step_id)
+    rs = selected_run_step
+    if rs is None:
+        pairs = resolve_evidence(
+            uow, plan_version_id, spec.step_id, branch_id=branch_id,
+            plan_id=plan_id, fingerprint_match=spec,
+        )
+        rs = uow.run_steps.get(pairs[0][0].run_step_id) if pairs else None
     if rs is None:
         stale_cache[spec.step_id] = True
         return True
@@ -188,9 +184,10 @@ def _step_is_stale(
 def step_is_stale(
     uow: Any, spec: StepSpec, all_steps: list[StepSpec], plan_version_id: str,
     branch_id: str | None, plan_id: str | None,
+    selected_run_step: Any | None = None,
 ) -> bool:
     """Determine whether a step or any of its recorded upstream inputs is stale."""
-    return _step_is_stale(uow, spec, all_steps, plan_version_id, branch_id, plan_id, {})
+    return _step_is_stale(uow, spec, all_steps, plan_version_id, branch_id, plan_id, {}, selected_run_step)
 
 
 __all__ = ["ExplainStaleness", "ExplainStalenessCommand", "StalenessExplanation", "step_is_stale"]

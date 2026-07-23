@@ -89,9 +89,9 @@ def check_report_readiness(
                 branch_id=ref.resolved_branch_id, plan_id=plan_id,
                 fingerprint_match=specs.get(ref.step_id),
             )
-            run_step = result.run_step if result is not None and not step_is_stale(
-                uow, specs[ref.step_id], plan_steps, run.plan_version_id,
-                ref.resolved_branch_id, plan_id,
+            spec = specs.get(ref.step_id)
+            run_step = result.run_step if result is not None and spec is not None and not step_is_stale(
+                uow, spec, plan_steps, run.plan_version_id, ref.resolved_branch_id, plan_id, result.run_step,
             ) else None
         if run_step is None:
             blockers.append(ReadinessFinding(

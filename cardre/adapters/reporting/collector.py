@@ -120,9 +120,10 @@ class ReportCollector:
                     branch_id=ref.resolved_branch_id, plan_id=plan_id,
                     fingerprint_match=plan_steps.get(ref.step_id),
                 )
-                run_step = evidence.run_step if evidence is not None and not step_is_stale(
-                    uow, plan_steps[ref.step_id], list(plan_steps.values()), run.plan_version_id,
-                    ref.resolved_branch_id, plan_id,
+                spec = plan_steps.get(ref.step_id)
+                run_step = evidence.run_step if evidence is not None and spec is not None and not step_is_stale(
+                    uow, spec, list(plan_steps.values()), run.plan_version_id,
+                    ref.resolved_branch_id, plan_id, evidence.run_step,
                 ) else None
             if run_step is not None:
                 report_steps[run_step.run_step_id] = run_step
