@@ -68,10 +68,370 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Plans */
+        get: operations["list_plans_projects__project_id__plans_get"];
+        put?: never;
+        /** Create Plan */
+        post: operations["create_plan_projects__project_id__plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan */
+        get: operations["get_plan_projects__project_id__plans__plan_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/plans/{plan_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Plan Versions */
+        get: operations["list_plan_versions_projects__project_id__plans__plan_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/plan-versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan Version */
+        get: operations["get_plan_version_projects__project_id__plan_versions__version_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Plan Version */
+        patch: operations["update_plan_version_projects__project_id__plan_versions__version_id__patch"];
+        trace?: never;
+    };
+    "/projects/{project_id}/plan-versions/{version_id}/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Commit Plan Version */
+        post: operations["commit_plan_version_projects__project_id__plan_versions__version_id__commit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/plan-versions/{version_id}/steps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan Version Steps */
+        get: operations["get_plan_version_steps_projects__project_id__plan_versions__version_id__steps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_projects__project_id__runs_get"];
+        put?: never;
+        /** Create Run */
+        post: operations["create_run_projects__project_id__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_projects__project_id__runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/runs/{run_id}/steps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run Steps */
+        get: operations["get_run_steps_projects__project_id__runs__run_id__steps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/runs/{run_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run Evidence */
+        get: operations["get_run_evidence_projects__project_id__runs__run_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Run */
+        post: operations["cancel_run_projects__project_id__runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/steps/{step_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Step Evidence Staleness */
+        get: operations["get_step_evidence_staleness_projects__project_id__steps__step_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Artifact */
+        get: operations["get_artifact_projects__project_id__artifacts__artifact_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/node-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Node Types */
+        get: operations["list_node_types_projects__project_id__node_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Exports */
+        get: operations["list_exports_projects__project_id__exports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reports */
+        get: operations["list_reports_projects__project_id__reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/runs/{run_id}/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Run Reports */
+        get: operations["list_run_reports_projects__project_id__runs__run_id__reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ArtifactResponse */
+        ArtifactResponse: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Artifact Type */
+            artifact_type: string;
+            /** Role */
+            role: string;
+            /** Path */
+            path: string;
+            /** Physical Hash */
+            physical_hash: string;
+            /** Logical Hash */
+            logical_hash: string;
+            /** Media Type */
+            media_type: string;
+            /** Created At */
+            created_at: string;
+        };
+        /** DiagnosticResponse */
+        DiagnosticResponse: {
+            /**
+             * Code
+             * @default UNKNOWN
+             */
+            code: string;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /**
+             * Severity
+             * @default error
+             */
+            severity: string;
+            /** Source */
+            source?: string | null;
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at?: string | null;
+        };
+        /** ExportListResponse */
+        ExportListResponse: {
+            /** Exports */
+            exports: components["schemas"]["ExportResponse"][];
+        };
+        /** ExportResponse */
+        ExportResponse: {
+            /** Export Id */
+            export_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Export Type */
+            export_type: string;
+            /** Path */
+            path: string;
+            /** Created At */
+            created_at: string;
+            /**
+             * Size Bytes
+             * @default 0
+             */
+            size_bytes: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -105,6 +465,131 @@ export interface components {
              */
             governance_enabled: boolean;
         };
+        /** NodeTypeListResponse */
+        NodeTypeListResponse: {
+            /** Node Types */
+            node_types: components["schemas"]["NodeTypeResponse"][];
+        };
+        /** NodeTypeResponse */
+        NodeTypeResponse: {
+            /** Node Type */
+            node_type: string;
+            /**
+             * Display Name
+             * @default
+             */
+            display_name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Category
+             * @default
+             */
+            category: string;
+            /**
+             * Tier
+             * @default launch
+             */
+            tier: string;
+            /**
+             * Has Params
+             * @default false
+             */
+            has_params: boolean;
+        };
+        /** PlanCreateRequest */
+        PlanCreateRequest: {
+            /** Name */
+            name: string;
+        };
+        /** PlanListResponse */
+        PlanListResponse: {
+            /** Plans */
+            plans: components["schemas"]["PlanResponse"][];
+        };
+        /** PlanResponse */
+        PlanResponse: {
+            /** Plan Id */
+            plan_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Name */
+            name: string;
+            /** Created At */
+            created_at: string;
+        };
+        /** PlanStepResponse */
+        PlanStepResponse: {
+            /** Step Id */
+            step_id: string;
+            /** Plan Version Id */
+            plan_version_id: string;
+            /** Node Type */
+            node_type: string;
+            /** Node Version */
+            node_version: string;
+            /** Category */
+            category: string;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Params Hash
+             * @default
+             */
+            params_hash: string;
+            /** Parent Step Ids */
+            parent_step_ids?: string[];
+            /**
+             * Branch Label
+             * @default
+             */
+            branch_label: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Canonical Step Id
+             * @default
+             */
+            canonical_step_id: string;
+            /** Branch Id */
+            branch_id?: string | null;
+        };
+        /** PlanVersionListResponse */
+        PlanVersionListResponse: {
+            /** Versions */
+            versions: components["schemas"]["PlanVersionResponse"][];
+        };
+        /** PlanVersionResponse */
+        PlanVersionResponse: {
+            /** Plan Version Id */
+            plan_version_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Version Number */
+            version_number: number;
+            /** Is Committed */
+            is_committed: boolean;
+            /** Created At */
+            created_at: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+        };
+        /** PlanVersionUpdate */
+        PlanVersionUpdate: {
+            /** Description */
+            description?: string | null;
+        };
         /** ProjectCreateRequest */
         ProjectCreateRequest: {
             /** Name */
@@ -129,6 +614,114 @@ export interface components {
             created_at: string;
             /** Cardre Version */
             cardre_version: string;
+        };
+        /** ReportListResponse */
+        ReportListResponse: {
+            /** Reports */
+            reports: components["schemas"]["ReportResponse"][];
+        };
+        /** ReportResponse */
+        ReportResponse: {
+            /** Report Id */
+            report_id: string;
+            /** Run Id */
+            run_id?: string | null;
+            /** Report Type */
+            report_type: string;
+            /** Path */
+            path: string;
+            /** Created At */
+            created_at: string;
+        };
+        /** RunCreateRequest */
+        RunCreateRequest: {
+            /** Plan Version Id */
+            plan_version_id: string;
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+            /**
+             * Sync
+             * @default false
+             */
+            sync: boolean;
+        };
+        /** RunListResponse */
+        RunListResponse: {
+            /** Runs */
+            runs: components["schemas"]["RunResponse"][];
+        };
+        /** RunResponse */
+        RunResponse: {
+            /** Run Id */
+            run_id: string;
+            /** Plan Version Id */
+            plan_version_id: string;
+            /** Status */
+            status: string;
+            /** Started At */
+            started_at: string;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Step Count
+             * @default 0
+             */
+            step_count: number;
+            /** Branch Id */
+            branch_id?: string | null;
+            /** Executed Step Ids */
+            executed_step_ids?: string[];
+            /** Diagnostics */
+            diagnostics?: components["schemas"]["DiagnosticResponse"][];
+            latest_error?: components["schemas"]["DiagnosticResponse"] | null;
+            /** Heartbeat At */
+            heartbeat_at?: string | null;
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
+        };
+        /** RunStepResponse */
+        RunStepResponse: {
+            /** Run Step Id */
+            run_step_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Step Id */
+            step_id: string;
+            /** Plan Version Id */
+            plan_version_id: string;
+            /** Status */
+            status: string;
+            /** Started At */
+            started_at: string;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Execution Fingerprint */
+            execution_fingerprint?: {
+                [key: string]: unknown;
+            };
+            /** Warnings */
+            warnings?: components["schemas"]["DiagnosticResponse"][];
+            /** Errors */
+            errors?: components["schemas"]["DiagnosticResponse"][];
+        };
+        /** StalenessExplanationResponse */
+        StalenessExplanationResponse: {
+            /** Step Id */
+            step_id: string;
+            /** Status */
+            status: string;
+            /** Upstream Changes */
+            upstream_changes: {
+                [key: string]: boolean;
+            };
+            /** Missing Evidence */
+            missing_evidence?: string[];
         };
         /**
          * UnavailableProjectResponse
@@ -257,6 +850,645 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plans_projects__project_id__plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_plan_projects__project_id__plans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_projects__project_id__plans__plan_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plan_versions_projects__project_id__plans__plan_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanVersionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_version_projects__project_id__plan_versions__version_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_plan_version_projects__project_id__plan_versions__version_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanVersionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    commit_plan_version_projects__project_id__plan_versions__version_id__commit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_version_steps_projects__project_id__plan_versions__version_id__steps_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanStepResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_projects__project_id__runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_run_projects__project_id__runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_projects__project_id__runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_steps_projects__project_id__runs__run_id__steps_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunStepResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_evidence_projects__project_id__runs__run_id__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_run_projects__project_id__runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_step_evidence_staleness_projects__project_id__steps__step_id__evidence_get: {
+        parameters: {
+            query: {
+                plan_version_id: string;
+                branch_id?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                step_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StalenessExplanationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_artifact_projects__project_id__artifacts__artifact_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_node_types_projects__project_id__node_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeTypeListResponse"];
+                };
+            };
+        };
+    };
+    list_exports_projects__project_id__exports_get: {
+        parameters: {
+            query?: {
+                run_id?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reports_projects__project_id__reports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_run_reports_projects__project_id__runs__run_id__reports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportListResponse"];
                 };
             };
             /** @description Validation Error */
