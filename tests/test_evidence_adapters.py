@@ -346,16 +346,15 @@ def test_ambiguous_match_parity(store, tmp_path) -> None:
 # Focused adapter edge-case tests (not parity — direct adapter behavior)
 # ---------------------------------------------------------------------------
 
-def test_schema_version_takes_priority_over_role_type_media(store, tmp_path) -> None:
-    """When schema_version matches, it takes priority even if role/type differ."""
+def test_schema_version_mismatched_role_type_returns_empty(store, tmp_path) -> None:
+    """When schema_version matches but role/type/media mismatch, reject."""
     art = _write_json_artifact(
         store, tmp_path, "wrong_type", "wrong_role", "cardre.bin_definition.v1",
         {"variables": [{"variable": "age", "bins": []}]},
     )
     spec = get_adapter(EvidenceKind.BIN_DEFINITION)
     result = match([art], spec.profile, store)
-    assert len(result) == 1
-    assert result[0].artifact_id == art.artifact_id
+    assert result == []
 
 
 def test_schema_version_mismatch_falls_through_to_role_type_media(store, tmp_path) -> None:

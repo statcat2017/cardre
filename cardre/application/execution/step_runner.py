@@ -37,6 +37,7 @@ class StepExecutionResult:
     output_artifact_ids: list[str]
     staged_artifacts: list[StagedArtifact] = field(default_factory=list)
     parent_run_steps: list[Any] = field(default_factory=list)
+    input_artifact_ids_by_parent: dict[str, list[str]] = field(default_factory=dict)
     warnings: list[JsonDict] = field(default_factory=list)
     errors: list[JsonDict] = field(default_factory=list)
 
@@ -51,6 +52,16 @@ class StepRunner:
         self._node_catalogue = node_catalogue
         self._artifact_store_factory = artifact_store_factory
         self._evidence_reader_factory = evidence_reader_factory
+        self._evidence_uow: Any = None
+
+    @staticmethod
+    def _close_evidence_reader(reader: Any) -> None:
+        """Close the UoW backing this evidence reader, if any."""
+        uow = getattr(reader, "_evidence_uow", None)
+        if uow is not None:
+            import contextlib
+            with contextlib.suppress(Exception):
+                uow.close()
 
     def run_step(
         self,
@@ -72,9 +83,18 @@ class StepRunner:
         input_artifacts: list[ArtifactRef] = []
         staged: list[StagedArtifact] = []
 
+        evidence_reader = None
+        artifact_store = self._artifact_store_factory()
         try:
+            evidence_reader = self._evidence_reader_factory()
+
             # Resolve inputs from parent step outputs
             resolved = self._resolve_inputs(spec, step_outputs)
+            # Include synthetic artifacts injected into this step's own output
+            # bucket by ExecuteRun (e.g. the RunSummary for technical-manifest).
+            for syn_art in step_outputs.get(spec.step_id, []):
+                if syn_art.artifact_id not in {a.artifact_id for a in resolved}:
+                    resolved.append(syn_art)
 
             # Instantiate node
             node = self._node_catalogue.instantiate(spec.node_type)
@@ -95,7 +115,9 @@ class StepRunner:
 
             input_roles = [
                 rs.role for rs in node.__definition__.input_contract.roles
-            ] if hasattr(node.__definition__, 'input_contract') else []
+            ] if hasattr(node.__definition__, 'input_contract') and node.__definition__.input_contract.roles else (
+                getattr(node, 'input_roles', []) or []
+            )
             input_artifacts = self._filter_input_artifacts(spec, input_roles, resolved)
 
             for pid in spec.parent_step_ids:
@@ -104,10 +126,9 @@ class StepRunner:
                     a.artifact_id for a in parent_arts if a in input_artifacts
                 ]
 
-            artifact_store = self._artifact_store_factory()
-            evidence_reader = self._evidence_reader_factory()
-
             inputs = StepInputCollection(evidence_reader, input_artifacts)
+            output_contract = getattr(node.__definition__, 'output_contract', ArtifactContract())
+            outputs = StagingOutputPublisher(artifact_store)
 
             output_contract = getattr(node.__definition__, 'output_contract', ArtifactContract())
             outputs = StagingOutputPublisher(artifact_store)
@@ -160,6 +181,7 @@ class StepRunner:
                 output_artifact_ids=output_artifact_ids,
                 staged_artifacts=staged,
                 parent_run_steps=parent_run_steps,
+                input_artifact_ids_by_parent=input_artifact_ids_by_parent,
                 warnings=list(result.warnings or []),
             )
 
@@ -179,6 +201,7 @@ class StepRunner:
                 output_artifact_ids=[s.provisional_artifact_id for s in staged],
                 staged_artifacts=staged,
                 parent_run_steps=parent_run_steps,
+                input_artifact_ids_by_parent=input_artifact_ids_by_parent,
                 errors=[error_entry],
             )
 
@@ -197,8 +220,12 @@ class StepRunner:
                 input_artifact_ids=[a.artifact_id for a in input_artifacts],
                 output_artifact_ids=[],
                 parent_run_steps=parent_run_steps,
+                input_artifact_ids_by_parent=input_artifact_ids_by_parent,
                 errors=[error_entry],
             )
+
+        finally:
+            self._close_evidence_reader(evidence_reader)
 
     def _resolve_inputs(
         self,
@@ -221,7 +248,7 @@ class StepRunner:
         artifacts: list[ArtifactRef],
     ) -> list[ArtifactRef]:
         if not allowed:
-            return []
+            return list(artifacts)
         if not artifacts:
             return artifacts
         filtered = [a for a in artifacts if a.role in allowed]

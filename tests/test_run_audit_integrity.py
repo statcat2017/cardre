@@ -1,205 +1,119 @@
-"""Characterization tests for assert_run_audit_integrity — verifies the
-post-run audit checks that validate run state, evidence completeness, and
-manifest correctness.
+"""Audit integrity tests — verifies post-run state after composed execution.
+
+Asserts every step has evidence edges with evidence artifacts, no orphan
+artifacts, manifest completeness, and edge provenance correctness.
 """
+
 from __future__ import annotations
 
+import csv
 import json
-import uuid
-from pathlib import Path
 
 import pytest
 
-from cardre.application.runs.finalize_run import FinalizeRun as RunLifecycle
-from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.errors import RunLifecycleError, RunNotFoundError
-
-try:
-    from cardre.execution.run_lifecycle import assert_run_audit_integrity
-except ImportError:
-    assert_run_audit_integrity = None  # xfail: removed in Batch 05
-
-pytestmark = pytest.mark.xfail(reason="Execution path rewritten in Batch 05; test needs update")
+from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
+from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
+from cardre.adapters.system.project_registry import JsonProjectRegistry
+from cardre.application.runs.submit_run import SubmitRunCommand
+from cardre.bootstrap.container import build_container
+from cardre.bootstrap.settings import Settings
+from cardre.workflows import build_canonical_scorecard_steps
 
 
-def _make_store(project_root: Path):
-    from cardre.store.db import ProjectStore
-    store = ProjectStore(project_root / "test.cardre")
-    store.initialize()
-    return store
+def _write_input_csv(path):
+    rows = []
+    for i in range(60):
+        rows.append({
+            "credit_amount": 1000 + i * 50,
+            "age_years": 25 + (i % 30),
+            "duration_months": 6 + (i % 36),
+            "credit_risk_class": "good" if i % 3 != 0 else "bad",
+        })
+    with open(path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w.writeheader()
+        w.writerows(rows)
+    return path
 
 
-def _seed_succeeded_run(store):
-    """Seed a succeeded run with a manifest and return (pv_id, run_id)."""
-    now = utc_now_iso()
-    project_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-        (project_id, "Test", now, "0.2.0"),
+@pytest.fixture
+def audit_run(tmp_path):
+    registry = JsonProjectRegistry(tmp_path / "registry.json")
+    provisioner = SqliteProjectProvisioner()
+    root = tmp_path / "project"
+    provisioner.initialize(root)
+    uow_factory = SqliteUnitOfWorkFactory(registry)
+
+    with uow_factory.for_root(root) as uow:
+        project_id = uow.projects.create("Audit")
+        plan_id = uow.plans.create_plan(project_id, "Audit Plan")
+        uow.commit()
+    registry.register(project_id, root)
+
+    csv_path = _write_input_csv(tmp_path / "input.csv")
+    steps = build_canonical_scorecard_steps(csv_path)
+
+    with uow_factory.for_project(project_id) as uow:
+        pv_id = uow.plans.create_version(plan_id, steps, is_committed=True)
+        uow.commit()
+
+    settings = Settings(launch_mode=True, registry_path=str(tmp_path / "registry.json"))
+    container = build_container(settings)
+    result = container.submit_run_factory(project_id)(
+        SubmitRunCommand(plan_version_id=pv_id, sync=True),
     )
-    plan_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-        (plan_id, project_id, "Plan", now),
-    )
-    pv_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-        "VALUES (?, ?, 1, 1, ?)",
-        (pv_id, plan_id, now),
-    )
-    run_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, finished_at) "
-        "VALUES (?, ?, 'succeeded', ?, ?, ?)",
-        (run_id, pv_id, now, now, now),
-    )
-    # Write a manifest
-    manifest_dir = store.root / "exports" / f"manifest-{run_id}"
-    manifest_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = manifest_dir / "manifest.json"
-    manifest = {
-        "manifest_version": "1.0.0",
-        "run_id": run_id,
-        "plan_version_id": pv_id,
-        "status": "succeeded",
-        "steps": [],
-    }
-    manifest_path.write_text(json.dumps(manifest))
-    return pv_id, run_id
+    return project_id, plan_id, pv_id, result.run_id, uow_factory, root
 
 
-class TestAssertRunAuditIntegrity:
-    def test_succeeded_run_passes_audit(self, tmp_path):
-        store = _make_store(tmp_path)
-        pv_id, run_id = _seed_succeeded_run(store)
-        assert_run_audit_integrity(store, run_id)  # should not raise
+class TestRunAuditIntegrity:
+    def test_run_must_be_succeeded(self, audit_run):
+        project_id, _, _, run_id, uow_factory, _ = audit_run
+        with uow_factory.for_project(project_id) as uow:
+            run = uow.runs.get(run_id)
+        assert run is not None
+        assert run.status == "succeeded", f"Run status: {run.status}"
 
-    def test_nonexistent_run_raises(self, tmp_path):
-        store = _make_store(tmp_path)
-        with pytest.raises(RunNotFoundError):
-            assert_run_audit_integrity(store, "nonexistent-run")
+    def test_every_step_has_evidence_edges_with_artifacts(self, audit_run):
+        project_id, _, _, run_id, uow_factory, _ = audit_run
+        with uow_factory.for_project(project_id) as uow:
+            run_steps = uow.run_steps.get_for_run(run_id)
+            for rs in run_steps:
+                edges = uow.evidence.get_edges_for_run_step(rs.run_step_id)
+                if rs.status.value == "succeeded" and rs.step_id not in ("import", "technical-manifest"):
+                    assert len(edges) > 0, f"No evidence edges for step {rs.step_id}"
+                    for edge in edges:
+                        artifacts = uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id)
+                        assert len(artifacts) > 0, (
+                            f"No evidence artifacts for edge {edge.evidence_edge_id} ({rs.step_id})"
+                        )
 
-    def test_non_terminal_status_raises(self, tmp_path):
-        store = _make_store(tmp_path)
-        now = utc_now_iso()
-        project_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Plan", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
-        run_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at) "
-            "VALUES (?, ?, 'running', ?, ?)",
-            (run_id, pv_id, now, now),
-        )
-        with pytest.raises(RunLifecycleError, match="terminal"):
-            assert_run_audit_integrity(store, run_id)
-
-    def test_missing_manifest_raises(self, tmp_path):
-        store = _make_store(tmp_path)
-        now = utc_now_iso()
-        project_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Plan", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
-        run_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at, finished_at) "
-            "VALUES (?, ?, 'succeeded', ?, ?, ?)",
-            (run_id, pv_id, now, now, now),
-        )
-        # No manifest written
-        with pytest.raises(RunLifecycleError, match="manifest"):
-            assert_run_audit_integrity(store, run_id)
-
-    def test_manifest_run_id_mismatch_raises(self, tmp_path):
-        store = _make_store(tmp_path)
-        pv_id, run_id = _seed_succeeded_run(store)
-        # Overwrite manifest with wrong run_id
-        manifest_path = store.root / "exports" / f"manifest-{run_id}" / "manifest.json"
+    def test_manifest_has_steps_and_hashes(self, audit_run):
+        _, _, _, run_id, _, root = audit_run
+        manifest_path = root / "exports" / f"manifest-{run_id}" / "manifest.json"
+        assert manifest_path.exists()
         manifest = json.loads(manifest_path.read_text())
-        manifest["run_id"] = "wrong-run-id"
-        manifest_path.write_text(json.dumps(manifest))
-        with pytest.raises(RunLifecycleError, match="run_id"):
-            assert_run_audit_integrity(store, run_id)
+        assert len(manifest["steps"]) > 0
+        assert manifest["manifest_hash"]
+        assert manifest["pathway_hash"]
 
-    def test_manifest_status_mismatch_raises(self, tmp_path):
-        store = _make_store(tmp_path)
-        pv_id, run_id = _seed_succeeded_run(store)
-        manifest_path = store.root / "exports" / f"manifest-{run_id}" / "manifest.json"
-        manifest = json.loads(manifest_path.read_text())
-        manifest["status"] = "failed"
-        manifest_path.write_text(json.dumps(manifest))
-        with pytest.raises(RunLifecycleError, match="status"):
-            assert_run_audit_integrity(store, run_id)
+    def test_no_orphan_artifacts(self, audit_run):
+        project_id, _, _, run_id, uow_factory, _ = audit_run
+        with uow_factory.for_project(project_id) as uow:
+            lineage = uow._conn.execute(
+                "SELECT DISTINCT artifact_id FROM artifact_lineage WHERE run_id = ?",
+                (run_id,),
+            ).fetchall()
+            for row in lineage:
+                art = uow.artifacts.get(row["artifact_id"])
+                assert art is not None, f"Orphan artifact: {row['artifact_id']}"
 
-    def test_manifest_plan_version_mismatch_raises(self, tmp_path):
-        store = _make_store(tmp_path)
-        pv_id, run_id = _seed_succeeded_run(store)
-        manifest_path = store.root / "exports" / f"manifest-{run_id}" / "manifest.json"
-        manifest = json.loads(manifest_path.read_text())
-        manifest["plan_version_id"] = "wrong-pv"
-        manifest_path.write_text(json.dumps(manifest))
-        with pytest.raises(RunLifecycleError, match="plan_version_id"):
-            assert_run_audit_integrity(store, run_id)
-
-
-class TestRunLifecycleFinaliseError:
-    def test_finalise_failure_records_diagnostic(self, tmp_path):
-        """When finalise fails (manifest write error), a diagnostic is recorded."""
-        store = _make_store(tmp_path)
-        now = utc_now_iso()
-        project_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Plan", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
-        run_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO runs (run_id, plan_version_id, status, created_at, started_at) "
-            "VALUES (?, ?, 'running', ?, ?)",
-            (run_id, pv_id, now, now),
-        )
-        # Make manifest write fail by making the exports dir read-only
-        # Actually, let's just delete the run record so write_manifest raises
-        store.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
-
-        lifecycle = RunLifecycle(store=store, run_id=run_id, plan_version_id=pv_id, execution_mode="full_plan")
-        with pytest.raises((RunLifecycleError, Exception)):
-            lifecycle.finalise("succeeded")
+    def test_evidence_edges_have_valid_sources(self, audit_run):
+        project_id, _, _, run_id, uow_factory, _ = audit_run
+        with uow_factory.for_project(project_id) as uow:
+            edges = uow.evidence.get_edges_for_run(run_id)
+            for edge in edges:
+                source_rs = uow.run_steps.get(edge.source_run_step_id)
+                assert source_rs is not None, f"Missing source run step: {edge.source_run_step_id}"
+                assert source_rs.status.value == "succeeded", (
+                    f"Source run step {edge.source_run_step_id} not succeeded: {source_rs.status}"
+                )

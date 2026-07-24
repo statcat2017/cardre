@@ -171,6 +171,10 @@ class ProjectStore:
             path = Path(artifact.path)
         return path if path.is_absolute() else self.root / path
 
+    def resolve_path(self, artifact: Any) -> Path:
+        """Alias for artifact_path — satisfies the ArtifactReader protocol."""
+        return self.artifact_path(artifact)  # cardre-allow-artifact-read: low-level-evidence-parser
+
     def execute_script(self, sql: str) -> None:
         with self._lock:
             self._connect().executescript(sql)

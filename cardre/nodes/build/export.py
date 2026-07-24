@@ -60,8 +60,8 @@ class TechnicalManifestExportNode(NodeType):
                 "node_version": s.get("node_version", ""),
                 "status": s.get("status", ""),
                 "params_hash": s.get("params_hash", ""),
-                "input_artifact_logical_hashes": s.get("input_artifact_ids", []),
-                "output_artifact_logical_hashes": s.get("output_artifact_ids", []),
+                "input_artifact_logical_hashes": s.get("input_artifact_logical_hashes", []),
+                "output_artifact_logical_hashes": s.get("output_artifact_logical_hashes", []),
             })
 
         artifacts_out: list[dict[str, Any]] = [
