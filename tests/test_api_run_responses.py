@@ -21,9 +21,8 @@ def _write_input_csv(project_root: Path) -> Path:
 
 
 def _seed_plan_version(store, input_path: Path):
-    from cardre.services.project_resolver import ProjectResolver
-
     from cardre.config import CardreConfig
+    from cardre.services.project_resolver import ProjectResolver
     now = utc_now_iso()
     project_id = str(uuid.uuid4())
     store.execute(
@@ -239,9 +238,8 @@ class TestRunResponseContracts:
     def test_get_run_404_envelope(self, api_client, tmp_path):
         store = _make_store(tmp_path)
         project_id = str(uuid.uuid4())
-        from cardre.services.project_resolver import ProjectResolver
-
         from cardre.config import CardreConfig
+        from cardre.services.project_resolver import ProjectResolver
         resolver = ProjectResolver(CardreConfig.from_env().registry_path)
         resolver.register_project(project_id, store.root)
         store.close()
@@ -258,9 +256,8 @@ class TestRunResponseContracts:
     def test_post_run_wrong_project_404(self, api_client, tmp_path):
         store = _make_store(tmp_path)
         project_id = str(uuid.uuid4())
-        from cardre.services.project_resolver import ProjectResolver
-
         from cardre.config import CardreConfig
+        from cardre.services.project_resolver import ProjectResolver
         resolver = ProjectResolver(CardreConfig.from_env().registry_path)
         resolver.register_project(project_id, store.root)
         store.close()

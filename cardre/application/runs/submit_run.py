@@ -11,6 +11,9 @@ from cardre.application.ports.run_dispatcher import RunDispatcherPort, RunReques
 @dataclass
 class SubmitRunCommand:
     plan_version_id: str
+    run_scope: str = "full_plan"
+    branch_id: str | None = None
+    force: bool = False
     sync: bool = False
 
 
@@ -57,7 +60,7 @@ class SubmitRun:
 
         active_statuses = {"created", "queued", "running"}
         for run in existing:
-            if run.status in active_statuses:
+            if run.status in active_statuses and not command.force:
                 from cardre.domain.errors import CardreError
                 raise CardreError(
                     f"Plan version {command.plan_version_id!r} already has "
@@ -66,7 +69,12 @@ class SubmitRun:
 
         uow3 = self._uow_factory()
         try:
-            run_id = uow3.runs.create(command.plan_version_id)
+            run_id = uow3.runs.create(
+                command.plan_version_id,
+                run_scope=command.run_scope,
+                branch_id=command.branch_id,
+                force=command.force,
+            )
             uow3.commit()
         except Exception:
             uow3.rollback()

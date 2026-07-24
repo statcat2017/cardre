@@ -22,9 +22,8 @@ from cardre.domain.diagnostics import utc_now_iso
 @pytest.fixture
 def project_with_run(store):
     """Create a project, plan, plan version, and run (no steps / evidence)."""
-    from cardre.services.project_resolver import ProjectResolver
-
     from cardre.config import CardreConfig
+    from cardre.services.project_resolver import ProjectResolver
 
     project_id = str(uuid.uuid4())
     now = utc_now_iso()

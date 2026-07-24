@@ -121,4 +121,4 @@ async def commit_plan_version(project_id: str, version_id: str, container=Depend
 async def get_plan_version_steps(project_id: str, version_id: str, container=Depends(get_container)):
     with container.uow_factory.read_only(project_id) as uow:
         steps = uow.plans.get_version_steps(version_id)
-    return [step_spec_to_response(s) for s in steps]
+    return [step_spec_to_response(s, plan_version_id=version_id) for s in steps]

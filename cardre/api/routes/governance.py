@@ -44,73 +44,25 @@ def _require_governance(container: Container = Depends(get_container)):
 
 
 def _uc(container: Container, project_id: str):
-    from cardre.application.governance.assign_champion import AssignChampion, AssignChampionCommand
-    from cardre.application.governance.create_branch import CreateBranch, CreateBranchCommand
+    from cardre.application.governance.assign_champion import AssignChampionCommand
+    from cardre.application.governance.create_branch import CreateBranchCommand
     from cardre.application.governance.create_comparison import (
-        CreateComparison,
         CreateComparisonCommand,
     )
     from cardre.application.governance.refresh_comparison import (
         RefreshComparisonCommand,
     )
 
-    uow = container.uow_factory
-
-    def uow_f():
-        return uow.for_project(project_id)
-
     return {
-        "create_branch": CreateBranch(uow_f),
-        "create_comparison": CreateComparison(uow_f),
-        "refresh_comparison": _build_refresh_comparison(container, project_id),
-        "assign_champion": AssignChampion(uow_f),
+        "create_branch": container.create_branch_factory(project_id),
+        "create_comparison": container.create_comparison_factory(project_id),
+        "refresh_comparison": container.refresh_comparison_factory(project_id),
+        "assign_champion": container.assign_champion_factory(project_id),
         "CreateBranchCommand": CreateBranchCommand,
         "CreateComparisonCommand": CreateComparisonCommand,
         "RefreshComparisonCommand": RefreshComparisonCommand,
         "AssignChampionCommand": AssignChampionCommand,
     }
-
-
-def _build_refresh_comparison(container, project_id):
-    from cardre.application.governance.refresh_comparison import RefreshComparison
-    _FsArtifactStore = __import__("cardre.adapters.filesystem.artifact_store", fromlist=["FsArtifactStore"]).FsArtifactStore
-
-    uow = container.uow_factory
-
-    class _ApiEvidencePort:
-        def find_typed(self, step_map, canonical_step_id, plan_version_id, evidence_branch_id, kinds):
-            with uow.read_only(project_id) as u:
-                for row in step_map:
-                    if row.get("canonical_step_id") != canonical_step_id:
-                        continue
-                    step_id = row.get("source_step_id") or row.get("step_id", "")
-                    rs = u.run_steps.get_latest_successful_step(plan_version_id, step_id, evidence_branch_id)
-                    if rs is None:
-                        continue
-                    _get_adapter = __import__("cardre.adapters.evidence.parsers", fromlist=["get_adapter"]).get_adapter
-                    _FsArtifactStore = __import__("cardre.adapters.filesystem.artifact_store", fromlist=["FsArtifactStore"]).FsArtifactStore
-                    store = _FsArtifactStore(container.project_registry.resolve_root(project_id))
-                    for aid in u.artifacts.output_artifact_ids_for_run_step(rs.run_step_id):
-                        art = u.artifacts.get(aid)
-                        if art is None:
-                            continue
-                        for kind in kinds:
-                            try:
-                                spec = _get_adapter(kind)
-                                path = store.resolve_path(art)
-                                if path.exists():
-                                    result = spec.parse(path, art, store)
-                                    if result is not None:
-                                        return result
-                            except Exception:
-                                continue
-                return None
-
-    return RefreshComparison(
-        lambda: uow.for_project(project_id),
-        _ApiEvidencePort(),
-        _FsArtifactStore(container.project_registry.resolve_root(project_id)),
-    )
 
 
 # ---- Branches ----

@@ -51,14 +51,35 @@ def diagnostic_to_response(value: Mapping[str, Any]) -> DiagnosticResponse:
     )
 
 
-def run_to_response(run: Run) -> RunResponse:
+def run_to_response(
+    run: Run,
+    *,
+    step_count: int = 0,
+    executed_step_ids: list[str] | None = None,
+    diagnostics: list[dict[str, Any]] | None = None,
+    heartbeat_at: str | None = None,
+    is_stale: bool = False,
+    cancel_requested: bool = False,
+) -> RunResponse:
+    diag_responses = [diagnostic_to_response(d) for d in (diagnostics or [])]
+    latest_error = next(
+        (d for d in reversed(diag_responses) if d.severity == "error"),
+        None,
+    )
     return RunResponse(
         run_id=run.run_id,
         plan_version_id=run.plan_version_id,
         status=str(run.status),
         started_at=run.started_at,
         finished_at=run.finished_at,
+        step_count=step_count,
         branch_id=run.branch_id,
+        executed_step_ids=list(executed_step_ids or []),
+        diagnostics=diag_responses,
+        latest_error=latest_error,
+        heartbeat_at=heartbeat_at,
+        is_stale=is_stale,
+        cancel_requested=cancel_requested,
     )
 
 
@@ -97,10 +118,10 @@ def plan_version_to_response(pv: PlanVersion) -> PlanVersionResponse:
     )
 
 
-def step_spec_to_response(step: StepSpec) -> PlanStepResponse:
+def step_spec_to_response(step: StepSpec, *, plan_version_id: str = "") -> PlanStepResponse:
     return PlanStepResponse(
         step_id=step.step_id,
-        plan_version_id="",
+        plan_version_id=plan_version_id,
         node_type=step.node_type,
         node_version=step.node_version,
         category=step.category,

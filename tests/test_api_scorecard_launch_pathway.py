@@ -395,11 +395,11 @@ def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_pa
     store = ProjectStore(project_dir)
     store.open()
     try:
-        from cardre.readiness import check_report_readiness
         from cardre.readiness.limitation_codes import LimitationCode
         from cardre.reporting.collector import generate_report_bundle
         from cardre.reporting.renderer_html import render_report_bundle_to_html
 
+        from cardre.readiness import check_report_readiness
         from cardre.store.branch_repo import BranchRepository
 
         branch_repo = BranchRepository(store)

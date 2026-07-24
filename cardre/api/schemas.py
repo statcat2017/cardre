@@ -149,6 +149,7 @@ class RunResponse(BaseModel):
     latest_error: DiagnosticResponse | None = None
     heartbeat_at: str | None = None
     is_stale: bool = False
+    cancel_requested: bool = False
 
 
 class RunListResponse(BaseModel):
@@ -157,6 +158,8 @@ class RunListResponse(BaseModel):
 
 class RunCreateRequest(BaseModel):
     plan_version_id: str
+    run_scope: str = "full_plan"
+    branch_id: str | None = None
     force: bool = False
     sync: bool = False
 

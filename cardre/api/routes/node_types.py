@@ -1,4 +1,4 @@
-"""Node-type listing endpoint."""
+"""Node-type listing endpoint — project-scoped."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ from cardre.api.dependencies import get_container
 from cardre.api.mappers import node_type_to_response
 from cardre.api.schemas import NodeTypeListResponse
 
-router = APIRouter(tags=["node-types"])
+router = APIRouter(prefix="/projects/{project_id}", tags=["node-types"])
 
 
 @router.get("/node-types", response_model=NodeTypeListResponse)
-async def list_node_types(container=Depends(get_container)):
+async def list_node_types(project_id: str, container=Depends(get_container)):
     catalogue = container.node_catalogue
     node_types = [
         node_type_to_response(
