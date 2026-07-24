@@ -128,36 +128,49 @@ def resolve_run_step_evidence(
     pairs.  Audit packs need the selected run step and provenance as well, so
     this companion preserves that information without making callers infer it
     from the returned edges.
+
+    Within each source bucket (branch, full-plan, across-plan) the resolver
+    iterates successful run steps newest-first.  If the newest step's edges
+    are all stale or its fingerprint doesn't match, the resolver continues to
+    the next-oldest successful step in the same bucket before falling back to
+    the next bucket.
     """
-    candidates: list[tuple[RunStep | None, str]] = [
-        (uow.run_steps.get_latest_successful_step(plan_version_id, step_id, branch_id), "branch")
+    buckets: list[tuple[list[RunStep], str]] = [
+        (uow.run_steps.list_successful_steps_ordered(plan_version_id, step_id, branch_id), "branch"),
     ]
     if branch_id is not None:
-        candidates.append((uow.run_steps.get_latest_successful_step(plan_version_id, step_id, None), "full_plan"))
+        buckets.append((
+            uow.run_steps.list_successful_steps_ordered(plan_version_id, step_id, None),
+            "full_plan",
+        ))
     resolved_plan_id = plan_id or uow.plans.get_plan_id_for_version(plan_version_id)
     if resolved_plan_id is not None:
-        candidates.append((uow.runs.get_latest_successful_step_across_plan(resolved_plan_id, step_id), "across_plan"))
+        buckets.append((
+            uow.runs.list_successful_steps_across_plan_ordered(resolved_plan_id, step_id),
+            "across_plan",
+        ))
 
-    for run_step, source_label in candidates:
-        if run_step is None or not _matches_fingerprint(run_step, fingerprint_match):
-            continue
-        edges = uow.evidence.get_edges_for_run_step(run_step.run_step_id)
-        non_stale_edges = [e for e in edges if not e.is_stale]
-        # If all edges are stale (and there are edges), skip this candidate.
-        if edges and not non_stale_edges:
-            continue
-        artifacts = [
-            artifact
-            for edge in non_stale_edges
-            for artifact in uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id)
-        ]
-        return ResolvedEvidence(
-            run_step_id=run_step.run_step_id,
-            run_step=run_step,
-            edges=non_stale_edges,
-            artifacts=artifacts,
-            source_label=source_label,
-        )
+    for candidates, source_label in buckets:
+        for run_step in candidates:
+            if not _matches_fingerprint(run_step, fingerprint_match):
+                continue
+            edges = uow.evidence.get_edges_for_run_step(run_step.run_step_id)
+            non_stale_edges = [e for e in edges if not e.is_stale]
+            # If all edges are stale (and there are edges), skip to next candidate.
+            if edges and not non_stale_edges:
+                continue
+            artifacts = [
+                artifact
+                for edge in non_stale_edges
+                for artifact in uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id)
+            ]
+            return ResolvedEvidence(
+                run_step_id=run_step.run_step_id,
+                run_step=run_step,
+                edges=non_stale_edges,
+                artifacts=artifacts,
+                source_label=source_label,
+            )
     return None
 
 

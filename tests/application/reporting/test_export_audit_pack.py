@@ -8,6 +8,7 @@ import pytest
 from cardre.application.reporting.export_audit_pack import ExportAuditPack, ExportAuditPackCommand
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.errors import CardreError
+from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge
 from cardre.domain.plan import Plan
 from cardre.domain.project import Project
 from cardre.domain.run import Run, RunStep, RunStepStatus
@@ -80,6 +81,9 @@ class _Runs:
     def get_latest_successful_step_across_plan(self, plan_id, step_id):
         return None
 
+    def list_successful_steps_across_plan_ordered(self, plan_id, step_id, branch_id=None):
+        return []
+
 
 class _RunSteps:
     def __init__(self, local, shared):
@@ -96,6 +100,11 @@ class _RunSteps:
         if (plan_version_id, step_id, branch_id) == ("source-pv", "shared-step", "source"):
             return self.shared
         return None
+
+    def list_successful_steps_ordered(self, plan_version_id, step_id, branch_id=None):
+        if (plan_version_id, step_id, branch_id) == ("source-pv", "shared-step", "source"):
+            return [self.shared]
+        return []
 
 
 class _Artifacts:
@@ -171,3 +180,58 @@ def test_export_rejects_missing_branch(tmp_path):
     with pytest.raises(CardreError) as exc_info:
         _use_case(tmp_path)(ExportAuditPackCommand("project", "plan", "missing", export_path=tmp_path / "audit-pack"))
     assert exc_info.value.code == "BRANCH_NOT_FOUND"
+
+
+def test_export_excludes_stale_evidence_edges(tmp_path):
+    """Stale evidence edges must not appear in the audit pack."""
+    export_dir = tmp_path / "audit-pack"
+
+    stale_edge = EvidenceEdge(
+        evidence_edge_id="stale-ee", run_id="branch-run", run_step_id="local",
+        plan_version_id="pv", step_id="local-step", parent_step_id="parent",
+        source_run_id="branch-run", source_run_step_id="other",
+        policy="exact", source_label="test", is_reused=False, is_stale=True,
+    )
+    current_edge = EvidenceEdge(
+        evidence_edge_id="current-ee", run_id="branch-run", run_step_id="local",
+        plan_version_id="pv", step_id="local-step", parent_step_id="parent",
+        source_run_id="branch-run", source_run_step_id="other",
+        policy="exact", source_label="test", is_reused=False, is_stale=False,
+    )
+    current_artifact = EvidenceArtifact("ea-1", "current-ee", "art-1", "output", "2026-01-01")
+
+    class _StaleEvidence:
+        def get_edges_for_run_step(self, run_step_id):
+            if run_step_id == "local":
+                return [stale_edge, current_edge]
+            return []
+
+        def get_artifacts_for_edge(self, edge_id):
+            if edge_id == "current-ee":
+                return [current_artifact]
+            return []
+
+    local_artifact = ArtifactRef("art-1", "report", "report", "local", "h1", "lh1")
+    local_step = RunStep("local", "branch-run", "local-step", "pv", RunStepStatus.SUCCEEDED, "2026-01-01")
+
+    class _UowWithStale(_Uow):
+        def __init__(self):
+            super().__init__()
+            self.evidence = _StaleEvidence()
+            self.artifacts = _Artifacts(
+                {local_artifact.artifact_id: local_artifact},
+                {local_step.run_step_id: [("output", local_artifact)]},
+            )
+
+    use_case = ExportAuditPack(
+        _Factory(_UowWithStale()),
+        lambda project_id: _Reader(),
+        lambda project_id: tmp_path,
+        lambda command: None,
+    )
+    use_case(ExportAuditPackCommand("project", "plan", "branch", export_path=export_dir))
+
+    evidence = json.loads((export_dir / "evidence.json").read_text())
+    edge_ids = {e["edge"]["evidence_edge_id"] for e in evidence}
+    assert "stale-ee" not in edge_ids
+    assert "current-ee" in edge_ids

@@ -126,28 +126,46 @@ class TestStage2FullPlanFallback:
 
 
 class TestStage3LatestSuccessfulRunForPlanVersion:
-    def test_stage3_finds_evidence_when_branch_filtered_out(self, provisioned_project):
-        """Stage 3 ignores branch filtering — it uses get_latest_successful_id(branch_id=None).
+    def test_stage3_finds_evidence_when_source_run_step_join_fails(self, provisioned_project):
+        """Stage 3 is genuinely reached when stage 2's join excludes the edge.
 
-        When a branch_id is provided but stages 1+2 find no matching edges
-        (because the evidence belongs to a full-plan run, not the branch),
-        stage 3 finds the run step via the latest successful run for the
-        plan version (ignoring branch), then builds evidence pairs from it.
+        Stage 2 queries edges with ``JOIN run_steps rs ON e.source_run_step_id
+        = rs.run_step_id WHERE rs.status = 'succeeded'``.  If the source run
+        step has a non-succeeded status, the join excludes the edge and stage 2
+        returns nothing.  Stage 3 finds the run step directly (without the
+        source-run-step join) and retrieves its edges, which are current.
         """
         project_id, uow_factory, _, _ = provisioned_project
         with uow_factory.for_project(project_id) as uow:
             plan_id, pv_id = _seed_plan(uow, project_id)
-            branch_id = "br1"
-            # Full-plan run (branch_id=None) with evidence for step-a.
-            # Stages 1+2 will not find this because they filter by branch_id.
+
+            # Run whose step-a succeeded.
             run_id = _insert_run(uow, pv_id, branch_id=None)
-            rs_id = _insert_run_step(uow, run_id, pv_id, "step-a")
-            ee_id = _insert_evidence_edge(uow, run_id, rs_id, pv_id, "step-a")
+            rs_id = _insert_run_step(uow, run_id, pv_id, "step-a", status="succeeded")
+
+            # A separate "parent" run step that FAILED.
+            parent_run_id = _insert_run(uow, pv_id, branch_id=None, status="failed")
+            parent_rs_id = _insert_run_step(uow, parent_run_id, pv_id, "parent", status="failed")
+
+            # Edge for step-a whose source_run_step_id points to the failed
+            # parent run step.  Stage 2's join on rs.status='succeeded' will
+            # exclude this edge.  Stage 3 finds step-a's run step directly and
+            # gets its edges without the source-run-step join.
+            ee_id = str(uuid.uuid4())
+            now = utc_now_iso()
+            uow._conn.execute(
+                "INSERT INTO evidence_edges "
+                "(evidence_edge_id, run_id, run_step_id, plan_version_id, step_id, parent_step_id, "
+                " source_run_id, source_run_step_id, policy, source_label, is_reused, is_stale, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'exact', 'test', 0, 0, ?)",
+                (ee_id, run_id, rs_id, pv_id, "step-a", "parent", parent_run_id, parent_rs_id, now),
+            )
             uow.commit()
 
         with uow_factory.for_project(project_id) as uow:
-            # Query with branch_id — stages 1+2 fail, stage 3 finds it.
-            result = resolve_evidence(uow, pv_id, "step-a", branch_id=branch_id)
+            # branch_id=None → stage 1 queries full-plan edges, stage 2 is the
+            # same query (skipped because branch_id is None).  Stage 3 runs.
+            result = resolve_evidence(uow, pv_id, "step-a", branch_id=None)
         assert len(result) == 1
         assert result[0][0].evidence_edge_id == ee_id
 
@@ -411,3 +429,73 @@ class TestDeterministicOrdering:
             result = resolve_evidence(uow, pv_id, "step-a", branch_id=branch_id, fingerprint_match=spec)
         assert len(result) == 1
         assert result[0][0].evidence_edge_id == old_ee
+
+
+class TestResolveRunStepIteratesOlderCandidates:
+    """resolve_run_step_evidence must iterate older successful run steps within
+    each source bucket when the newest candidate has only stale edges."""
+
+    def test_newer_stale_falls_to_older_current_in_branch_bucket(self, provisioned_project):
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            plan_id, pv_id = _seed_plan(uow, project_id)
+            branch_id = "br1"
+
+            # Older branch run — current evidence.
+            old_run = _insert_run(uow, pv_id, branch_id=branch_id)
+            old_rs = _insert_run_step(uow, old_run, pv_id, "step-a")
+            _insert_evidence_edge(uow, old_run, old_rs, pv_id, "step-a", is_stale=0)
+
+            # Newer branch run — stale evidence only.
+            new_run = _insert_run(uow, pv_id, branch_id=branch_id)
+            new_rs = _insert_run_step(uow, new_run, pv_id, "step-a")
+            _insert_evidence_edge(uow, new_run, new_rs, pv_id, "step-a", is_stale=1)
+
+            uow._conn.execute(
+                "UPDATE runs SET finished_at = ? WHERE run_id = ?",
+                ("2026-12-31T23:59:59Z", new_run),
+            )
+            uow._conn.execute(
+                "UPDATE runs SET finished_at = ? WHERE run_id = ?",
+                ("2026-01-01T00:00:00Z", old_run),
+            )
+            uow.commit()
+
+        with uow_factory.for_project(project_id) as uow:
+            result = resolve_run_step_evidence(uow, pv_id, "step-a", branch_id=branch_id)
+        assert result is not None
+        assert result.run_step.run_step_id == old_rs
+        assert result.source_label == "branch"
+        assert all(not e.is_stale for e in result.edges)
+
+    def test_newer_stale_falls_to_older_current_in_full_plan_bucket(self, provisioned_project):
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            plan_id, pv_id = _seed_plan(uow, project_id)
+
+            # Older full-plan run — current evidence.
+            old_run = _insert_run(uow, pv_id, branch_id=None)
+            old_rs = _insert_run_step(uow, old_run, pv_id, "step-a")
+            _insert_evidence_edge(uow, old_run, old_rs, pv_id, "step-a", is_stale=0)
+
+            # Newer full-plan run — stale evidence only.
+            new_run = _insert_run(uow, pv_id, branch_id=None)
+            new_rs = _insert_run_step(uow, new_run, pv_id, "step-a")
+            _insert_evidence_edge(uow, new_run, new_rs, pv_id, "step-a", is_stale=1)
+
+            uow._conn.execute(
+                "UPDATE runs SET finished_at = ? WHERE run_id = ?",
+                ("2026-12-31T23:59:59Z", new_run),
+            )
+            uow._conn.execute(
+                "UPDATE runs SET finished_at = ? WHERE run_id = ?",
+                ("2026-01-01T00:00:00Z", old_run),
+            )
+            uow.commit()
+
+        with uow_factory.for_project(project_id) as uow:
+            result = resolve_run_step_evidence(uow, pv_id, "step-a")
+        assert result is not None
+        assert result.run_step.run_step_id == old_rs
+        assert result.source_label == "branch"
+        assert all(not e.is_stale for e in result.edges)

@@ -138,6 +138,8 @@ class ExportAuditPack:
             edges = uow.evidence.get_edges_for_run_step(run_step.run_step_id)
             evidence_artifact_ids: list[str] = []
             for edge in edges:
+                if edge.is_stale:
+                    continue
                 edge_artifacts = uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id)
                 evidence_artifact_ids.extend(item.artifact_id for item in edge_artifacts)
                 evidence.append({
