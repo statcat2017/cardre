@@ -6,8 +6,7 @@ Uses UnitOfWork ports instead of direct store access.
 
 from __future__ import annotations
 
-from typing import Any
-
+from cardre.application.ports.unit_of_work import UnitOfWork
 from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge, ResolvedEvidence
 from cardre.domain.run import ExecutionFingerprint, RunStep, RunStepStatus
 from cardre.domain.step import StepSpec
@@ -29,8 +28,24 @@ def _matches_fingerprint(rs: RunStep | None, spec: StepSpec | None) -> bool:
     return fp_typed.node_version == spec.node_version
 
 
+def _source_is_valid(uow: UnitOfWork, edge: EvidenceEdge) -> bool:
+    """Check that the edge's source run and source run step both succeeded.
+
+    This prevents edges referencing failed or incomplete runs from being
+    resurrected by the run-step-driven fallback stages (3 and 4).
+    """
+    if edge.source_run_id and edge.source_run_step_id:
+        source_run = uow.runs.get(edge.source_run_id)
+        if source_run is None or str(source_run.status) != "succeeded":
+            return False
+        source_rs = uow.run_steps.get(edge.source_run_step_id)
+        if source_rs is None or source_rs.status != RunStepStatus.SUCCEEDED:
+            return False
+    return True
+
+
 def _build_evidence_pairs(
-    uow: Any,
+    uow: UnitOfWork,
     rs: RunStep,
 ) -> list[tuple[EvidenceEdge, list[EvidenceArtifact]]]:
     edges = uow.evidence.get_edges_for_run_step(rs.run_step_id)
@@ -38,13 +53,15 @@ def _build_evidence_pairs(
     for edge in edges:
         if edge.is_stale:
             continue
+        if not _source_is_valid(uow, edge):
+            continue
         artifacts = uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id)
         result.append((edge, artifacts))
     return result
 
 
 def resolve_evidence(
-    uow: Any,
+    uow: UnitOfWork,
     plan_version_id: str,
     step_id: str,
     *,
@@ -59,10 +76,11 @@ def resolve_evidence(
     Stage 3: Latest successful run for this plan_version_id
     Stage 4: Latest successful run across any version of the plan
 
-    Stale edges (``is_stale = 1``) are rejected at each stage; the resolver
-    continues to the next eligible candidate.  Edges are returned newest-first
-    by the repository query (``ORDER BY r.finished_at DESC, e.created_at DESC``),
-    so the first matching candidate is the most recent current evidence.
+    Stale edges (``is_stale = 1``) and edges sourced from unsuccessful runs or
+    run steps are rejected at each stage; the resolver continues to the next
+    eligible candidate.  Edges are returned newest-first by the repository
+    query (``ORDER BY r.finished_at DESC, e.created_at DESC``), so the first
+    matching candidate is the most recent current evidence.
 
     Returns a list of (EvidenceEdge, list[EvidenceArtifact]) tuples.
     Returns an empty list if no evidence is found.
@@ -72,6 +90,8 @@ def resolve_evidence(
     )
     for edge in edges:
         if edge.is_stale:
+            continue
+        if not _source_is_valid(uow, edge):
             continue
         rs = uow.run_steps.get(edge.run_step_id)
         if rs is not None and _matches_fingerprint(rs, fingerprint_match):
@@ -83,6 +103,8 @@ def resolve_evidence(
         )
         for edge in edges:
             if edge.is_stale:
+                continue
+            if not _source_is_valid(uow, edge):
                 continue
             rs = uow.run_steps.get(edge.run_step_id)
             if rs is not None and _matches_fingerprint(rs, fingerprint_match):
@@ -114,7 +136,7 @@ def resolve_evidence(
 
 
 def resolve_run_step_evidence(
-    uow: Any,
+    uow: UnitOfWork,
     plan_version_id: str,
     step_id: str,
     *,
@@ -131,9 +153,9 @@ def resolve_run_step_evidence(
 
     Within each source bucket (branch, full-plan, across-plan) the resolver
     iterates successful run steps newest-first.  If the newest step's edges
-    are all stale or its fingerprint doesn't match, the resolver continues to
-    the next-oldest successful step in the same bucket before falling back to
-    the next bucket.
+    are all stale, sourced from unsuccessful runs, or its fingerprint doesn't
+    match, the resolver continues to the next-oldest successful step in the
+    same bucket before falling back to the next bucket.
     """
     buckets: list[tuple[list[RunStep], str]] = [
         (uow.run_steps.list_successful_steps_ordered(plan_version_id, step_id, branch_id), "branch"),
@@ -155,19 +177,22 @@ def resolve_run_step_evidence(
             if not _matches_fingerprint(run_step, fingerprint_match):
                 continue
             edges = uow.evidence.get_edges_for_run_step(run_step.run_step_id)
-            non_stale_edges = [e for e in edges if not e.is_stale]
-            # If all edges are stale (and there are edges), skip to next candidate.
-            if edges and not non_stale_edges:
+            valid_edges = [
+                e for e in edges
+                if not e.is_stale and _source_is_valid(uow, e)
+            ]
+            # If all edges are stale/invalid (and there are edges), skip to next candidate.
+            if edges and not valid_edges:
                 continue
             artifacts = [
                 artifact
-                for edge in non_stale_edges
+                for edge in valid_edges
                 for artifact in uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id)
             ]
             return ResolvedEvidence(
                 run_step_id=run_step.run_step_id,
                 run_step=run_step,
-                edges=non_stale_edges,
+                edges=valid_edges,
                 artifacts=artifacts,
                 source_label=source_label,
             )

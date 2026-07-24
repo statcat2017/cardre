@@ -126,14 +126,16 @@ class TestStage2FullPlanFallback:
 
 
 class TestStage3LatestSuccessfulRunForPlanVersion:
-    def test_stage3_finds_evidence_when_source_run_step_join_fails(self, provisioned_project):
-        """Stage 3 is genuinely reached when stage 2's join excludes the edge.
+    def test_stage3_rejects_edge_with_unsuccessful_source(self, provisioned_project):
+        """Stage 3 is reached but rejects evidence sourced from a failed run step.
 
-        Stage 2 queries edges with ``JOIN run_steps rs ON e.source_run_step_id
-        = rs.run_step_id WHERE rs.status = 'succeeded'``.  If the source run
-        step has a non-succeeded status, the join excludes the edge and stage 2
-        returns nothing.  Stage 3 finds the run step directly (without the
-        source-run-step join) and retrieves its edges, which are current.
+        Stage 2's query excludes edges whose source run step didn't succeed
+        (via the JOIN on rs.status='succeeded').  Stage 3 finds the run step
+        directly without that join, but ``_build_evidence_pairs`` validates
+        the source run and source run step status and rejects the edge.
+
+        The resolver must return no evidence — it must not resurrect an edge
+        that stage 2 correctly excluded.
         """
         project_id, uow_factory, _, _ = provisioned_project
         with uow_factory.for_project(project_id) as uow:
@@ -148,9 +150,9 @@ class TestStage3LatestSuccessfulRunForPlanVersion:
             parent_rs_id = _insert_run_step(uow, parent_run_id, pv_id, "parent", status="failed")
 
             # Edge for step-a whose source_run_step_id points to the failed
-            # parent run step.  Stage 2's join on rs.status='succeeded' will
-            # exclude this edge.  Stage 3 finds step-a's run step directly and
-            # gets its edges without the source-run-step join.
+            # parent run step.  Stage 2's join excludes this edge.
+            # Stage 3 finds step-a's run step but _build_evidence_pairs
+            # validates the source and rejects the edge.
             ee_id = str(uuid.uuid4())
             now = utc_now_iso()
             uow._conn.execute(
@@ -163,11 +165,8 @@ class TestStage3LatestSuccessfulRunForPlanVersion:
             uow.commit()
 
         with uow_factory.for_project(project_id) as uow:
-            # branch_id=None → stage 1 queries full-plan edges, stage 2 is the
-            # same query (skipped because branch_id is None).  Stage 3 runs.
             result = resolve_evidence(uow, pv_id, "step-a", branch_id=None)
-        assert len(result) == 1
-        assert result[0][0].evidence_edge_id == ee_id
+        assert result == []
 
     def test_stage3_returns_empty_when_run_step_has_no_edges(self, provisioned_project):
         """Stage 3 finds a successful run step but it has no evidence edges.
