@@ -62,10 +62,18 @@ NON_DETERMINISTIC_SUFFIXES: set[str] = {
     "pd_max", "pd_min", "pd_mean", "pd_std",
     "score_max", "score_min", "score_mean", "score_std",
     "pd_dummy", "score_dummy",
+    # Generated scorer source code varies per run (bin boundaries, coefficients)
+    "source",
 }
 
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 _HASH_IN_PATH_RE = re.compile(r"(^|/)v2:[a-f0-9]+|artifacts/[a-f0-9]{16,}")
+
+
+# Path prefixes whose entire subtree is non-deterministic
+NON_DETERMINISTIC_PATH_PREFIXES: set[str] = {
+    "modelling_metadata",
+}
 
 
 def _is_non_deterministic_leaf(key: str, value: object) -> bool:
@@ -158,6 +166,8 @@ def test_golden_report_bundle_matches(tmp_path):
 
     def _compare(got: object, expected: object, path: str = "") -> list[str]:
         diffs: list[str] = []
+        if any(path == prefix or path.startswith(prefix + ".") or path.startswith(prefix + "[") for prefix in NON_DETERMINISTIC_PATH_PREFIXES):
+            return diffs
         if not isinstance(got, type(expected)):
             return [f"{path}: type {type(got).__name__} != {type(expected).__name__}"]
         if isinstance(got, dict):
