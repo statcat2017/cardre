@@ -12,29 +12,52 @@ router = APIRouter(prefix="/projects/{project_id}", tags=["reports"])
 
 @router.get("/reports", response_model=ReportListResponse)
 async def list_reports(project_id: str, container=Depends(get_container)):
-    with container.uow_factory.read_only(project_id) as uow:
-        rows = uow._conn.execute(
-            "SELECT * FROM reports WHERE project_id = ? ORDER BY created_at",
-            (project_id,),
-        ).fetchall()
-    reports = [
-        ReportResponse(report_id=r["report_id"], run_id=r.get("run_id"), report_type=r.get("report_type", "governance"),
-                       path=r.get("path", ""), created_at=r.get("created_at", ""))
-        for r in rows
-    ]
+    root = container.project_registry.resolve_root(project_id)
+    if root is None:
+        return ReportListResponse(reports=[])
+    exports_dir = root / "exports"
+    if not exports_dir.exists():
+        return ReportListResponse(reports=[])
+    reports = []
+    for i, manifest_dir in enumerate(sorted(exports_dir.iterdir()) if exports_dir.is_dir() else []):
+        if manifest_dir.is_dir() and manifest_dir.name.startswith("manifest-"):
+            manifest_path = manifest_dir / "manifest.json"
+            if manifest_path.exists():
+                reports.append(ReportResponse(
+                    report_id=f"manifest-{i}",
+                    run_id=manifest_dir.name.replace("manifest-", ""),
+                    report_type="manifest",
+                    path=str(manifest_path),
+                    created_at="",
+                ))
     return ReportListResponse(reports=reports)
 
 
 @router.get("/runs/{run_id}/reports", response_model=ReportListResponse)
 async def list_run_reports(project_id: str, run_id: str, container=Depends(get_container)):
-    with container.uow_factory.read_only(project_id) as uow:
-        rows = uow._conn.execute(
-            "SELECT * FROM reports WHERE project_id = ? AND run_id = ? ORDER BY created_at",
-            (project_id, run_id),
-        ).fetchall()
-    reports = [
-        ReportResponse(report_id=r["report_id"], run_id=r.get("run_id"), report_type=r.get("report_type", "governance"),
-                       path=r.get("path", ""), created_at=r.get("created_at", ""))
-        for r in rows
-    ]
+    root = container.project_registry.resolve_root(project_id)
+    if root is None:
+        return ReportListResponse(reports=[])
+    manifest_dir = root / "exports" / f"manifest-{run_id}"
+    if not manifest_dir.is_dir():
+        return ReportListResponse(reports=[])
+    reports = []
+    manifest_path = manifest_dir / "manifest.json"
+    if manifest_path.exists():
+        report_path = manifest_dir / "report.html"
+        if report_path.exists():
+            reports.append(ReportResponse(
+                report_id=f"manifest-{run_id}",
+                run_id=run_id,
+                report_type="report",
+                path=str(report_path),
+                created_at="",
+            ))
+        reports.append(ReportResponse(
+            report_id=f"manifest-{run_id}",
+            run_id=run_id,
+            report_type="manifest",
+            path=str(manifest_path),
+            created_at="",
+        ))
     return ReportListResponse(reports=reports)

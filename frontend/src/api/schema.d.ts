@@ -292,7 +292,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects/{project_id}/node-types": {
+    "/node-types": {
         parameters: {
             query?: never;
             header?: never;
@@ -300,7 +300,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Node Types */
-        get: operations["list_node_types_projects__project_id__node_types_get"];
+        get: operations["list_node_types_node_types_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -360,6 +360,196 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/governance/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Branches */
+        get: operations["list_branches_projects__project_id__governance_branches_get"];
+        put?: never;
+        /** Create Branch */
+        post: operations["create_branch_projects__project_id__governance_branches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/governance/branches/{branch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Branch */
+        get: operations["get_branch_projects__project_id__governance_branches__branch_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/governance/comparisons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Comparisons */
+        get: operations["list_comparisons_projects__project_id__governance_comparisons_get"];
+        put?: never;
+        /** Create Comparison */
+        post: operations["create_comparison_projects__project_id__governance_comparisons_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/governance/comparisons/{comparison_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Comparison */
+        get: operations["get_comparison_projects__project_id__governance_comparisons__comparison_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/governance/comparisons/{comparison_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Comparison */
+        post: operations["refresh_comparison_projects__project_id__governance_comparisons__comparison_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/governance/champion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Champion */
+        get: operations["get_champion_projects__project_id__governance_champion_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/governance/champion/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign Champion */
+        post: operations["assign_champion_projects__project_id__governance_champion_assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/governance/manual-binning-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Manual Binning Reviews */
+        get: operations["list_manual_binning_reviews_projects__project_id__governance_manual_binning_reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/governance/manual-binning-reviews/{review_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Manual Binning Review */
+        get: operations["get_manual_binning_review_projects__project_id__governance_manual_binning_reviews__review_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Manual Binning Review */
+        patch: operations["update_manual_binning_review_projects__project_id__governance_manual_binning_reviews__review_id__patch"];
+        trace?: never;
+    };
+    "/projects/{project_id}/governance/manual-binning-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Manual Binning */
+        post: operations["preview_manual_binning_projects__project_id__governance_manual_binning_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/governance/apply-manual-binning-edit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Manual Binning Edit */
+        post: operations["apply_manual_binning_edit_projects__project_id__governance_apply_manual_binning_edit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -382,6 +572,160 @@ export interface components {
             media_type: string;
             /** Created At */
             created_at: string;
+        };
+        /** BranchCreateRequest */
+        BranchCreateRequest: {
+            /** Plan Id */
+            plan_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Branch Type
+             * @default challenger
+             */
+            branch_type: string;
+            /** Base Plan Version Id */
+            base_plan_version_id: string;
+            /** Head Plan Version Id */
+            head_plan_version_id: string;
+            /** Description */
+            description?: string | null;
+            /** Base Branch Id */
+            base_branch_id?: string | null;
+            /** Branch Point Step Id */
+            branch_point_step_id?: string | null;
+            /**
+             * Created Reason
+             * @default
+             */
+            created_reason: string;
+        };
+        /** BranchListResponse */
+        BranchListResponse: {
+            /** Branches */
+            branches: components["schemas"]["BranchResponse"][];
+        };
+        /** BranchResponse */
+        BranchResponse: {
+            /** Branch Id */
+            branch_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Branch Type */
+            branch_type: string;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /** Base Branch Id */
+            base_branch_id?: string | null;
+            /** Base Plan Version Id */
+            base_plan_version_id: string;
+            /** Head Plan Version Id */
+            head_plan_version_id: string;
+            /** Branch Point Step Id */
+            branch_point_step_id?: string | null;
+            /** Branch Point Canonical Step Id */
+            branch_point_canonical_step_id?: string | null;
+            /**
+             * Created Reason
+             * @default
+             */
+            created_reason: string;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+        };
+        /** ChampionAssignmentRequest */
+        ChampionAssignmentRequest: {
+            /** Plan Id */
+            plan_id: string;
+            /** Branch Id */
+            branch_id: string;
+            /** Comparison Id */
+            comparison_id: string;
+            /** Comparison Snapshot Id */
+            comparison_snapshot_id: string;
+            /**
+             * Assigned Reason
+             * @default
+             */
+            assigned_reason: string;
+        };
+        /** ChampionAssignmentResponse */
+        ChampionAssignmentResponse: {
+            /** Champion Assignment Id */
+            champion_assignment_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Champion Branch Id */
+            champion_branch_id: string;
+            /** Selected Plan Version Id */
+            selected_plan_version_id: string;
+            /**
+             * Assigned At
+             * @default
+             */
+            assigned_at: string;
+            /** Superseded At */
+            superseded_at?: string | null;
+        };
+        /** ChampionResponse */
+        ChampionResponse: {
+            assignment?: components["schemas"]["ChampionAssignmentResponse"] | null;
+        };
+        /** ComparisonCreateRequest */
+        ComparisonCreateRequest: {
+            /** Plan Id */
+            plan_id: string;
+            /** Baseline Branch Id */
+            baseline_branch_id: string;
+            /**
+             * Challenger Branch Ids
+             * @default []
+             */
+            challenger_branch_ids: string[];
+            /** Created Reason */
+            created_reason?: string | null;
+        };
+        /** ComparisonListResponse */
+        ComparisonListResponse: {
+            /** Comparisons */
+            comparisons: components["schemas"]["ComparisonResponse"][];
+        };
+        /** ComparisonResponse */
+        ComparisonResponse: {
+            /** Comparison Id */
+            comparison_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Baseline Branch Id */
+            baseline_branch_id: string;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Latest Ready */
+            latest_ready?: boolean | null;
         };
         /** DiagnosticResponse */
         DiagnosticResponse: {
@@ -408,6 +752,22 @@ export interface components {
             };
             /** Created At */
             created_at?: string | null;
+        };
+        /** EvidenceArtifactResponse */
+        EvidenceArtifactResponse: {
+            /** Evidence Artifact Id */
+            evidence_artifact_id: string;
+            /** Evidence Edge Id */
+            evidence_edge_id: string;
+            /** Artifact Id */
+            artifact_id: string;
+            /** Role */
+            role: string;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
         };
         /** ExportListResponse */
         ExportListResponse: {
@@ -464,6 +824,93 @@ export interface components {
              * @default false
              */
             governance_enabled: boolean;
+        };
+        /** ManualBinningEditRequest */
+        ManualBinningEditRequest: {
+            /** Plan Version Id */
+            plan_version_id: string;
+            /** Step Id */
+            step_id: string;
+            /** Overrides */
+            overrides?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Reviewer Notes
+             * @default
+             */
+            reviewer_notes: string;
+            /**
+             * Status
+             * @default pending
+             */
+            status: string;
+            /** Affected Downstream Step Ids */
+            affected_downstream_step_ids?: string[];
+        };
+        /** ManualBinningEditResponse */
+        ManualBinningEditResponse: {
+            /** New Plan Version Id */
+            new_plan_version_id: string;
+            /** Review Id */
+            review_id: string;
+            /** Affected Step Ids */
+            affected_step_ids?: string[];
+        };
+        /** ManualBinningPreviewRequest */
+        ManualBinningPreviewRequest: {
+            /** Variable Data */
+            variable_data: {
+                [key: string]: unknown;
+            };
+        };
+        /** ManualBinningPreviewResponse */
+        ManualBinningPreviewResponse: {
+            /** Woe By Bin */
+            woe_by_bin: {
+                [key: string]: unknown;
+            }[];
+            /** Iv */
+            iv: number;
+            /** Event Rate By Bin */
+            event_rate_by_bin: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** ManualBinningReviewResponse */
+        ManualBinningReviewResponse: {
+            /** Review Id */
+            review_id: string;
+            /** Plan Version Id */
+            plan_version_id: string;
+            /** Step Id */
+            step_id: string;
+            /** Status */
+            status: string;
+            /**
+             * Reviewer Notes
+             * @default
+             */
+            reviewer_notes: string;
+            /** Affected Downstream Step Ids */
+            affected_downstream_step_ids?: string[];
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+        };
+        /** ManualBinningReviewUpdate */
+        ManualBinningReviewUpdate: {
+            /** Status */
+            status?: string | null;
+            /** Reviewer Notes */
+            reviewer_notes?: string | null;
         };
         /** NodeTypeListResponse */
         NodeTypeListResponse: {
@@ -647,6 +1094,55 @@ export interface components {
              * @default false
              */
             sync: boolean;
+        };
+        /**
+         * RunEvidenceEdgeResponse
+         * @description Typed response for a single evidence edge in a run (#216).
+         *
+         *     Includes full provenance fields from EvidenceEdgeResponse plus
+         *     nested artifacts so the generated schema and frontend types match
+         *     the actual payload shape.
+         */
+        RunEvidenceEdgeResponse: {
+            /** Evidence Edge Id */
+            evidence_edge_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Run Step Id */
+            run_step_id: string;
+            /** Plan Version Id */
+            plan_version_id: string;
+            /** Step Id */
+            step_id: string;
+            /** Parent Step Id */
+            parent_step_id: string;
+            /** Source Run Id */
+            source_run_id: string;
+            /** Source Run Step Id */
+            source_run_step_id: string;
+            /** Policy */
+            policy: string;
+            /** Source Label */
+            source_label: string;
+            /**
+             * Is Reused
+             * @default false
+             */
+            is_reused: boolean;
+            /**
+             * Is Stale
+             * @default false
+             */
+            is_stale: boolean;
+            /** Stale Reason */
+            stale_reason?: string | null;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Artifacts */
+            artifacts?: components["schemas"]["EvidenceArtifactResponse"][];
         };
         /** RunListResponse */
         RunListResponse: {
@@ -1273,7 +1769,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown[];
+                    "application/json": components["schemas"]["RunEvidenceEdgeResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -1386,7 +1882,7 @@ export interface operations {
             };
         };
     };
-    list_node_types_projects__project_id__node_types_get: {
+    list_node_types_node_types_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1489,6 +1985,475 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReportListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_branches_projects__project_id__governance_branches_get: {
+        parameters: {
+            query?: {
+                plan_id?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_branch_projects__project_id__governance_branches_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BranchCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_branch_projects__project_id__governance_branches__branch_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                branch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_comparisons_projects__project_id__governance_comparisons_get: {
+        parameters: {
+            query?: {
+                plan_id?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_comparison_projects__project_id__governance_comparisons_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComparisonCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_comparison_projects__project_id__governance_comparisons__comparison_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                comparison_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_comparison_projects__project_id__governance_comparisons__comparison_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                comparison_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_champion_projects__project_id__governance_champion_get: {
+        parameters: {
+            query: {
+                plan_id: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChampionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_champion_projects__project_id__governance_champion_assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChampionAssignmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChampionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_manual_binning_reviews_projects__project_id__governance_manual_binning_reviews_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualBinningReviewResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_manual_binning_review_projects__project_id__governance_manual_binning_reviews__review_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualBinningReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_manual_binning_review_projects__project_id__governance_manual_binning_reviews__review_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualBinningReviewUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualBinningReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_manual_binning_projects__project_id__governance_manual_binning_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualBinningPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualBinningPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_manual_binning_edit_projects__project_id__governance_apply_manual_binning_edit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualBinningEditRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualBinningEditResponse"];
                 };
             };
             /** @description Validation Error */

@@ -8,7 +8,7 @@ from cardre.api.dependencies import get_container
 from cardre.api.mappers import node_type_to_response
 from cardre.api.schemas import NodeTypeListResponse
 
-router = APIRouter(prefix="/projects/{project_id}", tags=["node-types"])
+router = APIRouter(tags=["node-types"])
 
 
 @router.get("/node-types", response_model=NodeTypeListResponse)

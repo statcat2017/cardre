@@ -775,7 +775,9 @@
               "application/json": {
                 "schema": {
                   "type": "array",
-                  "items": {},
+                  "items": {
+                    "$ref": "#/components/schemas/RunEvidenceEdgeResponse"
+                  },
                   "title": "Response Get Run Evidence Projects  Project Id  Runs  Run Id  Evidence Get"
                 }
               }
@@ -972,13 +974,13 @@
         }
       }
     },
-    "/projects/{project_id}/node-types": {
+    "/node-types": {
       "get": {
         "tags": [
           "node-types"
         ],
         "summary": "List Node Types",
-        "operationId": "list_node_types_projects__project_id__node_types_get",
+        "operationId": "list_node_types_node_types_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1143,6 +1145,738 @@
           }
         }
       }
+    },
+    "/projects/{project_id}/governance/branches": {
+      "get": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "List Branches",
+        "operationId": "list_branches_projects__project_id__governance_branches_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "plan_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "Create Branch",
+        "operationId": "create_branch_projects__project_id__governance_branches_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/governance/branches/{branch_id}": {
+      "get": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "Get Branch",
+        "operationId": "get_branch_projects__project_id__governance_branches__branch_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "branch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Branch Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/governance/comparisons": {
+      "get": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "List Comparisons",
+        "operationId": "list_comparisons_projects__project_id__governance_comparisons_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "plan_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "Create Comparison",
+        "operationId": "create_comparison_projects__project_id__governance_comparisons_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComparisonCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/governance/comparisons/{comparison_id}": {
+      "get": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "Get Comparison",
+        "operationId": "get_comparison_projects__project_id__governance_comparisons__comparison_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "comparison_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Comparison Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/governance/comparisons/{comparison_id}/refresh": {
+      "post": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "Refresh Comparison",
+        "operationId": "refresh_comparison_projects__project_id__governance_comparisons__comparison_id__refresh_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "comparison_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Comparison Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/governance/champion": {
+      "get": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "Get Champion",
+        "operationId": "get_champion_projects__project_id__governance_champion_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "plan_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChampionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/governance/champion/assign": {
+      "post": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "Assign Champion",
+        "operationId": "assign_champion_projects__project_id__governance_champion_assign_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChampionAssignmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChampionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/governance/manual-binning-reviews": {
+      "get": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "List Manual Binning Reviews",
+        "operationId": "list_manual_binning_reviews_projects__project_id__governance_manual_binning_reviews_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ManualBinningReviewResponse"
+                  },
+                  "title": "Response List Manual Binning Reviews Projects  Project Id  Governance Manual Binning Reviews Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/governance/manual-binning-reviews/{review_id}": {
+      "get": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "Get Manual Binning Review",
+        "operationId": "get_manual_binning_review_projects__project_id__governance_manual_binning_reviews__review_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Review Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualBinningReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "Update Manual Binning Review",
+        "operationId": "update_manual_binning_review_projects__project_id__governance_manual_binning_reviews__review_id__patch",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Review Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualBinningReviewUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualBinningReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/governance/manual-binning-preview": {
+      "post": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "Preview Manual Binning",
+        "operationId": "preview_manual_binning_projects__project_id__governance_manual_binning_preview_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualBinningPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualBinningPreviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/governance/apply-manual-binning-edit": {
+      "post": {
+        "tags": [
+          "governance"
+        ],
+        "summary": "Apply Manual Binning Edit",
+        "operationId": "apply_manual_binning_edit_projects__project_id__governance_apply_manual_binning_edit_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualBinningEditRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualBinningEditResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1195,6 +1929,395 @@
         ],
         "title": "ArtifactResponse"
       },
+      "BranchCreateRequest": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "branch_type": {
+            "type": "string",
+            "title": "Branch Type",
+            "default": "challenger"
+          },
+          "base_plan_version_id": {
+            "type": "string",
+            "title": "Base Plan Version Id"
+          },
+          "head_plan_version_id": {
+            "type": "string",
+            "title": "Head Plan Version Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "base_branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Branch Id"
+          },
+          "branch_point_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Point Step Id"
+          },
+          "created_reason": {
+            "type": "string",
+            "title": "Created Reason",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "name",
+          "base_plan_version_id",
+          "head_plan_version_id"
+        ],
+        "title": "BranchCreateRequest"
+      },
+      "BranchListResponse": {
+        "properties": {
+          "branches": {
+            "items": {
+              "$ref": "#/components/schemas/BranchResponse"
+            },
+            "type": "array",
+            "title": "Branches"
+          }
+        },
+        "type": "object",
+        "required": [
+          "branches"
+        ],
+        "title": "BranchListResponse"
+      },
+      "BranchResponse": {
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "title": "Branch Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "branch_type": {
+            "type": "string",
+            "title": "Branch Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "active"
+          },
+          "base_branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Branch Id"
+          },
+          "base_plan_version_id": {
+            "type": "string",
+            "title": "Base Plan Version Id"
+          },
+          "head_plan_version_id": {
+            "type": "string",
+            "title": "Head Plan Version Id"
+          },
+          "branch_point_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Point Step Id"
+          },
+          "branch_point_canonical_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Point Canonical Step Id"
+          },
+          "created_reason": {
+            "type": "string",
+            "title": "Created Reason",
+            "default": ""
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "default": ""
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "branch_id",
+          "project_id",
+          "plan_id",
+          "name",
+          "branch_type",
+          "base_plan_version_id",
+          "head_plan_version_id"
+        ],
+        "title": "BranchResponse"
+      },
+      "ChampionAssignmentRequest": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "branch_id": {
+            "type": "string",
+            "title": "Branch Id"
+          },
+          "comparison_id": {
+            "type": "string",
+            "title": "Comparison Id"
+          },
+          "comparison_snapshot_id": {
+            "type": "string",
+            "title": "Comparison Snapshot Id"
+          },
+          "assigned_reason": {
+            "type": "string",
+            "title": "Assigned Reason",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "branch_id",
+          "comparison_id",
+          "comparison_snapshot_id"
+        ],
+        "title": "ChampionAssignmentRequest"
+      },
+      "ChampionAssignmentResponse": {
+        "properties": {
+          "champion_assignment_id": {
+            "type": "string",
+            "title": "Champion Assignment Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "champion_branch_id": {
+            "type": "string",
+            "title": "Champion Branch Id"
+          },
+          "selected_plan_version_id": {
+            "type": "string",
+            "title": "Selected Plan Version Id"
+          },
+          "assigned_at": {
+            "type": "string",
+            "title": "Assigned At",
+            "default": ""
+          },
+          "superseded_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "champion_assignment_id",
+          "project_id",
+          "plan_id",
+          "champion_branch_id",
+          "selected_plan_version_id"
+        ],
+        "title": "ChampionAssignmentResponse"
+      },
+      "ChampionResponse": {
+        "properties": {
+          "assignment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChampionAssignmentResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "ChampionResponse"
+      },
+      "ComparisonCreateRequest": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "baseline_branch_id": {
+            "type": "string",
+            "title": "Baseline Branch Id"
+          },
+          "challenger_branch_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Challenger Branch Ids",
+            "default": []
+          },
+          "created_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "baseline_branch_id"
+        ],
+        "title": "ComparisonCreateRequest"
+      },
+      "ComparisonListResponse": {
+        "properties": {
+          "comparisons": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonResponse"
+            },
+            "type": "array",
+            "title": "Comparisons"
+          }
+        },
+        "type": "object",
+        "required": [
+          "comparisons"
+        ],
+        "title": "ComparisonListResponse"
+      },
+      "ComparisonResponse": {
+        "properties": {
+          "comparison_id": {
+            "type": "string",
+            "title": "Comparison Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "baseline_branch_id": {
+            "type": "string",
+            "title": "Baseline Branch Id"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "default": ""
+          },
+          "latest_ready": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Ready"
+          }
+        },
+        "type": "object",
+        "required": [
+          "comparison_id",
+          "project_id",
+          "plan_id",
+          "baseline_branch_id"
+        ],
+        "title": "ComparisonResponse"
+      },
       "DiagnosticResponse": {
         "properties": {
           "code": {
@@ -1242,6 +2365,39 @@
         },
         "type": "object",
         "title": "DiagnosticResponse"
+      },
+      "EvidenceArtifactResponse": {
+        "properties": {
+          "evidence_artifact_id": {
+            "type": "string",
+            "title": "Evidence Artifact Id"
+          },
+          "evidence_edge_id": {
+            "type": "string",
+            "title": "Evidence Edge Id"
+          },
+          "artifact_id": {
+            "type": "string",
+            "title": "Artifact Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_artifact_id",
+          "evidence_edge_id",
+          "artifact_id",
+          "role"
+        ],
+        "title": "EvidenceArtifactResponse"
       },
       "ExportListResponse": {
         "properties": {
@@ -1340,6 +2496,197 @@
         },
         "type": "object",
         "title": "HealthResponse"
+      },
+      "ManualBinningEditRequest": {
+        "properties": {
+          "plan_version_id": {
+            "type": "string",
+            "title": "Plan Version Id"
+          },
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "overrides": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Overrides"
+          },
+          "reviewer_notes": {
+            "type": "string",
+            "title": "Reviewer Notes",
+            "default": ""
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "pending"
+          },
+          "affected_downstream_step_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Affected Downstream Step Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_version_id",
+          "step_id"
+        ],
+        "title": "ManualBinningEditRequest"
+      },
+      "ManualBinningEditResponse": {
+        "properties": {
+          "new_plan_version_id": {
+            "type": "string",
+            "title": "New Plan Version Id"
+          },
+          "review_id": {
+            "type": "string",
+            "title": "Review Id"
+          },
+          "affected_step_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Affected Step Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "new_plan_version_id",
+          "review_id"
+        ],
+        "title": "ManualBinningEditResponse"
+      },
+      "ManualBinningPreviewRequest": {
+        "properties": {
+          "variable_data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Variable Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "variable_data"
+        ],
+        "title": "ManualBinningPreviewRequest"
+      },
+      "ManualBinningPreviewResponse": {
+        "properties": {
+          "woe_by_bin": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Woe By Bin"
+          },
+          "iv": {
+            "type": "number",
+            "title": "Iv"
+          },
+          "event_rate_by_bin": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Event Rate By Bin"
+          }
+        },
+        "type": "object",
+        "required": [
+          "woe_by_bin",
+          "iv",
+          "event_rate_by_bin"
+        ],
+        "title": "ManualBinningPreviewResponse"
+      },
+      "ManualBinningReviewResponse": {
+        "properties": {
+          "review_id": {
+            "type": "string",
+            "title": "Review Id"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "title": "Plan Version Id"
+          },
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "reviewer_notes": {
+            "type": "string",
+            "title": "Reviewer Notes",
+            "default": ""
+          },
+          "affected_downstream_step_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Affected Downstream Step Ids"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "default": ""
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "review_id",
+          "plan_version_id",
+          "step_id",
+          "status"
+        ],
+        "title": "ManualBinningReviewResponse"
+      },
+      "ManualBinningReviewUpdate": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "reviewer_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Notes"
+          }
+        },
+        "type": "object",
+        "title": "ManualBinningReviewUpdate"
       },
       "NodeTypeListResponse": {
         "properties": {
@@ -1745,6 +3092,98 @@
           "plan_version_id"
         ],
         "title": "RunCreateRequest"
+      },
+      "RunEvidenceEdgeResponse": {
+        "properties": {
+          "evidence_edge_id": {
+            "type": "string",
+            "title": "Evidence Edge Id"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "run_step_id": {
+            "type": "string",
+            "title": "Run Step Id"
+          },
+          "plan_version_id": {
+            "type": "string",
+            "title": "Plan Version Id"
+          },
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "parent_step_id": {
+            "type": "string",
+            "title": "Parent Step Id"
+          },
+          "source_run_id": {
+            "type": "string",
+            "title": "Source Run Id"
+          },
+          "source_run_step_id": {
+            "type": "string",
+            "title": "Source Run Step Id"
+          },
+          "policy": {
+            "type": "string",
+            "title": "Policy"
+          },
+          "source_label": {
+            "type": "string",
+            "title": "Source Label"
+          },
+          "is_reused": {
+            "type": "boolean",
+            "title": "Is Reused",
+            "default": false
+          },
+          "is_stale": {
+            "type": "boolean",
+            "title": "Is Stale",
+            "default": false
+          },
+          "stale_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "default": ""
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceArtifactResponse"
+            },
+            "type": "array",
+            "title": "Artifacts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_edge_id",
+          "run_id",
+          "run_step_id",
+          "plan_version_id",
+          "step_id",
+          "parent_step_id",
+          "source_run_id",
+          "source_run_step_id",
+          "policy",
+          "source_label"
+        ],
+        "title": "RunEvidenceEdgeResponse",
+        "description": "Typed response for a single evidence edge in a run (#216).\n\nIncludes full provenance fields from EvidenceEdgeResponse plus\nnested artifacts so the generated schema and frontend types match\nthe actual payload shape."
       },
       "RunListResponse": {
         "properties": {

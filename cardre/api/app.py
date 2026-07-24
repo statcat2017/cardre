@@ -72,9 +72,6 @@ def create_app(container: object) -> FastAPI:
     app.include_router(node_types.router)
     app.include_router(exports.router)
     app.include_router(reports.router)
-
-    gov_enabled = getattr(getattr(container, "settings", None), "governance_enabled", False)
-    if gov_enabled:
-        app.include_router(governance.router)
+    app.include_router(governance.router)
 
     return app

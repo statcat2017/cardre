@@ -17,13 +17,11 @@ from cardre.api.schemas import (
     PlanVersionUpdate,
 )
 from cardre.bootstrap.container import Container
-from cardre.domain.errors import CardreError
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["plans"])
 
 
 def _uc(container: Container, project_id: str):
-    """Build plan use cases for project_id."""
 
     from cardre.application.plans.commit_plan_version import (
         CommitPlanVersion,
@@ -72,11 +70,8 @@ async def list_plans(project_id: str, container=Depends(get_container)):
 @router.post("/plans", response_model=PlanResponse, status_code=201)
 async def create_plan(project_id: str, body: PlanCreateRequest, container=Depends(get_container)):
     uc = _uc(container, project_id)
-    try:
-        plan = uc["create"](uc["CreatePlanCommand"](project_id=project_id, name=body.name))
-        return plan_to_response(plan)
-    except CardreError as exc:
-        raise CardreApiError(code=ErrorCode.BAD_REQUEST, message=str(exc), status_code=400) from exc
+    plan = uc["create"](uc["CreatePlanCommand"](project_id=project_id, name=body.name))
+    return plan_to_response(plan)
 
 
 @router.get("/plans/{plan_id}", response_model=PlanResponse)
@@ -118,11 +113,8 @@ async def update_plan_version(project_id: str, version_id: str, body: PlanVersio
 @router.post("/plan-versions/{version_id}/commit", response_model=PlanVersionResponse)
 async def commit_plan_version(project_id: str, version_id: str, container=Depends(get_container)):
     uc = _uc(container, project_id)
-    try:
-        committed = uc["commit_version"](uc["CommitPlanVersionCommand"](plan_version_id=version_id))
-        return plan_version_to_response(committed)
-    except CardreError as exc:
-        raise CardreApiError(code=ErrorCode.BAD_REQUEST, message=str(exc), status_code=400) from exc
+    committed = uc["commit_version"](uc["CommitPlanVersionCommand"](plan_version_id=version_id))
+    return plan_version_to_response(committed)
 
 
 @router.get("/plan-versions/{version_id}/steps", response_model=list[PlanStepResponse])

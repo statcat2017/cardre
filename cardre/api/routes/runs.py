@@ -5,15 +5,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_container
-from cardre.api.errors import CardreApiError, ErrorCode
 from cardre.api.mappers import evidence_edge_to_response, run_step_to_response, run_to_response
 from cardre.api.schemas import (
     RunCreateRequest,
+    RunEvidenceEdgeResponse,
     RunListResponse,
     RunResponse,
     RunStepResponse,
 )
-from cardre.domain.errors import CardreError
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["runs"])
 
@@ -22,14 +21,12 @@ router = APIRouter(prefix="/projects/{project_id}", tags=["runs"])
 async def create_run(project_id: str, body: RunCreateRequest, container=Depends(get_container)):
     from cardre.application.runs.submit_run import SubmitRunCommand
 
-    try:
-        submit = container.submit_run_factory(project_id)
-        result = submit(SubmitRunCommand(plan_version_id=body.plan_version_id, sync=body.sync))
-    except CardreError as exc:
-        raise CardreApiError(code=ErrorCode.BAD_REQUEST, message=str(exc), status_code=400) from exc
+    submit = container.submit_run_factory(project_id)
+    result = submit(SubmitRunCommand(plan_version_id=body.plan_version_id, sync=body.sync))
     with container.uow_factory.read_only(project_id) as uow:
         run = uow.runs.get(result.run_id)
     if run is None:
+        from cardre.api.errors import CardreApiError, ErrorCode
         raise CardreApiError(code=ErrorCode.RUN_NOT_FOUND, message="Run not found after creation.", status_code=500)
     return run_to_response(run)
 
@@ -46,6 +43,7 @@ async def get_run(project_id: str, run_id: str, container=Depends(get_container)
     with container.uow_factory.read_only(project_id) as uow:
         run = uow.runs.get(run_id)
     if run is None:
+        from cardre.api.errors import CardreApiError, ErrorCode
         raise CardreApiError(code=ErrorCode.RUN_NOT_FOUND, message=f"Run {run_id!r} not found.", status_code=404)
     return run_to_response(run)
 
@@ -57,7 +55,7 @@ async def get_run_steps(project_id: str, run_id: str, container=Depends(get_cont
     return [run_step_to_response(s) for s in steps]
 
 
-@router.get("/runs/{run_id}/evidence", response_model=list)
+@router.get("/runs/{run_id}/evidence", response_model=list[RunEvidenceEdgeResponse])
 async def get_run_evidence(project_id: str, run_id: str, container=Depends(get_container)):
     with container.uow_factory.read_only(project_id) as uow:
         edges = uow.evidence.get_edges_for_run(run_id)
@@ -70,12 +68,15 @@ async def get_run_evidence(project_id: str, run_id: str, container=Depends(get_c
 
 @router.post("/runs/{run_id}/cancel", response_model=RunResponse)
 async def cancel_run(project_id: str, run_id: str, container=Depends(get_container)):
-    with container.uow_factory.for_project(project_id) as uow:
-        from cardre.domain.run import RunStatus
-        transitioned = uow.runs.transition(run_id, RunStatus.CANCELLED, expected_from=(RunStatus.CREATED, RunStatus.QUEUED, RunStatus.RUNNING))
-        if transitioned:
-            uow.commit()
+    from cardre.application.runs.cancel_run import CancelRun, CancelRunCommand
+
+    def factory():
+        return container.uow_factory.for_project(project_id)
+
+    CancelRun(factory)(CancelRunCommand(run_id=run_id))
+    with container.uow_factory.read_only(project_id) as uow:
         run = uow.runs.get(run_id)
     if run is None:
+        from cardre.api.errors import CardreApiError, ErrorCode
         raise CardreApiError(code=ErrorCode.RUN_NOT_FOUND, message=f"Run {run_id!r} not found.", status_code=404)
     return run_to_response(run)

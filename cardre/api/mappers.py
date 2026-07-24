@@ -100,7 +100,7 @@ def plan_version_to_response(pv: PlanVersion) -> PlanVersionResponse:
 def step_spec_to_response(step: StepSpec) -> PlanStepResponse:
     return PlanStepResponse(
         step_id=step.step_id,
-        plan_version_id=step.plan_version_id if hasattr(step, "plan_version_id") else "",
+        plan_version_id="",
         node_type=step.node_type,
         node_version=step.node_version,
         category=step.category,
