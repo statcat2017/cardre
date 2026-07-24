@@ -61,7 +61,8 @@ class EvidenceRepo:
             f"JOIN run_steps rs ON e.source_run_step_id = rs.run_step_id "
             f"JOIN runs r ON e.run_id = r.run_id "
             f"WHERE e.plan_version_id = ? AND e.step_id = ? AND rs.status = 'succeeded' "
-            f"AND r.status = 'succeeded' {clause}",
+            f"AND r.status = 'succeeded' AND e.is_stale = 0 {clause} "
+            f"ORDER BY r.finished_at DESC, e.created_at DESC, e.evidence_edge_id DESC",
             params,
         ).fetchall()
         return [self._row_to_edge(r) for r in rows]

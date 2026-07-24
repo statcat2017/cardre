@@ -331,6 +331,23 @@ def _render_implementation_artifacts(data: dict[str, Any]) -> str:
     return "".join(parts) or "<p>No implementation artifacts</p>"
 
 
+def _render_executive_summary(data: dict[str, Any]) -> str:
+    s = data["summary"]
+    champ = data["champion"]
+    champion_branch = champ.get("champion_branch_id") or "—"
+    return _kv_list([
+        ("Model name", s.get("model_name") or "—"),
+        ("Target column", s.get("target_column") or "—"),
+        ("Observation level", s.get("observation_level") or "—"),
+        ("Development sample", s.get("development_sample") or "—"),
+        ("Final variable count", str(s.get("final_variable_count", 0))),
+        ("Excluded variable count", str(s.get("excluded_variable_count", 0))),
+        ("Champion branch", champion_branch),
+        ("Target branch", s.get("target_branch_id") or data.get("target_branch_id") or "—"),
+        ("Candidate branch count", str(s.get("candidate_branch_count", 0))),
+    ])
+
+
 class HtmlReportRenderer:
     """Render a report bundle as a self-contained offline HTML document.
 
@@ -350,7 +367,10 @@ class HtmlReportRenderer:
     def render_to_html(bundle: ReportBundle) -> str:
         data = bundle.model_dump(mode="json")
         title = _esc(data["summary"].get("model_name") or "Cardre governance report")
+        gen_at = _esc(data.get("generated_at") or "")
+        gen_by = data.get("generated_by") or {}
         sections = [
+            _section("Executive Summary", _render_executive_summary(data)),
             _section("Pathway", _render_pathway(data)),
             _section("Dataset Roles", _render_dataset_roles(data)),
             _section("Branches", _render_branches(data)),
@@ -374,6 +394,15 @@ class HtmlReportRenderer:
             _section("Modelling Metadata", _render_modelling_metadata(data)),
             _section("Limitations", _render_limitations(data)),
         ]
+        header = (
+            f"<body><h1>{title}</h1>"
+            f"<p>Run: {_esc(data['run_id'])} | "
+            f"Status: {_esc(data['report_status'])} | "
+            f"Mode: {_esc(data['report_mode'])}"
+            + (f" | Generated: {gen_at}" if gen_at else "")
+            + (f" | Cardre {_esc(gen_by.get('cardre_version', ''))}" if gen_by.get("cardre_version") else "")
+            + "</p>"
+        )
         return (
             "<!doctype html><html><head><meta charset=\"utf-8\">"
             f"<title>{title}</title><style>"
@@ -381,9 +410,7 @@ class HtmlReportRenderer:
             "table{border-collapse:collapse;margin:1rem 0}th,td{border:1px solid #ddd;padding:.5rem;text-align:left}"
             "th{background:#f5f5f5} .blocker{color:#b00} .warning{color:#b80} h2{border-bottom:1px solid #ccc;padding-bottom:.3rem}"
             "</style></head>"
-            f"<body><h1>{title}</h1><p>Run: {_esc(data['run_id'])} | "
-            f"Status: {_esc(data['report_status'])} | "
-            f"Mode: {_esc(data['report_mode'])}</p>"
+            + header
             + "".join(sections)
             + "</body></html>"
         )

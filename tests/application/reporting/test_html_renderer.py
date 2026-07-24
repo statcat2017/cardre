@@ -49,7 +49,10 @@ from cardre.application.reporting.schema import (
 def _full_bundle() -> ReportBundle:
     return ReportBundle(
         project_id="p1", run_id="r1", target_branch_id="b1",
-        summary=ReportSummary(model_name="Test Model"),
+        generated_at="2026-07-24T12:00:00Z",
+        summary=ReportSummary(model_name="Test Model", target_column="credit_risk",
+                              final_variable_count=5, excluded_variable_count=3,
+                              target_branch_id="b1", champion_branch_id="b1"),
         dataset_roles=[DatasetRole(role="train", dataset_id="d1", row_count=100, column_count=5,
                                    target=DatasetTargetSummary(good_count=80, bad_count=20, bad_rate=0.2))],
         pathway=PathwaySummary(steps=[PathwayStep(canonical_step_id="sample-definition", step_id="s1", status="succeeded")]),
@@ -88,7 +91,7 @@ def _full_bundle() -> ReportBundle:
 
 
 EXPECTED_SECTIONS = [
-    "Pathway", "Dataset Roles", "Branches", "Champion", "Variables",
+    "Executive Summary", "Pathway", "Dataset Roles", "Branches", "Champion", "Variables",
     "Model", "Score Scaling", "Validation", "Cutoffs", "Manual Interventions",
     "Manual Binning Review", "Redundancy Review", "Model Diagnostics",
     "Implementation Artifacts", "Sample Definition", "Variable Selection",
@@ -142,3 +145,26 @@ class TestHtmlRendererFullSections:
         ])
         html = HtmlReportRenderer.render_to_html(bundle)
         assert "class='blocker'" in html
+
+    def test_executive_summary_shows_model_name_and_target(self):
+        html = HtmlReportRenderer.render_to_html(_full_bundle())
+        assert "Test Model" in html
+        assert "credit_risk" in html
+
+    def test_executive_summary_shows_variable_counts(self):
+        html = HtmlReportRenderer.render_to_html(_full_bundle())
+        assert "Final variable count" in html
+        assert "5" in html
+        assert "Excluded variable count" in html
+        assert "3" in html
+
+    def test_executive_summary_shows_champion_and_target_branch(self):
+        html = HtmlReportRenderer.render_to_html(_full_bundle())
+        assert "Champion branch" in html
+        assert "Target branch" in html
+        assert "b1" in html
+
+    def test_header_shows_generation_metadata(self):
+        html = HtmlReportRenderer.render_to_html(_full_bundle())
+        assert "Generated:" in html
+        assert "2026-07-24T12:00:00Z" in html

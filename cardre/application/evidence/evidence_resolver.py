@@ -36,6 +36,8 @@ def _build_evidence_pairs(
     edges = uow.evidence.get_edges_for_run_step(rs.run_step_id)
     result: list[tuple[EvidenceEdge, list[EvidenceArtifact]]] = []
     for edge in edges:
+        if edge.is_stale:
+            continue
         artifacts = uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id)
         result.append((edge, artifacts))
     return result
@@ -57,13 +59,20 @@ def resolve_evidence(
     Stage 3: Latest successful run for this plan_version_id
     Stage 4: Latest successful run across any version of the plan
 
+    Stale edges (``is_stale = 1``) are rejected at each stage; the resolver
+    continues to the next eligible candidate.  Edges are returned newest-first
+    by the repository query (``ORDER BY r.finished_at DESC, e.created_at DESC``),
+    so the first matching candidate is the most recent current evidence.
+
     Returns a list of (EvidenceEdge, list[EvidenceArtifact]) tuples.
     Returns an empty list if no evidence is found.
     """
     edges = uow.evidence.get_edges_for_plan_step_branch(
         plan_version_id, step_id, branch_id,
     )
-    for edge in reversed(edges):
+    for edge in edges:
+        if edge.is_stale:
+            continue
         rs = uow.run_steps.get(edge.run_step_id)
         if rs is not None and _matches_fingerprint(rs, fingerprint_match):
             return _build_evidence_pairs(uow, rs)
@@ -72,7 +81,9 @@ def resolve_evidence(
         edges = uow.evidence.get_edges_for_plan_step_branch(
             plan_version_id, step_id, None,
         )
-        for edge in reversed(edges):
+        for edge in edges:
+            if edge.is_stale:
+                continue
             rs = uow.run_steps.get(edge.run_step_id)
             if rs is not None and _matches_fingerprint(rs, fingerprint_match):
                 return _build_evidence_pairs(uow, rs)
@@ -82,7 +93,9 @@ def resolve_evidence(
         for rs in uow.run_steps.get_for_run(run_id):
             if rs.step_id == step_id and rs.status == RunStepStatus.SUCCEEDED:
                 if _matches_fingerprint(rs, fingerprint_match):
-                    return _build_evidence_pairs(uow, rs)
+                    pairs = _build_evidence_pairs(uow, rs)
+                    if pairs:
+                        return pairs
 
     resolved_plan_id = plan_id
     if resolved_plan_id is None:
@@ -93,7 +106,9 @@ def resolve_evidence(
             for rs in uow.run_steps.get_for_run(run_id):
                 if rs.step_id == step_id and rs.status == RunStepStatus.SUCCEEDED:
                     if _matches_fingerprint(rs, fingerprint_match):
-                        return _build_evidence_pairs(uow, rs)
+                        pairs = _build_evidence_pairs(uow, rs)
+                        if pairs:
+                            return pairs
 
     return []
 
@@ -127,15 +142,19 @@ def resolve_run_step_evidence(
         if run_step is None or not _matches_fingerprint(run_step, fingerprint_match):
             continue
         edges = uow.evidence.get_edges_for_run_step(run_step.run_step_id)
+        non_stale_edges = [e for e in edges if not e.is_stale]
+        # If all edges are stale (and there are edges), skip this candidate.
+        if edges and not non_stale_edges:
+            continue
         artifacts = [
             artifact
-            for edge in edges
+            for edge in non_stale_edges
             for artifact in uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id)
         ]
         return ResolvedEvidence(
             run_step_id=run_step.run_step_id,
             run_step=run_step,
-            edges=edges,
+            edges=non_stale_edges,
             artifacts=artifacts,
             source_label=source_label,
         )
