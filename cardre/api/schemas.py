@@ -354,14 +354,21 @@ class ComparisonResponse(BaseModel):
     created_at: str = ""
     latest_ready: bool | None = None
 
-
 class ComparisonListResponse(BaseModel):
     comparisons: list[ComparisonResponse]
+
+
+class ComparisonCreateRequest(BaseModel):
+    plan_id: str
+    baseline_branch_id: str
+    challenger_branch_ids: list[str] = []
+    created_reason: str | None = None
 
 
 # ---------------------------------------------------------------------------
 # Champion (governance-gated)
 # ---------------------------------------------------------------------------
+
 
 class ChampionAssignmentResponse(BaseModel):
     champion_assignment_id: str
@@ -375,6 +382,14 @@ class ChampionAssignmentResponse(BaseModel):
 
 class ChampionResponse(BaseModel):
     assignment: ChampionAssignmentResponse | None = None
+
+
+class ChampionAssignmentRequest(BaseModel):
+    plan_id: str
+    branch_id: str
+    comparison_id: str
+    comparison_snapshot_id: str
+    assigned_reason: str = ""
 
 
 # ---------------------------------------------------------------------------

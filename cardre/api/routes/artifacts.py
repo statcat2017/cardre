@@ -1,32 +1,21 @@
-"""Artifact endpoints — project-scoped artifact access."""
+"""Artifact endpoints."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from cardre.api.dependencies import get_project_store
+from cardre.api.dependencies import get_container
 from cardre.api.errors import CardreApiError, ErrorCode
-from cardre.api.routes._run_mappings import artifact_to_response
+from cardre.api.mappers import artifact_to_response
 from cardre.api.schemas import ArtifactResponse
-from cardre.store.artifact_repo import ArtifactRepository
-from cardre.store.db import ProjectStore
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["artifacts"])
 
 
 @router.get("/artifacts/{artifact_id}", response_model=ArtifactResponse)
-async def get_artifact(
-    project_id: str,
-    artifact_id: str,
-    store: ProjectStore = Depends(get_project_store),
-) -> ArtifactResponse:
-    """Get a single artifact by ID, scoped to the project."""
-    repo = ArtifactRepository(store)
-    artifact = repo.get_for_project(project_id, artifact_id)
-    if artifact is None:
-        raise CardreApiError(
-            code=ErrorCode.ARTIFACT_NOT_FOUND,
-            message=f"Artifact {artifact_id!r} not found in project {project_id!r}.",
-            status_code=404,
-        )
-    return artifact_to_response(artifact)
+async def get_artifact(project_id: str, artifact_id: str, container=Depends(get_container)):
+    with container.uow_factory.read_only(project_id) as uow:
+        art = uow.artifacts.get(artifact_id)
+    if art is None:
+        raise CardreApiError(code=ErrorCode.ARTIFACT_NOT_FOUND, message=f"Artifact {artifact_id!r} not found.", status_code=404)
+    return artifact_to_response(art)
