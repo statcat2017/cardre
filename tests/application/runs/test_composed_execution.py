@@ -113,6 +113,16 @@ class TestComposedExecution:
                     assert art.role in ("output", "input", "report", "definition", "model", "scorecard", "train",
                                        "test", "oot", "manifest", "score_scaling"), f"Unexpected artifact role: {art.role}"
 
+    def test_import_step_has_no_evidence_edges(self, composed_run):
+        """The import step (root step, no parents) must have zero edges."""
+        project_id, _, _, run_id, uow_factory, _ = composed_run
+        with uow_factory.for_project(project_id) as uow:
+            edges = uow.evidence.get_edges_for_run(run_id)
+            import_edges = [e for e in edges if e.step_id == "import"]
+            assert len(import_edges) == 0, (
+                f"Import step should have no evidence edges (no parents), found {len(import_edges)}"
+            )
+
     def test_manifest_contains_all_steps(self, composed_run):
         """Canonical manifest has the full step set and identity checks pass."""
         _, _, _, run_id, _, root = composed_run
@@ -147,3 +157,65 @@ class TestComposedExecution:
         # Every manifest artifact should be in persisted lineage
         unlinked = manifest_art_ids - persisted_ids
         assert not unlinked, f"Manifest artifacts without lineage: {unlinked}"
+
+    def test_technical_manifest_has_correct_input_output_ids(self, composed_run):
+        """TechnicalManifestIndex artifact has distinct correct input and output IDs."""
+        project_id, _, _, run_id, uow_factory, root = composed_run
+        with uow_factory.for_project(project_id) as uow:
+            run_steps = uow.run_steps.get_for_run(run_id)
+            from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+            art_store = FsArtifactStore(root)
+            canonical_ids = set(canonical_scorecard_step_ids())
+            for rs in run_steps:
+                if rs.step_id == "technical-manifest":
+                    for aid in uow.artifacts.output_artifact_ids_for_run_step(rs.run_step_id):
+                        art = uow.artifacts.get(aid)
+                        if art is None:
+                            continue
+                        import json
+                        payload = json.loads(art_store.resolve_path(art).read_text())
+                        manifests = payload.get("manifests", [])
+                        assert len(manifests) > 0
+                        m = manifests[0]
+                        assert "run_id" in m
+                        assert "plan_version_id" in m
+                        manifest_step_ids = {s["step_id"] for s in m.get("steps", [])}
+                        # Technical manifest excludes itself (RunSummary built before it runs)
+                        expected = canonical_ids - {"technical-manifest"}
+                        assert manifest_step_ids == expected, (
+                            f"Technical manifest step set mismatch: "
+                            f"missing={expected - manifest_step_ids}, "
+                            f"extra={manifest_step_ids - expected}"
+                        )
+                        for s in m.get("steps", []):
+                            assert s.get("input_artifact_logical_hashes", []) != s.get("output_artifact_logical_hashes", []), (
+                                f"Step {s['step_id']} has identical input/output IDs"
+                            )
+                            assert isinstance(s.get("warnings"), list) if "warnings" in s else True
+                            assert isinstance(s.get("errors"), list) if "errors" in s else True
+                        assert len(m.get("artifacts", [])) > 0
+                    break
+
+    def test_technical_manifest_hashes_match_artifacts(self, composed_run):
+        """Technical manifest hash entries correspond to real persisted artifacts."""
+        project_id, _, _, run_id, uow_factory, root = composed_run
+        with uow_factory.for_project(project_id) as uow:
+            from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+            art_store = FsArtifactStore(root)
+            for rs in uow.run_steps.get_for_run(run_id):
+                if rs.step_id == "technical-manifest":
+                    for aid in uow.artifacts.output_artifact_ids_for_run_step(rs.run_step_id):
+                        art = uow.artifacts.get(aid)
+                        if art is None or art.artifact_type != "technical_manifest_index":
+                            continue
+                        import json
+                        payload = json.loads(art_store.resolve_path(art).read_text())
+                        for m in payload.get("manifests", []):
+                            for art_entry in m.get("artifacts", []):
+                                persisted = uow.artifacts.get(art_entry["artifact_id"])
+                                if persisted is None:
+                                    continue
+                                assert persisted.physical_hash == art_entry["physical_hash"], (
+                                    f"Physical hash mismatch for {art_entry['artifact_id']}"
+                                )
+                    break

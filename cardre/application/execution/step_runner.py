@@ -83,9 +83,18 @@ class StepRunner:
         input_artifacts: list[ArtifactRef] = []
         staged: list[StagedArtifact] = []
 
+        evidence_reader = None
+        artifact_store = self._artifact_store_factory()
         try:
+            evidence_reader = self._evidence_reader_factory()
+
             # Resolve inputs from parent step outputs
             resolved = self._resolve_inputs(spec, step_outputs)
+            # Include synthetic artifacts injected into this step's own output
+            # bucket by ExecuteRun (e.g. the RunSummary for technical-manifest).
+            for syn_art in step_outputs.get(spec.step_id, []):
+                if syn_art.artifact_id not in {a.artifact_id for a in resolved}:
+                    resolved.append(syn_art)
 
             # Instantiate node
             node = self._node_catalogue.instantiate(spec.node_type)
@@ -117,12 +126,9 @@ class StepRunner:
                     a.artifact_id for a in parent_arts if a in input_artifacts
                 ]
 
-            artifact_store = self._artifact_store_factory()
-            self._close_evidence_reader(getattr(self, "_last_evidence_reader", None))
-            evidence_reader = self._evidence_reader_factory()
-            self._last_evidence_reader = evidence_reader
-
             inputs = StepInputCollection(evidence_reader, input_artifacts)
+            output_contract = getattr(node.__definition__, 'output_contract', ArtifactContract())
+            outputs = StagingOutputPublisher(artifact_store)
 
             output_contract = getattr(node.__definition__, 'output_contract', ArtifactContract())
             outputs = StagingOutputPublisher(artifact_store)
@@ -217,6 +223,9 @@ class StepRunner:
                 input_artifact_ids_by_parent=input_artifact_ids_by_parent,
                 errors=[error_entry],
             )
+
+        finally:
+            self._close_evidence_reader(evidence_reader)
 
     def _resolve_inputs(
         self,

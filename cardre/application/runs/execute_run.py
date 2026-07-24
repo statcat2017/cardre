@@ -115,11 +115,9 @@ class ExecuteRun:
                 # finds it as an input with role=manifest.
                 if step.node_type == "cardre.technical_manifest_export" and step_outputs:
                     summary_ref = self._publish_run_summary(command, pv_id, run, step_outputs, run_step_records)
-                    # Inject the RunSummary into the build-summary-report output bucket
-                    # so the technical-manifest step can resolve it as role=manifest input.
-                    bsr_key = next((k for k in step_outputs if "build-summary" in k), None)
-                    if bsr_key:
-                        step_outputs[bsr_key].append(summary_ref)
+                    # Inject the RunSummary into the step's own output bucket.
+                    # StepRunner._resolve_inputs later picks up own-step entries.
+                    step_outputs.setdefault(step.step_id, []).append(summary_ref)
 
                 hb_uow = self._uow_factory()
                 try:
@@ -235,11 +233,12 @@ class ExecuteRun:
     ) -> ArtifactRef:
         """Build and publish a RunSummary artifact from persisted execution state.
 
-        The RunSummary feeds the TechnicalManifestExportNode, which requires
-        run_id, plan_version_id, steps, and artifacts in the payload.
+        Reads run steps and artifact lineage from the database so that
+        input/output IDs, warnings and errors reflect what was actually
+        persisted rather than what was staged in step_outputs.
 
         Returns the registered ArtifactRef so callers can inject it into
-        step outputs for the technical-manifest step to consume.
+        step inputs for the technical-manifest step to consume.
         """
         from cardre._evidence.schemas import SCHEMA_RUN_SUMMARY
         from cardre.domain.evidence.kinds import EvidenceKind
@@ -252,29 +251,53 @@ class ExecuteRun:
         finally:
             pv_uow.close()
 
+        ruow = self._uow_factory()
+        try:
+            run_steps = ruow.run_steps.get_for_run(command.run_id)
+        finally:
+            ruow.close()
+
         steps_data: list[dict[str, Any]] = []
         artifacts_data: list[dict[str, Any]] = []
-        for step_id, outputs in step_outputs.items():
-            spec = plan_steps.get(step_id)
-            rs = run_step_records.get(step_id)
+        seen_artifact_ids: set[str] = set()
+
+        for rs in run_steps:
+            spec = plan_steps.get(rs.step_id)
+            lineage_ruow = self._uow_factory()
+            try:
+                lineage = lineage_ruow.artifacts.artifacts_for_run_step(rs.run_step_id)
+            finally:
+                lineage_ruow.close()
+            input_ids = [a.artifact_id for d, a in lineage if d == "input"]
+            output_ids = [a.artifact_id for d, a in lineage if d == "output"]
             steps_data.append({
-                "step_id": step_id,
+                "step_id": rs.step_id,
                 "node_type": spec.node_type if spec else "",
                 "node_version": spec.node_version if spec else "",
-                "status": rs.status.value if rs else "missing",
+                "status": rs.status.value,
                 "params_hash": spec.params_hash if spec else "",
-                "input_artifact_ids": [a.artifact_id for a in outputs],
-                "output_artifact_ids": [a.artifact_id for a in outputs],
+                "input_artifact_ids": input_ids,
+                "output_artifact_ids": output_ids,
+                "warnings": rs.warnings,
+                "errors": rs.errors,
             })
-            for art in outputs:
-                artifacts_data.append({
-                    "artifact_id": art.artifact_id,
-                    "artifact_type": art.artifact_type,
-                    "role": art.role,
-                    "physical_hash": art.physical_hash,
-                    "logical_hash": art.logical_hash,
-                    "media_type": art.media_type,
-                })
+            for aid in output_ids + input_ids:
+                if aid not in seen_artifact_ids:
+                    seen_artifact_ids.add(aid)
+                    line_ruow = self._uow_factory()
+                    try:
+                        art = line_ruow.artifacts.get(aid)
+                    finally:
+                        line_ruow.close()
+                    if art is not None:
+                        artifacts_data.append({
+                            "artifact_id": art.artifact_id,
+                            "artifact_type": art.artifact_type,
+                            "role": art.role,
+                            "physical_hash": art.physical_hash,
+                            "logical_hash": art.logical_hash,
+                            "media_type": art.media_type,
+                        })
 
         summary = {
             "run_id": command.run_id,

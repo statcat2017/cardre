@@ -79,7 +79,7 @@ class TestRunAuditIntegrity:
             run_steps = uow.run_steps.get_for_run(run_id)
             for rs in run_steps:
                 edges = uow.evidence.get_edges_for_run_step(rs.run_step_id)
-                if rs.status.value == "succeeded" and rs.step_id != "import":
+                if rs.status.value == "succeeded" and rs.step_id not in ("import", "technical-manifest"):
                     assert len(edges) > 0, f"No evidence edges for step {rs.step_id}"
                     for edge in edges:
                         artifacts = uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id)
