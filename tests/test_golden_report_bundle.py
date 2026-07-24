@@ -58,6 +58,10 @@ NON_DETERMINISTIC_SUFFIXES: set[str] = {
     "singleton_variables",
     "message",
     "python_version",
+    # Apply-model scored output fields vary per run
+    "pd_max", "pd_min", "pd_mean", "pd_std",
+    "score_max", "score_min", "score_mean", "score_std",
+    "pd_dummy", "score_dummy",
 }
 
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
