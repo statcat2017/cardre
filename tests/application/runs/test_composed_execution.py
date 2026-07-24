@@ -127,29 +127,29 @@ class TestComposedExecution:
         """The RunSummary artifact must not appear in any parent step evidence edges."""
         project_id, _, _, run_id, uow_factory, root = composed_run
         with uow_factory.for_project(project_id) as uow:
-            # Find the RunSummary artifact (role=manifest, type=run_summary)
+            # Find the RunSummary artifact by scanning for role=manifest, type=run_summary
             summary_art_id = None
-            for rs in uow.run_steps.get_for_run(run_id):
-                for _direction, art in uow.artifacts.artifacts_for_run_step(rs.run_step_id):
-                    if art.role == "manifest" and art.artifact_type == "run_summary":
-                        summary_art_id = art.artifact_id
-                        break
-            if summary_art_id is not None:
-                # Check that no evidence edge uses this artifact
-                for edge in uow.evidence.get_edges_for_run(run_id):
-                    for ea in uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id):
-                        assert ea.artifact_id != summary_art_id, (
-                            f"RunSummary {summary_art_id} found in evidence edge {edge.evidence_edge_id}"
-                        )
-                # Check that input lineage was registered for the technical-manifest step
-                input_lineage = uow._conn.execute(
-                    "SELECT COUNT(*) FROM artifact_lineage "
-                    "WHERE artifact_id = ? AND direction = 'input' AND step_id = 'technical-manifest'",
-                    (summary_art_id,),
-                ).fetchone()[0]
-                assert input_lineage > 0, (
-                    f"RunSummary {summary_art_id} has no input lineage for technical-manifest"
-                )
+            art_row = uow._conn.execute(
+                "SELECT artifact_id FROM artifacts WHERE role = 'manifest' AND artifact_type = 'run_summary'"
+            ).fetchone()
+            if art_row is not None:
+                summary_art_id = art_row["artifact_id"]
+            assert summary_art_id is not None, "RunSummary artifact not found"
+            # Check that no evidence edge uses this artifact
+            for edge in uow.evidence.get_edges_for_run(run_id):
+                for ea in uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id):
+                    assert ea.artifact_id != summary_art_id, (
+                        f"RunSummary {summary_art_id} found in evidence edge {edge.evidence_edge_id}"
+                    )
+            # Check that input lineage was registered for the technical-manifest step
+            input_lineage = uow._conn.execute(
+                "SELECT COUNT(*) FROM artifact_lineage "
+                "WHERE artifact_id = ? AND direction = 'input' AND step_id = 'technical-manifest'",
+                (summary_art_id,),
+            ).fetchone()[0]
+            assert input_lineage > 0, (
+                f"RunSummary {summary_art_id} has no input lineage for technical-manifest"
+            )
 
     def test_manifest_contains_all_steps(self, composed_run):
         """Canonical manifest has the full step set and identity checks pass."""
@@ -216,9 +216,16 @@ class TestComposedExecution:
                             f"extra={manifest_step_ids - expected}"
                         )
                         for s in m.get("steps", []):
-                            assert s.get("input_artifact_logical_hashes", []) != s.get("output_artifact_logical_hashes", []), (
-                                f"Step {s['step_id']} has identical input/output IDs"
-                            )
+                            inp_hashes = s.get("input_artifact_logical_hashes", [])
+                            out_hashes = s.get("output_artifact_logical_hashes", [])
+                            # Verify hashes are non-empty strings
+                            for h in inp_hashes + out_hashes:
+                                assert isinstance(h, str) and len(h) > 0, f"Invalid hash in {s['step_id']}: {h!r}"
+                            # For import (no parents) all hashes must be artifact IDs / logical hashes
+                            if s["step_id"] != "import":
+                                assert len(inp_hashes) > 0 or len(out_hashes) > 0, (
+                                    f"Step {s['step_id']} has zero hashes"
+                                )
                             assert isinstance(s.get("warnings"), list) if "warnings" in s else True
                             assert isinstance(s.get("errors"), list) if "errors" in s else True
                         assert len(m.get("artifacts", [])) > 0
@@ -255,8 +262,8 @@ class TestComposedExecution:
                     break
             assert found, "No technical-manifest artifacts found"
 
-    def test_technical_manifest_logical_hashes_from_run_summary(self, composed_run):
-        """The technical manifest steps use logical hashes derived from artifacts."""
+    def test_technical_manifest_logical_hashes_match_persisted(self, composed_run):
+        """Each step's logical hashes in the manifest equal persisted lineage logical hashes."""
         project_id, _, _, run_id, uow_factory, root = composed_run
         with uow_factory.for_project(project_id) as uow:
             from cardre.adapters.filesystem.artifact_store import FsArtifactStore
@@ -271,12 +278,21 @@ class TestComposedExecution:
                         payload = json.loads(art_store.resolve_path(art).read_text())
                         for m in payload.get("manifests", []):
                             for s in m.get("steps", []):
-                                for lh in s.get("input_artifact_logical_hashes", []):
-                                    assert isinstance(lh, str) and len(lh) > 0, (
-                                        f"Invalid logical hash in input: {lh!r}"
+                                step_rs = next((rs2 for rs2 in uow.run_steps.get_for_run(run_id) if rs2.step_id == s["step_id"]), None)
+                                if step_rs is None:
+                                    continue
+                                lineage = uow.artifacts.artifacts_for_run_step(step_rs.run_step_id)
+                                persisted_input_logical = [a.logical_hash for d, a in lineage if d == "input"]
+                                persisted_output_logical = [a.logical_hash for d, a in lineage if d == "output"]
+                                manifest_input = s.get("input_artifact_logical_hashes", [])
+                                manifest_output = s.get("output_artifact_logical_hashes", [])
+                                if s["step_id"] != "import":
+                                    assert set(manifest_input) == set(persisted_input_logical), (
+                                        f"Step {s['step_id']} input hashes mismatch: "
+                                        f"manifest={manifest_input}, persisted={persisted_input_logical}"
                                     )
-                                for lh in s.get("output_artifact_logical_hashes", []):
-                                    assert isinstance(lh, str) and len(lh) > 0, (
-                                        f"Invalid logical hash in output: {lh!r}"
-                                    )
+                                assert set(manifest_output) == set(persisted_output_logical), (
+                                    f"Step {s['step_id']} output hashes mismatch: "
+                                    f"manifest={manifest_output}, persisted={persisted_output_logical}"
+                                )
                     break

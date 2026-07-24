@@ -118,6 +118,7 @@ class ExecuteRun:
                     # Inject the RunSummary into the step's own output bucket.
                     # StepRunner._resolve_inputs later picks up own-step entries.
                     step_outputs.setdefault(step.step_id, []).append(summary_ref)
+                    self._run_summary_ref = summary_ref
 
                 hb_uow = self._uow_factory()
                 try:
@@ -208,21 +209,17 @@ class ExecuteRun:
                     # was injected into this step's own output bucket.  The step's
                     # normal input-lineage loop over parent_step_ids does not cover
                     # own-step entries, so we register it here explicitly.
-                    for own_art in step_outputs.get(step.step_id, []):
-                        if own_art.artifact_id in input_id_set and own_art.artifact_id not in {
-                            a.artifact_id for _, a in
-                            persist_uow.artifacts.artifacts_for_run_step(run_step.run_step_id)
-                            if _ == "input"
-                        }:
-                            persist_uow.artifacts.register_lineage(
-                                run_id=command.run_id,
-                                run_step_id=run_step.run_step_id,
-                                plan_version_id=pv_id,
-                                step_id=step.step_id,
-                                artifact_id=own_art.artifact_id,
-                                direction="input",
-                                branch_id=None,
-                            )
+                    sr = getattr(self, "_run_summary_ref", None)
+                    if sr is not None and sr.artifact_id in input_id_set:
+                        persist_uow.artifacts.register_lineage(
+                            run_id=command.run_id,
+                            run_step_id=run_step.run_step_id,
+                            plan_version_id=pv_id,
+                            step_id=step.step_id,
+                            artifact_id=sr.artifact_id,
+                            direction="input",
+                            branch_id=run.branch_id if hasattr(run, "branch_id") else None,
+                        )
 
                     persist_uow.commit()
                 except Exception:
