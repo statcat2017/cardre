@@ -109,6 +109,18 @@ class ExecuteRun:
                     self._finalize_run(command.run_id, "cancelled")
                     return
 
+                # Publish a RunSummary artifact from persisted execution state before
+                # the technical-manifest step executes.  Inject into the outputs of
+                # the build-summary-report parent step so the TechnicalManifestExportNode
+                # finds it as an input with role=manifest.
+                if step.node_type == "cardre.technical_manifest_export" and step_outputs:
+                    summary_ref = self._publish_run_summary(command, pv_id, run, step_outputs, run_step_records)
+                    # Inject the RunSummary into the build-summary-report output bucket
+                    # so the technical-manifest step can resolve it as role=manifest input.
+                    bsr_key = next((k for k in step_outputs if "build-summary" in k), None)
+                    if bsr_key:
+                        step_outputs[bsr_key].append(summary_ref)
+
                 hb_uow = self._uow_factory()
                 try:
                     heartbeat(hb_uow, command.run_id)
@@ -212,6 +224,93 @@ class ExecuteRun:
                 code="RUN_EXECUTION_FAILED",
                 message=str(exc),
             ))
+
+    def _publish_run_summary(
+        self,
+        command: ExecuteRunCommand,
+        pv_id: str,
+        run: Any,
+        step_outputs: dict[str, list[ArtifactRef]],
+        run_step_records: dict[str, RunStep],
+    ) -> ArtifactRef:
+        """Build and publish a RunSummary artifact from persisted execution state.
+
+        The RunSummary feeds the TechnicalManifestExportNode, which requires
+        run_id, plan_version_id, steps, and artifacts in the payload.
+
+        Returns the registered ArtifactRef so callers can inject it into
+        step outputs for the technical-manifest step to consume.
+        """
+        from cardre._evidence.schemas import SCHEMA_RUN_SUMMARY
+        from cardre.domain.evidence.kinds import EvidenceKind
+
+        plan_steps: dict[str, Any] = {}
+        pv_uow = self._uow_factory()
+        try:
+            for spec in pv_uow.plans.get_version_steps(pv_id):
+                plan_steps[spec.step_id] = spec
+        finally:
+            pv_uow.close()
+
+        steps_data: list[dict[str, Any]] = []
+        artifacts_data: list[dict[str, Any]] = []
+        for step_id, outputs in step_outputs.items():
+            spec = plan_steps.get(step_id)
+            rs = run_step_records.get(step_id)
+            steps_data.append({
+                "step_id": step_id,
+                "node_type": spec.node_type if spec else "",
+                "node_version": spec.node_version if spec else "",
+                "status": rs.status.value if rs else "missing",
+                "params_hash": spec.params_hash if spec else "",
+                "input_artifact_ids": [a.artifact_id for a in outputs],
+                "output_artifact_ids": [a.artifact_id for a in outputs],
+            })
+            for art in outputs:
+                artifacts_data.append({
+                    "artifact_id": art.artifact_id,
+                    "artifact_type": art.artifact_type,
+                    "role": art.role,
+                    "physical_hash": art.physical_hash,
+                    "logical_hash": art.logical_hash,
+                    "media_type": art.media_type,
+                })
+
+        summary = {
+            "run_id": command.run_id,
+            "plan_version_id": pv_id,
+            "steps": steps_data,
+            "artifacts": artifacts_data,
+        }
+
+        artifact_store = self._artifact_store_factory()
+        staged = artifact_store.stage_json(
+            role="manifest",
+            kind=EvidenceKind.RUN_SUMMARY.value,
+            payload=summary,
+            metadata={"schema_version": SCHEMA_RUN_SUMMARY},
+        )
+        published_path = artifact_store.publish(staged)
+        summary_ref = ArtifactRef(
+            artifact_id=staged.provisional_artifact_id,
+            artifact_type=staged.artifact_type,
+            role=staged.role,
+            path=str(published_path),
+            physical_hash=staged.physical_hash,
+            logical_hash=staged.logical_hash,
+            media_type=staged.media_type,
+            metadata=staged.metadata,
+        )
+        uow = self._uow_factory()
+        try:
+            uow.artifacts.register(summary_ref)
+            uow.commit()
+        except Exception:
+            uow.rollback()
+            raise
+        finally:
+            uow.close()
+        return summary_ref
 
     @staticmethod
     def _write_evidence_edges(

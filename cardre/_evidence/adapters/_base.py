@@ -82,9 +82,16 @@ def match(artifacts: list[ArtifactRef], profile: _Profile, store: ProjectStore) 
     """Two-phase matching: schema version first, then role/type/media + payload check."""
     schema_matches = match_by_schema_version(artifacts, profile)
     if schema_matches:
-        validated = [a for a in schema_matches if _passes_format_check(a, profile)]
+        validated = [
+            a for a in schema_matches
+            if a.role in profile.expected_roles
+            and a.artifact_type in profile.expected_artifact_types
+            and a.media_type in profile.expected_media_types
+            and (profile.exclude_key is None or profile.exclude_key not in a.metadata)
+            and candidate_passes_payload_check(a, profile, store)
+        ]
         if validated:
-            return validated[:1]
+            return validated
         return []
     candidates = match_by_role_type_media(artifacts, profile)
     if len(candidates) == 1:
