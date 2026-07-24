@@ -1,10 +1,7 @@
 """FastAPI application for the Cardre hexagonal architecture.
 
-Created by bootstrap/build_app.py with a Container. Only health and projects
-routes are registered in this batch; other routes are added in later batches.
-
-The module-level ``app`` singleton lives in ``_app_instance.py`` to avoid
-circular imports with ``bootstrap.build_app``.
+Created by bootstrap/build_app.py with a Container. All routes are registered
+here; governance routes are conditional on CARDRE_GOVERNANCE=1.
 """
 
 from __future__ import annotations
@@ -14,7 +11,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from cardre._version import __version__
 from cardre.api.errors import CardreApiError, cardre_api_error_handler, cardre_error_handler
-from cardre.api.routes import health, projects
+from cardre.api.routes import (
+    artifacts,
+    evidence,
+    exports,
+    governance,
+    health,
+    node_types,
+    plans,
+    projects,
+    reports,
+    runs,
+)
 from cardre.domain.errors import CardreError
 
 
@@ -57,5 +65,16 @@ def create_app(container: object) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(projects.router)
+    app.include_router(plans.router)
+    app.include_router(runs.router)
+    app.include_router(evidence.router)
+    app.include_router(artifacts.router)
+    app.include_router(node_types.router)
+    app.include_router(exports.router)
+    app.include_router(reports.router)
+
+    gov_enabled = getattr(getattr(container, "settings", None), "governance_enabled", False)
+    if gov_enabled:
+        app.include_router(governance.router)
 
     return app

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_create_project, get_get_project, get_list_projects
 from cardre.api.errors import CardreApiError, ErrorCode
-from cardre.api.routes._run_mappings import project_to_response
+from cardre.api.mappers import project_to_response
 from cardre.api.schemas import (
     ProjectCreateRequest,
     ProjectListResponse,
