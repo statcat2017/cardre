@@ -77,11 +77,19 @@ def build_container(settings: Settings) -> Container:
         return EvidenceReader(reader, artifacts, run_steps)
 
     def step_evidence_reader_factory(project_id: str) -> EvidenceReader:
-        return EvidenceReader(
+        """Create an EvidenceReader backed by a read-only UoW.
+
+        The UoW is attached as ``_evidence_uow`` on the reader so the
+        StepRunner can close it after each step.
+        """
+        uow = uow_factory.for_root_readonly(project_root(project_id))
+        reader = EvidenceReader(
             artifact_reader_factory(project_id),
-            uow_factory.for_project(project_id).artifacts,
-            uow_factory.for_project(project_id).run_steps,
+            uow.artifacts,
+            uow.run_steps,
         )
+        reader._evidence_uow = uow  # type: ignore[attr-defined]
+        return reader
 
     def collector_factory(
         reader: EvidenceReaderPort,

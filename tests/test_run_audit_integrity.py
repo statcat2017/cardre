@@ -1,7 +1,7 @@
 """Audit integrity tests — verifies post-run state after composed execution.
 
-Validates run state, evidence completeness, and manifest correctness
-through the production persistence stack after a full composed run.
+Asserts every step has evidence edges with evidence artifacts, no orphan
+artifacts, manifest completeness, and edge provenance correctness.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ def _write_input_csv(path):
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         w.writeheader()
         w.writerows(rows)
+    return path
 
 
 @pytest.fixture
@@ -65,14 +66,14 @@ def audit_run(tmp_path):
 
 
 class TestRunAuditIntegrity:
-    def test_run_state_is_terminal(self, audit_run):
+    def test_run_must_be_succeeded(self, audit_run):
         project_id, _, _, run_id, uow_factory, _ = audit_run
         with uow_factory.for_project(project_id) as uow:
             run = uow.runs.get(run_id)
         assert run is not None
-        assert run.status in ("succeeded", "failed", "cancelled", "interrupted")
+        assert run.status == "succeeded", f"Run status: {run.status}"
 
-    def test_every_step_has_evidence_edges(self, audit_run):
+    def test_every_step_has_evidence_edges_with_artifacts(self, audit_run):
         project_id, _, _, run_id, uow_factory, _ = audit_run
         with uow_factory.for_project(project_id) as uow:
             run_steps = uow.run_steps.get_for_run(run_id)
@@ -80,8 +81,13 @@ class TestRunAuditIntegrity:
                 edges = uow.evidence.get_edges_for_run_step(rs.run_step_id)
                 if rs.status.value == "succeeded" and rs.step_id != "import":
                     assert len(edges) > 0, f"No evidence edges for step {rs.step_id}"
+                    for edge in edges:
+                        artifacts = uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id)
+                        assert len(artifacts) > 0, (
+                            f"No evidence artifacts for edge {edge.evidence_edge_id} ({rs.step_id})"
+                        )
 
-    def test_manifest_contains_all_steps(self, audit_run):
+    def test_manifest_has_steps_and_hashes(self, audit_run):
         _, _, _, run_id, _, root = audit_run
         manifest_path = root / "exports" / f"manifest-{run_id}" / "manifest.json"
         assert manifest_path.exists()
@@ -108,4 +114,6 @@ class TestRunAuditIntegrity:
             for edge in edges:
                 source_rs = uow.run_steps.get(edge.source_run_step_id)
                 assert source_rs is not None, f"Missing source run step: {edge.source_run_step_id}"
-                assert source_rs.status.value == "succeeded"
+                assert source_rs.status.value == "succeeded", (
+                    f"Source run step {edge.source_run_step_id} not succeeded: {source_rs.status}"
+                )

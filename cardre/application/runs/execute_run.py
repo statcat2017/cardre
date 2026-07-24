@@ -323,15 +323,22 @@ class ExecuteRun:
     ) -> None:
         """Create evidence edges from parent-child step relationships.
 
-        For each parent step that has a run step record, an evidence edge
-        is created linking this step to its parent, with the artifacts that
-        were passed as inputs from that parent.
+        For each parent step that contributed consumed artifacts, an evidence
+        edge is created linking this step to its parent.  One ``EvidenceArtifact``
+        row is inserted for every consumed artifact on that edge.
+
+        Parent steps whose outputs were entirely filtered out (no artifacts
+        consumed) produce no edge, keeping the evidence graph accurate.
         """
         import uuid
 
-        from cardre.domain.evidence import EvidenceEdge
+        from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge
 
+        input_map = getattr(result, "input_artifact_ids_by_parent", {}) or {}
         for parent_rs in result.parent_run_steps:
+            consumed_ids = input_map.get(parent_rs.step_id, [])
+            if not consumed_ids:
+                continue
             edge = EvidenceEdge(
                 evidence_edge_id=str(uuid.uuid4()),
                 run_id=run_step.run_id,
@@ -347,3 +354,12 @@ class ExecuteRun:
                 is_stale=False,
             )
             uow.evidence.insert_edge(edge)
+            for aid in consumed_ids:
+                ea = EvidenceArtifact(
+                    evidence_artifact_id=str(uuid.uuid4()),
+                    evidence_edge_id=edge.evidence_edge_id,
+                    artifact_id=aid,
+                    role="input",
+                    created_at=run_step.started_at or "",
+                )
+                uow.evidence.insert_artifact(ea)

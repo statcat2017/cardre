@@ -37,6 +37,7 @@ class StepExecutionResult:
     output_artifact_ids: list[str]
     staged_artifacts: list[StagedArtifact] = field(default_factory=list)
     parent_run_steps: list[Any] = field(default_factory=list)
+    input_artifact_ids_by_parent: dict[str, list[str]] = field(default_factory=dict)
     warnings: list[JsonDict] = field(default_factory=list)
     errors: list[JsonDict] = field(default_factory=list)
 
@@ -51,6 +52,16 @@ class StepRunner:
         self._node_catalogue = node_catalogue
         self._artifact_store_factory = artifact_store_factory
         self._evidence_reader_factory = evidence_reader_factory
+        self._evidence_uow: Any = None
+
+    @staticmethod
+    def _close_evidence_reader(reader: Any) -> None:
+        """Close the UoW backing this evidence reader, if any."""
+        uow = getattr(reader, "_evidence_uow", None)
+        if uow is not None:
+            import contextlib
+            with contextlib.suppress(Exception):
+                uow.close()
 
     def run_step(
         self,
@@ -107,7 +118,9 @@ class StepRunner:
                 ]
 
             artifact_store = self._artifact_store_factory()
+            self._close_evidence_reader(getattr(self, "_last_evidence_reader", None))
             evidence_reader = self._evidence_reader_factory()
+            self._last_evidence_reader = evidence_reader
 
             inputs = StepInputCollection(evidence_reader, input_artifacts)
 
@@ -162,6 +175,7 @@ class StepRunner:
                 output_artifact_ids=output_artifact_ids,
                 staged_artifacts=staged,
                 parent_run_steps=parent_run_steps,
+                input_artifact_ids_by_parent=input_artifact_ids_by_parent,
                 warnings=list(result.warnings or []),
             )
 
@@ -181,6 +195,7 @@ class StepRunner:
                 output_artifact_ids=[s.provisional_artifact_id for s in staged],
                 staged_artifacts=staged,
                 parent_run_steps=parent_run_steps,
+                input_artifact_ids_by_parent=input_artifact_ids_by_parent,
                 errors=[error_entry],
             )
 
@@ -199,6 +214,7 @@ class StepRunner:
                 input_artifact_ids=[a.artifact_id for a in input_artifacts],
                 output_artifact_ids=[],
                 parent_run_steps=parent_run_steps,
+                input_artifact_ids_by_parent=input_artifact_ids_by_parent,
                 errors=[error_entry],
             )
 
