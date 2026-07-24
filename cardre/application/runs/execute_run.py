@@ -204,6 +204,26 @@ class ExecuteRun:
                         run_step_records, run,
                     )
 
+                    # Register lineage for the synthetic RunSummary artifact that
+                    # was injected into this step's own output bucket.  The step's
+                    # normal input-lineage loop over parent_step_ids does not cover
+                    # own-step entries, so we register it here explicitly.
+                    for own_art in step_outputs.get(step.step_id, []):
+                        if own_art.artifact_id in input_id_set and own_art.artifact_id not in {
+                            a.artifact_id for _, a in
+                            persist_uow.artifacts.artifacts_for_run_step(run_step.run_step_id)
+                            if _ == "input"
+                        }:
+                            persist_uow.artifacts.register_lineage(
+                                run_id=command.run_id,
+                                run_step_id=run_step.run_step_id,
+                                plan_version_id=pv_id,
+                                step_id=step.step_id,
+                                artifact_id=own_art.artifact_id,
+                                direction="input",
+                                branch_id=None,
+                            )
+
                     persist_uow.commit()
                 except Exception:
                     persist_uow.rollback()
@@ -270,12 +290,16 @@ class ExecuteRun:
                 lineage_ruow.close()
             input_ids = [a.artifact_id for d, a in lineage if d == "input"]
             output_ids = [a.artifact_id for d, a in lineage if d == "output"]
+            input_logical_hashes = [a.logical_hash for d, a in lineage if d == "input"]
+            output_logical_hashes = [a.logical_hash for d, a in lineage if d == "output"]
             steps_data.append({
                 "step_id": rs.step_id,
                 "node_type": spec.node_type if spec else "",
                 "node_version": spec.node_version if spec else "",
                 "status": rs.status.value,
                 "params_hash": spec.params_hash if spec else "",
+                "input_artifact_logical_hashes": input_logical_hashes,
+                "output_artifact_logical_hashes": output_logical_hashes,
                 "input_artifact_ids": input_ids,
                 "output_artifact_ids": output_ids,
                 "warnings": rs.warnings,

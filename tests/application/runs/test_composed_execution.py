@@ -123,6 +123,34 @@ class TestComposedExecution:
                 f"Import step should have no evidence edges (no parents), found {len(import_edges)}"
             )
 
+    def test_run_summary_not_in_parent_edges(self, composed_run):
+        """The RunSummary artifact must not appear in any parent step evidence edges."""
+        project_id, _, _, run_id, uow_factory, root = composed_run
+        with uow_factory.for_project(project_id) as uow:
+            # Find the RunSummary artifact (role=manifest, type=run_summary)
+            summary_art_id = None
+            for rs in uow.run_steps.get_for_run(run_id):
+                for _direction, art in uow.artifacts.artifacts_for_run_step(rs.run_step_id):
+                    if art.role == "manifest" and art.artifact_type == "run_summary":
+                        summary_art_id = art.artifact_id
+                        break
+            if summary_art_id is not None:
+                # Check that no evidence edge uses this artifact
+                for edge in uow.evidence.get_edges_for_run(run_id):
+                    for ea in uow.evidence.get_artifacts_for_edge(edge.evidence_edge_id):
+                        assert ea.artifact_id != summary_art_id, (
+                            f"RunSummary {summary_art_id} found in evidence edge {edge.evidence_edge_id}"
+                        )
+                # Check that input lineage was registered for the technical-manifest step
+                input_lineage = uow._conn.execute(
+                    "SELECT COUNT(*) FROM artifact_lineage "
+                    "WHERE artifact_id = ? AND direction = 'input' AND step_id = 'technical-manifest'",
+                    (summary_art_id,),
+                ).fetchone()[0]
+                assert input_lineage > 0, (
+                    f"RunSummary {summary_art_id} has no input lineage for technical-manifest"
+                )
+
     def test_manifest_contains_all_steps(self, composed_run):
         """Canonical manifest has the full step set and identity checks pass."""
         _, _, _, run_id, _, root = composed_run
@@ -202,6 +230,7 @@ class TestComposedExecution:
         with uow_factory.for_project(project_id) as uow:
             from cardre.adapters.filesystem.artifact_store import FsArtifactStore
             art_store = FsArtifactStore(root)
+            found = False
             for rs in uow.run_steps.get_for_run(run_id):
                 if rs.step_id == "technical-manifest":
                     for aid in uow.artifacts.output_artifact_ids_for_run_step(rs.run_step_id):
@@ -213,9 +242,41 @@ class TestComposedExecution:
                         for m in payload.get("manifests", []):
                             for art_entry in m.get("artifacts", []):
                                 persisted = uow.artifacts.get(art_entry["artifact_id"])
-                                if persisted is None:
-                                    continue
+                                assert persisted is not None, (
+                                    f"Manifest references missing artifact: {art_entry['artifact_id']}"
+                                )
                                 assert persisted.physical_hash == art_entry["physical_hash"], (
                                     f"Physical hash mismatch for {art_entry['artifact_id']}"
                                 )
+                                assert persisted.logical_hash == art_entry["logical_hash"], (
+                                    f"Logical hash mismatch for {art_entry['artifact_id']}"
+                                )
+                        found = True
+                    break
+            assert found, "No technical-manifest artifacts found"
+
+    def test_technical_manifest_logical_hashes_from_run_summary(self, composed_run):
+        """The technical manifest steps use logical hashes derived from artifacts."""
+        project_id, _, _, run_id, uow_factory, root = composed_run
+        with uow_factory.for_project(project_id) as uow:
+            from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+            art_store = FsArtifactStore(root)
+            for rs in uow.run_steps.get_for_run(run_id):
+                if rs.step_id == "technical-manifest":
+                    for aid in uow.artifacts.output_artifact_ids_for_run_step(rs.run_step_id):
+                        art = uow.artifacts.get(aid)
+                        if art is None or art.artifact_type != "technical_manifest_index":
+                            continue
+                        import json
+                        payload = json.loads(art_store.resolve_path(art).read_text())
+                        for m in payload.get("manifests", []):
+                            for s in m.get("steps", []):
+                                for lh in s.get("input_artifact_logical_hashes", []):
+                                    assert isinstance(lh, str) and len(lh) > 0, (
+                                        f"Invalid logical hash in input: {lh!r}"
+                                    )
+                                for lh in s.get("output_artifact_logical_hashes", []):
+                                    assert isinstance(lh, str) and len(lh) > 0, (
+                                        f"Invalid logical hash in output: {lh!r}"
+                                    )
                     break
