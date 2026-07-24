@@ -95,7 +95,9 @@ class StepRunner:
 
             input_roles = [
                 rs.role for rs in node.__definition__.input_contract.roles
-            ] if hasattr(node.__definition__, 'input_contract') else []
+            ] if hasattr(node.__definition__, 'input_contract') and node.__definition__.input_contract.roles else (
+                getattr(node, 'input_roles', []) or []
+            )
             input_artifacts = self._filter_input_artifacts(spec, input_roles, resolved)
 
             for pid in spec.parent_step_ids:
@@ -221,7 +223,7 @@ class StepRunner:
         artifacts: list[ArtifactRef],
     ) -> list[ArtifactRef]:
         if not allowed:
-            return []
+            return list(artifacts)
         if not artifacts:
             return artifacts
         filtered = [a for a in artifacts if a.role in allowed]

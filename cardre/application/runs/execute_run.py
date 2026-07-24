@@ -189,6 +189,11 @@ class ExecuteRun:
                                     branch_id=run.branch_id if hasattr(run, "branch_id") else None,
                                 )
 
+                    self._write_evidence_edges(
+                        persist_uow, run_step, step, result,
+                        run_step_records, run,
+                    )
+
                     persist_uow.commit()
                 except Exception:
                     persist_uow.rollback()
@@ -207,3 +212,39 @@ class ExecuteRun:
                 code="RUN_EXECUTION_FAILED",
                 message=str(exc),
             ))
+
+    @staticmethod
+    def _write_evidence_edges(
+        uow: Any,
+        run_step: RunStep,
+        step: Any,
+        result: Any,
+        run_step_records: dict[str, RunStep],
+        run: Any,
+    ) -> None:
+        """Create evidence edges from parent-child step relationships.
+
+        For each parent step that has a run step record, an evidence edge
+        is created linking this step to its parent, with the artifacts that
+        were passed as inputs from that parent.
+        """
+        import uuid
+
+        from cardre.domain.evidence import EvidenceEdge
+
+        for parent_rs in result.parent_run_steps:
+            edge = EvidenceEdge(
+                evidence_edge_id=str(uuid.uuid4()),
+                run_id=run_step.run_id,
+                run_step_id=run_step.run_step_id,
+                plan_version_id=run_step.plan_version_id,
+                step_id=run_step.step_id,
+                parent_step_id=parent_rs.step_id,
+                source_run_id=run_step.run_id,
+                source_run_step_id=parent_rs.run_step_id,
+                policy="exact",
+                source_label="parent",
+                is_reused=False,
+                is_stale=False,
+            )
+            uow.evidence.insert_edge(edge)

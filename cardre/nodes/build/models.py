@@ -12,7 +12,11 @@ from cardre.domain.evidence.kinds import (
     EvidenceKind,
     EvidenceNotFoundError,
 )
-from cardre.domain.evidence.schemas import SCHEMA_MODEL_ARTIFACT, SCHEMA_SCORE_SCALING
+from cardre.domain.evidence.schemas import (
+    SCHEMA_MODEL_ARTIFACT,
+    SCHEMA_RUN_SUMMARY,
+    SCHEMA_SCORE_SCALING,
+)
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.build._logit_helpers import (
     COEF_ROUND,
@@ -679,7 +683,7 @@ class BuildSummaryReportNode(NodeType):
     category = "fit"
     description = "Compile a build summary report from model, scorecard, and WOE/IV evidence"
     input_roles: list[str] = ["scorecard", "model", "report"]
-    output_roles: list[str] = ["report"]
+    output_roles: list[str] = ["manifest"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.build_summary_report",
@@ -694,7 +698,7 @@ class BuildSummaryReportNode(NodeType):
             ),
         ),
         output_contract=ArtifactContract(
-            roles=(ArtifactRoleSpec("report", required=True),),
+            roles=(ArtifactRoleSpec("manifest", required=True),),
         ),
         parameter_schema=None,
         optional_dependencies=(),
@@ -770,10 +774,10 @@ class BuildSummaryReportNode(NodeType):
         }
 
         context.outputs.publish_json(
-            role="report",
-            kind=EvidenceKind.MODELLING_METADATA,
+            role="manifest",
+            kind=EvidenceKind.RUN_SUMMARY,
             payload=report,
-            metadata={},
+            metadata={"schema_version": SCHEMA_RUN_SUMMARY},
         )
         context.outputs.add_metric("feature_count", len(model_features))
         return context.outputs.build_result()

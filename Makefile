@@ -1,12 +1,8 @@
 .PHONY: test test-cov test-fail-fast test-evidence test-launch-core test-governance test-python-ci typecheck typecheck-python lint lint-line-counts lint-artifact-reads audit-artifact-reads arch-check preflight v2-phase-check
 
-# Coverage threshold. The original Batch 06 target was 60%, which assumes
-# Batch 05 execution-path tests (SubmitRun → ExecuteRun → FinalizeRun) are
-# un-xfailed. Those tests are deferred to a separate Batch 05 closeout PR.
-# 54% reflects the current state after Batch 06 cleanup (legacy code deleted,
-# new use-case tests ported). Restore to 60 after the Batch 05 closeout PR
-# adds the composed execution-path tests.
-PYTEST_COV_FAIL_UNDER ?= 54
+# Coverage threshold. Restored to 60% after Batch 05 closeout composed
+# execution-path tests landed (SubmitRun → ExecuteRun → FinalizeRun).
+PYTEST_COV_FAIL_UNDER ?= 60
 
 test:
 	python3 -m pytest tests/ -q --tb=short

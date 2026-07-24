@@ -41,7 +41,7 @@ class AutomaticBinningNode(NodeType):
         output_contract=ArtifactContract(
             roles=(
                 ArtifactRoleSpec("definition", kinds=(EvidenceKind.BIN_DEFINITION,)),
-                ArtifactRoleSpec("report"),
+                ArtifactRoleSpec("report", required=False),
             ),
         ),
         parameter_schema=automatic_binning_parameter_schema("cardre.automatic_binning", "1"),
