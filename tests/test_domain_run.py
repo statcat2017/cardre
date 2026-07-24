@@ -34,7 +34,7 @@ def test_run_rejects_invalid_transition() -> None:
     )
 
     with pytest.raises(ValueError):
-        run.transition_to("running")
+        run.transition_to("succeeded")
 
 
 def test_run_step_has_no_artifact_arrays() -> None:

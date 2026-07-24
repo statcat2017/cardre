@@ -102,7 +102,7 @@ def test_no_compat_evidence_aliases_in_source():
 
 def test_score_scaling_defaults_match_reader_and_report_model():
     from cardre._evidence.models.model import ScoreScaling
-    from cardre.reporting.schema import ScoreScalingInfo
+    from cardre.application.reporting.schema import ScoreScalingInfo
 
     assert ScoreScaling().score_direction == "higher_is_lower_risk"
     assert ScoreScalingInfo().score_direction == "higher_is_lower_risk"

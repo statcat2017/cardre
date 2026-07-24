@@ -32,7 +32,7 @@ class RunRepo:
         self._conn.execute(
             "INSERT INTO runs (run_id, plan_version_id, status, run_scope, branch_id, "
             "force, requested_by, request_id, created_at, started_at, heartbeat_at) "
-            "VALUES (?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, 'created', ?, ?, ?, ?, ?, ?, ?, ?)",
             (run_id, plan_version_id, run_scope, branch_id,
              int(force), requested_by, request_id, now, now, now),
         )
@@ -52,15 +52,24 @@ class RunRepo:
     def transition(self, run_id: str, to_status: RunStatus, *,
                    expected_from: tuple[RunStatus, ...] = (RunStatus.RUNNING,)) -> bool:
         from cardre.domain.run import _VALID_TRANSITIONS
-        if not any(to_status in _VALID_TRANSITIONS.get(s, set()) for s in expected_from):
-            raise ValueError(f"Invalid run state transition: {expected_from} -> {to_status!r}")
-        from cardre.domain.diagnostics import utc_now_iso
-        now = utc_now_iso()
+        from cardre.domain.run import RunStatus as RS
+        for s in expected_from:
+            if to_status not in _VALID_TRANSITIONS.get(s, set()):
+                raise ValueError(f"Invalid run state transition: {s!r} -> {to_status!r}")
+        terminal = to_status in RS.terminal()
         placeholders = ", ".join("?" for _ in expected_from)
-        cursor = self._conn.execute(
-            f"UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ? AND status IN ({placeholders})",
-            (to_status.value, now, run_id) + tuple(s.value for s in expected_from),
-        )
+        if terminal:
+            from cardre.domain.diagnostics import utc_now_iso
+            now = utc_now_iso()
+            cursor = self._conn.execute(
+                f"UPDATE runs SET status = ?, finished_at = ? WHERE run_id = ? AND status IN ({placeholders})",
+                (to_status.value, now, run_id) + tuple(s.value for s in expected_from),
+            )
+        else:
+            cursor = self._conn.execute(
+                f"UPDATE runs SET status = ? WHERE run_id = ? AND status IN ({placeholders})",
+                (to_status.value, run_id) + tuple(s.value for s in expected_from),
+            )
         return bool(cursor.rowcount > 0)
 
     def heartbeat(self, run_id: str) -> None:
@@ -148,7 +157,7 @@ class RunRepo:
         row = self._conn.execute(
             "SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
             "JOIN plan_versions pv ON rs.plan_version_id = pv.plan_version_id "
-            "WHERE pv.plan_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' "
+            "WHERE pv.plan_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' AND r.status = 'succeeded' "
             f"{clause} ORDER BY rs.started_at DESC LIMIT 1",
             [plan_id, step_id] + params,
         ).fetchone()
@@ -163,3 +172,25 @@ class RunRepo:
             warnings=json.loads(row["warnings_json"]),
             errors=json.loads(row["errors_json"]),
         )
+
+    def list_successful_steps_across_plan_ordered(
+        self, plan_id: str, step_id: str, branch_id: str | None = None,
+    ) -> list[RunStep]:
+        """Return all successful run steps across all plan versions, newest-first."""
+        clause, params = self._branch_filter(branch_id)
+        rows = self._conn.execute(
+            "SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
+            "JOIN plan_versions pv ON rs.plan_version_id = pv.plan_version_id "
+            "WHERE pv.plan_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' AND r.status = 'succeeded' "
+            f"{clause} ORDER BY rs.started_at DESC, rs.run_step_id DESC",
+            [plan_id, step_id] + params,
+        ).fetchall()
+        return [RunStep(
+            run_step_id=r["run_step_id"], run_id=r["run_id"],
+            step_id=r["step_id"], plan_version_id=r["plan_version_id"],
+            status=RunStepStatus(r["status"]), started_at=r["started_at"],
+            finished_at=r["finished_at"],
+            execution_fingerprint=json.loads(r["execution_fingerprint_json"]),
+            warnings=json.loads(r["warnings_json"]),
+            errors=json.loads(r["errors_json"]),
+        ) for r in rows]

@@ -1,8 +1,12 @@
 .PHONY: test test-cov test-fail-fast test-evidence test-launch-core test-governance test-python-ci typecheck typecheck-python lint lint-line-counts lint-artifact-reads audit-artifact-reads arch-check preflight v2-phase-check
 
-# Temporarily lowered during Batch 05 migration; old execution tests are xfailed.
-# Restore to 60 once new execution runtime tests land.
-PYTEST_COV_FAIL_UNDER ?= 53
+# Coverage threshold. The original Batch 06 target was 60%, which assumes
+# Batch 05 execution-path tests (SubmitRun → ExecuteRun → FinalizeRun) are
+# un-xfailed. Those tests are deferred to a separate Batch 05 closeout PR.
+# 54% reflects the current state after Batch 06 cleanup (legacy code deleted,
+# new use-case tests ported). Restore to 60 after the Batch 05 closeout PR
+# adds the composed execution-path tests.
+PYTEST_COV_FAIL_UNDER ?= 54
 
 test:
 	python3 -m pytest tests/ -q --tb=short
@@ -17,7 +21,7 @@ test-fail-fast:
 	python3 -m pytest tests/ -x --tb=long
 
 test-evidence:
-	python3 -m pytest tests/test_evidence_adapters.py tests/test_evidence_locator.py tests/test_evidence_repo_bulk.py tests/test_evidence_policy.py tests/test_evidence_edges_and_artifacts.py -q --tb=short
+	python3 -m pytest tests/test_evidence_adapters.py tests/test_evidence_repo_bulk.py tests/test_evidence_edges_and_artifacts.py tests/application/evidence -q --tb=short
 
 test-launch-core:
 	python3 -m pytest tests/test_launch_pathway.py tests/test_api_scorecard_launch_pathway.py tests/test_freeze_scorecard_bundle.py -q --tb=short

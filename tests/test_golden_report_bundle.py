@@ -23,7 +23,10 @@ import pytest
 
 from cardre.workflows import build_canonical_scorecard_steps
 
-pytestmark = pytest.mark.xfail(reason="TechnicalManifestExportNode deferred to Batch 05")
+pytestmark = pytest.mark.xfail(
+    reason="Requires full execution pathway (PlanExecutor + legacy collector) which is Batch 05 closeout work. "
+           "Deferred to the Batch 05 closeout PR per sprint contract revision."
+)
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 GOLDEN_REPORT_BUNDLE = FIXTURE_DIR / "golden_report_bundle.json"
@@ -192,10 +195,11 @@ def _write_input_csv(path: Path) -> Path:
 def _run_pathway(tmp_path: Path) -> dict:
     import uuid
 
+    from cardre.reporting.collector import generate_report_bundle
+
     from cardre.application.runs.finalize_run import FinalizeRun as RunLifecycle
     from cardre.domain.diagnostics import utc_now_iso
     from cardre.execution.executor import PlanExecutor
-    from cardre.reporting.collector import generate_report_bundle
     from cardre.store.branch_repo import BranchRepository
     from cardre.store.db import ProjectStore
     from cardre.store.plan_repo import PlanRepository

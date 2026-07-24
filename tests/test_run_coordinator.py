@@ -20,7 +20,6 @@ from cardre.domain.errors import (
     CardreError,
     PlanVersionNotCommittedError,
 )
-from cardre.services.staleness_service import StalenessExplanation
 
 pytestmark = pytest.mark.xfail(reason="Uses RunCoordinator which was removed in Batch 05")
 
@@ -261,7 +260,7 @@ class TestShortCircuit:
         monkeypatch.setenv("CARDRE_GOVERNANCE", "1")
 
         from cardre.services.run_coordinator import RunCoordinator
-        from cardre.services.staleness_service import StalenessService
+        from cardre.services.staleness_service import StalenessExplanation, StalenessService
 
         def fake_explain_step(self, plan_version_id, step_id, *, branch_id=None, plan_id=None):
             return StalenessExplanation(
@@ -398,9 +397,10 @@ class TestRunSummary:
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
+        from cardre.services.run_coordinator import RunCoordinator
+
         from cardre.domain.run import RunStepStatus
         from cardre.execution.executor import PlanExecutor
-        from cardre.services.run_coordinator import RunCoordinator
 
         def fake_run_plan_version(self, plan_version_id, run_id, *, force=False, branch_id=None):
             now = utc_now_iso()

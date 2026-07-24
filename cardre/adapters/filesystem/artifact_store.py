@@ -22,6 +22,10 @@ class FsArtifactStore:
         self._root = root
         self._staging_dir = root / ".staging"
 
+    @property
+    def root(self) -> Path:
+        return self._root
+
     def _stage(self, data: bytes, logical_hash: str, media_type: str,
                schema_version: str, role: str, artifact_type: str,
                metadata: dict[str, Any] | None) -> StagedArtifact:

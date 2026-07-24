@@ -21,21 +21,21 @@ gain leverage from one test surface.
 
 Change only these production modules:
 
-- `cardre/evidence_locator.py`
-- `cardre/readiness/step_requirements.py`
-- `cardre/reporting/_resolve.py`
+- `cardre/application/evidence/evidence_resolver.py`
+- `cardre/application/reporting/contracts.py`
+- `cardre/adapters/reporting/_resolve.py`
 
 Add or extend tests only in:
 
-- `tests/test_evidence_locator.py`
-- `tests/test_reporting.py`
+- `tests/application/evidence/test_explain_staleness.py`
+- `tests/application/reporting/test_generate_report.py`
 
 Do not modify these modules in this work item:
 
-- `cardre/services/comparison_service.py`
-- `cardre/services/comparison/resolver.py`
-- `cardre/services/export_service.py`
-- `cardre/services/staleness_service.py`
+- `cardre/application/governance/refresh_comparison.py`
+- `cardre/application/governance/create_comparison.py`
+- `cardre/application/reporting/export_audit_pack.py`
+- `cardre/application/evidence/explain_staleness.py`
 - `CONTEXT.md`
 - ADRs
 
@@ -88,7 +88,7 @@ without moving scope logic to a third module.
 
 ### 1. Add `EvidenceLocator.resolve_ref`
 
-File: `cardre/evidence_locator.py`
+File: `cardre/application/evidence/evidence_resolver.py`
 
 Add `ResolvedStepRef` as a type-only import. It avoids a runtime dependency
 while retaining an explicit interface type.
@@ -137,7 +137,7 @@ Implementation notes:
 
 ### 2. Migrate report readiness
 
-File: `cardre/readiness/step_requirements.py`
+File: `cardre/application/reporting/contracts.py`
 
 In `check_per_step_evidence`, replace the caller-side scope translation and
 the `resolve(...)` call:
@@ -166,7 +166,7 @@ present; the locator owns which evidence is selected.
 
 ### 3. Migrate report collection
 
-File: `cardre/reporting/_resolve.py`
+File: `cardre/adapters/reporting/_resolve.py`
 
 In `_resolve_run_step`, replace:
 
@@ -205,7 +205,7 @@ Use a real `ProjectStore` and SQLite rows. Do not mock the locator's fallback
 implementation in its direct tests.
 
 Extend the existing `_seed_with_run_evidence(...)` fixture pattern in
-`tests/test_evidence_locator.py` so one PlanVersion has:
+`tests/application/evidence/test_explain_staleness.py` so one PlanVersion has:
 
 | Evidence source | Run `branch_id` | `RunStep` ID | Purpose |
 | --- | --- | --- | --- |
@@ -241,7 +241,7 @@ than inventing a second persistence shape.
 
 ### Direct Locator Tests
 
-File: `tests/test_evidence_locator.py`
+File: `tests/application/evidence/test_explain_staleness.py`
 
 Import the existing domain reference type:
 
@@ -342,7 +342,7 @@ translation locally.
 
 #### Readiness forwards the complete reference
 
-File: `tests/test_reporting.py`
+File: `tests/application/reporting/test_generate_report.py`
 
 Test `check_per_step_evidence(...)` directly. Use `monkeypatch` to replace
 `EvidenceLocator.resolve_ref` with a spy that returns a known
@@ -386,7 +386,7 @@ the readiness module hands the unmodified reference to the locator interface.
 
 #### Reporting forwards the complete reference
 
-Also in `tests/test_reporting.py`, test `_resolve_run_step(...)` directly with
+Also in `tests/application/reporting/test_generate_report.py`, test `_resolve_run_step(...)` directly with
 the same spy pattern. Return a constructed `ResolvedEvidence` containing a
 real or minimal `RunStep`, then assert the returned RunStep is the one supplied
 by the locator.
@@ -427,7 +427,7 @@ get_edges_for_plan_step_branch(...)
 ```
 
 The `ancestor` condition that creates the reporting limitation in
-`cardre/reporting/_resolve.py` is allowed. It is not evidence selection.
+`cardre/adapters/reporting/_resolve.py` is allowed. It is not evidence selection.
 
 ## Verification
 

@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from cardre.domain.diagnostics import JsonDict
-from cardre.reporting.types import ReportMode
+
+# ReportMode is a string literal type ("branch" | "full_plan"); avoid importing
+# from the legacy cardre.reporting package which is removed in Batch 06.
+ReportMode = str
 
 
 @dataclass(frozen=True)

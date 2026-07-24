@@ -1,0 +1,23 @@
+"""GetPlanVersion — get a plan version by ID."""
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class GetPlanVersionCommand:
+    plan_version_id: str
+
+
+class GetPlanVersion:
+    def __init__(self, uow_factory: Callable[[], Any]) -> None:
+        self._uow_factory = uow_factory
+
+    def __call__(self, command: GetPlanVersionCommand) -> Any:
+        uow = self._uow_factory()
+        try:
+            return uow.plans.get_version(command.plan_version_id)
+        finally:
+            uow.close()

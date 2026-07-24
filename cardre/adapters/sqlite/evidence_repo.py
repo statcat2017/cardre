@@ -61,7 +61,8 @@ class EvidenceRepo:
             f"JOIN run_steps rs ON e.source_run_step_id = rs.run_step_id "
             f"JOIN runs r ON e.run_id = r.run_id "
             f"WHERE e.plan_version_id = ? AND e.step_id = ? AND rs.status = 'succeeded' "
-            f"AND r.status = 'succeeded' {clause}",
+            f"AND r.status = 'succeeded' AND e.is_stale = 0 {clause} "
+            f"ORDER BY r.finished_at DESC, e.created_at DESC, e.evidence_edge_id DESC",
             params,
         ).fetchall()
         return [self._row_to_edge(r) for r in rows]
@@ -104,7 +105,8 @@ class EvidenceRepo:
             source_run_id=r["source_run_id"], source_run_step_id=r["source_run_step_id"],
             policy=r["policy"], source_label=r["source_label"],
             is_reused=bool(r["is_reused"]), is_stale=bool(r["is_stale"]),
-            stale_reason=r.get("stale_reason"), created_at=r["created_at"],
+            stale_reason=r["stale_reason"] if "stale_reason" in r.keys() else None,  # noqa: F841, SIM118
+            created_at=r["created_at"],
         )
 
     @staticmethod

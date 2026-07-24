@@ -10,8 +10,9 @@ class TestRunCoordinatorEdgeCases:
         from cardre.store.db import ProjectStore
         store = ProjectStore(tmp_path / "test.cardre")
         store.initialize()
-        from cardre.domain.errors import CardreError
         from cardre.services.run_coordinator import RunCoordinator
+
+        from cardre.domain.errors import CardreError
         coordinator = RunCoordinator(store)
         with pytest.raises(CardreError, match="not found"):
             coordinator.get_summary("nonexistent-run")

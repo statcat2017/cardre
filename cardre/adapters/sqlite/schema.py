@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS plan_step_edges (
 CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
     plan_version_id TEXT NOT NULL REFERENCES plan_versions(plan_version_id) ON DELETE CASCADE,
-    status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed','cancelled','interrupted')),
+    status TEXT NOT NULL CHECK (status IN ('created','queued','running','succeeded','failed','cancelled','interrupted')),
     run_scope TEXT NOT NULL CHECK (run_scope IN ('full_plan','branch')),
     branch_id TEXT,
     force INTEGER NOT NULL DEFAULT 0,

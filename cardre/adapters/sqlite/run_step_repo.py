@@ -64,7 +64,7 @@ class RunStepRepo:
         row = self._conn.execute(
             f"SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
             f"WHERE rs.plan_version_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' "
-            f"{clause} ORDER BY rs.started_at DESC LIMIT 1",
+            f"AND r.status = 'succeeded' {clause} ORDER BY rs.started_at DESC LIMIT 1",
             params,
         ).fetchone()
         if row is None:
@@ -78,3 +78,33 @@ class RunStepRepo:
             warnings=json.loads(row["warnings_json"]),
             errors=json.loads(row["errors_json"]),
         )
+
+    def list_successful_steps_ordered(
+        self, plan_version_id: str, step_id: str, branch_id: str | None = None,
+    ) -> list[RunStep]:
+        """Return all successful run steps for the given plan_version/step/branch,
+        ordered newest-first by run start time, then run_step_id as a tie-breaker.
+        """
+        clause = ""
+        params: list[str] = [plan_version_id, step_id]
+        if branch_id is not None:
+            clause = "AND r.branch_id = ?"
+            params.append(branch_id)
+        else:
+            clause = "AND r.branch_id IS NULL"
+        rows = self._conn.execute(
+            f"SELECT rs.* FROM run_steps rs JOIN runs r ON rs.run_id = r.run_id "
+            f"WHERE rs.plan_version_id = ? AND rs.step_id = ? AND rs.status = 'succeeded' "
+            f"AND r.status = 'succeeded' {clause} "
+            f"ORDER BY rs.started_at DESC, rs.run_step_id DESC",
+            params,
+        ).fetchall()
+        return [RunStep(
+            run_step_id=r["run_step_id"], run_id=r["run_id"],
+            step_id=r["step_id"], plan_version_id=r["plan_version_id"],
+            status=RunStepStatus(r["status"]), started_at=r["started_at"],
+            finished_at=r["finished_at"],
+            execution_fingerprint=json.loads(r["execution_fingerprint_json"]),
+            warnings=json.loads(r["warnings_json"]),
+            errors=json.loads(r["errors_json"]),
+        ) for r in rows]

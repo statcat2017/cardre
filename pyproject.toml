@@ -139,6 +139,8 @@ forbidden_modules = [
 ignore_imports = [
     "cardre.application.execution.input_collection -> cardre.adapters.evidence.reader",
     "cardre.application.execution.input_collection -> cardre.execution.context",
+
+
 ]
 
 [[tool.importlinter.contracts]]

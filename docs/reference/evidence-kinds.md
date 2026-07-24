@@ -2,7 +2,7 @@
 
 ## Canonical Step IDs
 
-Evidence is resolved by canonical step IDs defined in `cardre/reporting/evidence_contract.py`:
+Evidence is resolved by canonical step IDs defined in `cardre/application/reporting/contracts.py`:
 
 | Canonical ID | Description |
 |-------------|-------------|
