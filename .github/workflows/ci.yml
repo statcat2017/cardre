@@ -125,12 +125,7 @@ jobs:
       - uses: ./.github/actions/setup-frontend
         with:
           node-version: ${{ env.NODE_VERSION }}
-      # TypeScript check and Vite build skipped during architecture rewrite
-      # (Batches 01-06). The new API only has /health and /projects; the
-      # frontend references plans/runs/evidence schemas not yet registered.
-      # Restored in Batch 07.
       - name: TypeScript check
-        if: false
         run: npx tsc --noEmit
       - name: ESLint
         run: npm run lint
