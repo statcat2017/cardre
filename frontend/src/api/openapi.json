@@ -974,13 +974,24 @@
         }
       }
     },
-    "/node-types": {
+    "/projects/{project_id}/node-types": {
       "get": {
         "tags": [
           "node-types"
         ],
         "summary": "List Node Types",
-        "operationId": "list_node_types_node_types_get",
+        "operationId": "list_node_types_projects__project_id__node_types_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -988,6 +999,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NodeTypeListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -1989,6 +2010,18 @@
             "type": "string",
             "title": "Created Reason",
             "default": ""
+          },
+          "segment_filter_spec": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment Filter Spec"
           }
         },
         "type": "object",
@@ -3076,6 +3109,22 @@
             "type": "string",
             "title": "Plan Version Id"
           },
+          "run_scope": {
+            "type": "string",
+            "title": "Run Scope",
+            "default": "full_plan"
+          },
+          "branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Id"
+          },
           "force": {
             "type": "boolean",
             "title": "Force",
@@ -3215,6 +3264,27 @@
             "type": "string",
             "title": "Status"
           },
+          "run_scope": {
+            "type": "string",
+            "title": "Run Scope",
+            "default": "full_plan"
+          },
+          "branch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Id"
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "default": false
+          },
           "started_at": {
             "type": "string",
             "title": "Started At"
@@ -3234,17 +3304,6 @@
             "type": "integer",
             "title": "Step Count",
             "default": 0
-          },
-          "branch_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Branch Id"
           },
           "executed_step_ids": {
             "items": {
@@ -3284,6 +3343,11 @@
           "is_stale": {
             "type": "boolean",
             "title": "Is Stale",
+            "default": false
+          },
+          "cancel_requested": {
+            "type": "boolean",
+            "title": "Cancel Requested",
             "default": false
           }
         },

@@ -292,7 +292,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/node-types": {
+    "/projects/{project_id}/node-types": {
         parameters: {
             query?: never;
             header?: never;
@@ -300,7 +300,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Node Types */
-        get: operations["list_node_types_node_types_get"];
+        get: operations["list_node_types_projects__project_id__node_types_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -599,6 +599,10 @@ export interface components {
              * @default
              */
             created_reason: string;
+            /** Segment Filter Spec */
+            segment_filter_spec?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** BranchListResponse */
         BranchListResponse: {
@@ -1085,6 +1089,13 @@ export interface components {
             /** Plan Version Id */
             plan_version_id: string;
             /**
+             * Run Scope
+             * @default full_plan
+             */
+            run_scope: string;
+            /** Branch Id */
+            branch_id?: string | null;
+            /**
              * Force
              * @default false
              */
@@ -1157,6 +1168,18 @@ export interface components {
             plan_version_id: string;
             /** Status */
             status: string;
+            /**
+             * Run Scope
+             * @default full_plan
+             */
+            run_scope: string;
+            /** Branch Id */
+            branch_id?: string | null;
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
             /** Started At */
             started_at: string;
             /** Finished At */
@@ -1166,8 +1189,6 @@ export interface components {
              * @default 0
              */
             step_count: number;
-            /** Branch Id */
-            branch_id?: string | null;
             /** Executed Step Ids */
             executed_step_ids?: string[];
             /** Diagnostics */
@@ -1180,6 +1201,11 @@ export interface components {
              * @default false
              */
             is_stale: boolean;
+            /**
+             * Cancel Requested
+             * @default false
+             */
+            cancel_requested: boolean;
         };
         /** RunStepResponse */
         RunStepResponse: {
@@ -1882,11 +1908,13 @@ export interface operations {
             };
         };
     };
-    list_node_types_node_types_get: {
+    list_node_types_projects__project_id__node_types_get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                project_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -1898,6 +1926,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NodeTypeListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

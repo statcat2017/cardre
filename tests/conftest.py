@@ -11,31 +11,28 @@ from cardre.domain.diagnostics import utc_now_iso
 from cardre.store.db import ProjectStore
 
 # ---------------------------------------------------------------------------
-# Migration xfail — old tests that depend on routes not yet registered.
-# These are expected to fail during the architecture rewrite (Batches 01–06).
-# Remove this hook after Batch 07 when all routes are live.
+# Migration xfail — tests that depend on work explicitly excluded from PR 360.
+# Each remaining entry is documented with its Batch 07b/07c dependency.
+# PR 360 supplies the runs/plans/governance/reports/evidence/node-types/
+# projects/health routes, whose API coverage now lives in
+# tests/application/api/ and tests/application/{governance,reporting,runs}/.
 # ---------------------------------------------------------------------------
 
 _MIGRATION_XFAIL_FILES = {
-    "test_api_branches",
-    "test_api_champion",
-    "test_api_comparisons",
-    "test_api_dependencies",
-    "test_api_error_envelope",
-    "test_api_evidence",
-    "test_api_manual_binning",
-    "test_api_node_types_reports",
-    "test_api_plans",
-    "test_api_project_resolution",
-    "test_api_projects",
-    "test_api_run_response_shape",
-    "test_api_run_responses",
-    "test_api_runs",
+    # Depends on the legacy cardre.workflows / cardre.readiness /
+    # cardre.reporting modules (the final product acceptance-pathway rewrite),
+    # which is explicitly excluded from PR 360. Batch 07b.
     "test_api_scorecard_launch_pathway",
-    "test_api_typed_evidence",
+    # Depends on the audit-pack launch pathway rewrite (Batch 07b).
     "test_audit_pack_launch",
+    # Depends on the legacy ProjectStore/X-Project-Path dependency path being
+    # reconciled with the hexagonal UoW layer (Batch 07c cleanup); several
+    # tests assert the old get_project_store header dependency.
     "test_project_store_lifecycle",
+    # Depends on scoring export parity across the rewritten node layer
+    # (Batch 07c); one integration test still fails against the new layer.
     "test_scoring_export_parity",
+    # Depends on the sidecar entrypoint migration (Batch 07b).
     "test_sidecar_entrypoint",
 }
 
@@ -45,7 +42,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         for marker_file in _MIGRATION_XFAIL_FILES:
             if marker_file in item.nodeid:
                 item.add_marker(pytest.mark.xfail(
-                    reason=f"Migration in progress: {marker_file} depends on routes not yet registered (Batch 01 only has /health and /projects)",
+                    reason=f"Future batch: {marker_file} depends on work excluded from PR 360 (see conftest)",
                     strict=False,
                 ))
                 break

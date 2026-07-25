@@ -302,7 +302,7 @@ Use it for `summary.diagnostics`, `summary.latest_error`, `rs.warnings`, and
 `rs.errors`. Do not make `RunRepository` return API models; repository output
 remains domain-shaped dictionaries.
 
-Update or add focused mapping tests in `tests/test_api_run_responses.py`.
+Update or add focused mapping tests in `tests/application/api/test_api_surface.py`.
 The most important assertion is preservation of context without the old
 flattened response contract:
 
@@ -727,7 +727,7 @@ cd frontend && npm run test -- src/api src/hooks src/components/__tests__/Projec
 cd frontend/src-tauri && cargo fmt --check
 cd frontend/src-tauri && cargo clippy --all-targets -- -D warnings
 cd frontend/src-tauri && cargo test
-python3 -m pytest tests/test_api_run_response_shape.py tests/test_api_run_responses.py tests/test_api_runs.py -q --tb=short --no-cov
+python3 -m pytest tests/application/api/test_api_surface.py tests/application/runs/test_run_submission_contract.py -q --tb=short --no-cov
 ```
 
 Run the frontend build and type check after OpenAPI regeneration:

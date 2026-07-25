@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Request
 
-from cardre.api.errors import CardreApiError, ErrorCode
 from cardre.bootstrap.container import Container
 
 
@@ -24,80 +21,6 @@ def get_uow_factory(container: Container = Depends(get_container)) -> Any:
 
 def get_settings(container: Container = Depends(get_container)) -> Any:
     return container.settings
-
-
-def _raw_project_path_allowed() -> bool:
-    return os.environ.get("CARDRE_ALLOW_RAW_PROJECT_PATH", "0").strip().lower() in (
-        "1",
-        "true",
-    )
-
-
-def resolve_project_root(
-    project_id: str,
-    x_project_id: str | None = Header(None, alias="X-Project-Id"),
-    x_project_path: str | None = Header(None, alias="X-Project-Path"),
-    container: Container = Depends(get_container),
-) -> Path:
-    """Resolve the project root for a project-scoped request.
-
-    Precedence: ``X-Project-Id`` (registry lookup) then ``X-Project-Path``
-    (dev-only, gated by ``CARDRE_ALLOW_RAW_PROJECT_PATH``). Raises the
-    standard error envelope on failure.
-    """
-    if x_project_id:
-        root = container.project_registry.resolve_root(x_project_id)
-        if root is None or not root.exists():
-            raise CardreApiError(
-                code=ErrorCode.PROJECT_NOT_FOUND,
-                message=f"Project {x_project_id!r} not found.",
-                status_code=404,
-            )
-        return root
-    if x_project_path:
-        if not _raw_project_path_allowed():
-            raise CardreApiError(
-                code=ErrorCode.RAW_PROJECT_PATH_DISABLED,
-                message=(
-                    "X-Project-Path is disabled by default. Set "
-                    "CARDRE_ALLOW_RAW_PROJECT_PATH=1 for development-only "
-                    "access or send X-Project-Id instead."
-                ),
-                status_code=400,
-            )
-        root = Path(x_project_path).resolve()
-        if not root.exists():
-            raise CardreApiError(
-                code=ErrorCode.PROJECT_NOT_FOUND,
-                message=f"Project not found at {x_project_path}.",
-                status_code=404,
-            )
-        return root
-    raise CardreApiError(
-        code=ErrorCode.MISSING_PROJECT_ID,
-        message="X-Project-Id header is required.",
-        status_code=400,
-    )
-
-
-def require_governance() -> None:
-    """Raise ``GOVERNANCE_DISABLED`` (403) if governance is not enabled.
-
-    Reads ``CardreConfig.from_env()`` at request time so tests can
-    monkeypatch it per-test.
-    """
-    from cardre.config import CardreConfig
-
-    config = CardreConfig.from_env()
-    if not config.governance_enabled:
-        raise CardreApiError(
-            code=ErrorCode.GOVERNANCE_DISABLED,
-            message=(
-                "This endpoint requires CARDRE_GOVERNANCE=1. "
-                "Set the environment variable to enable governance features."
-            ),
-            status_code=403,
-        )
 
 
 # ---------------------------------------------------------------------------

@@ -112,8 +112,24 @@ async def update_plan_version(project_id: str, version_id: str, body: PlanVersio
 
 @router.post("/plan-versions/{version_id}/commit", response_model=PlanVersionResponse)
 async def commit_plan_version(project_id: str, version_id: str, container=Depends(get_container)):
+    from cardre.domain.errors import CardreError
     uc = _uc(container, project_id)
-    committed = uc["commit_version"](uc["CommitPlanVersionCommand"](plan_version_id=version_id))
+    try:
+        committed = uc["commit_version"](uc["CommitPlanVersionCommand"](plan_version_id=version_id))
+    except CardreError as exc:
+        if exc.code == "PLAN_VERSION_ALREADY_COMMITTED":
+            raise CardreApiError(
+                code=ErrorCode.PLAN_VERSION_IMMUTABLE,
+                message=str(exc),
+                status_code=409,
+            ) from exc
+        if exc.code == "PLAN_VERSION_NOT_FOUND":
+            raise CardreApiError(
+                code=ErrorCode.PLAN_VERSION_NOT_FOUND,
+                message=str(exc),
+                status_code=404,
+            ) from exc
+        raise
     return plan_version_to_response(committed)
 
 
