@@ -1,13 +1,11 @@
 """ApplyManualBinningEdit — apply a manual-binning edit to a plan version."""
 from __future__ import annotations
 
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any
 
 from cardre.domain.artifacts import json_logical_hash
-from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError
 from cardre.domain.step import StepSpec
 
@@ -29,28 +27,12 @@ class ApplyManualBinningEditResult:
     affected_step_ids: list[str] = field(default_factory=list)
 
 
-class ManualBinningReviewRepo(Protocol):
-    def create(
-        self,
-        review_id: str,
-        plan_version_id: str,
-        step_id: str,
-        status: str,
-        reviewer_notes: str,
-        affected_downstream_step_ids_json: str,
-        created_at: str,
-        updated_at: str,
-    ) -> None: ...
-
-
 class ApplyManualBinningEdit:
     def __init__(
         self,
         uow_factory: Callable[[], Any],
-        review_repo: ManualBinningReviewRepo,
     ) -> None:
         self._uow_factory = uow_factory
-        self._review_repo = review_repo
 
     def __call__(self, command: ApplyManualBinningEditCommand) -> ApplyManualBinningEditResult:
         uow = self._uow_factory()
@@ -124,26 +106,19 @@ class ApplyManualBinningEdit:
                 is_committed=False,
             )
 
-            review_id = str(uuid.uuid4())
-            now = utc_now_iso()
-            import json
-            downstream_json = json.dumps(command.affected_downstream_step_ids)
-            self._review_repo.create(
-                review_id=review_id,
+            review = uow.manual_binning.create_review(
                 plan_version_id=new_pv_id,
                 step_id=command.step_id,
                 status=command.status,
                 reviewer_notes=command.reviewer_notes,
-                affected_downstream_step_ids_json=downstream_json,
-                created_at=now,
-                updated_at=now,
+                affected_downstream_step_ids=command.affected_downstream_step_ids,
             )
 
             uow.commit()
 
             return ApplyManualBinningEditResult(
                 new_plan_version_id=new_pv_id,
-                review_id=review_id,
+                review_id=review.review_id,
                 affected_step_ids=command.affected_downstream_step_ids or downstream_ids,
             )
         except Exception:

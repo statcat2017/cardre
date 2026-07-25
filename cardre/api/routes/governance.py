@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from cardre.api.dependencies import get_container
-from cardre.api.errors import GovernanceNotEnabled
+from cardre.api.errors import CardreApiError, ErrorCode, GovernanceNotEnabled
 from cardre.api.mappers import (
     branch_to_response,
     champion_assignment_to_response,
@@ -92,7 +92,7 @@ async def create_branch(project_id: str, body: BranchCreateRequest, container=De
         project_id=project_id, plan_id=body.plan_id, name=body.name,
         branch_type=body.branch_type, branch_point_step_id=body.branch_point_step_id or "",
         base_branch_id=body.base_branch_id, base_plan_version_id=body.base_plan_version_id,
-        created_reason=body.created_reason,
+        created_reason=body.created_reason, segment_filter_spec=body.segment_filter_spec,
     ))
     with container.uow_factory.read_only(project_id) as uow:
         branch = uow.branches.get_branch(result.branch_id)
@@ -177,6 +177,9 @@ async def assign_champion(project_id: str, body: ChampionAssignmentRequest, cont
 # ---- Manual binning reviews ----
 
 
+_VALID_REVIEW_STATUSES = {"pending", "approved", "rejected"}
+
+
 @router.get("/manual-binning-reviews", response_model=list[ManualBinningReviewResponse], dependencies=[Depends(_require_governance)])
 async def list_manual_binning_reviews(project_id: str, container=Depends(get_container)):
     with container.uow_factory.read_only(project_id) as uow:
@@ -189,20 +192,26 @@ async def get_manual_binning_review(project_id: str, review_id: str, container=D
     with container.uow_factory.read_only(project_id) as uow:
         review = uow.manual_binning.get_review(review_id)
     if review is None:
-        from cardre.api.errors import CardreApiError, ErrorCode
         raise CardreApiError(code=ErrorCode.REVIEW_NOT_FOUND, message=f"Review {review_id!r} not found.", status_code=404)
     return manual_binning_review_to_response(review)
 
 
 @router.patch("/manual-binning-reviews/{review_id}", response_model=ManualBinningReviewResponse, dependencies=[Depends(_require_governance)])
 async def update_manual_binning_review(project_id: str, review_id: str, body: ManualBinningReviewUpdate, container=Depends(get_container)):
+    if body.status is not None and body.status not in _VALID_REVIEW_STATUSES:
+        raise CardreApiError(
+            code=ErrorCode.BAD_REQUEST,
+            message=f"Invalid review status {body.status!r}; expected one of {sorted(_VALID_REVIEW_STATUSES)}.",
+            status_code=400,
+        )
     with container.uow_factory.for_project(project_id) as uow:
-        if body.status is not None or body.reviewer_notes is not None:
-            uow.manual_binning.update_review(review_id, body.status or "", body.reviewer_notes or "")
-            uow.commit()
+        updated = uow.manual_binning.update_review(review_id, body.status, body.reviewer_notes)
+        if not updated:
+            uow.rollback()
+            raise CardreApiError(code=ErrorCode.REVIEW_NOT_FOUND, message=f"Review {review_id!r} not found.", status_code=404)
+        uow.commit()
         review = uow.manual_binning.get_review(review_id)
     if review is None:
-        from cardre.api.errors import CardreApiError, ErrorCode
         raise CardreApiError(code=ErrorCode.REVIEW_NOT_FOUND, message=f"Review {review_id!r} not found.", status_code=404)
     return manual_binning_review_to_response(review)
 
@@ -227,34 +236,26 @@ async def apply_manual_binning_edit(project_id: str, body: ManualBinningEditRequ
         ApplyManualBinningEdit,
         ApplyManualBinningEditCommand,
     )
+    from cardre.domain.errors import CardreError
 
     def factory():
         return container.uow_factory.for_project(project_id)
 
-    class _InlineAdapter:
-        def create(self, review_id, plan_version_id, step_id, status, reviewer_notes, affected_downstream_step_ids_json, created_at, updated_at):
-            uow = container.uow_factory.for_project(project_id)
-            try:
-                uow._conn.execute(
-                    "INSERT INTO manual_binning_reviews (review_id, plan_version_id, step_id, status, "
-                    "reviewer_notes, affected_downstream_step_ids_json, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (review_id, plan_version_id, step_id, status, reviewer_notes,
-                     affected_downstream_step_ids_json, created_at, updated_at),
-                )
-                uow.commit()
-            except Exception:
-                uow.rollback()
-                raise
-            finally:
-                uow.close()
-
-    uc = ApplyManualBinningEdit(factory, _InlineAdapter())
-    result = uc(ApplyManualBinningEditCommand(
-        plan_version_id=body.plan_version_id, step_id=body.step_id,
-        overrides=body.overrides, reviewer_notes=body.reviewer_notes,
-        status=body.status, affected_downstream_step_ids=body.affected_downstream_step_ids,
-    ))
+    uc = ApplyManualBinningEdit(factory)
+    try:
+        result = uc(ApplyManualBinningEditCommand(
+            plan_version_id=body.plan_version_id, step_id=body.step_id,
+            overrides=body.overrides, reviewer_notes=body.reviewer_notes,
+            status=body.status, affected_downstream_step_ids=body.affected_downstream_step_ids,
+        ))
+    except CardreError as exc:
+        if exc.code == "PLAN_VERSION_NOT_FOUND":
+            raise CardreApiError(code=ErrorCode.PLAN_VERSION_NOT_FOUND, message=str(exc), status_code=404) from exc
+        if exc.code == "STEP_NOT_FOUND":
+            raise CardreApiError(code=ErrorCode.STEP_NOT_FOUND, message=str(exc), status_code=404) from exc
+        if exc.code == "PLAN_VERSION_NOT_COMMITTED":
+            raise CardreApiError(code=ErrorCode.PLAN_VERSION_IMMUTABLE, message=str(exc), status_code=409) from exc
+        raise
     return ManualBinningEditResponse(
         new_plan_version_id=result.new_plan_version_id,
         review_id=result.review_id,

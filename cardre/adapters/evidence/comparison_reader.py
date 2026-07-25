@@ -1,8 +1,9 @@
 """ComparisonEvidenceReader — adapter implementing ``ComparisonEvidencePort``.
 
-Resolves canonical step IDs through the branch step map, locates the
-latest successful run-step evidence, and reads the typed payload via the
-registered evidence adapter and a filesystem artifact reader.
+Resolves canonical step IDs through the branch step map, locates the latest
+successful run-step evidence, matches artifacts to the requested evidence
+profile (role/type/media/schema), and returns the validated JSON mapping
+that ``RefreshComparison`` consumes.
 
 This adapter lives in ``cardre.adapters`` so that the API layer never
 imports adapters directly; it is wired in the composition root
@@ -11,10 +12,11 @@ imports adapters directly; it is wired in the composition root
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from cardre._evidence.kinds import EvidenceKind
-from cardre.adapters.evidence.parsers import get_adapter
+from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
+from cardre.adapters.evidence.parsers import get_adapter, match
 from cardre.application.ports.artifact_store import ArtifactReader
 from cardre.application.ports.unit_of_work import UnitOfWorkFactory
 
@@ -55,18 +57,24 @@ class ComparisonEvidenceReader:
                 )
                 if rs is None:
                     continue
-                for aid in uow.artifacts.output_artifact_ids_for_run_step(rs.run_step_id):
-                    art = uow.artifacts.get(aid)
-                    if art is None:
+                artifact_ids = uow.artifacts.output_artifact_ids_for_run_step(rs.run_step_id)
+                artifacts = [a for a in (uow.artifacts.get(aid) for aid in artifact_ids) if a is not None]
+                if not artifacts:
+                    continue
+                for kind in kinds:
+                    spec = get_adapter(kind)
+                    matched = match(artifacts, spec.profile, self._artifact_reader)
+                    if not matched:
                         continue
-                    for kind in kinds:
-                        try:
-                            spec = get_adapter(kind)
-                            path = self._artifact_reader.resolve_path(art)
-                            if path.exists():
-                                result = spec.parse(path, art, self._artifact_reader)
-                                if result is not None:
-                                    return result
-                        except Exception:
+                    for art in matched:
+                        path = self._artifact_reader.resolve_path(art)
+                        if not path.exists():
                             continue
+                        try:
+                            return json.loads(path.read_text(encoding="utf-8"))
+                        except json.JSONDecodeError as exc:
+                            raise EvidenceParseError(
+                                f"Artifact {art.artifact_id} matched profile "
+                                f"{kind.value} but contained malformed JSON: {exc}"
+                            ) from exc
         return None

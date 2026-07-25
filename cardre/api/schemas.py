@@ -345,6 +345,7 @@ class BranchCreateRequest(BaseModel):
     base_branch_id: str | None = None
     branch_point_step_id: str | None = None
     created_reason: str = ""
+    segment_filter_spec: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------
