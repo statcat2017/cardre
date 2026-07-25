@@ -120,7 +120,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects/{project_id}/plan-versions/{version_id}": {
+    "/projects/{project_id}/plan-versions/{plan_version_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -128,17 +128,17 @@ export interface paths {
             cookie?: never;
         };
         /** Get Plan Version */
-        get: operations["get_plan_version_projects__project_id__plan_versions__version_id__get"];
+        get: operations["get_plan_version_projects__project_id__plan_versions__plan_version_id__get"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         /** Update Plan Version */
-        patch: operations["update_plan_version_projects__project_id__plan_versions__version_id__patch"];
+        patch: operations["update_plan_version_projects__project_id__plan_versions__plan_version_id__patch"];
         trace?: never;
     };
-    "/projects/{project_id}/plan-versions/{version_id}/commit": {
+    "/projects/{project_id}/plan-versions/{plan_version_id}/commit": {
         parameters: {
             query?: never;
             header?: never;
@@ -148,14 +148,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Commit Plan Version */
-        post: operations["commit_plan_version_projects__project_id__plan_versions__version_id__commit_post"];
+        post: operations["commit_plan_version_projects__project_id__plan_versions__plan_version_id__commit_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/projects/{project_id}/plan-versions/{version_id}/steps": {
+    "/projects/{project_id}/plan-versions/{plan_version_id}/steps": {
         parameters: {
             query?: never;
             header?: never;
@@ -163,7 +163,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Plan Version Steps */
-        get: operations["get_plan_version_steps_projects__project_id__plan_versions__version_id__steps_get"];
+        get: operations["get_plan_version_steps_projects__project_id__plan_versions__plan_version_id__steps_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1088,11 +1088,8 @@ export interface components {
         RunCreateRequest: {
             /** Plan Version Id */
             plan_version_id: string;
-            /**
-             * Run Scope
-             * @default full_plan
-             */
-            run_scope: string;
+            /** Run Scope */
+            run_scope?: string | null;
             /** Branch Id */
             branch_id?: string | null;
             /**
@@ -1284,7 +1281,9 @@ export interface operations {
     health_health_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1299,12 +1298,23 @@ export interface operations {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     list_projects_projects_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1319,12 +1329,23 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectListResponse"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     create_project_projects_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1357,7 +1378,9 @@ export interface operations {
     get_project_projects__project_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -1388,7 +1411,9 @@ export interface operations {
     list_plans_projects__project_id__plans_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -1419,7 +1444,9 @@ export interface operations {
     create_plan_projects__project_id__plans_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -1454,7 +1481,9 @@ export interface operations {
     get_plan_projects__project_id__plans__plan_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 plan_id: string;
@@ -1486,7 +1515,9 @@ export interface operations {
     list_plan_versions_projects__project_id__plans__plan_id__versions_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 plan_id: string;
@@ -1515,13 +1546,15 @@ export interface operations {
             };
         };
     };
-    get_plan_version_projects__project_id__plan_versions__version_id__get: {
+    get_plan_version_projects__project_id__plan_versions__plan_version_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
-                version_id: string;
+                plan_version_id: string;
             };
             cookie?: never;
         };
@@ -1547,13 +1580,15 @@ export interface operations {
             };
         };
     };
-    update_plan_version_projects__project_id__plan_versions__version_id__patch: {
+    update_plan_version_projects__project_id__plan_versions__plan_version_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
-                version_id: string;
+                plan_version_id: string;
             };
             cookie?: never;
         };
@@ -1583,13 +1618,15 @@ export interface operations {
             };
         };
     };
-    commit_plan_version_projects__project_id__plan_versions__version_id__commit_post: {
+    commit_plan_version_projects__project_id__plan_versions__plan_version_id__commit_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
-                version_id: string;
+                plan_version_id: string;
             };
             cookie?: never;
         };
@@ -1615,13 +1652,15 @@ export interface operations {
             };
         };
     };
-    get_plan_version_steps_projects__project_id__plan_versions__version_id__steps_get: {
+    get_plan_version_steps_projects__project_id__plan_versions__plan_version_id__steps_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
-                version_id: string;
+                plan_version_id: string;
             };
             cookie?: never;
         };
@@ -1650,7 +1689,9 @@ export interface operations {
     list_runs_projects__project_id__runs_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -1681,7 +1722,9 @@ export interface operations {
     create_run_projects__project_id__runs_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -1716,7 +1759,9 @@ export interface operations {
     get_run_projects__project_id__runs__run_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 run_id: string;
@@ -1748,7 +1793,9 @@ export interface operations {
     get_run_steps_projects__project_id__runs__run_id__steps_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 run_id: string;
@@ -1780,7 +1827,9 @@ export interface operations {
     get_run_evidence_projects__project_id__runs__run_id__evidence_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 run_id: string;
@@ -1812,7 +1861,9 @@ export interface operations {
     cancel_run_projects__project_id__runs__run_id__cancel_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 run_id: string;
@@ -1847,7 +1898,9 @@ export interface operations {
                 plan_version_id: string;
                 branch_id?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 step_id: string;
@@ -1879,7 +1932,9 @@ export interface operations {
     get_artifact_projects__project_id__artifacts__artifact_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 artifact_id: string;
@@ -1911,7 +1966,9 @@ export interface operations {
     list_node_types_projects__project_id__node_types_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -1944,7 +2001,9 @@ export interface operations {
             query?: {
                 run_id?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -1975,7 +2034,9 @@ export interface operations {
     list_reports_projects__project_id__reports_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2006,7 +2067,9 @@ export interface operations {
     list_run_reports_projects__project_id__runs__run_id__reports_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 run_id: string;
@@ -2040,7 +2103,9 @@ export interface operations {
             query?: {
                 plan_id?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2071,7 +2136,9 @@ export interface operations {
     create_branch_projects__project_id__governance_branches_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2106,7 +2173,9 @@ export interface operations {
     get_branch_projects__project_id__governance_branches__branch_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 branch_id: string;
@@ -2140,7 +2209,9 @@ export interface operations {
             query?: {
                 plan_id?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2171,7 +2242,9 @@ export interface operations {
     create_comparison_projects__project_id__governance_comparisons_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2206,7 +2279,9 @@ export interface operations {
     get_comparison_projects__project_id__governance_comparisons__comparison_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 comparison_id: string;
@@ -2238,7 +2313,9 @@ export interface operations {
     refresh_comparison_projects__project_id__governance_comparisons__comparison_id__refresh_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 comparison_id: string;
@@ -2272,7 +2349,9 @@ export interface operations {
             query: {
                 plan_id: string;
             };
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2303,7 +2382,9 @@ export interface operations {
     assign_champion_projects__project_id__governance_champion_assign_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2338,7 +2419,9 @@ export interface operations {
     list_manual_binning_reviews_projects__project_id__governance_manual_binning_reviews_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2369,7 +2452,9 @@ export interface operations {
     get_manual_binning_review_projects__project_id__governance_manual_binning_reviews__review_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 review_id: string;
@@ -2401,7 +2486,9 @@ export interface operations {
     update_manual_binning_review_projects__project_id__governance_manual_binning_reviews__review_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
                 review_id: string;
@@ -2437,7 +2524,9 @@ export interface operations {
     preview_manual_binning_projects__project_id__governance_manual_binning_preview_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -2472,7 +2561,9 @@ export interface operations {
     apply_manual_binning_edit_projects__project_id__governance_apply_manual_binning_edit_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Project-Id"?: string | null;
+            };
             path: {
                 project_id: string;
             };

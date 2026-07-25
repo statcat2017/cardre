@@ -14,6 +14,24 @@
         "summary": "Health",
         "description": "Return API health status.",
         "operationId": "health_health_get",
+        "parameters": [
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -21,6 +39,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -36,6 +64,24 @@
         "summary": "List Projects",
         "description": "List all registered projects from the registry.",
         "operationId": "list_projects_projects_get",
+        "parameters": [
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -43,6 +89,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProjectListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -56,15 +112,33 @@
         "summary": "Create Project",
         "description": "Create a new project by bootstrapping a fresh store at body.path.",
         "operationId": "create_project_projects_post",
+        "parameters": [
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ProjectCreateRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -106,6 +180,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -149,6 +239,22 @@
               "type": "string",
               "title": "Project Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -188,6 +294,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -250,6 +372,22 @@
               "type": "string",
               "title": "Plan Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -301,6 +439,22 @@
               "type": "string",
               "title": "Plan Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -327,13 +481,13 @@
         }
       }
     },
-    "/projects/{project_id}/plan-versions/{version_id}": {
+    "/projects/{project_id}/plan-versions/{plan_version_id}": {
       "get": {
         "tags": [
           "plans"
         ],
         "summary": "Get Plan Version",
-        "operationId": "get_plan_version_projects__project_id__plan_versions__version_id__get",
+        "operationId": "get_plan_version_projects__project_id__plan_versions__plan_version_id__get",
         "parameters": [
           {
             "name": "project_id",
@@ -345,12 +499,28 @@
             }
           },
           {
-            "name": "version_id",
+            "name": "plan_version_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Version Id"
+              "title": "Plan Version Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -382,7 +552,7 @@
           "plans"
         ],
         "summary": "Update Plan Version",
-        "operationId": "update_plan_version_projects__project_id__plan_versions__version_id__patch",
+        "operationId": "update_plan_version_projects__project_id__plan_versions__plan_version_id__patch",
         "parameters": [
           {
             "name": "project_id",
@@ -394,12 +564,28 @@
             }
           },
           {
-            "name": "version_id",
+            "name": "plan_version_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Version Id"
+              "title": "Plan Version Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -437,13 +623,13 @@
         }
       }
     },
-    "/projects/{project_id}/plan-versions/{version_id}/commit": {
+    "/projects/{project_id}/plan-versions/{plan_version_id}/commit": {
       "post": {
         "tags": [
           "plans"
         ],
         "summary": "Commit Plan Version",
-        "operationId": "commit_plan_version_projects__project_id__plan_versions__version_id__commit_post",
+        "operationId": "commit_plan_version_projects__project_id__plan_versions__plan_version_id__commit_post",
         "parameters": [
           {
             "name": "project_id",
@@ -455,12 +641,28 @@
             }
           },
           {
-            "name": "version_id",
+            "name": "plan_version_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Version Id"
+              "title": "Plan Version Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -488,13 +690,13 @@
         }
       }
     },
-    "/projects/{project_id}/plan-versions/{version_id}/steps": {
+    "/projects/{project_id}/plan-versions/{plan_version_id}/steps": {
       "get": {
         "tags": [
           "plans"
         ],
         "summary": "Get Plan Version Steps",
-        "operationId": "get_plan_version_steps_projects__project_id__plan_versions__version_id__steps_get",
+        "operationId": "get_plan_version_steps_projects__project_id__plan_versions__plan_version_id__steps_get",
         "parameters": [
           {
             "name": "project_id",
@@ -506,12 +708,28 @@
             }
           },
           {
-            "name": "version_id",
+            "name": "plan_version_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Version Id"
+              "title": "Plan Version Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -525,7 +743,7 @@
                   "items": {
                     "$ref": "#/components/schemas/PlanStepResponse"
                   },
-                  "title": "Response Get Plan Version Steps Projects  Project Id  Plan Versions  Version Id  Steps Get"
+                  "title": "Response Get Plan Version Steps Projects  Project Id  Plan Versions  Plan Version Id  Steps Get"
                 }
               }
             }
@@ -558,6 +776,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -608,6 +842,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -660,6 +910,22 @@
               "type": "string",
               "title": "Run Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -710,6 +976,22 @@
             "schema": {
               "type": "string",
               "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -766,6 +1048,22 @@
               "type": "string",
               "title": "Run Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -820,6 +1118,22 @@
             "schema": {
               "type": "string",
               "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -897,6 +1211,22 @@
               ],
               "title": "Branch Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -948,6 +1278,22 @@
               "type": "string",
               "title": "Artifact Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -989,6 +1335,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -1048,6 +1410,22 @@
               ],
               "title": "Run Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -1089,6 +1467,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -1140,6 +1534,22 @@
             "schema": {
               "type": "string",
               "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -1199,6 +1609,22 @@
               ],
               "title": "Plan Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -1238,6 +1664,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -1300,6 +1742,22 @@
               "type": "string",
               "title": "Branch Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -1358,6 +1816,22 @@
               ],
               "title": "Plan Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -1397,6 +1871,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -1459,6 +1949,22 @@
               "type": "string",
               "title": "Comparison Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -1509,6 +2015,22 @@
             "schema": {
               "type": "string",
               "title": "Comparison Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -1561,6 +2083,22 @@
               "type": "string",
               "title": "Plan Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -1602,6 +2140,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -1654,6 +2208,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -1710,6 +2280,22 @@
               "type": "string",
               "title": "Review Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "responses": {
@@ -1758,6 +2344,22 @@
             "schema": {
               "type": "string",
               "title": "Review Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -1811,6 +2413,22 @@
               "type": "string",
               "title": "Project Id"
             }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
+            }
           }
         ],
         "requestBody": {
@@ -1862,6 +2480,22 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-Project-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Project-Id"
             }
           }
         ],
@@ -3110,9 +3744,15 @@
             "title": "Plan Version Id"
           },
           "run_scope": {
-            "type": "string",
-            "title": "Run Scope",
-            "default": "full_plan"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Scope"
           },
           "branch_id": {
             "anyOf": [

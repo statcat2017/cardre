@@ -160,7 +160,7 @@ class RunListResponse(BaseModel):
 
 class RunCreateRequest(BaseModel):
     plan_version_id: str
-    run_scope: str = "full_plan"
+    run_scope: str | None = None
     branch_id: str | None = None
     force: bool = False
     sync: bool = False

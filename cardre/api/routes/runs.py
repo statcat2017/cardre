@@ -49,7 +49,7 @@ async def create_run(project_id: str, body: RunCreateRequest, container=Depends(
     try:
         result = submit(SubmitRunCommand(
             plan_version_id=body.plan_version_id,
-            run_scope=body.run_scope,
+            run_scope=body.run_scope or "full_plan",
             branch_id=body.branch_id,
             force=body.force,
             sync=body.sync,
