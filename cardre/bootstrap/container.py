@@ -52,6 +52,8 @@ class Container:
     create_branch_factory: Any = None
     create_comparison_factory: Any = None
     assign_champion_factory: Any = None
+    list_reports: Any = None
+    list_exports: Any = None
 
 
 def build_container(settings: Settings) -> Container:
@@ -186,6 +188,10 @@ def build_container(settings: Settings) -> Container:
     def assign_champion_factory(project_id: str) -> AssignChampion:
         return AssignChampion(uow_factory)
 
+    from cardre.application.reporting.report_queries import ListExports, ListReports
+    list_reports = ListReports(uow_factory)
+    list_exports = ListExports(uow_factory)
+
     return Container(
         settings=settings,
         project_registry=registry,
@@ -205,4 +211,6 @@ def build_container(settings: Settings) -> Container:
         create_branch_factory=create_branch_factory,
         create_comparison_factory=create_comparison_factory,
         assign_champion_factory=assign_champion_factory,
+        list_reports=list_reports,
+        list_exports=list_exports,
     )

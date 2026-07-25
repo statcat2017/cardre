@@ -18,12 +18,14 @@ from cardre.api.schemas import (
     DiagnosticResponse,
     EvidenceArtifactResponse,
     EvidenceEdgeResponse,
+    ExportResponse,
     ManualBinningReviewResponse,
     NodeTypeResponse,
     PlanResponse,
     PlanStepResponse,
     PlanVersionResponse,
     ProjectResponse,
+    ReportResponse,
     RunEvidenceEdgeResponse,
     RunResponse,
     RunStepResponse,
@@ -331,6 +333,27 @@ def staleness_explanation_to_response(explanation: Any) -> StalenessExplanationR
         status=explanation.status,
         upstream_changes=dict(explanation.upstream_changes),
         missing_evidence=list(explanation.missing_evidence),
+    )
+
+
+def report_to_response(item: Any) -> ReportResponse:
+    return ReportResponse(
+        report_id=item.report_id,
+        run_id=item.run_id,
+        report_type=item.report_type,
+        path=item.path,
+        created_at=item.created_at,
+    )
+
+
+def export_to_response(item: Any) -> ExportResponse:
+    return ExportResponse(
+        export_id=item.export_id,
+        run_id=item.run_id,
+        export_type=item.export_type,
+        path=item.path,
+        created_at=item.created_at,
+        size_bytes=getattr(item, "size_bytes", 0),
     )
 
 
