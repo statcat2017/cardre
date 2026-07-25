@@ -37,6 +37,7 @@ class SubmitRun:
         self._finalize_run = finalize_run
 
     def __call__(self, command: SubmitRunCommand) -> SubmitRunResult:
+        self._validate_command(command)
         uow = self._uow_factory()
         try:
             pv = uow.plans.get_version(command.plan_version_id)
@@ -45,10 +46,20 @@ class SubmitRun:
 
         if pv is None:
             from cardre.domain.errors import CardreError
-            raise CardreError(f"Plan version {command.plan_version_id!r} not found")
+            raise CardreError(
+                f"Plan version {command.plan_version_id!r} not found",
+                code="PLAN_VERSION_NOT_FOUND",
+                context={"plan_version_id": command.plan_version_id},
+                status_code=404,
+            )
         if not getattr(pv, "is_committed", False):
             from cardre.domain.errors import CardreError
-            raise CardreError(f"Plan version {command.plan_version_id!r} is not committed")
+            raise CardreError(
+                f"Plan version {command.plan_version_id!r} is not committed",
+                code="PLAN_VERSION_NOT_COMMITTED",
+                context={"plan_version_id": command.plan_version_id},
+                status_code=409,
+            )
 
         self._sweep_stale()
 
@@ -104,6 +115,36 @@ class SubmitRun:
             uow4.close()
         return SubmitRunResult(run_id=run_id, status=actual_status)
 
+    @staticmethod
+    def _validate_command(command: SubmitRunCommand) -> None:
+        from cardre.domain.errors import CardreError
+        from cardre.domain.run import RunScope
+
+        try:
+            scope = RunScope(command.run_scope)
+        except ValueError:
+            raise CardreError(
+                f"Invalid run_scope {command.run_scope!r}; expected one of "
+                f"{[s.value for s in RunScope]}",
+                code="RUN_SCOPE_INVALID",
+                context={"run_scope": command.run_scope},
+                status_code=400,
+            ) from None
+        if scope is RunScope.BRANCH and not command.branch_id:
+            raise CardreError(
+                "branch scope requires a branch_id",
+                code="BRANCH_VALIDATION_ERROR",
+                context={"run_scope": command.run_scope},
+                status_code=400,
+            )
+        if scope is RunScope.FULL_PLAN and command.branch_id is not None:
+            raise CardreError(
+                "full_plan scope must not specify a branch_id",
+                code="BRANCH_VALIDATION_ERROR",
+                context={"run_scope": command.run_scope, "branch_id": command.branch_id},
+                status_code=400,
+            )
+
     def _sweep_stale(self) -> None:
         from datetime import UTC, datetime
 
@@ -117,7 +158,7 @@ class SubmitRun:
         for run in all_active:
             if run.status != RunStatus.RUNNING.value:
                 continue
-            hb = run.heartbeat_at if hasattr(run, "heartbeat_at") else None
+            hb = run.heartbeat_at
             is_stale = False
             if hb is None:
                 is_stale = True

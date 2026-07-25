@@ -140,10 +140,12 @@ class RunResponse(BaseModel):
     run_id: str
     plan_version_id: str
     status: str
+    run_scope: str = "full_plan"
+    branch_id: str | None = None
+    force: bool = False
     started_at: str
     finished_at: str | None = None
     step_count: int = 0
-    branch_id: str | None = None
     executed_step_ids: list[str] = Field(default_factory=list)
     diagnostics: list[DiagnosticResponse] = Field(default_factory=list)
     latest_error: DiagnosticResponse | None = None
