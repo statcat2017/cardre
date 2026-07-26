@@ -56,7 +56,10 @@ def _seed_run(container, project_id, root):
             is_committed=True,
         )
         run_id = uow.runs.create(pv_id)
-        uow.runs.transition(run_id, __import__("cardre.domain.run", fromlist=["RunStatus"]).RunStatus.SUCCEEDED)
+        run_status = __import__("cardre.domain.run", fromlist=["RunStatus"]).RunStatus
+        uow.runs.transition(run_id, run_status.QUEUED, expected_from=(run_status.CREATED,))
+        uow.runs.transition(run_id, run_status.RUNNING, expected_from=(run_status.QUEUED,))
+        uow.runs.transition(run_id, run_status.SUCCEEDED)
         uow.commit()
     return plan_id, pv_id, run_id
 
@@ -154,6 +157,35 @@ def test_exports_from_project_a_not_in_project_b(env, tmp_path):
     assert len(resp_a.json()["exports"]) == 1
     resp_b = client.get(f"/projects/{pid_b}/exports", headers={"X-Project-Path": str(root_b)})
     assert len(resp_b.json()["exports"]) == 0
+
+
+def test_generated_audit_pack_is_discoverable_through_exports_route(env, tmp_path):
+    from cardre.application.reporting.export_audit_pack import ExportAuditPackCommand
+
+    client, container = env
+    pid, root = _provision(container, tmp_path)
+    plan_id, pv_id, run_id = _seed_run(container, pid, root)
+    with container.uow_factory.for_project(pid) as uow:
+        branch_id = uow.branches.create_branch(
+            project_id=pid,
+            plan_id=plan_id,
+            name="audit branch",
+            branch_type="challenger",
+            base_plan_version_id=pv_id,
+            head_plan_version_id=pv_id,
+            created_reason="test",
+        )
+        uow.commit()
+
+    result = container.export_audit_pack(ExportAuditPackCommand(
+        project_id=pid, plan_id=plan_id, branch_id=branch_id,
+    ))
+
+    response = client.get(f"/projects/{pid}/exports", headers={"X-Project-Path": str(root)})
+    assert response.status_code == 200
+    export = next(item for item in response.json()["exports"] if item["export_id"] == result.export_id)
+    assert export["run_id"] == run_id
+    assert export["export_type"] == "audit_pack"
 
 
 # ---------------------------------------------------------------------------

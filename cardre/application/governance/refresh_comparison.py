@@ -16,6 +16,7 @@ from cardre._evidence.kinds import EvidenceKind
 from cardre.application.evidence.evidence_resolver import resolve_run_step_evidence
 from cardre.application.evidence.explain_staleness import step_is_stale
 from cardre.application.reporting.contracts import REQUIRED_STEPS_COMPARISON
+from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError, GovernanceNotEnabled
 
@@ -156,14 +157,23 @@ class RefreshComparison:
                     baseline_branch_id, cid, spec,
                 )
 
-                artifact = self._artifact_writer.write_json(
-                    artifact_type="branch_comparison",
+                staged = self._artifact_writer.stage_json(
                     role="comparison",
-                    stem=f"comparison_{command.comparison_id}_{cid}",
+                    kind="branch_comparison",
                     payload=content,
                     metadata={"comparison_id": command.comparison_id, "challenger_branch_id": cid},
                 )
-                artifact_id = artifact.artifact_id
+                published_path = self._artifact_writer.publish(staged)
+                artifact_id = uow.artifacts.register(ArtifactRef(
+                    artifact_id=staged.provisional_artifact_id,
+                    artifact_type=staged.artifact_type,
+                    role=staged.role,
+                    path=str(published_path),
+                    physical_hash=staged.physical_hash,
+                    logical_hash=staged.logical_hash,
+                    media_type=staged.media_type,
+                    metadata=staged.metadata,
+                ))
 
                 snapshot_id = str(uuid.uuid4())
                 conn.execute(

@@ -40,8 +40,9 @@ class TestCreateComparison:
         with uow_factory.for_project(project_id) as uow:
             plan_id = uow.plans.create_plan(project_id, "test-plan")
             pv_id = uow.plans.create_version(plan_id, [], description="v1", is_committed=True)
+            challenger_pv_id = uow.plans.create_version(plan_id, [], description="v2", is_committed=True)
             baseline_id = _seed_branch(uow, project_id, plan_id, pv_id, "baseline")
-            challenger_id = _seed_branch(uow, project_id, plan_id, pv_id, "challenger")
+            challenger_id = _seed_branch(uow, project_id, plan_id, challenger_pv_id, "challenger")
             uow.commit()
 
         use_case = CreateComparison(uow_factory)
@@ -193,6 +194,49 @@ class TestRefreshComparison:
         assert result.blocked_reason is not None
         assert len(result.missing_or_stale) > 0
 
+    def test_refresh_ready_challenger_publishes_and_persists_artifact(
+        self, provisioned_project, monkeypatch,
+    ):
+        from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+
+        project_id, uow_factory, _, root = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            plan_id = uow.plans.create_plan(project_id, "test-plan")
+            pv_id = uow.plans.create_version(plan_id, [], description="v1", is_committed=True)
+            challenger_pv_id = uow.plans.create_version(plan_id, [], description="v2", is_committed=True)
+            baseline_id = _seed_branch(uow, project_id, plan_id, pv_id, "baseline")
+            challenger_id = _seed_branch(uow, project_id, plan_id, challenger_pv_id, "challenger")
+            comparison_id = str(uuid.uuid4())
+            uow._conn.execute(
+                "INSERT INTO branch_comparisons "
+                "(comparison_id, project_id, plan_id, baseline_branch_id, comparison_spec_json, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (comparison_id, project_id, plan_id, baseline_id, "{}", "2020-01-01T00:00:00Z"),
+            )
+            uow._conn.execute(
+                "INSERT INTO comparison_challenger_branches (comparison_id, branch_id, position) "
+                "VALUES (?, ?, 0)",
+                (comparison_id, challenger_id),
+            )
+            uow.commit()
+
+        monkeypatch.setattr(
+            RefreshComparison, "_check_readiness",
+            lambda self, uow, branch_id, plan_version_id, is_baseline=False: [],
+        )
+        result = RefreshComparison(
+            uow_factory, _FakeEvidencePort(), FsArtifactStore(root),
+        )(RefreshComparisonCommand(project_id=project_id, comparison_id=comparison_id))
+
+        assert result.ready is True
+        assert result.comparison_artifact_id is not None
+        with uow_factory.read_only(project_id) as uow:
+            artifact = uow.artifacts.get(result.comparison_artifact_id)
+            snapshot = uow.comparisons.get_comparison_snapshot(result.comparison_snapshot_id)
+        assert artifact is not None
+        assert snapshot["comparison_artifact_id"] == artifact.artifact_id
+        assert FsArtifactStore(root).resolve_path(artifact).exists()
+
     def test_refresh_rolls_back_on_challenger_failure(
         self, provisioned_project, monkeypatch,
     ):
@@ -229,7 +273,9 @@ class TestRefreshComparison:
                 )
             uow.commit()
 
-        writer = _PreRegisteredArtifactWriter(root / "project.sqlite", count=2)
+        from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+
+        writer = FsArtifactStore(root)
         use_case = RefreshComparison(uow_factory, _FakeEvidencePort(), writer)
 
         original_build = use_case._build_content

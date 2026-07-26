@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from cardre.application.runs.submit_run import SubmitRun
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.errors import CardreError
 from cardre.domain.run import RunStatus
@@ -24,7 +25,10 @@ class _NoopDispatcher:
 
 def _make_submit(uow_factory, project_id):
     from cardre.application.runs.submit_run import SubmitRun
-    return SubmitRun(lambda: uow_factory.for_project(project_id), _NoopDispatcher(), None, None)
+    return SubmitRun(
+        lambda: uow_factory.for_project(project_id), _NoopDispatcher(), None, None,
+        governance_enabled=True, project_id=project_id,
+    )
 
 
 def _cmd(pv_id, *, branch_id=None, run_scope="full_plan", force=False, sync=False):
@@ -33,6 +37,22 @@ def _cmd(pv_id, *, branch_id=None, run_scope="full_plan", force=False, sync=Fals
         plan_version_id=pv_id, run_scope=run_scope,
         branch_id=branch_id, force=force, sync=sync,
     )
+
+
+def _seed_branch(uow_factory, project_id, pv_id, *, head_plan_version_id=None):
+    with uow_factory.for_project(project_id) as uow:
+        plan_id = uow.plans.get_version(pv_id).plan_id
+        branch_id = uow.branches.create_branch(
+            project_id=project_id,
+            plan_id=plan_id,
+            name="branch",
+            branch_type="challenger",
+            base_plan_version_id=pv_id,
+            head_plan_version_id=head_plan_version_id or pv_id,
+            created_reason="test",
+        )
+        uow.commit()
+    return branch_id
 
 
 @pytest.fixture
@@ -87,12 +107,56 @@ def test_submit_invalid_scope_returns_stable_error(committed_plan):
 def test_submit_branch_scope_records_branch_id(committed_plan):
     project_id, uow_factory, pv_id = committed_plan
     submit = _make_submit(uow_factory, project_id)
-    result = submit(_cmd(pv_id, branch_id="br-1", run_scope="branch"))
+    branch_id = _seed_branch(uow_factory, project_id, pv_id)
+    result = submit(_cmd(pv_id, branch_id=branch_id, run_scope="branch"))
     with uow_factory.read_only(project_id) as uow:
         run = uow.runs.get(result.run_id)
     assert run is not None
     assert run.run_scope == "branch"
-    assert run.branch_id == "br-1"
+    assert run.branch_id == branch_id
+
+
+def test_submit_branch_scope_requires_governance(committed_plan):
+    project_id, uow_factory, pv_id = committed_plan
+    branch_id = _seed_branch(uow_factory, project_id, pv_id)
+    submit = SubmitRun(
+        lambda: uow_factory.for_project(project_id), _NoopDispatcher(), None, None,
+        governance_enabled=False, project_id=project_id,
+    )
+    with pytest.raises(CardreError) as exc:
+        submit(_cmd(pv_id, branch_id=branch_id, run_scope="branch"))
+    assert exc.value.code == "GOVERNANCE_NOT_ENABLED"
+
+
+def test_submit_branch_scope_rejects_missing_branch(committed_plan):
+    project_id, uow_factory, pv_id = committed_plan
+    with pytest.raises(CardreError) as exc:
+        _make_submit(uow_factory, project_id)(_cmd(pv_id, branch_id="missing", run_scope="branch"))
+    assert exc.value.code == "BRANCH_NOT_FOUND"
+
+
+def test_submit_branch_scope_rejects_branch_from_another_plan(committed_plan):
+    project_id, uow_factory, pv_id = committed_plan
+    with uow_factory.for_project(project_id) as uow:
+        other_plan_id = uow.plans.create_plan(project_id, "Other Plan")
+        other_pv_id = uow.plans.create_version(other_plan_id, [], is_committed=True)
+        uow.commit()
+    branch_id = _seed_branch(uow_factory, project_id, other_pv_id)
+    with pytest.raises(CardreError) as exc:
+        _make_submit(uow_factory, project_id)(_cmd(pv_id, branch_id=branch_id, run_scope="branch"))
+    assert exc.value.code == "BRANCH_SCOPE_MISMATCH"
+
+
+def test_submit_branch_scope_requires_branch_head_to_match_plan_version(committed_plan):
+    project_id, uow_factory, pv_id = committed_plan
+    with uow_factory.for_project(project_id) as uow:
+        plan_id = uow.plans.get_version(pv_id).plan_id
+        other_pv_id = uow.plans.create_version(plan_id, [], is_committed=True)
+        uow.commit()
+    branch_id = _seed_branch(uow_factory, project_id, pv_id, head_plan_version_id=other_pv_id)
+    with pytest.raises(CardreError) as exc:
+        _make_submit(uow_factory, project_id)(_cmd(pv_id, branch_id=branch_id, run_scope="branch"))
+    assert exc.value.code == "BRANCH_PLAN_VERSION_MISMATCH"
 
 
 # ---------------------------------------------------------------------------

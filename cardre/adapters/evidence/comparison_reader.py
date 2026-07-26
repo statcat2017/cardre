@@ -12,8 +12,8 @@ imports adapters directly; it is wired in the composition root
 
 from __future__ import annotations
 
-import json
-from typing import Any
+from dataclasses import asdict, is_dataclass
+from typing import Any, cast
 
 from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
 from cardre.adapters.evidence.parsers import get_adapter, match
@@ -71,10 +71,31 @@ class ComparisonEvidenceReader:
                         if not path.exists():
                             continue
                         try:
-                            return json.loads(path.read_text(encoding="utf-8"))
-                        except json.JSONDecodeError as exc:
+                            parsed = spec.parse(path, art, self._artifact_reader)
+                        except Exception as exc:
                             raise EvidenceParseError(
-                                f"Artifact {art.artifact_id} matched profile "
-                                f"{kind.value} but contained malformed JSON: {exc}"
+                                f"Artifact {art.artifact_id} matched profile {kind.value} "
+                                f"but could not be parsed: {exc}"
                             ) from exc
+                        return _comparison_payload(parsed)
         return None
+
+
+def _comparison_payload(parsed: Any) -> dict[str, Any]:
+    if isinstance(parsed, dict):
+        return parsed
+    raw = getattr(parsed, "_raw", None)
+    if isinstance(raw, dict):
+        return raw
+    model_dump = getattr(parsed, "model_dump", None)
+    if callable(model_dump):
+        payload = model_dump()
+        if isinstance(payload, dict):
+            return payload
+    if is_dataclass(parsed):
+        payload = asdict(cast(Any, parsed))
+        if isinstance(payload, dict):
+            return payload
+    raise EvidenceParseError(
+        f"Canonical evidence parser returned unsupported comparison payload {type(parsed).__name__}."
+    )

@@ -142,6 +142,8 @@ def build_container(settings: Settings) -> Container:
             dispatcher,
             exec_run,
             finalize_run_factory(project_id),
+            governance_enabled=settings.governance_enabled,
+            project_id=project_id,
         )
 
     renderer = HtmlReportRenderer()

@@ -16,6 +16,7 @@ from cardre.application.ports.artifact_store import ArtifactReader
 from cardre.application.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from cardre.application.reporting.contracts import ReportMode
 from cardre.application.reporting.generate_report import GenerateReport, GenerateReportCommand
+from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError
 
 ROW_LEVEL_ARTIFACT_TYPES = {"dataset", "tabular"}
@@ -68,7 +69,7 @@ class ExportAuditPack:
         try:
             with self._uow_factory.read_only(command.project_id) as uow:
                 reader = self._artifact_reader_factory(command.project_id)
-                file_count, partial = self._populate(uow, reader, tmp_dir, command, diagnostics)
+                file_count, partial, run_id = self._populate(uow, reader, tmp_dir, command, diagnostics)
         except BaseException:
             shutil.rmtree(tmp_dir, ignore_errors=True)
             raise
@@ -80,9 +81,24 @@ class ExportAuditPack:
         self._write_checksums(tmp_dir)
         file_count += 1
         self._replace_atomically(tmp_dir, export_dir)
+        export_id = str(uuid.uuid4())
+        try:
+            with self._uow_factory.for_project(command.project_id) as uow:
+                uow.exports.register(
+                    export_id=export_id,
+                    run_id=run_id,
+                    export_type="audit_pack",
+                    path=str(export_dir),
+                    created_at=utc_now_iso(),
+                    size_bytes=sum(path.stat().st_size for path in export_dir.rglob("*") if path.is_file()),
+                )
+                uow.commit()
+        except BaseException:
+            shutil.rmtree(export_dir, ignore_errors=True)
+            raise
         return ExportAuditPackResult(
             export_path=str(export_dir),
-            export_id=str(uuid.uuid4()),
+            export_id=export_id,
             file_count=file_count,
             warnings=warnings,
             diagnostics=diagnostics,
@@ -96,7 +112,7 @@ class ExportAuditPack:
         export_dir: Path,
         command: ExportAuditPackCommand,
         diagnostics: list[dict[str, Any]],
-    ) -> tuple[int, bool]:
+    ) -> tuple[int, bool, str]:
         project = uow.projects.get(command.project_id)
         branch = uow.branches.get_branch(command.branch_id)
         plan = uow.plans.get_plan(command.plan_id)
@@ -115,6 +131,13 @@ class ExportAuditPack:
         run_id = uow.runs.get_latest_successful_id(head_plan_version_id, command.branch_id) if head_plan_version_id else None
         if run_id is None and head_plan_version_id:
             run_id = uow.runs.get_latest_successful_id(head_plan_version_id)
+        if run_id is None:
+            raise CardreError(
+                "Audit-pack exports require a successful branch or plan run.",
+                code="EXPORT_RUN_NOT_FOUND",
+                context={"branch_id": command.branch_id, "plan_version_id": head_plan_version_id},
+                status_code=409,
+            )
 
         self._write_json(export_dir / "project.json", project.to_dict())
         self._write_json(export_dir / "branch.json", branch)
@@ -244,7 +267,7 @@ class ExportAuditPack:
             ))
             file_count += 2
             diagnostics.append({"code": "REPORT_GENERATED", "path": result.html_path})
-        return file_count, partial
+        return file_count, partial, run_id
 
     def _resolve_export_dir(self, command: ExportAuditPackCommand) -> Path:
         if command.export_path is not None:
