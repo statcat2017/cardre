@@ -197,7 +197,12 @@ class TestRefreshComparison:
     def test_refresh_ready_challenger_publishes_and_persists_artifact(
         self, provisioned_project, monkeypatch,
     ):
+        from cardre.adapters.evidence.comparison_reader import _comparison_payload
+        from cardre.adapters.evidence.parsers import get_adapter
         from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+        from cardre.domain.artifacts import ArtifactRef
+        from cardre.domain.evidence.kinds import EvidenceKind
+        from cardre.modeling.schema import MODEL_ARTIFACT_SCHEMA_VERSION
 
         project_id, uow_factory, _, root = provisioned_project
         with uow_factory.for_project(project_id) as uow:
@@ -211,7 +216,7 @@ class TestRefreshComparison:
                 "INSERT INTO branch_comparisons "
                 "(comparison_id, project_id, plan_id, baseline_branch_id, comparison_spec_json, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                (comparison_id, project_id, plan_id, baseline_id, "{}", "2020-01-01T00:00:00Z"),
+                (comparison_id, project_id, plan_id, baseline_id, json.dumps({"include_model": True}), "2020-01-01T00:00:00Z"),
             )
             uow._conn.execute(
                 "INSERT INTO comparison_challenger_branches (comparison_id, branch_id, position) "
@@ -220,12 +225,43 @@ class TestRefreshComparison:
             )
             uow.commit()
 
+        def canonical_model(coefficient):
+            return {
+                "schema_version": MODEL_ARTIFACT_SCHEMA_VERSION,
+                "model_family": "logistic_regression",
+                "target_column": "defaulted",
+                "target_event_value": "1",
+                "class_mapping": {"0": "0", "1": "1"},
+                "probability_column_index": 1,
+                "feature_contract": {"features": ["income"]},
+                "training": {"row_count": 10},
+                "model_payload": {"coefficients": {"income": coefficient}, "intercept": -0.2},
+            }
+
+        baseline_path = root / "baseline-model.json"
+        challenger_path = root / "challenger-model.json"
+        baseline_path.write_text(json.dumps(canonical_model(0.1)), encoding="utf-8")
+        challenger_path.write_text(json.dumps(canonical_model(0.3)), encoding="utf-8")
+
+        class CanonicalModelEvidencePort:
+            def find_typed(self, step_map, canonical_step_id, plan_version_id, evidence_branch_id, kinds):
+                if EvidenceKind.MODEL_ARTIFACT not in kinds:
+                    return None
+                path = baseline_path if plan_version_id == pv_id else challenger_path
+                artifact = ArtifactRef(
+                    artifact_id="model-artifact", artifact_type="model", role="model",
+                    path=str(path), physical_hash="model-hash", logical_hash="model-logical",
+                    metadata={"schema_version": MODEL_ARTIFACT_SCHEMA_VERSION},
+                )
+                parsed = get_adapter(EvidenceKind.MODEL_ARTIFACT).parse(path, artifact, FsArtifactStore(root))
+                return _comparison_payload(parsed)
+
         monkeypatch.setattr(
             RefreshComparison, "_check_readiness",
             lambda self, uow, branch_id, plan_version_id, is_baseline=False: [],
         )
         result = RefreshComparison(
-            uow_factory, _FakeEvidencePort(), FsArtifactStore(root),
+            uow_factory, CanonicalModelEvidencePort(), FsArtifactStore(root),
         )(RefreshComparisonCommand(project_id=project_id, comparison_id=comparison_id))
 
         assert result.ready is True
@@ -235,7 +271,13 @@ class TestRefreshComparison:
             snapshot = uow.comparisons.get_comparison_snapshot(result.comparison_snapshot_id)
         assert artifact is not None
         assert snapshot["comparison_artifact_id"] == artifact.artifact_id
+        assert artifact.metadata["schema_version"] == "cardre.comparison_artifact.v1"
         assert FsArtifactStore(root).resolve_path(artifact).exists()
+        content = json.loads(FsArtifactStore(root).read_bytes(artifact))
+        variable = content["model"]["variables"][0]
+        assert variable["baseline"]["coefficient"] == 0.1
+        assert variable["challengers"][challenger_id]["coefficient"] == 0.3
+        assert variable["difference"]["coefficient_delta_vs_baseline"] == pytest.approx(0.2)
 
     def test_refresh_rolls_back_on_challenger_failure(
         self, provisioned_project, monkeypatch,

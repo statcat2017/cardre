@@ -19,6 +19,7 @@ from cardre.application.reporting.contracts import REQUIRED_STEPS_COMPARISON
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError, GovernanceNotEnabled
+from cardre.domain.evidence.schemas import SCHEMA_COMPARISON_ARTIFACT
 
 
 @runtime_checkable
@@ -156,12 +157,17 @@ class RefreshComparison:
                     pv_id_baseline, pv_id_challenger,
                     baseline_branch_id, cid, spec,
                 )
+                content["schema_version"] = SCHEMA_COMPARISON_ARTIFACT
 
                 staged = self._artifact_writer.stage_json(
                     role="comparison",
                     kind="branch_comparison",
                     payload=content,
-                    metadata={"comparison_id": command.comparison_id, "challenger_branch_id": cid},
+                    metadata={
+                        "comparison_id": command.comparison_id,
+                        "challenger_branch_id": cid,
+                        "schema_version": SCHEMA_COMPARISON_ARTIFACT,
+                    },
                 )
                 published_path = self._artifact_writer.publish(staged)
                 artifact_id = uow.artifacts.register(ArtifactRef(
@@ -407,6 +413,14 @@ class RefreshComparison:
 
         b_family = lr_b.get("model_family", "logistic_regression")
         c_family = lr_c.get("model_family", "logistic_regression")
+        b_model_payload = lr_b.get("model_payload", {})
+        c_model_payload = lr_c.get("model_payload", {})
+        if not isinstance(b_model_payload, dict):
+            b_model_payload = {}
+        if not isinstance(c_model_payload, dict):
+            c_model_payload = {}
+        b_features = lr_b.get("feature_contract", {}).get("features", lr_b.get("features", []))
+        c_features = lr_c.get("feature_contract", {}).get("features", lr_c.get("features", []))
         b_spec = require_family(b_family)
         c_spec = require_family(c_family)
 
@@ -414,20 +428,22 @@ class RefreshComparison:
             "branch_level": {
                 "baseline": {
                     "model_family": b_family,
-                    "feature_count": len(lr_b.get("features", lr_b.get("feature_contract", {}).get("features", []))),
+                    "feature_count": len(b_features),
+                    "intercept": b_model_payload.get("intercept", lr_b.get("intercept")),
                     "warnings": lr_b.get("warnings", []),
                 },
                 branch_id_challenger: {
                     "model_family": c_family,
-                    "feature_count": len(lr_c.get("features", lr_c.get("feature_contract", {}).get("features", []))),
+                    "feature_count": len(c_features),
+                    "intercept": c_model_payload.get("intercept", lr_c.get("intercept")),
                     "warnings": lr_c.get("warnings", []),
                 },
             },
         }
 
         if b_spec.has_coefficients and c_spec.has_coefficients:
-            b_coeffs_value = lr_b.get("coefficients", [])
-            c_coeffs_value = lr_c.get("coefficients", [])
+            b_coeffs_value = b_model_payload.get("coefficients", lr_b.get("coefficients", []))
+            c_coeffs_value = c_model_payload.get("coefficients", lr_c.get("coefficients", []))
             b_coeffs = {}
             c_coeffs = {}
             if isinstance(b_coeffs_value, dict):
@@ -457,11 +473,10 @@ class RefreshComparison:
                     "variable": var_name,
                     "baseline": {"included": var_name in b_coeffs, "coefficient": b_val, "points_range": 0},
                     "challengers": {branch_id_challenger: {"included": var_name in c_coeffs, "coefficient": c_val, "points_range": 0}},
+                    "difference": {"coefficient_delta_vs_baseline": c_val - b_val},
                 })
             result["variables"] = model_vars
         else:
-            b_features = lr_b.get("features", lr_b.get("feature_contract", {}).get("features", []))
-            c_features = lr_c.get("features", lr_c.get("feature_contract", {}).get("features", []))
             b_interp = lr_b.get("interpretability", {})
             c_interp = lr_c.get("interpretability", {})
             result["generic_comparison"] = {
