@@ -56,18 +56,41 @@ class ManualBinningRepo:
         ).fetchall()
         return [self._row_to_review(r) for r in rows]
 
-    def update_review(self, review_id: str, status: str, reviewer_notes: str) -> None:
-        self._conn.execute(
-            "UPDATE manual_binning_reviews SET status = ?, reviewer_notes = ?, updated_at = ? WHERE review_id = ?",
-            (status, reviewer_notes, utc_now_iso(), review_id),
+    def update_review(
+        self, review_id: str, status: str | None = None, reviewer_notes: str | None = None,
+    ) -> bool:
+        """Patch the review. Only provided fields are updated. Returns False
+        if no review row matched (so the caller can raise REVIEW_NOT_FOUND)."""
+        sets: list[str] = []
+        params: list[Any] = []
+        if status is not None:
+            sets.append("status = ?")
+            params.append(status)
+        if reviewer_notes is not None:
+            sets.append("reviewer_notes = ?")
+            params.append(reviewer_notes)
+        if not sets:
+            cursor = self._conn.execute(
+                "SELECT 1 FROM manual_binning_reviews WHERE review_id = ?", (review_id,)
+            )
+            return cursor.fetchone() is not None
+        sets.append("updated_at = ?")
+        params.append(utc_now_iso())
+        params.append(review_id)
+        cursor = self._conn.execute(
+            f"UPDATE manual_binning_reviews SET {', '.join(sets)} WHERE review_id = ?",
+            tuple(params),
         )
+        return cursor.rowcount > 0
 
     @staticmethod
     def _row_to_review(row: Any) -> ManualBinningReview:
+        raw = row["affected_downstream_step_ids_json"]
+        affected = json.loads(raw) if raw else []
         return ManualBinningReview(
             review_id=row["review_id"], plan_version_id=row["plan_version_id"],
             step_id=row["step_id"], status=row["status"],
             reviewer_notes=row["reviewer_notes"],
-            affected_downstream_step_ids=json.loads(row.get("affected_downstream_step_ids_json", "[]")),
+            affected_downstream_step_ids=affected,
             created_at=row["created_at"], updated_at=row["updated_at"],
         )

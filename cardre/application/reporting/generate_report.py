@@ -54,7 +54,14 @@ class GenerateReport:
         self._renderer = renderer
 
     def __call__(self, command: GenerateReportCommand) -> GenerateReportResult:
-        output_dir = Path(command.output_dir or Path.cwd() / "reports" / command.run_id)
+        # Default output location is project-scoped: the project root carries a
+        # ``reports/<run_id>/`` directory. The artifact reader's root is the
+        # canonical project root, so reports stay beneath the project.
+        if command.output_dir is not None:
+            output_dir = Path(command.output_dir)
+        else:
+            artifact_reader = self._artifact_reader_factory(command.project_id)
+            output_dir = Path(artifact_reader.root) / "reports" / command.run_id
         artifact_reader = self._artifact_reader_factory(command.project_id)
         with self._uow_factory.read_only(command.project_id) as uow:
             evidence_reader = self._evidence_reader_factory(artifact_reader, uow.artifacts, uow.run_steps)
@@ -111,6 +118,24 @@ class GenerateReport:
         html_path = self._renderer.render(bundle, output_dir)
         bundle_path = output_dir / "report_bundle.json"
         bundle_path.write_text(bundle.model_dump_json(indent=2), encoding="utf-8")
+        # Register the report in the project persistence layer so the report
+        # query use case can discover it project- and run-scoped. Only register
+        # when the artifact reader exposes a project root (production wiring);
+        # pure-port test doubles may not support write access.
+        if hasattr(artifact_reader, "root"):
+            import uuid
+
+            from cardre.domain.diagnostics import utc_now_iso
+            report_id = str(uuid.uuid4())
+            root = Path(artifact_reader.root)
+            html_rel = str(html_path.relative_to(root)) if str(html_path).startswith(str(root)) else str(html_path)
+            with self._uow_factory.for_project(command.project_id) as uow:
+                uow.reports.register(
+                    report_id=report_id, run_id=command.run_id,
+                    report_type="report", path=html_rel, created_at=utc_now_iso(),
+                    scope="run",
+                )
+                uow.commit()
         return GenerateReportResult(
             html_path=str(html_path),
             bundle_path=str(bundle_path),

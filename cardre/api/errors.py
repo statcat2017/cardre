@@ -76,13 +76,25 @@ async def cardre_api_error_handler(request: Request, exc: CardreApiError) -> JSO
         code=exc.code,
         message=exc.message,
         status_code=exc.status_code,
-        context=exc.context,
-    )
+    context=exc.context,
+)
+
+
+class GovernanceNotEnabled(CardreApiError):
+    """Raised when governance is disabled and a governance endpoint is called."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            code=ErrorCode.GOVERNANCE_DISABLED,
+            message="Governance is not enabled. Set CARDRE_GOVERNANCE=1 to enable.",
+            status_code=403,
+        )
 
 
 __all__ = [
     "ErrorCode",
     "CardreApiError",
+    "GovernanceNotEnabled",
     "cardre_api_error_handler",
     "cardre_error_handler",
     "error_response",

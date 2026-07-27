@@ -12,6 +12,23 @@ from cardre.domain.run import Run, RunStatus, RunStep, RunStepStatus
 logger = logging.getLogger(__name__)
 
 
+def _row_to_run(r: Any) -> Run:
+    """Hydrate a ``Run`` from a sqlite3.Row, including persisted read-model
+    fields (run_scope, heartbeat_at, cancel_requested)."""
+    return Run(
+        run_id=r["run_id"],
+        plan_version_id=r["plan_version_id"],
+        status=RunStatus(r["status"]),
+        started_at=r["started_at"],
+        finished_at=r["finished_at"],
+        branch_id=r["branch_id"],
+        force=bool(r["force"]),
+        run_scope=r["run_scope"],
+        heartbeat_at=r["heartbeat_at"],
+        cancel_requested=bool(r["cancel_requested"]),
+    )
+
+
 class RunRepo:
     def __init__(self, conn: Any) -> None:
         self._conn = conn
@@ -42,12 +59,7 @@ class RunRepo:
         row = self._conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
         if row is None:
             return None
-        return Run(
-            run_id=row["run_id"], plan_version_id=row["plan_version_id"],
-            status=RunStatus(row["status"]), started_at=row["started_at"],
-            finished_at=row["finished_at"], branch_id=row["branch_id"],
-            force=bool(row["force"]),
-        )
+        return _row_to_run(row)
 
     def transition(self, run_id: str, to_status: RunStatus, *,
                    expected_from: tuple[RunStatus, ...] = (RunStatus.RUNNING,)) -> bool:
@@ -120,10 +132,7 @@ class RunRepo:
             rows = self._conn.execute(
                 "SELECT * FROM runs WHERE plan_version_id = ? ORDER BY started_at DESC", (plan_version_id,)
             ).fetchall()
-        return [Run(run_id=r["run_id"], plan_version_id=r["plan_version_id"],
-                    status=RunStatus(r["status"]), started_at=r["started_at"],
-                    finished_at=r["finished_at"], branch_id=r["branch_id"],
-                    force=bool(r["force"])) for r in rows]
+        return [_row_to_run(r) for r in rows]
 
     def list_for_project(self, project_id: str) -> list[Run]:
         rows = self._conn.execute(
@@ -131,10 +140,7 @@ class RunRepo:
             "JOIN plans p ON pv.plan_id = p.plan_id WHERE p.project_id = ? ORDER BY r.started_at DESC",
             (project_id,),
         ).fetchall()
-        return [Run(run_id=r["run_id"], plan_version_id=r["plan_version_id"],
-                    status=RunStatus(r["status"]), started_at=r["started_at"],
-                    finished_at=r["finished_at"], branch_id=r["branch_id"],
-                    force=bool(r["force"])) for r in rows]
+        return [_row_to_run(r) for r in rows]
 
     def get_latest_successful_id(self, plan_version_id: str, branch_id: str | None = None) -> str | None:
         clause, params = self._branch_filter(branch_id)

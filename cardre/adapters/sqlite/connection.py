@@ -10,9 +10,11 @@ from cardre.adapters.sqlite.branch_repo import BranchRepo
 from cardre.adapters.sqlite.champion_repo import ChampionRepo
 from cardre.adapters.sqlite.comparison_repo import ComparisonRepo
 from cardre.adapters.sqlite.evidence_repo import EvidenceRepo
+from cardre.adapters.sqlite.export_repo import ExportRepo
 from cardre.adapters.sqlite.manual_binning_repo import ManualBinningRepo
 from cardre.adapters.sqlite.plan_repo import PlanRepo
 from cardre.adapters.sqlite.project_repo import ProjectRepo
+from cardre.adapters.sqlite.report_repo import ReportRepo
 from cardre.adapters.sqlite.run_repo import RunRepo
 from cardre.adapters.sqlite.run_step_repo import RunStepRepo
 from cardre.adapters.sqlite.step_repo import StepRepo
@@ -70,6 +72,14 @@ class SqliteUnitOfWork:
     @property
     def manual_binning(self) -> ManualBinningRepo:
         return ManualBinningRepo(self._conn)
+
+    @property
+    def exports(self) -> ExportRepo:
+        return ExportRepo(self._conn)
+
+    @property
+    def reports(self) -> ReportRepo:
+        return ReportRepo(self._conn)
 
     def commit(self) -> None:
         if self._begun:
@@ -156,6 +166,14 @@ class SqliteReadOnlyUnitOfWork:
     @property
     def manual_binning(self) -> ManualBinningRepo:
         return ManualBinningRepo(self._conn)
+
+    @property
+    def exports(self) -> ExportRepo:
+        return ExportRepo(self._conn)
+
+    @property
+    def reports(self) -> ReportRepo:
+        return ReportRepo(self._conn)
 
     def commit(self) -> None:
         pass

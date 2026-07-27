@@ -86,6 +86,9 @@ class Run:
     finished_at: str | None = None
     branch_id: str | None = None
     force: bool = False
+    run_scope: str = "full_plan"
+    heartbeat_at: str | None = None
+    cancel_requested: bool = False
     metadata: JsonDict = field(default_factory=dict)
 
     def transition_to(self, new_status: str) -> Run:
@@ -102,6 +105,9 @@ class Run:
             finished_at=utc_now_iso() if new_status in terminal_statuses else None,
             branch_id=self.branch_id,
             force=self.force,
+            run_scope=self.run_scope,
+            heartbeat_at=self.heartbeat_at,
+            cancel_requested=self.cancel_requested,
             metadata=copy.deepcopy(self.metadata),
         )
 

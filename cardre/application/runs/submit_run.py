@@ -11,6 +11,9 @@ from cardre.application.ports.run_dispatcher import RunDispatcherPort, RunReques
 @dataclass
 class SubmitRunCommand:
     plan_version_id: str
+    run_scope: str = "full_plan"
+    branch_id: str | None = None
+    force: bool = False
     sync: bool = False
 
 
@@ -27,13 +30,18 @@ class SubmitRun:
         dispatcher: RunDispatcherPort,
         execute_run: Any,
         finalize_run: Any,
+        governance_enabled: bool = True,
+        project_id: str | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._dispatcher = dispatcher
         self._execute_run = execute_run
         self._finalize_run = finalize_run
+        self._governance_enabled = governance_enabled
+        self._project_id = project_id
 
     def __call__(self, command: SubmitRunCommand) -> SubmitRunResult:
+        scope = self._validate_command(command)
         uow = self._uow_factory()
         try:
             pv = uow.plans.get_version(command.plan_version_id)
@@ -42,10 +50,23 @@ class SubmitRun:
 
         if pv is None:
             from cardre.domain.errors import CardreError
-            raise CardreError(f"Plan version {command.plan_version_id!r} not found")
+            raise CardreError(
+                f"Plan version {command.plan_version_id!r} not found",
+                code="PLAN_VERSION_NOT_FOUND",
+                context={"plan_version_id": command.plan_version_id},
+                status_code=404,
+            )
         if not getattr(pv, "is_committed", False):
             from cardre.domain.errors import CardreError
-            raise CardreError(f"Plan version {command.plan_version_id!r} is not committed")
+            raise CardreError(
+                f"Plan version {command.plan_version_id!r} is not committed",
+                code="PLAN_VERSION_NOT_COMMITTED",
+                context={"plan_version_id": command.plan_version_id},
+                status_code=409,
+            )
+
+        if scope.value == "branch":
+            self._validate_branch_scope(command, pv.plan_id)
 
         self._sweep_stale()
 
@@ -57,7 +78,7 @@ class SubmitRun:
 
         active_statuses = {"created", "queued", "running"}
         for run in existing:
-            if run.status in active_statuses:
+            if run.status in active_statuses and not command.force:
                 from cardre.domain.errors import CardreError
                 raise CardreError(
                     f"Plan version {command.plan_version_id!r} already has "
@@ -66,7 +87,12 @@ class SubmitRun:
 
         uow3 = self._uow_factory()
         try:
-            run_id = uow3.runs.create(command.plan_version_id)
+            run_id = uow3.runs.create(
+                command.plan_version_id,
+                run_scope=command.run_scope,
+                branch_id=command.branch_id,
+                force=command.force,
+            )
             uow3.commit()
         except Exception:
             uow3.rollback()
@@ -96,6 +122,69 @@ class SubmitRun:
             uow4.close()
         return SubmitRunResult(run_id=run_id, status=actual_status)
 
+    @staticmethod
+    def _validate_command(command: SubmitRunCommand):
+        from cardre.domain.errors import CardreError
+        from cardre.domain.run import RunScope
+
+        try:
+            scope = RunScope(command.run_scope)
+        except ValueError:
+            raise CardreError(
+                f"Invalid run_scope {command.run_scope!r}; expected one of "
+                f"{[s.value for s in RunScope]}",
+                code="RUN_SCOPE_INVALID",
+                context={"run_scope": command.run_scope},
+                status_code=400,
+            ) from None
+        if scope is RunScope.BRANCH and not command.branch_id:
+            raise CardreError(
+                "branch scope requires a branch_id",
+                code="BRANCH_VALIDATION_ERROR",
+                context={"run_scope": command.run_scope},
+                status_code=400,
+            )
+        if scope is RunScope.FULL_PLAN and command.branch_id is not None:
+            raise CardreError(
+                "full_plan scope must not specify a branch_id",
+                code="BRANCH_VALIDATION_ERROR",
+                context={"run_scope": command.run_scope, "branch_id": command.branch_id},
+                status_code=400,
+            )
+        return scope
+
+    def _validate_branch_scope(self, command: SubmitRunCommand, plan_id: str) -> None:
+        from cardre.domain.errors import CardreError, GovernanceNotEnabled
+
+        if not self._governance_enabled:
+            raise GovernanceNotEnabled()
+        uow = self._uow_factory()
+        try:
+            branch = uow.branches.get_branch(command.branch_id)
+        finally:
+            uow.close()
+        if branch is None:
+            raise CardreError(
+                f"Branch {command.branch_id!r} not found",
+                code="BRANCH_NOT_FOUND",
+                context={"branch_id": command.branch_id},
+                status_code=404,
+            )
+        if branch["project_id"] != self._project_id or branch["plan_id"] != plan_id:
+            raise CardreError(
+                "Branch does not belong to the requested plan version.",
+                code="BRANCH_SCOPE_MISMATCH",
+                context={"branch_id": command.branch_id, "plan_version_id": command.plan_version_id},
+                status_code=409,
+            )
+        if branch["head_plan_version_id"] != command.plan_version_id:
+            raise CardreError(
+                "Branch head does not match the requested plan version.",
+                code="BRANCH_PLAN_VERSION_MISMATCH",
+                context={"branch_id": command.branch_id, "plan_version_id": command.plan_version_id},
+                status_code=409,
+            )
+
     def _sweep_stale(self) -> None:
         from datetime import UTC, datetime
 
@@ -109,7 +198,7 @@ class SubmitRun:
         for run in all_active:
             if run.status != RunStatus.RUNNING.value:
                 continue
-            hb = run.heartbeat_at if hasattr(run, "heartbeat_at") else None
+            hb = run.heartbeat_at
             is_stale = False
             if hb is None:
                 is_stale = True

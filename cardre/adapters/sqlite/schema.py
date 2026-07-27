@@ -304,6 +304,17 @@ CREATE TABLE IF NOT EXISTS exports (
 );
 """
 
+REPORTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS reports (
+    report_id TEXT PRIMARY KEY,
+    run_id TEXT REFERENCES runs(run_id) ON DELETE CASCADE,
+    report_type TEXT NOT NULL,
+    path TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'project'
+);
+"""
+
 INDEXES_SQL = """
 CREATE INDEX IF NOT EXISTS idx_runs_plan_version_status
     ON runs(plan_version_id, status, started_at DESC);
@@ -374,5 +385,6 @@ ALL_TABLES_SQL = (
     + ANNOTATION_TABLES_SQL
     + REVIEW_TABLES_SQL
     + EXPORTS_TABLE_SQL
+    + REPORTS_TABLE_SQL
     + INDEXES_SQL
 )

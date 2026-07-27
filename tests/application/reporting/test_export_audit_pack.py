@@ -32,6 +32,9 @@ class _Factory:
     def read_only(self, project_id):
         return _Context(self.uow)
 
+    def for_project(self, project_id):
+        return _Context(self.uow)
+
 
 class _Reader:
     def read_bytes(self, artifact):
@@ -135,6 +138,11 @@ class _OptionalRepo:
         return None
 
 
+class _Exports:
+    def register(self, **kwargs):
+        self.registered = kwargs
+
+
 class _Uow:
     def __init__(self):
         local = RunStep("local", "branch-run", "local-step", "pv", RunStepStatus.SUCCEEDED, "2026-01-01")
@@ -156,6 +164,10 @@ class _Uow:
         self.evidence = _Evidence()
         self.comparisons = _OptionalRepo()
         self.champion = _OptionalRepo()
+        self.exports = _Exports()
+
+    def commit(self):
+        pass
 
 
 def _use_case(tmp_path: Path) -> ExportAuditPack:

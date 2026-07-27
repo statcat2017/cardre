@@ -5,6 +5,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from cardre.domain.errors import CardreError, ErrorCode
+from cardre.domain.run import RunStatus
+
 
 @dataclass
 class CancelRunCommand:
@@ -17,10 +20,27 @@ class CancelRun:
 
     def __call__(self, command: CancelRunCommand) -> Any:
         uow = self._uow_factory()
-        run = uow.runs.get(command.run_id)
-        if run is None:
-            from cardre.domain.errors import CardreError
-            raise CardreError(f"Run {command.run_id!r} not found")
-        uow.runs.set_cancel_requested(command.run_id)
-        uow.commit()
+        try:
+            run = uow.runs.get(command.run_id)
+            if run is None:
+                raise CardreError(
+                    f"Run {command.run_id!r} not found",
+                    code=ErrorCode.RUN_NOT_FOUND,
+                    context={"run_id": command.run_id},
+                    status_code=404,
+                )
+            if run.status != RunStatus.RUNNING:
+                raise CardreError(
+                    f"Run {command.run_id!r} is not running (status={run.status})",
+                    code=ErrorCode.RUN_NOT_RUNNING,
+                    context={"run_id": command.run_id, "status": run.status},
+                    status_code=409,
+                )
+            uow.runs.set_cancel_requested(command.run_id)
+            uow.commit()
+        except Exception:
+            uow.rollback()
+            raise
+        finally:
+            uow.close()
         return run

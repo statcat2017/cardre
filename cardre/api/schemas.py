@@ -140,15 +140,18 @@ class RunResponse(BaseModel):
     run_id: str
     plan_version_id: str
     status: str
+    run_scope: str = "full_plan"
+    branch_id: str | None = None
+    force: bool = False
     started_at: str
     finished_at: str | None = None
     step_count: int = 0
-    branch_id: str | None = None
     executed_step_ids: list[str] = Field(default_factory=list)
     diagnostics: list[DiagnosticResponse] = Field(default_factory=list)
     latest_error: DiagnosticResponse | None = None
     heartbeat_at: str | None = None
     is_stale: bool = False
+    cancel_requested: bool = False
 
 
 class RunListResponse(BaseModel):
@@ -157,6 +160,8 @@ class RunListResponse(BaseModel):
 
 class RunCreateRequest(BaseModel):
     plan_version_id: str
+    run_scope: str | None = None
+    branch_id: str | None = None
     force: bool = False
     sync: bool = False
 
@@ -340,6 +345,7 @@ class BranchCreateRequest(BaseModel):
     base_branch_id: str | None = None
     branch_point_step_id: str | None = None
     created_reason: str = ""
+    segment_filter_spec: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -354,14 +360,21 @@ class ComparisonResponse(BaseModel):
     created_at: str = ""
     latest_ready: bool | None = None
 
-
 class ComparisonListResponse(BaseModel):
     comparisons: list[ComparisonResponse]
+
+
+class ComparisonCreateRequest(BaseModel):
+    plan_id: str
+    baseline_branch_id: str
+    challenger_branch_ids: list[str] = []
+    created_reason: str | None = None
 
 
 # ---------------------------------------------------------------------------
 # Champion (governance-gated)
 # ---------------------------------------------------------------------------
+
 
 class ChampionAssignmentResponse(BaseModel):
     champion_assignment_id: str
@@ -375,6 +388,14 @@ class ChampionAssignmentResponse(BaseModel):
 
 class ChampionResponse(BaseModel):
     assignment: ChampionAssignmentResponse | None = None
+
+
+class ChampionAssignmentRequest(BaseModel):
+    plan_id: str
+    branch_id: str
+    comparison_id: str
+    comparison_snapshot_id: str
+    assigned_reason: str = ""
 
 
 # ---------------------------------------------------------------------------

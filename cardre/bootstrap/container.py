@@ -48,6 +48,12 @@ class Container:
     manifest_publisher_factory: Any = None
     submit_run_factory: Any = None
     execute_run_factory: Any = None
+    refresh_comparison_factory: Any = None
+    create_branch_factory: Any = None
+    create_comparison_factory: Any = None
+    assign_champion_factory: Any = None
+    list_reports: Any = None
+    list_exports: Any = None
 
 
 def build_container(settings: Settings) -> Container:
@@ -136,6 +142,8 @@ def build_container(settings: Settings) -> Container:
             dispatcher,
             exec_run,
             finalize_run_factory(project_id),
+            governance_enabled=settings.governance_enabled,
+            project_id=project_id,
         )
 
     renderer = HtmlReportRenderer()
@@ -153,6 +161,39 @@ def build_container(settings: Settings) -> Container:
         generate_report,
     )
 
+    # Governance use cases — built here in the composition root so the API
+    # layer only depends on the application/use-case surface and never
+    # imports adapters directly. Each factory closes over a single project.
+    from cardre.adapters.evidence.comparison_reader import ComparisonEvidenceReader
+    from cardre.application.governance.assign_champion import AssignChampion
+    from cardre.application.governance.create_branch import CreateBranch
+    from cardre.application.governance.create_comparison import CreateComparison
+    from cardre.application.governance.refresh_comparison import RefreshComparison
+
+    def refresh_comparison_factory(project_id: str) -> RefreshComparison:
+        return RefreshComparison(
+            uow_factory,
+            ComparisonEvidenceReader(
+                uow_factory,
+                artifact_reader_factory(project_id),
+                project_id,
+            ),
+            artifact_store_factory(project_id),
+        )
+
+    def create_branch_factory(project_id: str) -> CreateBranch:
+        return CreateBranch(uow_factory)
+
+    def create_comparison_factory(project_id: str) -> CreateComparison:
+        return CreateComparison(uow_factory)
+
+    def assign_champion_factory(project_id: str) -> AssignChampion:
+        return AssignChampion(uow_factory)
+
+    from cardre.application.reporting.report_queries import ListExports, ListReports
+    list_reports = ListReports(uow_factory)
+    list_exports = ListExports(uow_factory)
+
     return Container(
         settings=settings,
         project_registry=registry,
@@ -168,4 +209,10 @@ def build_container(settings: Settings) -> Container:
         manifest_publisher_factory=manifest_publisher_factory,
         submit_run_factory=submit_run_factory,
         execute_run_factory=execute_run_factory,
+        refresh_comparison_factory=refresh_comparison_factory,
+        create_branch_factory=create_branch_factory,
+        create_comparison_factory=create_comparison_factory,
+        assign_champion_factory=assign_champion_factory,
+        list_reports=list_reports,
+        list_exports=list_exports,
     )
