@@ -13,6 +13,9 @@ updates:
     directory: /frontend
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor:
         patterns: ["*"]
