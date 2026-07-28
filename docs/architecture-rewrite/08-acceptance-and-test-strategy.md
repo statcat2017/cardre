@@ -2,7 +2,7 @@
 
 ## Architecture tests
 
-### Import-boundary tests (introduced in Batch 01, tightened in Batch 07)
+### Import-boundary tests (introduced in Batch 01, made strict in 07g)
 
 - **`importlinter`** (new `dev` dep) configured in `.importlinter`:
   - Layer `domain` imports only stdlib.
@@ -13,10 +13,10 @@
   - Layer `bootstrap` imports everything.
 - Run via `lint` target + CI `lint` job. Blocking from Batch 01.
 
-### Forbidden-symbol tests (extend `tests/test_canonical_contract.py` in Batches 01 + 09)
+### Forbidden-symbol tests (migration guard through 07f; strict in 07g)
 
 AST-walk `cardre/**/*.py` banning:
-- `ProjectStore` (outside `adapters/sqlite/` during migration; globally after Batch 07).
+- `ProjectStore` (outside `adapters/sqlite/` during migration; globally after 07e).
 - `context.store` / `.store` attribute access on `NodeContext`.
 - `store.root` (path access on a store object).
 - `CardreConfig.from_env` / `from_env()` outside `bootstrap/settings.py`.
@@ -26,7 +26,7 @@ AST-walk `cardre/**/*.py` banning:
 - `ArtifactRepository`, `EvidenceRepository`, `PlanRepository`, `RunRepository`, `RunStepRepository`, `BranchRepository`, `ComparisonRepository`, `ChampionRepository`, `ManualBinningRepository`, `StepRepository`, `ProjectRepository` outside `adapters/sqlite/`.
 - FastAPI imports (`fastapi`, `APIRouter`, `Depends`, `Header`) outside `api/`.
 - Pydantic `BaseModel` outside `api/schemas.py` (domain uses dataclasses, not pydantic).
-- `X-Project-Path` / `X-Project-Id` header strings outside `api/` (and after Batch 07, not at all).
+- `X-Project-Path` / `X-Project-Id` header strings outside `api/` (and after 07b, not at all).
 
 ### Existing preserved architecture tests
 
@@ -87,7 +87,7 @@ For each port in `application/ports/`:
 - `tests/test_score_scaling_known_input.py` — score scaling on known input. **Must pass after Batch 05.**
 - `tests/test_calibrate_probabilities.py` — calibration. **Deferred node; pass when graduated.**
 - `tests/test_golden_fixtures_roundtrip.py` — `golden_bin_definition.json`, `golden_manual_binning_overrides.json`, `golden_model_artifact.json` round-trip. **Must pass after Batch 04.**
-- `tests/test_golden_report_bundle.py` — structural diff against `golden_report_bundle.json`. **Must pass after Batch 07.** If `TechnicalManifestExportNode` redesign changes manifest structure, regenerate golden with `--update-golden` after confirming the change is intentional (R12).
+- `tests/test_golden_report_bundle.py` — structural diff against `golden_report_bundle.json`. **Must pass as part of 07g.** If `TechnicalManifestExportNode` redesign changes manifest structure, regenerate golden with `--update-golden` after confirming the change is intentional (R12).
 - `tests/test_run_audit_integrity.py` — manifest hash, evidence completeness, run terminal state. **Must pass after Batch 06.**
 - `tests/test_executor_characterization.py` — `PlanExecutor` behaviour pin. **Update to characterize `ExecuteRun` use case; preserve the behavioural assertions.**
 - `tests/test_branch_service_characterization.py` — `BranchService` behaviour pin. **Update to characterize `CreateBranch` use case.**
@@ -107,7 +107,7 @@ For each port in `application/ports/`:
 
 ## Full product acceptance pathway
 
-Run after Batch 07 (the merged API + cleanup + acceptance batch). Script: `tests/acceptance/test_launch_pathway.py` (rewrite of `test_launch_pathway.py` + `test_api_scorecard_launch_pathway.py` using the new API).
+Run only in 07g, after 07b–07f have removed their owned legacy surfaces. Script: `tests/acceptance/test_launch_pathway.py` (the replacement for `test_launch_pathway.py` + `test_api_scorecard_launch_pathway.py` using the new API).
 
 Steps (the 20 items from the task):
 1. **Create a project** — `POST /projects` with a temp path. Assert 201 + `ProjectResponse`.

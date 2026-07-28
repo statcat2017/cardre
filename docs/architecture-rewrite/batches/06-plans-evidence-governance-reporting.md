@@ -24,7 +24,7 @@ Read `docs/architecture-rewrite/02-domain-and-use-cases.md` (all use cases), `01
 
 ## 3. Why the batch exists
 
-These use cases complete the application layer. After this batch, all business rules live in `application/**`; old services are gone. Routes (Batch 07) can then be thin handlers.
+These use cases complete the application layer. After this batch, all business rules live in `application/**`; old services are gone. The 7a routes and 07b frontend can then be thin consumers.
 
 ## 4. Current relevant architecture
 
@@ -202,7 +202,7 @@ as intentional and assigned to the named follow-up PRs:
    (`evidence.py`, `exports.py`, `manual_binning.py`, `plans.py`,
    `reports.py`, `runs.py`) were deleted because they imported legacy
    services. These routes were never registered (only `/health` and
-   `/projects` are mounted). **Batch 07 will recreate these route
+   `/projects` are mounted). **PR 7a recreates these route
    modules** from scratch against the new use-case composition, rather
    than rewrite retained ones.
 
@@ -222,9 +222,9 @@ as intentional and assigned to the named follow-up PRs:
 
 ## 20. Explicit out-of-scope work
 
-- Routes (Batch 07).
-- Deleting `cardre/store/`, `cardre/config.py`, `cardre/artifacts.py` (Batch 07).
-- Frontend (Batch 07).
+- Routes (7a; frontend consumption in 07b).
+- Deleting `cardre/store/`, `cardre/config.py`, `cardre/artifacts.py` (07e).
+- Frontend (07b).
 
 ## 21. Expected final report format
 

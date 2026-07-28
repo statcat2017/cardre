@@ -230,10 +230,10 @@ python3 -m pytest tests/ -q
 ## 20. Explicit out-of-scope work
 
 - Plans/evidence/governance/reporting use cases (Batch 06).
-- Routes (Batch 07).
+- Routes (7a; frontend consumption in 07b).
 - Deleting old services other than `run_coordinator.py` (Batch 06/09).
 - `cardre/services/staleness_service.py`, `evidence_locator.py` (Batch 06).
-- Frontend (Batch 07).
+- Frontend (07b).
 
 ## 21. Expected final report format
 
