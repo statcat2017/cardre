@@ -2,7 +2,7 @@
 
 ## Objective
 
-Remove the legacy persistence and ambient-configuration architecture once all callers use application ports, SQLite adapters, and bootstrap settings.
+Remove the legacy persistence and ambient-configuration architecture only after every production caller, including deferred nodes and shared helpers, uses application ports, SQLite adapters, and bootstrap settings.
 
 ## Scope
 
@@ -14,7 +14,7 @@ Remove the legacy persistence and ambient-configuration architecture once all ca
 ## Prohibited
 
 - No `ProjectStore` facade over the new UoW, no deprecated import aliases, and no environment/config fallback.
-- No execution-context dual path; 07f owns that work.
+- No execution-context work or dual path; 07f must already have removed every node and helper caller.
 - No test `xfail` used to defer a remaining production caller.
 
 ## Acceptance
@@ -22,3 +22,7 @@ Remove the legacy persistence and ambient-configuration architecture once all ca
 - A production search returns no `ProjectStore`, `cardre.store`, `cardre.config`, `cardre.artifacts`, or `cardre.capabilities` references.
 - SQLite adapter, project registry, artifact-store, and migrated application tests pass.
 - No architecture test permits legacy persistence outside a narrowly justified adapter boundary, because the legacy surface no longer exists.
+
+## Depends on
+
+07f. This batch must begin with no production import of `cardre.store`, `cardre.artifacts`, or the legacy evidence reader from deferred nodes or shared helpers.

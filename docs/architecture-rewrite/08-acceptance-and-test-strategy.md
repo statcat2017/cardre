@@ -107,7 +107,7 @@ For each port in `application/ports/`:
 
 ## Full product acceptance pathway
 
-Run only in 07g, after 07b–07f have removed their owned legacy surfaces. Script: `tests/acceptance/test_launch_pathway.py` (the replacement for `test_launch_pathway.py` + `test_api_scorecard_launch_pathway.py` using the new API).
+Run only in 07g, after 07b, 07d, 07c, 07f, and 07e have removed their owned legacy surfaces. Script: `tests/acceptance/test_launch_pathway.py` (the replacement for `test_launch_pathway.py` + `test_api_scorecard_launch_pathway.py` using the new API).
 
 Steps (the 20 items from the task):
 1. **Create a project** — `POST /projects` with a temp path. Assert 201 + `ProjectResponse`.

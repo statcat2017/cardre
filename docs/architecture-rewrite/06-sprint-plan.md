@@ -27,27 +27,27 @@ The original 9-batch plan is restructured via four delivery levers: merge the tr
 | 05 | Execution runtime + runs use cases + `TechnicalManifestExportNode` | `SubmitRun`, `ExecuteRun`, `CancelRun`, `GetRun`, `ListRuns`, `GetRunSteps`, `GetRunEvidence`; `StepRunner` (new); `ThreadRunDispatcher`/`SyncRunDispatcher`; `FinalizeRun` (manifest inside UoW); port `TechnicalManifestExportNode` (needs `RunSummary` from `ExecuteRun`); cooperative cancellation; delete old `cardre/execution/` + `services/run_coordinator.py` | Ties nodes + persistence + dispatch; must follow 02+03+04 | very high | no (integration point) |
 | 06 | Plans + evidence + governance + reporting use cases (parallel sub-PRs) | All remaining use cases: plans (8), evidence (1), governance (4), reporting (2); `adapters/rendering/`, `adapters/reporting/`; delete old `cardre/services/`, `cardre/reporting/`, `cardre/readiness/`, `cardre/evidence_locator.py`, `cardre/branch_step_resolver.py` | Use cases depend on 02+05; independent of each other → parallel | high | **yes — 4-way parallel** (plans, evidence, governance, reporting) |
 | 07b | Frontend API cutover | Consume merged 7a API routes with path-only project identity; regenerate client types; update frontend hooks, components, and tests | 7a is the stable API producer; this is the only consumer cutover | high | no |
-| 07c | Evidence-package migration | Move evidence models and readers into `domain/evidence` and `adapters/evidence`; delete `cardre/_evidence` | A bounded domain/adaptor relocation with focused parity coverage | high | no |
 | 07d | Binning and canonical-pathway migration | Move binning and scorecard pathway to canonical domain locations; delete `cardre/engine` and `cardre/workflows` | Keeps canonical vocabulary and pathways together | high | no |
-| 07e | `ProjectStore` removal and test migration | Remove legacy store/config/artifact/capability surfaces after moving every caller to ports and adapters | Persistence removal must be reviewable separately from node migration | very high | no |
+| 07c | Evidence-package migration | Move evidence models, schemas, and kinds into `domain/evidence`; move profiles, readers, and parsers into `adapters/evidence`; delete `cardre/_evidence` | Depends on 07d relocating the binning schema imported by evidence code | high | no |
 | 07f | Legacy execution-context removal | Port deferred nodes and helpers to `NodeContext`; delete `ExecutionContext` and dual dispatch | Removes the final runtime compatibility seam | high | no |
+| 07e | `ProjectStore` removal and test migration | Remove legacy store/config/artifact/capability surfaces after every production caller, including deferred nodes, uses ports and adapters | Cannot delete infrastructure until 07f removes its node callers | very high | no |
 | 07g | Final enforcement and full acceptance | Make architecture rules strict and run the complete product acceptance pathway | Only valid once all legacy surfaces are absent | high | no (final gate) |
 
-Each 07 sub-batch is one PR. Batches 04 and 06 remain sets of parallel sub-PRs; 07b–07g merge in order so each deletion has a single, auditable owner.
+Each 07 sub-batch is one PR. Batches 04 and 06 remain sets of parallel sub-PRs; 07b–07g merge in dependency order so each deletion has a single, auditable owner.
 
 ## Dependency graph
 
 ```
         ┌────────────────────────────────────────────────┐
         │                                                │
-01 ──> 02 ──> 03 ──> 04 (4 parallel sub-PRs) ──> 05 ──> 06 (4 parallel sub-PRs) ──> 07b ──> 07c ──> 07d ──> 07e ──> 07f ──> 07g
+01 ──> 02 ──> 03 ──> 04 (4 parallel sub-PRs) ──> 05 ──> 06 (4 parallel sub-PRs) ──> 07b ──> 07d ──> 07c ──> 07f ──> 07e ──> 07g
                 ▲       │                                  │
                 │       └── 03-design overlaps 02 ─────────┘
                 │
         (03 contract design starts during 02 implementation)
 ```
 
-Serial critical path: **01 → 02 → 03 → 04 → 05 → 06 → 07b → 07c → 07d → 07e → 07f → 07g**.
+Serial critical path: **01 → 02 → 03 → 04 → 05 → 06 → 07b → 07d → 07c → 07f → 07e → 07g**.
 Wall-clock path retains the Batch 03-design and Batch 04/06 parallelism; the closeout is intentionally serial to prevent temporary compatibility layers becoming permanent.
 
 ## Parallelization opportunities (the four levers)
@@ -102,26 +102,27 @@ The former combined Batch 07 is not a safe PR boundary. It mixed a frontend cont
 - Each batch must preserve the parity/characterization tests (`test_scoring_export_parity`, `test_logistic_regression_known_input`, `test_score_scaling_known_input`, `test_golden_fixtures_roundtrip`, `test_golden_report_bundle`, `test_run_audit_integrity`) — these are the behavioural oracles. Imports update; behaviour must not change.
 - The product acceptance pathway (see 08-acceptance-and-test-strategy.md) is run only as the 07g gate.
 
-## Code-deletion milestones
+## Deletion and migration ownership
 
-| Batch | Deletes |
-|-------|---------|
-| 01 | `cardre/api/dependencies.py:get_project_store*`, `get_run_coordinator`, `require_governance` (old functions); `cardre/services/project_resolver.py` usage in routes (dormant, deleted in 06) |
-| 02 | `cardre/store/db.py` `ProjectStore` (replaced by `SqliteUnitOfWork`); `cardre/store/_locked_cursor.py`, `_schema_version.py`, `_base.py`, `schema.py`; `cardre/store/*_repo.py` (replaced by `adapters/sqlite/*_repo.py`); `cardre/store/project_registry.py` (replaced by `adapters/system/project_registry.py`) |
-| 03 | `cardre/_evidence/kinds.py`, `schemas.py` (moved to `domain/evidence/`); `cardre/_evidence/reader.py` (replaced by `InputCollection`); `cardre/_evidence/adapters/` (moved to `adapters/evidence/`); `cardre/node_parameters.py` (moved to `nodes/parameters.py`); `RolePolicy` (unused); `cardre/engine/binning/` (moved to `domain/binning/` + `nodes/build/_optbinning_adapter.py` per D19); `cardre/workflows/scorecard.py` (moved to `domain/plans/scorecard_pathway.py` per D19); `cardre/engine/` + `cardre/workflows/` packages deleted |
-| 04 | `cardre/nodes/registry.py` (replaced by `bootstrap/node_catalogue.py`); `cardre/execution/context.py` (no consumers after all nodes ported); old node implementations (replaced by ported versions in `nodes/**`) |
-| 05 | `cardre/execution/executor.py`, `step_runner.py`, `run_lifecycle.py`, `run_step_writer.py`, `worker.py`, `action_planner.py`, `fingerprints.py`, `failure_classification.py`, `topology.py`, `step_graph.py` (moved/rewritten into `application/execution/` + `adapters/dispatch/`); `cardre/services/run_coordinator.py` |
-| 06 | `cardre/services/plan_service.py`, `plan_mutation_service.py`, `branch_service.py`, `branch_validator.py`, `branch_graph.py`, `branch_writer.py`, `comparison_service.py`, `comparison/*`, `champion_service.py`, `staleness_service.py`, `export_service.py`, `export_listing.py`, `report_service.py`, `manual_binning_service.py`, `plan_dto.py`; `cardre/evidence_locator.py`, `branch_step_resolver.py`; `cardre/reporting/` (moved to `adapters/rendering/` + `application/reporting/`); `cardre/readiness/` |
-| 07b | `X-Project-Id` handling in `api/dependencies.py`; frontend `projectHeaders` and stale client/hook/component assumptions |
-| 07c | `cardre/_evidence/` after its domain models and adapter responsibilities are relocated |
-| 07d | `cardre/engine/` and `cardre/workflows/` after binning and canonical-pathway callers move |
-| 07e | `cardre/store/`, `cardre/config.py`, `cardre/artifacts.py`, `cardre/capabilities.py`, and unused legacy service glue |
-| 07f | `cardre/execution/context.py`, legacy `NodeOutput`, dual node dispatch, and obsolete execution forwarders |
-| 07g | No production package deletion; strict enforcement rejects any reintroduction |
+The prior table described intended deletes, not the actual repository state. Do not infer that an original batch completed a listed deletion. The current state was revalidated before this reset.
+
+| Original assignment | Actual current state | Corrected owner |
+|---------------------|----------------------|-----------------|
+| 02: delete `ProjectStore` and `cardre/store/` | `cardre/store/` remains; production callers still use it and the legacy `ProjectStore` name remains in the SQLite adapter. | 07e, after 07f removes all deferred-node callers. |
+| 03: move/delete `cardre/_evidence`, `cardre/engine`, and `cardre/workflows` | All three legacy package surfaces remain. Evidence profiles and legacy evidence models import binning constants from `cardre.engine`. | 07d relocates binning and the pathway, including all legacy evidence-package importers; 07c then relocates and deletes `cardre/_evidence`. |
+| 04: delete `cardre/execution/context.py` after all nodes port | `ExecutionContext`, `NodeOutput`, `context.store`, legacy artifact writers, and legacy evidence readers remain in deferred nodes and helpers. | 07f ports every remaining caller, then deletes the legacy execution context. |
+| 05: delete legacy execution modules | Compatibility forwarders and the legacy context remain while deferred nodes still consume them. | 07f owns only the context and node-facing forwarders; it must not retain a dual runtime path. |
+| 06: delete old service infrastructure | Most listed services moved, but legacy project-resolution and persistence glue remain. | 07e removes only glue made unused after its caller migration. |
+| 07b | `X-Project-Id` handling and frontend header assumptions remain. | 07b removes both sides of the transport compatibility behavior. |
+| 07d | `cardre/engine/` and `cardre/workflows/` remain. | 07d deletes them after moving code and every importer to canonical locations. |
+| 07c | `cardre/_evidence/` remains. | 07c deletes it after 07d removes its binning-package dependency. |
+| 07f | Deferred nodes still reach store/artifact surfaces through the legacy context. | 07f removes those callers before infrastructure deletion. |
+| 07e | `cardre/store/`, `cardre/config.py`, `cardre/artifacts.py`, and `cardre/capabilities.py` remain. | 07e deletes them only after 07f. |
+| 07g | Final enforcement has not run. | 07g adds no deletions; it makes the resulting architecture non-regressible. |
 
 ## Point at which old architecture disappears
 
-After 07f, the old architecture is absent. 07g proves that absence with strict enforcement and the full acceptance pathway. Batches 01–06 and 07b–07d may retain only legacy surfaces that a later named sub-batch owns; they must not add aliases, forwarders, dual dispatch, or migration `xfail`s to make that coexistence appear complete.
+After 07e, the old architecture is absent. 07g proves that absence with strict enforcement and the full acceptance pathway. Batches 01–06 and 07b–07f may retain only legacy surfaces that a later named sub-batch owns; they must not add aliases, forwarders, dual dispatch, or migration `xfail`s to make that coexistence appear complete.
 
 **The application does not need to remain runnable after every intermediate batch.** Documented broken intermediate states:
 - After 01: only `/health` + `/projects` work; all other routes 404.
@@ -131,10 +132,10 @@ After 07f, the old architecture is absent. 07g proves that absence with strict e
 - After 05: new execution path exists; old one deleted.
 - After 06: all use cases exist; old services deleted.
 - After 07b: frontend uses the 7a API contract with path-only project identity.
+- After 07d: binning and the scorecard pathway have one canonical home; legacy evidence importers use the new binning surface.
 - After 07c: evidence has one domain/adaptor home.
-- After 07d: binning and the scorecard pathway have one canonical home.
+- After 07f: all nodes use `NodeContext`; no node or helper imports legacy store, artifact, or evidence surfaces.
 - After 07e: `ProjectStore` and legacy infrastructure are absent.
-- After 07f: all nodes use `NodeContext`; legacy execution context is absent.
 - After 07g: enforcement is strict and the acceptance pathway is green.
 
 ## Open PRs and branches

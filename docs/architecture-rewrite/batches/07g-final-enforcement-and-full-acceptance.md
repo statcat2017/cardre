@@ -2,7 +2,7 @@
 
 ## Objective
 
-Prove the clean cut is complete. This is the only Batch 07 PR that makes final architecture enforcement blocking and runs the complete user-facing acceptance pathway.
+Prove the clean cut is complete. This is the only Batch 07 PR that makes final architecture enforcement blocking and runs the complete user-facing acceptance pathway after 07b, 07d, 07c, 07f, and 07e land.
 
 ## Scope
 
