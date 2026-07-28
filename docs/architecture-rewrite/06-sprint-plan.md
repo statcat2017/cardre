@@ -20,24 +20,30 @@ The original 9-batch plan is restructured for wall-clock speed via four levers: 
 | 04 | Port remaining launch nodes (parallel family sub-PRs) | Port 30 launch nodes from `context.store` to `NodeContext`; port `modeling/adapters.py` + `serialization.py` + `_training_utils.py`; `bootstrap/node_catalogue.py`. **Split into 4–5 parallel sub-PRs by family:** prep (8), build-fit (15, incl. LogisticRegression done in 03), build-export (3), validate-apply (4). (`TechnicalManifestExportNode` deferred to 05.) | All launch nodes must be on the new contract before execution runs; mechanical work following the pattern 03 proved | high | **yes — 4-way parallel** |
 | 05 | Execution runtime + runs use cases + `TechnicalManifestExportNode` | `SubmitRun`, `ExecuteRun`, `CancelRun`, `GetRun`, `ListRuns`, `GetRunSteps`, `GetRunEvidence`; `StepRunner` (new); `ThreadRunDispatcher`/`SyncRunDispatcher`; `FinalizeRun` (manifest inside UoW); port `TechnicalManifestExportNode` (needs `RunSummary` from `ExecuteRun`); cooperative cancellation; delete old `cardre/execution/` + `services/run_coordinator.py` | Ties nodes + persistence + dispatch; must follow 02+03+04 | very high | no (integration point) |
 | 06 | Plans + evidence + governance + reporting use cases (parallel sub-PRs) | All remaining use cases: plans (8), evidence (1), governance (4), reporting (2); `adapters/rendering/`, `adapters/reporting/`; delete old `cardre/services/`, `cardre/reporting/`, `cardre/readiness/`, `cardre/evidence_locator.py`, `cardre/branch_step_resolver.py` | Use cases depend on 02+05; independent of each other → parallel | high | **yes — 4-way parallel** (plans, evidence, governance, reporting) |
-| 07 | API routes + frontend regeneration + delete old architecture + finalize enforcement | **Merged with old Batch 09.** All remaining routes; full `api/schemas.py`; governance router; regenerate OpenAPI + `schema.d.ts`; update frontend `client.ts`/`useProjectWorkspace`/components; **then** delete `cardre/store/`, `cardre/config.py`, `cardre/artifacts.py`, `cardre/capabilities.py` (`cardre/engine/` + `cardre/workflows/` already moved/deleted in Batch 03 per D19); tighten `importlinter` + un-xfail forbidden-symbol tests; full product acceptance pathway | API is the consumer-facing layer; cleanup is small once API is live | high | no (final) |
+| 07a | API surface — routes, mappers, dependencies, error codes | **Merged with old Batch 09.** All remaining routes; full `api/schemas.py`; governance router; regenerate OpenAPI + `schema.d.ts`; error code consolidation; route mappers and dependencies | API is the consumer-facing layer; cleanup is small once API is live | high | no (final) |
+| 07b | Frontend API cutover | Update `frontend/src/api/client.ts` to use generated types; update `useProjectWorkspace` and all components to consume the new API surface; remove old hand-typed API wrappers | Frontend must consume the new API before old routes are deleted | high | no |
+| 07c | Evidence-package migration | Move remaining `cardre/_evidence/` residue into `domain/evidence/` and `adapters/evidence/`; delete old evidence package | Cleanup after Batch 03 domain moves | medium | no |
+| 07d | Binning and canonical-pathway migration | Move `cardre/engine/binning/` residue into `domain/binning/`; move any remaining `cardre/workflows/` residue into `domain/plans/`; delete old engine/workflows packages | Completes D19 disposition | medium | no |
+| 07e | ProjectStore removal and test migration | Delete `cardre/store/` residue; migrate any remaining tests off `ProjectStore` to `SqliteUnitOfWork`; delete `cardre/config.py`, `cardre/artifacts.py`, `cardre/capabilities.py` | Final cleanup of old persistence layer | medium | no |
+| 07f | Legacy execution-context removal | Delete `cardre/execution/context.py` and any remaining old execution plumbing not already removed in Batch 05 | All nodes ported; old context unused | low | no |
+| 07g | Final enforcement and full acceptance pathway | Tighten `importlinter`; un-xfail forbidden-symbol tests; run full product acceptance pathway; verify all parity tests pass | Must be last — enforcement locks the new architecture | high | no |
 
-**Total: 7 batches** (down from 9). Each batch is one PR; Batches 04 and 06 are sets of parallel sub-PRs merging together.
+**Total: 12 batches** (07 split into 07a–07g sub-batches). Each batch is one PR; Batches 04, 06, and 07 are sets of parallel or sequential sub-PRs.
 
 ## Dependency graph
 
 ```
-        ┌────────────────────────────────────────────────┐
-        │                                                │
-01 ──> 02 ──> 03 ──> 04 (4 parallel sub-PRs) ──> 05 ──> 06 (4 parallel sub-PRs) ──> 07
-                ▲       │                                  │
-                │       └── 03-design overlaps 02 ─────────┘
-                │
-        (03 contract design starts during 02 implementation)
+         ┌───────────────────────────────────────────────────────┐
+         │                                                       │
+01 ──> 02 ──> 03 ──> 04 (4 parallel sub-PRs) ──> 05 ──> 06 (4 parallel sub-PRs) ──> 07a ──> 07b ──> 07c ──> 07d ──> 07e ──> 07f ──> 07g
+                 ▲       │                                  │
+                 │       └── 03-design overlaps 02 ─────────┘
+                 │
+         (03 contract design starts during 02 implementation)
 ```
 
-Serial critical path: **01 → 02 → 03 → 04 → 05 → 06 → 07** (7 steps).
-Wall-clock path with parallelism: **01 → 02 (overlapped with 03-design) → 03 → 04 (4-way parallel) → 05 → 06 (4-way parallel) → 07** (~6 serial steps + 2 parallel bursts).
+Serial critical path: **01 → 02 → 03 → 04 → 05 → 06 → 07a → 07b → 07c → 07d → 07e → 07f → 07g** (13 steps).
+Wall-clock path with parallelism: **01 → 02 (overlapped with 03-design) → 03 → 04 (4-way parallel) → 05 → 06 (4-way parallel) → 07a → 07b → 07c–07f (parallel) → 07g** (~10 serial steps + 3 parallel bursts).
 
 ## Parallelization opportunities (the four levers)
 
@@ -79,9 +85,19 @@ After Batch 05 lands, the four use-case families are independent:
 
 Four agents in parallel; merge as one batch. Each deletes the old `cardre/services/*` files it replaces.
 
-### Lever 5: Merge old Batch 09 into new Batch 07
+### Lever 5: Split old Batch 07 into focused sub-batches 07a–07g
 
-Old Batch 09 (delete old code + tighten enforcement + acceptance test) is "moderate" and small — it's deletion + `importlinter` tightening + one test file. Tack it onto the tail of new Batch 07 (API routes + frontend regen) once the full API is live. Saves one full PR cycle. The acceptance pathway test is the gate that confirms the merge is safe to finalize.
+Old Batch 07 (API routes + frontend regen + delete old code + enforcement) was too broad. It is split into seven focused sub-batches:
+
+- **07a** — API surface (routes, mappers, dependencies, error codes) — already merged as PR #360.
+- **07b** — Frontend API cutover (update client.ts, components, remove old wrappers).
+- **07c** — Evidence-package migration (delete `cardre/_evidence/` residue).
+- **07d** — Binning and canonical-pathway migration (delete `cardre/engine/binning/` and `cardre/workflows/` residue).
+- **07e** — ProjectStore removal and test migration (delete `cardre/store/`, `config.py`, `artifacts.py`, `capabilities.py`).
+- **07f** — Legacy execution-context removal (delete `cardre/execution/context.py` residue).
+- **07g** — Final enforcement and full acceptance pathway (tighten `importlinter`, un-xfail, run acceptance).
+
+Sub-batches 07c–07f are independent and can run in parallel after 07b. 07g must be last.
 
 ## Review strategy
 
@@ -101,7 +117,13 @@ Old Batch 09 (delete old code + tighten enforcement + acceptance test) is "moder
 | 04 | `cardre/nodes/registry.py` (replaced by `bootstrap/node_catalogue.py`); `cardre/execution/context.py` (no consumers after all nodes ported); old node implementations (replaced by ported versions in `nodes/**`) |
 | 05 | `cardre/execution/executor.py`, `step_runner.py`, `run_lifecycle.py`, `run_step_writer.py`, `worker.py`, `action_planner.py`, `fingerprints.py`, `failure_classification.py`, `topology.py`, `step_graph.py` (moved/rewritten into `application/execution/` + `adapters/dispatch/`); `cardre/services/run_coordinator.py` |
 | 06 | `cardre/services/plan_service.py`, `plan_mutation_service.py`, `branch_service.py`, `branch_validator.py`, `branch_graph.py`, `branch_writer.py`, `comparison_service.py`, `comparison/*`, `champion_service.py`, `staleness_service.py`, `export_service.py`, `export_listing.py`, `report_service.py`, `manual_binning_service.py`, `plan_dto.py`; `cardre/evidence_locator.py`, `branch_step_resolver.py`; `cardre/reporting/` (moved to `adapters/rendering/` + `application/reporting/`); `cardre/readiness/` |
-| 07 | `cardre/api/dependencies.py` (rewritten), `cardre/api/app.py` (rewritten), `cardre/api/schemas.py` (rewritten), `cardre/api/routes/*` (rewritten), `cardre/api/routes/_project_scope.py`, `_run_mappings.py` (deleted); `sidecar/__main__.py` (rewritten); `frontend/src/api/client.ts` `projectHeaders`; **then** `cardre/artifacts.py`, `cardre/capabilities.py`, `cardre/config.py`, `cardre/store/` (if any residue), `cardre/services/__init__.py` (if empty), `cardre/_evidence/` (if empty); tighten `importlinter`; un-xfail forbidden-symbol tests |
+| 07a | `cardre/api/dependencies.py` (rewritten), `cardre/api/app.py` (rewritten), `cardre/api/schemas.py` (rewritten), `cardre/api/routes/*` (rewritten), `cardre/api/routes/_project_scope.py`, `_run_mappings.py` (deleted); `sidecar/__main__.py` (rewritten) |
+| 07b | `frontend/src/api/client.ts` `projectHeaders`; old hand-typed API wrappers |
+| 07c | `cardre/_evidence/` (if any residue) |
+| 07d | `cardre/engine/binning/` residue; `cardre/workflows/` residue |
+| 07e | `cardre/artifacts.py`, `cardre/capabilities.py`, `cardre/config.py`, `cardre/store/` (if any residue), `cardre/services/__init__.py` (if empty) |
+| 07f | `cardre/execution/context.py` and any remaining old execution plumbing |
+| 07g | tighten `importlinter`; un-xfail forbidden-symbol tests |
 
 ## Point at which old architecture disappears
 
@@ -114,7 +136,13 @@ After Batch 07 (which includes the old Batch 09 cleanup). Batches 01–06 keep o
 - After 04: all nodes ported; old execution path intentionally broken (execution tests xfail).
 - After 05: new execution path exists; old one deleted.
 - After 06: all use cases exist; old services deleted.
-- After 07: new API live; old routes + infra deleted; enforcement strict; acceptance pathway green.
+- After 07a: new API routes live; old routes still importable.
+- After 07b: frontend consumes new API; old frontend API wrappers deleted.
+- After 07c: old evidence package deleted.
+- After 07d: old engine/workflows packages deleted.
+- After 07e: old store/config/artifacts deleted.
+- After 07f: old execution context deleted.
+- After 07g: enforcement strict; acceptance pathway green; old architecture fully gone.
 
 ## Open PRs and branches
 
@@ -124,18 +152,20 @@ Per 00-validation-report.md §Active overlapping work:
 - `pr0-safety-net`, `pr0-followup-docs`: **preserve as behavioural knowledge** (golden fixture determinism). Verify golden fixtures still pass after the rewrite.
 - `pr7-followup-drop-bin-definition-forwarders`: **verify** before Batch 01 that dead `_lifecycle` forwarders are gone; if not, the rewrite deletes them anyway.
 - All merged deepening PRs: **absorbed** as the baseline; their behaviour is preserved by the parity tests.
+- `batch-07-cleanup` (commit `d982a11`): **superseded and archived** as `archive/batch-07-cleanup-d982a11`. Its scope became too broad and relied on compatibility shims, architecture exceptions, and migration xfails. The work is redistributed across 07b–07g.
+- `batch-07b-frontend-cutover`: **active** — fresh branch from `main` for the frontend API cutover (07b).
 
 ## Acceptance pathway responsibility allocation
 
 | Acceptance item | Responsible batch |
 |-----------------|-------------------|
 | 1. create a project | 01 |
-| 2. import a supported dataset | 04 (ImportTabularDatasetNode ported) + 07 (route) |
-| 3. profile the dataset | 04 (ProfileDatasetNode ported) + 07 |
-| 4. create a plan | 06 (CreatePlan use case) + 07 |
-| 5. edit the graph | 06 (UpdatePlanVersion — though graph editing is currently manual via params; full editor is future) + 07 |
-| 6. commit an immutable plan version | 06 (CommitPlanVersion) + 07 |
-| 7. submit a run | 05 (SubmitRun) + 07 |
+| 2. import a supported dataset | 04 (ImportTabularDatasetNode ported) + 07a (route) |
+| 3. profile the dataset | 04 (ProfileDatasetNode ported) + 07a |
+| 4. create a plan | 06 (CreatePlan use case) + 07a |
+| 5. edit the graph | 06 (UpdatePlanVersion — though graph editing is currently manual via params; full editor is future) + 07a |
+| 6. commit an immutable plan version | 06 (CommitPlanVersion) + 07a |
+| 7. submit a run | 05 (SubmitRun) + 07a |
 | 8. execute the launch pathway | 05 (ExecuteRun) + 04 (all launch nodes) |
 | 9. produce deterministic artifacts | 02 (artifact store) + 04 (nodes) + 05 (finalization) |
 | 10. perform binning and WOE | 04 (AutomaticBinningNode, CalculateWoeIvNode, WoeTransformTrainNode) |
@@ -144,8 +174,8 @@ Per 00-validation-report.md §Active overlapping work:
 | 13. apply the model to test and OOT data | 04 (ApplyWoeMappingNode, ApplyModelNode) |
 | 14. calculate validation metrics | 04 (ValidationMetricsNode, CutoffAnalysisNode) |
 | 15. export scoring code | 04 (PythonScoringExportNode, SqlScoringExportNode) — parity test preserved |
-| 16. generate an audit package | 06 (ExportAuditPack use case) + 07 |
+| 16. generate an audit package | 06 (ExportAuditPack use case) + 07a |
 | 17. replay a committed plan | 05 (SubmitRun on same version) |
-| 18. verify scoring parity | 07 (test_scoring_export_parity.py passes) |
-| 19. verify artifact hashes | 02 (artifact store hashing) + 07 (audit integrity test) |
-| 20. verify canonical manifest consistency | 05 (FinalizeRun manifest) + 07 (test_run_audit_integrity.py passes) |
+| 18. verify scoring parity | 07g (test_scoring_export_parity.py passes) |
+| 19. verify artifact hashes | 02 (artifact store hashing) + 07g (audit integrity test) |
+| 20. verify canonical manifest consistency | 05 (FinalizeRun manifest) + 07g (test_run_audit_integrity.py passes) |
