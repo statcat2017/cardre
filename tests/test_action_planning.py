@@ -19,7 +19,7 @@ pytestmark = pytest.mark.xfail(reason="Execution path rewritten in Batch 05; tes
 
 
 def _make_store(project_root: Path):
-    from cardre.store.db import ProjectStore
+    from cardre.adapters.sqlite.connection import ProjectStore
     store = ProjectStore(project_root / "test.cardre")
     store.initialize()
     return store

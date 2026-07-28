@@ -18,14 +18,13 @@ from pathlib import Path
 
 import pytest
 
-from cardre._evidence.adapters import EVIDENCE_ADAPTERS, AdapterSpec, get_adapter
-from cardre._evidence.adapters._base import match
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.profiles import EVIDENCE_PROFILES
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
+from cardre.adapters.evidence.parsers import EVIDENCE_ADAPTERS, AdapterSpec, get_adapter, match
+from cardre.adapters.evidence.profiles import EVIDENCE_PROFILES
+from cardre.adapters.evidence.reader import ArtifactEvidenceReader
+from cardre.adapters.filesystem.artifact_writer import write_json_artifact, write_parquet_artifact
+from cardre.adapters.sqlite.artifact_repo import ArtifactRepo as ArtifactRepository
 from cardre.domain.artifacts import ArtifactRef
-from cardre.store.artifact_repo import ArtifactRepository
+from cardre.domain.evidence.kinds import EvidenceKind
 
 # ---------------------------------------------------------------------------
 # Registry coverage tests
@@ -49,7 +48,7 @@ def test_get_adapter_returns_correct_profile() -> None:
 
 
 def test_get_adapter_unknown_kind_raises() -> None:
-    from cardre._evidence.kinds import EvidenceParseError
+    from cardre.domain.evidence.kinds import EvidenceParseError
 
     class _FakeKind:
         value = "fake"

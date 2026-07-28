@@ -15,20 +15,23 @@ from typing import Any
 
 import polars as pl
 
-from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
-from cardre._evidence.models.apply import ApplyModelEvidence, ApplyWoeEvidence, ScoredDataset
-from cardre._evidence.models.binning import (
+from cardre.adapters.evidence.profiles import EVIDENCE_PROFILES, _Profile
+from cardre.application.ports.artifact_store import ArtifactReader
+from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.evidence.kinds import EvidenceKind, EvidenceParseError
+from cardre.domain.evidence.models.apply import ApplyModelEvidence, ApplyWoeEvidence, ScoredDataset
+from cardre.domain.evidence.models.binning import (
     BinDefinition,
     ManualBinningOverrides,
     SelectionDefinition,
 )
-from cardre._evidence.models.diagnostics import (
+from cardre.domain.evidence.models.diagnostics import (
     CalibrationDiagnostics,
     CoefficientSignDiagnostics,
     SeparationDiagnostics,
     VifDiagnostics,
 )
-from cardre._evidence.models.governance import (
+from cardre.domain.evidence.models.governance import (
     ExplainabilityReport,
     FairnessReport,
     FeatureSelectionEvidence,
@@ -39,24 +42,21 @@ from cardre._evidence.models.governance import (
     ResamplingEvidence,
     VariableClusteringEvidence,
 )
-from cardre._evidence.models.manifest import (
+from cardre.domain.evidence.models.manifest import (
     ComparisonArtifact,
     ReportBundleEvidence,
     TechnicalManifestIndex,
 )
-from cardre._evidence.models.model import ScoreScaling
-from cardre._evidence.models.sample import (
+from cardre.domain.evidence.models.model import ScoreScaling
+from cardre.domain.evidence.models.sample import (
     ExclusionSummary,
     ModellingMetadata,
     ProfileSummary,
     SampleDefinition,
     SplitSummary,
 )
-from cardre._evidence.models.validation import CutoffAnalysis, ValidationMetrics
-from cardre._evidence.models.woe import IvTable, WoeIvEvidence, WoeTable, WoeTransformEvidence
-from cardre._evidence.profiles import EVIDENCE_PROFILES, _Profile
-from cardre.application.ports.artifact_store import ArtifactReader
-from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.evidence.models.validation import CutoffAnalysis, ValidationMetrics
+from cardre.domain.evidence.models.woe import IvTable, WoeIvEvidence, WoeTable, WoeTransformEvidence
 from cardre.modeling.schema import ModelArtifactV1
 
 

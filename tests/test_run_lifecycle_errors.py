@@ -13,7 +13,7 @@ pytestmark = pytest.mark.xfail(reason="Execution path rewritten in Batch 05; tes
 
 
 def _make_store(project_root: Path):
-    from cardre.store.db import ProjectStore
+    from cardre.adapters.sqlite.connection import ProjectStore
     store = ProjectStore(project_root / "test.cardre")
     store.initialize()
     return store
@@ -119,7 +119,7 @@ class TestRunLifecycleStartErrors:
                 raise ValueError("boom")
         except ValueError:
             pass
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run = RunRepository(store).get(run_id)
         assert run["status"] == "failed"
         diags = RunRepository(store).get_diagnostics(run_id)
@@ -145,7 +145,7 @@ class TestRunLifecycleStartErrors:
             "VALUES (?, ?, 1, 1, ?)",
             (pv_id, plan_id, now),
         )
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run_id = RunRepository(store).create(pv_id, branch_id="test-branch")
         lifecycle = RunLifecycle.start(
             store, pv_id, run_id=run_id, branch_id="test-branch",
@@ -172,7 +172,7 @@ class TestRunLifecycleStartErrors:
             "VALUES (?, ?, 1, 1, ?)",
             (pv_id, plan_id, now),
         )
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run_id = RunRepository(store).create(pv_id, branch_id="test-branch")
         lifecycle = RunLifecycle.start(
             store, pv_id, run_id=run_id, branch_id="test-branch",
@@ -264,7 +264,7 @@ class TestBuildManifestPayload:
             "VALUES (?, ?, 'running', ?, ?)",
             (run_id, pv_id, now, now),
         )
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run_record = RunRepository(store).get(run_id)
         from cardre.domain.run import RunStep, RunStepStatus
         try:

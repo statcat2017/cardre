@@ -13,9 +13,9 @@ import numpy as np
 import polars as pl
 import pytest
 
-from cardre.artifacts import write_parquet_artifact
+from cardre.adapters.filesystem.artifact_writer import write_parquet_artifact
+from cardre.adapters.sqlite.connection import ProjectStore
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.store.db import ProjectStore
 
 pytestmark = pytest.mark.xfail(reason="Old StepRunner/execution path; needs NodeContext update")
 
@@ -105,7 +105,7 @@ def _make_context(store, pv_id, run_id, train_art, params=None):
             return train_art
 
         def target_metadata(self):
-            from cardre._evidence.models import ModellingMetadata
+            from cardre.domain.evidence.models import ModellingMetadata
             return ModellingMetadata(
                 target_column=self._meta_target_column,
                 good_values=self._meta_good_values,
@@ -146,7 +146,7 @@ class TestRandomResamplingProvenance:
         assert any(a.role == "train" for a in result.artifacts)
 
         # Read the parquet and check the flag
-        from cardre._evidence.reader import ArtifactEvidenceReader
+        from cardre.adapters.evidence.reader import ArtifactEvidenceReader
         reader = ArtifactEvidenceReader(store)
         train_art = next(a for a in result.artifacts if a.role == "train")
         df = reader.read_dataframe(train_art)
@@ -160,7 +160,7 @@ class TestRandomResamplingProvenance:
         store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
         result = self._run(store, pv_id, run_id, train_art, meta_id,
                           {"strategy": "oversample_minority", "sampling_ratio": 1.0})
-        from cardre._evidence.reader import ArtifactEvidenceReader
+        from cardre.adapters.evidence.reader import ArtifactEvidenceReader
         reader = ArtifactEvidenceReader(store)
         train_art = next(a for a in result.artifacts if a.role == "train")
         df = reader.read_dataframe(train_art)
@@ -171,7 +171,7 @@ class TestRandomResamplingProvenance:
         store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
         result = self._run(store, pv_id, run_id, train_art, meta_id,
                           {"strategy": "undersample_majority", "sampling_ratio": 0.5})
-        from cardre._evidence.reader import ArtifactEvidenceReader
+        from cardre.adapters.evidence.reader import ArtifactEvidenceReader
         reader = ArtifactEvidenceReader(store)
         train_art = next(a for a in result.artifacts if a.role == "train")
         df = reader.read_dataframe(train_art)
@@ -189,7 +189,7 @@ class TestRandomResamplingProvenance:
         store, pv_id, run_id, train_art, meta_id = _seed_run_context(tmp_path)
         result = self._run(store, pv_id, run_id, train_art, meta_id,
                           {"strategy": "oversample_minority", "sampling_ratio": 1.0})
-        from cardre._evidence.reader import ArtifactEvidenceReader
+        from cardre.adapters.evidence.reader import ArtifactEvidenceReader
         reader = ArtifactEvidenceReader(store)
         train_art = next(a for a in result.artifacts if a.role == "train")
         df = reader.read_dataframe(train_art)
@@ -217,7 +217,7 @@ class TestRandomResamplingProvenance:
         # First pass: oversample
         first_result = self._run(store, pv_id, run_id, train_art, meta_id,
                                 {"strategy": "oversample_minority", "sampling_ratio": 1.0})
-        from cardre._evidence.reader import ArtifactEvidenceReader
+        from cardre.adapters.evidence.reader import ArtifactEvidenceReader
         reader = ArtifactEvidenceReader(store)
         first_art = next(a for a in first_result.artifacts if a.role == "train")
         first_df = reader.read_dataframe(first_art)
@@ -226,7 +226,7 @@ class TestRandomResamplingProvenance:
 
         # Second pass: feed the resampled artifact back as train input.
         # Use undersample so no new synthetic rows are added.
-        from cardre.artifacts import write_parquet_artifact
+        from cardre.adapters.filesystem.artifact_writer import write_parquet_artifact
 
         second_train_art = write_parquet_artifact(
             store, artifact_type="dataset", role="train",
@@ -271,7 +271,7 @@ class TestSmoteProvenance:
         ctx = _make_context(store, pv_id, run_id, train_art,
                            {"sampling_ratio": 1.0})
         result = node.run(ctx)
-        from cardre._evidence.reader import ArtifactEvidenceReader
+        from cardre.adapters.evidence.reader import ArtifactEvidenceReader
         reader = ArtifactEvidenceReader(store)
         train_art = next(a for a in result.artifacts if a.role == "train")
         df = reader.read_dataframe(train_art)
@@ -289,7 +289,7 @@ class TestSmoteProvenance:
         ctx = _make_context(store, pv_id, run_id, train_art,
                            {"sampling_ratio": 1.0})
         result = node.run(ctx)
-        from cardre._evidence.reader import ArtifactEvidenceReader
+        from cardre.adapters.evidence.reader import ArtifactEvidenceReader
         reader = ArtifactEvidenceReader(store)
         train_art = next(a for a in result.artifacts if a.role == "train")
         df = reader.read_dataframe(train_art)
@@ -306,7 +306,7 @@ class TestSmoteProvenance:
         ctx = _make_context(store, pv_id, run_id, train_art,
                            {"sampling_ratio": 1.0})
         result = node.run(ctx)
-        from cardre._evidence.reader import ArtifactEvidenceReader
+        from cardre.adapters.evidence.reader import ArtifactEvidenceReader
         reader = ArtifactEvidenceReader(store)
         train_art = next(a for a in result.artifacts if a.role == "train")
         df = reader.read_dataframe(train_art)

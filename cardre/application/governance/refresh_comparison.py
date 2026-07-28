@@ -12,13 +12,13 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
-from cardre._evidence.kinds import EvidenceKind
 from cardre.application.evidence.evidence_resolver import resolve_run_step_evidence
 from cardre.application.evidence.explain_staleness import step_is_stale
 from cardre.application.reporting.contracts import REQUIRED_STEPS_COMPARISON
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import CardreError, GovernanceNotEnabled
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_COMPARISON_ARTIFACT
 
 

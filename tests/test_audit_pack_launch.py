@@ -9,7 +9,7 @@ import csv
 import json
 from pathlib import Path
 
-from cardre.workflows import build_canonical_scorecard_steps
+from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 
 def _write_input_csv(path: Path) -> Path:
@@ -45,9 +45,9 @@ def test_audit_pack_launch(raw_project_path, api_client, tmp_path):
     assert resp.status_code == 201, resp.text
     plan_id = resp.json()["plan_id"]
 
-    from cardre.store.branch_repo import BranchRepository
-    from cardre.store.db import ProjectStore
-    from cardre.store.plan_repo import PlanRepository
+    from cardre.adapters.sqlite.branch_repo import BranchRepo as BranchRepository
+    from cardre.adapters.sqlite.connection import ProjectStore
+    from cardre.adapters.sqlite.plan_repo import PlanRepo as PlanRepository
 
     store = ProjectStore(project_dir)
     store.open()
@@ -91,7 +91,7 @@ def test_audit_pack_launch(raw_project_path, api_client, tmp_path):
     store = ProjectStore(project_dir)
     store.open()
     try:
-        from cardre.services.export_service import export_branch_audit_pack
+        from cardre.application.export_service import export_branch_audit_pack
 
         result = export_branch_audit_pack(
             store=store,

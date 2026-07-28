@@ -11,13 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from cardre._evidence.adapters import get_adapter
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.models.binning import BinDefinition, ManualBinningOverrides
+from cardre.adapters.evidence.parsers import get_adapter
+from cardre.adapters.sqlite.connection import ProjectStore
 from cardre.domain.artifacts import ArtifactRef
-from cardre.engine.binning.definition import LifecycleBin, LifecycleBinDefinition, LifecycleVariable
+from cardre.domain.binning.definition import LifecycleBin, LifecycleBinDefinition, LifecycleVariable
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.models.binning import BinDefinition, ManualBinningOverrides
 from cardre.modeling.schema import FeatureContract, ModelArtifactV1, TrainingMetadata
-from cardre.store.db import ProjectStore
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
@@ -135,7 +135,7 @@ class TestBinDefinitionRoundTrip:
 
     def test_to_dict_round_trips_through_lifecycle_from_payload(self):
         """BinDefinition.to_dict() output must be re-parseable by LifecycleBinDefinition.from_payload."""
-        from cardre.engine.binning.definition import LifecycleBinDefinition
+        from cardre.domain.binning.definition import LifecycleBinDefinition
         data = _load_fixture("golden_bin_definition.json")
         obj = BinDefinition.from_json(data, artifact_id="golden-test")
         payload = obj.to_dict()
@@ -151,7 +151,7 @@ class TestBinDefinitionRoundTrip:
 
     def test_preserves_lifecycle_fields_through_manual_binning_path(self):
         """Top-level warnings/rejected/source survive from_json -> to_dict -> from_payload."""
-        from cardre.engine.binning.definition import LifecycleBinDefinition
+        from cardre.domain.binning.definition import LifecycleBinDefinition
         data = _load_fixture("golden_bin_definition.json")
         obj = BinDefinition.from_json(data, artifact_id="golden-test")
         payload = obj.to_dict()

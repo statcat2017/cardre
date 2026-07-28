@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre.engine.binning.woe import WoeConvention, compute_iv, compute_woe
+from cardre.domain.binning.woe import WoeConvention, compute_iv, compute_woe
 
 
 def extract_woe_by_bin(variable_data: dict[str, Any]) -> list[dict[str, Any]]:

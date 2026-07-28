@@ -24,7 +24,7 @@ pytestmark = pytest.mark.xfail(reason="Execution path rewritten in Batch 05; tes
 
 
 def _make_store(project_root: Path):
-    from cardre.store.db import ProjectStore
+    from cardre.adapters.sqlite.connection import ProjectStore
 
     store = ProjectStore(project_root / "test.cardre")
     store.initialize()
@@ -111,7 +111,7 @@ class TestRunStepWriter:
         input_path = _write_input_csv(tmp_path)
         pv_id, step_ids = _seed_plan_version(store, input_path)
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
 
         run_repo = RunRepository(store)
         run_id = run_repo.create(pv_id)
@@ -135,7 +135,7 @@ class TestRunStepWriter:
         input_path = _write_input_csv(tmp_path)
         pv_id, step_ids = _seed_plan_version(store, input_path)
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
 
         run_repo = RunRepository(store)
         run_id = run_repo.create(pv_id)
@@ -161,7 +161,7 @@ class TestRunStepWriter:
         input_path = _write_input_csv(tmp_path)
         pv_id, step_ids = _seed_plan_version(store, input_path)
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
 
         run_repo = RunRepository(store)
         run_id = run_repo.create(pv_id)
@@ -200,7 +200,7 @@ class TestRunStepWriter:
         input_path = _write_input_csv(tmp_path)
         pv_id, step_ids = _seed_plan_version(store, input_path)
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
 
         run_repo = RunRepository(store)
         run_id = run_repo.create(pv_id)
@@ -265,7 +265,7 @@ class TestRunStepWriter:
              fail_step_id),
         )
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
 
         run_repo = RunRepository(store)
         run_id = run_repo.create(pv_id_fail)

@@ -15,13 +15,13 @@ from pathlib import Path
 
 import pytest
 
+from cardre.adapters.sqlite.plan_repo import PlanRepo as PlanRepository
+from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
+from cardre.adapters.sqlite.run_step_repo import RunStepRepo as RunStepRepository
 from cardre.application.execution.action_planner import _StepAction
 from cardre.domain.run import RunStepStatus
 from cardre.domain.step import StepSpec
 from cardre.execution.executor import PlanExecutor
-from cardre.store.plan_repo import PlanRepository
-from cardre.store.run_repo import RunRepository
-from cardre.store.run_step_repo import RunStepRepository
 
 pytestmark = pytest.mark.xfail(reason="Execution path rewritten in Batch 05; test needs update")
 
@@ -31,7 +31,7 @@ pytestmark = pytest.mark.xfail(reason="Execution path rewritten in Batch 05; tes
 
 
 def _make_store(project_root: Path):
-    from cardre.store.db import ProjectStore
+    from cardre.adapters.sqlite.connection import ProjectStore
     store = ProjectStore(project_root / "test.cardre")
     store.initialize()
     return store

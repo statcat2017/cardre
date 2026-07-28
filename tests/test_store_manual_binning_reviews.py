@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import uuid
 
+from cardre.adapters.sqlite.manual_binning_repo import ManualBinningRepo as ManualBinningRepository
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.store.manual_binning_repo import ManualBinningRepository
 
 
 def test_manual_binning_review_lifecycle(store) -> None:

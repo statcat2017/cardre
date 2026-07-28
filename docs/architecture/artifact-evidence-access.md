@@ -3,7 +3,7 @@
 This document describes the final artifact/evidence boundary enforced by the
 guardrail in `scripts/audit_artifact_reads.py`.
 
-See `CONTEXT.md` and the evidence specs in `cardre/_evidence/` for the source
+See `CONTEXT.md` and the evidence specs in `cardre/adapters/evidence/` for the source
 of truth. This page is the operator-facing guide.
 
 ## Artifact vs Evidence
@@ -22,14 +22,14 @@ Only these modules may perform direct artifact I/O:
 
 - `cardre/artifacts.py`
 - `cardre/domain/evidence.py`
-- `cardre/_evidence/`
+- `cardre/adapters/evidence/`
 - `cardre/modeling/serialization.py`
 
 Why:
 
 - `cardre/artifacts.py` owns artifact write helpers and low-level store plumbing.
 - `cardre/domain/evidence.py` exposes typed evidence APIs.
-- `cardre/_evidence/` contains the parser, profiles, schemas, and typed models.
+- `cardre/adapters/evidence/` contains the parser, profiles, schemas, and typed models.
 - `cardre/modeling/serialization.py` handles binary estimator IO and integrity checks.
 
 ## Forbidden Patterns
@@ -63,7 +63,7 @@ Only these reasons are allowed on a line comment of the form
   - Legitimate when a route or export helper streams artifact bytes without interpreting them.
   - Example: a sidecar download endpoint copying the file to an HTTP response.
 - `low-level-evidence-parser`
-  - Legitimate only inside `cardre/_evidence/` or other approved low-level IO code.
+  - Legitimate only inside `cardre/adapters/evidence/` or other approved low-level IO code.
   - Example: the reader opening a file before typed parsing.
 - `serialization-compatibility-test`
   - Legitimate only in isolated compatibility tests that assert persisted raw layout.
@@ -73,15 +73,15 @@ Only these reasons are allowed on a line comment of the form
 
 When introducing a new evidence type, update all of these:
 
-1. Add an `EvidenceKind` enum member in `cardre/_evidence/kinds.py`.
-2. Add a `SCHEMA_<KIND>` constant in `cardre/_evidence/schemas.py`.
-3. Add a typed dataclass and `from_json` in `cardre/_evidence/models/` (in the appropriate family module, e.g. `models/binning.py`, `models/model.py`). Re-export it from `cardre/_evidence/models/__init__.py`.
-4. Add an `EVIDENCE_PROFILES` entry in `cardre/_evidence/profiles.py`.
-5. Add an `AdapterSpec` entry in the `EVIDENCE_ADAPTERS` table in `cardre/_evidence/adapters/__init__.py`. Most adapters are a one-liner `AdapterSpec(profile=..., parse=lambda path, art, store: Model.from_json(...))`. Only add a custom class if the parse logic is non-trivial (e.g. `WoeTable`, `IvTable`, `ScoredDataset`).
+1. Add an `EvidenceKind` enum member in `cardre/domain/evidence/kinds.py`.
+2. Add a `SCHEMA_<KIND>` constant in `cardre/domain/evidence/schemas.py`.
+3. Add a typed dataclass and `from_json` in `cardre/domain/evidence/models.py` (in the appropriate family module, e.g. `models/binning.py`, `models/model.py`). Re-export it from `cardre/domain/evidence/models/__init__.py`.
+4. Add an `EVIDENCE_PROFILES` entry in `cardre/adapters/evidence/profiles.py`.
+5. Add an `AdapterSpec` entry in the `EVIDENCE_ADAPTERS` table in `cardre/adapters/evidence/parsers.py`. Most adapters are a one-liner `AdapterSpec(profile=..., parse=lambda path, art, store: Model.from_json(...))`. Only add a custom class if the parse logic is non-trivial (e.g. `WoeTable`, `IvTable`, `ScoredDataset`).
 6. Add fixture-backed parse coverage in `tests/test_evidence_adapters.py`.
 7. Add a parametrized profile assertion in `tests/test_evidence_profiles.py`.
 
-Minimal parser rule: prefer schema/version validation first, then role/type/media/profile validation inside `cardre/_evidence/`, never bespoke parsing in product nodes.
+Minimal parser rule: prefer schema/version validation first, then role/type/media/profile validation inside `cardre/adapters/evidence/`, never bespoke parsing in product nodes.
 
 ## Writing A Node That Consumes Artifacts
 
@@ -139,7 +139,7 @@ This keeps layout assertions local and keeps production tests focused on typed b
 
 ## Legacy Compatibility Policy
 
-Legacy detection belongs in `cardre/_evidence/`.
+Legacy detection belongs in `cardre/adapters/evidence/`.
 
 - Product code must not know whether an artifact matched by schema or by role/type/media profile.
 - If a legacy shape exists, teach the adapter/profile/model about it.

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from cardre.adapters.sqlite.connection import ProjectStore
 from cardre.domain.errors import SchemaVersionError
-from cardre.store.db import ProjectStore
 
 
 def test_open_rejects_v1_schema_family(store) -> None:

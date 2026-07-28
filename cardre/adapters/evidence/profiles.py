@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.schemas import (
+from cardre.domain.binning.definition import SCHEMA_BIN_DEFINITION
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import (
     SCHEMA_APPLY_MODEL_EVIDENCE,
     SCHEMA_APPLY_WOE_EVIDENCE,
     SCHEMA_CALIBRATION_DIAGNOSTICS,
@@ -30,6 +31,7 @@ from cardre._evidence.schemas import (
     SCHEMA_REJECT_POPULATION_CONFIG,
     SCHEMA_REPORT_BUNDLE,
     SCHEMA_RESAMPLING_EVIDENCE,
+    SCHEMA_RUN_SUMMARY,
     SCHEMA_SAMPLE_DEFINITION,
     SCHEMA_SCORE_SCALING,
     SCHEMA_SCORE_TABLE,
@@ -47,7 +49,6 @@ from cardre._evidence.schemas import (
     SCHEMA_WOE_TABLE,
     SCHEMA_WOE_TRANSFORM_EVIDENCE,
 )
-from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION
 
 
 @dataclass
@@ -219,6 +220,12 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         expected_artifact_types={"report"},
         schema_version=SCHEMA_REPORT_BUNDLE,
         required_keys={"project_id", "run_id", "source", "summary"},
+    ),
+    EvidenceKind.RUN_SUMMARY: _Profile(
+        expected_roles={"report"},
+        expected_artifact_types={"report"},
+        schema_version=SCHEMA_RUN_SUMMARY,
+        required_keys={"run_id", "plan_version_id", "status"},
     ),
     EvidenceKind.TECHNICAL_MANIFEST_INDEX: _Profile(
         expected_roles={"report"},

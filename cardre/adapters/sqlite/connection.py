@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from cardre.adapters.sqlite.artifact_repo import ArtifactRepo
 from cardre.adapters.sqlite.branch_repo import BranchRepo
@@ -17,9 +18,57 @@ from cardre.adapters.sqlite.project_repo import ProjectRepo
 from cardre.adapters.sqlite.report_repo import ReportRepo
 from cardre.adapters.sqlite.run_repo import RunRepo
 from cardre.adapters.sqlite.run_step_repo import RunStepRepo
+from cardre.adapters.sqlite.schema import ALL_TABLES_SQL
 from cardre.adapters.sqlite.step_repo import StepRepo
 from cardre.application.ports.project_registry import ProjectRegistryPort
 from cardre.application.ports.unit_of_work import UnitOfWork
+
+
+class ProjectStore:
+    """Backward-compat alias — wraps a raw sqlite3 connection.
+
+    Provides the same ``execute``, ``root``, ``artifact_path`` interface
+    that legacy test code expects.
+    """
+
+    def __init__(self, db_path: str | Path) -> None:
+        self._db_path = Path(db_path)
+        self._conn: sqlite3.Connection | None = None
+
+    @property
+    def root(self) -> Path:
+        return self._db_path.parent
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            self._conn = sqlite3.connect(str(self._db_path), timeout=30)
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+            self._conn.row_factory = sqlite3.Row
+            self._conn.isolation_level = None
+        return self._conn
+
+    def execute(self, sql: str, params: Any = ()) -> Any:
+        return self.conn.execute(sql, params)
+
+    def initialize(self) -> None:
+        self.conn.executescript(ALL_TABLES_SQL)
+        self.conn.commit()
+
+    def close(self) -> None:
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
+
+    def artifact_path(self, artifact: Any) -> Path:
+        return self.root / artifact.path
+
+    def read_bytes(self, artifact: Any) -> bytes:
+        return self.artifact_path(artifact).read_bytes()
+
+    def resolve_path(self, artifact: Any) -> Path:
+        return self.artifact_path(artifact)
 
 
 class SqliteUnitOfWork:

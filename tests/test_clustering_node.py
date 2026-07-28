@@ -5,13 +5,13 @@ import json
 import polars as pl
 import pytest
 
+from cardre.adapters.filesystem.artifact_writer import write_parquet_artifact
+from cardre.adapters.sqlite.artifact_repo import ArtifactRepo as ArtifactRepository
 from cardre.application.execution.step_runner import StepRunner
-from cardre.artifacts import write_parquet_artifact
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.run import RunStepStatus
 from cardre.domain.step import StepSpec
 from cardre.nodes.registry import NodeRegistry
-from cardre.store.artifact_repo import ArtifactRepository
 
 pytestmark = pytest.mark.xfail(reason="Old StepRunner/execution path; needs NodeContext update")
 

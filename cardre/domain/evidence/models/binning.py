@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from cardre.domain.binning.definition import SCHEMA_BIN_DEFINITION
 from cardre.domain.diagnostics import JsonDict
-from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION
 
 
 @dataclass(frozen=True)

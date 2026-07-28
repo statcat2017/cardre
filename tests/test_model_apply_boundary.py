@@ -20,7 +20,7 @@ pytestmark = pytest.mark.xfail(reason="Uses old ExecutionContext; needs NodeCont
 
 
 def _make_store(project_root: Path):
-    from cardre.store.db import ProjectStore
+    from cardre.adapters.sqlite.connection import ProjectStore
     store = ProjectStore(project_root / "test.cardre")
     store.initialize()
     return store
@@ -94,8 +94,8 @@ def _write_estimator_artifact(store, estimator):
 
 
 def test_write_estimator_artifact_registers_with_repository(tmp_path):
+    from cardre.adapters.sqlite.artifact_repo import ArtifactRepo as ArtifactRepository
     from cardre.modeling.serialization import write_estimator_artifact
-    from cardre.store.artifact_repo import ArtifactRepository
 
     store = _make_store(tmp_path)
     try:

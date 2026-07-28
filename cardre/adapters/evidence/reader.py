@@ -1,27 +1,28 @@
 """EvidenceReader — typed evidence access via ArtifactReader.
 
-Replaces ``cardre._evidence.reader.ArtifactEvidenceReader`` with a
+Replaces ``cardre.adapters.evidence.reader.ArtifactEvidenceReader`` with a
 port-based reader that depends on ``ArtifactReader``, ``ArtifactRepoPort``,
 and ``RunStepRepoPort`` instead of ``ProjectStore``.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import polars as pl
 
-from cardre._evidence.kinds import (
+from cardre.adapters.evidence.parsers import get_adapter, match
+from cardre.adapters.evidence.profiles import EVIDENCE_PROFILES
+from cardre.application.ports.artifact_store import ArtifactReader
+from cardre.application.ports.unit_of_work import ArtifactRepoPort, RunStepRepoPort
+from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.evidence.kinds import (
     AmbiguousEvidenceError,
     EvidenceKind,
     EvidenceNotFoundError,
     EvidenceParseError,
 )
-from cardre._evidence.profiles import EVIDENCE_PROFILES
-from cardre.adapters.evidence.parsers import get_adapter, match
-from cardre.application.ports.artifact_store import ArtifactReader
-from cardre.application.ports.unit_of_work import ArtifactRepoPort, RunStepRepoPort
-from cardre.domain.artifacts import ArtifactRef
 
 
 class EvidenceReader:
@@ -161,4 +162,69 @@ class EvidenceReader:
         return get_adapter(kind).parse(path, art, self._reader)
 
 
-__all__ = ["EvidenceReader"]
+__all__ = ["ArtifactEvidenceReader", "EvidenceReader"]
+
+
+class _StoreArtifactReader:
+    """Adapts a store-like object to the ArtifactReader protocol."""
+
+    def __init__(self, store: Any) -> None:
+        self._store = store
+
+    @property
+    def root(self) -> Path:
+        return self._store.root
+
+    def read_bytes(self, artifact: object) -> bytes:
+        return self.resolve_path(artifact).read_bytes()
+
+    def resolve_path(self, artifact: object) -> Path:
+        return self._store.artifact_path(artifact)
+
+
+class ArtifactEvidenceReader:
+    """Backward-compat alias for EvidenceReader.
+
+    Constructed with a store-like object (must have ``artifact_path`` method
+    and an ``execute`` method for repo construction), just like the original.
+    """
+
+    def __init__(self, store: Any) -> None:
+        from cardre.adapters.sqlite.artifact_repo import ArtifactRepo
+        from cardre.adapters.sqlite.run_step_repo import RunStepRepo
+        self._inner = EvidenceReader(
+            artifact_reader=_StoreArtifactReader(store),
+            artifact_repo=ArtifactRepo(store),
+            run_step_repo=RunStepRepo(store),
+        )
+
+    def find(self, artifacts: list[ArtifactRef], kind: EvidenceKind) -> Any:
+        return self._inner.find(artifacts, kind)
+
+    def find_optional(self, artifacts: list[ArtifactRef], kind: EvidenceKind) -> Any | None:
+        return self._inner.find_optional(artifacts, kind)
+
+    def read(self, artifact_id: str, kind: EvidenceKind) -> Any:
+        return self._inner.read(artifact_id, kind)
+
+    def read_optional(self, artifact_id: str, kind: EvidenceKind) -> Any | None:
+        return self._inner.read_optional(artifact_id, kind)
+
+    def require_model(self, model_art: ArtifactRef, node_type: str) -> Any:
+        return self._inner.require_model(model_art, node_type)
+
+    def read_dataframe(self, art: ArtifactRef) -> pl.DataFrame:
+        return self._inner.read_dataframe(art)
+
+    def read_step_output_optional(self, run_step_id: str, kind: EvidenceKind) -> Any | None:
+        return self._inner.read_step_output_optional(run_step_id, kind)
+
+    def _match(self, artifacts: list[ArtifactRef], kind: EvidenceKind) -> list[ArtifactRef]:
+        spec = get_adapter(kind)
+        return match(artifacts, spec.profile, self._inner._reader)
+
+    def _parse(self, art: ArtifactRef, kind: EvidenceKind) -> Any:
+        path = self._inner._reader.resolve_path(art)
+        if not path.exists():
+            raise EvidenceParseError(f"Artifact file not found: {path}")
+        return get_adapter(kind).parse(path, art, self._inner._reader)

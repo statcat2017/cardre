@@ -4,13 +4,13 @@ import json
 
 import pytest
 
-from cardre._evidence.schemas import (
+from cardre.adapters.filesystem.artifact_writer import write_json_artifact
+from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.evidence.schemas import (
     SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS,
     SCHEMA_MODEL_ARTIFACT,
     SCHEMA_WOE_IV_EVIDENCE,
 )
-from cardre.artifacts import write_json_artifact
-from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.step import StepSpec
 from cardre.execution.context import ExecutionContext
 from cardre.nodes.build.diagnostics import CoefficientSignCheckNode

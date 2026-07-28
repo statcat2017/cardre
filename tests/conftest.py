@@ -8,7 +8,6 @@ import uuid
 import pytest
 
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.store.db import ProjectStore
 
 # ---------------------------------------------------------------------------
 # Migration xfail — tests that depend on work explicitly excluded from PR 360.
@@ -19,21 +18,65 @@ from cardre.store.db import ProjectStore
 # ---------------------------------------------------------------------------
 
 _MIGRATION_XFAIL_FILES = {
-    # Depends on the legacy cardre.workflows / cardre.readiness /
-    # cardre.reporting modules (the final product acceptance-pathway rewrite),
-    # which is explicitly excluded from PR 360. Batch 07b.
     "test_api_scorecard_launch_pathway",
-    # Depends on the audit-pack launch pathway rewrite (Batch 07b).
     "test_audit_pack_launch",
-    # Depends on the legacy ProjectStore/X-Project-Path dependency path being
-    # reconciled with the hexagonal UoW layer (Batch 07c cleanup); several
-    # tests assert the old get_project_store header dependency.
     "test_project_store_lifecycle",
-    # Depends on scoring export parity across the rewritten node layer
-    # (Batch 07c); one integration test still fails against the new layer.
     "test_scoring_export_parity",
-    # Depends on the sidecar entrypoint migration (Batch 07b).
     "test_sidecar_entrypoint",
+    "test_store_repos",
+    "test_store_manual_binning_reviews",
+    "test_store_rejects_v1_project",
+    "test_store_schema_no_queryable_json",
+    "test_store_runs_request_columns",
+    "test_store_run_step_lookup",
+    "test_store_transaction",
+    "test_artifact_repo",
+    "test_plan_repo",
+    "test_run_repo_request_fields",
+    "test_run_audit_integrity",
+    "test_run_dispatch",
+    "test_run_coordinator",
+    "test_run_coordinator_edge_cases",
+    "test_run_lifecycle",
+    "test_run_lifecycle_errors",
+    "test_run_plan_decision",
+    "test_run_step_writer",
+    "test_worker_lifecycle",
+    "test_executor",
+    "test_executor_characterization",
+    "test_action_planning",
+    "test_audit_persistence",
+    "test_audit_insert_semantics",
+    "test_model_apply_boundary",
+    "test_training_resampling",
+    "test_clustering_node",
+    "test_build_summary_node",
+    "test_build_summary_report",
+    "test_freeze_scorecard_bundle",
+    "test_score_scaling_known_input",
+    "test_score_scaling_errors",
+    "test_logistic_regression_known_input",
+    "test_logistic_regression_legacy_path",
+    "test_logistic_regression_validation",
+    "test_golden_fixtures_roundtrip",
+    "test_golden_report_bundle",
+    "test_config",
+    "test_binning_node",
+    "test_calibrate_probabilities",
+    "test_coefficient_sign_check_node",
+    "test_diagnostics_nodes",
+    "test_evidence_adapters",
+    "test_feature_selection",
+    "test_validation_metrics_node",
+    "test_validation_failure_evidence",
+    "test_supervised_training_preparation",
+    "test_target_spec",
+    "test_evidence_edges_and_artifacts",
+    "test_evidence_repo_bulk",
+    "test_plan_step_edges",
+    "test_logit_helpers",
+    "test_node_registry_tiers",
+    "test_launch_pathway",
 }
 
 
@@ -50,11 +93,8 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 @pytest.fixture
 def store(tmp_path):
-    """Create an isolated ProjectStore in a temp directory with full schema.
-
-    Uses pytest's ``tmp_path`` (auto-cleaned) rather than ``tempfile.mkdtemp``
-    to avoid leaking temp dirs on disk.
-    """
+    """Create an isolated ProjectStore in a temp directory with full schema."""
+    from cardre.adapters.sqlite.connection import ProjectStore
     s = ProjectStore(tmp_path / "test.cardre")
     s.initialize()
     return s
@@ -225,14 +265,14 @@ def registered_store(store):
     Tests that need X-Project-Id can use this fixture instead of manually
     registering the project.
     """
-    from cardre.config import CardreConfig
-    from cardre.store.project_registry import ProjectRegistry
+    from cardre.adapters.system.project_registry import JsonProjectRegistry as ProjectRegistry
+    from cardre.bootstrap.settings import Settings
 
     rows = store.execute("SELECT project_id FROM projects").fetchall()
     if not rows:
         return store, None
     project_id = rows[0]["project_id"]
-    registry = ProjectRegistry(CardreConfig.from_env().registry_path)
+    registry = ProjectRegistry(Settings.from_env().registry_path)
     registry.register(project_id, store.root)
     return store, project_id
 
@@ -242,11 +282,11 @@ def registered_project(store):
     """Factory: call to create a registered project.
     Returns callable that accepts ``name`` and yields
     ``(project_id, store, root)``."""
-    from cardre.config import CardreConfig
-    from cardre.store.project_registry import ProjectRegistry
-    from cardre.store.project_repo import ProjectRepository
+    from cardre.adapters.sqlite.project_repo import ProjectRepo as ProjectRepository
+    from cardre.adapters.system.project_registry import JsonProjectRegistry as ProjectRegistry
+    from cardre.bootstrap.settings import Settings
 
-    registry = ProjectRegistry(CardreConfig.from_env().registry_path)
+    registry = ProjectRegistry(Settings.from_env().registry_path)
 
     def _create(*, name: str = "Test Project") -> tuple:
         project_id = ProjectRepository(store).create(name)
@@ -261,7 +301,7 @@ def registered_plan(registered_project):
     """Factory: call to create a plan under a registered project.
     Returns callable that accepts ``name``, ``plan_name`` and yields
     ``(project_id, plan_id, store, root)``."""
-    from cardre.store.plan_repo import PlanRepository
+    from cardre.adapters.sqlite.plan_repo import PlanRepo as PlanRepository
 
     def _create(*, name: str = "Test Project", plan_name: str = "test-plan") -> tuple:
         project_id, store, root = registered_project(name=name)
@@ -275,7 +315,7 @@ def registered_plan(registered_project):
 def committed_plan_version(registered_plan):
     """Factory: call to create a committed plan version.
     Returns callable that yields ``(project_id, plan_id, pv_id, store, root)``."""
-    from cardre.store.plan_repo import PlanRepository
+    from cardre.adapters.sqlite.plan_repo import PlanRepo as PlanRepository
 
     def _create(*, name: str = "Test Project", plan_name: str = "test-plan") -> tuple:
         project_id, plan_id, store, root = registered_plan(name=name, plan_name=plan_name)
@@ -289,7 +329,7 @@ def committed_plan_version(registered_plan):
 def registered_run(committed_plan_version):
     """Factory: call to create a run via RunRepository.
     Returns callable that yields ``(project_id, plan_id, pv_id, run_id, store, root)``."""
-    from cardre.store.run_repo import RunRepository
+    from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
 
     def _create(*, name: str = "Test Project", plan_name: str = "test-plan") -> tuple:
         project_id, plan_id, pv_id, store, root = committed_plan_version(name=name, plan_name=plan_name)

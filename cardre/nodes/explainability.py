@@ -11,9 +11,10 @@ from typing import Any
 
 from polars.exceptions import ComputeError
 
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import SCHEMA_EXPLAINABILITY_REPORT
-from cardre.artifacts import write_json_artifact
+from cardre.adapters.evidence.reader import ArtifactEvidenceReader
+from cardre.adapters.filesystem.artifact_writer import write_json_artifact
+from cardre.adapters.sqlite.artifact_repo import ArtifactRepo as ArtifactRepository
+from cardre.domain.evidence.schemas import SCHEMA_EXPLAINABILITY_REPORT
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.contracts import NodeType
 from cardre.nodes.parameters import (
@@ -22,7 +23,6 @@ from cardre.nodes.parameters import (
     ParameterConstraint,
     ParameterDefinition,
 )
-from cardre.store.artifact_repo import ArtifactRepository
 
 EXPLAINABILITY_LEVELS = {
     "native_scorecard",

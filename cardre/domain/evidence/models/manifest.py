@@ -27,10 +27,10 @@ class ReportBundleEvidence:
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ReportBundleEvidence:
-        from cardre._evidence.schemas import SCHEMA_REPORT_BUNDLE
+        from cardre.domain.evidence.schemas import SCHEMA_REPORT_BUNDLE
         schema_version = data.get("schema_version", "")
         if schema_version and schema_version != SCHEMA_REPORT_BUNDLE:
-            from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
+            from cardre.domain.evidence.kinds import EvidenceKind, EvidenceParseError
             raise EvidenceParseError(
                 f"Unexpected report bundle schema_version {schema_version!r}",
                 kind=EvidenceKind.REPORT_BUNDLE,

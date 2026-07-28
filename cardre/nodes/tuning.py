@@ -12,7 +12,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.tree import DecisionTreeClassifier
 
-from cardre.artifacts import write_json_artifact
+from cardre.adapters.filesystem.artifact_writer import write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.modeling.builders import build_model_artifact
 from cardre.nodes._training_utils import _prepare_training_data, _write_estimator

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import uuid
 
+from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.store.run_repo import RunRepository
 
 
 def _seed_committed_plan_version(store):

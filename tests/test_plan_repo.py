@@ -7,9 +7,9 @@ from cardre.domain.diagnostics import utc_now_iso
 
 class TestPlanRepository:
     def test_create_and_get_plan(self, store):
+        from cardre.adapters.sqlite.plan_repo import PlanRepo as PlanRepository
         from cardre.domain.artifacts import json_logical_hash
         from cardre.domain.step import StepSpec
-        from cardre.store.plan_repo import PlanRepository
         project_id = str(uuid.uuid4())
         now = utc_now_iso()
         store.execute(
@@ -54,7 +54,7 @@ class TestPlanRepository:
         assert commit_resp is None
 
     def test_get_plan_not_found(self, store):
-        from cardre.store.plan_repo import PlanRepository
+        from cardre.adapters.sqlite.plan_repo import PlanRepo as PlanRepository
         repo = PlanRepository(store)
         assert repo.get_plan("nonexistent") is None
         assert repo.get_version("nonexistent") is None
@@ -63,7 +63,7 @@ class TestPlanRepository:
         assert repo.get_version_steps("nonexistent") == []
 
     def test_get_plan_id_for_version(self, store):
-        from cardre.store.plan_repo import PlanRepository
+        from cardre.adapters.sqlite.plan_repo import PlanRepo as PlanRepository
         project_id = str(uuid.uuid4())
         now = utc_now_iso()
         store.execute(
@@ -77,7 +77,7 @@ class TestPlanRepository:
         assert repo.get_plan_id_for_version("nonexistent") is None
 
     def test_commit_version_and_update_description(self, store):
-        from cardre.store.plan_repo import PlanRepository
+        from cardre.adapters.sqlite.plan_repo import PlanRepo as PlanRepository
         project_id = str(uuid.uuid4())
         now = utc_now_iso()
         store.execute(

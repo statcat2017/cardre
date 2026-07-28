@@ -14,9 +14,9 @@ except ImportError:
 import pytest
 
 from cardre.adapters.dispatch.thread_dispatcher import ThreadRunDispatcher as RunWorker
+from cardre.adapters.sqlite.connection import ProjectStore
+from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
 from cardre.application.ports.run_dispatcher import RunRequest
-from cardre.store.db import ProjectStore
-from cardre.store.run_repo import RunRepository
 
 pytestmark = pytest.mark.xfail(reason="Execution path rewritten in Batch 05; test needs update")
 
@@ -238,7 +238,7 @@ def test_worker_failure_recorded_when_coordinator_also_finalised(store, monkeypa
         )
     )
 
-    from cardre.store.run_repo import RunRepository
+    from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
     s = ProjectStore(store.root)
     s.open()
     try:

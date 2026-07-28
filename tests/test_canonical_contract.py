@@ -13,7 +13,7 @@ import pytest
 
 from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
-from cardre.workflows.scorecard import build_canonical_scorecard_steps
+from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 
 def test_only_one_automatic_binning_node_registered():
@@ -101,27 +101,27 @@ def test_no_compat_evidence_aliases_in_source():
 
 
 def test_score_scaling_defaults_match_reader_and_report_model():
-    from cardre._evidence.models.model import ScoreScaling
     from cardre.application.reporting.schema import ScoreScalingInfo
+    from cardre.domain.evidence.models.model import ScoreScaling
 
     assert ScoreScaling().score_direction == "higher_is_lower_risk"
     assert ScoreScalingInfo().score_direction == "higher_is_lower_risk"
 
 
 def test_score_scaling_reads_points_to_double_odds():
-    from cardre._evidence.models.model import ScoreScaling
+    from cardre.domain.evidence.models.model import ScoreScaling
     s = ScoreScaling.from_json({"points_to_double_odds": 40, "base_score": 600})
     assert s.points_to_double_odds == 40
 
 
 def test_score_scaling_ignores_pdo_key():
-    from cardre._evidence.models.model import ScoreScaling
+    from cardre.domain.evidence.models.model import ScoreScaling
     s = ScoreScaling.from_json({"pdo": 40, "base_score": 600})
     assert s.points_to_double_odds == 20  # default — pdo was ignored
 
 
 def test_score_scaling_reads_score_direction():
-    from cardre._evidence.models.model import ScoreScaling
+    from cardre.domain.evidence.models.model import ScoreScaling
     s = ScoreScaling.from_json({"score_direction": "higher_is_better", "base_score": 600})
     assert s.score_direction == "higher_is_better"
     assert s.higher_score_is_lower_risk is False
@@ -150,14 +150,14 @@ def test_model_artifact_rejects_list_coefficients():
 
 
 def test_validation_metrics_rejects_legacy_metrics_key():
-    from cardre._evidence.models.validation import ValidationMetrics
+    from cardre.domain.evidence.models.validation import ValidationMetrics
 
     with pytest.raises(ValueError, match="canonical 'roles'"):
         ValidationMetrics.from_json({"metrics": {"train": {"auc": 0.75}}})
 
 
 def test_cutoff_analysis_rejects_legacy_score_key():
-    from cardre._evidence.models.validation import CutoffAnalysis
+    from cardre.domain.evidence.models.validation import CutoffAnalysis
 
     with pytest.raises(ValueError, match="score_cutoff"):
         CutoffAnalysis.from_json({"cutoff_tables": {"train": [{"score": 100}]}})
@@ -205,7 +205,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 BANNED_IDENTIFIERS = {
     "ProjectStore",
-    "CardreConfig",
+    "Settings",
     "ArtifactEvidenceReader",
 }
 
@@ -224,7 +224,7 @@ ALLOWED_PREFIXES = {
     "cardre.adapters.sqlite": {"sqlite3"},
     "cardre.bootstrap.settings": {"os.environ", "os.getenv"},
     "cardre.adapters.evidence": {"ArtifactEvidenceReader"},
-    "cardre.workflows": {"build_default_catalogue", "Settings"},
+    "cardre.domain.plans.scorecard_pathway": {"build_default_catalogue", "Settings"},
     "cardre.nodes.registry": {"NodeType"},
 }
 
@@ -266,6 +266,18 @@ def test_forbidden_imports_outside_adapters() -> None:
                     violations.append(f"{rel_str}:{node.lineno}: from {node.module} import ... (store)")
                 if node.module and node.module.startswith("cardre.config"):
                     violations.append(f"{rel_str}:{node.lineno}: from {node.module} import ... (config)")
+                if node.module and node.module.startswith("cardre.engine"):
+                    violations.append(f"{rel_str}:{node.lineno}: from {node.module} import ... (engine)")
+                if node.module and node.module.startswith("cardre.workflows"):
+                    violations.append(f"{rel_str}:{node.lineno}: from {node.module} import ... (workflows)")
+                if node.module and node.module.startswith("cardre._evidence"):
+                    violations.append(f"{rel_str}:{node.lineno}: from {node.module} import ... (_evidence)")
+                if node.module and node.module.startswith("cardre.services"):
+                    violations.append(f"{rel_str}:{node.lineno}: from {node.module} import ... (services)")
+                if node.module and node.module.startswith("cardre.artifacts"):
+                    violations.append(f"{rel_str}:{node.lineno}: from {node.module} import ... (artifacts)")
+                if node.module and node.module.startswith("cardre.capabilities"):
+                    violations.append(f"{rel_str}:{node.lineno}: from {node.module} import ... (capabilities)")
 
             if isinstance(node, ast.Name):
                 if node.id in BANNED_IDENTIFIERS and not _is_allowed(rel_str, node.id):

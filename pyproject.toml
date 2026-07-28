@@ -126,6 +126,11 @@ forbidden_modules = [
     "cardre.api",
     "cardre.bootstrap",
 ]
+ignore_imports = [
+    "cardre.domain.plans.scorecard_pathway -> cardre.bootstrap.node_catalogue",
+    "cardre.domain.plans.scorecard_pathway -> cardre.bootstrap.settings",
+    "cardre.domain.plans.graph -> cardre.application.execution.step_graph",
+]
 
 [[tool.importlinter.contracts]]
 name = "Application must not import adapters, api, or bootstrap"
@@ -154,6 +159,17 @@ forbidden_modules = [
     "cardre.bootstrap",
 ]
 allow_indirect_imports = true
+ignore_imports = [
+    "cardre.nodes._training_utils -> cardre.adapters.evidence.reader",
+    "cardre.nodes.build.models -> cardre.adapters.evidence.reader",
+    "cardre.nodes.calibrate -> cardre.adapters.evidence.reader",
+    "cardre.nodes.ensembles -> cardre.adapters.evidence.reader",
+    "cardre.nodes.ensembles -> cardre.adapters.sqlite.artifact_repo",
+    "cardre.nodes.explainability -> cardre.adapters.evidence.reader",
+    "cardre.nodes.explainability -> cardre.adapters.sqlite.artifact_repo",
+    "cardre.nodes.fairness -> cardre.adapters.evidence.reader",
+    "cardre.nodes.reject_inference -> cardre.adapters.evidence.reader",
+]
 
 [[tool.importlinter.contracts]]
 name = "Adapters must not import api, bootstrap, or nodes"

@@ -257,8 +257,8 @@ class ExecuteRun:
         Returns the registered ArtifactRef so callers can inject it into
         step inputs for the technical-manifest step to consume.
         """
-        from cardre._evidence.schemas import SCHEMA_RUN_SUMMARY
         from cardre.domain.evidence.kinds import EvidenceKind
+        from cardre.domain.evidence.schemas import SCHEMA_RUN_SUMMARY
 
         plan_steps: dict[str, Any] = {}
         pv_uow = self._uow_factory()

@@ -18,7 +18,7 @@ This produces:
 
 ## Boundary Pattern
 
-The service layer (`cardre/services/`) uses plain dataclass DTOs defined in `cardre/application/plans/`. These mirror the Pydantic models in `sidecar/models.py` but keep the service layer free of FastAPI dependencies.
+The use case layer (`cardre/application/`) uses plain dataclass DTOs defined in `cardre/application/plans/`. These mirror the Pydantic models in `cardre/api/schemas.py` but keep the use case layer free of FastAPI dependencies.
 
 The route layer converts between them via `dataclasses.asdict()`. This is an intentional boundary contract: the dataclasses are the canonical service-layer return types, and the Pydantic models are the API-layer serialisation types.
 

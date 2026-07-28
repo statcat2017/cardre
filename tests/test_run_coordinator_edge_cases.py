@@ -7,10 +7,10 @@ pytestmark = pytest.mark.xfail(reason="Uses RunCoordinator which was removed in 
 
 class TestRunCoordinatorEdgeCases:
     def test_get_summary_nonexistent_raises(self, tmp_path):
-        from cardre.store.db import ProjectStore
+        from cardre.adapters.sqlite.connection import ProjectStore
         store = ProjectStore(tmp_path / "test.cardre")
         store.initialize()
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
 
         from cardre.domain.errors import CardreError
         coordinator = RunCoordinator(store)
@@ -18,6 +18,6 @@ class TestRunCoordinatorEdgeCases:
             coordinator.get_summary("nonexistent-run")
 
     def test_dispatcher_init(self):
-        from cardre.services.run_coordinator import _get_global_dispatcher
+        from cardre.application.run_coordinator import _get_global_dispatcher
         dispatcher = _get_global_dispatcher()
         assert dispatcher is not None

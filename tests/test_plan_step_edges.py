@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import uuid
 
+from cardre.adapters.sqlite.plan_repo import PlanRepo as PlanRepository
 from cardre.domain.artifacts import params_hash
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.step import StepSpec
-from cardre.store.plan_repo import PlanRepository
 
 
 def test_plan_step_edges_round_trip(store) -> None:

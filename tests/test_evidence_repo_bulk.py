@@ -3,8 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from cardre.adapters.sqlite.evidence_repo import EvidenceRepo as EvidenceRepository
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.store.evidence_repo import EvidenceRepository
 
 
 def test_bulk_evidence_queries_preserve_order_and_grouping(store) -> None:

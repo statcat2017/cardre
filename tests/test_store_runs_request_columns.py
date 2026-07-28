@@ -1,7 +1,7 @@
 """Tests that the runs table has all required request columns."""
 from __future__ import annotations
 
-from cardre.store.db import ProjectStore
+from cardre.adapters.sqlite.connection import ProjectStore
 
 
 def test_runs_table_has_request_columns(tmp_path):

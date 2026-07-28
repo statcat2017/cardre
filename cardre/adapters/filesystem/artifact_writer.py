@@ -1,10 +1,3 @@
-"""Shared artifact writing helpers for Cardre nodes.
-
-Centralizes artifact creation so scorecard nodes do not duplicate
-artifact registration boilerplate.  Wraps the v2 ProjectStore +
-ArtifactRepository.
-"""
-
 from __future__ import annotations
 
 import json
@@ -21,12 +14,10 @@ from cardre.domain.artifacts import (
     relative_path,
     table_logical_hash,
 )
-from cardre.store import ProjectStore
-from cardre.store.artifact_repo import ArtifactRepository
 
 
 def _register_bytes_artifact(
-    store: ProjectStore,
+    store: Any,
     *,
     bytes_writer: Callable[[], bytes],
     logical_hash: str,
@@ -59,7 +50,8 @@ def _register_bytes_artifact(
         media_type=media_type,
         metadata=metadata or {},
     )
-    repo = ArtifactRepository(store)
+    from cardre.adapters.sqlite.artifact_repo import ArtifactRepo
+    repo = ArtifactRepo(store)
     registered_id = repo.register(artifact)
     if registered_id != artifact.artifact_id:
         existing = repo.get(registered_id)
@@ -69,7 +61,7 @@ def _register_bytes_artifact(
 
 
 def write_json_artifact(
-    store: ProjectStore,
+    store: Any,
     *,
     artifact_type: str,
     role: str,
@@ -78,7 +70,6 @@ def write_json_artifact(
     metadata: dict[str, Any] | None = None,
     directory: str = "artifacts",
 ) -> ArtifactRef:
-    """Write a JSON payload as a new artifact and register it in the store."""
     logical = json_logical_hash(payload)
     serialized = json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False).encode("utf-8")
     return _register_bytes_artifact(
@@ -96,7 +87,7 @@ def write_json_artifact(
 
 
 def write_parquet_artifact(
-    store: ProjectStore,
+    store: Any,
     *,
     artifact_type: str,
     role: str,
@@ -105,7 +96,6 @@ def write_parquet_artifact(
     metadata: dict[str, Any] | None = None,
     directory: str = "datasets",
 ) -> ArtifactRef:
-    """Write a Polars DataFrame as a parquet artifact and register it."""
     logical = table_logical_hash(frame)
     return _register_bytes_artifact(
         store,
@@ -129,7 +119,7 @@ def _parquet_bytes(frame: pl.DataFrame) -> bytes:
 
 
 def write_csv_artifact(
-    store: ProjectStore,
+    store: Any,
     *,
     artifact_type: str,
     role: str,
@@ -138,7 +128,6 @@ def write_csv_artifact(
     metadata: dict[str, Any] | None = None,
     directory: str = "artifacts",
 ) -> ArtifactRef:
-    """Write a Polars DataFrame as a CSV artifact and register it."""
     logical = table_logical_hash(frame)
     return _register_bytes_artifact(
         store,

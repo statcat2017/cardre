@@ -15,8 +15,8 @@ import joblib
 import numpy as np
 import polars as pl
 
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre.store.artifact_repo import ArtifactRepository
+from cardre.adapters.evidence.reader import ArtifactEvidenceReader
+from cardre.adapters.sqlite.artifact_repo import ArtifactRepo as ArtifactRepository
 
 
 def _load_estimator(store: Any, estimator_ref: dict[str, Any]) -> Any:

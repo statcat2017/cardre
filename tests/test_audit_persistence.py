@@ -18,7 +18,7 @@ pytestmark = pytest.mark.xfail(reason="Old execution path; needs Batch 05 rewrit
 
 
 def _make_store(project_root: Path):
-    from cardre.store.db import ProjectStore
+    from cardre.adapters.sqlite.connection import ProjectStore
     store = ProjectStore(project_root / "test.cardre")
     store.initialize()
     return store
@@ -110,8 +110,8 @@ def test_fallback_fingerprint_clears_output_hashes(tmp_path, monkeypatch):
     # The step will succeed (noop), then the first record call fails,
     # the fallback retry succeeds.  The persisted failed step should
     # have empty output_artifact_logical_hashes.
-    from cardre.store.run_repo import RunRepository
-    from cardre.store.run_step_repo import RunStepRepository
+    from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
+    from cardre.adapters.sqlite.run_step_repo import RunStepRepo as RunStepRepository
 
     run_id = RunRepository(store).create(pv_id)
     executor.run_plan_version(pv_id, run_id, force=True)

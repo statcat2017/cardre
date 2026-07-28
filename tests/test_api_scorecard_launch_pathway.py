@@ -15,7 +15,8 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from cardre._evidence.schemas import (
+from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.evidence.schemas import (
     SCHEMA_CALIBRATION_DIAGNOSTICS,
     SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS,
     SCHEMA_SCORE_TABLE,
@@ -24,8 +25,10 @@ from cardre._evidence.schemas import (
     SCHEMA_SEPARATION_DIAGNOSTICS,
     SCHEMA_VIF_DIAGNOSTICS,
 )
-from cardre.domain.diagnostics import utc_now_iso
-from cardre.workflows import build_canonical_scorecard_steps, canonical_scorecard_step_ids
+from cardre.domain.plans.scorecard_pathway import (
+    build_canonical_scorecard_steps,
+    canonical_scorecard_step_ids,
+)
 
 pytestmark = pytest.mark.governance
 
@@ -86,8 +89,8 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
     # 4. Seed a committed plan version with the scorecard graph.
     #    There is no "add step" API route, so we open the store directly
     #    and use PlanRepository — acceptable for test setup.
-    from cardre.store.db import ProjectStore
-    from cardre.store.plan_repo import PlanRepository
+    from cardre.adapters.sqlite.connection import ProjectStore
+    from cardre.adapters.sqlite.plan_repo import PlanRepo as PlanRepository
     store = ProjectStore(project_dir)
     store.open()
     try:
@@ -370,8 +373,8 @@ def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_pa
     assert resp.status_code == 201, resp.text
     plan_id = resp.json()["plan_id"]
 
-    from cardre.store.db import ProjectStore
-    from cardre.store.plan_repo import PlanRepository
+    from cardre.adapters.sqlite.connection import ProjectStore
+    from cardre.adapters.sqlite.plan_repo import PlanRepo as PlanRepository
     store = ProjectStore(project_dir)
     store.open()
     try:
@@ -401,7 +404,7 @@ def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_pa
         limitation_codes = importlib.import_module("cardre.readiness.limitation_codes")
         collector = importlib.import_module("cardre.reporting.collector")
         renderer = importlib.import_module("cardre.reporting.renderer_html")
-        branch_repo_module = importlib.import_module("cardre.store.branch_repo")
+        branch_repo_module = importlib.import_module("cardre.adapters.sqlite.branch_repo")
         check_report_readiness = readiness.check_report_readiness
         LimitationCode = limitation_codes.LimitationCode
         generate_report_bundle = collector.generate_report_bundle

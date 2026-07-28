@@ -17,7 +17,7 @@ class TestSidecarEntrypoint:
 
         monkeypatch.setattr(sidecar_main.uvicorn, "run", fake_run)
         monkeypatch.setattr(
-            sidecar_main.CardreConfig,
+            sidecar_main.Settings,
             "from_env",
             classmethod(lambda cls: cls(api_host="127.0.0.1", api_port=8752)),
         )

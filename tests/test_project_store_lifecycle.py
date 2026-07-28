@@ -6,13 +6,14 @@ import uuid
 
 import pytest
 
+from cardre.adapters.sqlite.connection import ProjectStore
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.store.db import ProjectStore
 
 
 def test_api_request_closes_store_after_dependency_exit(raw_project_path, api_client, store, monkeypatch):
-    from cardre.config import CardreConfig
-    from cardre.services.project_resolver import ProjectResolver
+    from cardre.application.project_resolver import ProjectResolver
+
+    from cardre.bootstrap.settings import Settings
 
     project_id = str(uuid.uuid4())
     now = utc_now_iso()
@@ -20,7 +21,7 @@ def test_api_request_closes_store_after_dependency_exit(raw_project_path, api_cl
         "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
         (project_id, "Lifecycle Project", now, "0.2.0"),
     )
-    resolver = ProjectResolver(CardreConfig.from_env().registry_path)
+    resolver = ProjectResolver(Settings.from_env().registry_path)
     resolver.register_project(project_id, store.root)
     store.close()
 
@@ -109,7 +110,7 @@ def test_api_dependency_closes_store_on_handler_error(api_client, tmp_path, monk
         raise RuntimeError("boom")
 
     monkeypatch.setattr(ProjectStore, "close", close_spy)
-    from cardre.store.run_repo import RunRepository
+    from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
     monkeypatch.setattr(RunRepository, "list_for_project", boom)
 
     with pytest.raises(RuntimeError, match="boom"):

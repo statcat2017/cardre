@@ -22,7 +22,7 @@ pytestmark = pytest.mark.xfail(reason="Old execution path; needs Batch 05 rewrit
 
 
 def _make_store(project_root: Path):
-    from cardre.store.db import ProjectStore
+    from cardre.adapters.sqlite.connection import ProjectStore
     store = ProjectStore(project_root / "test.cardre")
     store.initialize()
     return store
@@ -58,7 +58,7 @@ def _seed_minimal_plan(store):
 
 class TestRunPlanDecision:
     def test_fresh_full_plan_sync_and_async_same_result(self, tmp_path):
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
 
         store = _make_store(tmp_path / "sync")
         pv_id = _seed_minimal_plan(store)
@@ -76,7 +76,7 @@ class TestRunPlanDecision:
         assert async_summary.status == "running"
 
     def test_draft_version_sync_and_async_raise_same_error(self, tmp_path):
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
 
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
@@ -92,7 +92,7 @@ class TestRunPlanDecision:
             coordinator.run(pv_id, sync=False)
 
     def test_plan_decision_type_exists(self, tmp_path):
-        from cardre.services.run_coordinator import RunPlanDecision
+        from cardre.application.run_coordinator import RunPlanDecision
 
         decision = RunPlanDecision(kind="execute")
         assert decision.kind == "execute"

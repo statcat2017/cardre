@@ -19,7 +19,7 @@ pytestmark = pytest.mark.xfail(reason="Old execution path; needs Batch 05 rewrit
 
 
 def _make_store(project_root: Path):
-    from cardre.store.db import ProjectStore
+    from cardre.adapters.sqlite.connection import ProjectStore
     store = ProjectStore(project_root / "test.cardre")
     store.initialize()
     return store
@@ -48,7 +48,7 @@ def _seed_minimal_plan(store):
 
 def test_duplicate_run_step_insert_fails(tmp_path):
     """Saving a run_step with an existing run_step_id must fail, not replace (#213)."""
-    from cardre.store.run_step_repo import RunStepRepository
+    from cardre.adapters.sqlite.run_step_repo import RunStepRepo as RunStepRepository
 
     store = _make_store(tmp_path)
     pv_id = _seed_minimal_plan(store)

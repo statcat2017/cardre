@@ -31,7 +31,7 @@ pytestmark = pytest.mark.xfail(reason="Execution path rewritten in Batch 05; tes
 
 def _make_store(project_root: Path):
     """Create a fresh store with a plan version ready for execution."""
-    from cardre.store.db import ProjectStore
+    from cardre.adapters.sqlite.connection import ProjectStore
     store = ProjectStore(project_root / "test.cardre")
     store.initialize()
     return store
@@ -329,7 +329,7 @@ class TestPlanExecutor:
             from cardre.execution.run_step_writer import write_run_step
         except ImportError:
             write_run_step = None  # xfail: removed in Batch 05
-        from cardre.store.evidence_repo import EvidenceRepository
+        from cardre.adapters.sqlite.evidence_repo import EvidenceRepo as EvidenceRepository
 
         store = _make_store(tmp_path)
         evidence_repo = EvidenceRepository(store)
@@ -373,7 +373,7 @@ class TestPlanExecutor:
             (pv_id, step_split, step_child, 0),
         )
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run_repo = RunRepository(store)
         run_id = run_repo.create(pv_id)
 
@@ -492,7 +492,7 @@ class TestPlanExecutor:
         input_path = _write_input_csv(tmp_path)
         pv_id, step_ids = _seed_plan_version(store, input_path)
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run_repo = RunRepository(store)
         run_id = run_repo.create(pv_id)
 
@@ -548,14 +548,14 @@ class TestPlanExecutor:
         input_path = _write_input_csv(tmp_path)
         pv_id, step_ids = _seed_plan_version(store, input_path)
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run_repo = RunRepository(store)
         run_id = run_repo.create(pv_id)
 
         executor = PlanExecutor(store)
         executor.run_plan_version(pv_id, run_id)
 
-        from cardre.store.run_step_repo import RunStepRepository
+        from cardre.adapters.sqlite.run_step_repo import RunStepRepo as RunStepRepository
         rs_repo = RunStepRepository(store)
         steps = rs_repo.get_for_run(run_id)
         step_order = [rs.step_id for rs in steps]
@@ -570,14 +570,14 @@ class TestPlanExecutor:
         input_path = _write_input_csv(tmp_path)
         pv_id, step_ids = _seed_plan_version(store, input_path)
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run_repo = RunRepository(store)
         run_id = run_repo.create(pv_id)
 
         executor = PlanExecutor(store)
         executor.run_plan_version(pv_id, run_id)
 
-        from cardre.store.run_step_repo import RunStepRepository
+        from cardre.adapters.sqlite.run_step_repo import RunStepRepo as RunStepRepository
         rs_repo = RunStepRepository(store)
         for rs in rs_repo.get_for_run(run_id):
             fp = rs.execution_fingerprint
@@ -593,7 +593,7 @@ class TestPlanExecutor:
         input_path = _write_input_csv(tmp_path)
         pv_id, step_ids = _seed_plan_version(store, input_path)
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run_repo = RunRepository(store)
         run_id = run_repo.create(pv_id)
 
@@ -601,7 +601,7 @@ class TestPlanExecutor:
         executor.run_plan_version(pv_id, run_id)
 
         # All steps should be recorded for the real launch path.
-        from cardre.store.run_step_repo import RunStepRepository
+        from cardre.adapters.sqlite.run_step_repo import RunStepRepo as RunStepRepository
         rs_repo = RunStepRepository(store)
         steps = rs_repo.get_for_run(run_id)
         assert len(steps) == 3
@@ -659,14 +659,14 @@ class TestPlanExecutor:
                 (pv_id, parent, child, order),
             )
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run_repo = RunRepository(store)
         run_id = run_repo.create(pv_id)
 
         executor = PlanExecutor(store)
         executor.run_plan_version(pv_id, run_id)
 
-        from cardre.store.run_step_repo import RunStepRepository
+        from cardre.adapters.sqlite.run_step_repo import RunStepRepo as RunStepRepository
         rs_repo = RunStepRepository(store)
         steps = rs_repo.get_for_run(run_id)
         assert len(steps) == 3

@@ -8,7 +8,7 @@ from cardre.domain.diagnostics import utc_now_iso
 
 class TestArtifactRepository:
     def test_register_and_get(self, store):
-        from cardre.store.artifact_repo import ArtifactRepository
+        from cardre.adapters.sqlite.artifact_repo import ArtifactRepo as ArtifactRepository
         repo = ArtifactRepository(store)
         ref = ArtifactRef(
             artifact_id=str(uuid.uuid4()), artifact_type="test", role="test",
@@ -27,7 +27,7 @@ class TestArtifactRepository:
         assert missing is None
 
     def test_list(self, store):
-        from cardre.store.artifact_repo import ArtifactRepository
+        from cardre.adapters.sqlite.artifact_repo import ArtifactRepo as ArtifactRepository
         repo = ArtifactRepository(store)
         ref1 = ArtifactRef(
             artifact_id="a1", artifact_type="t1", role="r1", path="/p1",
@@ -43,8 +43,8 @@ class TestArtifactRepository:
         assert len(all_artifacts) == 2
 
     def test_register_lineage(self, store):
-        from cardre.store.artifact_repo import ArtifactRepository
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.artifact_repo import ArtifactRepo as ArtifactRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         project_id = str(uuid.uuid4())
         now = utc_now_iso()
         store.execute(
@@ -87,8 +87,8 @@ class TestArtifactRepository:
         assert any(item["direction"] == "output" for item in lineage)
 
     def test_list_for_project(self, store):
-        from cardre.store.artifact_repo import ArtifactRepository
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.artifact_repo import ArtifactRepo as ArtifactRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
 
         project_id = str(uuid.uuid4())
         now = utc_now_iso()

@@ -16,16 +16,16 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from cardre._evidence.schemas import SCHEMA_MODELLING_METADATA
 from cardre.adapters.evidence.reader import EvidenceReader
+from cardre.adapters.sqlite.artifact_repo import ArtifactRepo as ArtifactRepository
 from cardre.application.execution.input_collection import StepInputCollection
 from cardre.application.ports.unit_of_work import ArtifactRepoPort, RunStepRepoPort
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.evidence.schemas import SCHEMA_MODELLING_METADATA
 from cardre.domain.step import StepSpec
 from cardre.nodes.build.models import LogisticRegressionNode
 from cardre.nodes.contracts import NodeContext, RuntimeMeta
-from cardre.store.artifact_repo import ArtifactRepository
 
 
 def _seed_project_and_plan(store) -> tuple[str, str]:
@@ -96,7 +96,7 @@ class _TestStagedArtifactWriter:
 
     def stage_json(self, role: str, kind: str, payload: dict,
                    metadata: dict | None = None) -> ArtifactRef:
-        from cardre.artifacts import write_json_artifact
+        from cardre.adapters.filesystem.artifact_writer import write_json_artifact
         art = write_json_artifact(
             self._store,
             artifact_type=role,
@@ -201,7 +201,7 @@ def test_logistic_regression_model_artifact_shape(
 
     artifact_reader = _TestArtifactReader(store)
     artifact_repo: ArtifactRepoPort = repo
-    from cardre.store.run_step_repo import RunStepRepository
+    from cardre.adapters.sqlite.run_step_repo import RunStepRepo as RunStepRepository
     run_step_repo: RunStepRepoPort = RunStepRepository(store)
 
     evidence_reader = EvidenceReader(

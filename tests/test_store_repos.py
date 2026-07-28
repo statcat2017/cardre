@@ -9,13 +9,13 @@ from cardre.domain.diagnostics import utc_now_iso
 
 class TestRunRepo:
     def test_get_nonexistent_run(self, store):
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run = RunRepository(store).get("nonexistent")
         assert run is None
 
     def test_create_and_get_run(self, committed_plan_version):
         _, _, pv_id, store, _ = committed_plan_version()
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         repo = RunRepository(store)
         run_id = repo.create(pv_id, run_scope="full_plan", force=True)
         run = repo.get(run_id)
@@ -24,8 +24,8 @@ class TestRunRepo:
         assert run["run_scope"] == "full_plan"
 
     def test_transition_updates_status(self, committed_plan_version):
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         from cardre.domain.run import RunStatus
-        from cardre.store.run_repo import RunRepository
         _, _, pv_id, store, _ = committed_plan_version()
         repo = RunRepository(store)
         run_id = repo.create(pv_id)
@@ -34,7 +34,7 @@ class TestRunRepo:
         assert run["status"] == "interrupted"
 
     def test_finish_updates_status(self, committed_plan_version):
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         _, _, pv_id, store, _ = committed_plan_version()
         repo = RunRepository(store)
         run_id = repo.create(pv_id)
@@ -44,8 +44,8 @@ class TestRunRepo:
         assert run["finished_at"] is not None
 
     def test_transition_returns_false_when_not_running(self, committed_plan_version):
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         from cardre.domain.run import RunStatus
-        from cardre.store.run_repo import RunRepository
         _, _, pv_id, store, _ = committed_plan_version()
         repo = RunRepository(store)
         run_id = repo.create(pv_id)
@@ -53,8 +53,8 @@ class TestRunRepo:
         assert not repo.transition(run_id, RunStatus.FAILED)
 
     def test_transition_rejects_illegal_move(self, committed_plan_version):
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         from cardre.domain.run import RunStatus
-        from cardre.store.run_repo import RunRepository
         _, _, pv_id, store, _ = committed_plan_version()
         repo = RunRepository(store)
         run_id = repo.create(pv_id)
@@ -63,8 +63,8 @@ class TestRunRepo:
             repo.transition(run_id, RunStatus.CREATED)
 
     def test_transition_expected_from_guards(self, committed_plan_version):
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         from cardre.domain.run import RunStatus
-        from cardre.store.run_repo import RunRepository
         _, _, pv_id, store, _ = committed_plan_version()
         repo = RunRepository(store)
         run_id = repo.create(pv_id)
@@ -72,7 +72,7 @@ class TestRunRepo:
         assert not repo.transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
 
     def test_list_for_plan_version_all(self, store):
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         repo = RunRepository(store)
         runs = repo.list_for_plan_version()
         assert isinstance(runs, list)
@@ -86,7 +86,7 @@ class TestRunRepo:
             "VALUES (?, ?, 'test', '1', 'fit', '{}', 'abc', '', 0, ?)",
             ("step-a", pv_id, "step-a"),
         )
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         repo = RunRepository(store)
         run_id = repo.create(pv_id)
         rs_id = str(uuid.uuid4())
@@ -103,7 +103,7 @@ class TestRunRepo:
 
     def test_diagnostics_round_trip(self, committed_plan_version):
         _, _, pv_id, store, _ = committed_plan_version()
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         repo = RunRepository(store)
         run_id = repo.create(pv_id)
         repo.append_diagnostic(run_id, {
@@ -116,7 +116,7 @@ class TestRunRepo:
         assert diags[0]["extra_field"] == "val"
 
     def test_run_repo_empty_queries(self, store):
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         repo = RunRepository(store)
         assert repo.get("nonexistent") is None
         assert repo.get_active_step("nonexistent") is None
@@ -126,7 +126,7 @@ class TestRunRepo:
         assert repo.get_latest_successful_id("nonexistent") is None
 
     def test_run_repo_set_active_step(self, committed_plan_version):
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         _, _, pv_id, store, _ = committed_plan_version()
         repo = RunRepository(store)
         run_id = repo.create(pv_id)
@@ -137,8 +137,8 @@ class TestRunRepo:
         assert repo.get_active_step(run_id) is None
 
     def test_run_step_repo_latest_successful(self, committed_plan_version):
-        from cardre.store.run_repo import RunRepository
-        from cardre.store.run_step_repo import RunStepRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
+        from cardre.adapters.sqlite.run_step_repo import RunStepRepo as RunStepRepository
         _, _, pv_id, store, _ = committed_plan_version()
         now = utc_now_iso()
         store.execute(
@@ -164,8 +164,8 @@ class TestRunRepo:
         assert rs_repo.get_latest_successful_step("nonexistent-pv", "step-x") is None
 
     def test_run_step_repo_get_and_get_for_run(self, committed_plan_version):
-        from cardre.store.run_repo import RunRepository
-        from cardre.store.run_step_repo import RunStepRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
+        from cardre.adapters.sqlite.run_step_repo import RunStepRepo as RunStepRepository
         _, _, pv_id, store, _ = committed_plan_version()
         now = utc_now_iso()
         run_id = RunRepository(store).create(pv_id)
@@ -188,7 +188,7 @@ class TestRunRepo:
 
 class TestStepRepo:
     def test_get_steps_empty(self, store):
-        from cardre.store.step_repo import StepRepository
+        from cardre.adapters.sqlite.step_repo import StepRepo as StepRepository
         repo = StepRepository(store)
         steps = repo.get_steps("nonexistent")
         assert steps == []
@@ -202,7 +202,7 @@ class TestStepRepo:
                 "VALUES (?, ?, 'test', '1', 'fit', '{}', 'h', '', 0, ?)",
                 (sid, pv_id, sid),
             )
-        from cardre.store.step_repo import StepRepository
+        from cardre.adapters.sqlite.step_repo import StepRepo as StepRepository
         repo = StepRepository(store)
         repo.insert_edge(pv_id, "parent-a", "child-b", edge_order=0)
         repo.insert_edge(pv_id, "parent-a", "child-c", edge_order=1)
@@ -221,7 +221,7 @@ class TestStepRepo:
             "VALUES (?, ?, 'cardre.noop', '1', 'transform', '{}', 'h', '', 0, ?)",
             ("s1", pv_id, "s1"),
         )
-        from cardre.store.step_repo import StepRepository
+        from cardre.adapters.sqlite.step_repo import StepRepo as StepRepository
         repo = StepRepository(store)
         types = repo.get_distinct_node_types(project_id)
         assert any(t["node_type"] == "cardre.noop" for t in types)
@@ -235,7 +235,7 @@ class TestStepRepo:
                 "VALUES (?, ?, 'test', '1', 'fit', '{}', 'h', '', 0, ?)",
                 (sid, pv_id, sid),
             )
-        from cardre.store.step_repo import StepRepository
+        from cardre.adapters.sqlite.step_repo import StepRepo as StepRepository
         repo = StepRepository(store)
         repo.insert_edge(pv_id, "a", "b", 0)
         all_edges = repo.get_all_edges(pv_id)
@@ -247,24 +247,24 @@ class TestStepRepo:
 @pytest.mark.governance
 class TestBranchRepo:
     def test_get_nonexistent_branch(self, store):
-        from cardre.store.branch_repo import BranchRepository
+        from cardre.adapters.sqlite.branch_repo import BranchRepo as BranchRepository
         branch = BranchRepository(store).get_branch("nonexistent")
         assert branch is None
 
     def test_get_plan_version_ids(self, store):
-        from cardre.store.branch_repo import BranchRepository
+        from cardre.adapters.sqlite.branch_repo import BranchRepo as BranchRepository
         repo = BranchRepository(store)
         ids = repo.get_plan_version_ids("nonexistent-branch")
         assert ids == []
 
     def test_get_step_map_empty(self, store):
-        from cardre.store.branch_repo import BranchRepository
+        from cardre.adapters.sqlite.branch_repo import BranchRepo as BranchRepository
         step_map = BranchRepository(store).get_step_map("nonexistent-branch", "nonexistent-pv")
         assert step_map == []
 
     def test_create_and_list_branches(self, committed_plan_version):
         project_id, plan_id, pv_id, store, _ = committed_plan_version()
-        from cardre.store.branch_repo import BranchRepository
+        from cardre.adapters.sqlite.branch_repo import BranchRepo as BranchRepository
         repo = BranchRepository(store)
         branch_id = repo.create_branch(
             project_id, plan_id, "test-branch", "challenger",
@@ -290,7 +290,7 @@ class TestBranchRepo:
 
     def test_create_step_map_and_get(self, committed_plan_version):
         project_id, plan_id, pv_id, store, _ = committed_plan_version()
-        from cardre.store.branch_repo import BranchRepository
+        from cardre.adapters.sqlite.branch_repo import BranchRepo as BranchRepository
         repo = BranchRepository(store)
         branch_id = repo.create_branch(
             project_id, plan_id, "step-map-test", "challenger",
@@ -307,7 +307,7 @@ class TestBranchRepo:
         assert step_map[0]["is_branch_owned"] == 0
 
     def test_comparison_repo_edge_cases(self, store):
-        from cardre.store.comparison_repo import ComparisonRepository
+        from cardre.adapters.sqlite.comparison_repo import ComparisonRepo as ComparisonRepository
         repo = ComparisonRepository(store)
         assert repo.get_comparison("nonexistent") is None
         assert repo.get_challenger_branches("nonexistent") == []
@@ -316,7 +316,7 @@ class TestBranchRepo:
 
     def test_branch_repo_list_with_status(self, committed_plan_version):
         project_id, plan_id, pv_id, store, _ = committed_plan_version()
-        from cardre.store.branch_repo import BranchRepository
+        from cardre.adapters.sqlite.branch_repo import BranchRepo as BranchRepository
         repo = BranchRepository(store)
         repo.create_branch(project_id, plan_id, "test", "challenger",
                            base_plan_version_id=pv_id, head_plan_version_id=pv_id, created_reason="test")
@@ -326,7 +326,7 @@ class TestBranchRepo:
     def test_branch_repo_update_head(self, committed_plan_version):
         project_id, plan_id, pv_id, store, _ = committed_plan_version()
         now = utc_now_iso()
-        from cardre.store.branch_repo import BranchRepository
+        from cardre.adapters.sqlite.branch_repo import BranchRepo as BranchRepository
         repo = BranchRepository(store)
         branch_id = repo.create_branch(
             project_id, plan_id, "head-test", "challenger",
@@ -343,8 +343,8 @@ class TestBranchRepo:
         assert branch["head_plan_version_id"] == new_pv_id
 
     def test_branch_repo_champion_and_comparison_methods(self, store):
-        from cardre.store.champion_repo import ChampionRepository
-        from cardre.store.comparison_repo import ComparisonRepository
+        from cardre.adapters.sqlite.champion_repo import ChampionRepo as ChampionRepository
+        from cardre.adapters.sqlite.comparison_repo import ComparisonRepo as ComparisonRepository
         champion_repo = ChampionRepository(store)
         assert champion_repo.get_champion_assignment_for_project("nonexistent") is None
         assert champion_repo.get_champion_assignment("nonexistent-plan") is None
@@ -356,11 +356,11 @@ class TestBranchRepo:
         assert comparison_repo.get_comparison_snapshots("nonexistent") == []
 
     def test_comparison_repo_full_lifecycle(self, committed_plan_version):
+        from cardre.adapters.sqlite.comparison_repo import ComparisonRepo as ComparisonRepository
         from cardre.domain.diagnostics import utc_now_iso
-        from cardre.store.comparison_repo import ComparisonRepository
         project_id, plan_id, pv_id, store, _ = committed_plan_version()
         now = utc_now_iso()
-        from cardre.store.branch_repo import BranchRepository
+        from cardre.adapters.sqlite.branch_repo import BranchRepo as BranchRepository
         branch_repo = BranchRepository(store)
         baseline_id = branch_repo.create_branch(
             project_id, plan_id, "baseline", "baseline",
@@ -408,19 +408,19 @@ class TestRepoEdgeCases:
     """Generic repository edge-case tests — not governance-related."""
 
     def test_evidence_repo_edge_cases(self, store):
-        from cardre.store.evidence_repo import EvidenceRepository
+        from cardre.adapters.sqlite.evidence_repo import EvidenceRepo as EvidenceRepository
         repo = EvidenceRepository(store)
         assert repo.get_edge_for_child_parent("pv", "child", "parent") is None
         assert repo.get_edges_for_plan_step("pv", "step") == []
 
     def test_project_registry_edge_cases(self, tmp_path):
-        from cardre.store.project_registry import ProjectRegistry
+        from cardre.adapters.system.project_registry import JsonProjectRegistry as ProjectRegistry
         registry = ProjectRegistry(tmp_path / "registry.json")
         assert registry.list_all() == {}
         assert registry.resolve_root("nonexistent") is None
 
     def test_project_repo_edge_cases(self, store):
-        from cardre.store.project_repo import ProjectRepository
+        from cardre.adapters.sqlite.project_repo import ProjectRepo as ProjectRepository
         repo = ProjectRepository(store)
         pid = repo.create("Test")
         p = repo.get(pid)
@@ -434,8 +434,8 @@ class TestSchemaMigration:
     def test_v100_store_migrated_to_v101_adds_active_step_id(self, tmp_path):
         """A store created at schema version 100 is migrated to 101 on open,
         adding the ``active_step_id`` column to the ``runs`` table."""
-        from cardre.store.db import ProjectStore
-        from cardre.store.schema import V2_STORE_SCHEMA_FAMILY
+        from cardre.adapters.sqlite.connection import ProjectStore
+        from cardre.adapters.sqlite.schema import V2_STORE_SCHEMA_FAMILY
 
         store_root = tmp_path / "v100.cardre"
         store_root.mkdir(parents=True)
@@ -476,10 +476,10 @@ class TestSchemaMigration:
         store = ProjectStore(store_root)
         store.open()
 
-        from cardre.store.schema import V2_STORE_SCHEMA_VERSION
+        from cardre.adapters.sqlite.schema import V2_STORE_SCHEMA_VERSION
         assert V2_STORE_SCHEMA_VERSION == 101
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         repo = RunRepository(store)
         assert repo.get_active_step("r1") is None
         repo.set_active_step("r1", "step-x")

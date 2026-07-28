@@ -25,7 +25,7 @@ pytestmark = pytest.mark.xfail(reason="Uses RunCoordinator which was removed in 
 
 
 def _make_store(project_root: Path):
-    from cardre.store.db import ProjectStore
+    from cardre.adapters.sqlite.connection import ProjectStore
     store = ProjectStore(project_root / "test.cardre")
     store.initialize()
     return store
@@ -111,7 +111,7 @@ class TestRunCoordinatorSync:
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         summary = coordinator.run(pv_id, sync=True)
 
@@ -124,12 +124,12 @@ class TestRunCoordinatorSync:
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         summary = coordinator.run(pv_id, sync=True)
 
         # Should have step records
-        from cardre.store.run_step_repo import RunStepRepository
+        from cardre.adapters.sqlite.run_step_repo import RunStepRepo as RunStepRepository
         rs_repo = RunStepRepository(store)
         steps = rs_repo.get_for_run(summary.run_id)
         assert len(steps) == 1
@@ -138,7 +138,7 @@ class TestRunCoordinatorSync:
     def test_plan_not_found_raises(self, tmp_path):
         store = _make_store(tmp_path)
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         with pytest.raises(CardreError, match="not found"):
             coordinator.run("nonexistent", sync=True)
@@ -151,7 +151,7 @@ class TestRunCoordinatorSync:
             (pv_id,),
         )
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         with pytest.raises(PlanVersionNotCommittedError):
             coordinator.run(pv_id, sync=True)
@@ -165,11 +165,11 @@ class TestExecuteCreatedRun:
         pv_id = _seed_minimal_plan(store)
 
         # Manually create a run in the DB
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run_repo = RunRepository(store)
         run_id = run_repo.create(pv_id)
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         summary = coordinator.execute_created_run(run_id)
 
@@ -179,7 +179,7 @@ class TestExecuteCreatedRun:
     def test_execute_nonexistent_run_raises(self, tmp_path):
         store = _make_store(tmp_path)
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         with pytest.raises(CardreError, match="not found"):
             coordinator.execute_created_run("nonexistent-run")
@@ -196,7 +196,7 @@ class TestExecuteCreatedRun:
             (run_id, pv_id, utc_now_iso(), utc_now_iso(), utc_now_iso()),
         )
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         with pytest.raises(CardreError, match="not running"):
             coordinator.execute_created_run(run_id)
@@ -207,12 +207,12 @@ class TestExecuteCreatedRun:
         pv_id = _seed_minimal_plan(store)
 
         # Create a run via RunCoordinator
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         summary = coordinator.run(pv_id, sync=True, requested_by="test-user")
 
         # Check that requested_by was stored in the column
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run = RunRepository(store).get(summary.run_id)
         assert run is not None
         assert run["requested_by"] == "test-user"
@@ -222,11 +222,11 @@ class TestExecuteCreatedRun:
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         summary = coordinator.run(pv_id, sync=True)
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run = RunRepository(store).get(summary.run_id)
         assert run is not None
         assert run["run_scope"] == "full_plan"
@@ -241,7 +241,7 @@ class TestShortCircuit:
         pv_id, branch_id, branch_run_id = _seed_current_branch_runs(store)
         monkeypatch.setenv("CARDRE_GOVERNANCE", "1")
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
 
         coordinator = RunCoordinator(store)
         summary = coordinator.run(
@@ -259,8 +259,8 @@ class TestShortCircuit:
         pv_id, branch_id, branch_run_id = _seed_current_branch_runs(store)
         monkeypatch.setenv("CARDRE_GOVERNANCE", "1")
 
-        from cardre.services.run_coordinator import RunCoordinator
-        from cardre.services.staleness_service import StalenessExplanation, StalenessService
+        from cardre.application.run_coordinator import RunCoordinator
+        from cardre.application.staleness_service import StalenessExplanation, StalenessService
 
         def fake_explain_step(self, plan_version_id, step_id, *, branch_id=None, plan_id=None):
             return StalenessExplanation(
@@ -301,14 +301,14 @@ class TestStaleRecovery:
             (run_id, pv_id, old_time, old_time, old_time),
         )
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         # Running a new plan should recover the stale run
         summary = coordinator.run(pv_id, sync=True)
         assert summary.run_id is not None
 
         # The stale run should have been interrupted
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         stale_run = RunRepository(store).get(run_id)
         assert stale_run["status"] == "interrupted"
 
@@ -342,14 +342,14 @@ class TestStaleRecovery:
             (live_run_id, pv_id, old_time, old_time, live_time),
         )
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         with pytest.raises(Exception) as exc_info:
             coordinator.run(pv_id, sync=True)
         assert "already in progress" in str(exc_info.value)
 
         # The stale run must still be interrupted — sweep committed independently
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         stale_run = RunRepository(store).get(stale_run_id)
         assert stale_run["status"] == "interrupted"
 
@@ -365,7 +365,7 @@ class TestAsyncDispatch:
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         summary = coordinator.run(pv_id, sync=False)
 
@@ -382,7 +382,7 @@ class TestRunSummary:
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
         coordinator = RunCoordinator(store)
         summary = coordinator.run(pv_id, sync=True)
 
@@ -397,7 +397,7 @@ class TestRunSummary:
         store = _make_store(tmp_path)
         pv_id = _seed_minimal_plan(store)
 
-        from cardre.services.run_coordinator import RunCoordinator
+        from cardre.application.run_coordinator import RunCoordinator
 
         from cardre.domain.run import RunStepStatus
         from cardre.execution.executor import PlanExecutor

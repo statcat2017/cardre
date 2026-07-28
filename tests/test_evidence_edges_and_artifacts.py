@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cardre.store.evidence_repo import EvidenceRepository
+from cardre.adapters.sqlite.evidence_repo import EvidenceRepo as EvidenceRepository
 
 
 def test_evidence_edges_and_artifacts_round_trip(store_with_evidence) -> None:

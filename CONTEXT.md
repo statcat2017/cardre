@@ -26,7 +26,7 @@ This is the **only** lineage source. No JSON arrays on `run_steps`. Staleness is
 
 ### EvidenceAdapter
 
-- **EvidenceAdapter**: the concrete thing at the evidence seam — one per `EvidenceKind`, owns matching (which artifact in a list is this kind) and parsing (artifact bytes → typed dataclass). Registered in `cardre/_evidence/adapters/` via the `EVIDENCE_ADAPTERS` registry. `ArtifactEvidenceReader` is the thin dispatcher + `artifact_lineage` resolver that delegates to adapters.
+- **EvidenceAdapter**: the concrete thing at the evidence seam — one per `EvidenceKind`, owns matching (which artifact in a list is this kind) and parsing (artifact bytes → typed dataclass). Registered in `cardre/adapters/evidence/parsers.py` via the `EVIDENCE_ADAPTERS` registry. `EvidenceReader` is the thin dispatcher + `artifact_lineage` resolver that delegates to adapters.
 
 ## Relational Relationship Tables
 

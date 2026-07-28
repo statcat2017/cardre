@@ -59,12 +59,12 @@ cd frontend && npm install && npm run dev
 - **`cardre/`** — pure-Python scorecard engine (no GUI dependency)
   - `cardre/domain/` — domain kernel: Project, Plan, PlanVersion, Run, Artifact, StepSpec, evidence models, errors
   - `cardre/nodes/` — node registry + plugin implementations (launch and deferred tiers)
-  - `cardre/services/` — stateless business logic: RunCoordinator, StalenessService, PlanMutationService, BranchService, ComparisonService, ChampionService, ManualBinningService, ExportService
-  - `cardre/store/` — SQLite-backed ProjectStore with per-table repositories (PlanRepository, BranchRepository, ComparisonRepository, etc.)
-  - `cardre/execution/` — execution engine: PlanExecutor, RunLifecycle, Worker
-  - `cardre/api/` — FastAPI route definitions (project-scoped)
-  - `cardre/reporting/` — report rendering and collector
-  - `cardre/_evidence/` — evidence kinds, models, reader, schemas
+  - `cardre/domain/` — domain kernel: plans, runs, steps, evidence, binning, artifacts
+  - `cardre/nodes/` — node implementations (prep, build, validate, selection, ML)
+  - `cardre/application/` — use cases + port interfaces
+  - `cardre/adapters/` — adapter implementations: sqlite repos, filesystem artifact store, evidence parsing, dispatch, reporting, rendering
+  - `cardre/api/` — FastAPI route handlers (thin, calling use cases)
+  - `cardre/bootstrap/` — composition root: settings, container, build_app, node_catalogue
 - **`sidecar/`** — FastAPI local API server (bundled as sidecar binary via PyInstaller)
 - **`frontend/`** — React + TypeScript UI (Vite)
 - **`frontend/src-tauri/`** — Tauri v2 Rust desktop shell

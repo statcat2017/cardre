@@ -30,7 +30,7 @@ pytestmark = pytest.mark.xfail(reason="Execution path rewritten in Batch 05; tes
 
 
 def _make_store(project_root: Path):
-    from cardre.store.db import ProjectStore
+    from cardre.adapters.sqlite.connection import ProjectStore
     store = ProjectStore(project_root / "test.cardre")
     store.initialize()
     return store
@@ -86,7 +86,7 @@ class TestRunLifecycle:
             (pv_id, plan_id, now),
         )
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run_id = RunRepository(store).create(pv_id)
         lifecycle = RunLifecycle.start(store, pv_id, run_id=run_id)
         assert lifecycle.run_id == run_id
@@ -106,7 +106,7 @@ class TestRunLifecycle:
         )
         lifecycle.finalise("succeeded")
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run = RunRepository(store).get(run_id)
         assert run["status"] == "succeeded"
         assert run["finished_at"] is not None
@@ -121,7 +121,7 @@ class TestRunLifecycle:
         )
         lifecycle.finalise("cancelled")
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run = RunRepository(store).get(run_id)
         assert run["status"] == "cancelled"
 
@@ -136,7 +136,7 @@ class TestRunLifecycle:
             lifecycle.finalise("succeeded")
 
         # Verify finalised
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run = RunRepository(store).get(run_id)
         assert run["status"] == "succeeded"
 
@@ -153,7 +153,7 @@ class TestRunLifecycle:
         except ValueError:
             pass
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run = RunRepository(store).get(run_id)
         assert run["status"] == "failed"
 
@@ -168,7 +168,7 @@ class TestRunLifecycle:
         lifecycle.finalise("succeeded")
         lifecycle.finalise("succeeded")  # should not raise
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run = RunRepository(store).get(run_id)
         assert run["status"] == "succeeded"
 
@@ -210,7 +210,7 @@ class TestRunLifecycle:
             (pv_id, plan_id, now),
         )
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run_repo = RunRepository(store)
         run_id1 = run_repo.create(pv_id)
         run_id2 = run_repo.create(pv_id)
@@ -234,7 +234,7 @@ class TestFinaliseRun:
             finished_at=utc_now_iso(),
         ))
 
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run = RunRepository(store).get(run_id)
         assert run["status"] == "succeeded"
 
@@ -248,7 +248,7 @@ class TestBuildManifestPayload:
     def test_builds_manifest_dict(self, tmp_path):
         store = _make_store(tmp_path)
         _, pv_id, run_id = _seed_simple_run(store)
-        from cardre.store.run_repo import RunRepository
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         run_record = RunRepository(store).get(run_id)
 
         payload = build_manifest_payload(
@@ -296,8 +296,8 @@ class TestFinaliseValidation:
         """An invalid status string must raise and record RUN_FINALISATION_FAILED
         but leave the run non-terminal (not transitioned to failed)."""
 
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         from cardre.application.runs.finalize_run import FinalizeRun as RunLifecycle
-        from cardre.store.run_repo import RunRepository
 
         store = _make_store(tmp_path)
         _, pv_id, run_id = _seed_simple_run(store)
@@ -320,9 +320,9 @@ class TestFinaliseValidation:
         """A valid but non-terminal RunStatus must raise and record
         RUN_FINALISATION_FAILED but leave the run non-terminal."""
 
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         from cardre.application.runs.finalize_run import FinalizeRun as RunLifecycle
         from cardre.domain.run import RunStatus
-        from cardre.store.run_repo import RunRepository
 
         store = _make_store(tmp_path)
         _, pv_id, run_id = _seed_simple_run(store)
@@ -358,8 +358,8 @@ class TestConcurrentFinalisation:
             from cardre.execution.run_lifecycle import finalise_run
         except ImportError:
             finalise_run = None  # xfail: removed in Batch 05
+        from cardre.adapters.sqlite.run_repo import RunRepo as RunRepository
         from cardre.domain.errors import RunLifecycleError
-        from cardre.store.run_repo import RunRepository
 
         store = _make_store(tmp_path)
         _, pv_id, run_id = _seed_simple_run(store)

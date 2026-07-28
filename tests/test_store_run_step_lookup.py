@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import uuid
 
+from cardre.adapters.sqlite.plan_repo import PlanRepo as PlanRepository
+from cardre.adapters.sqlite.run_step_repo import RunStepRepo as RunStepRepository
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.run import RunStep, RunStepStatus
 from cardre.domain.step import StepSpec
-from cardre.store.plan_repo import PlanRepository
-from cardre.store.run_step_repo import RunStepRepository
 
 
 def test_project_store_get_latest_successful_run_step_returns_run_step(store) -> None:
