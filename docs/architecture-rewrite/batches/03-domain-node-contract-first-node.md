@@ -212,7 +212,7 @@ python3 -m pytest tests/ -q   # full suite — watch for import-breakage from th
 - Porting other nodes (Batch 04).
 - Execution runtime / `ExecuteRun` (Batch 05).
 - Use cases (Batch 05–07).
-- Routes (Batch 07).
+- Routes (7a; frontend consumption in 07b).
 - Deleting old `cardre/execution/context.py` (done here since `ExecutionContext` is replaced — but old `executor.py`/`step_runner.py` still reference it; they're rewritten in Batch 05. For this batch, leave old `execution/context.py` in place but unused by the new node. Actually: the old `ExecutionContext` is imported by old `step_runner.py`/`executor.py` which are still the live execution path. Do NOT delete `execution/context.py` yet — Batch 05 rewrites those. This batch only adds the new `NodeContext` and ports LogisticRegression to it; the old execution path is dormant for this node but still exists for others.)
 
 ## 21. Expected final report format
@@ -259,7 +259,7 @@ See §17.
 
 ## Agent boundaries
 
-Do not modify: `cardre/services/`, `cardre/store/`, `cardre/execution/executor.py`/`step_runner.py`/`run_lifecycle.py`/`worker.py` (Batch 05), `cardre/api/**` (Batch 07), other nodes (Batch 04), `cardre/config.py`, `cardre/artifacts.py` (old, dormant), frontend, sidecar.
+Do not modify: `cardre/services/`, `cardre/store/`, `cardre/execution/executor.py`/`step_runner.py`/`run_lifecycle.py`/`worker.py` (Batch 05), `cardre/api/**` (7a/07b), other nodes (Batch 04), `cardre/config.py`, `cardre/artifacts.py` (old, dormant), frontend, sidecar.
 
 ## Dependencies
 

@@ -87,7 +87,7 @@ See "Files likely to change" — the `new` entries.
 
 ## 10. Files likely to delete
 
-None. Old `cardre/store/` and `cardre/artifacts.py` stay dormant until Batch 07.
+None. Old `cardre/store/` and `cardre/artifacts.py` stay dormant until 07e.
 
 ## 11. Required implementation sequence
 
@@ -195,8 +195,8 @@ python3 -m pytest tests/test_store_schema_no_queryable_json.py -q
 - Use cases (Batch 05–07).
 - Node contracts (Batch 03).
 - Node porting (Batch 04).
-- API routes beyond health/projects (Batch 07).
-- Deleting old `cardre/store/` (Batch 07).
+- API routes beyond health/projects (7a; frontend consumption in 07b).
+- Deleting old `cardre/store/` (07e).
 - Artifact gc (document as follow-up; out of scope).
 - Manifest publisher (Batch 05).
 

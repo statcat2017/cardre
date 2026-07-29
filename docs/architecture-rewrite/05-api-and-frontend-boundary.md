@@ -89,7 +89,7 @@ New codes added per 02-domain-and-use-cases.md. `test_error_code_sync.py` keeps 
 - `frontend/src/api/client.ts` (preserved transport: `ApiError`, `fetchResponse`, `fetchJson`, `typedTransport`, `requireData`, `getBaseUrl`) uses `openapi-fetch` with generated `paths`/`components`.
 - `projectHeaders(projectId)` removed — project id is in the path.
 - `api.forProject(projectId)` returns an object whose methods call `paths['/projects/{project_id}/...']` with `params: { path: { project_id } }`.
-- Regenerate once after Batch 01 (API skeleton) and again after Batch 07 (full API). `check-api-contracts` CI job (preserved) catches drift.
+- Regenerate after the API surface changes (completed in 7a) and as part of 07b's frontend cutover. `check-api-contracts` CI job (preserved) catches drift.
 
 ## Frontend migration areas
 
@@ -104,7 +104,7 @@ New codes added per 02-domain-and-use-cases.md. `test_error_code_sync.py` keeps 
 ## When to regenerate OpenAPI
 
 - After Batch 02 (API skeleton + new schemas): regenerate to lock the new contract.
-- After Batch 07 (full API + all endpoints): regenerate again.
+- In 07b after the frontend consumes the full API surface: regenerate again.
 - `make preflight` regenerates + `git diff --exit-code` catches drift (preserved).
 
 ## Deviations from proposal

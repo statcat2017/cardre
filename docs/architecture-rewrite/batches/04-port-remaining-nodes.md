@@ -190,7 +190,7 @@ python3 -m pytest tests/ -q   # expect xfail on execution-path tests
 - `ExecuteRun` use case (Batch 05).
 - Old `execution/executor.py`/`step_runner.py`/`run_lifecycle.py`/`worker.py` rewrite (Batch 05).
 - Use cases for plans/evidence/governance/reporting (Batch 06).
-- Routes (Batch 07).
+- Routes (7a; frontend consumption in 07b).
 
 ## 21. Expected final report format
 
@@ -237,7 +237,7 @@ See §17.
 
 ## Agent boundaries
 
-Do not modify: `cardre/services/`, `cardre/store/`, `cardre/execution/executor.py`/`step_runner.py`/`run_lifecycle.py`/`worker.py` (Batch 05), `cardre/api/**` (Batch 07), `cardre/domain/` (settled), `cardre/config.py`, frontend, sidecar.
+Do not modify: `cardre/services/`, `cardre/store/`, `cardre/execution/executor.py`/`step_runner.py`/`run_lifecycle.py`/`worker.py` (Batch 05), `cardre/api/**` (7a/07b), `cardre/domain/` (settled), `cardre/config.py`, frontend, sidecar.
 
 ## Dependencies
 

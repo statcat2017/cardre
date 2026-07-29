@@ -55,11 +55,11 @@ This batch proves the hexagonal direction works: a route → use case → port �
 
 - **Architecture enforcement (absorbed from old Batch 01):**
   - Add `importlinter>=2.0` to `pyproject.toml` `[project.optional-dependencies] dev`.
-  - Create `.importlinter` with layered contracts per 01-target-architecture.md. During migration use `ignore_unmatched: true` so old packages (`cardre/services`, `cardre/store`, etc.) don't trip layering; tightened in Batch 07.
+  - Create `.importlinter` with layered contracts per 01-target-architecture.md. During migration use `ignore_unmatched: true` so old packages (`cardre/services`, `cardre/store`, etc.) don't trip layering; make it strict in 07g.
   - Add `make arch-check` target (`python3 -m importlinter --config .importlinter`); add to `preflight` and CI `lint` job.
   - Create `cardre/application/__init__.py`, `cardre/application/ports/__init__.py` (empty, docstrings).
   - Create `cardre/bootstrap/__init__.py` (empty) — done as part of bootstrap below.
-  - Extend `tests/test_canonical_contract.py` with `test_forbidden_imports_outside_adapters` (AST walk banning `ProjectStore`, `context.store`, `store.root`, `CardreConfig.from_env`, `os.environ`, `sqlite3` outside `adapters/sqlite/`, `ArtifactEvidenceReader` outside `adapters/evidence/`, old repo class names outside `adapters/sqlite/`, FastAPI/Pydantic outside `api/`). Mark `@pytest.mark.xfail(strict=False, reason="Migration in progress; enforced after Batch 07")`.
+  - Extend `tests/test_canonical_contract.py` with `test_forbidden_imports_outside_adapters` (AST walk banning `ProjectStore`, `context.store`, `store.root`, `CardreConfig.from_env`, `os.environ`, `sqlite3` outside `adapters/sqlite/`, `ArtifactEvidenceReader` outside `adapters/evidence/`, old repo class names outside `adapters/sqlite/`, FastAPI/Pydantic outside `api/`). Mark `@pytest.mark.xfail(strict=False, reason="Migration in progress; enforced in 07g")`.
   - Create `tests/test_architecture_boundaries.py` running `import-linter` CLI + asserting new packages importable.
 - **Bootstrap + API skeleton (from old Batch 02):**
   - Create all port files listed in §5.
@@ -72,7 +72,7 @@ This batch proves the hexagonal direction works: a route → use case → port �
   - Add `adapters/sqlite/schema.py` with the full clean schema (all tables, even if unused yet — Batch 02 populates query objects).
   - Regenerate OpenAPI.
   - Tests: `tests/application/test_create_project.py`, `test_list_projects.py`, `test_get_project.py` (in-memory fakes for ports); `tests/adapters/system/test_project_registry.py`; `tests/adapters/sqlite/test_connection.py`, `test_project_provisioner.py`, `test_project_repo.py`; `tests/ports/test_unit_of_work_contract.py` (in-memory fake + sqlite); `tests/ports/test_project_registry_contract.py` (in-memory + json file); `tests/api/test_projects_new.py` (TestClient against `build_app`).
-  - Delete: `cardre/api/dependencies.py:get_project_store`, `get_project_store_by_root`, `get_run_coordinator`, `require_governance` (the last two are recreated in later batches; for now routes that need them are not registered). Keep `cardre/services/project_resolver.py` and `cardre/store/project_registry.py` (dormant; deleted in Batch 07).
+  - Delete: `cardre/api/dependencies.py:get_project_store`, `get_project_store_by_root`, `get_run_coordinator`, `require_governance` (the last two are recreated in later batches; for now routes that need them are not registered). Keep `cardre/services/project_resolver.py` and `cardre/store/project_registry.py` dormant until 07e.
 
 ## 7. Files to inspect first
 
@@ -108,7 +108,7 @@ This batch proves the hexagonal direction works: a route → use case → port �
 - `cardre/api/dependencies.py` (rewrite — use-case deps)
 - `cardre/api/routes/projects.py` (rewrite — thin handlers)
 - `cardre/api/routes/health.py` (rewrite — thin handler)
-- `cardre/api/schemas.py` (trim to project/health schemas; other schemas added in Batch 07)
+- `cardre/api/schemas.py` (trim to project/health schemas; full surface added in 7a and consumed in 07b)
 - `cardre/bootstrap/settings.py` (implement fully)
 - `cardre/bootstrap/container.py` (implement `build_container`)
 - `cardre/bootstrap/build_app.py` (implement `build_app`)
@@ -132,7 +132,7 @@ See "Files likely to change" — the `new` entries.
 
 **Enforcement first (absorbed from old Batch 01):**
 
-0. Add `importlinter>=2.0` to `pyproject.toml` `[project.optional-dependencies] dev`. Create `.importlinter` with layered contracts per 01-target-architecture.md. During migration use `ignore_unmatched: true` so old packages don't trip layering; tightened in Batch 07. Add `make arch-check` target (`python3 -m importlinter --config .importlinter`); add to `preflight` + CI `lint` job. Create `cardre/application/__init__.py` + `cardre/application/ports/__init__.py` (empty, docstrings). Extend `tests/test_canonical_contract.py` with `test_forbidden_imports_outside_adapters` (AST walk, banned identifiers per §6, `@pytest.mark.xfail(strict=False, reason="Migration in progress; enforced after Batch 07")`). Create `tests/test_architecture_boundaries.py` running `import-linter` CLI + asserting new packages importable.
+0. Add `importlinter>=2.0` to `pyproject.toml` `[project.optional-dependencies] dev`. Create `.importlinter` with layered contracts per 01-target-architecture.md. During migration use `ignore_unmatched: true` so old packages don't trip layering; make it strict in 07g. Add `make arch-check` target (`python3 -m importlinter --config .importlinter`); add to `preflight` + CI `lint` job. Create `cardre/application/__init__.py` + `cardre/application/ports/__init__.py` (empty, docstrings). Extend `tests/test_canonical_contract.py` with `test_forbidden_imports_outside_adapters` (AST walk, banned identifiers per §6, `@pytest.mark.xfail(strict=False, reason="Migration in progress; enforced in 07g")`). Create `tests/test_architecture_boundaries.py` running `import-linter` CLI + asserting new packages importable.
 
 **Bootstrap + API skeleton:**
 
@@ -148,7 +148,7 @@ See "Files likely to change" — the `new` entries.
 10. Write `application/projects/create_project.py`: `CreateProject(provisioner, registry, uow_factory, id_generator, clock)`. `__call__(command)` validates path, calls `provisioner.initialize(root)`, opens UoW, `ProjectRepo(conn).create(name)`, commits, `registry.register(project_id, root)`, returns `Project`. Errors: `INVALID_PROJECT_PATH`, `STORE_ALREADY_EXISTS`.
 11. Write `application/projects/list_projects.py`: `ListProjects(registry, uow_factory)`. `__call__()` calls `registry.list_all()`, for each resolves root + opens read-only UoW + `ProjectRepo.get(project_id)`. Returns `list[Project]` + unavailable list (root missing).
 12. Write `application/projects/get_project.py`: `GetProject(registry, uow_factory)`. `__call__(query)` resolves root, opens read-only UoW, `ProjectRepo.get`. Returns `Project` or raises `PROJECT_NOT_FOUND`.
-13. Write `api/schemas.py` with only `HealthResponse`, `ProjectResponse`, `ProjectListResponse`, `ProjectCreateRequest`, `UnavailableProjectResponse`. (Other schemas added in Batch 07; keep the old `cardre/api/schemas.py` contents for routes not yet rewritten — but since only health/projects routes are registered, only these schemas are needed. Move old schemas to a temporary `api/_legacy_schemas.py` if needed, or keep `api/schemas.py` with both old + new and just use the new ones. Simplest: keep `api/schemas.py` as-is, add new schemas, and only use new ones in new routes.)
+13. Write `api/schemas.py` with only `HealthResponse`, `ProjectResponse`, `ProjectListResponse`, `ProjectCreateRequest`, `UnavailableProjectResponse`. (The full surface is added in 7a; 07b consumes it in the frontend.)
 14. Write `api/dependencies.py`: `get_container(request: Request) -> Container` reading `request.app.state.container`. `get_create_project`, `get_list_projects`, `get_get_project` pulling from container. Remove `get_project_store*`, `get_run_coordinator`, `require_governance`.
 15. Write `api/routes/health.py`: `GET /health` returning `HealthResponse` with version, `launch_node_count` (from `container.node_catalogue` if present else 0), `governance_enabled`.
 16. Write `api/routes/projects.py`: `POST /projects`, `GET /projects`, `GET /projects/{project_id}` as thin handlers calling use cases.
@@ -247,8 +247,8 @@ cd frontend && npx tsc --noEmit
 - Node catalogue (Batch 03+).
 - Artifact store (Batch 02).
 - Heartbeat/dispatcher (Batch 05).
-- Frontend component changes (Batch 07 — only OpenAPI regen here).
-- Deleting `cardre/config.py`, `cardre/services/project_resolver.py`, `cardre/store/` (Batch 07).
+- Frontend component changes (07b — only OpenAPI regen here).
+- Deleting `cardre/config.py`, `cardre/services/project_resolver.py`, `cardre/store/` (07e).
 
 ## 21. Expected final report format
 
