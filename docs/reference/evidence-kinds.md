@@ -32,7 +32,7 @@ Evidence is resolved by canonical step IDs defined in `cardre/application/report
 
 ## Evidence Kinds
 
-The `ArtifactEvidenceReader` (`cardre/_evidence/`) supports the following evidence kinds,
+The `ArtifactEvidenceReader` (`cardre/domain/evidence/` and `cardre/adapters/evidence/`) supports the following evidence kinds,
 defined in `cardre/domain/evidence/kinds.py`. This table lists the most commonly used kinds;
 the full enum has 43 members covering all artifact types in the engine.
 
