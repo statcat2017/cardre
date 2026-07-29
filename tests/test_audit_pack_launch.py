@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from cardre.bootstrap.node_catalogue import build_default_catalogue
+from cardre.bootstrap.settings import Settings
 from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 
@@ -53,7 +55,8 @@ def test_audit_pack_launch(raw_project_path, api_client, tmp_path):
     store = ProjectStore(project_dir)
     store.open()
     try:
-        steps = build_canonical_scorecard_steps(csv_path)
+        cat = build_default_catalogue(Settings(launch_mode=True))
+        steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
         plan_version_id = PlanRepository(store).create_version(
             plan_id, steps=steps, is_committed=True,
         )

@@ -12,12 +12,9 @@ import dataclasses
 from dataclasses import dataclass, field
 from typing import Any
 
-# Re-export for backward compatibility during migration
-from cardre.domain.binning.capabilities import get_binning_capabilities  # noqa: F401
 from cardre.domain.diagnostics import JsonDict
 
-# Schema constant lives here, re-exported from evidence.py for backward
-# compatibility.  The lifecycle module is the deeper domain module;
+# Schema constant lives here.  The lifecycle module is the deeper domain module;
 # evidence depends on it, not the other way around.
 SCHEMA_BIN_DEFINITION = "cardre.bin_definition.v1"
 

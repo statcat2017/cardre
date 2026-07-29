@@ -24,6 +24,8 @@ from cardre._evidence.schemas import (
     SCHEMA_SEPARATION_DIAGNOSTICS,
     SCHEMA_VIF_DIAGNOSTICS,
 )
+from cardre.bootstrap.node_catalogue import build_default_catalogue
+from cardre.bootstrap.settings import Settings
 from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.plans.scorecard_pathway import (
     build_canonical_scorecard_steps,
@@ -93,7 +95,8 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
     store = ProjectStore(project_dir)
     store.open()
     try:
-        steps = build_canonical_scorecard_steps(csv_path)
+        cat = build_default_catalogue(Settings(launch_mode=True))
+        steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
         plan_version_id = PlanRepository(store).create_version(
             plan_id, steps=steps, is_committed=True,
         )
@@ -373,7 +376,8 @@ def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_pa
     store = ProjectStore(project_dir)
     store.open()
     try:
-        steps = build_canonical_scorecard_steps(csv_path)
+        cat = build_default_catalogue(Settings(launch_mode=True))
+        steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
         plan_version_id = PlanRepository(store).create_version(
             plan_id, steps=steps, is_committed=True,
         )

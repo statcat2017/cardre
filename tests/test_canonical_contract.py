@@ -32,7 +32,8 @@ def test_manual_binning_distinct_node():
 
 
 def test_canonical_automatic_binning_has_explicit_method():
-    steps = build_canonical_scorecard_steps("dummy.csv")
+    cat = build_default_catalogue(Settings(launch_mode=True))
+    steps = build_canonical_scorecard_steps("dummy.csv", cat.resolve)
     auto_step = next(s for s in steps if s.step_id == "automatic-binning")
     assert "method" in auto_step.params, (
         "automatic-binning step must have an explicit method param"
@@ -224,7 +225,6 @@ ALLOWED_PREFIXES = {
     "cardre.adapters.sqlite": {"sqlite3"},
     "cardre.bootstrap.settings": {"os.environ", "os.getenv"},
     "cardre.adapters.evidence": {"ArtifactEvidenceReader"},
-    "cardre.domain.plans.scorecard_pathway": {"build_default_catalogue", "Settings"},
     "cardre.nodes.registry": {"NodeType"},
 }
 

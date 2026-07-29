@@ -1,4 +1,7 @@
-"""Schema version constants for evidence kinds."""
+"""Schema version constants for evidence kinds.
+
+Canonical source for SCHEMA_BIN_DEFINITION is cardre.domain.binning.definition.
+"""
 
 SCHEMA_BIN_DEFINITION = "cardre.bin_definition.v1"
 SCHEMA_MODELLING_METADATA = "cardre.modelling_metadata.v1"

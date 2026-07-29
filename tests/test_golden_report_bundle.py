@@ -25,6 +25,7 @@ from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
 from cardre.adapters.system.project_registry import JsonProjectRegistry
 from cardre.application.runs.submit_run import SubmitRunCommand
 from cardre.bootstrap.container import build_container
+from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
 from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
@@ -114,7 +115,8 @@ def _run_pathway(tmp_path: Path) -> dict:
     registry.register(project_id, root)
 
     csv_path = _write_input_csv(tmp_path / "input.csv")
-    steps = build_canonical_scorecard_steps(csv_path)
+    cat = build_default_catalogue(Settings(launch_mode=True))
+    steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
 
     with uow_factory.for_project(project_id) as uow:
         pv_id = uow.plans.create_version(plan_id, steps, is_committed=True)
