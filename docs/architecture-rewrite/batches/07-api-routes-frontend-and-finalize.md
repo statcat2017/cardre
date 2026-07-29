@@ -2,6 +2,8 @@
 
 The original Batch 07 brief was superseded because it combined six independently risky migrations and encouraged temporary compatibility seams. The abandoned `batch-07-cleanup` work is archived for historical reference only; do not merge or cherry-pick it.
 
+Before starting a closeout sub-batch, read the [archived-branch findings](../07-archived-batch-findings.md). They are implementation guardrails, not code to reuse.
+
 Implement the closeout as six ordered PRs:
 
 1. [07b — Frontend API cutover](07b-frontend-api-cutover.md)

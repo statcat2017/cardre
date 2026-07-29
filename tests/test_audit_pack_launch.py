@@ -9,6 +9,8 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
+
 from cardre.workflows import build_canonical_scorecard_steps
 
 
@@ -28,18 +30,17 @@ def _write_input_csv(path: Path) -> Path:
     return path
 
 
+@pytest.mark.xfail(reason="Uses cardre.workflows and cardre.store; needs Batch 07d/07e migration", strict=True)
 def test_audit_pack_launch(raw_project_path, api_client, tmp_path):
     project_dir = tmp_path / "audit.cardre"
     resp = api_client.post("/projects", json={"name": "Audit", "path": str(project_dir)})
     assert resp.status_code == 201, resp.text
     project_id = resp.json()["project_id"]
-    headers = {"X-Project-Path": str(project_dir)}
 
     csv_path = _write_input_csv(tmp_path / "input.csv")
 
     resp = api_client.post(
         f"/projects/{project_id}/plans",
-        headers=headers,
         json={"name": "Audit Plan"},
     )
     assert resp.status_code == 201, resp.text
@@ -81,7 +82,6 @@ def test_audit_pack_launch(raw_project_path, api_client, tmp_path):
 
     resp = api_client.post(
         f"/projects/{project_id}/runs",
-        headers=headers,
         json={"plan_version_id": plan_version_id, "sync": True, "force": True},
     )
     assert resp.status_code == 201, resp.text

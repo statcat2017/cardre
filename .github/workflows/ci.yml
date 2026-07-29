@@ -132,7 +132,6 @@ jobs:
       - name: Prettier check
         run: npm run format:check
       - name: Vite build
-        if: false
         run: npm run build
 
   test-python:

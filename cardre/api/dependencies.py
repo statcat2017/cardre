@@ -4,21 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Request
 
 from cardre.bootstrap.container import Container
 
 
 def get_container(
     request: Request,
-    _project_id_header: str | None = Header(None, alias="X-Project-Id"),
 ) -> Container:
-    """Return the application container from app state.
-
-    ``X-Project-Id`` remains an optional transport header for the existing
-    desktop client. The path ``project_id`` remains the authoritative identity
-    used by route handlers and application use cases.
-    """
+    """Return the application container from app state."""
     container: Container = request.app.state.container
     return container
 
