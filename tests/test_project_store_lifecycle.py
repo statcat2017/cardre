@@ -35,7 +35,6 @@ def test_api_request_closes_store_after_dependency_exit(raw_project_path, api_cl
 
     resp = api_client.get(
         f"/projects/{project_id}/runs",
-        headers={"X-Project-Id": project_id},
     )
 
     assert resp.status_code == 200, resp.text
@@ -81,7 +80,6 @@ def test_api_requests_use_distinct_sqlite_connections(api_client, tmp_path, monk
     for _ in range(2):
         resp = api_client.get(
             f"/projects/{project_id}/runs",
-            headers={"X-Project-Id": project_id},
         )
         assert resp.status_code == 200, resp.text
 
@@ -115,7 +113,6 @@ def test_api_dependency_closes_store_on_handler_error(api_client, tmp_path, monk
     with pytest.raises(RuntimeError, match="boom"):
         api_client.get(
             f"/projects/{project_id}/runs",
-            headers={"X-Project-Id": project_id},
         )
 
     assert close_calls == [str(project_root)]

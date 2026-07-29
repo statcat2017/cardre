@@ -237,7 +237,7 @@ describe("api operations", () => {
     });
   }
 
-  it("scoped GET sends X-Project-Id header", async () => {
+  it("scoped GET sends no project-scoped headers", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ runs: [] }));
 
     const { api } = await import("../client");
@@ -245,11 +245,11 @@ describe("api operations", () => {
     await scoped.listRuns();
 
     const req = fetchMock.mock.calls[0]![0] as Request;
-    expect(req.headers.get("X-Project-Id")).toBe("p-1");
+    expect(req.headers.get("X-Project-Id")).toBeNull();
     expect(req.headers.get("Accept")).toBe("application/json");
   });
 
-  it("scoped POST sends X-Project-Id, Content-Type, and JSON body", async () => {
+  it("scoped POST sends no project-scoped headers", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse({
         run_id: "r-1",
@@ -266,12 +266,35 @@ describe("api operations", () => {
     await scoped.createRun({ plan_version_id: "v-1", force: false, sync: false });
 
     const req = fetchMock.mock.calls[0]![0] as Request;
-    expect(req.headers.get("X-Project-Id")).toBe("p-1");
+    expect(req.headers.get("X-Project-Id")).toBeNull();
     expect(req.headers.get("Content-Type")).toBe("application/json");
     expect(req.method).toBe("POST");
 
     const body = await req.clone().json();
     expect(body).toEqual({ plan_version_id: "v-1", force: false, sync: false });
+  });
+
+  it("cancelRun sends POST to cancel endpoint", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        run_id: "r-1",
+        status: "running",
+        cancel_requested: true,
+        started_at: "",
+        plan_version_id: "v-1",
+        step_count: 0,
+        is_stale: false,
+      }),
+    );
+
+    const { api } = await import("../client");
+    const scoped = api.forProject({ projectId: "p-1" });
+    await scoped.cancelRun("r-1");
+
+    const req = fetchMock.mock.calls[0]![0] as Request;
+    expect(req.method).toBe("POST");
+    expect(req.url).toContain("/projects/p-1/runs/r-1/cancel");
+    expect(req.headers.get("X-Project-Id")).toBeNull();
   });
 
   it("global GET sends no project-scoped headers", async () => {

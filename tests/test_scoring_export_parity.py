@@ -39,13 +39,11 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
     resp = api_client.post("/projects", json={"name": "Parity", "path": str(project_dir)})
     assert resp.status_code == 201, resp.text
     project_id = resp.json()["project_id"]
-    headers = {"X-Project-Path": str(project_dir)}
 
     csv_path = _write_input_csv(tmp_path / "input.csv")
 
     resp = api_client.post(
         f"/projects/{project_id}/plans",
-        headers=headers,
         json={"name": "Parity Plan"},
     )
     assert resp.status_code == 201, resp.text
@@ -65,7 +63,6 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
 
     resp = api_client.post(
         f"/projects/{project_id}/runs",
-        headers=headers,
         json={"plan_version_id": plan_version_id, "sync": True, "force": True},
     )
     assert resp.status_code == 201, resp.text

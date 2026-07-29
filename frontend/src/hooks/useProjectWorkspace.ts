@@ -138,6 +138,18 @@ export function useProjectWorkspace(scope: ProjectScope) {
     },
   });
 
+  const cancelRunMutation = useMutation({
+    mutationFn: (runId: string) => scoped.cancelRun(runId),
+    onSuccess: (run) => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["runs", scope.projectId] });
+      queryClient.invalidateQueries({ queryKey: ["run", scope.projectId, run.run_id] });
+    },
+    onError: (err) => {
+      setError(toErrorMessage(err));
+    },
+  });
+
   const selectedPlan =
     plansQuery.data?.plans.find((plan) => plan.plan_id === effectiveSelectedPlanId) ?? null;
   const selectedVersion =
@@ -182,5 +194,6 @@ export function useProjectWorkspace(scope: ProjectScope) {
     setSelectedRunId,
     createPlanMutation,
     runMutation,
+    cancelRunMutation,
   };
 }

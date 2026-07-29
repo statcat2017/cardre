@@ -69,7 +69,6 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
     resp = api_client.post("/projects", json={"name": "Scorecard", "path": str(project_dir)})
     assert resp.status_code == 201, resp.text
     project_id = resp.json()["project_id"]
-    headers = {"X-Project-Path": str(project_dir)}
 
     # 2. Create input CSV
     csv_path = _write_input_csv(tmp_path / "input.csv")
@@ -77,7 +76,6 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
     # 3. Create plan via API
     resp = api_client.post(
         f"/projects/{project_id}/plans",
-        headers=headers,
         json={"name": "Scorecard Plan"},
     )
     assert resp.status_code == 201, resp.text
@@ -101,7 +99,6 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
     # 5. POST /projects/{project_id}/runs — create and execute synchronously
     resp = api_client.post(
         f"/projects/{project_id}/runs",
-        headers=headers,
         json={"plan_version_id": plan_version_id, "sync": True, "force": True},
     )
     assert resp.status_code == 201, resp.text
@@ -112,7 +109,6 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
     # 6. GET /projects/{project_id}/runs/{run_id}/steps — verify all succeeded
     resp = api_client.get(
         f"/projects/{project_id}/runs/{run_id}/steps",
-        headers=headers,
     )
     assert resp.status_code == 200
     steps = resp.json()
@@ -145,7 +141,6 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
     # 7. GET /projects/{project_id}/runs/{run_id}/evidence — verify edges
     resp = api_client.get(
         f"/projects/{project_id}/runs/{run_id}/evidence",
-        headers=headers,
     )
     assert resp.status_code == 200
     evidence = resp.json()
@@ -358,13 +353,11 @@ def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_pa
     resp = api_client.post("/projects", json={"name": "Readiness", "path": str(project_dir)})
     assert resp.status_code == 201, resp.text
     project_id = resp.json()["project_id"]
-    headers = {"X-Project-Path": str(project_dir)}
 
     csv_path = _write_input_csv(tmp_path / "input.csv")
 
     resp = api_client.post(
         f"/projects/{project_id}/plans",
-        headers=headers,
         json={"name": "Readiness Plan"},
     )
     assert resp.status_code == 201, resp.text
@@ -384,7 +377,6 @@ def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_pa
 
     resp = api_client.post(
         f"/projects/{project_id}/runs",
-        headers=headers,
         json={"plan_version_id": plan_version_id, "sync": True, "force": True},
     )
     assert resp.status_code == 201, resp.text

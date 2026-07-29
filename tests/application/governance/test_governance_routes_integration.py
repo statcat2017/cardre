@@ -89,7 +89,6 @@ def test_governance_disabled_returns_403_envelope(monkeypatch, tmp_path):
     project_id, root = _provision_project(container, tmp_path)
     resp = client.get(
         f"/projects/{project_id}/governance/branches",
-        headers={"X-Project-Path": str(root)},
     )
     assert resp.status_code == 403
     assert resp.json()["detail"]["code"] == "GOVERNANCE_DISABLED"
@@ -106,7 +105,6 @@ def test_create_branch_reaches_real_use_case(governance_env, tmp_path):
     plan_id, pv_id = _seed_branchable_plan(container, project_id)
     resp = client.post(
         f"/projects/{project_id}/governance/branches",
-        headers={"X-Project-Path": str(root)},
         json={
             "plan_id": plan_id, "name": "seg-1",
             "branch_type": "segment_challenger",
@@ -195,7 +193,6 @@ def test_comparison_refresh_consumes_matched_evidence(governance_env, tmp_path):
     # Create a comparison.
     resp = client.post(
         f"/projects/{project_id}/governance/comparisons",
-        headers={"X-Project-Path": str(root)},
         json={
             "plan_id": plan_id, "baseline_branch_id": branch_id,
             "challenger_branch_ids": [], "created_reason": "test",
@@ -207,7 +204,6 @@ def test_comparison_refresh_consumes_matched_evidence(governance_env, tmp_path):
     # Refresh — must consume the returned dict representation without .get()/dataclass failures.
     resp2 = client.post(
         f"/projects/{project_id}/governance/comparisons/{comparison_id}/refresh",
-        headers={"X-Project-Path": str(root)},
     )
     assert resp2.status_code == 200, resp2.text
 
@@ -264,7 +260,6 @@ def test_champion_assignment_works_through_route(governance_env, tmp_path):
 
     resp = client.post(
         f"/projects/{project_id}/governance/champion/assign",
-        headers={"X-Project-Path": str(root)},
         json={
             "plan_id": plan_id, "branch_id": branch_id,
             "comparison_id": comparison_id, "comparison_snapshot_id": snapshot_id,
@@ -313,13 +308,11 @@ def test_manual_binning_review_list_and_get(governance_env, tmp_path):
     plan_id, pv_id, rid = _seed_mb_plan_and_review(container, project_id)
     resp = client.get(
         f"/projects/{project_id}/governance/manual-binning-reviews",
-        headers={"X-Project-Path": str(root)},
     )
     assert resp.status_code == 200
     assert any(r["review_id"] == rid for r in resp.json())
     resp2 = client.get(
         f"/projects/{project_id}/governance/manual-binning-reviews/{rid}",
-        headers={"X-Project-Path": str(root)},
     )
     assert resp2.status_code == 200
     assert resp2.json()["review_id"] == rid
@@ -331,7 +324,6 @@ def test_manual_binning_patch_notes_only_preserves_status(governance_env, tmp_pa
     plan_id, pv_id, rid = _seed_mb_plan_and_review(container, project_id, status="pending", notes="orig")
     resp = client.patch(
         f"/projects/{project_id}/governance/manual-binning-reviews/{rid}",
-        headers={"X-Project-Path": str(root)},
         json={"reviewer_notes": "updated notes"},
     )
     assert resp.status_code == 200, resp.text
@@ -346,7 +338,6 @@ def test_manual_binning_patch_status_only_preserves_notes(governance_env, tmp_pa
     plan_id, pv_id, rid = _seed_mb_plan_and_review(container, project_id, status="pending", notes="keep me")
     resp = client.patch(
         f"/projects/{project_id}/governance/manual-binning-reviews/{rid}",
-        headers={"X-Project-Path": str(root)},
         json={"status": "approved"},
     )
     assert resp.status_code == 200, resp.text
@@ -361,7 +352,6 @@ def test_manual_binning_patch_invalid_status_returns_400(governance_env, tmp_pat
     plan_id, pv_id, rid = _seed_mb_plan_and_review(container, project_id)
     resp = client.patch(
         f"/projects/{project_id}/governance/manual-binning-reviews/{rid}",
-        headers={"X-Project-Path": str(root)},
         json={"status": "bogus"},
     )
     assert resp.status_code == 400
@@ -372,7 +362,6 @@ def test_manual_binning_patch_nonexistent_review_returns_404(governance_env, tmp
     project_id, root = _provision_project(container, tmp_path)
     resp = client.patch(
         f"/projects/{project_id}/governance/manual-binning-reviews/nonexistent",
-        headers={"X-Project-Path": str(root)},
         json={"status": "approved"},
     )
     assert resp.status_code == 404
@@ -403,7 +392,6 @@ def test_manual_binning_edit_atomic(governance_env, tmp_path):
 
     resp = client.post(
         f"/projects/{project_id}/governance/apply-manual-binning-edit",
-        headers={"X-Project-Path": str(root)},
         json={
             "plan_version_id": pv_id, "step_id": "manual-binning",
             "overrides": [{"variable": "income", "action": "merge_bins"}],

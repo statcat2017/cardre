@@ -33,6 +33,7 @@ describe("useProjectWorkspace", () => {
     getRun: vi.fn(),
     listRunSteps: vi.fn(),
     listRunEvidence: vi.fn(),
+    cancelRun: vi.fn(),
   };
 
   beforeEach(() => {
@@ -233,5 +234,112 @@ describe("useProjectWorkspace", () => {
     expect(result.current).toBeDefined();
     // We can verify by checking that the API call happens without an X-Project-Path header
     expect(api.forProject).toHaveBeenCalledWith({ projectId: "p-99" });
+  });
+
+  it("cancelRunMutation calls scoped.cancelRun and invalidates queries", async () => {
+    mockScoped.listRuns.mockResolvedValue({ runs: [] });
+    mockScoped.listPlans.mockResolvedValue({ plans: [] });
+    mockScoped.cancelRun.mockResolvedValue({
+      run_id: "r-1",
+      status: "running",
+      cancel_requested: true,
+      started_at: "",
+      plan_version_id: "v-1",
+      step_count: 0,
+      is_stale: false,
+    });
+
+    const { result } = renderHook(() => useProjectWorkspace({ projectId: "p-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.cancelRunMutation.mutateAsync("r-1");
+    });
+
+    expect(mockScoped.cancelRun).toHaveBeenCalledWith("r-1");
+  });
+
+  it("polling stops at cancelled status", async () => {
+    mockScoped.listRuns.mockResolvedValue({ runs: SAMPLE_RUNS });
+    mockScoped.listPlans.mockResolvedValue({
+      plans: [{ plan_id: "pl-1", name: "Plan", project_id: "p-1", created_at: "" }],
+    });
+    mockScoped.listPlanVersions.mockResolvedValue({
+      versions: [
+        {
+          plan_version_id: "v-other",
+          plan_id: "pl-1",
+          is_committed: true,
+          version_number: 1,
+          created_at: "",
+        },
+      ],
+    });
+    const runningRun = {
+      run_id: "r-2",
+      plan_version_id: "v-other",
+      status: "running",
+      started_at: "2024-01-01T00:00:00",
+    };
+    const cancelledRun = {
+      run_id: "r-2",
+      plan_version_id: "v-other",
+      status: "cancelled",
+      started_at: "2024-01-01T00:00:00",
+      finished_at: "2024-01-01T00:01:00",
+    };
+    mockScoped.getRun.mockResolvedValueOnce(runningRun).mockResolvedValue(cancelledRun);
+    mockScoped.listRunSteps.mockResolvedValue([]);
+    mockScoped.listRunEvidence.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useProjectWorkspace({ projectId: "p-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.effectiveSelectedPlanId).toBe("pl-1");
+    });
+
+    act(() => {
+      result.current.setSelectedVersionId("v-other");
+    });
+    await waitFor(() => {
+      expect(result.current.effectiveSelectedVersionId).toBe("v-other");
+    });
+
+    act(() => {
+      result.current.setSelectedRunId("r-2");
+    });
+    await waitFor(() => {
+      expect(result.current.effectiveSelectedRunId).toBe("r-2");
+    });
+
+    await waitFor(() => {
+      expect(mockScoped.getRun).toHaveBeenCalled();
+    });
+
+    const runsBefore = mockScoped.listRuns.mock.calls.length;
+    const getRunBefore = mockScoped.getRun.mock.calls.length;
+
+    await waitFor(
+      () => {
+        expect(mockScoped.listRuns.mock.calls.length).toBeGreaterThan(runsBefore);
+      },
+      { timeout: 3_000, interval: 200 },
+    );
+    expect(mockScoped.getRun.mock.calls.length).toBeGreaterThan(getRunBefore);
+
+    const runsAfterCancelled = mockScoped.listRuns.mock.calls.length;
+    const getRunAfterCancelled = mockScoped.getRun.mock.calls.length;
+
+    await waitFor(
+      () => {
+        expect(mockScoped.listRuns.mock.calls.length).toBe(runsAfterCancelled);
+      },
+      { timeout: 2_000, interval: 200 },
+    );
+
+    expect(mockScoped.getRun.mock.calls.length).toBe(getRunAfterCancelled);
   });
 });

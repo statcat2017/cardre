@@ -93,10 +93,10 @@ def test_reports_from_project_a_not_in_project_b(env, tmp_path):
     pid_b, root_b = _provision(container, tmp_path, "B")
     _, _, run_a = _seed_run(container, pid_a, root_a)
     _register_report(container, pid_a, run_a, root_a)
-    resp_a = client.get(f"/projects/{pid_a}/reports", headers={"X-Project-Path": str(root_a)})
+    resp_a = client.get(f"/projects/{pid_a}/reports")
     assert resp_a.status_code == 200
     assert len(resp_a.json()["reports"]) == 1
-    resp_b = client.get(f"/projects/{pid_b}/reports", headers={"X-Project-Path": str(root_b)})
+    resp_b = client.get(f"/projects/{pid_b}/reports")
     assert resp_b.status_code == 200
     assert len(resp_b.json()["reports"]) == 0
 
@@ -108,7 +108,7 @@ def test_run_specific_report_lookup_excludes_other_run(env, tmp_path):
     _, _, run2 = _seed_run(container, pid, root)
     _register_report(container, pid, run1, root, path="reports/run1.html")
     _register_report(container, pid, run2, root, path="reports/run2.html")
-    resp = client.get(f"/projects/{pid}/runs/{run1}/reports", headers={"X-Project-Path": str(root)})
+    resp = client.get(f"/projects/{pid}/runs/{run1}/reports")
     assert resp.status_code == 200
     reports = resp.json()["reports"]
     assert len(reports) == 1
@@ -118,7 +118,7 @@ def test_run_specific_report_lookup_excludes_other_run(env, tmp_path):
 def test_run_reports_unknown_run_returns_404(env, tmp_path):
     client, container = env
     pid, root = _provision(container, tmp_path)
-    resp = client.get(f"/projects/{pid}/runs/nonexistent/reports", headers={"X-Project-Path": str(root)})
+    resp = client.get(f"/projects/{pid}/runs/nonexistent/reports")
     assert resp.status_code == 404
     assert resp.json()["detail"]["code"] == "RUN_NOT_FOUND"
 
@@ -135,11 +135,11 @@ def test_exports_scoped_to_project_and_run_filter(env, tmp_path):
     _, _, run2 = _seed_run(container, pid, root)
     _register_export(container, pid, run1, path="exports/run1.bin")
     _register_export(container, pid, run2, path="exports/run2.bin")
-    resp = client.get(f"/projects/{pid}/exports", headers={"X-Project-Path": str(root)})
+    resp = client.get(f"/projects/{pid}/exports")
     assert resp.status_code == 200
     assert len(resp.json()["exports"]) == 2
     resp_run = client.get(
-        f"/projects/{pid}/exports", params={"run_id": run1}, headers={"X-Project-Path": str(root)},
+        f"/projects/{pid}/exports", params={"run_id": run1},
     )
     assert resp_run.status_code == 200
     exports = resp_run.json()["exports"]
@@ -153,9 +153,9 @@ def test_exports_from_project_a_not_in_project_b(env, tmp_path):
     pid_b, root_b = _provision(container, tmp_path, "B")
     _, _, run_a = _seed_run(container, pid_a, root_a)
     _register_export(container, pid_a, run_a)
-    resp_a = client.get(f"/projects/{pid_a}/exports", headers={"X-Project-Path": str(root_a)})
+    resp_a = client.get(f"/projects/{pid_a}/exports")
     assert len(resp_a.json()["exports"]) == 1
-    resp_b = client.get(f"/projects/{pid_b}/exports", headers={"X-Project-Path": str(root_b)})
+    resp_b = client.get(f"/projects/{pid_b}/exports")
     assert len(resp_b.json()["exports"]) == 0
 
 
@@ -181,7 +181,7 @@ def test_generated_audit_pack_is_discoverable_through_exports_route(env, tmp_pat
         project_id=pid, plan_id=plan_id, branch_id=branch_id,
     ))
 
-    response = client.get(f"/projects/{pid}/exports", headers={"X-Project-Path": str(root)})
+    response = client.get(f"/projects/{pid}/exports")
     assert response.status_code == 200
     export = next(item for item in response.json()["exports"] if item["export_id"] == result.export_id)
     assert export["run_id"] == run_id

@@ -25,6 +25,15 @@ def test_health_ok(app_env):
     assert resp.json()["status"] == "ok"
 
 
+def test_openapi_has_no_project_headers(app_env):
+    client, _ = app_env
+    spec = client.get("/openapi.json")
+    assert spec.status_code == 200
+    raw = spec.text
+    assert "X-Project-Id" not in raw, "OpenAPI spec must not contain X-Project-Id header"
+    assert "X-Project-Path" not in raw, "OpenAPI spec must not contain X-Project-Path header"
+
+
 # ---------------------------------------------------------------------------
 # Projects
 # ---------------------------------------------------------------------------

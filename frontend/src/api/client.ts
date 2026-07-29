@@ -266,10 +266,6 @@ function requireData<T>(result: { data?: T; error?: unknown; response: Response 
   );
 }
 
-const projectHeaders = (projectId: string) => ({
-  "X-Project-Id": projectId,
-});
-
 // ---------------------------------------------------------------------------
 // API wrapper
 // ---------------------------------------------------------------------------
@@ -302,10 +298,7 @@ export const api = {
         const client = makeClient();
         return requireData(
           await client.GET("/projects/{project_id}/plans", {
-            params: {
-              path: { project_id: pid },
-              header: projectHeaders(pid),
-            },
+            params: { path: { project_id: pid } },
           }),
         );
       },
@@ -313,10 +306,7 @@ export const api = {
         const client = makeClient();
         return requireData(
           await client.POST("/projects/{project_id}/plans", {
-            params: {
-              path: { project_id: pid },
-              header: projectHeaders(pid),
-            },
+            params: { path: { project_id: pid } },
             body,
           }),
         );
@@ -325,10 +315,7 @@ export const api = {
         const client = makeClient();
         return requireData(
           await client.GET("/projects/{project_id}/plans/{plan_id}", {
-            params: {
-              path: { project_id: pid, plan_id: planId },
-              header: projectHeaders(pid),
-            },
+            params: { path: { project_id: pid, plan_id: planId } },
           }),
         );
       },
@@ -336,10 +323,7 @@ export const api = {
         const client = makeClient();
         return requireData(
           await client.GET("/projects/{project_id}/plans/{plan_id}/versions", {
-            params: {
-              path: { project_id: pid, plan_id: planId },
-              header: projectHeaders(pid),
-            },
+            params: { path: { project_id: pid, plan_id: planId } },
           }),
         );
       },
@@ -347,10 +331,7 @@ export const api = {
         const client = makeClient();
         return requireData(
           await client.GET("/projects/{project_id}/plan-versions/{plan_version_id}", {
-            params: {
-              path: { project_id: pid, plan_version_id: planVersionId },
-              header: projectHeaders(pid),
-            },
+            params: { path: { project_id: pid, plan_version_id: planVersionId } },
           }),
         );
       },
@@ -358,10 +339,7 @@ export const api = {
         const client = makeClient();
         return requireData(
           await client.POST("/projects/{project_id}/runs", {
-            params: {
-              path: { project_id: pid },
-              header: projectHeaders(pid),
-            },
+            params: { path: { project_id: pid } },
             body,
           }),
         );
@@ -370,10 +348,7 @@ export const api = {
         const client = makeClient();
         return requireData(
           await client.GET("/projects/{project_id}/runs", {
-            params: {
-              path: { project_id: pid },
-              header: projectHeaders(pid),
-            },
+            params: { path: { project_id: pid } },
           }),
         );
       },
@@ -381,10 +356,7 @@ export const api = {
         const client = makeClient();
         return requireData(
           await client.GET("/projects/{project_id}/runs/{run_id}", {
-            params: {
-              path: { project_id: pid, run_id: runId },
-              header: projectHeaders(pid),
-            },
+            params: { path: { project_id: pid, run_id: runId } },
           }),
         );
       },
@@ -392,10 +364,7 @@ export const api = {
         const client = makeClient();
         return requireData(
           await client.GET("/projects/{project_id}/runs/{run_id}/steps", {
-            params: {
-              path: { project_id: pid, run_id: runId },
-              header: projectHeaders(pid),
-            },
+            params: { path: { project_id: pid, run_id: runId } },
           }),
         );
       },
@@ -403,10 +372,15 @@ export const api = {
         const client = makeClient();
         return requireData(
           await client.GET("/projects/{project_id}/runs/{run_id}/evidence", {
-            params: {
-              path: { project_id: pid, run_id: runId },
-              header: projectHeaders(pid),
-            },
+            params: { path: { project_id: pid, run_id: runId } },
+          }),
+        );
+      },
+      cancelRun: async (runId: string) => {
+        const client = makeClient();
+        return requireData(
+          await client.POST("/projects/{project_id}/runs/{run_id}/cancel", {
+            params: { path: { project_id: pid, run_id: runId } },
           }),
         );
       },
