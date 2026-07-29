@@ -69,11 +69,26 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
     assert resp.status_code == 201, resp.text
     run_data = resp.json()
     run_id = run_data["run_id"]
+
+    # Check run steps for detailed error
+    steps_resp = api_client.get(f"/projects/{project_id}/runs/{run_id}/steps")
+    step_errors = []
+    if steps_resp.status_code == 200:
+        for s in steps_resp.json():
+            if s["status"] == "failed":
+                errors = s.get("errors_json")
+                if errors and errors != "null":
+                    import json as _json
+                    try:
+                        step_errors.append(f"{s['step_id']}: {_json.loads(errors)}")
+                    except Exception:
+                        step_errors.append(f"{s['step_id']}: {errors}")
+
     assert run_data["status"] == "succeeded", (
         f"Run did not succeed: status={run_data['status']} "
         f"executed={run_data.get('executed_step_ids', [])} "
         f"latest_error={run_data.get('latest_error')} "
-        f"diagnostics={run_data.get('diagnostics', [])}"
+        f"step_errors={step_errors}"
     )
 
     root = container.project_registry.resolve_root(project_id)
