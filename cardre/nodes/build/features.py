@@ -5,6 +5,7 @@ from typing import Any, cast
 
 import polars as pl
 
+from cardre.domain.binning.diagnostics import MonotonicStatus, check_pure_bins, monotonicity_status
 from cardre.domain.evidence.kinds import (
     AmbiguousEvidenceError,
     EvidenceKind,
@@ -16,7 +17,6 @@ from cardre.domain.evidence.schemas import (
     SCHEMA_WOE_TABLE,
     SCHEMA_WOE_TRANSFORM_EVIDENCE,
 )
-from cardre.engine.binning.diagnostics import MonotonicStatus, check_pure_bins, monotonicity_status
 from cardre.nodes._bin_mask import build_bin_condition
 from cardre.nodes.contracts import (
     ArtifactContract,

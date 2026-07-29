@@ -24,8 +24,13 @@ from cardre._evidence.schemas import (
     SCHEMA_SEPARATION_DIAGNOSTICS,
     SCHEMA_VIF_DIAGNOSTICS,
 )
+from cardre.bootstrap.node_catalogue import build_default_catalogue
+from cardre.bootstrap.settings import Settings
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.workflows import build_canonical_scorecard_steps, canonical_scorecard_step_ids
+from cardre.domain.plans.scorecard_pathway import (
+    build_canonical_scorecard_steps,
+    canonical_scorecard_step_ids,
+)
 
 pytestmark = pytest.mark.governance
 
@@ -51,7 +56,7 @@ EXPECTED_STEP_IDS = canonical_scorecard_step_ids()
 EXPECTED_STEP_COUNT = len(EXPECTED_STEP_IDS)
 
 
-@pytest.mark.xfail(reason="Uses cardre.workflows and cardre.store; needs Batch 07d/07e migration", strict=True)
+@pytest.mark.xfail(reason="Uses cardre.store and cardre._evidence; needs Batch 07e/07c migration", strict=True)
 def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp_path):
     """Full canonical scorecard pathway through the project-scoped API.
 
@@ -90,7 +95,8 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
     store = ProjectStore(project_dir)
     store.open()
     try:
-        steps = build_canonical_scorecard_steps(csv_path)
+        cat = build_default_catalogue(Settings(launch_mode=True))
+        steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
         plan_version_id = PlanRepository(store).create_version(
             plan_id, steps=steps, is_committed=True,
         )
@@ -341,7 +347,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         store.close()
 
 
-@pytest.mark.xfail(reason="Uses cardre.workflows and cardre.store; needs Batch 07d/07e migration", strict=True)
+@pytest.mark.xfail(reason="Uses cardre.store and cardre._evidence; needs Batch 07e/07c migration", strict=True)
 def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_path):
     """Full canonical workflow + report bundle generation + readiness checks.
 
@@ -370,7 +376,8 @@ def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_pa
     store = ProjectStore(project_dir)
     store.open()
     try:
-        steps = build_canonical_scorecard_steps(csv_path)
+        cat = build_default_catalogue(Settings(launch_mode=True))
+        steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
         plan_version_id = PlanRepository(store).create_version(
             plan_id, steps=steps, is_committed=True,
         )

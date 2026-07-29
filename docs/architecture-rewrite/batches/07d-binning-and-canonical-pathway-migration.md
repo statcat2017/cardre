@@ -21,8 +21,9 @@ Move binning and the canonical scorecard pathway to their settled domain-owned l
 ## Acceptance
 
 - A production search returns no `cardre.engine` or `cardre.workflows` imports.
-- Binning, score-scaling, scoring-export parity, and golden fixture tests pass.
+- Binning, score-scaling, and golden fixture tests pass.
 - Canonical-contract tests assert only the final pathway and identifiers.
+- `test_scoring_export_parity` passes through the canonical UnitOfWork and repository ports.
 
 ## Enables
 

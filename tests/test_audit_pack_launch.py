@@ -11,7 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from cardre.workflows import build_canonical_scorecard_steps
+from cardre.bootstrap.node_catalogue import build_default_catalogue
+from cardre.bootstrap.settings import Settings
+from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 
 def _write_input_csv(path: Path) -> Path:
@@ -30,7 +32,7 @@ def _write_input_csv(path: Path) -> Path:
     return path
 
 
-@pytest.mark.xfail(reason="Uses cardre.workflows and cardre.store; needs Batch 07d/07e migration", strict=True)
+@pytest.mark.xfail(reason="Uses cardre.store and cardre._evidence; needs Batch 07e/07c migration", strict=True)
 def test_audit_pack_launch(raw_project_path, api_client, tmp_path):
     project_dir = tmp_path / "audit.cardre"
     resp = api_client.post("/projects", json={"name": "Audit", "path": str(project_dir)})
@@ -53,7 +55,8 @@ def test_audit_pack_launch(raw_project_path, api_client, tmp_path):
     store = ProjectStore(project_dir)
     store.open()
     try:
-        steps = build_canonical_scorecard_steps(csv_path)
+        cat = build_default_catalogue(Settings(launch_mode=True))
+        steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
         plan_version_id = PlanRepository(store).create_version(
             plan_id, steps=steps, is_committed=True,
         )

@@ -13,7 +13,7 @@ import pytest
 
 from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
-from cardre.workflows.scorecard import build_canonical_scorecard_steps
+from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 
 def test_only_one_automatic_binning_node_registered():
@@ -32,7 +32,8 @@ def test_manual_binning_distinct_node():
 
 
 def test_canonical_automatic_binning_has_explicit_method():
-    steps = build_canonical_scorecard_steps("dummy.csv")
+    cat = build_default_catalogue(Settings(launch_mode=True))
+    steps = build_canonical_scorecard_steps("dummy.csv", cat.resolve)
     auto_step = next(s for s in steps if s.step_id == "automatic-binning")
     assert "method" in auto_step.params, (
         "automatic-binning step must have an explicit method param"
@@ -44,6 +45,18 @@ def test_canonical_automatic_binning_has_explicit_method():
     assert auto_step.params_hash == expected_hash, (
         "params_hash must be based on the explicit params"
     )
+
+
+def test_schema_bin_definition_not_duplicated_in_evidence_schemas():
+    """SCHEMA_BIN_DEFINITION must only be defined in domain.binning.definition."""
+    schemas_path = Path(__file__).parents[1] / "cardre" / "domain" / "evidence" / "schemas.py"
+    text = schemas_path.read_text()
+    for line in text.splitlines():
+        if line.startswith("SCHEMA_BIN_DEFINITION"):
+            pytest.fail(
+                "SCHEMA_BIN_DEFINITION must not be defined in domain.evidence.schemas; "
+                "import from domain.binning.definition instead"
+            )
 
 
 def test_no_compat_evidence_aliases_in_source():
@@ -224,7 +237,6 @@ ALLOWED_PREFIXES = {
     "cardre.adapters.sqlite": {"sqlite3"},
     "cardre.bootstrap.settings": {"os.environ", "os.getenv"},
     "cardre.adapters.evidence": {"ArtifactEvidenceReader"},
-    "cardre.workflows": {"build_default_catalogue", "Settings"},
     "cardre.nodes.registry": {"NodeType"},
 }
 

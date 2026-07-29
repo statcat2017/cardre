@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from cardre.bootstrap.node_catalogue import build_default_catalogue
-from cardre.bootstrap.settings import Settings
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.step import StepSpec
 
@@ -256,8 +255,10 @@ def canonical_scorecard_step_ids() -> list[str]:
     return [step_id for step_id, _, _, _ in _CANONICAL_SCORECARD_STEPS]
 
 
-def build_canonical_scorecard_steps(source_path: str | Path) -> list[StepSpec]:
-    registry = build_default_catalogue(Settings(launch_mode=True))
+def build_canonical_scorecard_steps(
+    source_path: str | Path,
+    resolve_node: Callable[[str], Any],
+) -> list[StepSpec]:
     resolved_source_path = str(source_path)
     result: list[StepSpec] = []
 
@@ -265,7 +266,7 @@ def build_canonical_scorecard_steps(source_path: str | Path) -> list[StepSpec]:
         params = dict(raw_params)
         if step_id == "import":
             params["source_path"] = resolved_source_path
-        node_cls = registry.resolve(node_type)
+        node_cls = resolve_node(node_type)
         result.append(
             StepSpec(
                 step_id=step_id,
