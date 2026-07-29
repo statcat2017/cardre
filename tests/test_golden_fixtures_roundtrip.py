@@ -11,11 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from cardre._evidence.adapters import get_adapter
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.models.binning import BinDefinition, ManualBinningOverrides
+from cardre.adapters.evidence import get_adapter
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.binning.definition import LifecycleBin, LifecycleBinDefinition, LifecycleVariable
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.models.binning import BinDefinition, ManualBinningOverrides
 from cardre.modeling.schema import FeatureContract, ModelArtifactV1, TrainingMetadata
 from cardre.store.db import ProjectStore
 

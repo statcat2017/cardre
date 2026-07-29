@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from cardre._evidence.profiles import _Profile
+from cardre.adapters.evidence.profiles import _Profile
 from cardre.domain.artifacts import ArtifactRef
 from cardre.store import ProjectStore
 

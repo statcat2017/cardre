@@ -15,10 +15,10 @@ from __future__ import annotations
 from dataclasses import asdict, is_dataclass
 from typing import Any, cast
 
-from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
 from cardre.adapters.evidence.parsers import get_adapter, match
 from cardre.application.ports.artifact_store import ArtifactReader
 from cardre.application.ports.unit_of_work import UnitOfWorkFactory
+from cardre.domain.evidence.kinds import EvidenceKind, EvidenceParseError
 
 
 class ComparisonEvidenceReader:

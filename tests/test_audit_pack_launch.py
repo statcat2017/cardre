@@ -32,7 +32,7 @@ def _write_input_csv(path: Path) -> Path:
     return path
 
 
-@pytest.mark.xfail(reason="Uses cardre.store and cardre._evidence; needs Batch 07e/07c migration", strict=True)
+@pytest.mark.xfail(reason="Uses cardre.store; needs Batch 07e migration", strict=True)
 def test_audit_pack_launch(raw_project_path, api_client, tmp_path):
     project_dir = tmp_path / "audit.cardre"
     resp = api_client.post("/projects", json={"name": "Audit", "path": str(project_dir)})

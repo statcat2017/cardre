@@ -5,7 +5,7 @@ import math
 import warnings
 from typing import Any
 
-from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre.adapters.evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.evidence.kinds import (

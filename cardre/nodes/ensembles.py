@@ -15,7 +15,7 @@ import joblib
 import numpy as np
 import polars as pl
 
-from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre.adapters.evidence.reader import ArtifactEvidenceReader
 from cardre.store.artifact_repo import ArtifactRepository
 
 

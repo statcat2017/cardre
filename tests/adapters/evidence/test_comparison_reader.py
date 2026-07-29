@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from cardre._evidence.kinds import EvidenceKind, EvidenceParseError
 from cardre.adapters.evidence.comparison_reader import ComparisonEvidenceReader
 from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.evidence.kinds import EvidenceKind, EvidenceParseError
 
 
 class _Context:

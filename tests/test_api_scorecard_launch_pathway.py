@@ -15,7 +15,10 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from cardre._evidence.schemas import (
+from cardre.bootstrap.node_catalogue import build_default_catalogue
+from cardre.bootstrap.settings import Settings
+from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.evidence.schemas import (
     SCHEMA_CALIBRATION_DIAGNOSTICS,
     SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS,
     SCHEMA_SCORE_TABLE,
@@ -24,9 +27,6 @@ from cardre._evidence.schemas import (
     SCHEMA_SEPARATION_DIAGNOSTICS,
     SCHEMA_VIF_DIAGNOSTICS,
 )
-from cardre.bootstrap.node_catalogue import build_default_catalogue
-from cardre.bootstrap.settings import Settings
-from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.plans.scorecard_pathway import (
     build_canonical_scorecard_steps,
     canonical_scorecard_step_ids,
@@ -56,7 +56,7 @@ EXPECTED_STEP_IDS = canonical_scorecard_step_ids()
 EXPECTED_STEP_COUNT = len(EXPECTED_STEP_IDS)
 
 
-@pytest.mark.xfail(reason="Uses cardre.store and cardre._evidence; needs Batch 07e/07c migration", strict=True)
+@pytest.mark.xfail(reason="Uses cardre.store; needs Batch 07e migration", strict=True)
 def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp_path):
     """Full canonical scorecard pathway through the project-scoped API.
 
@@ -347,7 +347,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         store.close()
 
 
-@pytest.mark.xfail(reason="Uses cardre.store and cardre._evidence; needs Batch 07e/07c migration", strict=True)
+@pytest.mark.xfail(reason="Uses cardre.store; needs Batch 07e migration", strict=True)
 def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_path):
     """Full canonical workflow + report bundle generation + readiness checks.
 

@@ -1,6 +1,6 @@
 """EvidenceReader — typed evidence access via ArtifactReader.
 
-Replaces ``cardre._evidence.reader.ArtifactEvidenceReader`` with a
+Replaces the legacy ``ArtifactEvidenceReader`` with a
 port-based reader that depends on ``ArtifactReader``, ``ArtifactRepoPort``,
 and ``RunStepRepoPort`` instead of ``ProjectStore``.
 """
@@ -11,17 +11,17 @@ from typing import Any
 
 import polars as pl
 
-from cardre._evidence.kinds import (
+from cardre.adapters.evidence.parsers import get_adapter, match
+from cardre.adapters.evidence.profiles import EVIDENCE_PROFILES
+from cardre.application.ports.artifact_store import ArtifactReader
+from cardre.application.ports.unit_of_work import ArtifactRepoPort, RunStepRepoPort
+from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.evidence.kinds import (
     AmbiguousEvidenceError,
     EvidenceKind,
     EvidenceNotFoundError,
     EvidenceParseError,
 )
-from cardre._evidence.profiles import EVIDENCE_PROFILES
-from cardre.adapters.evidence.parsers import get_adapter, match
-from cardre.application.ports.artifact_store import ArtifactReader
-from cardre.application.ports.unit_of_work import ArtifactRepoPort, RunStepRepoPort
-from cardre.domain.artifacts import ArtifactRef
 
 
 class EvidenceReader:
@@ -161,4 +161,8 @@ class EvidenceReader:
         return get_adapter(kind).parse(path, art, self._reader)
 
 
-__all__ = ["EvidenceReader"]
+__all__ = ["ArtifactEvidenceReader", "EvidenceReader"]
+
+
+# Backward-compat alias — removed in 07f when all nodes port to NodeContext.
+ArtifactEvidenceReader = EvidenceReader

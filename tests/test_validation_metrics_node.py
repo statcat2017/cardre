@@ -3,10 +3,10 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from cardre._evidence.schemas import SCHEMA_MODELLING_METADATA
 from cardre.application.execution.step_runner import StepRunner
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.evidence.schemas import SCHEMA_MODELLING_METADATA
 from cardre.domain.run import RunStepStatus
 from cardre.domain.step import StepSpec
 from cardre.nodes.registry import NodeRegistry
