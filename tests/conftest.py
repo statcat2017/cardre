@@ -27,10 +27,6 @@ _MIGRATION_XFAIL_FILES = {
     "test_api_scorecard_launch_pathway",
     # Depends on the audit-pack launch pathway rewrite (Batch 07b).
     "test_audit_pack_launch",
-    # Depends on the legacy ProjectStore/X-Project-Path dependency path being
-    # reconciled with the hexagonal UoW layer (Batch 07c cleanup); several
-    # tests assert the old get_project_store header dependency.
-    "test_project_store_lifecycle",
     # Depends on scoring export parity across the rewritten node layer
     # (Batch 07c); one integration test still fails against the new layer.
     "test_scoring_export_parity",
