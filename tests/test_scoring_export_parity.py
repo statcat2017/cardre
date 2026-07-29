@@ -37,7 +37,6 @@ def _write_input_csv(path: Path) -> Path:
     return path
 
 
-@pytest.mark.xfail(reason="Uses cardre.store and cardre._evidence; needs Batch 07e/07c migration", strict=True)
 def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
     project_dir = tmp_path / "parity.cardre"
     resp = api_client.post("/projects", json={"name": "Parity", "path": str(project_dir)})
@@ -53,18 +52,15 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
     assert resp.status_code == 201, resp.text
     plan_id = resp.json()["plan_id"]
 
-    from cardre.store.db import ProjectStore
-    from cardre.store.plan_repo import PlanRepository
-    store = ProjectStore(project_dir)
-    store.open()
-    try:
-        cat = build_default_catalogue(Settings(launch_mode=True))
-        steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
-        plan_version_id = PlanRepository(store).create_version(
+    container = api_client.app.state.container
+    cat = build_default_catalogue(Settings(launch_mode=True))
+    steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
+
+    with container.uow_factory.for_project(project_id) as uow:
+        plan_version_id = uow.plans.create_version(
             plan_id, steps=steps, is_committed=True,
         )
-    finally:
-        store.close()
+        uow.commit()
 
     resp = api_client.post(
         f"/projects/{project_id}/runs",
@@ -75,49 +71,51 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
     run_id = run_data["run_id"]
     assert run_data["status"] == "succeeded", f"Run did not succeed: {run_data}"
 
-    store = ProjectStore(project_dir)
-    store.open()
-    try:
-        artifact_rows = store.execute(
-            """SELECT a.artifact_id, a.role, a.path, a.metadata_json, rs.step_id
-               FROM artifacts a
-               JOIN artifact_lineage al ON al.artifact_id = a.artifact_id
-               JOIN run_steps rs ON rs.run_step_id = al.run_step_id
-               WHERE rs.run_id = ? AND al.direction = 'output'""",
-            (run_id,),
-        ).fetchall()
+    root = container.project_registry.resolve_root(project_id)
+    artifacts: list[dict[str, Any]] = []
+    with container.uow_factory.read_only(project_id) as uow:
+        run_steps = uow.run_steps.get_for_run(run_id)
+        for step in run_steps:
+            for art in uow.artifacts.output_artifacts_for_run_step(step.run_step_id):
+                artifacts.append({
+                    "artifact_id": art.artifact_id,
+                    "role": art.role,
+                    "path": art.path,
+                    "metadata_json": json.dumps(art.metadata or {}),
+                    "step_id": step.step_id,
+                })
 
         apply_model_parquet = [
-            row for row in artifact_rows
+            row for row in artifacts
             if row["step_id"] == "apply-model" and row["role"] in {"train", "test", "oot"}
         ]
         assert len(apply_model_parquet) >= 2, "apply-model should produce train + test + oot parquet"
 
         python_export = [
-            row for row in artifact_rows
+            row for row in artifacts
             if row["step_id"] == "scoring-export-python"
             and f'"schema_version": "{SCHEMA_SCORING_EXPORT_PYTHON}"' in row["metadata_json"]
         ]
         assert python_export, "scoring-export-python artifact not found"
         python_payload = json.loads(
-            (store.root / python_export[0]["path"]).read_text(encoding="utf-8")
+            (root / python_export[0]["path"]).read_text(encoding="utf-8")
         )
         python_source = python_payload["source"]
 
         sql_export = [
-            row for row in artifact_rows
+            row for row in artifacts
             if row["step_id"] == "scoring-export-sql"
             and f'"schema_version": "{SCHEMA_SCORING_EXPORT_SQL}"' in row["metadata_json"]
         ]
         assert sql_export, "scoring-export-sql artifact not found"
         sql_payload = json.loads(
-            (store.root / sql_export[0]["path"]).read_text(encoding="utf-8")
+            (root / sql_export[0]["path"]).read_text(encoding="utf-8")
         )
         sql_source = sql_payload["source"]
 
         for row in apply_model_parquet:
             role = row["role"]
-            df = pl.read_parquet(store.root / row["path"])
+            df = pl.read_parquet(root / row["path"])
             assert "score" in df.columns, f"apply-model {role} missing score column"
             assert "cardre_scaled_score" not in df.columns, (
                 f"apply-model {role} still writes removed cardre_scaled_score column"
@@ -162,9 +160,6 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
                     )
             finally:
                 conn.close()
-
-    finally:
-        store.close()
 
 
 def test_python_sql_parity_missing_without_bin_zero_policy():
@@ -353,7 +348,6 @@ def test_compile_scorecard_raises_on_unconsumed_coefficient():
     )
     scorecard_raw = {"factor": 1, "offset": 0, "score_direction": "higher_is_lower_risk"}
     model_raw = {"intercept": 0.0, "coefficients": {"age_woe": 1.0, "income_woe": 0.5}}
-    import pytest
     with pytest.raises(ValueError, match="no corresponding bin variable"):
         compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw)
 
@@ -522,7 +516,6 @@ def test_python_scorer_missing_value_no_missing_bin():
     exec(source, local_ns)
     scorer = local_ns["score_cardre"]
 
-    import pytest
     with pytest.raises(ValueError, match="missing value for age"):
         scorer({"age": None})
 
@@ -642,7 +635,6 @@ def test_compile_scorecard_raises_on_missing_woe_map_for_coefficient():
     scorecard_raw = {"factor": 1, "offset": 0, "score_direction": "higher_is_lower_risk"}
     model_raw = {"intercept": 0.0, "coefficients": {"age_woe": 1.0}}
 
-    import pytest
     with pytest.raises(ValueError, match="no WOE mapping"):
         compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw)
 
@@ -673,7 +665,6 @@ def test_compile_scorecard_raises_on_bin_without_woe():
     scorecard_raw = {"factor": 1, "offset": 0, "score_direction": "higher_is_lower_risk"}
     model_raw = {"intercept": 0.0, "coefficients": {"age_woe": 1.0}}
 
-    import pytest
     with pytest.raises(ValueError, match="no WOE entry"):
         compile_scorecard(bin_def, woe_table, scorecard_raw, model_raw)
 
@@ -710,7 +701,6 @@ def test_python_unmatched_numeric_raises():
     exec(source, local_ns)
     scorer = local_ns["score_cardre"]
 
-    import pytest
     with pytest.raises(ValueError, match="unmatched value for age"):
         scorer({"age": 99})
 
@@ -747,7 +737,6 @@ def test_python_unmatched_categorical_raises():
     exec(source, local_ns)
     scorer = local_ns["score_cardre"]
 
-    import pytest
     with pytest.raises(ValueError, match="unmatched value for product_type"):
         scorer({"product_type": "unknown_category"})
 
