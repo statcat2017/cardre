@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.step import StepSpec
