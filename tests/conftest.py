@@ -19,6 +19,8 @@ from cardre.store.db import ProjectStore
 # ---------------------------------------------------------------------------
 
 _MIGRATION_XFAIL_FILES = {
+    # Depends on the sidecar entrypoint migration (Batch 07b).
+    "test_sidecar_entrypoint",
     # Depends on the legacy cardre.workflows / cardre.readiness /
     # cardre.reporting modules (the final product acceptance-pathway rewrite),
     # which is explicitly excluded from PR 360. Batch 07b.
@@ -32,8 +34,6 @@ _MIGRATION_XFAIL_FILES = {
     # Depends on scoring export parity across the rewritten node layer
     # (Batch 07c); one integration test still fails against the new layer.
     "test_scoring_export_parity",
-    # Depends on the sidecar entrypoint migration (Batch 07b).
-    "test_sidecar_entrypoint",
 }
 
 

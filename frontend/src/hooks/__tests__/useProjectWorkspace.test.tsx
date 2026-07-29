@@ -195,12 +195,10 @@ describe("useProjectWorkspace", () => {
     const stepsBefore = mockScoped.listRunSteps.mock.calls.length;
     const evBefore = mockScoped.listRunEvidence.mock.calls.length;
 
-    await waitFor(
-      () => {
-        expect(mockScoped.listRuns.mock.calls.length).toBeGreaterThan(runsBefore);
-      },
-      { timeout: 3_000, interval: 200 },
-    );
+    // Wait for polling to fire (1s interval)
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    expect(mockScoped.listRuns.mock.calls.length).toBeGreaterThan(runsBefore);
     expect(mockScoped.getRun.mock.calls.length).toBeGreaterThan(getRunBefore);
     expect(mockScoped.listRunSteps.mock.calls.length).toBeGreaterThan(stepsBefore);
     expect(mockScoped.listRunEvidence.mock.calls.length).toBeGreaterThan(evBefore);
@@ -210,13 +208,10 @@ describe("useProjectWorkspace", () => {
     const stepsAfterTerminal = mockScoped.listRunSteps.mock.calls.length;
     const evAfterTerminal = mockScoped.listRunEvidence.mock.calls.length;
 
-    await waitFor(
-      () => {
-        expect(mockScoped.listRuns.mock.calls.length).toBe(runsAfterTerminal);
-      },
-      { timeout: 2_000, interval: 200 },
-    );
+    // Wait for another polling interval — counts must not increase
+    await new Promise((resolve) => setTimeout(resolve, 1200));
 
+    expect(mockScoped.listRuns.mock.calls.length).toBe(runsAfterTerminal);
     expect(mockScoped.getRun.mock.calls.length).toBe(getRunAfterTerminal);
     expect(mockScoped.listRunSteps.mock.calls.length).toBe(stepsAfterTerminal);
     expect(mockScoped.listRunEvidence.mock.calls.length).toBe(evAfterTerminal);
@@ -322,24 +317,19 @@ describe("useProjectWorkspace", () => {
     const runsBefore = mockScoped.listRuns.mock.calls.length;
     const getRunBefore = mockScoped.getRun.mock.calls.length;
 
-    await waitFor(
-      () => {
-        expect(mockScoped.listRuns.mock.calls.length).toBeGreaterThan(runsBefore);
-      },
-      { timeout: 3_000, interval: 200 },
-    );
+    // Wait for polling to fire (1s interval)
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    expect(mockScoped.listRuns.mock.calls.length).toBeGreaterThan(runsBefore);
     expect(mockScoped.getRun.mock.calls.length).toBeGreaterThan(getRunBefore);
 
     const runsAfterCancelled = mockScoped.listRuns.mock.calls.length;
     const getRunAfterCancelled = mockScoped.getRun.mock.calls.length;
 
-    await waitFor(
-      () => {
-        expect(mockScoped.listRuns.mock.calls.length).toBe(runsAfterCancelled);
-      },
-      { timeout: 2_000, interval: 200 },
-    );
+    // Wait for another polling interval — counts must not increase
+    await new Promise((resolve) => setTimeout(resolve, 1200));
 
+    expect(mockScoped.listRuns.mock.calls.length).toBe(runsAfterCancelled);
     expect(mockScoped.getRun.mock.calls.length).toBe(getRunAfterCancelled);
   });
 });
