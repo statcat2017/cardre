@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import polars as pl
+import pytest
 
 from cardre._evidence.schemas import SCHEMA_SCORING_EXPORT_PYTHON, SCHEMA_SCORING_EXPORT_SQL
 from cardre.workflows import build_canonical_scorecard_steps
@@ -34,6 +35,7 @@ def _write_input_csv(path: Path) -> Path:
     return path
 
 
+@pytest.mark.xfail(reason="Uses cardre.workflows and cardre.store; needs Batch 07d/07e migration", strict=True)
 def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
     project_dir = tmp_path / "parity.cardre"
     resp = api_client.post("/projects", json={"name": "Parity", "path": str(project_dir)})

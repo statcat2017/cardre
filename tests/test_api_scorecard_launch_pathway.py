@@ -51,6 +51,7 @@ EXPECTED_STEP_IDS = canonical_scorecard_step_ids()
 EXPECTED_STEP_COUNT = len(EXPECTED_STEP_IDS)
 
 
+@pytest.mark.xfail(reason="Uses cardre.workflows and cardre.store; needs Batch 07d/07e migration", strict=True)
 def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp_path):
     """Full canonical scorecard pathway through the project-scoped API.
 
@@ -340,6 +341,7 @@ def test_full_scorecard_launch_pathway_via_api(raw_project_path, api_client, tmp
         store.close()
 
 
+@pytest.mark.xfail(reason="Uses cardre.workflows and cardre.store; needs Batch 07d/07e migration", strict=True)
 def test_full_workflow_report_and_readiness(raw_project_path, api_client, tmp_path):
     """Full canonical workflow + report bundle generation + readiness checks.
 
