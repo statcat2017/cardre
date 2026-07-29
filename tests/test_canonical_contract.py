@@ -13,7 +13,7 @@ import pytest
 
 from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
-from cardre.workflows.scorecard import build_canonical_scorecard_steps
+from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 
 def test_only_one_automatic_binning_node_registered():
@@ -224,7 +224,7 @@ ALLOWED_PREFIXES = {
     "cardre.adapters.sqlite": {"sqlite3"},
     "cardre.bootstrap.settings": {"os.environ", "os.getenv"},
     "cardre.adapters.evidence": {"ArtifactEvidenceReader"},
-    "cardre.workflows": {"build_default_catalogue", "Settings"},
+    "cardre.domain.plans.scorecard_pathway": {"build_default_catalogue", "Settings"},
     "cardre.nodes.registry": {"NodeType"},
 }
 

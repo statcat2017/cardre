@@ -26,7 +26,7 @@ from cardre.adapters.system.project_registry import JsonProjectRegistry
 from cardre.application.runs.submit_run import SubmitRunCommand
 from cardre.bootstrap.container import build_container
 from cardre.bootstrap.settings import Settings
-from cardre.workflows import build_canonical_scorecard_steps
+from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 GOLDEN_REPORT_BUNDLE = FIXTURE_DIR / "golden_report_bundle.json"

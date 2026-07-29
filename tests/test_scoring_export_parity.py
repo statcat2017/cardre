@@ -16,7 +16,7 @@ import polars as pl
 import pytest
 
 from cardre._evidence.schemas import SCHEMA_SCORING_EXPORT_PYTHON, SCHEMA_SCORING_EXPORT_SQL
-from cardre.workflows import build_canonical_scorecard_steps
+from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 
 def _write_input_csv(path: Path) -> Path:

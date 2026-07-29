@@ -25,7 +25,10 @@ from cardre._evidence.schemas import (
     SCHEMA_VIF_DIAGNOSTICS,
 )
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.workflows import build_canonical_scorecard_steps, canonical_scorecard_step_ids
+from cardre.domain.plans.scorecard_pathway import (
+    build_canonical_scorecard_steps,
+    canonical_scorecard_step_ids,
+)
 
 pytestmark = pytest.mark.governance
 

@@ -48,7 +48,7 @@ from cardre._evidence.schemas import (
     SCHEMA_WOE_TABLE,
     SCHEMA_WOE_TRANSFORM_EVIDENCE,
 )
-from cardre.engine.binning.definition import SCHEMA_BIN_DEFINITION
+from cardre.domain.binning.definition import SCHEMA_BIN_DEFINITION
 
 
 @dataclass

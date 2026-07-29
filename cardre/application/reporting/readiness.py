@@ -16,7 +16,7 @@ from cardre.application.reporting.contracts import (
     ReportMode,
     resolve_required_steps,
 )
-from cardre.engine.binning.diagnostics import MonotonicStatus, monotonicity_status
+from cardre.domain.binning.diagnostics import MonotonicStatus, monotonicity_status
 
 
 @dataclass(frozen=True)

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from cardre.workflows import build_canonical_scorecard_steps
+from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 
 def _write_input_csv(path: Path) -> Path:

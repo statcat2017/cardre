@@ -4,9 +4,9 @@ from typing import Any
 
 import polars as pl
 
+from cardre.domain.binning.definition import LifecycleBinDefinition
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_BIN_DEFINITION
-from cardre.engine.binning.definition import LifecycleBinDefinition
 from cardre.nodes.build._fine_classing_categorical import bin_categorical
 from cardre.nodes.build._fine_classing_numeric import bin_numeric
 from cardre.nodes.contracts import NodeContext, NodeResult
