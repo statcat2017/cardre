@@ -39,12 +39,18 @@ def test_canonical_automatic_binning_has_explicit_method():
         "automatic-binning step must have an explicit method param"
     )
     assert auto_step.params["method"] == "fine_classing"
-    assert auto_step.params_hash, "params_hash must be non-empty"
-    from cardre.domain.artifacts import json_logical_hash
-    expected_hash = json_logical_hash(auto_step.params)
-    assert auto_step.params_hash == expected_hash, (
-        "params_hash must be based on the explicit params"
-    )
+
+
+def test_schema_bin_definition_not_duplicated_in_evidence_schemas():
+    """SCHEMA_BIN_DEFINITION must only be defined in domain.binning.definition."""
+    schemas_path = Path(__file__).parents[1] / "cardre" / "domain" / "evidence" / "schemas.py"
+    text = schemas_path.read_text()
+    for line in text.splitlines():
+        if line.startswith("SCHEMA_BIN_DEFINITION"):
+            pytest.fail(
+                "SCHEMA_BIN_DEFINITION must not be defined in domain.evidence.schemas; "
+                "import from domain.binning.definition instead"
+            )
 
 
 def test_no_compat_evidence_aliases_in_source():

@@ -4,11 +4,10 @@ from typing import Any
 
 import polars as pl
 
-from cardre.domain.binning.definition import LifecycleBinDefinition
+from cardre.domain.binning.definition import SCHEMA_BIN_DEFINITION, LifecycleBinDefinition
 from cardre.domain.binning.diagnostics import run_all as run_diagnostics
 from cardre.domain.binning.optbinning_adapter import fit_variables
 from cardre.domain.evidence.kinds import EvidenceKind
-from cardre.domain.evidence.schemas import SCHEMA_BIN_DEFINITION
 from cardre.nodes.contracts import NodeContext, NodeResult
 
 _NUMERIC_TYPES = {
