@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.step import StepSpec
@@ -256,7 +256,7 @@ def canonical_scorecard_step_ids() -> list[str]:
 
 def build_canonical_scorecard_steps(
     source_path: str | Path,
-    resolve_node: callable,
+    resolve_node: Callable[[str], Any],
 ) -> list[StepSpec]:
     resolved_source_path = str(source_path)
     result: list[StepSpec] = []
