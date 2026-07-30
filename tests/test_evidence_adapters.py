@@ -21,6 +21,7 @@ import pytest
 from cardre.adapters.evidence import EVIDENCE_ADAPTERS, AdapterSpec, get_adapter
 from cardre.adapters.evidence.parsers import match
 from cardre.adapters.evidence.profiles import EVIDENCE_PROFILES
+from cardre.adapters.evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.evidence.kinds import EvidenceKind
@@ -259,6 +260,35 @@ def test_modelling_metadata_matches_kind_specific_artifact_type(store, tmp_path)
     matched = _assert_match_parity(store, EvidenceKind.MODELLING_METADATA, [art])
 
     assert matched == [art]
+
+
+def test_project_store_reader_supports_legacy_constructor_and_ensemble_lookup(store, tmp_path) -> None:
+    """Deferred nodes retain their ProjectStore-backed evidence reader contract."""
+    art = _write_json_artifact(
+        store,
+        tmp_path,
+        "model_artifact",
+        "model",
+        "cardre.model_artifact.v1",
+        {
+            "schema_version": "cardre.model_artifact.v1",
+            "model_family": "logistic_regression",
+            "target_column": "outcome",
+            "target_event_value": "bad",
+            "class_mapping": {"good": "good", "bad": "bad"},
+            "probability_column_index": 1,
+            "feature_contract": {"features": ["age"]},
+            "model_payload": {"intercept": 0.0, "coefficients": {"age": 1.5}},
+            "training": {"row_count": 100},
+        },
+    )
+
+    reader = ArtifactEvidenceReader(store)
+
+    assert reader._store is store
+    from cardre.nodes.ensembles import _load_model_artifact
+
+    assert _load_model_artifact(reader, art.artifact_id)["model_family"] == "logistic_regression"
 
 
 @pytest.mark.parametrize("kind,artifact_type,role,schema_version,payload", _JSON_KIND_FIXTURES)
