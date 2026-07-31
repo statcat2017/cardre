@@ -12,9 +12,9 @@ into a single template.  Subclasses provide 4 hooks:
 The base handles: training-data prep, estimator construction + fit + timing,
 prob_col_idx scan, feature_importance extraction, binary estimator persistence,
 model artifact construction (via build_model_artifact), JSON artifact writing,
-and NodeOutput assembly.
+and NodeResult assembly.
 
-Callers and tests see the same public interface (run(context) -> NodeOutput).
+Callers and tests see the same public interface (run(context) -> NodeResult).
 """
 
 from __future__ import annotations
@@ -27,11 +27,10 @@ from typing import Any
 import polars as pl
 from sklearn.model_selection import StratifiedKFold, cross_validate
 
-from cardre.artifacts import write_json_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.modeling.builders import build_model_artifact
-from cardre.nodes._training_utils import _prepare_training_data, _write_estimator
-from cardre.nodes.contracts import NodeType
+from cardre.nodes._training_utils import _write_estimator, prepare_supervised_training_data
+from cardre.nodes.contracts import NodeContext, NodeResult, NodeType
 
 
 @dataclass
@@ -86,18 +85,23 @@ class BaseClassifierNode(NodeType):
         """
         raise NotImplementedError
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
+    def run(self, context: NodeContext) -> NodeResult:
         self._check_dependencies()
         estimator_class: type[Any] = self._get_estimator_class()
-        params = context.validated_params
+        params = context.params
         step_id = context.step_spec.step_id
 
         # 1. Prepare training data
-        df, features, target_column, good_values, bad_values, y_binary, _ = (
-            _prepare_training_data(context, params)
+        prepared = prepare_supervised_training_data(
+            context.inputs,
+            operation=self.node_type,
         )
-        bad_class = sorted(bad_values)[0]
-        good_class = sorted(good_values)[0]
+        df = prepared.frame
+        features = prepared.feature_columns(params)
+        target_column = prepared.target_column
+        y_binary = prepared.y_binary
+        bad_class = sorted(prepared.bad_values)[0]
+        good_class = sorted(prepared.good_values)[0]
 
         random_seed = int(params.get("random_seed", 42))
 
@@ -175,7 +179,7 @@ class BaseClassifierNode(NodeType):
 
         # 7. Persist binary estimator
         estimator_art = _write_estimator(
-            context.store, clf, step_id, context.run_id, self.model_family,
+            context.outputs, clf, step_id, context.run_id, self.model_family,
         )
 
         # 8. Build model artifact
@@ -193,7 +197,8 @@ class BaseClassifierNode(NodeType):
             elapsed=elapsed,
             model_payload=result.model_payload,
             interpretability=result.interpretability,
-            context=context,
+            run_id=context.run_id,
+            step_id=step_id,
             extra_metrics=result.extra_metrics,
             warnings_list=result.warnings,
             row_count=df.height,
@@ -220,9 +225,9 @@ class BaseClassifierNode(NodeType):
             "model_family": self.model_family,
             **{k: v for k, v in result.extra_metrics.items() if isinstance(v, (str, int, float))},
         }
-        artifact = write_json_artifact(
-            context.store, artifact_type="model", role="model",
-            stem=f"{self.model_family}-model-{step_id}",
+        context.outputs.publish_json(
+            role="model",
+            kind=EvidenceKind.MODEL_ARTIFACT,
             payload=model,
             metadata=artifact_metadata,
         )
@@ -235,7 +240,6 @@ class BaseClassifierNode(NodeType):
             {k: v for k, v in result.extra_metrics.items() if isinstance(v, (int, float))}
         )
 
-        return NodeOutput(
-            artifacts=[artifact, estimator_art],
-            metrics=metrics,
-        )
+        for name, value in metrics.items():
+            context.outputs.add_metric(name, value)
+        return context.outputs.build_result()

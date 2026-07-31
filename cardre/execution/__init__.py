@@ -1,1 +1,1 @@
-# Legacy execution package — partially preserved during Batch 05 migration.
+"""Execution-domain helpers not owned by the application runtime."""

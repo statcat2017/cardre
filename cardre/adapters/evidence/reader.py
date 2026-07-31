@@ -142,6 +142,9 @@ class EvidenceReader:
     def read_dataframe(self, art: ArtifactRef) -> pl.DataFrame:
         return pl.read_parquet(self._reader.resolve_path(art))
 
+    def read_bytes(self, art: ArtifactRef) -> bytes:
+        return self._reader.read_bytes(art)
+
     def read_step_output_optional(
         self,
         run_step_id: str,

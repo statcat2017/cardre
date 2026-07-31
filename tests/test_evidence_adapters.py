@@ -286,9 +286,8 @@ def test_project_store_reader_supports_legacy_constructor_and_ensemble_lookup(st
     reader = ArtifactEvidenceReader(store)
 
     assert reader._store is store
-    from cardre.nodes.ensembles import _load_model_artifact
-
-    assert _load_model_artifact(reader, art.artifact_id)["model_family"] == "logistic_regression"
+    model = reader.require_model(art, "legacy-reader-test")
+    assert model.model_family == "logistic_regression"
 
 
 @pytest.mark.parametrize("kind,artifact_type,role,schema_version,payload", _JSON_KIND_FIXTURES)
