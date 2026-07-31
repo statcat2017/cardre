@@ -1,150 +1,116 @@
 from __future__ import annotations
 
-import uuid
-
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
 
 
 class TestArtifactRepository:
-    def test_register_and_get(self, store):
-        from cardre.store.artifact_repo import ArtifactRepository
-        repo = ArtifactRepository(store)
-        ref = ArtifactRef(
-            artifact_id=str(uuid.uuid4()), artifact_type="test", role="test",
-            path="/tmp/test.json", physical_hash="ph", logical_hash="lh",
-            media_type="application/json", created_at=utc_now_iso(),
-            metadata={"key": "value"},
-        )
-        returned_id = repo.register(ref)
-        assert returned_id == ref.artifact_id
-        got = repo.get(ref.artifact_id)
-        assert got is not None
-        assert got.artifact_id == ref.artifact_id
-        assert got.metadata == {"key": "value"}
+    def test_register_and_get(self, provisioned_project):
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            ref = ArtifactRef(
+                artifact_id="art-reg", artifact_type="test", role="test",
+                path="/tmp/test.json", physical_hash="ph", logical_hash="lh",
+                media_type="application/json", created_at=utc_now_iso(),
+                metadata={"key": "value"},
+            )
+            returned_id = uow.artifacts.register(ref)
+            assert returned_id == ref.artifact_id
+            got = uow.artifacts.get(ref.artifact_id)
+            assert got is not None
+            assert got.artifact_id == ref.artifact_id
+            assert got.metadata["key"] == "value"
 
-        missing = repo.get("nonexistent")
-        assert missing is None
+            missing = uow.artifacts.get("nonexistent")
+            assert missing is None
 
-    def test_list(self, store):
-        from cardre.store.artifact_repo import ArtifactRepository
-        repo = ArtifactRepository(store)
-        ref1 = ArtifactRef(
-            artifact_id="a1", artifact_type="t1", role="r1", path="/p1",
-            physical_hash="ph1", logical_hash="lh1", created_at=utc_now_iso(),
-        )
-        ref2 = ArtifactRef(
-            artifact_id="a2", artifact_type="t2", role="r2", path="/p2",
-            physical_hash="ph2", logical_hash="lh2", created_at=utc_now_iso(),
-        )
-        repo.register(ref1)
-        repo.register(ref2)
-        all_artifacts = repo.list()
-        assert len(all_artifacts) == 2
+    def test_register_dedups_by_physical_hash(self, provisioned_project):
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            ref1 = ArtifactRef(
+                artifact_id="a1", artifact_type="t1", role="r1", path="/p1",
+                physical_hash="ph-shared", logical_hash="lh1", created_at=utc_now_iso(),
+            )
+            ref2 = ArtifactRef(
+                artifact_id="a2", artifact_type="t2", role="r2", path="/p2",
+                physical_hash="ph-shared", logical_hash="lh2", created_at=utc_now_iso(),
+            )
+            first = uow.artifacts.register(ref1)
+            second = uow.artifacts.register(ref2)
+            assert second == first == "a1"
 
-    def test_register_lineage(self, store):
-        from cardre.store.artifact_repo import ArtifactRepository
-        from cardre.store.run_repo import RunRepository
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
-        run_id = RunRepository(store).create(pv_id)
-        store.execute(
-            "INSERT INTO run_steps "
-            "(run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, "
-            " execution_fingerprint_json, warnings_json, errors_json) "
-            "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, '{}', '[]', '[]')",
-            ("rs-1", run_id, "step-a", pv_id, now, now),
-        )
-        art_id = "art-lineage-1"
-        store.execute(
-            "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (art_id, "test", "test", "/tmp", "ph", "lh", "application/json", now),
-        )
-        repo = ArtifactRepository(store)
-        lineage_id = repo.register_lineage(
-            run_id=run_id, run_step_id="rs-1", plan_version_id=pv_id,
-            step_id="step-a", artifact_id=art_id, direction="output",
-        )
-        assert lineage_id is not None
-        lineage = repo.get_lineage_for_run_step("rs-1")
-        assert len(lineage) >= 1
-        assert any(item["direction"] == "output" for item in lineage)
+    def test_list_for_project(self, provisioned_project):
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            plan_id = uow.plans.create_plan(project_id, "Test")
+            pv_id = uow.plans.create_version(plan_id, [], is_committed=True)
+            run_id = uow.runs.create(pv_id)
+            uow._conn.execute(
+                "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, "
+                " started_at, finished_at, execution_fingerprint_json, warnings_json, errors_json) "
+                "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, '{}', '[]', '[]')",
+                ("rs-out", run_id, "step-output", pv_id, utc_now_iso(), utc_now_iso()),
+            )
+            ref1 = ArtifactRef(
+                artifact_id="a1", artifact_type="t1", role="r1", path="/p1",
+                physical_hash="ph1", logical_hash="lh1", created_at=utc_now_iso(),
+            )
+            ref2 = ArtifactRef(
+                artifact_id="a2", artifact_type="t2", role="r2", path="/p2",
+                physical_hash="ph2", logical_hash="lh2", created_at=utc_now_iso(),
+            )
+            uow.artifacts.register(ref1)
+            uow.artifacts.register(ref2)
+            uow.artifacts.register_lineage(
+                run_id=run_id, run_step_id="rs-out", plan_version_id=pv_id,
+                step_id="step-output", artifact_id="a1", direction="output",
+            )
+            uow.artifacts.register_lineage(
+                run_id=run_id, run_step_id="rs-out", plan_version_id=pv_id,
+                step_id="step-output", artifact_id="a2", direction="output",
+            )
 
-    def test_list_for_project(self, store):
-        from cardre.store.artifact_repo import ArtifactRepository
-        from cardre.store.run_repo import RunRepository
+            all_artifacts = uow.artifacts.list_for_project(project_id)
+            assert {a.artifact_id for a in all_artifacts} == {"a1", "a2"}
 
-        project_id = str(uuid.uuid4())
-        now = utc_now_iso()
-        store.execute(
-            "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-            (project_id, "Test", now, "0.2.0"),
-        )
-        plan_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (plan_id, project_id, "Test", now),
-        )
-        pv_id = str(uuid.uuid4())
-        store.execute(
-            "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-            "VALUES (?, ?, 1, 1, ?)",
-            (pv_id, plan_id, now),
-        )
-        run_id = RunRepository(store).create(pv_id)
-        step_id = "step-output"
-        store.execute(
-            "INSERT INTO plan_steps (step_id, plan_version_id, node_type, node_version, category, "
-            " params_json, params_hash, branch_label, position, canonical_step_id) "
-            "VALUES (?, ?, 'cardre.noop', '1', 'fit', '{}', 'h', '', 0, ?)",
-            (step_id, pv_id, step_id),
-        )
-        store.execute(
-            "INSERT INTO run_steps "
-            "(run_step_id, run_id, step_id, plan_version_id, status, started_at, finished_at, "
-            " execution_fingerprint_json, warnings_json, errors_json) "
-            "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, '{}', '[]', '[]')",
-            ("rs-out", run_id, step_id, pv_id, now, now),
-        )
-        art_id = "project-art-1"
-        store.execute(
-            "INSERT INTO artifacts (artifact_id, artifact_type, role, path, physical_hash, logical_hash, media_type, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (art_id, "scorecard", "scorecard", "/tmp/sc", "ph", "lh", "application/json", now),
-        )
-        store.execute(
-            "INSERT INTO artifact_lineage (lineage_id, run_id, run_step_id, plan_version_id, step_id, artifact_id, direction, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (str(uuid.uuid4()), run_id, "rs-out", pv_id, step_id, art_id, "output", now),
-        )
-        repo = ArtifactRepository(store)
-        project_artifacts = repo.list_for_project(project_id)
-        assert len(project_artifacts) >= 1
+            filtered_by_role = uow.artifacts.list_for_project(project_id, role="r1")
+            assert [a.artifact_id for a in filtered_by_role] == ["a1"]
 
-        filtered_by_role = repo.list_for_project(project_id, role="scorecard")
-        assert any(a.artifact_id == art_id for a in filtered_by_role)
+            filtered_by_type = uow.artifacts.list_for_project(project_id, artifact_type="t2")
+            assert [a.artifact_id for a in filtered_by_type] == ["a2"]
 
-        filtered_by_type = repo.list_for_project(project_id, artifact_type="scorecard")
-        assert any(a.artifact_id == art_id for a in filtered_by_type)
+    def test_register_lineage(self, provisioned_project):
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            plan_id = uow.plans.create_plan(project_id, "Test")
+            pv_id = uow.plans.create_version(plan_id, [], is_committed=True)
+            run_id = uow.runs.create(pv_id)
+            uow._conn.execute(
+                "INSERT INTO run_steps (run_step_id, run_id, step_id, plan_version_id, status, "
+                " started_at, finished_at, execution_fingerprint_json, warnings_json, errors_json) "
+                "VALUES (?, ?, ?, ?, 'succeeded', ?, ?, '{}', '[]', '[]')",
+                ("rs-1", run_id, "step-a", pv_id, utc_now_iso(), utc_now_iso()),
+            )
+            art_id = "art-lineage-1"
+            uow.artifacts.register(ArtifactRef(
+                artifact_id=art_id, artifact_type="test", role="test", path="/tmp",
+                physical_hash="ph", logical_hash="lh", created_at=utc_now_iso(),
+            ))
+            uow.artifacts.register_lineage(
+                run_id=run_id, run_step_id="rs-1", plan_version_id=pv_id,
+                step_id="step-a", artifact_id=art_id, direction="output",
+            )
 
-        filtered_by_step = repo.list_for_project(project_id, producing_step_id=step_id)
-        assert any(a.artifact_id == art_id for a in filtered_by_step)
+            ids = uow.artifacts.output_artifact_ids_for_run_step("rs-1")
+            assert ids == [art_id]
+            refs = uow.artifacts.output_artifacts_for_run_step("rs-1")
+            assert [ref.artifact_id for ref in refs] == [art_id]
+            run_ids = uow.artifacts.output_artifact_ids_for_run(run_id)
+            assert run_ids == [art_id]
 
-        filtered_by_run = repo.list_for_project(project_id, run_id=run_id)
-        assert any(a.artifact_id == art_id for a in filtered_by_run)
+            for direction, ref in uow.artifacts.artifacts_for_run_step("rs-1"):
+                assert direction == "output"
+                assert ref.artifact_id == art_id
+
+            assert uow.artifacts.get_for_project(project_id, art_id) is not None
+            assert uow.artifacts.get_for_project("nonexistent", art_id) is None

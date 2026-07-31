@@ -1,7 +1,7 @@
 """Execution fingerprint construction for RunStep.
 
 Pure data construction from StepSpec, RunStep, and ArtifactRef.
-No ProjectStore, no orchestration.
+No persistence, no orchestration.
 """
 
 from __future__ import annotations

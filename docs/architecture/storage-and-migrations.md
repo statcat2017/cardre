@@ -23,7 +23,7 @@ This keeps SQLite lean, queryable, and easy to backup while Parquet handles colu
 
 ## Schema
 
-The database schema is defined in `cardre/store/schema.py` and includes tables for:
+The database schema is defined in `cardre/adapters/sqlite/schema.py` and includes tables for:
 - Projects, plans, plan versions, plan steps
 - Runs, run steps
 - Artifacts, artifact references
@@ -35,4 +35,4 @@ Branch-related tables are created separately via `BRANCH_TABLES_SQL` and are onl
 
 ## Migrations
 
-Schema migrations are handled by `cardre/store/schema.py` which includes version checks and migration logic. The store checks the schema version on open and applies any pending migrations.
+Schema migrations are handled by `cardre/adapters/sqlite/schema.py` which includes version checks and migration logic. The store checks the schema version on open and applies any pending migrations.
