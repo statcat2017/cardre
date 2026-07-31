@@ -15,9 +15,9 @@ from typing import Any
 import polars as pl
 import pytest
 
-from cardre._evidence.schemas import SCHEMA_SCORING_EXPORT_PYTHON, SCHEMA_SCORING_EXPORT_SQL
 from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
+from cardre.domain.evidence.schemas import SCHEMA_SCORING_EXPORT_PYTHON, SCHEMA_SCORING_EXPORT_SQL
 from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
 
@@ -165,8 +165,8 @@ def test_scoring_export_parity(raw_project_path, api_client, tmp_path):
 def test_python_sql_parity_missing_without_bin_zero_policy():
     """Python and SQL produce the same score for missing values when no
     missing bin exists and missing_policy='zero'."""
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import (
         _build_python_scorer_source,
         _build_sql_scorer_source,
@@ -221,8 +221,8 @@ def test_python_sql_parity_missing_without_bin_zero_policy():
 def test_python_sql_parity_unmatched_non_null_zero_policy():
     """Python and SQL produce the same score for unmatched non-null values
     when unmatched_policy='zero'."""
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import (
         _build_python_scorer_source,
         _build_sql_scorer_source,
@@ -277,8 +277,8 @@ def test_python_sql_parity_unmatched_non_null_zero_policy():
 def test_sql_scorer_missing_without_bin_error_policy_returns_null():
     """SQL returns NULL for missing value when no missing bin and
     missing_policy='error'."""
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_sql_scorer_source
     from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
@@ -327,8 +327,8 @@ def test_sql_scorer_missing_without_bin_error_policy_returns_null():
 def test_compile_scorecard_raises_on_unconsumed_coefficient():
     """When a model has a coefficient for a variable that has no bin
     definition, compilation fails rather than silently dropping it."""
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
     bin_def = BinDefinition(
@@ -359,8 +359,8 @@ def test_python_scorer_missing_value_handling():
     scorer source, and checks that a None input maps to the missing-bin WOE
     rather than 0.0.
     """
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_python_scorer_source
 
     bin_def = BinDefinition(
@@ -422,8 +422,8 @@ def test_python_scorer_single_category_bin():
     A single-category bin must produce a proper tuple literal, not a
     parenthesized string that triggers substring matching.
     """
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_python_scorer_source
     from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
@@ -477,8 +477,8 @@ def test_python_scorer_single_category_bin():
 
 def test_python_scorer_missing_value_no_missing_bin():
     """When no missing bin exists and policy is 'error', the scorer must raise."""
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_python_scorer_source
     from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
@@ -523,8 +523,8 @@ def test_python_scorer_missing_value_no_missing_bin():
 def test_python_sql_parity_on_missing_unmatched_known():
     """Python and SQL scorers produce identical scores for missing,
     unmatched non-null, and known values with the same input."""
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import (
         _build_python_scorer_source,
         _build_sql_scorer_source,
@@ -615,8 +615,8 @@ def test_python_sql_parity_on_missing_unmatched_known():
 def test_compile_scorecard_raises_on_missing_woe_map_for_coefficient():
     """When a model coefficient exists but the variable has no WOE map,
     compilation fails with a useful error rather than silently skipping."""
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
     bin_def = BinDefinition(
@@ -642,8 +642,8 @@ def test_compile_scorecard_raises_on_missing_woe_map_for_coefficient():
 def test_compile_scorecard_raises_on_bin_without_woe():
     """When a bin definition exists but the WOE table has no entry for that
     bin, compilation fails with a useful error."""
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
     bin_def = BinDefinition(
@@ -672,8 +672,8 @@ def test_compile_scorecard_raises_on_bin_without_woe():
 def test_python_unmatched_numeric_raises():
     """An out-of-range numeric value raises ValueError in the Python scorer,
     matching the SQL ELSE NULL behavior (error propagation)."""
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_python_scorer_source
     from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
@@ -708,8 +708,8 @@ def test_python_unmatched_numeric_raises():
 def test_python_unmatched_categorical_raises():
     """An unknown category raises ValueError in the Python scorer,
     matching the SQL ELSE NULL behavior."""
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_python_scorer_source
     from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
@@ -749,8 +749,8 @@ def test_sql_scorer_single_category_bin():
     for a single value. The test verifies the generated SQL is valid
     and produces correct results.
     """
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_sql_scorer_source
     from cardre.nodes.build.scoring_export_ir import compile_scorecard
 
@@ -813,8 +813,8 @@ def test_sql_scorer_single_category_bin():
 def test_sql_scorer_unmatched_non_null_returns_null():
     """When a variable has a missing bin but no other bin, an out-of-range
     non-null value must produce NULL (not silently scored as 0.0)."""
-    from cardre._evidence.models.binning import BinDefinition, BinVariable
-    from cardre._evidence.models.woe import WoeTable
+    from cardre.domain.evidence.models.binning import BinDefinition, BinVariable
+    from cardre.domain.evidence.models.woe import WoeTable
     from cardre.nodes.build.scoring_export import _build_sql_scorer_source
 
     bin_def = BinDefinition(

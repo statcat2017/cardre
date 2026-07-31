@@ -56,7 +56,7 @@ class TestScoreScalingRunErrors:
     def test_missing_model_artifact_raises(self, tmp_path):
         store = _make_store(tmp_path)
         _seed_project_and_plan(store)
-        from cardre._evidence.kinds import EvidenceNotFoundError
+        from cardre.domain.evidence.kinds import EvidenceNotFoundError
         from cardre.domain.step import StepSpec
         from cardre.execution.context import ExecutionContext
         from cardre.nodes.build.models import ScoreScalingNode

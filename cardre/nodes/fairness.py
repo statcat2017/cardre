@@ -11,7 +11,7 @@ import numpy as np
 import polars as pl
 from polars.exceptions import ComputeError
 
-from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre.adapters.evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.contracts import NodeType

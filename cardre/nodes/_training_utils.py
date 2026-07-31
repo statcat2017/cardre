@@ -140,7 +140,7 @@ def _prepare_training_data(
     context: Any,
     params: Mapping[str, Any],
 ) -> tuple[pl.DataFrame, list[str], str, set[str], set[str], np.ndarray, Any]:
-    from cardre._evidence.reader import ArtifactEvidenceReader
+    from cardre.adapters.evidence.reader import ArtifactEvidenceReader
 
     store = context.store
     reader = ArtifactEvidenceReader(store)

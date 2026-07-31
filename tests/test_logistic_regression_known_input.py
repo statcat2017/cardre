@@ -16,12 +16,12 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from cardre._evidence.schemas import SCHEMA_MODELLING_METADATA
 from cardre.adapters.evidence.reader import EvidenceReader
 from cardre.application.execution.input_collection import StepInputCollection
 from cardre.application.ports.unit_of_work import ArtifactRepoPort, RunStepRepoPort
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.evidence.schemas import SCHEMA_MODELLING_METADATA
 from cardre.domain.step import StepSpec
 from cardre.nodes.build.models import LogisticRegressionNode
 from cardre.nodes.contracts import NodeContext, RuntimeMeta

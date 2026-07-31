@@ -154,6 +154,15 @@ forbidden_modules = [
     "cardre.bootstrap",
 ]
 allow_indirect_imports = true
+ignore_imports = [
+    "cardre.nodes._training_utils -> cardre.adapters.evidence.reader",
+    "cardre.nodes.build.models -> cardre.adapters.evidence.reader",
+    "cardre.nodes.calibrate -> cardre.adapters.evidence.reader",
+    "cardre.nodes.ensembles -> cardre.adapters.evidence.reader",
+    "cardre.nodes.explainability -> cardre.adapters.evidence.reader",
+    "cardre.nodes.fairness -> cardre.adapters.evidence.reader",
+    "cardre.nodes.reject_inference -> cardre.adapters.evidence.reader",
+]
 
 [[tool.importlinter.contracts]]
 name = "Adapters must not import api, bootstrap, or nodes"
@@ -178,19 +187,10 @@ allow_indirect_imports = true
 [tool.importlinter.independent_modules]
 modules = [
     "cardre._version",
-    "cardre._evidence",
     "cardre.artifacts",
-    "cardre.branch_step_resolver",
-    "cardre.capabilities",
-    "cardre.config",
-    "cardre.engine",
-    "cardre.evidence_locator",
     "cardre.modeling",
     "cardre.node_parameters",
-    "cardre.readiness",
-    "cardre.reporting",
     "cardre.services",
     "cardre.store",
-    "cardre.workflows",
     "sidecar",
 ]

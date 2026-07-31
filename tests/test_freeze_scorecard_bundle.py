@@ -7,15 +7,15 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from cardre._evidence.schemas import (
+from cardre.domain.artifacts import ArtifactRef, json_logical_hash
+from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.evidence.schemas import (
     SCHEMA_FROZEN_SCORECARD_BUNDLE,
     SCHEMA_MODEL_ARTIFACT,
     SCHEMA_MODELLING_METADATA,
     SCHEMA_SCORE_SCALING,
     SCHEMA_WOE_TABLE,
 )
-from cardre.domain.artifacts import ArtifactRef, json_logical_hash
-from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.step import StepSpec
 from cardre.execution.context import ExecutionContext
 from cardre.nodes.build.freeze import FrozenScorecardBundleNode

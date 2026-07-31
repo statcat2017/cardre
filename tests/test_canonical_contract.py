@@ -114,27 +114,27 @@ def test_no_compat_evidence_aliases_in_source():
 
 
 def test_score_scaling_defaults_match_reader_and_report_model():
-    from cardre._evidence.models.model import ScoreScaling
     from cardre.application.reporting.schema import ScoreScalingInfo
+    from cardre.domain.evidence.models.model import ScoreScaling
 
     assert ScoreScaling().score_direction == "higher_is_lower_risk"
     assert ScoreScalingInfo().score_direction == "higher_is_lower_risk"
 
 
 def test_score_scaling_reads_points_to_double_odds():
-    from cardre._evidence.models.model import ScoreScaling
+    from cardre.domain.evidence.models.model import ScoreScaling
     s = ScoreScaling.from_json({"points_to_double_odds": 40, "base_score": 600})
     assert s.points_to_double_odds == 40
 
 
 def test_score_scaling_ignores_pdo_key():
-    from cardre._evidence.models.model import ScoreScaling
+    from cardre.domain.evidence.models.model import ScoreScaling
     s = ScoreScaling.from_json({"pdo": 40, "base_score": 600})
     assert s.points_to_double_odds == 20  # default — pdo was ignored
 
 
 def test_score_scaling_reads_score_direction():
-    from cardre._evidence.models.model import ScoreScaling
+    from cardre.domain.evidence.models.model import ScoreScaling
     s = ScoreScaling.from_json({"score_direction": "higher_is_better", "base_score": 600})
     assert s.score_direction == "higher_is_better"
     assert s.higher_score_is_lower_risk is False
@@ -163,14 +163,14 @@ def test_model_artifact_rejects_list_coefficients():
 
 
 def test_validation_metrics_rejects_legacy_metrics_key():
-    from cardre._evidence.models.validation import ValidationMetrics
+    from cardre.domain.evidence.models.validation import ValidationMetrics
 
     with pytest.raises(ValueError, match="canonical 'roles'"):
         ValidationMetrics.from_json({"metrics": {"train": {"auc": 0.75}}})
 
 
 def test_cutoff_analysis_rejects_legacy_score_key():
-    from cardre._evidence.models.validation import CutoffAnalysis
+    from cardre.domain.evidence.models.validation import CutoffAnalysis
 
     with pytest.raises(ValueError, match="score_cutoff"):
         CutoffAnalysis.from_json({"cutoff_tables": {"train": [{"score": 100}]}})

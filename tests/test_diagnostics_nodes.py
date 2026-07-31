@@ -6,12 +6,12 @@ import numpy as np
 import polars as pl
 import pytest
 
-from cardre._evidence.schemas import (
+from cardre.artifacts import write_json_artifact, write_parquet_artifact
+from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.evidence.schemas import (
     SCHEMA_MODEL_ARTIFACT,
     SCHEMA_MODELLING_METADATA,
 )
-from cardre.artifacts import write_json_artifact, write_parquet_artifact
-from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.step import StepSpec
 from cardre.execution.context import ExecutionContext
 from cardre.nodes.build.diagnostics import (

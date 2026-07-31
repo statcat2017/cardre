@@ -10,10 +10,10 @@ from typing import Any
 
 import polars as pl
 
-from cardre._evidence.schemas import SCHEMA_FROZEN_SCORECARD_BUNDLE
 from cardre.adapters.evidence.reader import EvidenceReader
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_FROZEN_SCORECARD_BUNDLE
 from cardre.execution.context import TargetMeta
 
 

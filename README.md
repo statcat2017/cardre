@@ -64,7 +64,7 @@ cd frontend && npm install && npm run dev
   - `cardre/execution/` — execution engine: PlanExecutor, RunLifecycle, Worker
   - `cardre/api/` — FastAPI route definitions (project-scoped)
   - `cardre/reporting/` — report rendering and collector
-  - `cardre/_evidence/` — evidence kinds, models, reader, schemas
+  - `cardre/domain/evidence/` and `cardre/adapters/evidence/` — evidence kinds, models, reader, schemas
 - **`sidecar/`** — FastAPI local API server (bundled as sidecar binary via PyInstaller)
 - **`frontend/`** — React + TypeScript UI (Vite)
 - **`frontend/src-tauri/`** — Tauri v2 Rust desktop shell

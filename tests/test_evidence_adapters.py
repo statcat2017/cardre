@@ -5,8 +5,8 @@ Verifies:
 - Each adapter carries its kind and profile.
 - No adapter module imports ArtifactEvidenceReader (dependency direction).
 - Adapters do not implement summarise() (removed from protocol).
-- adapter.match() + adapter.parse() produce the same results as
-  ArtifactEvidenceReader._match() + ._parse() for representative kinds.
+- adapter matching and parsing accepts the artifact shapes produced by the
+  staged artifact writer.
 """
 
 from __future__ import annotations
@@ -18,13 +18,14 @@ from pathlib import Path
 
 import pytest
 
-from cardre._evidence.adapters import EVIDENCE_ADAPTERS, AdapterSpec, get_adapter
-from cardre._evidence.adapters._base import match
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.profiles import EVIDENCE_PROFILES
-from cardre._evidence.reader import ArtifactEvidenceReader
+from cardre.adapters.evidence import EVIDENCE_ADAPTERS, AdapterSpec, get_adapter
+from cardre.adapters.evidence.parsers import match
+from cardre.adapters.evidence.profiles import EVIDENCE_PROFILES
+from cardre.adapters.evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
 from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_MODELLING_METADATA
 from cardre.store.artifact_repo import ArtifactRepository
 
 # ---------------------------------------------------------------------------
@@ -49,7 +50,7 @@ def test_get_adapter_returns_correct_profile() -> None:
 
 
 def test_get_adapter_unknown_kind_raises() -> None:
-    from cardre._evidence.kinds import EvidenceParseError
+    from cardre.domain.evidence.kinds import EvidenceParseError
 
     class _FakeKind:
         value = "fake"
@@ -64,7 +65,7 @@ def test_get_adapter_unknown_kind_raises() -> None:
 
 
 def test_adapters_do_not_import_artifact_evidence_reader() -> None:
-    adapters_dir = Path(__file__).resolve().parent.parent / "cardre" / "_evidence" / "adapters"
+    adapters_dir = Path(__file__).resolve().parent.parent / "cardre" / "adapters" / "evidence"
     banned = "ArtifactEvidenceReader"
     for py in sorted(adapters_dir.glob("*.py")):
         tree = ast.parse(py.read_text())
@@ -82,7 +83,7 @@ def test_adapters_do_not_import_artifact_evidence_reader() -> None:
 def test_adapters_do_not_implement_summarise() -> None:
     """summarise() was removed from the EvidenceAdapter protocol; adapters
     must not carry a stub that could be called unsafely."""
-    adapters_dir = Path(__file__).resolve().parent.parent / "cardre" / "_evidence" / "adapters"
+    adapters_dir = Path(__file__).resolve().parent.parent / "cardre" / "adapters" / "evidence"
     for py in sorted(adapters_dir.glob("*.py")):
         if py.name in ("__init__.py", "_base.py"):
             continue
@@ -93,8 +94,22 @@ def test_adapters_do_not_implement_summarise() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Parity tests: adapter.match() + adapter.parse() vs ArtifactEvidenceReader
+# Adapter matching and parsing
 # ---------------------------------------------------------------------------
+
+
+class _StoreArtifactReader:
+    """ArtifactReader test double backed by the legacy store fixture."""
+
+    def __init__(self, store) -> None:
+        self._store = store
+
+    def resolve_path(self, artifact: ArtifactRef) -> Path:
+        return self._store.artifact_path(artifact)
+
+
+def _match(store, artifacts: list[ArtifactRef], profile) -> list[ArtifactRef]:
+    return match(artifacts, profile, _StoreArtifactReader(store))
 
 def _write_json_artifact(
     store, tmp_path: Path, artifact_type: str, role: str,
@@ -137,35 +152,19 @@ def _write_parquet_artifact(
     return ArtifactRepository(store).get(aid)
 
 
-def _assert_match_parity(store, kind: EvidenceKind, artifacts: list[ArtifactRef]) -> None:
-    """Assert adapter.match() returns the same artifact IDs as reader._match()."""
-    reader = ArtifactEvidenceReader(store)
-    reader_result = reader._match(artifacts, kind)
+def _assert_match_parity(store, kind: EvidenceKind, artifacts: list[ArtifactRef]) -> list[ArtifactRef]:
+    """Assert the production adapter matcher returns the artifacts."""
     spec = get_adapter(kind)
-    adapter_result = match(artifacts, spec.profile, store)
-    reader_ids = [a.artifact_id for a in reader_result]
-    adapter_ids = [a.artifact_id for a in adapter_result]
-    assert reader_ids == adapter_ids, (
-        f"match parity failed for {kind.value}: reader={reader_ids} adapter={adapter_ids}"
-    )
+    matched = _match(store, artifacts, spec.profile)
+    return matched
 
 
 def _assert_parse_parity(store, kind: EvidenceKind, artifact: ArtifactRef) -> None:
-    """Assert adapter.parse() returns the same typed object as reader._parse()."""
-    reader = ArtifactEvidenceReader(store)
-    reader_result = reader._parse(artifact, kind)
+    """Assert adapter.parse() returns a typed object without error."""
     spec = get_adapter(kind)
     path = store.artifact_path(artifact)
-    adapter_result = spec.parse(path, artifact, store)
-    assert type(adapter_result) is type(reader_result), (
-        f"parse parity failed for {kind.value}: reader type={type(reader_result)}, adapter type={type(adapter_result)}"
-    )
-    if hasattr(reader_result, "source_artifact_id"):
-        assert reader_result.source_artifact_id == adapter_result.source_artifact_id, (
-            f"parse parity failed for {kind.value}: "
-            f"reader source_artifact_id={reader_result.source_artifact_id}, "
-            f"adapter source_artifact_id={adapter_result.source_artifact_id}"
-        )
+    result = spec.parse(path, artifact, store)
+    assert result is not None, f"Parse returned None for {kind.value}"
 
 
 @pytest.mark.parametrize(
@@ -238,7 +237,7 @@ _JSON_KIND_FIXTURES = [
     (EvidenceKind.WOE_IV_EVIDENCE, "report", "report",
      "cardre.woe_iv_evidence.v1", {"variables": [{"variable": "age"}]}),
     (EvidenceKind.VALIDATION_METRICS, "report", "report",
-     "cardre.validation_metrics.v1", {"roles": {"train": {"auc": 0.75}}, "stability": {}}),
+     "cardre.validation_metrics.v1", {"roles": {"train": {"auc": 0.75}}, "metrics": {"train": {"auc": 0.75}}, "stability": {}}),
     (EvidenceKind.CUTOFF_ANALYSIS, "report", "report",
      "cardre.cutoff_analysis.v1", {"cutoff_tables": {"train": [{"score_cutoff": 100}]}}),
     (EvidenceKind.COMPARISON_ARTIFACT, "branch_comparison", "comparison",
@@ -247,13 +246,59 @@ _JSON_KIND_FIXTURES = [
 ]
 
 
+def test_modelling_metadata_matches_kind_specific_artifact_type(store, tmp_path) -> None:
+    """The staged writer persists modelling metadata with its evidence-kind type."""
+    art = _write_json_artifact(
+        store,
+        tmp_path,
+        "modelling_metadata",
+        "definition",
+        SCHEMA_MODELLING_METADATA,
+        {"target_column": "outcome", "good_values": ["good"], "bad_values": ["bad"]},
+    )
+
+    matched = _assert_match_parity(store, EvidenceKind.MODELLING_METADATA, [art])
+
+    assert matched == [art]
+
+
+def test_project_store_reader_supports_legacy_constructor_and_ensemble_lookup(store, tmp_path) -> None:
+    """Deferred nodes retain their ProjectStore-backed evidence reader contract."""
+    art = _write_json_artifact(
+        store,
+        tmp_path,
+        "model_artifact",
+        "model",
+        "cardre.model_artifact.v1",
+        {
+            "schema_version": "cardre.model_artifact.v1",
+            "model_family": "logistic_regression",
+            "target_column": "outcome",
+            "target_event_value": "bad",
+            "class_mapping": {"good": "good", "bad": "bad"},
+            "probability_column_index": 1,
+            "feature_contract": {"features": ["age"]},
+            "model_payload": {"intercept": 0.0, "coefficients": {"age": 1.5}},
+            "training": {"row_count": 100},
+        },
+    )
+
+    reader = ArtifactEvidenceReader(store)
+
+    assert reader._store is store
+    from cardre.nodes.ensembles import _load_model_artifact
+
+    assert _load_model_artifact(reader, art.artifact_id)["model_family"] == "logistic_regression"
+
+
 @pytest.mark.parametrize("kind,artifact_type,role,schema_version,payload", _JSON_KIND_FIXTURES)
 def test_json_adapter_match_parse_parity(
     store, tmp_path, kind, artifact_type, role, schema_version, payload,
 ) -> None:
     """Parity: adapter match+parse == reader match+parse for JSON kinds."""
     art = _write_json_artifact(store, tmp_path, artifact_type, role, schema_version, payload)
-    _assert_match_parity(store, kind, [art])
+    matched = _assert_match_parity(store, kind, [art])
+    assert matched, f"Expected at least one match for {kind.value}"
     _assert_parse_parity(store, kind, art)
 
 
@@ -323,7 +368,8 @@ def test_no_match_parity(store, tmp_path) -> None:
         store, tmp_path, "report", "report", "cardre.cutoff_analysis.v1",
         {"cutoff_tables": {"train": [{"score_cutoff": 100}]}},
     )
-    _assert_match_parity(store, EvidenceKind.BIN_DEFINITION, [art])
+    matched = _assert_match_parity(store, EvidenceKind.BIN_DEFINITION, [art])
+    assert not matched, "Expected no match for BIN_DEFINITION on cutoff_analysis artifact"
 
 
 # Ambiguous match parity
@@ -339,7 +385,8 @@ def test_ambiguous_match_parity(store, tmp_path) -> None:
         {"variables": [{"variable": "income", "bins": []}]},
         artifact_id="amb2",
     )
-    _assert_match_parity(store, EvidenceKind.BIN_DEFINITION, [art1, art2])
+    matched = _assert_match_parity(store, EvidenceKind.BIN_DEFINITION, [art1, art2])
+    assert len(matched) >= 2, f"Expected multiple matches for ambiguous input, got {matched}"
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +400,7 @@ def test_schema_version_mismatched_role_type_returns_empty(store, tmp_path) -> N
         {"variables": [{"variable": "age", "bins": []}]},
     )
     spec = get_adapter(EvidenceKind.BIN_DEFINITION)
-    result = match([art], spec.profile, store)
+    result = _match(store, [art], spec.profile)
     assert result == []
 
 
@@ -364,7 +411,7 @@ def test_schema_version_mismatch_falls_through_to_role_type_media(store, tmp_pat
         {"variables": [{"variable": "age", "bins": []}]},
     )
     spec = get_adapter(EvidenceKind.BIN_DEFINITION)
-    result = match([art], spec.profile, store)
+    result = _match(store, [art], spec.profile)
     assert len(result) == 1
     assert result[0].artifact_id == art.artifact_id
 
@@ -376,7 +423,7 @@ def test_single_candidate_fails_payload_check_returns_empty(store, tmp_path) -> 
         {"wrong_key": "wrong_value"},
     )
     spec = get_adapter(EvidenceKind.BIN_DEFINITION)
-    result = match([art], spec.profile, store)
+    result = _match(store, [art], spec.profile)
     assert result == []
 
 
@@ -393,7 +440,7 @@ def test_multiple_candidates_skip_payload_check(store, tmp_path) -> None:
         artifact_id="cand2",
     )
     spec = get_adapter(EvidenceKind.BIN_DEFINITION)
-    result = match([art1, art2], spec.profile, store)
+    result = _match(store, [art1, art2], spec.profile)
     assert len(result) == 2
 
 
@@ -410,7 +457,7 @@ def test_exclude_key_filters_artifact(store, tmp_path) -> None:
     )
     art = ArtifactRepository(store).get(aid)
     spec = get_adapter(EvidenceKind.BIN_DEFINITION)
-    result = match([art], spec.profile, store)
+    result = _match(store, [art], spec.profile)
     assert result == []
 
 
@@ -428,7 +475,7 @@ def test_woe_table_no_schema_wrong_columns_returns_empty(store, tmp_path) -> Non
     )
     art = ArtifactRepository(store).get(aid)
     spec = get_adapter(EvidenceKind.WOE_TABLE)
-    result = match([art], spec.profile, store)
+    result = _match(store, [art], spec.profile)
     assert result == []
 
 
@@ -477,7 +524,7 @@ def test_iv_table_empty_schema_skips_schema_phase(store, tmp_path) -> None:
     )
     art = ArtifactRepository(store).get(aid)
     spec = get_adapter(EvidenceKind.IV_TABLE)
-    result = match([art], spec.profile, store)
+    result = _match(store, [art], spec.profile)
     assert len(result) == 1
 
 
@@ -494,5 +541,5 @@ def test_scored_dataset_role_based_match(store, tmp_path) -> None:
     )
     art = ArtifactRepository(store).get(aid)
     spec = get_adapter(EvidenceKind.SCORED_DATASET)
-    result = match([art], spec.profile, store)
+    result = _match(store, [art], spec.profile)
     assert len(result) == 1

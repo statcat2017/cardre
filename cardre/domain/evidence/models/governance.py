@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from cardre._evidence.models.binning import SelectedVariable
 from cardre.domain.diagnostics import JsonDict
+from cardre.domain.evidence.models.binning import SelectedVariable
 
 
 @dataclass(frozen=True)
@@ -272,7 +272,7 @@ class VariableClusteringEvidence:
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> VariableClusteringEvidence:
-        from cardre._evidence.schemas import SCHEMA_VARIABLE_CLUSTERING_EVIDENCE
+        from cardre.domain.evidence.schemas import SCHEMA_VARIABLE_CLUSTERING_EVIDENCE
         raw_clusters = data.get("clusters", [])
         clusters = []
         for rc in raw_clusters:

@@ -7,10 +7,13 @@ import numpy as np
 import polars as pl
 from sklearn.linear_model import LogisticRegression
 
-from cardre._evidence.kinds import EvidenceKind
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import SCHEMA_REJECT_INFERENCE_RESULT, SCHEMA_REJECT_POPULATION_CONFIG
+from cardre.adapters.evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact, write_parquet_artifact
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import (
+    SCHEMA_REJECT_INFERENCE_RESULT,
+    SCHEMA_REJECT_POPULATION_CONFIG,
+)
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.contracts import NodeType
 from cardre.nodes.parameters import NodeParameterSchema

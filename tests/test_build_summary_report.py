@@ -14,8 +14,8 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from cardre._evidence.schemas import SCHEMA_MODEL_ARTIFACT, SCHEMA_SCORE_SCALING
 from cardre.domain.diagnostics import utc_now_iso
+from cardre.domain.evidence.schemas import SCHEMA_MODEL_ARTIFACT, SCHEMA_SCORE_SCALING
 from cardre.domain.step import StepSpec
 from cardre.execution.context import ExecutionContext
 from cardre.nodes.build.models import BuildSummaryReportNode, ScoreScalingNode

@@ -11,9 +11,9 @@ from typing import Any
 
 from polars.exceptions import ComputeError
 
-from cardre._evidence.reader import ArtifactEvidenceReader
-from cardre._evidence.schemas import SCHEMA_EXPLAINABILITY_REPORT
+from cardre.adapters.evidence.reader import ArtifactEvidenceReader
 from cardre.artifacts import write_json_artifact
+from cardre.domain.evidence.schemas import SCHEMA_EXPLAINABILITY_REPORT
 from cardre.execution.context import ExecutionContext, NodeOutput
 from cardre.nodes.contracts import NodeType
 from cardre.nodes.parameters import (
