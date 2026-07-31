@@ -612,7 +612,7 @@ for override helpers import from manual.py.
 
 ### 3.5 Required Binning Tests
 
-Keep existing parameter tests in `tests/test_binning_node.py`, then add
+Keep existing parameter tests, then add
 behavior tests rather than only dispatch tests.
 
 #### Automatic Fine Classing
