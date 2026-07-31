@@ -241,9 +241,14 @@ class TestLaunchPathway:
                 )
 
             # 20. Canonical manifest + technical manifest consistency. The
-            # technical manifest must record EVERY persisted artifact's
-            # physical and logical hash, and each entry must match the DB
-            # (the run manifest's manifest_hash recomputes below).
+            # technical manifest must record EVERY persisted, run-linked
+            # artifact's physical and logical hash, and each entry must match
+            # the DB (the run manifest's manifest_hash recomputes below).
+            # The expected set is built from ALL run lineage (input + output
+            # directions), so it includes the synthetic RunSummary artifact
+            # that the technical-manifest step consumes as input. The only
+            # exclusion is the technical-manifest index's own output, which
+            # cannot reference itself.
             technical_index = None
             for _rs, a in artifacts:
                 if a.artifact_type == "technical_manifest_index":
@@ -254,24 +259,32 @@ class TestLaunchPathway:
             for m in technical_index["manifests"]:
                 for entry in m.get("artifacts", []):
                     tech_entries[entry["artifact_id"]] = entry
+            run_lineage_ids: set[str] = set()
+            for rs in run_steps:
+                for _direction, a in uow.artifacts.artifacts_for_run_step(rs.run_step_id):
+                    run_lineage_ids.add(a.artifact_id)
             persisted_ids = {
-                a.artifact_id for _rs, a in artifacts
-                if a.artifact_type != "technical_manifest_index"
+                aid for aid in run_lineage_ids
+                if uow.artifacts.get(aid) is not None
             }
-            assert set(tech_entries) == persisted_ids, (
-                f"Technical manifest must record every artifact: "
-                f"missing={sorted(persisted_ids - set(tech_entries))} "
-                f"extra={sorted(set(tech_entries) - persisted_ids)}"
+            index_output_ids = {
+                a.artifact_id for _rs, a in artifacts
+                if a.artifact_type == "technical_manifest_index"
+            }
+            expected_ids = persisted_ids - index_output_ids
+            assert set(tech_entries) == expected_ids, (
+                f"Technical manifest must record every run artifact: "
+                f"missing={sorted(expected_ids - set(tech_entries))} "
+                f"extra={sorted(set(tech_entries) - expected_ids)}"
             )
-            for _rs, a in artifacts:
-                if a.artifact_type == "technical_manifest_index":
-                    continue
-                entry = tech_entries[a.artifact_id]
-                assert entry["physical_hash"] == a.physical_hash, (
-                    f"Technical manifest physical hash mismatch for {a.artifact_id}"
+            for entry in tech_entries.values():
+                art = uow.artifacts.get(entry["artifact_id"])
+                assert art is not None, f"Manifest references unknown artifact {entry['artifact_id']}"
+                assert entry["physical_hash"] == art.physical_hash, (
+                    f"Technical manifest physical hash mismatch for {art.artifact_id}"
                 )
-                assert entry["logical_hash"] == a.logical_hash, (
-                    f"Technical manifest logical hash mismatch for {a.artifact_id}"
+                assert entry["logical_hash"] == art.logical_hash, (
+                    f"Technical manifest logical hash mismatch for {art.artifact_id}"
                 )
 
         # 16. Audit package generation.

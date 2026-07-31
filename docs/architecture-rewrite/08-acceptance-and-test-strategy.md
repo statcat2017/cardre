@@ -129,7 +129,7 @@ Steps (the 20 items from the task):
 17. **Replay a committed plan** — `POST /runs` same `plan_version_id`. Assert second run succeeds; compare artifact `logical_hash`es to first run — must match (deterministic).
 18. **Verify scoring parity** — `test_scoring_export_parity.py` passes (Python/SQL/apply-model outputs match).
 19. **Verify artifact hashes** — recompute `physical_hash` from file bytes; assert matches DB. Recompute `logical_hash` from canonical content for every artifact: JSON hashes the canonical parsed payload, Parquet hashes the canonical sorted-column Parquet serialization (`table_logical_hash`, byte-stable across store/read-back), and byte artifacts hash the raw bytes. Assert each recomputes to the stored value.
-20. **Verify canonical manifest consistency** — read `manifests/runs/{run_id}.json`; assert `manifest_hash` recomputes; assert `run_id`/`plan_version_id`/`status` match DB; assert every `evidence_edge` has ≥1 `evidence_artifact`; assert no phantom run_steps; assert the technical manifest index records **every** artifact's `physical_hash`/`logical_hash` matching the DB.
+20. **Verify canonical manifest consistency** — read `manifests/runs/{run_id}.json`; assert `manifest_hash` recomputes; assert `run_id`/`plan_version_id`/`status` match DB; assert every `evidence_edge` has ≥1 `evidence_artifact`; assert no phantom run_steps. Assert the technical manifest index records **every** run-linked artifact — built from all run lineage (input + output directions, including the synthetic `RunSummary` consumed as the manifest step's input) — except the manifest index's own output, which cannot self-reference; each entry's `physical_hash`/`logical_hash` must match the DB.
 
 ## Test command summary
 

@@ -28,6 +28,10 @@ class _BlockingHarness:
 
     ``started[run_id]`` is set when the worker begins; ``finished[run_id]``
     is set when the worker returns; ``release[run_id]`` unblocks it.
+
+    The event triplet for each run is pre-created by ``events()`` BEFORE the
+    run is dispatched, so the test thread can safely wait on it immediately
+    after ``dispatch()`` returns (no thread-startup race).
     """
 
     def __init__(self) -> None:
@@ -37,11 +41,22 @@ class _BlockingHarness:
         self.release: dict[str, threading.Event] = {}
         self._lock = threading.Lock()
 
+    def events(self, run_id: str) -> tuple[threading.Event, threading.Event, threading.Event]:
+        """Pre-create (started, finished, release) events for a run."""
+        started = threading.Event()
+        finished = threading.Event()
+        release = threading.Event()
+        with self._lock:
+            self.started[run_id] = started
+            self.finished[run_id] = finished
+            self.release[run_id] = release
+        return started, finished, release
+
     def execute(self, command) -> None:
         run_id = command.run_id
-        started = self.started.setdefault(run_id, threading.Event())
-        finished = self.finished.setdefault(run_id, threading.Event())
-        release = self.release.setdefault(run_id, threading.Event())
+        started = self.started[run_id]
+        finished = self.finished[run_id]
+        release = self.release[run_id]
         with self._lock:
             self.executed.append(run_id)
         started.set()
@@ -60,6 +75,7 @@ def test_dispatcher_rejects_duplicate_dispatch_for_same_run():
     harness = _BlockingHarness()
     dispatcher = ThreadRunDispatcher(harness.execute)
 
+    harness.events("run-1")
     dispatcher.dispatch(_request("run-1"))
     try:
         harness.wait_started("run-1")
@@ -77,6 +93,7 @@ def test_dispatcher_reports_running_then_completed():
     harness = _BlockingHarness()
     dispatcher = ThreadRunDispatcher(harness.execute)
 
+    harness.events("run-1")
     dispatcher.dispatch(_request("run-1"))
     try:
         harness.wait_started("run-1")
@@ -93,6 +110,7 @@ def test_dispatcher_enforces_max_workers_bound():
     harness = _BlockingHarness()
     dispatcher = ThreadRunDispatcher(harness.execute, max_workers=1)
 
+    harness.events("run-1")
     dispatcher.dispatch(_request("run-1"))
     try:
         harness.wait_started("run-1")
@@ -119,6 +137,8 @@ def test_dispatcher_executes_concurrent_runs_up_to_max_workers():
     harness = _BlockingHarness()
     dispatcher = ThreadRunDispatcher(harness.execute, max_workers=2)
 
+    harness.events("run-1")
+    harness.events("run-2")
     dispatcher.dispatch(_request("run-1"))
     harness.wait_started("run-1")
     dispatcher.dispatch(_request("run-2"))
