@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -9,7 +10,8 @@ import joblib
 import numpy as np
 import polars as pl
 
-from cardre.nodes.contracts import InputCollection
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.nodes.contracts import InputCollection, OutputPublisher
 
 INTERNAL_COLUMN_PREFIX = "_"
 
@@ -136,56 +138,27 @@ def prepare_supervised_training_data(
     )
 
 
-def _prepare_training_data(
-    context: Any,
-    params: Mapping[str, Any],
-) -> tuple[pl.DataFrame, list[str], str, set[str], set[str], np.ndarray, Any]:
-    from cardre.adapters.evidence.reader import ArtifactEvidenceReader
-
-    store = context.store
-    reader = ArtifactEvidenceReader(store)
-    train_artifact = context.require_train_artifact("_prepare_training_data")
-    meta = context.target_metadata()
-    target_spec = None
-    if meta is not None:
-        from cardre.modeling.target import TargetSpec
-        target_spec = TargetSpec.from_metadata(meta)
-    if target_spec is None:
-        raise ValueError("Target metadata is required.")
-    df = reader.read_dataframe(train_artifact)
-    if target_spec.target_column not in df.columns:
-        raise ValueError(f"Target column '{target_spec.target_column}' not found in training data")
-    target_spec.validate_known(df)
-    y_binary = target_spec.encode_binary_strict(df).to_numpy()
-    n_bad = int(y_binary.sum())
-    n_good = len(y_binary) - n_bad
-    if n_bad == 0:
-        raise ValueError(f"No bad-class rows found (bad_values={sorted(target_spec.bad_values)})")
-    if n_good == 0:
-        raise ValueError(f"No good-class rows found (good_values={sorted(target_spec.good_values)})")
-    features = resolve_supervised_feature_columns(df, target_column=target_spec.target_column, params=params)
-    return (
-        df,
-        features,
-        target_spec.target_column,
-        set(target_spec.good_values),
-        set(target_spec.bad_values),
-        y_binary,
-        meta,
-    )
-
-
-def _write_estimator(writer: Any, clf: Any, step_id: str, run_id: str, model_family: str) -> Any:
+def _write_estimator(
+    outputs: OutputPublisher,
+    clf: Any,
+    step_id: str,
+    run_id: str,
+    model_family: str,
+) -> Any:
     buf = io.BytesIO()
     joblib.dump(clf, buf)
     estimator_bytes = buf.getvalue()
-    from cardre.modeling.serialization import write_estimator_artifact
-    return write_estimator_artifact(
-        writer,
-        estimator_bytes=estimator_bytes,
-        estimator_format="joblib",
-        stem=f"{model_family}-estimator-{step_id}",
-        creating_run_id=run_id,
-        creating_run_step_id=step_id,
-        metadata={"model_family": model_family},
+    return outputs.publish_bytes(
+        role="model",
+        kind=EvidenceKind.MODEL_ARTIFACT,
+        data=estimator_bytes,
+        media_type="application/octet-stream",
+        logical_hash=hashlib.sha256(estimator_bytes).hexdigest(),
+        metadata={
+            "estimator_format": "joblib",
+            "byte_count": len(estimator_bytes),
+            "creating_run_id": run_id,
+            "creating_run_step_id": step_id,
+            "model_family": model_family,
+        },
     )

@@ -9,8 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre.domain.artifacts import ArtifactRef, json_logical_hash
-from cardre.execution.context import ExecutionContext
+from cardre.domain.artifacts import json_logical_hash
 
 
 def build_model_artifact(
@@ -22,19 +21,23 @@ def build_model_artifact(
     good_class: str,
     prob_col_idx: int,
     feature_strategy: str,
-    estimator_art: ArtifactRef,
+    estimator_art: Any,
     training_params: dict[str, Any],
     random_seed: int,
     elapsed: float,
     model_payload: dict[str, Any],
     interpretability: dict[str, Any],
-    context: ExecutionContext,
+    run_id: str,
+    step_id: str,
     extra_metrics: dict[str, Any] | None = None,
     warnings_list: list[dict[str, Any]] | None = None,
     row_count: int | None = None,
 ) -> dict[str, Any]:
     """Build a cardre.model_artifact.v1 JSON dict."""
     feature_order_hash = json_logical_hash({"features": features})
+    estimator_artifact_id = getattr(estimator_art, "artifact_id", None)
+    if estimator_artifact_id is None:
+        estimator_artifact_id = estimator_art.provisional_artifact_id
 
     class_mapping = {str(idx): str(label) for idx, label in enumerate([good_class, bad_class])}
 
@@ -52,13 +55,13 @@ def build_model_artifact(
             "transformation_strategy": feature_strategy,
         },
         "estimator_reference": {
-            "artifact_id": estimator_art.artifact_id,
+            "artifact_id": estimator_artifact_id,
             "logical_hash": estimator_art.logical_hash,
             "physical_hash": estimator_art.physical_hash,
             "estimator_format": "joblib",
             "trusted_load_required": True,
-            "creating_run_id": context.run_id,
-            "creating_run_step_id": context.step_spec.step_id,
+            "creating_run_id": run_id,
+            "creating_run_step_id": step_id,
         },
         "training": {
             "row_count": row_count if row_count is not None else len(features),
@@ -73,4 +76,3 @@ def build_model_artifact(
     if extra_metrics:
         model["training"].update(extra_metrics)
     return model
-

@@ -130,9 +130,6 @@ class StepRunner:
             output_contract = getattr(node.__definition__, 'output_contract', ArtifactContract())
             outputs = StagingOutputPublisher(artifact_store)
 
-            output_contract = getattr(node.__definition__, 'output_contract', ArtifactContract())
-            outputs = StagingOutputPublisher(artifact_store)
-
             runtime = RuntimeMeta(
                 run_id=run_id,
                 plan_version_id=plan_version_id,

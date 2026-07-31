@@ -12,11 +12,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.tree import DecisionTreeClassifier
 
-from cardre.artifacts import write_json_artifact
-from cardre.execution.context import ExecutionContext, NodeOutput
+from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.modeling.builders import build_model_artifact
-from cardre.nodes._training_utils import _prepare_training_data, _write_estimator
-from cardre.nodes.contracts import NodeType
+from cardre.nodes._training_utils import _write_estimator, prepare_supervised_training_data
+from cardre.nodes.contracts import NodeContext, NodeResult, NodeType
 from cardre.nodes.parameters import (
     MethodOption,
     NodeParameterSchema,
@@ -184,15 +183,20 @@ class HyperparameterTuningNode(NodeType):
 
         return errors
 
-    def run(self, context: ExecutionContext) -> NodeOutput:
-        params = context.validated_params
+    def run(self, context: NodeContext) -> NodeResult:
+        params = context.params
         step_id = context.step_spec.step_id
 
-        df, features, target_column, good_values, bad_values, y_binary, _ = (
-            _prepare_training_data(context, params)
+        prepared = prepare_supervised_training_data(
+            context.inputs,
+            operation=self.node_type,
         )
-        bad_class = sorted(bad_values)[0]
-        good_class = sorted(good_values)[0]
+        df = prepared.frame
+        features = prepared.feature_columns(params)
+        target_column = prepared.target_column
+        y_binary = prepared.y_binary
+        bad_class = sorted(prepared.bad_values)[0]
+        good_class = sorted(prepared.good_values)[0]
         random_seed = int(params.get("random_seed", 42))
 
         estimator_type = params["estimator_type"]
@@ -275,7 +279,7 @@ class HyperparameterTuningNode(NodeType):
 
         model_family = ESTIMATOR_TO_FAMILY[estimator_type]
         estimator_art = _write_estimator(
-            context.store, best_estimator, step_id, context.run_id, model_family,
+            context.outputs, best_estimator, step_id, context.run_id, model_family,
         )
 
         model = build_model_artifact(
@@ -310,7 +314,8 @@ class HyperparameterTuningNode(NodeType):
                 ],
                 "global_importance_fields": ["feature_importance"],
             },
-            context=context,
+            run_id=context.run_id,
+            step_id=step_id,
             extra_metrics=None,
             warnings_list=[],
             row_count=df.height,
@@ -341,9 +346,9 @@ class HyperparameterTuningNode(NodeType):
             "search_method": search_method,
             "estimator_type": estimator_type,
         }
-        artifact = write_json_artifact(
-            context.store, artifact_type="model", role="model",
-            stem=f"{model_family}-model-{step_id}",
+        context.outputs.publish_json(
+            role="model",
+            kind=EvidenceKind.MODEL_ARTIFACT,
             payload=model,
             metadata=artifact_metadata,
         )
@@ -353,7 +358,6 @@ class HyperparameterTuningNode(NodeType):
             "best_score": round(float(best_score), 6),
         }
 
-        return NodeOutput(
-            artifacts=[artifact, estimator_art],
-            metrics=metrics,
-        )
+        for name, value in metrics.items():
+            context.outputs.add_metric(name, value)
+        return context.outputs.build_result()

@@ -55,14 +55,13 @@ Extend these tests:
 
 - `tests/test_run_lifecycle.py`
 - `tests/test_run_lifecycle_errors.py`
-- `tests/test_worker_lifecycle.py`
 - `tests/test_run_coordinator.py`
 - `tests/test_run_coordinator_edge_cases.py`, if its existing fixtures cover a
   dispatcher startup failure more directly
 
 Do not change:
 
-- `cardre/execution/executor.py` node execution semantics;
+- `cardre/application/execution/step_runner.py` node execution semantics;
 - `cardre/store/run_repo.py` persistence schema or transition rules;
 - `cardre/domain/run.py` status values or state graph;
 - `cardre/application/evidence/explain_staleness.py` staleness computation;
@@ -455,7 +454,7 @@ File: `tests/test_run_coordinator.py`
 
 ### Worker tests
 
-File: `tests/test_worker_lifecycle.py`
+File: `tests/application/runs/test_composed_execution.py`
 
 Extend `test_worker_exception_produces_failed_run_with_diagnostic` to assert:
 

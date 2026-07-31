@@ -45,8 +45,30 @@ class StagingOutputPublisher:
         kind: EvidenceKind,
         frame: pl.DataFrame,
         metadata: JsonDict | None = None,
+        artifact_type: str | None = None,
     ) -> Any:
-        staged = self._writer.stage_table(role=role, kind=kind.value, frame=frame, metadata=metadata)
+        staged = self._writer.stage_table(role=role, kind=kind.value, frame=frame, metadata=metadata, artifact_type=artifact_type)
+        self._staged_artifacts.append(staged)
+        return staged
+
+    def publish_bytes(
+        self,
+        *,
+        role: str,
+        kind: EvidenceKind,
+        data: bytes,
+        media_type: str,
+        logical_hash: str,
+        metadata: JsonDict | None = None,
+    ) -> Any:
+        staged = self._writer.stage_bytes(
+            role=role,
+            kind=kind.value,
+            data=data,
+            media_type=media_type,
+            logical_hash=logical_hash,
+            metadata=metadata,
+        )
         self._staged_artifacts.append(staged)
         return staged
 

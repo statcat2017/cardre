@@ -33,9 +33,14 @@ class FsArtifactStore:
         staging = self._staging_dir / uuid.uuid4().hex
         staging.write_bytes(data)
         phys = physical_hash(staging)
+        # Content-addressed provisional ID: identical bytes produce the same ID,
+        # so deduplication by physical hash returns this same ID and any
+        # embedded cross-artifact references (e.g. estimator_reference in a
+        # model JSON) remain resolvable across runs.
+        provisional_artifact_id = f"{artifact_type}:{role}:{phys}"
         return StagedArtifact(
             staging_path=staging,
-            provisional_artifact_id=str(uuid.uuid4()),
+            provisional_artifact_id=provisional_artifact_id,
             physical_hash=phys,
             logical_hash=logical_hash,
             media_type=media_type,
@@ -52,13 +57,15 @@ class FsArtifactStore:
         return self._stage(data, logical, "application/json", kind, role, kind.split(".")[-1] if "." in kind else kind, metadata)
 
     def stage_table(self, role: str, kind: str, frame: pl.DataFrame,
-                    metadata: dict[str, Any] | None = None) -> StagedArtifact:
+                    metadata: dict[str, Any] | None = None,
+                    artifact_type: str | None = None) -> StagedArtifact:
         logical = table_logical_hash(frame)
         import io
         buf = io.BytesIO()
         frame.write_parquet(buf, statistics=False, compression="zstd")
+        staged_type = artifact_type or (kind.split(".")[-1] if "." in kind else kind)
         return self._stage(buf.getvalue(), logical, "application/vnd.apache.parquet",
-                           kind, role, kind.split(".")[-1] if "." in kind else kind, metadata)
+                           kind, role, staged_type, metadata)
 
     def stage_bytes(self, role: str, kind: str, data: bytes,
                     media_type: str, logical_hash: str,

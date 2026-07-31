@@ -6,6 +6,7 @@ the ``InputCollection`` protocol defined in ``cardre/nodes/contracts.py``.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import polars as pl
@@ -14,7 +15,15 @@ from cardre.adapters.evidence.reader import EvidenceReader
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_FROZEN_SCORECARD_BUNDLE
-from cardre.execution.context import TargetMeta
+
+
+@dataclass(frozen=True)
+class TargetMeta:
+    target_column: str
+    good_values: frozenset[str]
+    bad_values: frozenset[str]
+    indeterminate_values: frozenset[str] = frozenset()
+    all_known: frozenset[str] = frozenset()
 
 
 class StepInputCollection:
@@ -60,6 +69,9 @@ class StepInputCollection:
     def read_dataframe(self, artifact: ArtifactRef) -> pl.DataFrame:
         return self._reader.read_dataframe(artifact)
 
+    def read_bytes(self, artifact: ArtifactRef) -> bytes:
+        return self._reader.read_bytes(artifact)
+
     def target_metadata(self) -> Any | None:
         meta = self._reader.find_optional(self._input_artifacts, EvidenceKind.MODELLING_METADATA)
         if meta is None:
@@ -79,10 +91,14 @@ class StepInputCollection:
             None,
         )
 
-    def artifact_ref(self, artifact_id: str) -> Any | None:
+    def artifact_ref(self, artifact_id: str, *, physical_hash: str | None = None) -> Any | None:
         for a in self._input_artifacts:
             if a.artifact_id == artifact_id:
                 return a
+        if physical_hash:
+            for a in self._input_artifacts:
+                if getattr(a, "physical_hash", None) == physical_hash:
+                    return a
         return None
 
 

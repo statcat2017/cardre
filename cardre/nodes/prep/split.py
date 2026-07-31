@@ -300,10 +300,14 @@ class SplitTrainTestOotNode(NodeType):
         rng = np.random.default_rng(seed)
         df_with_idx = df.with_columns(pl.Series("__row_idx__", range(df.height)))
         groups = df_with_idx.group_by(target_column).agg(pl.col("__row_idx__"))
+        # Iterate groups in deterministic order: polars group_by iteration
+        # order is not guaranteed, and the RNG is consumed per group, so a
+        # varying group order would make the split non-reproducible.
+        group_rows = sorted(groups.iter_rows(), key=lambda row: str(row[0]))
         train_indices: list[int] = []
         test_indices: list[int] = []
         oot_indices: list[int] = []
-        for row in groups.iter_rows():
+        for row in group_rows:
             group_indices = list(row[1])
             rng.shuffle(group_indices)
             n = len(group_indices)

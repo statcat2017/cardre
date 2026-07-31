@@ -1,7 +1,79 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import numpy as np
+import polars as pl
+
+from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+from cardre.application.execution.output_publisher import StagingOutputPublisher
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.step import StepSpec
 from cardre.modeling.schema import ModelArtifactV1
-from cardre.nodes.calibrate import _supports_folded_linear_calibration
+from cardre.nodes.calibrate import CalibrateProbabilitiesNode, _supports_folded_linear_calibration
+from cardre.nodes.contracts import NodeContext, NodeResult, RuntimeMeta
+
+
+class _Inputs:
+    def __init__(self, model, frame):
+        self.model = model
+        self.frame = frame
+        self.model_artifact = SimpleNamespace(role="model", artifact_id="model-1")
+        self.train_artifact = SimpleNamespace(role="train", artifact_id="train-1")
+
+    def by_role(self, role):
+        return {
+            "model": [self.model_artifact],
+            "train": [self.train_artifact],
+        }.get(role, [])
+
+    def require(self, role, node_type):
+        artifacts = self.by_role(role)
+        if not artifacts:
+            raise ValueError(f"{node_type} requires a {role!r} artifact")
+        return artifacts[0]
+
+    def read(self, artifact, kind):
+        return self.model
+
+    def read_dataframe(self, artifact):
+        return self.frame
+
+    def target_metadata(self):
+        return SimpleNamespace(
+            target_column="bad_flag",
+            good_values=frozenset({"good"}),
+            bad_values=frozenset({"bad"}),
+        )
+
+
+def _context(inputs, outputs, params):
+    step_spec = StepSpec(
+        step_id="calibrate-1",
+        node_type="cardre.calibrate_probabilities",
+        node_version="1",
+        category="fit",
+        params=params,
+        params_hash="test",
+        parent_step_ids=[],
+    )
+    return NodeContext(
+        run_id="run-1",
+        plan_version_id="plan-1",
+        step_spec=step_spec,
+        inputs=inputs,
+        outputs=outputs,
+        params=params,
+        runtime=RuntimeMeta(
+            run_id="run-1",
+            plan_version_id="plan-1",
+            step_id="calibrate-1",
+            node_type="cardre.calibrate_probabilities",
+        ),
+    )
 
 
 def test_folded_linear_calibration_requires_explicit_intercept():
@@ -30,3 +102,85 @@ def test_folded_linear_calibration_requires_explicit_intercept():
 
     assert not _supports_folded_linear_calibration(without_intercept)
     assert _supports_folded_linear_calibration(with_intercept)
+
+
+def test_calibration_publishes_binary_calibrator_through_node_context(tmp_path: Path):
+    model = ModelArtifactV1.from_dict({
+        "schema_version": "cardre.model_artifact.v1",
+        "model_family": "logistic_regression",
+        "target_column": "bad_flag",
+        "target_event_value": "bad",
+        "class_mapping": {"good": "good", "bad": "bad"},
+        "probability_column_index": 1,
+        "feature_contract": {"features": ["age_woe"]},
+        "model_payload": {"intercept": -0.4, "coefficients": {"age_woe": 0.8}},
+        "training": {"row_count": 100},
+    })
+    probabilities = np.concatenate([np.full(20, 0.1), np.full(20, 0.9)])
+    frame = pl.DataFrame({
+        "bad_flag": ["good"] * 20 + ["bad"] * 20,
+        "predicted_bad_probability": probabilities,
+    })
+    store = FsArtifactStore(tmp_path)
+    outputs: Any = StagingOutputPublisher(store)
+    result = CalibrateProbabilitiesNode().run(_context(
+        _Inputs(model, frame),
+        outputs,
+        {"method": "platt", "calibration_sample": "train", "cross_validation": False},
+    ))
+
+    assert isinstance(result, NodeResult)
+    staged = result.staged_artifacts
+    assert len(staged) == 3
+    binary_artifact = staged[0]
+    report_artifact = staged[1]
+    model_artifact = staged[2]
+    assert binary_artifact.media_type == "application/octet-stream"
+    assert binary_artifact.provisional_artifact_id
+    assert binary_artifact.schema_version == EvidenceKind.MODEL_ARTIFACT.value
+    assert report_artifact.media_type == "application/json"
+
+    model_payload = json.loads(model_artifact.staging_path.read_bytes())
+    assert model_payload["calibration"]["calibrator_artifact_id"] == binary_artifact.provisional_artifact_id
+    assert model_payload["calibration"]["calibration_report_artifact_id"] == report_artifact.provisional_artifact_id
+    assert result.metrics["calibration_skipped"] is False
+
+
+def test_calibration_skipped_path_uses_real_publisher_contract(tmp_path: Path):
+    """The too-few-rows skip path still reads the staged report artifact ID."""
+    model = ModelArtifactV1.from_dict({
+        "schema_version": "cardre.model_artifact.v1",
+        "model_family": "logistic_regression",
+        "target_column": "bad_flag",
+        "target_event_value": "bad",
+        "class_mapping": {"good": "good", "bad": "bad"},
+        "probability_column_index": 1,
+        "feature_contract": {"features": ["age_woe"]},
+        "model_payload": {"intercept": -0.4, "coefficients": {"age_woe": 0.8}},
+        "training": {"row_count": 100},
+    })
+    probabilities = np.concatenate([np.full(5, 0.1), np.full(5, 0.9)])
+    frame = pl.DataFrame({
+        "bad_flag": ["good"] * 5 + ["bad"] * 5,
+        "predicted_bad_probability": probabilities,
+    })
+    store = FsArtifactStore(tmp_path)
+    outputs: Any = StagingOutputPublisher(store)
+    result = CalibrateProbabilitiesNode().run(_context(
+        _Inputs(model, frame),
+        outputs,
+        {"method": "platt", "calibration_sample": "train", "cross_validation": False},
+    ))
+
+    assert isinstance(result, NodeResult)
+    staged = result.staged_artifacts
+    assert len(staged) == 2  # no calibrator bytes, just report + model
+    report_artifact = staged[0]
+    model_artifact = staged[1]
+    assert report_artifact.media_type == "application/json"
+    assert report_artifact.provisional_artifact_id
+
+    model_payload = json.loads(model_artifact.staging_path.read_bytes())
+    assert model_payload["calibration"]["calibrator_artifact_id"] == ""
+    assert model_payload["calibration"]["calibration_report_artifact_id"] == report_artifact.provisional_artifact_id
+    assert result.metrics["calibration_skipped"] is True
