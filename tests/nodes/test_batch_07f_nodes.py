@@ -61,7 +61,7 @@ class FakeInputs:
 
 class FakeOutputs:
     def __init__(self) -> None:
-        self.tables: list[tuple[str, EvidenceKind, pl.DataFrame, dict[str, Any] | None]] = []
+        self.tables: list[tuple[str, EvidenceKind, pl.DataFrame, dict[str, Any] | None, str | None]] = []
         self.json: list[tuple[str, EvidenceKind, dict[str, Any], dict[str, Any] | None]] = []
         self.metrics: dict[str, Any] = {}
         self.warnings: list[dict[str, Any]] = []
@@ -73,8 +73,9 @@ class FakeOutputs:
         kind: EvidenceKind,
         frame: pl.DataFrame,
         metadata: dict[str, Any] | None = None,
+        artifact_type: str | None = None,
     ) -> None:
-        self.tables.append((role, kind, frame, metadata))
+        self.tables.append((role, kind, frame, metadata, artifact_type))
 
     def publish_json(
         self,
@@ -150,6 +151,7 @@ def test_reject_population_and_none_publish_typed_outputs() -> None:
 
     assert isinstance(result, NodeResult)
     assert outputs.tables[0][1] is EvidenceKind.MODELLING_METADATA
+    assert outputs.tables[0][4] == "dataset"
     assert outputs.json[0][1] is EvidenceKind.REJECT_POPULATION_CONFIG
     assert outputs.metrics == {
         "total_rows": 3,
@@ -198,6 +200,7 @@ def test_reject_augmentation_no_rejects_publishes_typed_outputs() -> None:
 
     assert isinstance(result, NodeResult)
     assert outputs.tables[0][1] is EvidenceKind.MODELLING_METADATA
+    assert outputs.tables[0][4] == "dataset"
     assert "_ri_financed" not in outputs.tables[0][2].columns
     assert outputs.json[0][1] is EvidenceKind.REJECT_INFERENCE_RESULT
 

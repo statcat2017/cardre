@@ -45,8 +45,9 @@ class StagingOutputPublisher:
         kind: EvidenceKind,
         frame: pl.DataFrame,
         metadata: JsonDict | None = None,
+        artifact_type: str | None = None,
     ) -> Any:
-        staged = self._writer.stage_table(role=role, kind=kind.value, frame=frame, metadata=metadata)
+        staged = self._writer.stage_table(role=role, kind=kind.value, frame=frame, metadata=metadata, artifact_type=artifact_type)
         self._staged_artifacts.append(staged)
         return staged
 

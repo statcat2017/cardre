@@ -177,6 +177,7 @@ class DefineRejectPopulationNode(NodeType):
             role="input",
             kind=EvidenceKind.MODELLING_METADATA,
             frame=df_out,
+            artifact_type="dataset",
             metadata={
                 "source_artifact_id": dataset_artifact.artifact_id,
                 "rows_before": total_rows,
@@ -261,6 +262,7 @@ class RejectInferenceNoneNode(NodeType):
             role="input",
             kind=EvidenceKind.MODELLING_METADATA,
             frame=df_clean,
+            artifact_type="dataset",
             metadata={"source_artifact_id": dataset_artifact.artifact_id},
         )
 
@@ -405,6 +407,7 @@ class RejectInferenceAugmentationNode(NodeType):
                 role="input",
                 kind=EvidenceKind.MODELLING_METADATA,
                 frame=df_out,
+                artifact_type="dataset",
                 metadata={"source_artifact_id": dataset_artifact.artifact_id},
             )
             result_out = {
@@ -539,6 +542,7 @@ class RejectInferenceAugmentationNode(NodeType):
             role="input",
             kind=EvidenceKind.MODELLING_METADATA,
             frame=df_out,
+            artifact_type="dataset",
             metadata={"source_artifact_id": dataset_artifact.artifact_id},
         )
 
