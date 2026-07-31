@@ -59,11 +59,10 @@ cd frontend && npm install && npm run dev
 - **`cardre/`** — pure-Python scorecard engine (no GUI dependency)
   - `cardre/domain/` — domain kernel: Project, Plan, PlanVersion, Run, Artifact, StepSpec, evidence models, errors
   - `cardre/nodes/` — node registry + plugin implementations (launch and deferred tiers)
-  - `cardre/services/` — stateless business logic: RunCoordinator, StalenessService, PlanMutationService, BranchService, ComparisonService, ChampionService, ManualBinningService, ExportService
-  - `cardre/store/` — SQLite-backed ProjectStore with per-table repositories (PlanRepository, BranchRepository, ComparisonRepository, etc.)
-  - `cardre/execution/` — execution engine: PlanExecutor, RunLifecycle, Worker
+  - `cardre/application/` — port-driven use cases: runs, plans, reporting, governance, projects
+  - `cardre/adapters/` — SQLite persistence, filesystem artifact store, dispatch, evidence readers, reporting
   - `cardre/api/` — FastAPI route definitions (project-scoped)
-  - `cardre/reporting/` — report rendering and collector
+  - `cardre/bootstrap/` — composition root: container, settings, node catalogue
   - `cardre/domain/evidence/` and `cardre/adapters/evidence/` — evidence kinds, models, reader, schemas
 - **`sidecar/`** — FastAPI local API server (bundled as sidecar binary via PyInstaller)
 - **`frontend/`** — React + TypeScript UI (Vite)

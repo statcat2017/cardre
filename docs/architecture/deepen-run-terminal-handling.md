@@ -504,8 +504,8 @@ Run after implementation:
 
 ```bash
 . .venv/bin/activate
-ruff check cardre/execution/run_lifecycle.py cardre/services/run_coordinator.py cardre/execution/worker.py tests/test_run_lifecycle.py tests/test_run_lifecycle_errors.py tests/test_worker_lifecycle.py tests/test_run_coordinator.py tests/test_run_coordinator_edge_cases.py
-pytest tests/test_run_lifecycle.py tests/test_run_lifecycle_errors.py tests/test_worker_lifecycle.py tests/test_run_coordinator.py tests/test_run_coordinator_edge_cases.py
+ruff check cardre/application/runs/finalize_run.py cardre/adapters/dispatch/thread_dispatcher.py tests/application/runs/test_finalize_run_manifest.py
+pytest tests/application/runs/ tests/acceptance/test_launch_pathway.py
 make preflight
 ```
 
