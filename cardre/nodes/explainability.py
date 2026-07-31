@@ -59,10 +59,9 @@ def _require_model(context: NodeContext, node_type: str) -> Any:
 
 def _load_estimator(inputs: InputCollection, estimator_ref: dict[str, Any]) -> Any | None:
     artifact_id = estimator_ref.get("artifact_id", "")
-    if not artifact_id:
-        return None
+    physical_hash = estimator_ref.get("physical_hash", "")
 
-    estimator_art = inputs.artifact_ref(artifact_id)
+    estimator_art = inputs.artifact_ref(artifact_id, physical_hash=physical_hash or None)
     if estimator_art is None:
         return None
 
