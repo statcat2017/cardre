@@ -138,6 +138,16 @@ class TestLaunchPathway:
 
             artifacts = _artifacts()
 
+            # Every run-linked artifact, from BOTH input and output lineage,
+            # deduplicated by artifact_id. This includes the synthetic
+            # RunSummary, which is input-only lineage for the
+            # technical-manifest step, and any future reused input artifact.
+            run_artifacts_by_id: dict[str, object] = {}
+            for rs in run_steps:
+                for _direction, a in uow.artifacts.artifacts_for_run_step(rs.run_step_id):
+                    run_artifacts_by_id.setdefault(a.artifact_id, a)
+            run_artifacts = list(run_artifacts_by_id.values())
+
             # 3. Profile summary produced.
             profile = [
                 a for rs, a in artifacts
@@ -221,14 +231,16 @@ class TestLaunchPathway:
             assert export_python, "No SCORING_EXPORT_PYTHON artifact produced"
             assert export_sql, "No SCORING_EXPORT_SQL artifact produced"
 
-            # 19. Recompute physical + logical hashes from stored content.
-            # Physical hashes recompute exactly for every artifact. Logical
-            # hashes recompute exactly from the persisted bytes: JSON
-            # artifacts hash the canonical parsed payload, byte artifacts hash
-            # the raw bytes, and Parquet artifacts hash the canonical
-            # sorted-column Parquet serialization (``table_logical_hash``),
-            # which is byte-stable across the store/read-back cycle.
-            for _rs, a in artifacts:
+            # 19. Recompute physical + logical hashes from stored content for
+            # EVERY run-linked artifact (input and output lineage alike,
+            # including the synthetic RunSummary). Physical hashes recompute
+            # exactly for every artifact. Logical hashes recompute exactly
+            # from the persisted bytes: JSON artifacts hash the canonical
+            # parsed payload, byte artifacts hash the raw bytes, and Parquet
+            # artifacts hash the canonical sorted-column Parquet serialization
+            # (``table_logical_hash``), which is byte-stable across the
+            # store/read-back cycle.
+            for a in run_artifacts:
                 raw = store.read_bytes(a)
                 assert hashlib.sha256(raw).hexdigest() == a.physical_hash, (
                     f"Physical hash mismatch for {a.artifact_id}"
@@ -244,13 +256,13 @@ class TestLaunchPathway:
             # technical manifest must record EVERY persisted, run-linked
             # artifact's physical and logical hash, and each entry must match
             # the DB (the run manifest's manifest_hash recomputes below).
-            # The expected set is built from ALL run lineage (input + output
-            # directions), so it includes the synthetic RunSummary artifact
-            # that the technical-manifest step consumes as input. The only
+            # The expected set is the same all-lineage collection used by
+            # item 19, so it includes the synthetic RunSummary artifact that
+            # the technical-manifest step consumes as input. The only
             # exclusion is the technical-manifest index's own output, which
             # cannot reference itself.
             technical_index = None
-            for _rs, a in artifacts:
+            for a in run_artifacts:
                 if a.artifact_type == "technical_manifest_index":
                     technical_index = json.loads(store.read_bytes(a))
                     break
@@ -259,16 +271,9 @@ class TestLaunchPathway:
             for m in technical_index["manifests"]:
                 for entry in m.get("artifacts", []):
                     tech_entries[entry["artifact_id"]] = entry
-            run_lineage_ids: set[str] = set()
-            for rs in run_steps:
-                for _direction, a in uow.artifacts.artifacts_for_run_step(rs.run_step_id):
-                    run_lineage_ids.add(a.artifact_id)
-            persisted_ids = {
-                aid for aid in run_lineage_ids
-                if uow.artifacts.get(aid) is not None
-            }
+            persisted_ids = {a.artifact_id for a in run_artifacts}
             index_output_ids = {
-                a.artifact_id for _rs, a in artifacts
+                a.artifact_id for a in run_artifacts
                 if a.artifact_type == "technical_manifest_index"
             }
             expected_ids = persisted_ids - index_output_ids
