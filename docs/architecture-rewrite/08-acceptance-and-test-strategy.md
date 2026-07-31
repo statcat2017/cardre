@@ -145,3 +145,21 @@ cd frontend/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D w
 ```
 
 Per-batch focused commands are in each batch document.
+
+## Batch 07g completion
+
+07g finalized the architecture cut:
+
+- Legacy persistence and execution surfaces are gone: `cardre/store/`,
+  `cardre/artifacts.py`, `cardre/config.py`, `cardre/capabilities.py`,
+  `cardre/services/`, `cardre/execution/`, and `ArtifactEvidenceReader` are
+  deleted. A production search returns no `ProjectStore`, `cardre.store`,
+  `cardre.artifacts`, `cardre.config`, `cardre.capabilities`, or legacy
+  evidence-reader references.
+- `test_forbidden_imports_outside_adapters` is strict (no xfail) and passes.
+- The consolidated product acceptance pathway lives in
+  `tests/acceptance/test_launch_pathway.py`, covering the 20 items through the
+  new API; it supersedes the pre-Batch-05 `test_launch_pathway.py` and
+  `test_api_scorecard_launch_pathway.py`.
+- Import-linter contracts are enforced with no unmatched `ignore_imports`.
+- `make preflight` is the required gate before every PR.

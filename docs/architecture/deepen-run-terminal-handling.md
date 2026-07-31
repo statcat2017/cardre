@@ -47,9 +47,9 @@ This work implements ADR-0004 without reopening ADR-0002.
 
 Change these production modules:
 
-- `cardre/execution/run_lifecycle.py`
+- `cardre/application/runs/finalize_run.py`
 - `cardre/application/runs/execute_run.py`
-- `cardre/execution/worker.py`
+- `cardre/adapters/dispatch/thread_dispatcher.py`
 
 Extend these tests:
 
@@ -77,7 +77,7 @@ Do not change:
 | Stale Run recovery | `RunCoordinator._sweep_stale_running_runs` | direct interrupted transition plus diagnostic | No manifest |
 | Manifest write failure | `RunLifecycle.finalise` | lifecycle diagnostic plus direct failed transition | Valid: this is inside lifecycle implementation |
 
-After the change, only `cardre/execution/run_lifecycle.py` may call
+After the change, only `cardre/application/runs/finalize_run.py` may call
 `RunRepository.transition(... expected_from=(RunStatus.RUNNING,))` for terminal
 Run statuses.
 
@@ -103,9 +103,9 @@ that context when finalising. The interface should get smaller, not larger.
 
 ## Production Changes
 
-### 1. Let `RunLifecycle.finalise` own terminal diagnostics
+### 1. Let `FinalizeRun` own terminal diagnostics
 
-File: `cardre/execution/run_lifecycle.py`
+File: `cardre/application/runs/finalize_run.py`
 
 Import `JsonDict` at runtime, because the optional diagnostic is part of the
 public lifecycle interface:
@@ -181,11 +181,11 @@ Do not put dispatcher, worker, or stale-recovery branching in `RunLifecycle`.
 They provide the outcome facts; the lifecycle implementation provides the
 terminal mechanics.
 
-### 2. Move context-manager exception diagnostics into `finalise`
+### 2. Move context-manager exception diagnostics into `FinalizeRun`
 
-File: `cardre/execution/run_lifecycle.py`
+File: `cardre/application/runs/finalize_run.py`
 
-In `RunLifecycle.__exit__`, retain traceback construction but do not append the
+In `FinalizeRun.__exit__`, retain traceback construction but do not append the
 diagnostic directly. Construct it and pass it through the lifecycle interface:
 
 ```python
@@ -320,7 +320,7 @@ lifecycle owns the diagnostic append, manifest write, and transition ordering.
 
 ### 6. Make the dispatcher report errors, not terminal state
 
-File: `cardre/execution/worker.py`
+File: `cardre/adapters/dispatch/thread_dispatcher.py`
 
 `ThreadRunDispatcher.dispatch` currently has two startup-failure paths:
 
@@ -340,13 +340,13 @@ or terminal Run state.
 
 ### 7. Finalise worker escapes through the lifecycle
 
-File: `cardre/execution/worker.py`
+File: `cardre/application/ports/run_dispatcher.py` / `cardre/adapters/dispatch/thread_dispatcher.py`
 
 Replace `_fail_run_if_running(...)` with lifecycle finalisation. Keep the
 existing `RUN_WORKER_FAILED` diagnostic payload unchanged.
 
 ```python
-from cardre.execution.run_lifecycle import RunLifecycle
+from cardre.application.runs.finalize_run import FinalizeRun
 
 diagnostic = {
     "code": WORKER_FAILED_CODE,
