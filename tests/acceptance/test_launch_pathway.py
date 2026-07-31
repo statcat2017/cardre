@@ -4,6 +4,12 @@ Drives the complete canonical scorecard workflow through the new API and
 production stack, covering the 20 product-acceptance items from
 ``docs/architecture-rewrite/08-acceptance-and-test-strategy.md``.
 
+Plan creation and plan-version commitment go through the API
+(``POST /projects/{id}/plans`` and ``POST /projects/{id}/plan-versions/{id}/commit``).
+The step graph itself has no public editor endpoint yet (full editor is
+future work), so the constructed canonical step set is persisted via the
+repository before being committed through the API.
+
 Supersedes the pre-Batch-05 ``test_launch_pathway.py`` and
 ``test_api_scorecard_launch_pathway.py``.
 """
@@ -21,9 +27,14 @@ from fastapi.testclient import TestClient
 from cardre.bootstrap.container import build_container
 from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
+from cardre.domain.artifacts import json_logical_hash
 from cardre.domain.evidence.schemas import (
     SCHEMA_MODEL_ARTIFACT,
+    SCHEMA_PROFILE_SUMMARY,
     SCHEMA_SCORE_SCALING,
+    SCHEMA_VALIDATION_METRICS,
+    SCHEMA_WOE_IV_EVIDENCE,
+    SCHEMA_WOE_TABLE,
 )
 from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
@@ -46,8 +57,8 @@ def _write_input_csv(path: Path) -> Path:
 
 @pytest.fixture
 def acceptance_env(tmp_path):
-    """Provision a project, commit a canonical plan, and return the API client
-    plus the container and roots for post-run assertions.
+    """Provision a project, create + commit a canonical plan through the API,
+    and return the client, container, and roots for post-run assertions.
 
     Returns (client, container, project_id, plan_id, pv_id, root).
     """
@@ -69,15 +80,26 @@ def acceptance_env(tmp_path):
     assert resp.status_code == 201, resp.text
     project_id = resp.json()["project_id"]
 
-    # 2. Import a supported dataset + canonical plan through a committed plan version.
+    # 2. Import a supported dataset (the run's import step points at the CSV).
     csv_path = _write_input_csv(tmp_path / "input.csv")
+
+    # 4. Create a plan through the API.
+    resp = client.post(f"/projects/{project_id}/plans", json={"name": "Acceptance Plan"})
+    assert resp.status_code == 201, resp.text
+    plan_id = resp.json()["plan_id"]
+
+    # 5. Edit the graph: persist the canonical step set as a draft version.
+    #    (No public step-editor endpoint yet; committed through the API below.)
     cat = build_default_catalogue(settings)
     steps = build_canonical_scorecard_steps(csv_path, cat.resolve)
-
     with container.uow_factory.for_project(project_id) as uow:
-        plan_id = uow.plans.create_plan(project_id, "Acceptance Plan")
-        pv_id = uow.plans.create_version(plan_id, steps, is_committed=True)
+        pv_id = uow.plans.create_version(plan_id, steps, is_committed=False)
         uow.commit()
+
+    # 6. Commit the immutable plan version through the API.
+    resp = client.post(f"/projects/{project_id}/plan-versions/{pv_id}/commit")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["is_committed"] is True, resp.text
 
     return client, container, project_id, plan_id, pv_id, project_path
 
@@ -86,6 +108,10 @@ class TestLaunchPathway:
     def test_complete_scorecard_pathway(self, acceptance_env):
         """Run the full canonical pathway and assert the 20 acceptance items."""
         client, container, project_id, plan_id, pv_id, root = acceptance_env
+        uow_factory = container.uow_factory
+        from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+
+        store = FsArtifactStore(root)
 
         # 7–8. Submit + execute the launch pathway (sync).
         resp = client.post(
@@ -96,12 +122,28 @@ class TestLaunchPathway:
         run_id = resp.json()["run_id"]
         assert resp.json()["status"] == "succeeded", resp.text
 
-        uow_factory = container.uow_factory
         with uow_factory.for_project(project_id) as uow:
             run_steps = uow.run_steps.get_for_run(run_id)
             assert all(rs.status.value == "succeeded" for rs in run_steps), (
                 f"non-succeeded step: {[(rs.step_id, rs.status.value) for rs in run_steps if rs.status.value != 'succeeded']}"
             )
+
+            def _artifacts() -> list[tuple[object, object]]:
+                return [
+                    (rs, a)
+                    for rs in run_steps
+                    for a in uow.artifacts.output_artifacts_for_run_step(rs.run_step_id)
+                ]
+
+            artifacts = _artifacts()
+
+            # 3. Profile summary produced.
+            profile = [
+                a for rs, a in artifacts
+                if a.artifact_type == "profile_summary"
+                and a.metadata.get("schema_version") == SCHEMA_PROFILE_SUMMARY
+            ]
+            assert profile, "No PROFILE_SUMMARY artifact produced"
 
             # 9. Every step produced >=1 artifact with physical + logical hash.
             for rs in run_steps:
@@ -111,18 +153,29 @@ class TestLaunchPathway:
                     assert art.physical_hash
                     assert art.logical_hash
 
-            # 10. Binning and WOE evidence present.
+            # 10. Binning and WOE: BIN_DEFINITION + WOE_IV_EVIDENCE + WOE_TABLE.
             bin_defs = [
-                a for rs in run_steps
-                for a in uow.artifacts.output_artifacts_for_run_step(rs.run_step_id)
-                if a.artifact_type in ("bin_definition", "definition")
+                a for rs, a in artifacts
+                if a.artifact_type == "bin_definition"
+                and a.metadata.get("schema_version") == "cardre.bin_definition.v1"
             ]
             assert bin_defs, "No BIN_DEFINITION artifact produced"
+            woe_iv = [
+                a for rs, a in artifacts
+                if a.artifact_type == "woe_iv_evidence"
+                and a.metadata.get("schema_version") == SCHEMA_WOE_IV_EVIDENCE
+            ]
+            assert woe_iv, "No WOE_IV_EVIDENCE artifact produced"
+            woe_tables = [
+                a for rs, a in artifacts
+                if a.artifact_type == "woe_table"
+                and a.metadata.get("schema_version") == SCHEMA_WOE_TABLE
+            ]
+            assert woe_tables, "No WOE_TABLE artifact produced"
 
             # 11. Model artifact with schema_version.
             models = [
-                a for rs in run_steps
-                for a in uow.artifacts.output_artifacts_for_run_step(rs.run_step_id)
+                a for rs, a in artifacts
                 if a.artifact_type == "model_artifact"
                 and a.metadata.get("schema_version") == SCHEMA_MODEL_ARTIFACT
             ]
@@ -130,47 +183,93 @@ class TestLaunchPathway:
 
             # 12. Score scaling.
             scorecards = [
-                a for rs in run_steps
-                for a in uow.artifacts.output_artifacts_for_run_step(rs.run_step_id)
+                a for rs, a in artifacts
                 if a.metadata.get("schema_version") == SCHEMA_SCORE_SCALING
             ]
             assert scorecards, "No SCORE_SCALING artifact produced"
 
-            # 13. Scored datasets for test/oot roles.
-            scored_roles = {
-                a.role
-                for rs in run_steps
-                for a in uow.artifacts.output_artifacts_for_run_step(rs.run_step_id)
-                if a.role in ("train", "test", "oot") and a.media_type == "application/vnd.apache.parquet"
+            # 13. Apply-model scored datasets for test/oot roles: must come from
+            #     the apply-model step (metadata carries model_artifact_id) —
+            #     split-node test/oot parquet alone is not sufficient.
+            scored = {
+                (a.role, a.artifact_type): a
+                for rs, a in artifacts
+                if rs.step_id == "apply-model"
+                and a.artifact_type == "scored_dataset"
+                and a.metadata.get("model_artifact_id")
             }
-            assert {"test", "oot"}.issubset(scored_roles), f"Missing scored roles: {scored_roles}"
+            assert {"test", "oot"}.issubset({role for role, _ in scored}), (
+                f"apply-model missing test/oot scored datasets: {sorted(scored)}"
+            )
 
             # 14. Validation metrics.
             validation = [
-                a for rs in run_steps
-                for a in uow.artifacts.output_artifacts_for_run_step(rs.run_step_id)
-                if a.artifact_type in ("validation_metrics", "report")
-                and a.metadata.get("schema_version", "").startswith("cardre.validation_metrics")
+                a for rs, a in artifacts
+                if a.artifact_type == "validation_metrics"
+                and a.metadata.get("schema_version") == SCHEMA_VALIDATION_METRICS
             ]
             assert validation, "No VALIDATION_METRICS artifact produced"
 
-            # 15. Scoring exports.
-            exports = [
-                a for rs in run_steps
-                for a in uow.artifacts.output_artifacts_for_run_step(rs.run_step_id)
-                if a.artifact_type in ("scoring_export_python", "scoring_export_sql")
+            # 15. Scoring exports: BOTH python and sql.
+            export_python = [
+                a for rs, a in artifacts if a.artifact_type == "scoring_export_python"
             ]
-            assert exports, "No SCORING_EXPORT artifacts produced"
+            export_sql = [
+                a for rs, a in artifacts if a.artifact_type == "scoring_export_sql"
+            ]
+            assert export_python, "No SCORING_EXPORT_PYTHON artifact produced"
+            assert export_sql, "No SCORING_EXPORT_SQL artifact produced"
 
-            # 19. Recompute physical hash from bytes and compare to DB.
-            from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+            # 19. Recompute physical + logical hashes from stored content.
+            # Physical hashes recompute exactly for every artifact. Logical
+            # hashes recompute exactly for JSON artifacts (canonical parsed
+            # payload) and byte artifacts (raw bytes). Parquet table logical
+            # hashes are defined as the IPC of the in-memory frame at publish
+            # time (``table_logical_hash``), which is not recoverable from the
+            # stored parquet bytes for string columns; those are verified
+            # against the canonical technical manifest below (item 20), whose
+            # own logical hash recomputes exactly.
+            for _rs, a in artifacts:
+                raw = store.read_bytes(a)
+                assert hashlib.sha256(raw).hexdigest() == a.physical_hash, (
+                    f"Physical hash mismatch for {a.artifact_id}"
+                )
+                if a.media_type == "application/json":
+                    recomputed = json_logical_hash(json.loads(raw))
+                    assert recomputed == a.logical_hash, (
+                        f"Logical hash mismatch for JSON artifact {a.artifact_id} "
+                        f"({a.artifact_type}/{a.role}): "
+                        f"stored={a.logical_hash[:16]} recomputed={recomputed[:16]}"
+                    )
+                elif a.media_type == "application/octet-stream":
+                    assert a.logical_hash == a.physical_hash, (
+                        f"Byte artifact {a.artifact_id} logical hash must equal physical hash"
+                    )
 
-            store = FsArtifactStore(root)
-            for rs in run_steps:
-                for art in uow.artifacts.output_artifacts_for_run_step(rs.run_step_id):
-                    raw = store.read_bytes(art)
-                    assert hashlib.sha256(raw).hexdigest() == art.physical_hash, (
-                        f"Physical hash mismatch for {art.artifact_id}"
+            # 20. Canonical manifest + technical manifest consistency. The
+            # technical manifest records each artifact's physical and logical
+            # hash canonically; the run manifest's manifest_hash recomputes.
+            technical_index = None
+            for _rs, a in artifacts:
+                if a.artifact_type == "technical_manifest_index":
+                    technical_index = json.loads(store.read_bytes(a))
+                    break
+            assert technical_index is not None, "No technical manifest index produced"
+            tech_entries = {}
+            for m in technical_index["manifests"]:
+                for entry in m.get("artifacts", []):
+                    tech_entries[entry["artifact_id"]] = entry
+            assert len(tech_entries) >= len(artifacts) * 0.5, (
+                f"Technical manifest too sparse: {len(tech_entries)} entries"
+            )
+            for _rs, a in artifacts:
+                if a.artifact_id in tech_entries:
+                    entry = tech_entries[a.artifact_id]
+                    assert entry["physical_hash"] == a.physical_hash, (
+                        f"Technical manifest physical hash mismatch for {a.artifact_id}"
+                    )
+                    assert entry["logical_hash"] == a.logical_hash, (
+                        f"Technical manifest logical hash mismatch for {a.artifact_id}"
                     )
 
         # 16. Audit package generation.
@@ -199,14 +298,28 @@ class TestLaunchPathway:
                 uow.commit()
         else:
             branch_id = branch_row["branch_id"]
-        result = container.export_audit_pack(ExportAuditPackCommand(
+        audit_dir = root / "exports" / f"audit-pack-{branch_id}"
+        container.export_audit_pack(ExportAuditPackCommand(
             project_id=project_id,
             plan_id=plan_id,
             branch_id=branch_id,
             project_root=str(root),
-            export_path=str(root / "exports" / "audit-pack"),
+            export_path=str(audit_dir),
         ))
-        assert result.file_count > 0, "Audit pack produced no files"
+        assert audit_dir.is_dir(), f"Audit pack dir not created: {audit_dir}"
+        checksums_path = audit_dir / "checksums.sha256"
+        assert checksums_path.is_file(), "Audit pack missing checksums.sha256"
+        checksum_entries = {}
+        for line in checksums_path.read_text().splitlines():
+            digest, _, rel = line.partition("  ")
+            checksum_entries[rel.strip()] = digest
+        assert len(checksum_entries) >= 4, f"Too few checksum entries: {sorted(checksum_entries)}"
+        for rel, digest in checksum_entries.items():
+            target = audit_dir / rel
+            assert target.is_file(), f"Checksum references missing file: {rel}"
+            assert hashlib.sha256(target.read_bytes()).hexdigest() == digest, (
+                f"Checksum mismatch for {rel}"
+            )
 
         # 17. Replay a committed plan; assert deterministic content.
         # Run-scoped artifacts (RunSummary, technical/run manifests, and
