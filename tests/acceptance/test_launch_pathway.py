@@ -21,13 +21,14 @@ import hashlib
 import json
 from pathlib import Path
 
+import polars as pl
 import pytest
 from fastapi.testclient import TestClient
 
 from cardre.bootstrap.container import build_container
 from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
-from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.artifacts import json_logical_hash, table_logical_hash
 from cardre.domain.evidence.schemas import (
     SCHEMA_MODEL_ARTIFACT,
     SCHEMA_PROFILE_SUMMARY,
@@ -222,33 +223,27 @@ class TestLaunchPathway:
 
             # 19. Recompute physical + logical hashes from stored content.
             # Physical hashes recompute exactly for every artifact. Logical
-            # hashes recompute exactly for JSON artifacts (canonical parsed
-            # payload) and byte artifacts (raw bytes). Parquet table logical
-            # hashes are defined as the IPC of the in-memory frame at publish
-            # time (``table_logical_hash``), which is not recoverable from the
-            # stored parquet bytes for string columns; those are verified
-            # against the canonical technical manifest below (item 20), whose
-            # own logical hash recomputes exactly.
+            # hashes recompute exactly from the persisted bytes: JSON
+            # artifacts hash the canonical parsed payload, byte artifacts hash
+            # the raw bytes, and Parquet artifacts hash the canonical
+            # sorted-column Parquet serialization (``table_logical_hash``),
+            # which is byte-stable across the store/read-back cycle.
             for _rs, a in artifacts:
                 raw = store.read_bytes(a)
                 assert hashlib.sha256(raw).hexdigest() == a.physical_hash, (
                     f"Physical hash mismatch for {a.artifact_id}"
                 )
-                if a.media_type == "application/json":
-                    recomputed = json_logical_hash(json.loads(raw))
-                    assert recomputed == a.logical_hash, (
-                        f"Logical hash mismatch for JSON artifact {a.artifact_id} "
-                        f"({a.artifact_type}/{a.role}): "
-                        f"stored={a.logical_hash[:16]} recomputed={recomputed[:16]}"
-                    )
-                elif a.media_type == "application/octet-stream":
-                    assert a.logical_hash == a.physical_hash, (
-                        f"Byte artifact {a.artifact_id} logical hash must equal physical hash"
-                    )
+                recomputed = _recompute_logical_hash(a, raw)
+                assert recomputed == a.logical_hash, (
+                    f"Logical hash mismatch for {a.artifact_id} "
+                    f"({a.artifact_type}/{a.role}): "
+                    f"stored={a.logical_hash[:16]} recomputed={recomputed[:16]}"
+                )
 
             # 20. Canonical manifest + technical manifest consistency. The
-            # technical manifest records each artifact's physical and logical
-            # hash canonically; the run manifest's manifest_hash recomputes.
+            # technical manifest must record EVERY persisted artifact's
+            # physical and logical hash, and each entry must match the DB
+            # (the run manifest's manifest_hash recomputes below).
             technical_index = None
             for _rs, a in artifacts:
                 if a.artifact_type == "technical_manifest_index":
@@ -259,18 +254,25 @@ class TestLaunchPathway:
             for m in technical_index["manifests"]:
                 for entry in m.get("artifacts", []):
                     tech_entries[entry["artifact_id"]] = entry
-            assert len(tech_entries) >= len(artifacts) * 0.5, (
-                f"Technical manifest too sparse: {len(tech_entries)} entries"
+            persisted_ids = {
+                a.artifact_id for _rs, a in artifacts
+                if a.artifact_type != "technical_manifest_index"
+            }
+            assert set(tech_entries) == persisted_ids, (
+                f"Technical manifest must record every artifact: "
+                f"missing={sorted(persisted_ids - set(tech_entries))} "
+                f"extra={sorted(set(tech_entries) - persisted_ids)}"
             )
             for _rs, a in artifacts:
-                if a.artifact_id in tech_entries:
-                    entry = tech_entries[a.artifact_id]
-                    assert entry["physical_hash"] == a.physical_hash, (
-                        f"Technical manifest physical hash mismatch for {a.artifact_id}"
-                    )
-                    assert entry["logical_hash"] == a.logical_hash, (
-                        f"Technical manifest logical hash mismatch for {a.artifact_id}"
-                    )
+                if a.artifact_type == "technical_manifest_index":
+                    continue
+                entry = tech_entries[a.artifact_id]
+                assert entry["physical_hash"] == a.physical_hash, (
+                    f"Technical manifest physical hash mismatch for {a.artifact_id}"
+                )
+                assert entry["logical_hash"] == a.logical_hash, (
+                    f"Technical manifest logical hash mismatch for {a.artifact_id}"
+                )
 
         # 16. Audit package generation.
         from cardre.application.reporting.export_audit_pack import ExportAuditPackCommand
@@ -376,6 +378,26 @@ class TestLaunchPathway:
             assert manifest_step_ids == persisted_run_steps, (
                 "Manifest steps do not match persisted run steps"
             )
+
+
+def _recompute_logical_hash(artifact: object, raw: bytes) -> str:
+    """Recompute an artifact's logical hash from its persisted bytes.
+
+    Mirrors the production definitions: JSON artifacts hash the canonical
+    parsed payload (``json_logical_hash``); Parquet artifacts hash the
+    canonical sorted-column Parquet serialization (``table_logical_hash``),
+    which is byte-stable across store/read-back; byte artifacts (e.g. joblib
+    estimators) use the raw bytes hash (equal to their physical hash).
+    """
+    import io
+
+    media_type = getattr(artifact, "media_type", "")
+    if media_type == "application/json":
+        return json_logical_hash(json.loads(raw))
+    if media_type == "application/vnd.apache.parquet":
+        frame = pl.read_parquet(io.BytesIO(raw))
+        return table_logical_hash(frame)
+    return hashlib.sha256(raw).hexdigest()
 
 
 def _recompute_manifest_hash(manifest: dict) -> str:

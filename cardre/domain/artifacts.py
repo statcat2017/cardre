@@ -36,23 +36,35 @@ def json_logical_hash(data: JsonDict) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-TABLE_LOGICAL_HASH_VERSION = "v2"
+TABLE_LOGICAL_HASH_VERSION = "v3"
 
 
 def table_logical_hash(table: Any) -> str:
-    """SHA-256 of a sorted-column Arrow IPC representation.
+    """SHA-256 of a sorted-column canonical Parquet representation.
+
+    The hash is computed over the canonical Parquet serialization of the
+    sorted-column table (``statistics=False``, ``compression="zstd"``) so it
+    is a pure function of the persisted artifact: the same bytes a consumer
+    reads back from the artifact store produce the same hash, and identical
+    logical content always hashes identically regardless of in-memory column
+    ordering.
 
     Version history:
       v1: pyarrow.ipc.new_file + writer.write_table (segfaults on some
           pyarrow/Python version combinations).
-      v2: polars.DataFrame.write_ipc — avoids the buggy C++ path.
+      v2: polars.DataFrame.write_ipc — deterministic, but IPC serialization
+          of string columns is not stable across a Parquet round-trip, so
+          the hash could not be recomputed from persisted artifacts.
+      v3: polars.DataFrame.write_parquet (sorted columns, statistics=False,
+          compression=zstd) — byte-stable across store/read-back, making the
+          logical hash independently recomputable from canonical content.
     """
     import io
 
     sorted_cols = sorted(table.columns)
     table = table.select(sorted_cols)
     buf = io.BytesIO()
-    table.write_ipc(buf)
+    table.write_parquet(buf, statistics=False, compression="zstd")
     return f"{TABLE_LOGICAL_HASH_VERSION}:{hashlib.sha256(buf.getvalue()).hexdigest()}"
 
 

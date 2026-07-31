@@ -3,6 +3,9 @@
 Runs the same behavioural contract against both the synchronous and
 thread-based dispatchers, preserving the semantics formerly covered by
 ``test_run_dispatch.py`` (dispatch, status reporting, shutdown).
+
+Worker completion is signalled with ``threading.Event`` objects so the
+thread-based assertions never race the background worker.
 """
 
 from __future__ import annotations
@@ -19,17 +22,27 @@ def _request(run_id: str = "run-1") -> RunRequest:
 
 
 class TestRunDispatcherContract:
-    def test_dispatch_invokes_execute_run_sync(self):
+    def test_sync_dispatch_invokes_execute_run(self):
         captured: list[str] = []
         dispatcher = SyncRunDispatcher(lambda command: captured.append(command.run_id))
         dispatcher.dispatch(_request("run-1"))
         assert captured == ["run-1"]
         dispatcher.shutdown()
 
-    def test_dispatch_invokes_execute_run_thread(self):
+    def test_thread_dispatch_invokes_execute_run(self):
         captured: list[str] = []
-        dispatcher = ThreadRunDispatcher(lambda command: captured.append(command.run_id))
+        started = threading.Event()
+        finished = threading.Event()
+
+        def execute(command) -> None:
+            captured.append(command.run_id)
+            started.set()
+            finished.set()
+
+        dispatcher = ThreadRunDispatcher(execute)
         dispatcher.dispatch(_request("run-1"))
+        assert started.wait(timeout=5), "worker never started"
+        assert finished.wait(timeout=5), "worker never finished"
         assert captured == ["run-1"]
         dispatcher.shutdown()
 
@@ -40,22 +53,20 @@ class TestRunDispatcherContract:
         dispatcher.shutdown()
 
     def test_thread_reports_running_then_completed(self):
-        executed: list[str] = []
         started = threading.Event()
-        release = threading.Event()
+        finished = threading.Event()
 
         def execute(command) -> None:
-            executed.append(command.run_id)
             started.set()
-            release.wait(timeout=5)
+            finished.wait(timeout=5)
 
         thread = ThreadRunDispatcher(execute)
         thread.dispatch(_request("run-1"))
         try:
-            assert started.wait(timeout=2)
+            assert started.wait(timeout=5), "worker never started"
             assert thread.get_status("run-1") == "running"
         finally:
-            release.set()
+            finished.set()
         deadline = 5
         while thread.get_status("run-1") == "running" and deadline > 0:
             threading.Event().wait(0.05)

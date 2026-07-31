@@ -4,6 +4,9 @@ Preserves the semantics of the pre-Batch-05 ``test_run_dispatch.py``:
 duplicate-dispatch rejection, active/completed status reporting, and
 ``max_workers`` enforcement. The dispatcher now takes an injected
 ``execute_run`` callable instead of calling the removed ``RunWorker``.
+
+Determinism: every worker signals per-run ``started`` and ``finished``
+``threading.Event`` objects so assertions never race the worker thread.
 """
 
 from __future__ import annotations
@@ -20,71 +23,85 @@ def _request(run_id: str = "run-1") -> RunRequest:
     return RunRequest(run_id=run_id, plan_version_id="pv-1")
 
 
-def _started_release() -> tuple[list[str], threading.Event, threading.Event]:
-    """Return (executed_run_ids, started_event, release_event) for a blocking
-    execute_run fake."""
-    executed: list[str] = []
-    started = threading.Event()
-    release = threading.Event()
+class _BlockingHarness:
+    """Runs a blocking ``execute_run`` fake with deterministic events.
 
-    def execute(command) -> None:
-        executed.append(command.run_id)
+    ``started[run_id]`` is set when the worker begins; ``finished[run_id]``
+    is set when the worker returns; ``release[run_id]`` unblocks it.
+    """
+
+    def __init__(self) -> None:
+        self.executed: list[str] = []
+        self.started: dict[str, threading.Event] = {}
+        self.finished: dict[str, threading.Event] = {}
+        self.release: dict[str, threading.Event] = {}
+        self._lock = threading.Lock()
+
+    def execute(self, command) -> None:
+        run_id = command.run_id
+        started = self.started.setdefault(run_id, threading.Event())
+        finished = self.finished.setdefault(run_id, threading.Event())
+        release = self.release.setdefault(run_id, threading.Event())
+        with self._lock:
+            self.executed.append(run_id)
         started.set()
         release.wait(timeout=5)
+        finished.set()
 
-    return executed, started, release, execute
+    def wait_started(self, run_id: str, timeout: float = 5) -> None:
+        assert self.started[run_id].wait(timeout), f"worker {run_id} never started"
+
+    def wait_finished(self, run_id: str, timeout: float = 5) -> None:
+        assert self.finished[run_id].wait(timeout), f"worker {run_id} never finished"
 
 
 def test_dispatcher_rejects_duplicate_dispatch_for_same_run():
     """Dispatching the same run_id twice must reject the second dispatch."""
-    _, started, release, execute = _started_release()
-    dispatcher = ThreadRunDispatcher(execute)
+    harness = _BlockingHarness()
+    dispatcher = ThreadRunDispatcher(harness.execute)
 
     dispatcher.dispatch(_request("run-1"))
     try:
-        assert started.wait(timeout=2)
+        harness.wait_started("run-1")
         with pytest.raises(RuntimeError) as exc_info:
             dispatcher.dispatch(_request("run-1"))
         assert "already" in str(exc_info.value).lower() or "duplicate" in str(exc_info.value).lower()
     finally:
-        release.set()
+        harness.release["run-1"].set()
+        harness.wait_finished("run-1")
         dispatcher.shutdown()
 
 
-def test_dispatcher_reports_running_then_completed(monkeypatch):
+def test_dispatcher_reports_running_then_completed():
     """get_status reports 'running' while active and 'completed' after."""
-    _, started, release, execute = _started_release()
-    dispatcher = ThreadRunDispatcher(execute)
+    harness = _BlockingHarness()
+    dispatcher = ThreadRunDispatcher(harness.execute)
 
     dispatcher.dispatch(_request("run-1"))
     try:
-        assert started.wait(timeout=2)
+        harness.wait_started("run-1")
         assert dispatcher.get_status("run-1") == "running"
     finally:
-        release.set()
-
-    # Wait for the worker to finish; then status flips to completed.
-    deadline = 5
-    while dispatcher.get_status("run-1") == "running" and deadline > 0:
-        threading.Event().wait(0.05)
-        deadline -= 0.05
+        harness.release["run-1"].set()
+        harness.wait_finished("run-1")
     assert dispatcher.get_status("run-1") == "completed"
     dispatcher.shutdown()
 
 
 def test_dispatcher_enforces_max_workers_bound():
     """A dispatcher with max_workers=1 rejects a second concurrent dispatch."""
-    _, started, release, execute = _started_release()
-    dispatcher = ThreadRunDispatcher(execute, max_workers=1)
+    harness = _BlockingHarness()
+    dispatcher = ThreadRunDispatcher(harness.execute, max_workers=1)
 
     dispatcher.dispatch(_request("run-1"))
     try:
-        assert started.wait(timeout=2)
+        harness.wait_started("run-1")
         with pytest.raises(RuntimeError) as exc_info:
             dispatcher.dispatch(_request("run-2"))
         assert "workers" in str(exc_info.value).lower()
     finally:
-        release.set()
+        harness.release["run-1"].set()
+        harness.wait_finished("run-1")
         dispatcher.shutdown()
 
 
@@ -99,22 +116,20 @@ def test_dispatcher_rejects_dispatch_after_shutdown():
 
 def test_dispatcher_executes_concurrent_runs_up_to_max_workers():
     """Two runs dispatch concurrently when max_workers=2."""
-    executed: list[str] = []
-    started = threading.Event()
-    release = threading.Event()
+    harness = _BlockingHarness()
+    dispatcher = ThreadRunDispatcher(harness.execute, max_workers=2)
 
-    def execute(command) -> None:
-        executed.append(command.run_id)
-        started.set()
-        release.wait(timeout=5)
-
-    dispatcher = ThreadRunDispatcher(execute, max_workers=2)
     dispatcher.dispatch(_request("run-1"))
+    harness.wait_started("run-1")
+    dispatcher.dispatch(_request("run-2"))
+    harness.wait_started("run-2")
     try:
-        assert started.wait(timeout=2)
-        dispatcher.dispatch(_request("run-2"))
+        assert dispatcher.get_status("run-1") == "running"
         assert dispatcher.get_status("run-2") == "running"
     finally:
-        release.set()
-        dispatcher.shutdown()
-    assert sorted(executed) == ["run-1", "run-2"]
+        for run_id in ("run-1", "run-2"):
+            harness.release[run_id].set()
+        for run_id in ("run-1", "run-2"):
+            harness.wait_finished(run_id)
+    assert sorted(harness.executed) == ["run-1", "run-2"]
+    dispatcher.shutdown()

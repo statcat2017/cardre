@@ -128,8 +128,8 @@ Steps (the 20 items from the task):
 16. **Generate an audit package** — `ExportAuditPack` use case. Assert `exports/audit-pack-{branch_id}/` exists with checksums.
 17. **Replay a committed plan** — `POST /runs` same `plan_version_id`. Assert second run succeeds; compare artifact `logical_hash`es to first run — must match (deterministic).
 18. **Verify scoring parity** — `test_scoring_export_parity.py` passes (Python/SQL/apply-model outputs match).
-19. **Verify artifact hashes** — recompute `physical_hash` from file bytes; assert matches DB. Recompute `logical_hash` from canonical content for JSON and byte artifacts (exact); parquet table `logical_hash`es (defined as the IPC of the in-memory frame at publish time) are verified against the canonical technical manifest, which is itself a JSON artifact whose `logical_hash` recomputes.
-20. **Verify canonical manifest consistency** — read `manifests/runs/{run_id}.json`; assert `manifest_hash` recomputes; assert `run_id`/`plan_version_id`/`status` match DB; assert every `evidence_edge` has ≥1 `evidence_artifact`; assert no phantom run_steps; assert the technical manifest index records each artifact's `physical_hash`/`logical_hash` matching the DB.
+19. **Verify artifact hashes** — recompute `physical_hash` from file bytes; assert matches DB. Recompute `logical_hash` from canonical content for every artifact: JSON hashes the canonical parsed payload, Parquet hashes the canonical sorted-column Parquet serialization (`table_logical_hash`, byte-stable across store/read-back), and byte artifacts hash the raw bytes. Assert each recomputes to the stored value.
+20. **Verify canonical manifest consistency** — read `manifests/runs/{run_id}.json`; assert `manifest_hash` recomputes; assert `run_id`/`plan_version_id`/`status` match DB; assert every `evidence_edge` has ≥1 `evidence_artifact`; assert no phantom run_steps; assert the technical manifest index records **every** artifact's `physical_hash`/`logical_hash` matching the DB.
 
 ## Test command summary
 
