@@ -703,7 +703,9 @@ new `CLUSTERING_FAILED` warning for unexpected failures.
 
 ### Required Clustering Tests
 
-Keep the three existing integration tests in `tests/test_clustering_node.py`:
+Keep the three existing integration tests for the variable-clustering node:
+(now exercised through the NodeContext pattern in `tests/nodes/test_batch_07f_nodes.py`
+and the composed-execution suite):
 
 1. WOE evidence missing produces singleton pass-through.
 2. Raw train clustering succeeds.

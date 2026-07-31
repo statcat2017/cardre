@@ -53,16 +53,13 @@ Change these production modules:
 
 Extend these tests:
 
-- `tests/test_run_lifecycle.py`
-- `tests/test_run_lifecycle_errors.py`
-- `tests/test_run_coordinator.py`
-- `tests/test_run_coordinator_edge_cases.py`, if its existing fixtures cover a
-  dispatcher startup failure more directly
+- `tests/application/runs/test_run_submission_contract.py`
+- `tests/application/runs/test_finalize_run_manifest.py`
 
 Do not change:
 
 - `cardre/application/execution/step_runner.py` node execution semantics;
-- `cardre/store/run_repo.py` persistence schema or transition rules;
+- `cardre/adapters/sqlite/run_repo.py` persistence schema or transition rules;
 - `cardre/domain/run.py` status values or state graph;
 - `cardre/application/evidence/explain_staleness.py` staleness computation;
 - `CONTEXT.md` or ADRs.
@@ -409,7 +406,7 @@ Mock only the execution or dispatch action needed to force the path.
 
 ### Lifecycle module tests
 
-File: `tests/test_run_lifecycle.py`
+File: `tests/application/runs/test_finalize_run_manifest.py`
 
 Add focused cases:
 
@@ -439,7 +436,7 @@ assert diagnostics[-1]["code"] == "RUN_DISPATCH_FAILED"
 
 ### Coordinator tests
 
-File: `tests/test_run_coordinator.py`
+File: `tests/application/runs/test_run_submission_contract.py`
 
 1. Extend stale recovery to assert:
    - status is `interrupted`;
@@ -493,8 +490,8 @@ rg '\.transition\(' cardre -g '*.py'
 
 Expected result:
 
-- normal and recovery transitions are in `cardre/execution/run_lifecycle.py`;
-- `cardre/store/run_repo.py` retains its repository implementation;
+- normal and recovery transitions are in `cardre/application/runs/finalize_run.py`;
+- `cardre/adapters/sqlite/run_repo.py` retains its repository implementation;
 - no terminal transition remains in `run_coordinator.py` or `worker.py`.
 
 Also confirm `_fail_run_if_running` and

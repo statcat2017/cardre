@@ -1,7 +1,7 @@
 """Classify a step-execution exception into the structured error_entry
 dict recorded in RunStep.errors.
 
-Pure mapping — no ProjectStore, no run/step IDs.
+Pure mapping — no persistence, no run/step IDs.
 """
 
 from __future__ import annotations

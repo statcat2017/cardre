@@ -2,7 +2,7 @@
 
 Ports ``comparison_service.refresh_comparison`` into a single use case.
 Uses ``EvidenceReaderPort`` (passed as a dependency) for typed evidence
-lookup instead of ``ProjectStore``.
+lookup instead of a persistence store.
 """
 
 from __future__ import annotations

@@ -1,67 +1,56 @@
-"""Tests that RunRepository.create persists all request columns."""
+"""Tests that RunRepo.create persists all request columns."""
 from __future__ import annotations
 
-import uuid
 
-from cardre.domain.diagnostics import utc_now_iso
-from cardre.store.run_repo import RunRepository
-
-
-def _seed_committed_plan_version(store):
+def _seed_committed_plan_version(uow, project_id):
     """Seed a minimal project + plan + committed plan_version. Returns pv_id."""
-    now = utc_now_iso()
-    project_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO projects (project_id, name, created_at, cardre_version) VALUES (?, ?, ?, ?)",
-        (project_id, "Test", now, "0.2.0"),
-    )
-    plan_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO plans (plan_id, project_id, name, created_at) VALUES (?, ?, ?, ?)",
-        (plan_id, project_id, "Test Plan", now),
-    )
-    pv_id = str(uuid.uuid4())
-    store.execute(
-        "INSERT INTO plan_versions (plan_version_id, plan_id, version_number, is_committed, created_at) "
-        "VALUES (?, ?, 1, 1, ?)",
-        (pv_id, plan_id, now),
-    )
-    return pv_id
+    plan_id = uow.plans.create_plan(project_id, "Test Plan")
+    return uow.plans.create_version(plan_id, [], is_committed=True)
 
 
-def test_create_run_persists_request_fields(store):
-    """RunRepository.create writes run_scope, branch_id, requested_by, request_id."""
-    pv_id = _seed_committed_plan_version(store)
+def test_create_run_persists_request_fields(provisioned_project):
+    """RunRepo.create writes run_scope, branch_id, requested_by, request_id."""
+    project_id, uow_factory, _, _ = provisioned_project
 
-    repo = RunRepository(store)
-    run_id = repo.create(
-        pv_id,
-        run_scope="branch",
-        branch_id="br-1",
-        requested_by="alice",
-        request_id="req-1",
-    )
-    row = repo.get(run_id)
-    assert row is not None
-    assert row["run_scope"] == "branch"
-    assert row["branch_id"] == "br-1"
-    assert row["requested_by"] == "alice"
-    assert row["request_id"] == "req-1"
-    assert row["created_at"]
-    assert row["queued_at"] is None
+    with uow_factory.for_project(project_id) as uow:
+        pv_id = _seed_committed_plan_version(uow, project_id)
+        run_id = uow.runs.create(
+            pv_id,
+            run_scope="branch",
+            branch_id="br-1",
+            requested_by="alice",
+            request_id="req-1",
+        )
+        run = uow.runs.get(run_id)
+        assert run is not None
+        assert run.run_scope == "branch"
+        assert run.branch_id == "br-1"
+        row = uow._conn.execute(
+            "SELECT requested_by, request_id, created_at FROM runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        assert row["requested_by"] == "alice"
+        assert row["request_id"] == "req-1"
+        assert row["created_at"]
 
 
-def test_create_run_defaults(store):
-    """RunRepository.create uses defaults for optional fields."""
-    pv_id = _seed_committed_plan_version(store)
+def test_create_run_defaults(provisioned_project):
+    """RunRepo.create uses defaults for optional fields."""
+    project_id, uow_factory, _, _ = provisioned_project
 
-    repo = RunRepository(store)
-    run_id = repo.create(pv_id)
-    row = repo.get(run_id)
-    assert row is not None
-    assert row["run_scope"] == "full_plan"
-    assert row["branch_id"] is None
-    assert row["force"] == 0
-    assert row["requested_by"] is None
-    assert row["request_id"] is None
-    assert row["created_at"]
+    with uow_factory.for_project(project_id) as uow:
+        pv_id = _seed_committed_plan_version(uow, project_id)
+        run_id = uow.runs.create(pv_id)
+        run = uow.runs.get(run_id)
+        assert run is not None
+        assert run.status == "created"
+        assert run.run_scope == "full_plan"
+        assert run.branch_id is None
+        assert run.force is False
+        row = uow._conn.execute(
+            "SELECT requested_by, request_id, created_at FROM runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        assert row["requested_by"] is None
+        assert row["request_id"] is None
+        assert row["created_at"]

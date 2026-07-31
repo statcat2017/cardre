@@ -176,10 +176,7 @@ allow_indirect_imports = true
 [tool.importlinter.independent_modules]
 modules = [
     "cardre._version",
-    "cardre.artifacts",
     "cardre.modeling",
     "cardre.node_parameters",
-    "cardre.services",
-    "cardre.store",
     "sidecar",
 ]

@@ -219,7 +219,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 BANNED_IDENTIFIERS = {
     "ProjectStore",
     "CardreConfig",
-    "ArtifactEvidenceReader",
 }
 
 BANNED_IMPORTS = {
@@ -236,22 +235,18 @@ BANNED_ATTRIBUTES = {
 ALLOWED_PREFIXES = {
     "cardre.adapters.sqlite": {"sqlite3"},
     "cardre.bootstrap.settings": {"os.environ", "os.getenv"},
-    "cardre.adapters.evidence": {"ArtifactEvidenceReader"},
     "cardre.nodes.registry": {"NodeType"},
 }
 
 
 def _is_allowed(filepath: str, symbol: str) -> bool:
+    path = filepath.replace("/", ".")
     for prefix, allowed in ALLOWED_PREFIXES.items():
-        if filepath.startswith(prefix) and symbol in allowed:
+        if path.startswith(prefix) and symbol in allowed:
             return True
     return False
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="Migration in progress; enforced after Batch 07",
-)
 def test_forbidden_imports_outside_adapters() -> None:
     """AST-walk cardre/ and ban forbidden identifiers outside allowed packages."""
     cardre_dir = REPO_ROOT / "cardre"
@@ -291,6 +286,6 @@ def test_forbidden_imports_outside_adapters() -> None:
 
     if violations:
         pytest.fail(
-            "Forbidden imports/symbols found (xfail during migration):\n"
+            "Forbidden imports/symbols found:\n"
             + "\n".join(violations)
         )

@@ -2,7 +2,7 @@
 
 Combines the adapter table and matching logic previously split across
 ``cardre/_evidence/adapters/__init__.py`` and ``_base.py``.  Uses
-``ArtifactReader`` instead of ``ProjectStore``.
+``ArtifactReader`` instead of a legacy persistence store.
 """
 
 from __future__ import annotations

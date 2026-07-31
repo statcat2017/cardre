@@ -42,7 +42,7 @@ CLASSIFICATIONS = {
     "false_positive",
 }
 
-DEFAULT_READER_HINT = "Use ArtifactEvidenceReader.read(...) or find(...) instead of direct artifact_path I/O."
+DEFAULT_READER_HINT = "Use EvidenceReader.read(...) or find(...) instead of direct artifact_path I/O."
 DOC_PATH = "docs/architecture/artifact-evidence-access.md"
 
 SUPPRESSION_RE = re.compile(r"#\s*cardre-allow-artifact-read:\s*([a-z-]+)")
