@@ -143,6 +143,7 @@ class RefreshComparison:
             now = utc_now_iso()
             last_snapshot_id: str | None = None
             artifact_id: str | None = None
+            pending_publishes: list[tuple[Any, str]] = []  # (staged, outbox_id)
 
             for cid in challenger_ids:
                 challenger = uow.branches.get_branch(cid)
@@ -167,17 +168,31 @@ class RefreshComparison:
                         "schema_version": SCHEMA_COMPARISON_ARTIFACT,
                     },
                 )
-                published_path = self._artifact_writer.publish(staged)
+                # Durable publication protocol: keep the file in staging until
+                # the DB mutation commits. Register the descriptor + outbox row
+                # in the same transaction as the snapshot rows; finalize the
+                # file only after commit.
+                dest = self._artifact_writer.dest_path(staged)
                 artifact_id = uow.artifacts.register(ArtifactRef(
                     artifact_id=staged.provisional_artifact_id,
                     artifact_type=staged.artifact_type,
                     role=staged.role,
-                    path=str(published_path),
+                    path=str(dest),
                     physical_hash=staged.physical_hash,
                     logical_hash=staged.logical_hash,
                     media_type=staged.media_type,
                     metadata=staged.metadata,
                 ))
+                outbox_id = uow.publications.enqueue_artifact(
+                    run_id="",
+                    plan_version_id=pv_id_challenger,
+                    run_step_id="",
+                    artifact_id=artifact_id,
+                    physical_hash=staged.physical_hash,
+                    storage_key=str(dest),
+                    staging_source=str(staged.staging_path),
+                )
+                pending_publishes.append((staged, outbox_id))
 
                 snapshot_id = uow.comparisons.create_snapshot(
                     command.comparison_id, project_id, plan_id,
@@ -199,6 +214,17 @@ class RefreshComparison:
                 )
 
             uow.commit()
+
+        # After the DB mutation committed, finalize the comparison artifact
+        # files and mark their outbox rows published. A failure here leaves the
+        # pending outbox rows for reconciliation to retry.
+        for staged, _outbox_id in pending_publishes:
+            self._artifact_writer.finalize(staged)
+        if pending_publishes:
+            with self._uow_factory.for_project(command.project_id) as mark_uow:
+                for _staged, outbox_id in pending_publishes:
+                    mark_uow.publications.mark_published(outbox_id)
+                mark_uow.commit()
 
         return RefreshComparisonResult(
             comparison_id=command.comparison_id,

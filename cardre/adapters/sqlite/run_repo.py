@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def _row_to_run(r: Any) -> Run:
     """Hydrate a ``Run`` from a sqlite3.Row, including persisted read-model
-    fields (run_scope, heartbeat_at, cancel_requested)."""
+    fields (run_scope, heartbeat_at, cancel_requested, worker_generation)."""
     return Run(
         run_id=r["run_id"],
         plan_version_id=r["plan_version_id"],
@@ -26,6 +26,7 @@ def _row_to_run(r: Any) -> Run:
         run_scope=r["run_scope"],
         heartbeat_at=r["heartbeat_at"],
         cancel_requested=bool(r["cancel_requested"]),
+        worker_generation=int(r["worker_generation"] or 0),
     )
 
 
@@ -117,6 +118,49 @@ class RunRepo:
                 (to_status.value, run_id) + tuple(s.value for s in expected_from),
             )
         return bool(cursor.rowcount > 0)
+
+    def begin_worker_generation(self, run_id: str) -> int:
+        """Bump and return the worker generation for a run.
+
+        A worker captures the returned generation when it claims the run and
+        must present the same generation to every subsequent lease assertion.
+        A stale-recovery that bumps the generation invalidates the original
+        worker's token, fencing its writes.
+        """
+        self._conn.execute(
+            "UPDATE runs SET worker_generation = worker_generation + 1 WHERE run_id = ?",
+            (run_id,),
+        )
+        row = self._conn.execute(
+            "SELECT worker_generation FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        return int(row["worker_generation"]) if row else 0
+
+    def claim_running_lease(self, run_id: str) -> int:
+        """Atomically transition to running and issue a fresh worker generation."""
+        self.transition(run_id, RunStatus.RUNNING,
+                        expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+        return self.begin_worker_generation(run_id)
+
+    def assert_running_lease(self, run_id: str, generation: int) -> None:
+        """Verify the run is still running, not cancelled, and owned by the
+        caller's worker generation. Must run inside the same transaction that
+        performs the writes it guards, so a stale/cancelled run cannot accept
+        output. Raises ``LeaseLost`` on violation."""
+        from cardre.domain.errors import LeaseLost
+
+        row = self._conn.execute(
+            "SELECT status, cancel_requested, worker_generation FROM runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            raise LeaseLost(run_id, "run not found")
+        if row["status"] != RunStatus.RUNNING.value:
+            raise LeaseLost(run_id, f"run status {row['status']}")
+        if row["cancel_requested"]:
+            raise LeaseLost(run_id, "cancellation requested")
+        if int(row["worker_generation"]) != generation:
+            raise LeaseLost(run_id, "lease ownership lost (worker generation mismatch)")
 
     def heartbeat(self, run_id: str) -> None:
         from cardre.domain.diagnostics import utc_now_iso

@@ -4,7 +4,7 @@ from typing import Any
 
 import polars as pl
 
-from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
 from cardre.domain.evidence.schemas import SCHEMA_EXCLUSION_SUMMARY
 from cardre.nodes.contracts import (
     ArtifactContract,
@@ -28,8 +28,8 @@ class ApplyExclusionsNode(NodeType):
         version="1",
         category="transform",
         description="Apply exclusion rules to filter rows",
-        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)), ArtifactRoleSpec("train", required=False, kinds=("dataset",)), ArtifactRoleSpec("definition", required=False, kinds=("definition",)))),
-        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)), ArtifactRoleSpec("train", required=False, kinds=("dataset",)), ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.EXCLUSION_SUMMARY,)))),
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("definition", required=False, kinds=(RoleKind.DEFINITION,)))),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(EvidenceKind.MODELLING_METADATA,)), ArtifactRoleSpec("train", required=False, kinds=(EvidenceKind.MODELLING_METADATA,)), ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.EXCLUSION_SUMMARY,), schema_versions=(SCHEMA_EXCLUSION_SUMMARY,)))),
         parameter_schema=None,
         optional_dependencies=(),
         tier="launch",
@@ -136,8 +136,8 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
         version="1",
         category="apply",
         description="Apply explicit missing value imputation and outlier capping/floating",
-        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=("dataset",)), ArtifactRoleSpec("test", required=False, kinds=("dataset",)), ArtifactRoleSpec("oot", required=False, kinds=("dataset",)))),
-        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=("dataset",)), ArtifactRoleSpec("test", required=False, kinds=("dataset",)), ArtifactRoleSpec("oot", required=False, kinds=("dataset",)), ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.EXCLUSION_SUMMARY,)))),
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("test", required=False, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("oot", required=False, kinds=(RoleKind.DATASET,)))),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=(EvidenceKind.MODELLING_METADATA,)), ArtifactRoleSpec("test", required=False, kinds=(EvidenceKind.MODELLING_METADATA,)), ArtifactRoleSpec("oot", required=False, kinds=(EvidenceKind.MODELLING_METADATA,)), ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.EXCLUSION_SUMMARY,), schema_versions=(SCHEMA_EXCLUSION_SUMMARY,)))),
         parameter_schema=None,
         optional_dependencies=(),
         tier="launch",
@@ -213,7 +213,7 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
             role="report",
             kind=EvidenceKind.EXCLUSION_SUMMARY,
             payload=treatment_report,
-            metadata={},
+            metadata={"schema_version": SCHEMA_EXCLUSION_SUMMARY},
         )
 
         context.outputs.add_metric("output_count", len(data_inputs))

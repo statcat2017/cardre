@@ -28,6 +28,12 @@ def physical_hash(path: Path) -> str:
         for chunk in iter(lambda: f.read(CHUNK_SIZE), b""):
             digest.update(chunk)
     return digest.hexdigest()
+    """SHA-256 of raw file bytes, read in chunks."""
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(CHUNK_SIZE), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def json_logical_hash(data: JsonDict) -> str:
@@ -71,6 +77,35 @@ def table_logical_hash(table: Any) -> str:
 def params_hash(params: JsonDict) -> str:
     """Shortcut for hashing a parameter dict."""
     return json_logical_hash(params)
+
+
+def descriptor_id(
+    *,
+    artifact_type: str,
+    role: str,
+    media_type: str,
+    kind: str,
+    schema_version: str,
+    logical_hash: str,
+    physical_hash: str,
+) -> str:
+    """Deterministic descriptor ID encoding the complete semantic identity.
+
+    Two descriptors collide (and are deduplicated as the *same* artifact) only
+    when every identity-bearing field agrees: type, role, media type, evidence
+    kind, versioned schema, logical hash, and physical hash. Identical bytes
+    with a different schema/kind/media therefore produce distinct descriptors
+    instead of silently adopting the first descriptor's semantics.
+    """
+    return "|".join([
+        artifact_type,
+        role,
+        media_type,
+        kind,
+        schema_version,
+        logical_hash,
+        physical_hash,
+    ])
 
 
 @dataclass(frozen=True)
@@ -118,6 +153,7 @@ __all__ = [
     "CHUNK_SIZE",
     "TABLE_LOGICAL_HASH_VERSION",
     "ArtifactRef",
+    "descriptor_id",
     "json_logical_hash",
     "params_hash",
     "physical_hash",

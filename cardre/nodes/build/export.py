@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
 from cardre.domain.evidence.schemas import SCHEMA_TECHNICAL_MANIFEST_INDEX
 from cardre.nodes.contracts import (
     ArtifactContract,
@@ -30,10 +30,10 @@ class TechnicalManifestExportNode(NodeType):
         category="transform",
         description="Export technical manifest from run summary",
         input_contract=ArtifactContract(roles=(
-            ArtifactRoleSpec("manifest", required=True, kinds=("run_summary",)),
+            ArtifactRoleSpec("manifest", required=True, kinds=(RoleKind.RUN_SUMMARY,)),
         )),
         output_contract=ArtifactContract(roles=(
-            ArtifactRoleSpec("manifest", required=True, kinds=("technical_manifest_index",)),
+            ArtifactRoleSpec("manifest", required=True, kinds=(EvidenceKind.TECHNICAL_MANIFEST_INDEX,), schema_versions=(SCHEMA_TECHNICAL_MANIFEST_INDEX,)),
         )),
         parameter_schema=None,
         optional_dependencies=(),

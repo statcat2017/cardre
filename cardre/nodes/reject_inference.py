@@ -7,7 +7,7 @@ import numpy as np
 import polars as pl
 from sklearn.linear_model import LogisticRegression
 
-from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
 from cardre.domain.evidence.schemas import (
     SCHEMA_REJECT_INFERENCE_RESULT,
     SCHEMA_REJECT_POPULATION_CONFIG,
@@ -39,7 +39,7 @@ class DefineRejectPopulationNode(NodeType):
         description="Classify through-the-door rows as financed or non-financed",
         input_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("input", kinds=("dataset",)),
+                ArtifactRoleSpec("input", kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec(
                     "definition",
                     kinds=(EvidenceKind.MODELLING_METADATA, EvidenceKind.SAMPLE_DEFINITION),
@@ -48,7 +48,7 @@ class DefineRejectPopulationNode(NodeType):
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("input", kinds=("dataset",)),
+                ArtifactRoleSpec("input", kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec("definition", kinds=(EvidenceKind.REJECT_POPULATION_CONFIG,)),
             ),
         ),
@@ -213,13 +213,13 @@ class RejectInferenceNoneNode(NodeType):
         description="Exclude non-financed rows without inferring their outcomes",
         input_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("input", kinds=("dataset",)),
+                ArtifactRoleSpec("input", kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec("definition", kinds=(EvidenceKind.REJECT_POPULATION_CONFIG,)),
             ),
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("input", kinds=("dataset",)),
+                ArtifactRoleSpec("input", kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec("report", kinds=(EvidenceKind.REJECT_INFERENCE_RESULT,)),
             ),
         ),
@@ -321,7 +321,7 @@ class RejectInferenceAugmentationNode(NodeType):
         description="Resample financed rows using score-band propensity weights",
         input_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("input", kinds=("dataset",)),
+                ArtifactRoleSpec("input", kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec(
                     "definition",
                     kinds=(EvidenceKind.MODELLING_METADATA, EvidenceKind.REJECT_POPULATION_CONFIG),
@@ -330,7 +330,7 @@ class RejectInferenceAugmentationNode(NodeType):
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("input", kinds=("dataset",)),
+                ArtifactRoleSpec("input", kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec("report", kinds=(EvidenceKind.REJECT_INFERENCE_RESULT,)),
             ),
         ),

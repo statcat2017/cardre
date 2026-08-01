@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS runs (
     heartbeat_at TEXT,
     active_step_id TEXT,
     cancel_requested INTEGER NOT NULL DEFAULT 0,
+    worker_generation INTEGER NOT NULL DEFAULT 0,
     metadata_json TEXT NOT NULL DEFAULT '{}'
 );
 
@@ -310,7 +311,7 @@ CREATE TABLE IF NOT EXISTS manual_binning_reviews (
 PUBLICATION_OUTBOX_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS publication_outbox (
     outbox_id TEXT PRIMARY KEY,
-    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    run_id TEXT REFERENCES runs(run_id) ON DELETE CASCADE,
     plan_version_id TEXT NOT NULL,
     run_step_id TEXT,
     kind TEXT NOT NULL CHECK (kind IN ('artifact','manifest')),

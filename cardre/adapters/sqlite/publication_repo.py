@@ -60,7 +60,7 @@ class PublicationRepo:
             "(outbox_id, run_id, plan_version_id, run_step_id, kind, artifact_id, "
             " physical_hash, storage_key, staging_source, state, error, created_at, updated_at) "
             "VALUES (?, ?, ?, ?, 'artifact', ?, ?, ?, ?, 'pending', '', ?, ?)",
-            (outbox_id, run_id, plan_version_id, run_step_id, artifact_id,
+            (outbox_id, run_id or None, plan_version_id, run_step_id, artifact_id,
              physical_hash, storage_key, staging_source, now, now),
         )
         return outbox_id

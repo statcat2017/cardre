@@ -28,9 +28,9 @@ class ThreadRunDispatcher:
         self._shutdown = False
 
     def dispatch(self, request: RunRequest) -> None:
-        if self._shutdown:
-            raise RuntimeError("Dispatcher is shut down")
         with self._lock:
+            if self._shutdown:
+                raise RuntimeError("Dispatcher is shut down")
             if request.run_id in self._active:
                 raise RuntimeError(f"Run {request.run_id} is already dispatched")
             if len(self._active) >= self._max_workers:
@@ -57,8 +57,8 @@ class ThreadRunDispatcher:
         return "completed"
 
     def shutdown(self) -> None:
-        self._shutdown = True
         with self._lock:
+            self._shutdown = True
             workers = list(self._active.values())
         for worker in workers:
             worker.join(timeout=30)

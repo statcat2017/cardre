@@ -20,6 +20,7 @@ class ArtifactRoleSpec:
     required: bool = True
     kinds: tuple[Any, ...] = ()
     media_types: tuple[str, ...] = ()
+    schema_versions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

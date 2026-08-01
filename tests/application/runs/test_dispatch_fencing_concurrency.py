@@ -300,9 +300,13 @@ def test_lost_lease_blocks_output_persistence(provisioned_project):
         type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
     )
 
+    node_returned = threading.Event()
+    release_node = threading.Event()
+
     class _BlockingRunner:
         def run_step(self, *args, **kwargs):
-            time.sleep(0.2)
+            node_returned.set()
+            release_node.wait(timeout=5)
             from cardre.application.execution.step_runner import StepExecutionResult
             return StepExecutionResult(
                 step_id="s1", node_type="cardre.noop", status=RunStepStatus.SUCCEEDED,
@@ -331,19 +335,30 @@ def test_lost_lease_blocks_output_persistence(provisioned_project):
 
     thread = threading.Thread(target=lambda: executor(ExecuteRunCommand(run_id=run_id)))
     thread.start()
-    time.sleep(0.1)
-    # Lease lost: terminalize the run as interrupted (stale recovery).
+    assert node_returned.wait(timeout=5), "node never started"
+    # Lease lost: terminalize the run as interrupted (stale recovery) and bump
+    # the worker generation, exactly as _sweep_stale does. This happens AFTER
+    # the node returned but BEFORE the worker opens its persistence
+    # transaction, exercising the check-then-write window the fence must close.
     with uow_factory.for_project(project_id) as uow:
         uow.runs.transition(run_id, RunStatus.INTERRUPTED,
                             expected_from=(RunStatus.RUNNING,))
+        uow.runs.begin_worker_generation(run_id)
         uow.commit()
+    release_node.set()
     thread.join(timeout=5)
 
     # After lease loss, the worker must not have persisted any output.
     assert persisted["count"] == 0, "worker persisted output after lease loss"
     with uow_factory.read_only(project_id) as uow:
         run = uow.runs.get(run_id)
+        steps = uow.run_steps.get_for_run(run_id)
+        artifacts = uow.artifacts.output_artifact_ids_for_run(run_id)
+        outbox = uow.publications.list_by_run(run_id)
     assert str(run.status) == RunStatus.INTERRUPTED.value
+    assert steps == [], "run step persisted after lease loss"
+    assert artifacts == [], "artifacts persisted after lease loss"
+    assert outbox == [], "outbox records persisted after lease loss"
 
 
 # ---------------------------------------------------------------------------

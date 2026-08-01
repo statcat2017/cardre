@@ -11,7 +11,6 @@ incomplete publications.
 
 from __future__ import annotations
 
-import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -73,6 +72,11 @@ class FinalizeRun:
                 actual = uow.runs.get(run_id)
                 raise RunAlreadyFinalised(run_id, str(actual.status) if actual else "unknown")
 
+            # Invalidate any surviving worker of the old generation: a terminal
+            # transition (whether this worker finishing or a stale recovery
+            # interrupting) means no earlier-generation worker may write output.
+            uow.runs.begin_worker_generation(run_id)
+
             manifest_steps = self._build_manifest_steps(uow, run_id)
             payload = self._build_manifest(
                 run_id, status, manifest_steps, diagnostic, run_record, uow,
@@ -118,14 +122,13 @@ class FinalizeRun:
         if pv_id:
             for spec in uow.plans.get_version_steps(pv_id):
                 plan_steps[spec.step_id] = spec
-            try:
-                all_edges = uow.steps.get_all_edges(pv_id) if hasattr(uow, "steps") else []
-                for edge in all_edges:
-                    child = edge.get("child_step_id", "")
-                    parent = edge.get("parent_step_id", "")
-                    step_edges.setdefault(child, []).append(parent)
-            except Exception:
-                pass
+            # Plan-step edges are canonical manifest integrity data: a failure
+            # to load them must surface, never silently produce an empty graph.
+            all_edges = uow.steps.get_all_edges(pv_id) if hasattr(uow, "steps") else []
+            for edge in all_edges:
+                child = edge.get("child_step_id", "")
+                parent = edge.get("parent_step_id", "")
+                step_edges.setdefault(child, []).append(parent)
 
         result: list[JsonDict] = []
         for rs in run_steps:
@@ -172,22 +175,20 @@ class FinalizeRun:
         plan_id = ""
         project_id = ""
         if plan_version_id and uow is not None:
-            with contextlib.suppress(Exception):
-                plan_id = uow.plans.get_plan_id_for_version(plan_version_id) or ""
+            # Plan/project identity is canonical manifest integrity data. A
+            # resolution failure must surface rather than publish an empty
+            # identity.
+            plan_id = uow.plans.get_plan_id_for_version(plan_version_id) or ""
             if plan_id:
-                try:
-                    plan = uow.plans.get_plan(plan_id)
-                    if plan is not None:
-                        project_id = plan.project_id
-                except Exception:
-                    pass
+                plan = uow.plans.get_plan(plan_id)
+                if plan is not None:
+                    project_id = plan.project_id
 
+        # Diagnostics are auxiliary (non-integrity) — read them without
+        # silently substituting an empty list on a transient read error.
         diagnostics: list[JsonDict] = []
         if uow is not None:
-            try:
-                diagnostics = list(uow.runs.get_diagnostics(run_id))
-            except Exception:
-                diagnostics = []
+            diagnostics = list(uow.runs.get_diagnostics(run_id))
         if diagnostic is not None and not any(
             d.get("code") == diagnostic.code and d.get("message") == diagnostic.message
             for d in diagnostics

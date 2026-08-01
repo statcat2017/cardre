@@ -1,10 +1,15 @@
 """FastAPI application for the Cardre hexagonal architecture.
 
 Created by bootstrap/build_app.py with a Container. All routes are registered
-here; governance routes are conditional on CARDRE_GOVERNANCE=1.
+here; governance routes are conditional on CARDRE_GOVERNANCE=1. The app
+lifespan owns process-level resources (e.g. the async run dispatcher) so they
+are drained when uvicorn shuts down.
 """
 
 from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,12 +31,26 @@ from cardre.api.routes import (
 from cardre.domain.errors import CardreError
 
 
+def _lifespan_factory(container: object):
+    @asynccontextmanager
+    async def _inner(app: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            dispatcher = getattr(container, "async_dispatcher", None)
+            if dispatcher is not None and hasattr(dispatcher, "shutdown"):
+                dispatcher.shutdown()
+
+    return _inner
+
+
 def create_app(container: object) -> FastAPI:
     """Create and configure the Cardre FastAPI application with the given container."""
     app = FastAPI(
         title="Cardre v2 API",
         version=__version__,
         description="Auditable open-source credit scorecard builder — v2.",
+        lifespan=_lifespan_factory(container),
     )
 
     app.state.container = container

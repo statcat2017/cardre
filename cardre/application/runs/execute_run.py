@@ -83,6 +83,7 @@ class ExecuteRun:
                 if not claimed:
                     uow3.rollback()
                     return
+                worker_generation = uow3.runs.begin_worker_generation(command.run_id)
                 uow3.commit()
             except Exception:
                 uow3.rollback()
@@ -144,24 +145,27 @@ class ExecuteRun:
                     pv_id, command.run_id, step, step_outputs, run_step_records,
                 )
 
-                # Lease fence: if a stale recovery terminalized this run (or a
-                # cancellation arrived) while the node was running, the worker
-                # must not persist its output.
-                uow_fence = self._uow_factory()
-                try:
-                    fence_check = uow_fence.runs.get(command.run_id)
-                finally:
-                    uow_fence.close()
-                if fence_check is not None:
-                    if getattr(fence_check, "cancel_requested", False):
-                        self._finalize_run(command.run_id, "cancelled")
-                        return
-                    if str(fence_check.status) != RunStatus.RUNNING.value:
-                        return
-
                 persist_uow = self._uow_factory()
                 artifact_outbox_ids: list[str] = []
                 try:
+                    # Lease fence, atomically inside the persistence transaction:
+                    # BEGIN IMMEDIATE serializes against cancellation and stale
+                    # recovery, and the SELECT below re-reads status/cancel/
+                    # generation under the same lock the writes will use. If a
+                    # terminalization raced between the node finishing and this
+                    # transaction, the assertion fails and nothing is written.
+                    try:
+                        persist_uow.runs.assert_running_lease(command.run_id, worker_generation)
+                    except Exception as exc:
+                        from cardre.domain.errors import LeaseLost
+
+                        if isinstance(exc, LeaseLost):
+                            persist_uow.rollback()
+                            if "cancellation" in str(exc):
+                                self._finalize_run(command.run_id, "cancelled")
+                            return
+                        raise
+
                     artifact_store = self._artifact_store_factory()
                     output_refs: list[ArtifactRef] = []
                     staged_by_artifact: dict[str, Any] = {}

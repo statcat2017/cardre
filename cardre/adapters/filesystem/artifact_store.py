@@ -8,7 +8,12 @@ from typing import Any
 import polars as pl
 
 from cardre.application.ports.artifact_store import StagedArtifact
-from cardre.domain.artifacts import json_logical_hash, physical_hash, table_logical_hash
+from cardre.domain.artifacts import (
+    descriptor_id,
+    json_logical_hash,
+    physical_hash,
+    table_logical_hash,
+)
 
 
 class FsArtifactStore:
@@ -33,11 +38,22 @@ class FsArtifactStore:
         staging = self._staging_dir / uuid.uuid4().hex
         staging.write_bytes(data)
         phys = physical_hash(staging)
-        # Content-addressed provisional ID: identical bytes produce the same ID,
-        # so deduplication by physical hash returns this same ID and any
-        # embedded cross-artifact references (e.g. estimator_reference in a
-        # model JSON) remain resolvable across runs.
-        provisional_artifact_id = f"{artifact_type}:{role}:{phys}"
+        # Deterministic descriptor ID encoding the complete semantic identity.
+        # Identical bytes with a different kind/media/schema/logical hash map to
+        # a distinct descriptor, so no second descriptor silently adopts the
+        # first's semantics. Run-provenance metadata (creating_run_id, source
+        # ids) is deliberately excluded from identity.
+        meta = metadata or {}
+        versioned_schema = str(meta.get("schema_version", ""))
+        provisional_artifact_id = descriptor_id(
+            artifact_type=artifact_type,
+            role=role,
+            media_type=media_type,
+            kind=schema_version,
+            schema_version=versioned_schema,
+            logical_hash=logical_hash,
+            physical_hash=phys,
+        )
         return StagedArtifact(
             staging_path=staging,
             provisional_artifact_id=provisional_artifact_id,
@@ -47,7 +63,7 @@ class FsArtifactStore:
             schema_version=schema_version,
             role=role,
             artifact_type=artifact_type,
-            metadata=metadata or {},
+            metadata=meta,
         )
 
     def stage_json(self, role: str, kind: str, payload: dict[str, Any],

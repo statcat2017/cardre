@@ -185,6 +185,86 @@ def test_artifacts_table_has_no_unique_physical_hash(tmp_path):
     assert "UNIQUE(physical_hash)" not in (idx["sql"] or "")
 
 
+def test_same_role_type_different_schema_two_descriptors(tmp_path):
+    """Identical bytes with the same role/type but different schema version
+    must produce two distinct descriptors (finding 3 / review P1-1)."""
+    from cardre.domain.artifacts import descriptor_id
+
+    project_id, uow_factory, root = _provision(tmp_path)
+
+    id_v1 = descriptor_id(
+        artifact_type="profile_summary", role="report", media_type="application/json",
+        kind="profile_summary", schema_version="profile_summary.v1",
+        logical_hash="lh", physical_hash="phys-shared",
+    )
+    id_v2 = descriptor_id(
+        artifact_type="profile_summary", role="report", media_type="application/json",
+        kind="profile_summary", schema_version="profile_summary.v2",
+        logical_hash="lh", physical_hash="phys-shared",
+    )
+    assert id_v1 != id_v2, "schema version must be identity-bearing"
+
+    from cardre.domain.artifacts import ArtifactRef
+
+    ref_v1 = ArtifactRef(
+        artifact_id=id_v1, artifact_type="profile_summary", role="report",
+        path="/objects/x", physical_hash="phys-shared", logical_hash="lh",
+        media_type="application/json", metadata={"schema_version": "profile_summary.v1"},
+    )
+    ref_v2 = ArtifactRef(
+        artifact_id=id_v2, artifact_type="profile_summary", role="report",
+        path="/objects/x", physical_hash="phys-shared", logical_hash="lh",
+        media_type="application/json", metadata={"schema_version": "profile_summary.v2"},
+    )
+
+    with uow_factory.for_project(project_id) as uow:
+        got_v1 = uow.artifacts.register(ref_v1)
+        got_v2 = uow.artifacts.register(ref_v2)
+        assert got_v1 == id_v1
+        assert got_v2 == id_v2
+        assert got_v1 != got_v2
+        d1 = uow.artifacts.get(id_v1)
+        d2 = uow.artifacts.get(id_v2)
+        assert d1 is not None and d2 is not None
+        assert d1.metadata["schema_version"] == "profile_summary.v1"
+        assert d2.metadata["schema_version"] == "profile_summary.v2"
+        assert uow.artifacts.get_blob("phys-shared") is not None, "one shared blob"
+
+
+def test_same_role_type_different_metadata_two_descriptors(tmp_path):
+    """Semantic metadata difference (beyond schema version) is identity-bearing."""
+    from cardre.domain.artifacts import ArtifactRef, descriptor_id
+
+    project_id, uow_factory, root = _provision(tmp_path)
+    id_a = descriptor_id(
+        artifact_type="woe_table", role="train", media_type="application/vnd.apache.parquet",
+        kind="woe_table", schema_version="woe_table.v1", logical_hash="lh", physical_hash="ph",
+    )
+    id_b = descriptor_id(
+        artifact_type="woe_table", role="train", media_type="application/vnd.apache.parquet",
+        kind="woe_table", schema_version="woe_table.v1", logical_hash="lh2", physical_hash="ph",
+    )
+    assert id_a != id_b, "logical hash (semantic content) must be identity-bearing"
+
+    with uow_factory.for_project(project_id) as uow:
+        a = uow.artifacts.register(ArtifactRef(
+            artifact_id=id_a, artifact_type="woe_table", role="train", path="/o",
+            physical_hash="ph", logical_hash="lh", media_type="application/vnd.apache.parquet",
+            metadata={"schema_version": "woe_table.v1", "purpose": "train"},
+        ))
+        b = uow.artifacts.register(ArtifactRef(
+            artifact_id=id_b, artifact_type="woe_table", role="train", path="/o",
+            physical_hash="ph", logical_hash="lh2", media_type="application/vnd.apache.parquet",
+            metadata={"schema_version": "woe_table.v1", "purpose": "train"},
+        ))
+        assert a != b
+        assert uow.artifacts.get_blob("ph") is not None
+        rows = uow._conn.execute(
+            "SELECT artifact_id FROM artifacts WHERE physical_hash = ?", ("ph",)
+        ).fetchall()
+        assert len(rows) == 2
+
+
 # ---------------------------------------------------------------------------
 # Finding 7 — full output-contract enforcement
 # ---------------------------------------------------------------------------
@@ -257,3 +337,99 @@ def test_empty_contract_is_only_opt_out(tmp_path):
     """An empty contract remains the only opt-out."""
     staged = _staged_artifact(tmp_path, role="anything", kind="k")
     validate_output_contract(ArtifactContract(), [staged], node_type="test", step_id="s1")
+
+
+def test_loose_string_kind_is_rejected(tmp_path):
+    """A contract declaring a loose string kind is a configuration error (P2-1)."""
+    from cardre.domain.evidence.kinds import EvidenceKind
+
+    contract = _contract(ArtifactRoleSpec("report", kinds=("dataset",)))
+    staged = _staged_artifact(tmp_path, role="report", kind=EvidenceKind.MODELLING_METADATA.value)
+    with pytest.raises(TypeError, match="typed"):
+        validate_output_contract(contract, [staged], node_type="test", step_id="s1")
+
+
+def test_role_kind_expands_to_evidence_kinds(tmp_path):
+    """RoleKind tokens expand to concrete EvidenceKind values."""
+    from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
+
+    contract = _contract(ArtifactRoleSpec("report", kinds=(RoleKind.REPORT,)))
+    staged = _staged_artifact(tmp_path, role="report", kind=EvidenceKind.PROFILE_SUMMARY.value)
+    validate_output_contract(contract, [staged], node_type="test", step_id="s1")  # no raise
+
+    bad = _staged_artifact(tmp_path, role="report", kind="not_a_kind")
+    with pytest.raises(ValueError, match="kind"):
+        validate_output_contract(contract, [bad], node_type="test", step_id="s1")
+
+
+def test_schema_version_enforced_from_metadata(tmp_path):
+    """The versioned evidence schema (metadata) is enforced separately from kind."""
+    from cardre.domain.evidence.kinds import EvidenceKind
+
+    contract = _contract(ArtifactRoleSpec(
+        "report", kinds=(EvidenceKind.PROFILE_SUMMARY,), schema_versions=("cardre.profile_summary.v1",),
+    ))
+    ok = _stage(tmp_path, b'{"a":1}', role="report", artifact_type="profile_summary")
+    ok_artifact = StagedArtifact(
+        staging_path=ok.staging_path, provisional_artifact_id=ok.provisional_artifact_id,
+        physical_hash=ok.physical_hash, logical_hash=ok.logical_hash,
+        media_type=ok.media_type, schema_version=EvidenceKind.PROFILE_SUMMARY.value,
+        role="report", artifact_type="profile_summary",
+        metadata={"schema_version": "cardre.profile_summary.v1"},
+    )
+    validate_output_contract(contract, [ok_artifact], node_type="test", step_id="s1")
+
+    bad = StagedArtifact(
+        staging_path=ok.staging_path, provisional_artifact_id=ok.provisional_artifact_id,
+        physical_hash=ok.physical_hash, logical_hash=ok.logical_hash,
+        media_type=ok.media_type, schema_version=EvidenceKind.PROFILE_SUMMARY.value,
+        role="report", artifact_type="profile_summary",
+        metadata={"schema_version": "cardre.profile_summary.v9"},
+    )
+    with pytest.raises(ValueError, match="schema version"):
+        validate_output_contract(contract, [bad], node_type="test", step_id="s1")
+
+
+def test_catalogue_contracts_are_machine_checkable():
+    """Every node in the catalogue declares typed, machine-checkable contracts
+    (P2-1): roles are tuples and every kind is an EvidenceKind or RoleKind."""
+    import importlib
+    import inspect
+    import pkgutil
+
+    import cardre.nodes as nodes_pkg
+    from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
+    from cardre.nodes.contracts import NodeType
+
+    problems = []
+    for mod in pkgutil.walk_packages(nodes_pkg.__path__, nodes_pkg.__name__ + "."):
+        try:
+            m = importlib.import_module(mod.name)
+        except Exception:
+            continue
+        for _, obj in inspect.getmembers(m, inspect.isclass):
+            if not (inspect.isclass(obj) and issubclass(obj, NodeType) and obj is not NodeType):
+                continue
+            if getattr(obj, "__module__", "") != m.__name__:
+                continue
+            try:
+                defn = obj.__definition__
+            except Exception:
+                continue
+            if defn is None:
+                continue
+            for which in ("input_contract", "output_contract"):
+                contract = getattr(defn, which, None)
+                if contract is None:
+                    continue
+                roles = getattr(contract, "roles", ())
+                if not isinstance(roles, tuple):
+                    problems.append(f"{obj.node_type} {which}.roles is {type(roles).__name__}")
+                    continue
+                for spec in roles:
+                    for k in getattr(spec, "kinds", ()):
+                        if not isinstance(k, (EvidenceKind, RoleKind)):
+                            problems.append(
+                                f"{obj.node_type} {which} role={spec.role} kind={k!r} untyped"
+                            )
+    assert problems == [], "non-machine-checkable contracts:\n" + "\n".join(problems)

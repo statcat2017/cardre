@@ -278,3 +278,75 @@ class TestManifestHashing:
         steps1 = [{"step_id": "s1", "node_type": "a", "status": "succeeded"}]
         steps2 = [{"step_id": "s1", "node_type": "a", "status": "failed"}]
         assert compute_pathway_hash(steps1) != compute_pathway_hash(steps2)
+
+
+class TestManifestIntegrityFailures:
+    """P2-3 — manifest assembly must surface integrity failures instead of
+    silently substituting empty values."""
+
+    def _finalize_with_broken_uow(self, provisioned_project, break_attr: str):
+        project_id, _plan_id, _pv_id, run_id, root, uow_factory, _registry = provisioned_project
+        from cardre.domain.diagnostics import utc_now_iso
+        from cardre.domain.run import RunStatus, RunStep, RunStepStatus
+
+        # Transition the run to running so success finalization is valid, and
+        # add a run step so manifest assembly exercises plan-step edges.
+        with uow_factory.for_project(project_id) as uow:
+            uow.runs.transition(run_id, RunStatus.RUNNING,
+                                expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+            uow.run_steps.insert(RunStep(
+                run_step_id=f"{run_id}-s1", run_id=run_id, step_id="s1",
+                plan_version_id=_pv_id, status=RunStepStatus.SUCCEEDED,
+                started_at=utc_now_iso(), finished_at=utc_now_iso(),
+                execution_fingerprint={"node_type": "test", "node_version": "1"},
+            ))
+            uow.commit()
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("injected integrity failure")
+
+        class _BrokenPlans:
+            def __init__(self, real):
+                self._real = real
+
+            def __getattr__(self, name):
+                if name == "get_plan_id_for_version":
+                    return boom
+                return getattr(self._real, name)
+
+        class _BrokenUow:
+            def __init__(self, inner):
+                self._inner = inner
+
+            def __getattr__(self, name):
+                if break_attr == "steps" and name == "steps":
+                    return type("BrokenSteps", (), {"get_all_edges": boom})()
+                if break_attr == "plans" and name == "plans":
+                    return _BrokenPlans(self._inner.plans)
+                return getattr(self._inner, name)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return self._inner.__exit__(*exc)
+
+            def close(self):
+                self._inner.close()
+
+        publisher = FsManifestPublisher(root)
+
+        def broken_factory():
+            return _BrokenUow(uow_factory.for_project(project_id))
+
+        finalize = FinalizeRun(broken_factory, publisher)
+        with pytest.raises(RuntimeError, match="injected integrity failure"):
+            finalize(run_id, "succeeded")
+        # The manifest must not be published on integrity failure.
+        assert publisher.read(run_id) is None
+
+    def test_finalize_fails_when_step_edges_unavailable(self, provisioned_project):
+        self._finalize_with_broken_uow(provisioned_project, break_attr="steps")
+
+    def test_finalize_fails_when_plan_identity_unavailable(self, provisioned_project):
+        self._finalize_with_broken_uow(provisioned_project, break_attr="plans")

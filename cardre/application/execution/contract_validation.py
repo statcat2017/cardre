@@ -1,9 +1,11 @@
 """Output contract validation — shared pure validator.
 
 Enforces the full declared output contract before any artifact is published:
-every staged output must match the role's declared kinds and media types, and
-a node with an explicit output contract may not emit undeclared roles. An
-empty contract remains the only opt-out.
+every staged output must match the role's declared kinds (an ``EvidenceKind``
+or ``RoleKind`` token), media types, and expected versioned schema, and a node
+with an explicit output contract may not emit undeclared roles. Loose string
+kind labels are invalid — a contract that declares a non-typed kind is a
+configuration error. An empty contract remains the only opt-out.
 """
 
 from __future__ import annotations
@@ -12,34 +14,55 @@ from collections.abc import Sequence
 from typing import Any
 
 from cardre.application.ports.artifact_store import StagedArtifact
-from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.kinds import EvidenceKind, RoleKind, expand_role_kind
 from cardre.nodes.contracts import ArtifactContract
 
 
 def _kind_value(kind: Any) -> str:
-    return kind.value if isinstance(kind, EvidenceKind) else str(kind)
+    if isinstance(kind, EvidenceKind):
+        return kind.value
+    if isinstance(kind, RoleKind):
+        return kind.label
+    raise TypeError(f"contract kinds must be EvidenceKind or RoleKind, got {kind!r}")
 
 
-def _is_evidence_kind(kind: Any) -> bool:
-    return isinstance(kind, EvidenceKind)
+def _declared_kinds(spec: Any) -> set[str]:
+    """Return the concrete evidence-kind values a role spec permits.
 
-
-def _allowed_kinds(spec: Any) -> set[str]:
-    """Return the machine-checkable kind constraints.
-
-    Only actual ``EvidenceKind`` values are enforced; loose string labels
-    (e.g. ``("dataset",)``) are documentation and are not a checkable kind
-    constraint.
+    ``EvidenceKind`` members map to themselves; ``RoleKind`` tokens expand to
+    their declared set. Any other value (e.g. a loose string) is rejected —
+    contracts must be machine-checkable.
     """
-    return {_kind_value(k) for k in getattr(spec, "kinds", ()) or () if _is_evidence_kind(k)}
-
-
-def _declares_checkable_kinds(spec: Any) -> bool:
-    return any(_is_evidence_kind(k) for k in getattr(spec, "kinds", ()) or ())
+    allowed: set[str] = set()
+    for kind in getattr(spec, "kinds", ()) or ():
+        if isinstance(kind, EvidenceKind):
+            allowed.add(kind.value)
+        elif isinstance(kind, RoleKind):
+            allowed.update(k.value for k in expand_role_kind(kind))
+        else:
+            raise TypeError(
+                f"contract kind {kind!r} is not a typed EvidenceKind/RoleKind; "
+                "loose string kinds are no longer valid"
+            )
+    return allowed
 
 
 def _allowed_media_types(spec: Any) -> set[str]:
     return set(getattr(spec, "media_types", ()) or ())
+
+
+def _allowed_schema_versions(spec: Any) -> set[str]:
+    return set(getattr(spec, "schema_versions", ()) or ())
+
+
+def _staged_schema_version(staged_artifact: StagedArtifact) -> str:
+    """Return the versioned evidence schema carried by a staged artifact.
+
+    The staged ``schema_version`` field holds the evidence kind string; the
+    actual versioned schema (e.g. ``cardre.profile_summary.v1``) lives in
+    ``metadata["schema_version"]``.
+    """
+    return str(staged_artifact.metadata.get("schema_version", ""))
 
 
 def validate_output_contract(
@@ -72,15 +95,14 @@ def validate_output_contract(
             )
 
         if role_spec is not None:
-            if _declares_checkable_kinds(role_spec):
-                allowed = _allowed_kinds(role_spec)
-                if staged_artifact.schema_version not in allowed:
-                    raise ValueError(
-                        f"Step {step_id or '-'} ({node_type or '-'}) output role "
-                        f"{staged_artifact.role!r} has kind "
-                        f"{staged_artifact.schema_version!r}, but the contract allows "
-                        f"{sorted(allowed)}"
-                    )
+            allowed = _declared_kinds(role_spec)
+            if allowed and staged_artifact.schema_version not in allowed:
+                raise ValueError(
+                    f"Step {step_id or '-'} ({node_type or '-'}) output role "
+                    f"{staged_artifact.role!r} has kind "
+                    f"{staged_artifact.schema_version!r}, but the contract allows "
+                    f"{sorted(allowed)}"
+                )
             allowed_media = _allowed_media_types(role_spec)
             if allowed_media and staged_artifact.media_type not in allowed_media:
                 raise ValueError(
@@ -88,6 +110,14 @@ def validate_output_contract(
                     f"{staged_artifact.role!r} has media type "
                     f"{staged_artifact.media_type!r}, but the contract allows "
                     f"{sorted(allowed_media)}"
+                )
+            allowed_schemas = _allowed_schema_versions(role_spec)
+            if allowed_schemas and _staged_schema_version(staged_artifact) not in allowed_schemas:
+                raise ValueError(
+                    f"Step {step_id or '-'} ({node_type or '-'}) output role "
+                    f"{staged_artifact.role!r} has schema version "
+                    f"{_staged_schema_version(staged_artifact)!r}, but the contract "
+                    f"allows {sorted(allowed_schemas)}"
                 )
 
     # Required roles must all be present (legacy required-role enforcement).

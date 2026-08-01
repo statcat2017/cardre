@@ -11,7 +11,7 @@ import numpy as np
 import polars as pl
 from polars.exceptions import ComputeError
 
-from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
 from cardre.domain.evidence.schemas import (
     SCHEMA_FAIRNESS_REPORT,
     SCHEMA_PROXY_RISK_REPORT,
@@ -50,9 +50,9 @@ class FairnessReportNode(NodeType):
         description="Compute group fairness metrics for scored datasets",
         input_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("train", required=False, kinds=("dataset",)),
-                ArtifactRoleSpec("test", required=False, kinds=("dataset",)),
-                ArtifactRoleSpec("oot", required=False, kinds=("dataset",)),
+                ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)),
+                ArtifactRoleSpec("test", required=False, kinds=(RoleKind.DATASET,)),
+                ArtifactRoleSpec("oot", required=False, kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec("definition", required=False, kinds=(EvidenceKind.MODELLING_METADATA,)),
                 ArtifactRoleSpec("model", required=False, kinds=(EvidenceKind.MODEL_ARTIFACT,)),
             ),
@@ -304,7 +304,7 @@ class ProxyRiskReportNode(NodeType):
         description="Assess model features for sensitive-variable proxy risk",
         input_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("train", required=False, kinds=("dataset",)),
+                ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec("model", required=False, kinds=(EvidenceKind.MODEL_ARTIFACT,)),
                 ArtifactRoleSpec("definition", required=False, kinds=(EvidenceKind.MODELLING_METADATA,)),
             ),
@@ -502,7 +502,7 @@ class AlternativeDataManifestNode(NodeType):
         description="Record alternative-data provenance, consent, and coverage",
         input_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("train", required=False, kinds=("dataset",)),
+                ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec("definition", required=False, kinds=(EvidenceKind.MODELLING_METADATA,)),
             ),
         ),

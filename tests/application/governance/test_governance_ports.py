@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
 from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
 from cardre.adapters.system.project_registry import JsonProjectRegistry
@@ -277,6 +279,12 @@ def test_refresh_comparison_reaches_snapshot_ops_not_conn():
                 artifact_type="branch_comparison", metadata={},
             )
 
+        def dest_path(self, staged):
+            return Path("/tmp/objects/x")
+
+        def finalize(self, staged):
+            return Path("/tmp/objects/x")
+
         def publish(self, staged):
             return Path("/tmp/objects/x")
 
@@ -333,11 +341,21 @@ def test_refresh_comparison_reaches_snapshot_ops_not_conn():
         def register(self, ref) -> str:
             return ref.artifact_id
 
+    class _ReadinessPublications:
+        def enqueue_artifact(self, run_id, plan_version_id, run_step_id, artifact_id,
+                             physical_hash, storage_key, staging_source) -> str:
+            self.enqueued = artifact_id
+            return "outbox-1"
+
+        def mark_published(self, outbox_id) -> None:
+            self.published = outbox_id
+
     uow = type("U", (), {
         "comparisons": _SnapshotComparisons(),
         "branches": _ReadinessBranches(),
         "plans": _ReadinessPlans(),
         "artifacts": _ReadinessArtifacts(),
+        "publications": _ReadinessPublications(),
         "runs": _ReadinessRuns(),
         "run_steps": _ReadinessRunSteps(),
         "commit": lambda self: None,
@@ -500,3 +518,93 @@ def test_snapshot_write_is_atomic(tmp_path):
     assert snapshots == []
     assert comparison is not None
     assert comparison["latest_snapshot_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# P1-3: governance publication uses the durable outbox (real filesystem)
+# ---------------------------------------------------------------------------
+
+
+def test_refresh_comparison_database_failure_leaves_no_orphan_object(tmp_path):
+    """A DB failure after staging a comparison artifact must leave no file in
+    objects/ without a durable descriptor/outbox record. Uses the real
+    filesystem adapter and real RefreshComparison with an injected failure."""
+    from cardre.adapters.evidence.comparison_reader import ComparisonEvidenceReader
+    from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+    from cardre.application.governance.refresh_comparison import (
+        RefreshComparison,
+        RefreshComparisonCommand,
+    )
+
+    project_id, plan_id, pv_id, uow_factory, root = _provision(tmp_path)
+
+    with uow_factory.for_project(project_id) as uow:
+        baseline_branch_id = uow.branches.create_branch(
+            project_id, plan_id, "base", "baseline", pv_id, pv_id, branch_id="base-1",
+        )
+        uow.comparisons.create_comparison_with_id(
+            "cmp-1", project_id, plan_id, baseline_branch_id,
+            json.dumps({"include_woe_iv": True, "include_model": True,
+                        "include_validation": True, "include_cutoff": True}),
+        )
+        challenger_id = uow.branches.create_branch(
+            project_id, plan_id, "challenger", "challenger", pv_id, pv_id,
+            branch_id="challenger-1",
+        )
+        uow.comparisons.add_challenger_branch("cmp-1", challenger_id, 0)
+        uow.commit()
+
+    store = FsArtifactStore(root)
+
+    class _FailOnSnapshot:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def create_snapshot(self, *args, **kwargs):
+            raise RuntimeError("injected snapshot failure")
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    # Inject the failure by wrapping the comparisons repo's create_snapshot.
+    class _BombUow:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        @property
+        def comparisons(self):
+            return _FailOnSnapshot(self._inner.comparisons)
+
+    class _BombFactory:
+        def for_project(self, project_id):
+            return _BombUow(uow_factory.for_project(project_id))
+
+    evidence = ComparisonEvidenceReader(uow_factory, store, project_id)
+    uc = RefreshComparison(_BombFactory(), evidence, store, governance_enabled=True)
+    # Stub readiness so the snapshot/publish path is reached deterministically.
+    uc._check_readiness = lambda uow, branch_id, pv_id, *, is_baseline=False: []  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="injected snapshot failure"):
+        uc(RefreshComparisonCommand(project_id=project_id, comparison_id="cmp-1"))
+
+    # No DB rows for the comparison artifact or snapshot.
+    with uow_factory.read_only(project_id) as uow:
+        snapshots = uow.comparisons.get_comparison_snapshots("cmp-1")
+        assert snapshots == []
+        artifacts = uow.artifacts.list_for_project(project_id, role="comparison")
+        assert artifacts == []
+
+    # No orphan file in objects/: files must remain in staging until the DB
+    # mutation commits.
+    objects_dir = root / "objects"
+    orphan_files = list(objects_dir.rglob("*")) if objects_dir.exists() else []
+    assert orphan_files == [], f"orphan object files after rollback: {orphan_files}"

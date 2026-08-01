@@ -14,7 +14,7 @@ from typing import Any
 import joblib
 from polars.exceptions import ComputeError
 
-from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
 from cardre.domain.evidence.schemas import SCHEMA_EXPLAINABILITY_REPORT
 from cardre.nodes.contracts import (
     ArtifactContract,
@@ -107,9 +107,9 @@ class ModelExplainabilityNode(NodeType):
         input_contract=ArtifactContract(
             roles=(
                 ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
-                ArtifactRoleSpec("train", required=False, kinds=("dataset",)),
-                ArtifactRoleSpec("test", required=False, kinds=("dataset",)),
-                ArtifactRoleSpec("oot", required=False, kinds=("dataset",)),
+                ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)),
+                ArtifactRoleSpec("test", required=False, kinds=(RoleKind.DATASET,)),
+                ArtifactRoleSpec("oot", required=False, kinds=(RoleKind.DATASET,)),
             ),
         ),
         output_contract=ArtifactContract(
@@ -582,8 +582,8 @@ class ModelLimitationsNode(NodeType):
         input_contract=ArtifactContract(
             roles=(
                 ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
-                ArtifactRoleSpec("train", required=False, kinds=("dataset",)),
-                ArtifactRoleSpec("definition", required=False, kinds=("definition",)),
+                ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)),
+                ArtifactRoleSpec("definition", required=False, kinds=(RoleKind.DEFINITION,)),
             ),
         ),
         output_contract=ArtifactContract(
