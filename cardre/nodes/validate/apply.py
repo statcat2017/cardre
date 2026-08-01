@@ -451,7 +451,7 @@ __definition__ = NodeDefinition(
         roles=tuple(
             ArtifactRoleSpec(r, required=True)
             if r != "report"
-            else ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_WOE_EVIDENCE,))
+            else ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_WOE_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_WOE_EVIDENCE,))
             for r in ApplyWoeMappingNode.output_roles
         ),
     ),
@@ -472,7 +472,7 @@ __definition_apply_model = NodeDefinition(
         roles=tuple(
             ArtifactRoleSpec(r, required=True)
             if r != "report"
-            else ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_MODEL_EVIDENCE,))
+            else ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_MODEL_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_MODEL_EVIDENCE,))
             for r in ApplyModelNode.output_roles
         ),
     ),

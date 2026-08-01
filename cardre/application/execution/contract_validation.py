@@ -103,6 +103,8 @@ def validate_output_contract(
                     f"{staged_artifact.schema_version!r}, but the contract allows "
                     f"{sorted(allowed)}"
                 )
+
+            # Media type: enforced when the contract explicitly declares it.
             allowed_media = _allowed_media_types(role_spec)
             if allowed_media and staged_artifact.media_type not in allowed_media:
                 raise ValueError(
@@ -111,6 +113,8 @@ def validate_output_contract(
                     f"{staged_artifact.media_type!r}, but the contract allows "
                     f"{sorted(allowed_media)}"
                 )
+
+            # Schema version: enforced when the contract explicitly declares it.
             allowed_schemas = _allowed_schema_versions(role_spec)
             if allowed_schemas and _staged_schema_version(staged_artifact) not in allowed_schemas:
                 raise ValueError(

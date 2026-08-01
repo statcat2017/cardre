@@ -36,7 +36,7 @@ class ProfileDatasetNode(NodeType):
         category="transform",
         description="Profile dataset columns and detect quality issues",
         input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)),)),
-        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.PROFILE_SUMMARY,), schema_versions=(SCHEMA_PROFILE_SUMMARY,)),)),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.PROFILE_SUMMARY,), media_types=("application/json",), schema_versions=(SCHEMA_PROFILE_SUMMARY,)),)),
         parameter_schema=None,
         optional_dependencies=(),
         tier="launch",

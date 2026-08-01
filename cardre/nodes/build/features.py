@@ -422,8 +422,8 @@ class WoeTransformTrainNode(NodeType):
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("train", kinds=(EvidenceKind.WOE_TABLE,)),
-                ArtifactRoleSpec("report", kinds=(EvidenceKind.WOE_TRANSFORM_EVIDENCE,)),
+                ArtifactRoleSpec("train", kinds=(EvidenceKind.WOE_TABLE,), media_types=("application/vnd.apache.parquet",), schema_versions=()),
+                ArtifactRoleSpec("report", kinds=(EvidenceKind.WOE_TRANSFORM_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_WOE_TRANSFORM_EVIDENCE,)),
             ),
         ),
         parameter_schema=None,

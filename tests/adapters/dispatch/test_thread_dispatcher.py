@@ -155,23 +155,51 @@ def test_dispatcher_executes_concurrent_runs_up_to_max_workers():
     dispatcher.shutdown()
 
 
-def test_dispatch_after_shutdown_start_race_is_rejected():
-    """A dispatch that begins before shutdown must be admitted atomically and
-    then joined; a dispatch racing shutdown's flag flip must not slip through
-    after the snapshot (P2-2)."""
+def test_dispatch_after_shutdown_is_rejected():
+    """A dispatch racing shutdown's flag flip must be admitted atomically and
+    then drained; a dispatch after shutdown is rejected (P2-2/P2-A)."""
     harness = _BlockingHarness()
-    dispatcher = ThreadRunDispatcher(harness.execute, max_workers=4)
+    cancelled: list[str] = []
+
+    def cancel(request):
+        cancelled.append(request.run_id)
+        harness.release[request.run_id].set()  # cooperative cancel unblocks the worker
+
+    dispatcher = ThreadRunDispatcher(harness.execute, max_workers=4, cancel_run=cancel)
+
+    harness.events("run-1")
+    dispatcher.dispatch(_request("run-1"))
+    harness.wait_started("run-1")
+    # shutdown flips the flag under the same lock that admits dispatch, then
+    # requests cooperative cancellation of the active worker and drains it.
+    dispatcher.shutdown()
+    with pytest.raises(RuntimeError, match="shut down"):
+        dispatcher.dispatch(_request("run-2"))
+    harness.wait_finished("run-1")
+    # The worker was drained by shutdown; no active work remains.
+    assert cancelled == ["run-1"], "shutdown must cooperatively cancel active runs"
+    assert dispatcher.get_status("run-1") == "completed"
+    assert dispatcher.active_count == 0
+    assert dispatcher.drain_failed is False
+
+
+def test_shutdown_reports_failed_drain_when_worker_does_not_exit():
+    """If a worker ignores cooperative cancellation and stays alive past the
+    drain window, shutdown reports a failed drain instead of silently
+    abandoning a daemon worker (P2-A)."""
+    harness = _BlockingHarness()
+    # No cancel hook: the worker blocks forever and shutdown cannot unblock it.
+    dispatcher = ThreadRunDispatcher(harness.execute, max_workers=1, drain_timeout_seconds=0.1)
 
     harness.events("run-1")
     dispatcher.dispatch(_request("run-1"))
     harness.wait_started("run-1")
     try:
-        # shutdown flips the flag under the same lock that admits dispatch.
         dispatcher.shutdown()
-        with pytest.raises(RuntimeError, match="shut down"):
-            dispatcher.dispatch(_request("run-2"))
+        assert dispatcher.drain_failed is True, "worker left alive must be reported"
+        assert dispatcher.active_count == 1
     finally:
         harness.release["run-1"].set()
         harness.wait_finished("run-1")
-    # The worker was joined by shutdown; get_status must no longer report it.
-    assert dispatcher.get_status("run-1") == "completed"
+    # After the worker finally exits, active_count drops to zero.
+    assert dispatcher.active_count == 0

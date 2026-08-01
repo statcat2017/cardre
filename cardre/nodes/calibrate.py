@@ -195,8 +195,8 @@ class CalibrateProbabilitiesNode(NodeType):
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
-                ArtifactRoleSpec("report", kinds=(EvidenceKind.CALIBRATION_REPORT,)),
+                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,), media_types=("application/octet-stream", "application/json"), schema_versions=(SCHEMA_MODEL_ARTIFACT,)),
+                ArtifactRoleSpec("report", kinds=(EvidenceKind.CALIBRATION_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_CALIBRATION_REPORT,)),
             ),
         ),
         parameter_schema=None,

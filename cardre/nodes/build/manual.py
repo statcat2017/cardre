@@ -38,7 +38,7 @@ class ManualBinningNode(NodeType):
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("definition", kinds=(EvidenceKind.BIN_DEFINITION,)),
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.BIN_DEFINITION,), media_types=("application/json",), schema_versions=(SCHEMA_BIN_DEFINITION,)),
             ),
         ),
         parameter_schema=None,

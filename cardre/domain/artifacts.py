@@ -28,12 +28,6 @@ def physical_hash(path: Path) -> str:
         for chunk in iter(lambda: f.read(CHUNK_SIZE), b""):
             digest.update(chunk)
     return digest.hexdigest()
-    """SHA-256 of raw file bytes, read in chunks."""
-    digest = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(CHUNK_SIZE), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def json_logical_hash(data: JsonDict) -> str:
@@ -79,6 +73,27 @@ def params_hash(params: JsonDict) -> str:
     return json_logical_hash(params)
 
 
+# Metadata keys that record run provenance rather than artifact semantics.
+# These must not participate in descriptor identity: the same deterministic
+# artifact produced by a different run carries a different creating_run_id /
+# source_artifact_id but is the same semantic artifact.
+PROVENANCE_METADATA_KEYS = frozenset({
+    "creating_run_id",
+    "creating_run_step_id",
+    "source_artifact_id",
+})
+
+
+def identity_metadata(metadata: JsonDict) -> JsonDict:
+    """Return the identity-bearing subset of artifact metadata.
+
+    Run-provenance keys are excluded; everything else (e.g. ``exclude_key``,
+    ``purpose``, estimator format) is semantic and must distinguish otherwise
+    byte-identical descriptors.
+    """
+    return {k: v for k, v in metadata.items() if k not in PROVENANCE_METADATA_KEYS}
+
+
 def descriptor_id(
     *,
     artifact_type: str,
@@ -88,15 +103,20 @@ def descriptor_id(
     schema_version: str,
     logical_hash: str,
     physical_hash: str,
+    metadata: JsonDict | None = None,
 ) -> str:
     """Deterministic descriptor ID encoding the complete semantic identity.
 
     Two descriptors collide (and are deduplicated as the *same* artifact) only
     when every identity-bearing field agrees: type, role, media type, evidence
-    kind, versioned schema, logical hash, and physical hash. Identical bytes
-    with a different schema/kind/media therefore produce distinct descriptors
-    instead of silently adopting the first descriptor's semantics.
+    kind, versioned schema, logical hash, physical hash, and the hashed
+    identity-bearing metadata subset. Identical bytes with a different
+    schema/kind/media or different semantic metadata (e.g. ``exclude_key``)
+    therefore produce distinct descriptors instead of silently adopting the
+    first descriptor's semantics. Run-provenance metadata keys are excluded.
     """
+    identity_md = identity_metadata(metadata or {})
+    metadata_hash = json_logical_hash(identity_md) if identity_md else ""
     return "|".join([
         artifact_type,
         role,
@@ -105,6 +125,7 @@ def descriptor_id(
         schema_version,
         logical_hash,
         physical_hash,
+        metadata_hash,
     ])
 
 
@@ -151,9 +172,11 @@ class ArtifactRef:
 
 __all__ = [
     "CHUNK_SIZE",
+    "PROVENANCE_METADATA_KEYS",
     "TABLE_LOGICAL_HASH_VERSION",
     "ArtifactRef",
     "descriptor_id",
+    "identity_metadata",
     "json_logical_hash",
     "params_hash",
     "physical_hash",

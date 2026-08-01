@@ -310,7 +310,10 @@ class ExecuteRun:
                 self._finalize_run(command.run_id, "cancelled")
                 return
 
-            self._finalize_run(command.run_id, "succeeded")
+            # Pass the worker generation so success finalization cannot beat a
+            # concurrent cancellation: the terminal transition is conditional on
+            # running + cancel_requested=0 + lease ownership inside its own txn.
+            self._finalize_run(command.run_id, "succeeded", worker_generation=worker_generation)
 
         except Exception as exc:
             self._finalize_run(command.run_id, "failed", diagnostic=FinalizeDiagnostic(

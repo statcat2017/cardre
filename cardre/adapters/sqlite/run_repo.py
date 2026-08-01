@@ -119,6 +119,32 @@ class RunRepo:
             )
         return bool(cursor.rowcount > 0)
 
+    def transition_success(self, run_id: str, worker_generation: int | None = None) -> bool:
+        """Transition to ``succeeded`` guarded by running + no-cancel + lease.
+
+        ``succeeded`` finalization must not win a race with a concurrent
+        cancellation. The UPDATE only fires when the run is still running,
+        cancellation has not been requested, and (when provided) the caller's
+        worker generation still owns the lease. Returns whether the transition
+        happened.
+        """
+        from cardre.domain.diagnostics import utc_now_iso
+        now = utc_now_iso()
+        if worker_generation is None:
+            cursor = self._conn.execute(
+                "UPDATE runs SET status = ?, finished_at = ? "
+                "WHERE run_id = ? AND status = 'running' AND cancel_requested = 0",
+                (RunStatus.SUCCEEDED.value, now, run_id),
+            )
+        else:
+            cursor = self._conn.execute(
+                "UPDATE runs SET status = ?, finished_at = ? "
+                "WHERE run_id = ? AND status = 'running' AND cancel_requested = 0 "
+                "AND worker_generation = ?",
+                (RunStatus.SUCCEEDED.value, now, run_id, worker_generation),
+            )
+        return bool(cursor.rowcount > 0)
+
     def begin_worker_generation(self, run_id: str) -> int:
         """Bump and return the worker generation for a run.
 

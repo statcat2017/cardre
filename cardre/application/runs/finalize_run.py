@@ -48,6 +48,7 @@ class FinalizeRun:
         status: str,
         steps: list[dict[str, Any]] | None = None,
         diagnostic: FinalizeDiagnostic | None = None,
+        worker_generation: int | None = None,
     ) -> None:
         with self._uow_factory() as uow:
             run_record = uow.runs.get(run_id)
@@ -67,10 +68,32 @@ class FinalizeRun:
             if diagnostic is not None:
                 uow.runs.append_diagnostic(run_id, {"code": diagnostic.code, "message": diagnostic.message})
 
-            transitioned = uow.runs.transition(run_id, target, expected_from=expected_from)
-            if not transitioned:
-                actual = uow.runs.get(run_id)
-                raise RunAlreadyFinalised(run_id, str(actual.status) if actual else "unknown")
+            if target == RunStatus.SUCCEEDED:
+                # Success must not beat a concurrent cancellation: transition only
+                # while still running, cancellation not requested, and (when the
+                # worker provided its generation) lease ownership is intact.
+                transitioned = uow.runs.transition_success(run_id, worker_generation)
+                if not transitioned:
+                    actual = uow.runs.get(run_id)
+                    if actual is not None and actual.cancel_requested:
+                        # Cancellation won the race — finalize as cancelled in the
+                        # same transaction.
+                        status = "cancelled"
+                        target = RunStatus.CANCELLED
+                        transitioned = uow.runs.transition(
+                            run_id, target,
+                            expected_from=(RunStatus.CREATED, RunStatus.QUEUED, RunStatus.RUNNING),
+                        )
+                        if not transitioned:
+                            actual2 = uow.runs.get(run_id)
+                            raise RunAlreadyFinalised(run_id, str(actual2.status) if actual2 else "unknown")
+                    else:
+                        raise RunAlreadyFinalised(run_id, str(actual.status) if actual else "unknown")
+            else:
+                transitioned = uow.runs.transition(run_id, target, expected_from=expected_from)
+                if not transitioned:
+                    actual = uow.runs.get(run_id)
+                    raise RunAlreadyFinalised(run_id, str(actual.status) if actual else "unknown")
 
             # Invalidate any surviving worker of the old generation: a terminal
             # transition (whether this worker finishing or a stale recovery
@@ -136,20 +159,30 @@ class FinalizeRun:
             input_ids = [a.artifact_id for d, a in lineage if d == "input"]
             output_ids = [a.artifact_id for d, a in lineage if d == "output"]
             spec = plan_steps.get(rs.step_id)
+            if spec is None:
+                # A run step that has no plan specification is a manifest
+                # integrity failure: the canonical manifest must not fall back
+                # to empty node/category fields.
+                raise CardreError(
+                    f"Run step {rs.step_id!r} of run {run_id!r} has no plan "
+                    "specification; cannot build a canonical manifest",
+                    code="MANIFEST_STEP_MISSING",
+                    context={"run_id": run_id, "step_id": rs.step_id, "plan_version_id": pv_id},
+                )
             result.append({
                 "step_id": rs.step_id,
-                "canonical_step_id": spec.canonical_step_id if spec else rs.step_id,
+                "canonical_step_id": spec.canonical_step_id,
                 "branch_id": None,
-                "node_type": rs.execution_fingerprint.get("node_type", spec.node_type if spec else ""),
-                "node_version": rs.execution_fingerprint.get("node_version", spec.node_version if spec else ""),
-                "category": spec.category if spec else "",
+                "node_type": rs.execution_fingerprint.get("node_type", spec.node_type),
+                "node_version": rs.execution_fingerprint.get("node_version", spec.node_version),
+                "category": spec.category,
                 "status": rs.status.value,
                 "action": "",
                 "is_carried_forward": False,
                 "started_at": rs.started_at,
                 "finished_at": rs.finished_at,
-                "params": rs.execution_fingerprint.get("params", spec.params if spec else {}),
-                "params_hash": rs.execution_fingerprint.get("params_hash", spec.params_hash if spec else ""),
+                "params": rs.execution_fingerprint.get("params", spec.params),
+                "params_hash": rs.execution_fingerprint.get("params_hash", spec.params_hash),
                 "parent_step_ids": step_edges.get(rs.step_id, []),
                 "input_artifact_ids": input_ids,
                 "output_artifact_ids": output_ids,
@@ -179,10 +212,27 @@ class FinalizeRun:
             # resolution failure must surface rather than publish an empty
             # identity.
             plan_id = uow.plans.get_plan_id_for_version(plan_version_id) or ""
-            if plan_id:
-                plan = uow.plans.get_plan(plan_id)
-                if plan is not None:
-                    project_id = plan.project_id
+            if not plan_id:
+                raise CardreError(
+                    f"Plan version {plan_version_id!r} has no plan record; "
+                    "cannot build a canonical manifest",
+                    code="MANIFEST_PLAN_MISSING",
+                    context={"run_id": run_id, "plan_version_id": plan_version_id},
+                )
+            plan = uow.plans.get_plan(plan_id)
+            if plan is None:
+                raise CardreError(
+                    f"Plan {plan_id!r} not found; cannot build a canonical manifest",
+                    code="MANIFEST_PLAN_MISSING",
+                    context={"run_id": run_id, "plan_id": plan_id},
+                )
+            project_id = plan.project_id or ""
+            if not project_id:
+                raise CardreError(
+                    f"Plan {plan_id!r} has no project; cannot build a canonical manifest",
+                    code="MANIFEST_PLAN_MISSING",
+                    context={"run_id": run_id, "plan_id": plan_id},
+                )
 
         # Diagnostics are auxiliary (non-integrity) — read them without
         # silently substituting an empty list on a transient read error.

@@ -48,8 +48,8 @@ class DefineRejectPopulationNode(NodeType):
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("input", kinds=(RoleKind.DATASET,)),
-                ArtifactRoleSpec("definition", kinds=(EvidenceKind.REJECT_POPULATION_CONFIG,)),
+                ArtifactRoleSpec("input", kinds=(RoleKind.DATASET,), media_types=("application/vnd.apache.parquet",), schema_versions=()),
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.REJECT_POPULATION_CONFIG,), media_types=("application/json",), schema_versions=(SCHEMA_REJECT_POPULATION_CONFIG,)),
             ),
         ),
         parameter_schema=None,
@@ -219,8 +219,8 @@ class RejectInferenceNoneNode(NodeType):
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("input", kinds=(RoleKind.DATASET,)),
-                ArtifactRoleSpec("report", kinds=(EvidenceKind.REJECT_INFERENCE_RESULT,)),
+                ArtifactRoleSpec("input", kinds=(RoleKind.DATASET,), media_types=("application/vnd.apache.parquet",), schema_versions=()),
+                ArtifactRoleSpec("report", kinds=(EvidenceKind.REJECT_INFERENCE_RESULT,), media_types=("application/json",), schema_versions=(SCHEMA_REJECT_INFERENCE_RESULT,)),
             ),
         ),
         parameter_schema=None,
@@ -330,8 +330,8 @@ class RejectInferenceAugmentationNode(NodeType):
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("input", kinds=(RoleKind.DATASET,)),
-                ArtifactRoleSpec("report", kinds=(EvidenceKind.REJECT_INFERENCE_RESULT,)),
+                ArtifactRoleSpec("input", kinds=(RoleKind.DATASET,), media_types=("application/vnd.apache.parquet",), schema_versions=()),
+                ArtifactRoleSpec("report", kinds=(EvidenceKind.REJECT_INFERENCE_RESULT,), media_types=("application/json",), schema_versions=(SCHEMA_REJECT_INFERENCE_RESULT,)),
             ),
         ),
         parameter_schema=None,

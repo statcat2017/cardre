@@ -140,13 +140,32 @@ def build_container(settings: Settings) -> Container:
     # One process-owned asynchronous dispatcher shared across all projects.
     # Its worker resolves the correct project-scoped ExecuteRun from the
     # request, so no dispatcher is constructed per HTTP request. sync=true
-    # submissions bypass this and execute inline in the request thread.
+    # submissions bypass this and execute inline in the request thread. On
+    # shutdown the dispatcher cooperatively cancels active runs so workers
+    # stop at their next fence.
     def _dispatch_async(request: RunRequest) -> None:
         if request.project_id is None:
             raise RuntimeError("async dispatch request is missing project_id")
         execute_run_factory(request.project_id)(ExecuteRunCommand(run_id=request.run_id))
 
-    async_dispatcher = ThreadRunDispatcher(_dispatch_async, max_workers=settings.max_workers)
+    def _cancel_async(request: RunRequest) -> None:
+        if request.project_id is None or not request.run_id:
+            return
+        from cardre.application.runs.cancel_run import CancelRun, CancelRunCommand
+
+        project_id: str = request.project_id
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            CancelRun(lambda: uow_factory.for_project(project_id))(
+                CancelRunCommand(run_id=request.run_id)
+            )
+
+    async_dispatcher = ThreadRunDispatcher(
+        _dispatch_async,
+        max_workers=settings.max_workers,
+        cancel_run=_cancel_async,
+    )
 
     def submit_run_factory(project_id: str) -> SubmitRun:
         exec_run = execute_run_factory(project_id)

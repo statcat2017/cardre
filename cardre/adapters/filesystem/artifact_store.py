@@ -53,6 +53,7 @@ class FsArtifactStore:
             schema_version=versioned_schema,
             logical_hash=logical_hash,
             physical_hash=phys,
+            metadata=meta,
         )
         return StagedArtifact(
             staging_path=staging,

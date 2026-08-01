@@ -29,6 +29,9 @@ from cardre.domain.manifest import (
 @pytest.fixture
 def provisioned_project(tmp_path):
     """Provision a real project database using the production stack."""
+    from cardre.domain.artifacts import json_logical_hash
+    from cardre.domain.step import StepSpec
+
     registry = JsonProjectRegistry(tmp_path / "registry.json")
     provisioner = SqliteProjectProvisioner()
     root = tmp_path / "projects" / "project-1"
@@ -38,7 +41,12 @@ def provisioned_project(tmp_path):
     with uow_factory.for_root(root) as uow:
         project_id = uow.projects.create("Test Project")
         plan_id = uow.plans.create_plan(project_id, "Test Plan")
-        pv_id = uow.plans.create_version(plan_id, is_committed=True)
+        step = StepSpec(
+            step_id="step-1", node_type="cardre.noop", node_version="1",
+            category="transform", params={}, params_hash=json_logical_hash({}),
+            parent_step_ids=[], branch_label="", position=0, canonical_step_id="noop",
+        )
+        pv_id = uow.plans.create_version(plan_id, [step], is_committed=True)
         run_id = uow.runs.create(pv_id)
         uow.commit()
 
@@ -295,7 +303,7 @@ class TestManifestIntegrityFailures:
             uow.runs.transition(run_id, RunStatus.RUNNING,
                                 expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
             uow.run_steps.insert(RunStep(
-                run_step_id=f"{run_id}-s1", run_id=run_id, step_id="s1",
+                run_step_id=f"{run_id}-step-1", run_id=run_id, step_id="step-1",
                 plan_version_id=_pv_id, status=RunStepStatus.SUCCEEDED,
                 started_at=utc_now_iso(), finished_at=utc_now_iso(),
                 execution_fingerprint={"node_type": "test", "node_version": "1"},
@@ -350,3 +358,134 @@ class TestManifestIntegrityFailures:
 
     def test_finalize_fails_when_plan_identity_unavailable(self, provisioned_project):
         self._finalize_with_broken_uow(provisioned_project, break_attr="plans")
+
+
+class TestSuccessFinalizationCancellationRace:
+    """P1-A — success finalization must not beat a concurrent cancellation.
+
+    ``FinalizeRun("succeeded")`` transitions only while the run is running,
+    cancellation is not requested, and the caller's worker generation owns the
+    lease. A cancellation committed between the caller's final read and the
+    terminal UPDATE therefore wins: the run ends cancelled, never succeeded.
+    """
+
+    def test_success_finalization_defers_to_pending_cancellation(self, provisioned_project):
+        project_id, _plan_id, _pv_id, run_id, root, uow_factory, _registry = provisioned_project
+        from cardre.domain.run import RunStatus
+
+        with uow_factory.for_project(project_id) as uow:
+            uow.runs.transition(run_id, RunStatus.RUNNING,
+                                expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+            generation = uow.runs.begin_worker_generation(run_id)
+            # A cancellation was committed after the worker's final read but
+            # before the terminal update.
+            uow.runs.set_cancel_requested(run_id)
+            uow.commit()
+
+        publisher = FsManifestPublisher(root)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        finalize(run_id, "succeeded", worker_generation=generation)
+
+        with uow_factory.read_only(project_id) as uow:
+            run = uow.runs.get(run_id)
+        assert str(run.status) == "cancelled", f"final status: {run.status}"
+        manifest = publisher.read(run_id)
+        assert manifest is not None
+        assert manifest["status"] == "cancelled"
+
+    def test_success_finalization_rejects_stale_generation(self, provisioned_project):
+        """A success finalization with a stale worker generation is rejected."""
+        project_id, _plan_id, _pv_id, run_id, root, uow_factory, _registry = provisioned_project
+        from cardre.domain.run import RunStatus
+
+        with uow_factory.for_project(project_id) as uow:
+            uow.runs.transition(run_id, RunStatus.RUNNING,
+                                expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+            stale = uow.runs.begin_worker_generation(run_id)
+            # A recovery bumps the generation, fencing the original worker.
+            uow.runs.begin_worker_generation(run_id)
+            uow.commit()
+
+        publisher = FsManifestPublisher(root)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        with pytest.raises(Exception, match="already finalised"):
+            finalize(run_id, "succeeded", worker_generation=stale)
+
+        with uow_factory.read_only(project_id) as uow:
+            run = uow.runs.get(run_id)
+        assert str(run.status) == "running", "stale generation must not transition"
+
+
+class TestManifestMissingIntegrityData:
+    """P2-C — absent plan/version/project records and missing run-step specs
+    are manifest-integrity failures, not silently-empty canonical fields."""
+
+    def test_missing_plan_version_record_fails(self, provisioned_project):
+        project_id, _plan_id, _pv_id, run_id, root, uow_factory, _registry = provisioned_project
+        from cardre.domain.run import RunStatus
+
+        with uow_factory.for_project(project_id) as uow:
+            uow.runs.transition(run_id, RunStatus.RUNNING,
+                                expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+            uow.commit()
+
+        class _NoPlanPlans:
+            def __init__(self, real):
+                self._real = real
+
+            def __getattr__(self, name):
+                return getattr(self._real, name)
+
+            def get_plan_id_for_version(self, plan_version_id):
+                return None
+
+        class _NoPlanUow:
+            def __init__(self, inner):
+                self._inner = inner
+
+            def __getattr__(self, name):
+                if name == "plans":
+                    return _NoPlanPlans(self._inner.plans)
+                return getattr(self._inner, name)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return self._inner.__exit__(*exc)
+
+            def close(self):
+                self._inner.close()
+
+        publisher = FsManifestPublisher(root)
+
+        def factory():
+            return _NoPlanUow(uow_factory.for_project(project_id))
+
+        finalize = FinalizeRun(factory, publisher)
+        with pytest.raises(Exception, match="no plan record"):
+            finalize(run_id, "succeeded")
+        assert publisher.read(run_id) is None
+
+    def test_missing_run_step_spec_fails(self, provisioned_project):
+        project_id, _plan_id, _pv_id, run_id, root, uow_factory, _registry = provisioned_project
+        from cardre.domain.diagnostics import utc_now_iso
+        from cardre.domain.run import RunStatus, RunStep, RunStepStatus
+
+        with uow_factory.for_project(project_id) as uow:
+            uow.runs.transition(run_id, RunStatus.RUNNING,
+                                expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+            # Insert a run step whose step_id is NOT in the plan spec.
+            uow.run_steps.insert(RunStep(
+                run_step_id=f"{run_id}-ghost", run_id=run_id, step_id="ghost-step",
+                plan_version_id=_pv_id, status=RunStepStatus.SUCCEEDED,
+                started_at=utc_now_iso(), finished_at=utc_now_iso(),
+                execution_fingerprint={"node_type": "test", "node_version": "1"},
+            ))
+            uow.commit()
+
+        publisher = FsManifestPublisher(root)
+        finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
+        with pytest.raises(Exception, match="no plan specification"):
+            finalize(run_id, "succeeded")
+        assert publisher.read(run_id) is None
