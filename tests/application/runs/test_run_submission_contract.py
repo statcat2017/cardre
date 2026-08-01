@@ -432,6 +432,114 @@ def test_sweep_stale_malformed_heartbeat_defeated_by_renewal(committed_plan):
     assert str(run.status) == RunStatus.RUNNING.value, "renewal must defeat the sweep"
 
 
+def _finalize_for(uow_factory, project_id):
+    """A FinalizeRun wired to the real publisher for the project."""
+    from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+    from cardre.application.runs.finalize_run import FinalizeRun
+
+    root = uow_factory._registry.resolve_root(project_id)
+    return FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root))
+
+
+def test_stale_finalization_loses_after_heartbeat_renewal(committed_plan):
+    """A stale finalization whose observed heartbeat was renewed before the
+    compare-and-set loses: no status change, diagnostic, outbox row, or
+    manifest (PR 373 review P2)."""
+    from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+
+    project_id, uow_factory, pv_id = committed_plan
+    r1 = _make_submit(uow_factory, project_id)(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.commit()
+    _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=400)
+    observed = datetime.now(UTC) - timedelta(seconds=400)
+    observed_iso = observed.isoformat().replace("+00:00", "Z")
+    # Worker renews the heartbeat after the sweep observed the old value.
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.heartbeat(r1.run_id)
+        uow.commit()
+
+    from cardre.application.runs.finalize_run import FinalizeDiagnostic
+    _finalize_for(uow_factory, project_id)(r1.run_id, "interrupted",
+        diagnostic=FinalizeDiagnostic(code="RUN_STALE", message="stale"),
+        stale_heartbeat_at=observed_iso)
+
+    root = uow_factory._registry.resolve_root(project_id)
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+        diags = uow.runs.get_diagnostics(r1.run_id)
+        outbox = uow.publications.list_by_run(r1.run_id)
+    assert str(run.status) == RunStatus.RUNNING.value, "renewed heartbeat must defeat the transition"
+    assert not any(d.get("code") == "RUN_STALE" for d in diags), "no false RUN_STALE on lost race"
+    assert outbox == [], "no outbox record on lost stale race"
+    assert FsManifestPublisher(root).read(r1.run_id) is None, "no manifest on lost stale race"
+
+
+def test_stale_finalization_loses_with_observed_null_heartbeat(committed_plan):
+    """A NULL observed heartbeat is distinct from 'stale mode not requested':
+    if the worker renews a NULL heartbeat before the compare-and-set, the
+    transition loses (PR 373 review P1)."""
+    from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+
+    project_id, uow_factory, pv_id = committed_plan
+    r1 = _make_submit(uow_factory, project_id)(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs._conn.execute(
+            "UPDATE runs SET heartbeat_at = NULL WHERE run_id = ?", (r1.run_id,)
+        )
+        uow.commit()
+    # Worker renews the (NULL) heartbeat after the sweep observed it as NULL.
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.heartbeat(r1.run_id)
+        uow.commit()
+
+    from cardre.application.runs.finalize_run import FinalizeDiagnostic
+    _finalize_for(uow_factory, project_id)(r1.run_id, "interrupted",
+        diagnostic=FinalizeDiagnostic(code="RUN_STALE", message="stale"),
+        stale_heartbeat_at=None)
+
+    root = uow_factory._registry.resolve_root(project_id)
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+        diags = uow.runs.get_diagnostics(r1.run_id)
+        outbox = uow.publications.list_by_run(r1.run_id)
+    assert str(run.status) == RunStatus.RUNNING.value, "renewal must defeat NULL-heartbeat sweep"
+    assert not any(d.get("code") == "RUN_STALE" for d in diags), "no false RUN_STALE on lost race"
+    assert outbox == [], "no outbox record on lost stale race"
+    assert FsManifestPublisher(root).read(r1.run_id) is None, "no manifest on lost stale race"
+
+
+def test_stale_finalization_loses_after_terminalization(committed_plan):
+    """If the run terminalizes between stale discovery and stale finalization,
+    the lost compare-and-set must not append a false RUN_STALE diagnostic
+    (PR 373 review P2)."""
+    project_id, uow_factory, pv_id = committed_plan
+    r1 = _make_submit(uow_factory, project_id)(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.commit()
+    _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=400)
+    observed = datetime.now(UTC) - timedelta(seconds=400)
+    observed_iso = observed.isoformat().replace("+00:00", "Z")
+    # The run self-finalizes between discovery and stale finalization.
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.SUCCEEDED)
+        uow.commit()
+
+    from cardre.application.runs.finalize_run import FinalizeDiagnostic
+    _finalize_for(uow_factory, project_id)(r1.run_id, "interrupted",
+        diagnostic=FinalizeDiagnostic(code="RUN_STALE", message="stale"),
+        stale_heartbeat_at=observed_iso)
+
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+        diags = uow.runs.get_diagnostics(r1.run_id)
+    assert str(run.status) == RunStatus.SUCCEEDED.value, "terminalized run must stay terminal"
+    assert not any(d.get("code") == "RUN_STALE" for d in diags), "no false RUN_STALE on lost race"
+
+
 def test_transition_success_requires_worker_generation(committed_plan):
     """Success finalization must prove lease ownership (P2-1): calling
     transition_success without a generation is a TypeError."""
