@@ -42,12 +42,16 @@ def _uc(container: Container, project_id: str):
 
     def _factory():
         return container.uow_factory.for_project(project_id)
+
+    def _read_factory():
+        return container.uow_factory.read_only(project_id)
+
     return {
         "create": CreatePlan(_factory),
-        "list": ListPlans(_factory),
-        "get": GetPlan(_factory),
-        "get_version": GetPlanVersion(_factory),
-        "list_versions": ListPlanVersions(_factory),
+        "list": ListPlans(_read_factory),
+        "get": GetPlan(_read_factory),
+        "get_version": GetPlanVersion(_read_factory),
+        "list_versions": ListPlanVersions(_read_factory),
         "update_version": UpdatePlanVersion(_factory),
         "commit_version": CommitPlanVersion(_factory),
         "CreatePlanCommand": CreatePlanCommand,

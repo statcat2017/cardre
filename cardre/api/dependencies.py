@@ -82,7 +82,7 @@ def get_explain_staleness(container: Container = Depends(get_container)) -> Any:
 
     def factory(project_id: str):
         def f():
-            return uow.for_project(project_id)
+            return uow.read_only(project_id)
         return ExplainStaleness(f)
 
     return factory

@@ -42,69 +42,68 @@ class ExplainStaleness:
         self._evidence_reader = evidence_reader
 
     def __call__(self, command: ExplainStalenessCommand) -> StalenessExplanation:
-        uow = self._uow_factory()
+        with self._uow_factory() as uow:
+            steps = uow.steps.get_steps(command.plan_version_id)
+            spec_by_id = {s.step_id: s for s in steps}
 
-        steps = uow.steps.get_steps(command.plan_version_id)
-        spec_by_id = {s.step_id: s for s in steps}
+            plan_id = command.plan_id
+            if plan_id is None:
+                plan_id = uow.plans.get_plan_id_for_version(command.plan_version_id)
 
-        plan_id = command.plan_id
-        if plan_id is None:
-            plan_id = uow.plans.get_plan_id_for_version(command.plan_version_id)
-
-        run_id = uow.runs.get_latest_successful_id(
-            command.plan_version_id, branch_id=command.branch_id,
-        )
-        if run_id is None and command.branch_id is not None:
             run_id = uow.runs.get_latest_successful_id(
-                command.plan_version_id, branch_id=None,
+                command.plan_version_id, branch_id=command.branch_id,
             )
-        if run_id is None and plan_id is not None:
-            run_id = uow.runs.get_latest_successful_id_for_plan(plan_id)
-
-        step_has_evidence: dict[str, bool] = {}
-        if run_id is not None:
-            step_has_evidence[command.step_id] = any(
-                rs.step_id == command.step_id and rs.status == RunStepStatus.SUCCEEDED
-                for rs in uow.run_steps.get_for_run(run_id)
-            )
-        else:
-            step_has_evidence[command.step_id] = False
-
-        stale_cache: dict[str, bool] = {}
-        upstream_changes: dict[str, bool] = {}
-
-        for s in steps:
-            is_stale = _step_is_stale(
-                uow, s, steps,
-                command.plan_version_id, command.branch_id, plan_id,
-                stale_cache,
-            )
-            upstream_changes[s.step_id] = is_stale
-
-        spec = spec_by_id.get(command.step_id)
-        missing_evidence: list[str] = []
-        if spec:
-            for pid in spec.parent_step_ids:
-                edges = uow.evidence.get_edges_for_plan_step(
-                    command.plan_version_id, command.step_id,
+            if run_id is None and command.branch_id is not None:
+                run_id = uow.runs.get_latest_successful_id(
+                    command.plan_version_id, branch_id=None,
                 )
-                has_edge = any(e.parent_step_id == pid for e in edges)
-                if not has_edge:
-                    missing_evidence.append(pid)
+            if run_id is None and plan_id is not None:
+                run_id = uow.runs.get_latest_successful_id_for_plan(plan_id)
 
-        if (spec and run_id is None) or not step_has_evidence.get(command.step_id, True):
-            status = "missing"
-        elif upstream_changes.get(command.step_id, True):
-            status = "stale"
-        else:
-            status = "fresh"
+            step_has_evidence: dict[str, bool] = {}
+            if run_id is not None:
+                step_has_evidence[command.step_id] = any(
+                    rs.step_id == command.step_id and rs.status == RunStepStatus.SUCCEEDED
+                    for rs in uow.run_steps.get_for_run(run_id)
+                )
+            else:
+                step_has_evidence[command.step_id] = False
 
-        return StalenessExplanation(
-            step_id=command.step_id,
-            status=status,
-            upstream_changes=upstream_changes,
-            missing_evidence=missing_evidence,
-        )
+            stale_cache: dict[str, bool] = {}
+            upstream_changes: dict[str, bool] = {}
+
+            for s in steps:
+                is_stale = _step_is_stale(
+                    uow, s, steps,
+                    command.plan_version_id, command.branch_id, plan_id,
+                    stale_cache,
+                )
+                upstream_changes[s.step_id] = is_stale
+
+            spec = spec_by_id.get(command.step_id)
+            missing_evidence: list[str] = []
+            if spec:
+                for pid in spec.parent_step_ids:
+                    edges = uow.evidence.get_edges_for_plan_step(
+                        command.plan_version_id, command.step_id,
+                    )
+                    has_edge = any(e.parent_step_id == pid for e in edges)
+                    if not has_edge:
+                        missing_evidence.append(pid)
+
+            if (spec and run_id is None) or not step_has_evidence.get(command.step_id, True):
+                status = "missing"
+            elif upstream_changes.get(command.step_id, True):
+                status = "stale"
+            else:
+                status = "fresh"
+
+            return StalenessExplanation(
+                step_id=command.step_id,
+                status=status,
+                upstream_changes=upstream_changes,
+                missing_evidence=missing_evidence,
+            )
 
 
 def _find_spec(step_id: str, steps: list[StepSpec]) -> StepSpec:
