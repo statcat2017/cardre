@@ -49,6 +49,7 @@ class FinalizeRun:
         steps: list[dict[str, Any]] | None = None,
         diagnostic: FinalizeDiagnostic | None = None,
         worker_generation: int | None = None,
+        stale_heartbeat_at: str | None = None,
     ) -> None:
         with self._uow_factory() as uow:
             run_record = uow.runs.get(run_id)
@@ -94,6 +95,17 @@ class FinalizeRun:
                             raise RunAlreadyFinalised(run_id, str(actual2.status) if actual2 else "unknown")
                     else:
                         raise RunAlreadyFinalised(run_id, str(actual.status) if actual else "unknown")
+            elif target == RunStatus.INTERRUPTED and stale_heartbeat_at is not None:
+                # Stale-interruption mode: conditionally transition the stale run
+                # only if its heartbeat is still the exact value that was
+                # inspected (compare-and-set). If the worker renewed it or the
+                # run already terminalized, the transition loses and we return
+                # silently — the run is no longer stale, so no manifest is
+                # produced. The transition, diagnostic, manifest build, and
+                # outbox record all share this one transaction.
+                transitioned = uow.runs.transition_interrupted(run_id, stale_heartbeat_at)
+                if not transitioned:
+                    return
             else:
                 transitioned = uow.runs.transition(run_id, target, expected_from=expected_from)
                 if not transitioned:

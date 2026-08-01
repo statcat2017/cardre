@@ -194,10 +194,13 @@ class SubmitRun:
 
         now_ts = datetime.now(UTC).timestamp()
         stale_seconds = 300
-        # ISO timestamp: runs whose heartbeat is older than this are stale.
-        heartbeat_cutoff = datetime.fromtimestamp(now_ts - stale_seconds, tz=UTC).isoformat()
 
-        interrupted: list[str] = []
+        # Identify runs the worker has abandoned: heartbeat absent, malformed,
+        # or older than the stale window. For each, hand the *observed* heartbeat
+        # value to FinalizeRun, which atomically compare-and-sets the terminal
+        # transition, appends the RUN_STALE diagnostic, builds the manifest, and
+        # enqueues its outbox record — all in one transaction.
+        stale_candidates: list[tuple[str, str | None]] = []
         uow = self._uow_factory()
         try:
             all_active = uow.runs.list_for_plan_version()
@@ -213,36 +216,28 @@ class SubmitRun:
                         hb_ts = datetime.fromisoformat(hb).replace(tzinfo=UTC).timestamp()
                         is_stale = (now_ts - hb_ts) > stale_seconds
                     except (ValueError, TypeError):
+                        # Unparsable heartbeat: Python classifies it as stale, so
+                        # the compare-and-set against the observed value will
+                        # interrupt it unless the worker renews it first.
                         is_stale = True
                 if is_stale:
-                    # Atomic: transition only if the heartbeat is still expired.
-                    # A renewed heartbeat (live worker) defeats the sweep, and a
-                    # run that self-finalized is left alone.
-                    transitioned = uow.runs.transition_interrupted(
-                        run.run_id, heartbeat_cutoff,
-                    )
-                    if transitioned:
-                        uow.runs.begin_worker_generation(run.run_id)
-                        interrupted.append(run.run_id)
-            uow.commit()
+                    stale_candidates.append((run.run_id, hb))
         finally:
             uow.close()
 
-        # Publish interrupted manifests after commit. A concurrent finalization
-        # of the same run is the desired outcome — not an error.
-        import contextlib
+        from cardre.application.runs.finalize_run import FinalizeDiagnostic
 
-        from cardre.application.runs.finalize_run import (
-            FinalizeDiagnostic,
-            RunAlreadyFinalised,
-        )
-        for run_id in interrupted:
-            with contextlib.suppress(RunAlreadyFinalised):
-                self._finalize_run(
-                    run_id,
-                    "interrupted",
-                    diagnostic=FinalizeDiagnostic(
-                        code="RUN_STALE",
-                        message="Run was stale and has been interrupted",
-                    ),
-                )
+        for run_id, hb in stale_candidates:
+            # FinalizeRun performs the compare-and-set transition, diagnostic,
+            # manifest build, and outbox enqueue atomically. If the worker
+            # renewed the heartbeat (or the run already terminalized) before
+            # this call, the transition loses and no manifest is produced.
+            self._finalize_run(
+                run_id,
+                "interrupted",
+                diagnostic=FinalizeDiagnostic(
+                    code="RUN_STALE",
+                    message="Run was stale and has been interrupted",
+                ),
+                stale_heartbeat_at=hb,
+            )

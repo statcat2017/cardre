@@ -143,21 +143,23 @@ class RunRepo:
         )
         return bool(cursor.rowcount > 0)
 
-    def transition_interrupted(self, run_id: str, heartbeat_cutoff_iso: str) -> bool:
-        """Transition a stale run to ``interrupted`` atomically with staleness.
+    def transition_interrupted(self, run_id: str, observed_heartbeat_at: str | None) -> bool:
+        """Transition a stale run to ``interrupted`` atomically, compare-and-set.
 
-        The stale sweep must not kill a live worker: this UPDATE only fires
-        when the run is still running and its heartbeat has not been renewed
-        past the cutoff. Checking staleness and transitioning under the same
+        The stale sweep must not kill a live worker: this UPDATE fires only if
+        the run is still ``running`` AND its ``heartbeat_at`` is still exactly
+        the value the sweep inspected (``IS ?`` is a null-safe equality, so it
+        also matches a NULL/absent heartbeat). A renewed heartbeat — including
+        one that replaces a malformed value — fails the comparison and the
+        sweep loses. Checking staleness and transitioning under the same
         ``BEGIN IMMEDIATE`` eliminates the read-then-transition race.
         """
         from cardre.domain.diagnostics import utc_now_iso
         now = utc_now_iso()
         cursor = self._conn.execute(
             "UPDATE runs SET status = ?, finished_at = ? "
-            "WHERE run_id = ? AND status = 'running' "
-            "AND (heartbeat_at IS NULL OR heartbeat_at < ?)",
-            (RunStatus.INTERRUPTED.value, now, run_id, heartbeat_cutoff_iso),
+            "WHERE run_id = ? AND status = 'running' AND heartbeat_at IS ?",
+            (RunStatus.INTERRUPTED.value, now, run_id, observed_heartbeat_at),
         )
         return bool(cursor.rowcount > 0)
 

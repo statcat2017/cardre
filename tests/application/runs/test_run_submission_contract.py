@@ -347,7 +347,10 @@ def test_sweep_stale_does_not_interrupt_renewed_heartbeat(committed_plan):
 
 
 def test_sweep_stale_interrupts_truly_stale_run(committed_plan):
-    """A run whose heartbeat expired (and was not renewed) is interrupted."""
+    """A run whose heartbeat expired (and was not renewed) is interrupted, and
+    the interruption is fully durable: RUN_STALE diagnostic, canonical manifest,
+    and manifest outbox record are all produced atomically with the terminal
+    transition (PR 373 review P1)."""
     project_id, uow_factory, pv_id = committed_plan
     submit = _submit_with_finalize(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
@@ -361,6 +364,72 @@ def test_sweep_stale_interrupts_truly_stale_run(committed_plan):
         run = uow.runs.get(r1.run_id)
     assert run is not None
     assert str(run.status) == RunStatus.INTERRUPTED.value
+
+    # The interruption must carry its diagnostic, manifest, and outbox record.
+    root = uow_factory._registry.resolve_root(project_id)
+    from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+    publisher = FsManifestPublisher(root)
+    manifest = publisher.read(r1.run_id)
+    assert manifest is not None, "interrupted run must publish a canonical manifest"
+    assert manifest["status"] == "interrupted"
+
+    with uow_factory.read_only(project_id) as uow:
+        diags = uow.runs.get_diagnostics(r1.run_id)
+        assert any(d.get("code") == "RUN_STALE" for d in diags), (
+            "interrupted run must carry the RUN_STALE diagnostic"
+        )
+        outbox = uow.publications.list_by_run(r1.run_id)
+        manifest_rows = [r for r in outbox if r["kind"] == "manifest"]
+        assert manifest_rows, "interrupted run must have a manifest outbox record"
+        assert manifest_rows[0]["state"] == "published"
+
+
+def test_sweep_stale_interrupts_malformed_heartbeat(committed_plan):
+    """A run with an unparsable heartbeat is classified as stale and
+    interrupted atomically (PR 373 review P2), unless the worker renews it."""
+    project_id, uow_factory, pv_id = committed_plan
+    submit = _submit_with_finalize(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs._conn.execute(
+            "UPDATE runs SET heartbeat_at = 'not-a-timestamp' WHERE run_id = ?", (r1.run_id,)
+        )
+        uow.commit()
+
+    submit(_cmd(pv_id))
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.INTERRUPTED.value, "malformed heartbeat must be swept"
+
+    root = uow_factory._registry.resolve_root(project_id)
+    from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+    assert FsManifestPublisher(root).read(r1.run_id) is not None
+
+
+def test_sweep_stale_malformed_heartbeat_defeated_by_renewal(committed_plan):
+    """A malformed heartbeat that is renewed before the sweep must not be
+    interrupted — the compare-and-set fails safely (PR 373 review P2)."""
+    project_id, uow_factory, pv_id = committed_plan
+    submit = _submit_with_finalize(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs._conn.execute(
+            "UPDATE runs SET heartbeat_at = 'not-a-timestamp' WHERE run_id = ?", (r1.run_id,)
+        )
+        uow.commit()
+    # Worker renews the heartbeat before the sweep.
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.heartbeat(r1.run_id)
+        uow.commit()
+
+    submit(_cmd(pv_id, force=True))
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.RUNNING.value, "renewal must defeat the sweep"
 
 
 def test_transition_success_requires_worker_generation(committed_plan):
