@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 def _row_to_run(r: Any) -> Run:
     """Hydrate a ``Run`` from a sqlite3.Row, including persisted read-model
     fields (run_scope, heartbeat_at, cancel_requested, worker_generation)."""
+    metadata = json.loads(r["metadata_json"]) if r["metadata_json"] else {}
     return Run(
         run_id=r["run_id"],
         plan_version_id=r["plan_version_id"],
@@ -27,6 +28,7 @@ def _row_to_run(r: Any) -> Run:
         heartbeat_at=r["heartbeat_at"],
         cancel_requested=bool(r["cancel_requested"]),
         worker_generation=int(r["worker_generation"] or 0),
+        metadata=metadata,
     )
 
 
@@ -41,7 +43,8 @@ class RunRepo:
 
     def create(self, plan_version_id: str, run_scope: str = "full_plan",
                branch_id: str | None = None, force: bool = False,
-               requested_by: str | None = None, request_id: str | None = None) -> str:
+               requested_by: str | None = None, request_id: str | None = None,
+               metadata: dict[str, Any] | None = None) -> str:
         from cardre.domain.run import RunScope
         RunScope(run_scope)
         from cardre.domain.diagnostics import utc_now_iso
@@ -49,10 +52,11 @@ class RunRepo:
         now = utc_now_iso()
         self._conn.execute(
             "INSERT INTO runs (run_id, plan_version_id, status, run_scope, branch_id, "
-            "force, requested_by, request_id, created_at, started_at, heartbeat_at) "
-            "VALUES (?, ?, 'created', ?, ?, ?, ?, ?, ?, ?, ?)",
+            "force, requested_by, request_id, created_at, started_at, heartbeat_at, metadata_json) "
+            "VALUES (?, ?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (run_id, plan_version_id, run_scope, branch_id,
-             int(force), requested_by, request_id, now, now, now),
+             int(force), requested_by, request_id, now, now, now,
+             json.dumps(metadata or {}, sort_keys=True)),
         )
         return run_id
 
@@ -119,30 +123,42 @@ class RunRepo:
             )
         return bool(cursor.rowcount > 0)
 
-    def transition_success(self, run_id: str, worker_generation: int | None = None) -> bool:
+    def transition_success(self, run_id: str, worker_generation: int) -> bool:
         """Transition to ``succeeded`` guarded by running + no-cancel + lease.
 
         ``succeeded`` finalization must not win a race with a concurrent
         cancellation. The UPDATE only fires when the run is still running,
-        cancellation has not been requested, and (when provided) the caller's
-        worker generation still owns the lease. Returns whether the transition
-        happened.
+        cancellation has not been requested, and the caller's worker
+        generation still owns the lease. Returns whether the transition
+        happened. The worker generation is mandatory so an unfenced success
+        finalization is impossible.
         """
         from cardre.domain.diagnostics import utc_now_iso
         now = utc_now_iso()
-        if worker_generation is None:
-            cursor = self._conn.execute(
-                "UPDATE runs SET status = ?, finished_at = ? "
-                "WHERE run_id = ? AND status = 'running' AND cancel_requested = 0",
-                (RunStatus.SUCCEEDED.value, now, run_id),
-            )
-        else:
-            cursor = self._conn.execute(
-                "UPDATE runs SET status = ?, finished_at = ? "
-                "WHERE run_id = ? AND status = 'running' AND cancel_requested = 0 "
-                "AND worker_generation = ?",
-                (RunStatus.SUCCEEDED.value, now, run_id, worker_generation),
-            )
+        cursor = self._conn.execute(
+            "UPDATE runs SET status = ?, finished_at = ? "
+            "WHERE run_id = ? AND status = 'running' AND cancel_requested = 0 "
+            "AND worker_generation = ?",
+            (RunStatus.SUCCEEDED.value, now, run_id, worker_generation),
+        )
+        return bool(cursor.rowcount > 0)
+
+    def transition_interrupted(self, run_id: str, heartbeat_cutoff_iso: str) -> bool:
+        """Transition a stale run to ``interrupted`` atomically with staleness.
+
+        The stale sweep must not kill a live worker: this UPDATE only fires
+        when the run is still running and its heartbeat has not been renewed
+        past the cutoff. Checking staleness and transitioning under the same
+        ``BEGIN IMMEDIATE`` eliminates the read-then-transition race.
+        """
+        from cardre.domain.diagnostics import utc_now_iso
+        now = utc_now_iso()
+        cursor = self._conn.execute(
+            "UPDATE runs SET status = ?, finished_at = ? "
+            "WHERE run_id = ? AND status = 'running' "
+            "AND (heartbeat_at IS NULL OR heartbeat_at < ?)",
+            (RunStatus.INTERRUPTED.value, now, run_id, heartbeat_cutoff_iso),
+        )
         return bool(cursor.rowcount > 0)
 
     def begin_worker_generation(self, run_id: str) -> int:

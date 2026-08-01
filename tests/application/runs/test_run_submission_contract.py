@@ -269,6 +269,120 @@ def test_terminal_run_is_never_stale(committed_plan):
 
 
 # ---------------------------------------------------------------------------
+# P1-1: stale sweep must not wedge submissions or kill live workers
+# ---------------------------------------------------------------------------
+
+
+def _submit_with_finalize(uow_factory, project_id):
+    """A SubmitRun wired with a real FinalizeRun so the stale sweep can
+    publish interrupted manifests."""
+    from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+    from cardre.application.runs.finalize_run import FinalizeRun
+    from cardre.application.runs.submit_run import SubmitRun
+
+    root = uow_factory._registry.resolve_root(project_id)
+    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root))
+    return SubmitRun(
+        lambda: uow_factory.for_project(project_id), _NoopDispatcher(), None, finalize,
+        governance_enabled=True, project_id=project_id,
+    )
+
+
+def _set_old_heartbeat(uow_factory, project_id, run_id, age_seconds=400):
+    from datetime import UTC, datetime, timedelta
+    old = datetime.now(UTC) - timedelta(seconds=age_seconds)
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs._conn.execute(
+            "UPDATE runs SET heartbeat_at = ? WHERE run_id = ?",
+            (old.isoformat().replace("+00:00", "Z"), run_id),
+        )
+        uow.commit()
+
+
+def test_sweep_stale_does_not_abort_new_submission(committed_plan):
+    """A stale run that self-finalized before the sweep must not prevent the
+    new submission from being created."""
+    project_id, uow_factory, pv_id = committed_plan
+    submit = _submit_with_finalize(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.commit()
+    _set_old_heartbeat(uow_factory, project_id, r1.run_id)
+    # The run self-finalizes before the sweep runs.
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.SUCCEEDED)
+        uow.commit()
+
+    # A new submission must not be aborted by the stale sweep.
+    r2 = submit(_cmd(pv_id))
+    assert r2.run_id != r1.run_id
+    with uow_factory.read_only(project_id) as uow:
+        runs = uow.runs.list_for_plan_version(pv_id)
+    assert any(r.run_id == r1.run_id and r.status == RunStatus.SUCCEEDED.value for r in runs)
+    assert any(r.run_id == r2.run_id for r in runs)
+
+
+def test_sweep_stale_does_not_interrupt_renewed_heartbeat(committed_plan):
+    """A run whose heartbeat was renewed is not interrupted by the sweep."""
+    project_id, uow_factory, pv_id = committed_plan
+    submit = _submit_with_finalize(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.commit()
+    _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=400)
+    # Worker renews the heartbeat before the sweep.
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.heartbeat(r1.run_id)
+        uow.commit()
+
+    # The renewed run is legitimately active, so a second submission must be
+    # forced; the point is the original run must NOT be interrupted.
+    submit(_cmd(pv_id, force=True))
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.RUNNING.value, "renewed heartbeat must defeat the sweep"
+
+
+def test_sweep_stale_interrupts_truly_stale_run(committed_plan):
+    """A run whose heartbeat expired (and was not renewed) is interrupted."""
+    project_id, uow_factory, pv_id = committed_plan
+    submit = _submit_with_finalize(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.commit()
+    _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=400)
+
+    submit(_cmd(pv_id))
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.INTERRUPTED.value
+
+
+def test_transition_success_requires_worker_generation(committed_plan):
+    """Success finalization must prove lease ownership (P2-1): calling
+    transition_success without a generation is a TypeError."""
+    project_id, uow_factory, pv_id = committed_plan
+    submit = _make_submit(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        gen = uow.runs.begin_worker_generation(r1.run_id)
+        uow.commit()
+
+    with uow_factory.for_project(project_id) as uow:
+        with pytest.raises(TypeError):
+            uow.runs.transition_success(r1.run_id)  # no generation
+        # With the correct generation it succeeds.
+        assert uow.runs.transition_success(r1.run_id, gen) is True
+        uow.commit()
+
+
+# ---------------------------------------------------------------------------
 # Cancellation
 # ---------------------------------------------------------------------------
 

@@ -60,6 +60,11 @@ class FinalizeRun:
                 )
 
             target = RunStatus(status)
+            if target == RunStatus.SUCCEEDED and worker_generation is None:
+                raise TypeError(
+                    "FinalizeRun('succeeded') requires worker_generation: success "
+                    "finalization must prove lease ownership"
+                )
             if target in (RunStatus.FAILED, RunStatus.CANCELLED):
                 expected_from: tuple[RunStatus, ...] = (RunStatus.CREATED, RunStatus.QUEUED, RunStatus.RUNNING)
             else:

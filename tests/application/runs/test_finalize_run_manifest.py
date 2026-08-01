@@ -92,6 +92,14 @@ def _insert_artifact_with_lineage(uow_factory, project_id, run_id, rs_id, pv_id,
         uow.commit()
 
 
+def _current_generation(uow_factory, project_id, run_id) -> int:
+    """Return the run's current worker generation (lease ownership token)."""
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(run_id)
+    assert run is not None
+    return run.worker_generation
+
+
 class TestFinalizeRunManifest:
     """End-to-end tests through the production persistence stack."""
 
@@ -102,7 +110,7 @@ class TestFinalizeRunManifest:
 
         publisher = FsManifestPublisher(root)
         finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
-        finalize(run_id, "succeeded")
+        finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         result = publisher.verify(run_id)
         assert result["valid"] is True
@@ -126,7 +134,7 @@ class TestFinalizeRunManifest:
 
         publisher = FsManifestPublisher(root)
         finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
-        finalize(run_id, "succeeded")
+        finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         data = publisher.read(run_id)
         expected = compute_manifest_hash(data)
@@ -138,7 +146,7 @@ class TestFinalizeRunManifest:
 
         publisher = FsManifestPublisher(root)
         finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
-        finalize(run_id, "succeeded")
+        finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         manifest_path = publisher.manifest_path(run_id)
         data = json.loads(manifest_path.read_text())
@@ -178,7 +186,7 @@ class TestFinalizeRunManifest:
 
         publisher = FsManifestPublisher(root)
         finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
-        finalize(run_id, "succeeded")
+        finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         manifest_path = publisher.manifest_path(run_id)
         assert manifest_path.exists()
@@ -191,7 +199,7 @@ class TestFinalizeRunManifest:
 
         publisher = FsManifestPublisher(root)
         finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
-        finalize(run_id, "succeeded")
+        finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         data = publisher.read(run_id)
         recomputed = compute_pathway_hash(data["steps"])
@@ -203,7 +211,7 @@ class TestFinalizeRunManifest:
 
         publisher = FsManifestPublisher(root)
         finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
-        finalize(run_id, "succeeded")
+        finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         first_manifest = publisher.read(run_id)
 
@@ -239,7 +247,7 @@ class TestFinalizeRunManifest:
         finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
 
         with pytest.raises(Exception, match="already finalised"):
-            finalize(run_id, "succeeded")
+            finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
 
         result = publisher.verify(run_id)
         assert result["valid"] is False
@@ -349,7 +357,7 @@ class TestManifestIntegrityFailures:
 
         finalize = FinalizeRun(broken_factory, publisher)
         with pytest.raises(RuntimeError, match="injected integrity failure"):
-            finalize(run_id, "succeeded")
+            finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
         # The manifest must not be published on integrity failure.
         assert publisher.read(run_id) is None
 
@@ -464,7 +472,7 @@ class TestManifestMissingIntegrityData:
 
         finalize = FinalizeRun(factory, publisher)
         with pytest.raises(Exception, match="no plan record"):
-            finalize(run_id, "succeeded")
+            finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
         assert publisher.read(run_id) is None
 
     def test_missing_run_step_spec_fails(self, provisioned_project):
@@ -487,5 +495,5 @@ class TestManifestMissingIntegrityData:
         publisher = FsManifestPublisher(root)
         finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), publisher)
         with pytest.raises(Exception, match="no plan specification"):
-            finalize(run_id, "succeeded")
+            finalize(run_id, "succeeded", worker_generation=_current_generation(uow_factory, project_id, run_id))
         assert publisher.read(run_id) is None

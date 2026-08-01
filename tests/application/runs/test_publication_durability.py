@@ -40,6 +40,13 @@ class _FailingManifestPublisher:
         raise OSError("injected manifest publish failure")
 
 
+def _run_generation(uow_factory, project_id, run_id) -> int:
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(run_id)
+    assert run is not None
+    return run.worker_generation
+
+
 def _provision(tmp_path):
     registry = JsonProjectRegistry(tmp_path / "registry.json")
     provisioner = SqliteProjectProvisioner()
@@ -53,6 +60,7 @@ def _provision(tmp_path):
         run_id = uow.runs.create(pv_id)
         uow.runs.transition(run_id, RunStatus.RUNNING,
                             expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+        uow.runs.begin_worker_generation(run_id)
         uow.commit()
     registry.register(project_id, root)
     return project_id, plan_id, pv_id, run_id, uow_factory, registry, root
@@ -278,7 +286,7 @@ def test_manifest_publish_failure_leaves_terminal_run_and_failed_outbox(tmp_path
     finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), failing)
 
     with pytest.raises(OSError, match="injected manifest publish failure"):
-        finalize(run_id, "succeeded")
+        finalize(run_id, "succeeded", worker_generation=_run_generation(uow_factory, project_id, run_id))
 
     with uow_factory.read_only(project_id) as uow:
         run = uow.runs.get(run_id)
@@ -401,7 +409,7 @@ def test_failed_manifest_outbox_reconciled_with_working_publisher(tmp_path):
     finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), failing)
 
     with pytest.raises(OSError):
-        finalize(run_id, "succeeded")
+        finalize(run_id, "succeeded", worker_generation=_run_generation(uow_factory, project_id, run_id))
 
     reconcile = ReconcilePublications(
         uow_factory,

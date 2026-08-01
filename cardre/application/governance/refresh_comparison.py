@@ -215,16 +215,18 @@ class RefreshComparison:
 
             uow.commit()
 
-        # After the DB mutation committed, finalize the comparison artifact
-        # files and mark their outbox rows published. A failure here leaves the
-        # pending outbox rows for reconciliation to retry.
-        for staged, _outbox_id in pending_publishes:
-            self._artifact_writer.finalize(staged)
-        if pending_publishes:
-            with self._uow_factory.for_project(command.project_id) as mark_uow:
-                for _staged, outbox_id in pending_publishes:
+        # After the DB mutation committed, finalize each comparison artifact and
+        # mark its outbox row published. A failure on one artifact does not
+        # block the others; the failing row stays pending for reconciliation to
+        # retry.
+        for staged, outbox_id in pending_publishes:
+            try:
+                self._artifact_writer.finalize(staged)
+                with self._uow_factory.for_project(command.project_id) as mark_uow:
                     mark_uow.publications.mark_published(outbox_id)
-                mark_uow.commit()
+                    mark_uow.commit()
+            except Exception:
+                continue
 
         return RefreshComparisonResult(
             comparison_id=command.comparison_id,

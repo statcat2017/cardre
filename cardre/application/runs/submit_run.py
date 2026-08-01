@@ -190,32 +190,56 @@ class SubmitRun:
     def _sweep_stale(self) -> None:
         from datetime import UTC, datetime
 
+        from cardre.domain.run import RunStatus
+
+        now_ts = datetime.now(UTC).timestamp()
+        stale_seconds = 300
+        # ISO timestamp: runs whose heartbeat is older than this are stale.
+        heartbeat_cutoff = datetime.fromtimestamp(now_ts - stale_seconds, tz=UTC).isoformat()
+
+        interrupted: list[str] = []
         uow = self._uow_factory()
         try:
             all_active = uow.runs.list_for_plan_version()
+            for run in all_active:
+                if run.status != RunStatus.RUNNING.value:
+                    continue
+                hb = run.heartbeat_at
+                is_stale = False
+                if hb is None:
+                    is_stale = True
+                else:
+                    try:
+                        hb_ts = datetime.fromisoformat(hb).replace(tzinfo=UTC).timestamp()
+                        is_stale = (now_ts - hb_ts) > stale_seconds
+                    except (ValueError, TypeError):
+                        is_stale = True
+                if is_stale:
+                    # Atomic: transition only if the heartbeat is still expired.
+                    # A renewed heartbeat (live worker) defeats the sweep, and a
+                    # run that self-finalized is left alone.
+                    transitioned = uow.runs.transition_interrupted(
+                        run.run_id, heartbeat_cutoff,
+                    )
+                    if transitioned:
+                        uow.runs.begin_worker_generation(run.run_id)
+                        interrupted.append(run.run_id)
+            uow.commit()
         finally:
             uow.close()
 
-        from cardre.domain.run import RunStatus
-        for run in all_active:
-            if run.status != RunStatus.RUNNING.value:
-                continue
-            hb = run.heartbeat_at
-            is_stale = False
-            if hb is None:
-                is_stale = True
-            else:
-                try:
-                    hb_ts = datetime.fromisoformat(hb).replace(tzinfo=UTC).timestamp()
-                    now_ts = datetime.now(UTC).timestamp()
-                    stale_seconds = 300
-                    is_stale = (now_ts - hb_ts) > stale_seconds
-                except (ValueError, TypeError):
-                    is_stale = True
-            if is_stale:
-                from cardre.application.runs.finalize_run import FinalizeDiagnostic
+        # Publish interrupted manifests after commit. A concurrent finalization
+        # of the same run is the desired outcome — not an error.
+        import contextlib
+
+        from cardre.application.runs.finalize_run import (
+            FinalizeDiagnostic,
+            RunAlreadyFinalised,
+        )
+        for run_id in interrupted:
+            with contextlib.suppress(RunAlreadyFinalised):
                 self._finalize_run(
-                    run.run_id,
+                    run_id,
                     "interrupted",
                     diagnostic=FinalizeDiagnostic(
                         code="RUN_STALE",
