@@ -360,6 +360,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/runs/{run_id}/manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run Manifest */
+        get: operations["get_run_manifest_projects__project_id__runs__run_id__manifest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/governance/branches": {
         parameters: {
             query?: never;
@@ -579,10 +596,7 @@ export interface components {
             plan_id: string;
             /** Name */
             name: string;
-            /**
-             * Branch Type
-             * @default challenger
-             */
+            /** Branch Type */
             branch_type: string;
             /** Base Plan Version Id */
             base_plan_version_id: string;
@@ -2032,6 +2046,38 @@ export interface operations {
             };
         };
     };
+    get_run_manifest_projects__project_id__runs__run_id__manifest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_branches_projects__project_id__governance_branches_get: {
         parameters: {
             query?: {
@@ -2266,8 +2312,8 @@ export interface operations {
     };
     get_champion_projects__project_id__governance_champion_get: {
         parameters: {
-            query: {
-                plan_id: string;
+            query?: {
+                plan_id?: string | null;
             };
             header?: never;
             path: {

@@ -8,6 +8,7 @@ plain records the API mapper converts. Routes never touch the filesystem or
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from cardre.application.ports.unit_of_work import UnitOfWorkFactory
 
@@ -76,3 +77,42 @@ class ListExports:
             )
             for e in rows
         ]
+
+
+class GetRunManifest:
+    """Retrieve the canonical run manifest for a run.
+
+    The manifest is a canonical artifact published to the filesystem by
+    ``FinalizeRun`` (not a DB row), so discovery goes through the manifest
+    publisher adapter rather than the reports/exports tables.
+    """
+
+    def __init__(
+        self,
+        uow_factory: UnitOfWorkFactory,
+        manifest_publisher_factory: Any,
+    ) -> None:
+        self._uow_factory = uow_factory
+        self._manifest_publisher_factory = manifest_publisher_factory
+
+    def __call__(self, project_id: str, run_id: str) -> dict[str, Any]:
+        from cardre.domain.errors import CardreError, ErrorCode
+
+        with self._uow_factory.read_only(project_id) as uow:
+            run = uow.runs.get(run_id)
+        if run is None:
+            raise CardreError(
+                f"Run {run_id!r} not found",
+                code=ErrorCode.RUN_NOT_FOUND,
+                context={"run_id": run_id},
+                status_code=404,
+            )
+        manifest = self._manifest_publisher_factory(project_id).read(run_id)
+        if manifest is None:
+            raise CardreError(
+                f"No manifest published for run {run_id!r}",
+                code="CANONICAL_MANIFEST_MISSING",
+                context={"run_id": run_id},
+                status_code=404,
+            )
+        return manifest

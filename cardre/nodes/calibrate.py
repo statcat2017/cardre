@@ -529,6 +529,7 @@ class CalibrateProbabilitiesNode(NodeType):
                 media_type="application/octet-stream",
                 logical_hash=hashlib.sha256(serialized_calibrator).hexdigest(),
                 metadata={
+                    "schema_version": SCHEMA_MODEL_ARTIFACT,
                     "artifact_subtype": "probability_calibrator",
                     "method": method,
                     "estimator_format": "joblib",

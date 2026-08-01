@@ -105,9 +105,26 @@ async def get_plan_version(project_id: str, plan_version_id: str, container=Depe
 
 @router.patch("/plan-versions/{plan_version_id}", response_model=PlanVersionResponse)
 async def update_plan_version(project_id: str, plan_version_id: str, body: PlanVersionUpdate, container=Depends(get_container)):
+    from cardre.domain.errors import CardreError
+
     uc = _uc(container, project_id)
     if body.description is not None:
-        uc["update_version"](uc["UpdatePlanVersionCommand"](plan_version_id=plan_version_id, description=body.description))
+        try:
+            uc["update_version"](uc["UpdatePlanVersionCommand"](plan_version_id=plan_version_id, description=body.description))
+        except CardreError as exc:
+            if exc.code == "PLAN_VERSION_ALREADY_COMMITTED":
+                raise CardreApiError(
+                    code=ErrorCode.PLAN_VERSION_IMMUTABLE,
+                    message=str(exc),
+                    status_code=409,
+                ) from exc
+            if exc.code == "PLAN_VERSION_NOT_FOUND":
+                raise CardreApiError(
+                    code=ErrorCode.PLAN_VERSION_NOT_FOUND,
+                    message=str(exc),
+                    status_code=404,
+                ) from exc
+            raise
     pv = uc["get_version"](uc["GetPlanVersionCommand"](plan_version_id=plan_version_id))
     if pv is None:
         raise CardreApiError(code=ErrorCode.PLAN_VERSION_NOT_FOUND, message=f"Plan version {plan_version_id!r} not found.", status_code=404)

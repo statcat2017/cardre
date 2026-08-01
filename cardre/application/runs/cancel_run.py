@@ -29,7 +29,11 @@ class CancelRun:
                     context={"run_id": command.run_id},
                     status_code=404,
                 )
-            if run.status != RunStatus.RUNNING:
+            # A run that has been submitted but not yet claimed by a worker
+            # (created/queued) is cancellable: flag it so the worker observes
+            # cancel_requested at its first fence and finalizes as cancelled
+            # instead of running.
+            if run.status not in (RunStatus.RUNNING, RunStatus.CREATED, RunStatus.QUEUED):
                 raise CardreError(
                     f"Run {command.run_id!r} is not running (status={run.status})",
                     code=ErrorCode.RUN_NOT_RUNNING,

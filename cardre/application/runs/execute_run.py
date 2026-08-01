@@ -131,11 +131,15 @@ class ExecuteRun:
                 # the build-summary-report parent step so the TechnicalManifestExportNode
                 # finds it as an input with role=manifest.
                 if step.node_type == "cardre.technical_manifest_export" and step_outputs:
-                    summary_ref = self._publish_run_summary(command, pv_id, run, step_outputs, run_step_records)
+                    summary_ref = self._publish_run_summary(
+                        command, pv_id, run, step_outputs, run_step_records,
+                        worker_generation,
+                    )
                     # Inject the RunSummary into the step's own output bucket.
                     # StepRunner._resolve_inputs later picks up own-step entries.
-                    step_outputs.setdefault(step.step_id, []).append(summary_ref)
-                    self._run_summary_ref = summary_ref
+                    if summary_ref is not None:
+                        step_outputs.setdefault(step.step_id, []).append(summary_ref)
+                        self._run_summary_ref = summary_ref
 
                 hb_uow = self._uow_factory()
                 try:
@@ -335,15 +339,17 @@ class ExecuteRun:
         run: Any,
         step_outputs: dict[str, list[ArtifactRef]],
         run_step_records: dict[str, RunStep],
-    ) -> ArtifactRef:
+        worker_generation: int,
+    ) -> ArtifactRef | None:
         """Build and publish a RunSummary artifact from persisted execution state.
 
         Reads run steps and artifact lineage from the database so that
         input/output IDs, warnings and errors reflect what was actually
         persisted rather than what was staged in step_outputs.
 
-        Returns the registered ArtifactRef so callers can inject it into
-        step inputs for the technical-manifest step to consume.
+        Returns the registered ArtifactRef (or ``None`` if the run lost its
+        lease before publication) so callers can inject it into step inputs for
+        the technical-manifest step to consume.
         """
         from cardre.domain.evidence.kinds import EvidenceKind
         from cardre.domain.evidence.schemas import SCHEMA_RUN_SUMMARY
@@ -425,6 +431,17 @@ class ExecuteRun:
         )
         uow = self._uow_factory()
         try:
+            # Lease fence inside the summary's own transaction: a run that was
+            # cancelled or terminalized while we were reading state must not
+            # accept a RunSummary publication. Mirrors the normal step-output
+            # fence so no artifact/outbox row is left for a terminal run.
+            from cardre.domain.errors import LeaseLost
+
+            try:
+                uow.runs.assert_running_lease(command.run_id, worker_generation)
+            except LeaseLost:
+                uow.rollback()
+                return None
             uow.artifacts.register(summary_ref)
             outbox_id = uow.publications.enqueue_artifact(
                 run_id=command.run_id,

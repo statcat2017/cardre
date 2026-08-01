@@ -1167,6 +1167,55 @@
         }
       }
     },
+    "/projects/{project_id}/runs/{run_id}/manifest": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Get Run Manifest",
+        "operationId": "get_run_manifest_projects__project_id__runs__run_id__manifest_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/projects/{project_id}/governance/branches": {
       "get": {
         "tags": [
@@ -1556,9 +1605,16 @@
           {
             "name": "plan_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Plan Id"
             }
           }
@@ -1962,8 +2018,7 @@
           },
           "branch_type": {
             "type": "string",
-            "title": "Branch Type",
-            "default": "challenger"
+            "title": "Branch Type"
           },
           "base_plan_version_id": {
             "type": "string",
@@ -2028,6 +2083,7 @@
         "required": [
           "plan_id",
           "name",
+          "branch_type",
           "base_plan_version_id",
           "head_plan_version_id"
         ],

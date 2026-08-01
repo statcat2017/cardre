@@ -32,6 +32,7 @@ class SubmitRun:
         finalize_run: Any,
         governance_enabled: bool = True,
         project_id: str | None = None,
+        stale_heartbeat_seconds: int = 300,
     ) -> None:
         self._uow_factory = uow_factory
         self._dispatcher = dispatcher
@@ -39,6 +40,7 @@ class SubmitRun:
         self._finalize_run = finalize_run
         self._governance_enabled = governance_enabled
         self._project_id = project_id
+        self._stale_heartbeat_seconds = stale_heartbeat_seconds
 
     def __call__(self, command: SubmitRunCommand) -> SubmitRunResult:
         scope = self._validate_command(command)
@@ -193,7 +195,7 @@ class SubmitRun:
         from cardre.domain.run import RunStatus
 
         now_ts = datetime.now(UTC).timestamp()
-        stale_seconds = 300
+        stale_seconds = self._stale_heartbeat_seconds
 
         # Identify runs the worker has abandoned: heartbeat absent, malformed,
         # or older than the stale window. For each, hand the *observed* heartbeat

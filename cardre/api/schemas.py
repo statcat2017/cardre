@@ -338,7 +338,9 @@ class BranchListResponse(BaseModel):
 class BranchCreateRequest(BaseModel):
     plan_id: str
     name: str
-    branch_type: str = "challenger"
+    # No default: branch_type is coupled to branch_point_step_id via
+    # ALLOWED_BRANCH_POINTS, so a default can never be valid.
+    branch_type: str
     base_plan_version_id: str
     head_plan_version_id: str
     description: str | None = None

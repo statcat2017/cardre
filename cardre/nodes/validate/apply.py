@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import io
 from typing import Any
 
+import joblib
+import numpy as np
 import polars as pl
 
 from cardre.domain.diagnostics import JsonDict
@@ -335,6 +338,40 @@ class ApplyModelNode(NodeType):
                 raw_expr = log_odds_expr.alias("raw_model_output")
 
                 df = df.with_columns([prob_expr, raw_expr])
+
+                # Runtime calibration: a non-folded calibrator (isotonic,
+                # CV-Platt, non-linear Platt) must transform the raw sigmoid
+                # probabilities before scoring. Folded-linear calibration is
+                # already baked into the coefficients and needs no runtime step.
+                calibration = model.get("calibration") or {}
+                if calibration.get("application_mode") == "runtime_probability_transform":
+                    calibrator_id = calibration.get("calibrator_artifact_id", "")
+                    if not calibrator_id:
+                        raise ValueError(
+                            "Model has calibration block but no calibrator_artifact_id"
+                        )
+                    cal_ref = context.inputs.artifact_ref(calibrator_id)
+                    if cal_ref is None:
+                        raise ValueError(
+                            f"Calibrator artifact {calibrator_id!r} not among step inputs"
+                        )
+                    calibrator_bytes = context.inputs.read_bytes(cal_ref)
+                    calibrator = joblib.load(io.BytesIO(calibrator_bytes))
+                    raw_probs = df["predicted_bad_probability"].to_numpy()
+                    x_cal = np.column_stack([1.0 - raw_probs, raw_probs])
+                    if hasattr(calibrator, "predict_proba"):
+                        cal_probs = calibrator.predict_proba(x_cal)
+                        cal_p = cal_probs[:, 1] if cal_probs.shape[1] > 1 else cal_probs[:, 0]
+                    else:
+                        cal_p = calibrator.predict(raw_probs)
+                    cal_p = np.asarray(cal_p, dtype=np.float64)
+                    cal_log_odds = np.log(
+                        np.clip(cal_p / np.maximum(1 - cal_p, 1e-15), 1e-15, None),
+                    )
+                    df = df.with_columns([
+                        pl.Series("predicted_bad_probability", cal_p, dtype=pl.Float64),
+                        pl.Series("raw_model_output", cal_log_odds, dtype=pl.Float64),
+                    ])
 
                 base_metadata: JsonDict = {
                     "model_artifact_id": model_art.artifact_id,

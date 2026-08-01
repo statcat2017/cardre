@@ -223,7 +223,14 @@ class RunRepo:
         return None if row is None else row["active_step_id"]
 
     def set_cancel_requested(self, run_id: str) -> None:
-        self._conn.execute("UPDATE runs SET cancel_requested = 1 WHERE run_id = ? AND status = 'running'", (run_id,))
+        # Cancellable before the worker claims the row too: flagging a created/
+        # queued run lets ExecuteRun observe the request at its first fence and
+        # finalize as cancelled instead of running.
+        self._conn.execute(
+            "UPDATE runs SET cancel_requested = 1 "
+            "WHERE run_id = ? AND status IN ('created','queued','running')",
+            (run_id,),
+        )
 
     def append_diagnostic(self, run_id: str, diagnostic: dict[str, Any]) -> None:
         from cardre.domain.diagnostics import utc_now_iso

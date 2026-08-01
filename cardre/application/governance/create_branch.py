@@ -37,6 +37,7 @@ class CreateBranchCommand:
     branch_point_step_id: str
     base_branch_id: str | None = None
     base_plan_version_id: str | None = None
+    head_plan_version_id: str | None = None
     created_reason: str = ""
     description: str | None = None
     segment_filter_spec: dict[str, Any] | None = None
@@ -180,6 +181,18 @@ class CreateBranch:
                     )
 
             head_pv_id = base_branch["head_plan_version_id"] if base_branch else command.base_plan_version_id
+
+            # The client-supplied head version is a consistency check, not an
+            # override: the branch's head is always derived from its base.
+            if command.head_plan_version_id and command.head_plan_version_id != head_pv_id:
+                raise BranchValidationError(
+                    code="STALE_HEAD_VERSION",
+                    message="head_plan_version_id does not match the derived head plan version.",
+                    context={
+                        "head_plan_version_id": command.head_plan_version_id,
+                        "derived_head_pv_id": head_pv_id,
+                    },
+                )
 
             if command.base_plan_version_id and head_pv_id != command.base_plan_version_id:
                 raise BranchValidationError(

@@ -146,6 +146,50 @@ def test_calibration_publishes_binary_calibrator_through_node_context(tmp_path: 
     assert result.metrics["calibration_skipped"] is False
 
 
+def test_calibrator_binary_passes_output_contract_validation(tmp_path: Path):
+    """The staged calibrator binary must satisfy the declared output contract.
+
+    `StepRunner` runs `validate_output_contract` before publication, so a
+    fitted calibrator that omits `metadata["schema_version"]` fails the run
+    with ``schema version '' ...``. Unit tests that call `run()` directly
+    bypass contract validation, which is exactly why this regression is
+    invisible to them.
+    """
+    from cardre.application.execution.contract_validation import validate_output_contract
+
+    model = ModelArtifactV1.from_dict({
+        "schema_version": "cardre.model_artifact.v1",
+        "model_family": "logistic_regression",
+        "target_column": "bad_flag",
+        "target_event_value": "bad",
+        "class_mapping": {"good": "good", "bad": "bad"},
+        "probability_column_index": 1,
+        "feature_contract": {"features": ["age_woe"]},
+        "model_payload": {"intercept": -0.4, "coefficients": {"age_woe": 0.8}},
+        "training": {"row_count": 100},
+    })
+    probabilities = np.concatenate([np.full(20, 0.1), np.full(20, 0.9)])
+    frame = pl.DataFrame({
+        "bad_flag": ["good"] * 20 + ["bad"] * 20,
+        "predicted_bad_probability": probabilities,
+    })
+    store = FsArtifactStore(tmp_path)
+    outputs: Any = StagingOutputPublisher(store)
+    result = CalibrateProbabilitiesNode().run(_context(
+        _Inputs(model, frame),
+        outputs,
+        {"method": "platt", "calibration_sample": "train", "cross_validation": False},
+    ))
+
+    # This is what StepRunner._validate_output_roles does before publication.
+    validate_output_contract(
+        CalibrateProbabilitiesNode.__definition__.output_contract,
+        result.staged_artifacts,
+        node_type="cardre.calibrate_probabilities",
+        step_id="calibrate-1",
+    )
+
+
 def test_calibration_skipped_path_uses_real_publisher_contract(tmp_path: Path):
     """The too-few-rows skip path still reads the staged report artifact ID."""
     model = ModelArtifactV1.from_dict({

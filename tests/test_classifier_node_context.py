@@ -45,10 +45,15 @@ class _Outputs:
         self.metrics = {}
 
     def publish_bytes(self, **kwargs):
+        from cardre.nodes._training_utils import _estimator_descriptor_id
+
+        artifact_id = _estimator_descriptor_id(
+            kwargs["data"], kwargs["logical_hash"], kwargs["metadata"],
+        )
         artifact = SimpleNamespace(
-            provisional_artifact_id="estimator-artifact",
+            provisional_artifact_id=artifact_id,
             logical_hash=kwargs["logical_hash"],
-            physical_hash="estimator-physical-hash",
+            physical_hash=kwargs["logical_hash"],
         )
         self.staged_artifacts.append(artifact)
         self.estimator = kwargs
@@ -101,7 +106,7 @@ def test_decision_tree_node_uses_node_context_staged_outputs():
     assert len(result.staged_artifacts) == 2
     assert outputs.estimator["kind"] is EvidenceKind.MODEL_ARTIFACT
     assert outputs.model["kind"] is EvidenceKind.MODEL_ARTIFACT
-    assert outputs.model["payload"]["estimator_reference"]["artifact_id"] == "estimator-artifact"
+    assert outputs.model["payload"]["estimator_reference"]["artifact_id"] == result.staged_artifacts[-1].provisional_artifact_id
     assert outputs.model["payload"]["estimator_reference"]["creating_run_id"] == "run-1"
     assert outputs.model["payload"]["estimator_reference"]["creating_run_step_id"] == "fit-1"
     assert result.metrics["feature_count"] == 1
@@ -144,6 +149,6 @@ def test_tuning_node_uses_node_context_staged_outputs():
     assert len(result.staged_artifacts) == 2
     assert outputs.estimator["kind"] is EvidenceKind.MODEL_ARTIFACT
     assert outputs.model["kind"] is EvidenceKind.MODEL_ARTIFACT
-    assert outputs.model["payload"]["estimator_reference"]["artifact_id"] == "estimator-artifact"
+    assert outputs.model["payload"]["estimator_reference"]["artifact_id"] == result.staged_artifacts[-1].provisional_artifact_id
     assert outputs.model["payload"]["estimator_reference"]["creating_run_step_id"] == "tune-1"
     assert result.metrics["best_score"] == 0.5

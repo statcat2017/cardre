@@ -92,7 +92,9 @@ async def create_branch(project_id: str, body: BranchCreateRequest, container=De
         project_id=project_id, plan_id=body.plan_id, name=body.name,
         branch_type=body.branch_type, branch_point_step_id=body.branch_point_step_id or "",
         base_branch_id=body.base_branch_id, base_plan_version_id=body.base_plan_version_id,
-        created_reason=body.created_reason, segment_filter_spec=body.segment_filter_spec,
+        head_plan_version_id=body.head_plan_version_id,
+        created_reason=body.created_reason, description=body.description,
+        segment_filter_spec=body.segment_filter_spec,
     ))
     with container.uow_factory.read_only(project_id) as uow:
         branch = uow.branches.get_branch(result.branch_id)
@@ -155,9 +157,12 @@ async def refresh_comparison(project_id: str, comparison_id: str, container=Depe
 
 
 @router.get("/champion", response_model=ChampionResponse, dependencies=[Depends(_require_governance)])
-async def get_champion(project_id: str, plan_id: str, container=Depends(get_container)):
+async def get_champion(project_id: str, plan_id: str | None = None, container=Depends(get_container)):
     with container.uow_factory.read_only(project_id) as uow:
-        assignment = uow.champion.get_champion_assignment(plan_id)
+        if plan_id:
+            assignment = uow.champion.get_champion_assignment(plan_id)
+        else:
+            assignment = uow.champion.get_champion_assignment_for_project(project_id)
     return ChampionResponse(assignment=champion_assignment_to_response(assignment) if assignment is not None else None)
 
 

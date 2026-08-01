@@ -1,0 +1,188 @@
+from __future__ import annotations
+
+import io
+from pathlib import Path
+from typing import Any
+
+import joblib
+import numpy as np
+import polars as pl
+from sklearn.isotonic import IsotonicRegression
+
+from cardre.adapters.evidence.reader import EvidenceReader
+from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+from cardre.application.execution.output_publisher import StagingOutputPublisher
+from cardre.domain.artifacts import ArtifactRef
+from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_MODEL_ARTIFACT
+from cardre.domain.step import StepSpec
+from cardre.nodes.contracts import NodeContext, RuntimeMeta
+from cardre.nodes.validate.apply import ApplyModelNode
+
+
+class _NullRepo:
+    def get(self, artifact_id):
+        return None
+
+
+def _staged_to_ref(staged: Any) -> ArtifactRef:
+    return ArtifactRef(
+        artifact_id=staged.provisional_artifact_id,
+        artifact_type=staged.artifact_type,
+        role=staged.role,
+        path=str(staged.staging_path),
+        physical_hash=staged.physical_hash,
+        logical_hash=staged.logical_hash,
+        media_type=staged.media_type,
+        metadata=staged.metadata,
+    )
+
+
+class _ApplyInputs:
+    """Real-IO inputs: model/calibrator/dataframe resolved through the store."""
+
+    def __init__(self, store: FsArtifactStore, refs: list[ArtifactRef]):
+        self._store = store
+        self._reader = EvidenceReader(store, _NullRepo(), _NullRepo())
+        self._refs = {a.artifact_id: a for a in refs}
+
+    def by_role(self, role: str) -> list[Any]:
+        return [a for a in self._refs.values() if a.role == role]
+
+    def first(self, role: str) -> Any | None:
+        arts = self.by_role(role)
+        return arts[0] if arts else None
+
+    def require(self, role: str, node_type: str) -> Any:
+        art = self.first(role)
+        if art is None:
+            raise ValueError(f"{node_type} requires a '{role}' artifact")
+        return art
+
+    def read(self, artifact: Any, kind: EvidenceKind) -> Any:
+        return self._reader.find([artifact], kind)
+
+    def read_bytes(self, artifact: Any) -> bytes:
+        return self._store.read_bytes(artifact)
+
+    def read_dataframe(self, artifact: Any) -> pl.DataFrame:
+        return pl.read_parquet(self._store.resolve_path(artifact))
+
+    def artifact_ref(self, artifact_id: str, *, physical_hash: str | None = None) -> Any | None:
+        return self._refs.get(artifact_id)
+
+    def find_frozen_bundle(self) -> Any | None:
+        return None
+
+    def target_metadata(self) -> Any | None:
+        return None
+
+
+def _context(inputs: Any, outputs: Any) -> NodeContext:
+    spec = StepSpec(
+        step_id="apply-1",
+        node_type="cardre.apply_model",
+        node_version="2",
+        category="apply",
+        params={},
+        params_hash="params-hash",
+        parent_step_ids=[],
+    )
+    return NodeContext(
+        run_id="run-1",
+        plan_version_id="plan-1",
+        step_spec=spec,
+        inputs=inputs,
+        outputs=outputs,
+        params={},
+        runtime=RuntimeMeta("run-1", "plan-1", "apply-1", "cardre.apply_model"),
+    )
+
+
+def _raw_prob(x: float) -> float:
+    # intercept=0, coefficient=1.0
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def test_apply_model_node_applies_runtime_calibration(tmp_path: Path):
+    """A runtime_probability_transform calibration (e.g. isotonic) must be
+    applied to predicted probabilities. The refactored node computed raw
+    sigmoid probabilities and silently dropped the calibration block."""
+    # Real isotonic calibrator: raw probs ~ [0.12, 0.5, 0.88] map to ~[0, 0.5, 1].
+    calibrator = IsotonicRegression(out_of_bounds="clip")
+    calibrator.fit(np.array([0.12, 0.5, 0.88]), np.array([0.0, 0.5, 1.0]))
+
+    buf = io.BytesIO()
+    joblib.dump(calibrator, buf)
+    cal_bytes = buf.getvalue()
+
+    store = FsArtifactStore(tmp_path)
+    pub = StagingOutputPublisher(store)
+    cal_staged = pub.publish_bytes(
+        role="model",
+        kind=EvidenceKind.MODEL_ARTIFACT,
+        data=cal_bytes,
+        media_type="application/octet-stream",
+        logical_hash=__import__("hashlib").sha256(cal_bytes).hexdigest(),
+        metadata={"schema_version": SCHEMA_MODEL_ARTIFACT},
+    )
+
+    model_dict: dict[str, Any] = {
+        "schema_version": SCHEMA_MODEL_ARTIFACT,
+        "model_family": "logistic_regression",
+        "target_column": "target",
+        "target_event_value": "bad",
+        "class_mapping": {"0": "good", "1": "bad"},
+        "probability_column_index": 1,
+        "feature_contract": {"features": ["x"], "transformation_strategy": "raw_numeric"},
+        "model_payload": {"intercept": 0.0, "coefficients": {"x": 1.0}},
+        "training": {"row_count": 3},
+        "calibration": {
+            "method": "isotonic",
+            "application_mode": "runtime_probability_transform",
+            "score_scaling_compatible": False,
+            "cross_validated": False,
+            "calibrator_artifact_id": cal_staged.provisional_artifact_id,
+            "calibrator_format": "joblib",
+        },
+    }
+    model_staged = pub.publish_json(
+        role="model",
+        kind=EvidenceKind.MODEL_ARTIFACT,
+        payload=model_dict,
+        metadata={"schema_version": SCHEMA_MODEL_ARTIFACT},
+    )
+
+    df = pl.DataFrame({"x": [-2.0, 0.0, 2.0]})
+    data_staged = pub.publish_table(
+        role="test",
+        kind=EvidenceKind.SCORED_DATASET,
+        frame=df,
+    )
+
+    for staged in (cal_staged, model_staged, data_staged):
+        store.finalize(staged)
+
+    refs = [_staged_to_ref(model_staged), _staged_to_ref(cal_staged), _staged_to_ref(data_staged)]
+    inputs = _ApplyInputs(store, refs)
+    outputs = StagingOutputPublisher(store)
+
+    ApplyModelNode().run(_context(inputs, outputs))
+
+    # Locate the published test dataset.
+    assert outputs._staged_artifacts, "apply_model published no outputs"
+    scored = next(
+        (a for a in outputs._staged_artifacts if a.role == "test"),
+        None,
+    )
+    assert scored is not None
+    store.finalize(scored)
+    scored_df = pl.read_parquet(store.resolve_path(_staged_to_ref(scored)))
+
+    raw_probs = [_raw_prob(x) for x in [-2.0, 0.0, 2.0]]
+    expected = calibrator.predict(np.array(raw_probs))
+
+    got = scored_df["predicted_bad_probability"].to_numpy()
+    assert np.allclose(got, expected, atol=1e-6), (
+        f"expected calibrated probabilities {expected}, got raw {got}"
+    )
