@@ -38,12 +38,12 @@ class ChampionRepo:
         ).fetchone()
         return None if row is None else dict(row)
 
-    def insert_champion_assignment(self, conn: Any, project_id: str, plan_id: str, scope_type: str, scope_key: str,
+    def insert_champion_assignment(self, project_id: str, plan_id: str, scope_type: str, scope_key: str,
                                    champion_branch_id: str, comparison_id: str, comparison_snapshot_id: str,
                                    comparison_artifact_id: str, selected_plan_version_id: str,
                                    assigned_reason: str, assigned_by: str | None = None) -> str:
         assignment_id = str(uuid.uuid4())
-        conn.execute(
+        self._conn.execute(
             "INSERT INTO champion_assignments (champion_assignment_id, project_id, plan_id, scope_type, scope_key, "
             "champion_branch_id, comparison_id, comparison_snapshot_id, comparison_artifact_id, "
             "selected_plan_version_id, assigned_reason, assigned_by, assigned_at) "
@@ -54,9 +54,20 @@ class ChampionRepo:
         )
         return assignment_id
 
-    def supersede_champion(self, conn: Any, assignment_id: str, superseded_by: str) -> None:
-        conn.execute(
+    def supersede_champion(self, assignment_id: str, superseded_by: str) -> None:
+        self._conn.execute(
             "UPDATE champion_assignments SET superseded_at = ?, superseded_by_assignment_id = ? "
             "WHERE champion_assignment_id = ?",
             (utc_now_iso(), superseded_by, assignment_id),
         )
+
+    def find_active_champion(self, project_id: str, plan_id: str, scope_type: str,
+                             scope_key: str, exclude_assignment_id: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT champion_assignment_id FROM champion_assignments "
+            "WHERE project_id = ? AND plan_id = ? AND scope_type = ? AND scope_key = ? "
+            "AND champion_assignment_id != ? AND superseded_at IS NULL "
+            "ORDER BY assigned_at DESC LIMIT 1",
+            (project_id, plan_id, scope_type, scope_key, exclude_assignment_id),
+        ).fetchone()
+        return None if row is None else row["champion_assignment_id"]

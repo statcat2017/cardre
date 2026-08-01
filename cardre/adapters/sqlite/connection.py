@@ -14,20 +14,33 @@ from cardre.adapters.sqlite.export_repo import ExportRepo
 from cardre.adapters.sqlite.manual_binning_repo import ManualBinningRepo
 from cardre.adapters.sqlite.plan_repo import PlanRepo
 from cardre.adapters.sqlite.project_repo import ProjectRepo
+from cardre.adapters.sqlite.publication_repo import PublicationRepo
 from cardre.adapters.sqlite.report_repo import ReportRepo
 from cardre.adapters.sqlite.run_repo import RunRepo
 from cardre.adapters.sqlite.run_step_repo import RunStepRepo
 from cardre.adapters.sqlite.step_repo import StepRepo
 from cardre.application.ports.project_registry import ProjectRegistryPort
-from cardre.application.ports.unit_of_work import UnitOfWork
+from cardre.application.ports.unit_of_work import (
+    ReadOnlyUnitOfWork,
+    UnitOfWork,
+)
 
 
 class SqliteUnitOfWork:
-    """SQLite-backed UnitOfWork for writes. Owns one connection + one IMMEDIATE transaction."""
+    """SQLite-backed UnitOfWork for writes. Owns one connection + one IMMEDIATE transaction.
+
+    The transaction is begun eagerly in ``__init__`` so that ``commit()`` and
+    ``rollback()`` are always effective. Connections are opened in SQLite
+    autocommit mode; without an eager ``BEGIN``, every repository statement
+    would be durable immediately and ``rollback()`` would be a no-op. Owning
+    the transaction from construction makes the write boundary explicit and
+    atomic for every use case, whether or not it uses ``with``.
+    """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
-        self._begun = False
+        self._begun = True
+        self._conn.execute("BEGIN IMMEDIATE")
 
     @property
     def projects(self) -> ProjectRepo:
@@ -58,6 +71,10 @@ class SqliteUnitOfWork:
         return EvidenceRepo(self._conn)
 
     @property
+    def publications(self) -> PublicationRepo:
+        return PublicationRepo(self._conn)
+
+    @property
     def branches(self) -> BranchRepo:
         return BranchRepo(self._conn)
 
@@ -82,14 +99,16 @@ class SqliteUnitOfWork:
         return ReportRepo(self._conn)
 
     def commit(self) -> None:
-        if self._begun:
-            self._conn.commit()
-            self._begun = False
+        if not self._begun:
+            raise RuntimeError("UnitOfWork has no open transaction to commit")
+        self._conn.commit()
+        self._begun = False
 
     def rollback(self) -> None:
-        if self._begun:
-            self._conn.rollback()
-            self._begun = False
+        if not self._begun:
+            return
+        self._conn.rollback()
+        self._begun = False
 
     def close(self) -> None:
         if self._begun:
@@ -98,8 +117,6 @@ class SqliteUnitOfWork:
         self._conn.close()
 
     def __enter__(self) -> UnitOfWork:
-        self._conn.execute("BEGIN IMMEDIATE")
-        self._begun = True
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -117,7 +134,7 @@ class SqliteReadOnlyUnitOfWork:
 
     Does NOT begin a transaction. Verifies the database file exists before
     connecting. Never commits. Uses read-only URI mode to prevent accidental
-    database creation.
+    database creation. Conforms to the ``ReadOnlyUnitOfWork`` port contract.
     """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -152,6 +169,10 @@ class SqliteReadOnlyUnitOfWork:
         return EvidenceRepo(self._conn)
 
     @property
+    def publications(self) -> PublicationRepo:
+        return PublicationRepo(self._conn)
+
+    @property
     def branches(self) -> BranchRepo:
         return BranchRepo(self._conn)
 
@@ -175,16 +196,10 @@ class SqliteReadOnlyUnitOfWork:
     def reports(self) -> ReportRepo:
         return ReportRepo(self._conn)
 
-    def commit(self) -> None:
-        pass
-
-    def rollback(self) -> None:
-        pass
-
     def close(self) -> None:
         self._conn.close()
 
-    def __enter__(self) -> UnitOfWork:
+    def __enter__(self) -> ReadOnlyUnitOfWork:
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -257,7 +272,7 @@ class SqliteUnitOfWorkFactory:
         conn.isolation_level = None
         return SqliteUnitOfWork(conn)
 
-    def read_only(self, project_id: str) -> UnitOfWork:
+    def read_only(self, project_id: str) -> ReadOnlyUnitOfWork:
         root = self._registry.resolve_root(project_id)
         if root is None:
             from cardre.domain.errors import CardreError
@@ -270,7 +285,7 @@ class SqliteUnitOfWorkFactory:
         conn = self._open_readonly_conn(db_path)
         return SqliteReadOnlyUnitOfWork(conn)
 
-    def for_root_readonly(self, root: Path) -> UnitOfWork:
+    def for_root_readonly(self, root: Path) -> ReadOnlyUnitOfWork:
         db_path = root / "project.sqlite"
         conn = self._open_readonly_conn(db_path)
         return SqliteReadOnlyUnitOfWork(conn)

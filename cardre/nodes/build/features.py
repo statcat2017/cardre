@@ -406,7 +406,7 @@ class WoeTransformTrainNode(NodeType):
     version = "1"
     category = "fit"
     input_roles: list[str] = ["train", "definition", "report"]
-    output_roles: list[str] = ["train"]
+    output_roles: list[str] = ["train", "report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.woe_transform_train",
@@ -422,7 +422,8 @@ class WoeTransformTrainNode(NodeType):
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("train"),
+                ArtifactRoleSpec("train", kinds=(EvidenceKind.WOE_TABLE,), media_types=("application/vnd.apache.parquet",), schema_versions=()),
+                ArtifactRoleSpec("report", kinds=(EvidenceKind.WOE_TRANSFORM_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_WOE_TRANSFORM_EVIDENCE,)),
             ),
         ),
         parameter_schema=None,

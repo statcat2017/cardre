@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def _row_to_run(r: Any) -> Run:
     """Hydrate a ``Run`` from a sqlite3.Row, including persisted read-model
-    fields (run_scope, heartbeat_at, cancel_requested)."""
+    fields (run_scope, heartbeat_at, cancel_requested, worker_generation)."""
     return Run(
         run_id=r["run_id"],
         plan_version_id=r["plan_version_id"],
@@ -26,6 +26,7 @@ def _row_to_run(r: Any) -> Run:
         run_scope=r["run_scope"],
         heartbeat_at=r["heartbeat_at"],
         cancel_requested=bool(r["cancel_requested"]),
+        worker_generation=int(r["worker_generation"] or 0),
     )
 
 
@@ -55,6 +56,40 @@ class RunRepo:
         )
         return run_id
 
+    def create_if_no_active_run(
+        self,
+        plan_version_id: str,
+        run_scope: str = "full_plan",
+        branch_id: str | None = None,
+        force: bool = False,
+        requested_by: str | None = None,
+        request_id: str | None = None,
+    ) -> str | None:
+        """Create a run atomically, returning None if a non-forced submission
+        races an active run.
+
+        The check and insert run inside one transaction (the mutation UoW
+        begins ``BEGIN IMMEDIATE`` eagerly), so two concurrent submissions
+        cannot both observe "no active run" and both insert. The partial
+        unique index on active non-forced runs is a second line of defence.
+        """
+        if not force:
+            row = self._conn.execute(
+                "SELECT run_id FROM runs WHERE plan_version_id = ? "
+                "AND status IN ('created','queued','running') LIMIT 1",
+                (plan_version_id,),
+            ).fetchone()
+            if row is not None:
+                return None
+        return self.create(
+            plan_version_id,
+            run_scope=run_scope,
+            branch_id=branch_id,
+            force=force,
+            requested_by=requested_by,
+            request_id=request_id,
+        )
+
     def get(self, run_id: str) -> Run | None:
         row = self._conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
         if row is None:
@@ -83,6 +118,75 @@ class RunRepo:
                 (to_status.value, run_id) + tuple(s.value for s in expected_from),
             )
         return bool(cursor.rowcount > 0)
+
+    def transition_success(self, run_id: str, worker_generation: int | None = None) -> bool:
+        """Transition to ``succeeded`` guarded by running + no-cancel + lease.
+
+        ``succeeded`` finalization must not win a race with a concurrent
+        cancellation. The UPDATE only fires when the run is still running,
+        cancellation has not been requested, and (when provided) the caller's
+        worker generation still owns the lease. Returns whether the transition
+        happened.
+        """
+        from cardre.domain.diagnostics import utc_now_iso
+        now = utc_now_iso()
+        if worker_generation is None:
+            cursor = self._conn.execute(
+                "UPDATE runs SET status = ?, finished_at = ? "
+                "WHERE run_id = ? AND status = 'running' AND cancel_requested = 0",
+                (RunStatus.SUCCEEDED.value, now, run_id),
+            )
+        else:
+            cursor = self._conn.execute(
+                "UPDATE runs SET status = ?, finished_at = ? "
+                "WHERE run_id = ? AND status = 'running' AND cancel_requested = 0 "
+                "AND worker_generation = ?",
+                (RunStatus.SUCCEEDED.value, now, run_id, worker_generation),
+            )
+        return bool(cursor.rowcount > 0)
+
+    def begin_worker_generation(self, run_id: str) -> int:
+        """Bump and return the worker generation for a run.
+
+        A worker captures the returned generation when it claims the run and
+        must present the same generation to every subsequent lease assertion.
+        A stale-recovery that bumps the generation invalidates the original
+        worker's token, fencing its writes.
+        """
+        self._conn.execute(
+            "UPDATE runs SET worker_generation = worker_generation + 1 WHERE run_id = ?",
+            (run_id,),
+        )
+        row = self._conn.execute(
+            "SELECT worker_generation FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        return int(row["worker_generation"]) if row else 0
+
+    def claim_running_lease(self, run_id: str) -> int:
+        """Atomically transition to running and issue a fresh worker generation."""
+        self.transition(run_id, RunStatus.RUNNING,
+                        expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+        return self.begin_worker_generation(run_id)
+
+    def assert_running_lease(self, run_id: str, generation: int) -> None:
+        """Verify the run is still running, not cancelled, and owned by the
+        caller's worker generation. Must run inside the same transaction that
+        performs the writes it guards, so a stale/cancelled run cannot accept
+        output. Raises ``LeaseLost`` on violation."""
+        from cardre.domain.errors import LeaseLost
+
+        row = self._conn.execute(
+            "SELECT status, cancel_requested, worker_generation FROM runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            raise LeaseLost(run_id, "run not found")
+        if row["status"] != RunStatus.RUNNING.value:
+            raise LeaseLost(run_id, f"run status {row['status']}")
+        if row["cancel_requested"]:
+            raise LeaseLost(run_id, "cancellation requested")
+        if int(row["worker_generation"]) != generation:
+            raise LeaseLost(run_id, "lease ownership lost (worker generation mismatch)")
 
     def heartbeat(self, run_id: str) -> None:
         from cardre.domain.diagnostics import utc_now_iso

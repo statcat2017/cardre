@@ -9,7 +9,6 @@ same scope — all in one UoW.
 from __future__ import annotations
 
 import json
-import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -137,40 +136,24 @@ class AssignChampion:
             # --- Transactional writes ---
 
             now = utc_now_iso()
-            champ_id = str(uuid.uuid4())
             previous_id: str | None = None
-            conn = uow._conn
 
-            conn.execute(
-                "INSERT INTO champion_assignments "
-                "(champion_assignment_id, project_id, plan_id, scope_type, scope_key, "
-                " champion_branch_id, comparison_id, comparison_snapshot_id, comparison_artifact_id, "
-                " selected_plan_version_id, assigned_reason, assigned_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    champ_id, command.project_id, command.plan_id,
-                    command.scope_type, command.scope_key,
-                    command.branch_id, command.comparison_id,
-                    command.comparison_snapshot_id, snap["comparison_artifact_id"],
-                    branch["head_plan_version_id"], command.assigned_reason, now,
-                ),
+            champ_id = uow.champion.insert_champion_assignment(
+                command.project_id, command.plan_id,
+                command.scope_type, command.scope_key,
+                command.branch_id, command.comparison_id,
+                command.comparison_snapshot_id, snap["comparison_artifact_id"],
+                branch["head_plan_version_id"], command.assigned_reason,
             )
 
-            prev = conn.execute(
-                "SELECT champion_assignment_id FROM champion_assignments "
-                "WHERE project_id = ? AND plan_id = ? AND scope_type = ? AND scope_key = ? "
-                "AND champion_assignment_id != ? AND superseded_at IS NULL "
-                "ORDER BY assigned_at DESC LIMIT 1",
-                (command.project_id, command.plan_id, command.scope_type, command.scope_key, champ_id),
-            ).fetchone()
+            previous_id = uow.champion.find_active_champion(
+                command.project_id, command.plan_id,
+                command.scope_type, command.scope_key,
+                exclude_assignment_id=champ_id,
+            )
 
-            if prev is not None:
-                previous_id = prev["champion_assignment_id"]
-                conn.execute(
-                    "UPDATE champion_assignments SET superseded_at = ?, superseded_by_assignment_id = ? "
-                    "WHERE champion_assignment_id = ?",
-                    (now, champ_id, previous_id),
-                )
+            if previous_id is not None:
+                uow.champion.supersede_champion(previous_id, champ_id)
 
             uow.commit()
 

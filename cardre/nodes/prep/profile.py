@@ -5,7 +5,7 @@ from typing import Any
 import polars as pl
 
 from cardre.domain.diagnostics import JsonDict
-from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
 from cardre.domain.evidence.schemas import SCHEMA_PROFILE_SUMMARY
 from cardre.nodes._dataset_quality import quality_warnings as _quality_warnings
 from cardre.nodes.contracts import (
@@ -35,8 +35,8 @@ class ProfileDatasetNode(NodeType):
         version="1",
         category="transform",
         description="Profile dataset columns and detect quality issues",
-        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)),)),
-        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("report", required=True, kinds=("report",)),)),
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)),)),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.PROFILE_SUMMARY,), media_types=("application/json",), schema_versions=(SCHEMA_PROFILE_SUMMARY,)),)),
         parameter_schema=None,
         optional_dependencies=(),
         tier="launch",

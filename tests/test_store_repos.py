@@ -384,7 +384,7 @@ class TestBranchRepo:
                 media_type="application/json", created_at=now,
             ))
             snapshot_id = uow.comparisons.create_snapshot(
-                uow._conn, comparison_id=comp_id, project_id=project_id, plan_id=plan_id,
+                comp_id, project_id=project_id, plan_id=plan_id,
                 comparison_artifact_id="comp-art-1", readiness_json="{}",
             )
             assert snapshot_id is not None
@@ -395,7 +395,7 @@ class TestBranchRepo:
             snapshot = uow.comparisons.get_comparison_snapshot(snapshot_id)
             assert snapshot is not None
 
-            uow.comparisons.add_snapshot_plan_version(uow._conn, snapshot_id, pv_id, branch_id=challenger_id)
+            uow.comparisons.add_snapshot_plan_version(snapshot_id, pv_id, branch_id=challenger_id)
             versions = uow.comparisons.get_snapshot_plan_versions(snapshot_id)
             assert len(versions) == 1
 

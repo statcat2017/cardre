@@ -26,12 +26,14 @@ class ExecuteRun:
         step_runner: Any,
         finalize_run: FinalizeRun,
         artifact_store_factory: Callable[[], Any],
+        heartbeat_interval_seconds: float = 75,
     ) -> None:
         self._uow_factory = uow_factory
         self._node_catalogue = node_catalogue
         self._step_runner = step_runner
         self._finalize_run = finalize_run
         self._artifact_store_factory = artifact_store_factory
+        self._heartbeat_interval_seconds = heartbeat_interval_seconds
 
     def __call__(self, command: ExecuteRunCommand) -> None:
         uow = self._uow_factory()
@@ -81,6 +83,7 @@ class ExecuteRun:
                 if not claimed:
                     uow3.rollback()
                     return
+                worker_generation = uow3.runs.begin_worker_generation(command.run_id)
                 uow3.commit()
             except Exception:
                 uow3.rollback()
@@ -93,6 +96,15 @@ class ExecuteRun:
                 message="Pre-execution validation failed",
             ))
             return
+
+        from cardre.application.execution.heartbeat import HeartbeatWatchdog
+
+        # Lease: renew the heartbeat periodically DURING node execution so a
+        # legitimate long-running node is not terminalized as stale.
+        watchdog = HeartbeatWatchdog(
+            self._uow_factory, command.run_id, self._heartbeat_interval_seconds,
+        )
+        watchdog.start()
 
         step_outputs: dict[str, list[Any]] = {}
         run_step_records: dict[str, RunStep] = {}
@@ -134,16 +146,36 @@ class ExecuteRun:
                 )
 
                 persist_uow = self._uow_factory()
+                artifact_outbox_ids: list[str] = []
                 try:
+                    # Lease fence, atomically inside the persistence transaction:
+                    # BEGIN IMMEDIATE serializes against cancellation and stale
+                    # recovery, and the SELECT below re-reads status/cancel/
+                    # generation under the same lock the writes will use. If a
+                    # terminalization raced between the node finishing and this
+                    # transaction, the assertion fails and nothing is written.
+                    try:
+                        persist_uow.runs.assert_running_lease(command.run_id, worker_generation)
+                    except Exception as exc:
+                        from cardre.domain.errors import LeaseLost
+
+                        if isinstance(exc, LeaseLost):
+                            persist_uow.rollback()
+                            if "cancellation" in str(exc):
+                                self._finalize_run(command.run_id, "cancelled")
+                            return
+                        raise
+
                     artifact_store = self._artifact_store_factory()
                     output_refs: list[ArtifactRef] = []
+                    staged_by_artifact: dict[str, Any] = {}
                     for staged in result.staged_artifacts:
-                        published_path = str(artifact_store.publish(staged))
+                        dest = artifact_store.dest_path(staged)
                         provisional_ref = ArtifactRef(
                             artifact_id=staged.provisional_artifact_id,
                             artifact_type=staged.artifact_type,
                             role=staged.role,
-                            path=published_path,
+                            path=str(dest),
                             physical_hash=staged.physical_hash,
                             logical_hash=staged.logical_hash,
                             media_type=staged.media_type,
@@ -158,6 +190,7 @@ class ExecuteRun:
                                 output_refs.append(provisional_ref)
                         else:
                             output_refs.append(provisional_ref)
+                        staged_by_artifact[canonical_id] = staged
 
                     step_outputs[step.step_id] = output_refs
 
@@ -186,6 +219,18 @@ class ExecuteRun:
                             direction="output",
                             branch_id=run.branch_id if hasattr(run, "branch_id") else None,
                         )
+                        staged = staged_by_artifact.get(art_ref.artifact_id)
+                        if staged is not None:
+                            outbox_id = persist_uow.publications.enqueue_artifact(
+                                run_id=command.run_id,
+                                plan_version_id=pv_id,
+                                run_step_id=run_step.run_step_id,
+                                artifact_id=art_ref.artifact_id,
+                                physical_hash=staged.physical_hash,
+                                storage_key=str(artifact_store.object_path(staged.physical_hash)),
+                                staging_source=str(staged.staging_path),
+                            )
+                            artifact_outbox_ids.append(outbox_id)
                     input_id_set = set(result.input_artifact_ids)
                     for parent_step_id in step.parent_step_ids:
                         for parent_art in step_outputs.get(parent_step_id, []):
@@ -228,17 +273,55 @@ class ExecuteRun:
                 finally:
                     persist_uow.close()
 
+                # The filesystem side of the publication happens only after the
+                # DB mutation committed. On failure here the DB already has the
+                # descriptor + outbox row, so reconciliation can retry; the
+                # staging file is not orphaned into objects/.
+                artifact_store = self._artifact_store_factory()
+                for art_ref in output_refs:
+                    staged = staged_by_artifact.get(art_ref.artifact_id)
+                    if staged is not None:
+                        artifact_store.finalize(staged)
+                if artifact_outbox_ids:
+                    pub_uow = self._uow_factory()
+                    try:
+                        for outbox_id in artifact_outbox_ids:
+                            pub_uow.publications.mark_published(outbox_id)
+                        pub_uow.commit()
+                    except Exception:
+                        pub_uow.rollback()
+                        raise
+                    finally:
+                        pub_uow.close()
+
                 if result.status == RunStepStatus.FAILED:
                     self._finalize_run(command.run_id, "failed")
                     return
 
-            self._finalize_run(command.run_id, "succeeded")
+            # Cancellation can arrive during the final node: re-read the run
+            # immediately before success finalization. If cancelled, the run
+            # must end cancelled, never succeeded.
+            uow_final = self._uow_factory()
+            try:
+                final_check = uow_final.runs.get(command.run_id)
+            finally:
+                uow_final.close()
+            if final_check is not None and getattr(final_check, "cancel_requested", False):
+                self._finalize_run(command.run_id, "cancelled")
+                return
+
+            # Pass the worker generation so success finalization cannot beat a
+            # concurrent cancellation: the terminal transition is conditional on
+            # running + cancel_requested=0 + lease ownership inside its own txn.
+            self._finalize_run(command.run_id, "succeeded", worker_generation=worker_generation)
 
         except Exception as exc:
             self._finalize_run(command.run_id, "failed", diagnostic=FinalizeDiagnostic(
                 code="RUN_EXECUTION_FAILED",
                 message=str(exc),
             ))
+        finally:
+            watchdog.stop()
 
     def _publish_run_summary(
         self,
@@ -334,12 +417,12 @@ class ExecuteRun:
             payload=summary,
             metadata={"schema_version": SCHEMA_RUN_SUMMARY},
         )
-        published_path = artifact_store.publish(staged)
+        dest = artifact_store.dest_path(staged)
         summary_ref = ArtifactRef(
             artifact_id=staged.provisional_artifact_id,
             artifact_type=staged.artifact_type,
             role=staged.role,
-            path=str(published_path),
+            path=str(dest),
             physical_hash=staged.physical_hash,
             logical_hash=staged.logical_hash,
             media_type=staged.media_type,
@@ -348,12 +431,31 @@ class ExecuteRun:
         uow = self._uow_factory()
         try:
             uow.artifacts.register(summary_ref)
+            outbox_id = uow.publications.enqueue_artifact(
+                run_id=command.run_id,
+                plan_version_id=pv_id,
+                run_step_id="",
+                artifact_id=summary_ref.artifact_id,
+                physical_hash=staged.physical_hash,
+                storage_key=str(dest),
+                staging_source=str(staged.staging_path),
+            )
             uow.commit()
         except Exception:
             uow.rollback()
             raise
         finally:
             uow.close()
+        artifact_store.finalize(staged)
+        mark_uow = self._uow_factory()
+        try:
+            mark_uow.publications.mark_published(outbox_id)
+            mark_uow.commit()
+        except Exception:
+            mark_uow.rollback()
+            raise
+        finally:
+            mark_uow.close()
         return summary_ref
 
     @staticmethod

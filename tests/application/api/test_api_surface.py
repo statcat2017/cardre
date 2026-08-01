@@ -25,6 +25,20 @@ def test_health_ok(app_env):
     assert resp.json()["status"] == "ok"
 
 
+def test_lifespan_shutdown_drains_async_dispatcher(app_env):
+    """The FastAPI lifespan invokes the container's async dispatcher shutdown on
+    teardown, so uvicorn shutdown drains outstanding work (P2-2)."""
+    client, container = app_env
+    dispatcher = getattr(container, "async_dispatcher", None)
+    assert dispatcher is not None
+    assert dispatcher._shutdown is False, "precondition: not yet shut down"
+    with client:
+        resp = client.get("/health")
+        assert resp.status_code == 200
+    # The lifespan teardown ran when the client context exited.
+    assert dispatcher._shutdown is True
+
+
 def test_openapi_has_no_project_headers(app_env):
     client, _ = app_env
     spec = client.get("/openapi.json")

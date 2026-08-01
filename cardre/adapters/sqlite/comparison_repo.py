@@ -24,6 +24,16 @@ class ComparisonRepo:
         )
         return comparison_id
 
+    def create_comparison_with_id(self, comparison_id: str, project_id: str, plan_id: str,
+                                  baseline_branch_id: str, comparison_spec_json: str, *,
+                                  created_reason: str | None = None) -> None:
+        self._conn.execute(
+            "INSERT INTO branch_comparisons (comparison_id, project_id, plan_id, baseline_branch_id, "
+            "comparison_spec_json, created_at, created_reason) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (comparison_id, project_id, plan_id, baseline_branch_id,
+             comparison_spec_json, utc_now_iso(), created_reason),
+        )
+
     def get_comparison(self, comparison_id: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT * FROM branch_comparisons WHERE comparison_id = ?", (comparison_id,)
@@ -56,11 +66,11 @@ class ComparisonRepo:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def create_snapshot(self, conn: Any, comparison_id: str, project_id: str, plan_id: str,
+    def create_snapshot(self, comparison_id: str, project_id: str, plan_id: str,
                         comparison_artifact_id: str, readiness_json: str, *,
                         created_reason: str | None = None) -> str:
         snapshot_id = str(uuid.uuid4())
-        conn.execute(
+        self._conn.execute(
             "INSERT INTO branch_comparison_snapshots (comparison_snapshot_id, comparison_id, project_id, "
             "plan_id, comparison_artifact_id, readiness_json, created_at, created_reason) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -69,12 +79,19 @@ class ComparisonRepo:
         )
         return snapshot_id
 
-    def add_snapshot_plan_version(self, conn: Any, comparison_snapshot_id: str,
+    def add_snapshot_plan_version(self, comparison_snapshot_id: str,
                                   plan_version_id: str, branch_id: str | None = None) -> None:
-        conn.execute(
+        self._conn.execute(
             "INSERT INTO comparison_snapshot_plan_versions (comparison_snapshot_id, plan_version_id, branch_id) "
             "VALUES (?, ?, ?)",
             (comparison_snapshot_id, plan_version_id, branch_id),
+        )
+
+    def set_latest_snapshot(self, comparison_id: str, snapshot_id: str, ready: bool = True) -> None:
+        self._conn.execute(
+            "UPDATE branch_comparisons SET latest_snapshot_id = ?, latest_ready = ? "
+            "WHERE comparison_id = ?",
+            (snapshot_id, int(ready), comparison_id),
         )
 
     def get_snapshot_plan_versions(self, comparison_snapshot_id: str) -> list[dict[str, Any]]:

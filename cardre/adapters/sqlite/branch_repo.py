@@ -18,8 +18,8 @@ class BranchRepo:
                       branch_point_step_id: str | None = None,
                       branch_point_canonical_step_id: str | None = None,
                       segment_filter_spec_json: str | None = None,
-                      created_reason: str = "") -> str:
-        branch_id = str(uuid.uuid4())
+                      created_reason: str = "", branch_id: str | None = None) -> str:
+        branch_id = branch_id or str(uuid.uuid4())
         now = utc_now_iso()
         self._conn.execute(
             "INSERT INTO plan_branches (branch_id, project_id, plan_id, name, description, "

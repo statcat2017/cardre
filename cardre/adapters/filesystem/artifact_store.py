@@ -8,7 +8,12 @@ from typing import Any
 import polars as pl
 
 from cardre.application.ports.artifact_store import StagedArtifact
-from cardre.domain.artifacts import json_logical_hash, physical_hash, table_logical_hash
+from cardre.domain.artifacts import (
+    descriptor_id,
+    json_logical_hash,
+    physical_hash,
+    table_logical_hash,
+)
 
 
 class FsArtifactStore:
@@ -33,11 +38,23 @@ class FsArtifactStore:
         staging = self._staging_dir / uuid.uuid4().hex
         staging.write_bytes(data)
         phys = physical_hash(staging)
-        # Content-addressed provisional ID: identical bytes produce the same ID,
-        # so deduplication by physical hash returns this same ID and any
-        # embedded cross-artifact references (e.g. estimator_reference in a
-        # model JSON) remain resolvable across runs.
-        provisional_artifact_id = f"{artifact_type}:{role}:{phys}"
+        # Deterministic descriptor ID encoding the complete semantic identity.
+        # Identical bytes with a different kind/media/schema/logical hash map to
+        # a distinct descriptor, so no second descriptor silently adopts the
+        # first's semantics. Run-provenance metadata (creating_run_id, source
+        # ids) is deliberately excluded from identity.
+        meta = metadata or {}
+        versioned_schema = str(meta.get("schema_version", ""))
+        provisional_artifact_id = descriptor_id(
+            artifact_type=artifact_type,
+            role=role,
+            media_type=media_type,
+            kind=schema_version,
+            schema_version=versioned_schema,
+            logical_hash=logical_hash,
+            physical_hash=phys,
+            metadata=meta,
+        )
         return StagedArtifact(
             staging_path=staging,
             provisional_artifact_id=provisional_artifact_id,
@@ -47,7 +64,7 @@ class FsArtifactStore:
             schema_version=schema_version,
             role=role,
             artifact_type=artifact_type,
-            metadata=metadata or {},
+            metadata=meta,
         )
 
     def stage_json(self, role: str, kind: str, payload: dict[str, Any],
@@ -74,9 +91,57 @@ class FsArtifactStore:
                            kind.split(".")[-1] if "." in kind else kind, metadata)
 
     def publish(self, staged: StagedArtifact) -> Path:
-        dest = self._root / "objects" / staged.physical_hash[:2] / staged.physical_hash
+        """Publish a staged artifact to its content-addressed object path.
+
+        Moves the file out of staging immediately. Callers that need the
+        durable publication protocol (DB commit before the file leaves
+        staging) should use :meth:`dest_path` + :meth:`finalize` instead.
+        """
+        dest = self.dest_path(staged)
         dest.parent.mkdir(parents=True, exist_ok=True)
         staged.staging_path.replace(dest)
+        return dest
+
+    def dest_path(self, staged: StagedArtifact) -> Path:
+        """Compute the content-addressed object path without moving the file."""
+        return self._root / "objects" / staged.physical_hash[:2] / staged.physical_hash
+
+    def object_path(self, physical_hash: str) -> Path:
+        """Compute the object path for a physical hash (idempotent with publish)."""
+        return self._root / "objects" / physical_hash[:2] / physical_hash
+
+    def finalize(self, staged: StagedArtifact) -> Path:
+        """Move a staged file to its object path after the DB mutation is durable.
+
+        Idempotent: if the object already exists (duplicate bytes), the
+        staging file is discarded and the existing object is kept.
+        """
+        dest = self.dest_path(staged)
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            staged.staging_path.replace(dest)
+        elif staged.staging_path.exists():
+            staged.staging_path.unlink()
+        return dest
+
+    def finalize_staged_file(self, staging_source: str, physical_hash: str) -> Path:
+        """Finalize a staged file described by an outbox row (reconciliation).
+
+        Idempotent with :meth:`finalize`: moves the staging file to its
+        content-addressed object path, or verifies the object already exists.
+        """
+        dest = self.object_path(physical_hash)
+        if dest.exists():
+            if staging_source and Path(staging_source).exists():
+                Path(staging_source).unlink()
+            return dest
+        if not staging_source:
+            raise FileNotFoundError(f"object {dest} missing and no staging source recorded")
+        source = Path(staging_source)
+        if not source.exists():
+            raise FileNotFoundError(f"staged file {staging_source} missing; cannot finalize object {dest}")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        source.replace(dest)
         return dest
 
     def read_bytes(self, artifact: object) -> bytes:

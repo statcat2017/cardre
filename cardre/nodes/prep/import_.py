@@ -43,7 +43,7 @@ class ImportTabularDatasetNode(NodeType):
         category="transform",
         description="Import tabular dataset from file",
         input_contract=ArtifactContract(),
-        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)),)),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(EvidenceKind.MODELLING_METADATA,), media_types=("application/vnd.apache.parquet",), schema_versions=()),)),
         parameter_schema=None,
         optional_dependencies=(),
         tier="launch",

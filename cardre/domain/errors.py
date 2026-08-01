@@ -175,6 +175,22 @@ class RunNotRunningError(CardreError):
     status_code = 409
 
 
+class LeaseLost(CardreError):
+    """Raised when a worker's lease is no longer valid (stale recovery,
+    cancellation, or a replacement worker took over)."""
+
+    code = "RUN_LEASE_LOST"
+    status_code = 409
+
+    def __init__(self, run_id: str, reason: str) -> None:
+        super().__init__(
+            f"Run {run_id!r} lease lost: {reason}",
+            code=self.code,
+            context={"run_id": run_id, "reason": reason},
+            status_code=self.status_code,
+        )
+
+
 class RunPlanVersionMismatchError(CardreError):
     """Raised when a run's plan version does not match the expected one."""
     code = "RUN_PLAN_VERSION_MISMATCH"

@@ -53,6 +53,84 @@ class EvidenceKind(Enum):
     SCORING_EXPORT_SQL = "scoring_export_sql"
 
 
+class RoleKind(Enum):
+    """Typed semantic role vocabulary for node contracts.
+
+    A ``RoleKind`` is a stable, machine-checkable name for the set of
+    ``EvidenceKind`` values that may legitimately flow through a role in the
+    scorecard pipeline. Contracts declare ``RoleKind`` (or a concrete
+    ``EvidenceKind``) in ``ArtifactRoleSpec.kinds``; the output-contract
+    validator expands the role kind to its concrete evidence kinds, so a node
+    emitting an out-of-set kind fails before publication. Loose string labels
+    are no longer valid contract kinds.
+    """
+
+    DATASET = ("dataset", (
+        EvidenceKind.MODELLING_METADATA,
+        EvidenceKind.SPLIT_SUMMARY,
+        EvidenceKind.WOE_TABLE,
+        EvidenceKind.WOE_TRANSFORM_EVIDENCE,
+        EvidenceKind.SCORED_DATASET,
+        EvidenceKind.RESAMPLING_EVIDENCE,
+    ))
+    DEFINITION = ("definition", (
+        EvidenceKind.MODELLING_METADATA,
+        EvidenceKind.SAMPLE_DEFINITION,
+        EvidenceKind.BIN_DEFINITION,
+        EvidenceKind.SELECTION_DEFINITION,
+        EvidenceKind.REJECT_POPULATION_CONFIG,
+    ))
+    REPORT = ("report", (
+        EvidenceKind.MODELLING_METADATA,
+        EvidenceKind.SPLIT_SUMMARY,
+        EvidenceKind.PROFILE_SUMMARY,
+        EvidenceKind.EXCLUSION_SUMMARY,
+        EvidenceKind.REJECT_INFERENCE_RESULT,
+        EvidenceKind.WOE_TABLE,
+        EvidenceKind.WOE_IV_EVIDENCE,
+        EvidenceKind.WOE_TRANSFORM_EVIDENCE,
+        EvidenceKind.IV_TABLE,
+        EvidenceKind.VARIABLE_CLUSTERING,
+        EvidenceKind.MODEL_ARTIFACT,
+        EvidenceKind.SCORE_SCALING,
+        EvidenceKind.VALIDATION_METRICS,
+        EvidenceKind.VALIDATION_EVIDENCE,
+        EvidenceKind.CUTOFF_ANALYSIS,
+        EvidenceKind.SCORED_DATASET,
+        EvidenceKind.FROZEN_SCORECARD_BUNDLE,
+        EvidenceKind.APPLY_WOE_EVIDENCE,
+        EvidenceKind.APPLY_MODEL_EVIDENCE,
+        EvidenceKind.REPORT_BUNDLE,
+        EvidenceKind.FEATURE_SELECTION_EVIDENCE,
+        EvidenceKind.RESAMPLING_EVIDENCE,
+        EvidenceKind.EXPLAINABILITY_REPORT,
+        EvidenceKind.FAIRNESS_REPORT,
+        EvidenceKind.PROXY_RISK_REPORT,
+        EvidenceKind.CALIBRATION_REPORT,
+        EvidenceKind.SCORE_TABLE,
+        EvidenceKind.COEFFICIENT_SIGN_DIAGNOSTICS,
+        EvidenceKind.SEPARATION_DIAGNOSTICS,
+        EvidenceKind.VIF_DIAGNOSTICS,
+        EvidenceKind.CALIBRATION_DIAGNOSTICS,
+        EvidenceKind.SCORING_EXPORT_PYTHON,
+        EvidenceKind.SCORING_EXPORT_SQL,
+    ))
+    RUN_SUMMARY = ("run_summary", (EvidenceKind.RUN_SUMMARY,))
+    TECHNICAL_MANIFEST_INDEX = (
+        "technical_manifest_index",
+        (EvidenceKind.TECHNICAL_MANIFEST_INDEX,),
+    )
+
+    def __init__(self, label: str, kinds: tuple[EvidenceKind, ...]) -> None:
+        self.label = label
+        self.kinds = kinds
+
+
+def expand_role_kind(role_kind: RoleKind) -> tuple[EvidenceKind, ...]:
+    """Return the concrete evidence kinds for a role-kind token."""
+    return role_kind.kinds
+
+
 class EvidenceError(Exception):
     """Base for evidence-module errors."""
 

@@ -13,6 +13,7 @@ class RunDispatcherPort(Protocol):
 
 class RunRequest:
     """Request to execute a run."""
-    def __init__(self, run_id: str, plan_version_id: str) -> None:
+    def __init__(self, run_id: str, plan_version_id: str, project_id: str | None = None) -> None:
         self.run_id = run_id
         self.plan_version_id = plan_version_id
+        self.project_id = project_id

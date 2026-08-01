@@ -25,7 +25,7 @@ async def get_step_evidence_staleness(
     )
 
     def factory():
-        return container.uow_factory.for_project(project_id)
+        return container.uow_factory.read_only(project_id)
 
     uc = ExplainStaleness(factory)
     result = uc(ExplainStalenessCommand(

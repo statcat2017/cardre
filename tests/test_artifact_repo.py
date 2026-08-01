@@ -24,7 +24,9 @@ class TestArtifactRepository:
             missing = uow.artifacts.get("nonexistent")
             assert missing is None
 
-    def test_register_dedups_by_physical_hash(self, provisioned_project):
+    def test_register_same_bytes_different_role_creates_two_descriptors(self, provisioned_project):
+        """Two descriptors with identical bytes but different role/type must be
+        kept as separate descriptors referencing one shared blob (finding 3)."""
         project_id, uow_factory, _, _ = provisioned_project
         with uow_factory.for_project(project_id) as uow:
             ref1 = ArtifactRef(
@@ -37,7 +39,35 @@ class TestArtifactRepository:
             )
             first = uow.artifacts.register(ref1)
             second = uow.artifacts.register(ref2)
-            assert second == first == "a1"
+            # Different role/type => distinct descriptors, one shared blob.
+            assert first == "a1"
+            assert second == "a2"
+            assert uow.artifacts.get("a1") is not None
+            assert uow.artifacts.get("a2") is not None
+            blob = uow.artifacts.get_blob("ph-shared")
+            assert blob is not None
+            assert blob["physical_hash"] == "ph-shared"
+
+    def test_register_identical_descriptor_is_idempotent(self, provisioned_project):
+        """An exact duplicate descriptor (same semantic identity) returns the
+        same id and does not create a second descriptor or blob."""
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            ref = ArtifactRef(
+                artifact_id="a1", artifact_type="t1", role="r1", path="/p1",
+                physical_hash="ph-shared", logical_hash="lh1", created_at=utc_now_iso(),
+            )
+            first = uow.artifacts.register(ref)
+            second = uow.artifacts.register(ref)
+            assert first == second == "a1"
+            rows = uow._conn.execute(
+                "SELECT artifact_id FROM artifacts WHERE physical_hash = ?", ("ph-shared",)
+            ).fetchall()
+            assert len(rows) == 1
+            blobs = uow._conn.execute(
+                "SELECT physical_hash FROM blobs WHERE physical_hash = ?", ("ph-shared",)
+            ).fetchall()
+            assert len(blobs) == 1
 
     def test_list_for_project(self, provisioned_project):
         project_id, uow_factory, _, _ = provisioned_project

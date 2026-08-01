@@ -34,3 +34,6 @@ package-lock.json
 # Generated knowledge graph artifacts
 /graphify-out/
 .warden/
+
+# Thermonuclear review reports — generated working artifacts, centrepiece of the fix sprint
+/docs/architecture-rewrite/thermonuclear-review-*.html

@@ -278,12 +278,17 @@ def test_legacy_uuid_estimator_embedded_reference_resolves(tmp_path) -> None:
     second_run = _run_plan(container, uow_factory, project_id, pv_id, "second")
     estimator_ref = _assert_embedded_reference_resolves(uow_factory, project_id, second_run)
 
-    # The canonical persisted artifact is the legacy UUID, not the embedded ID.
+    # The embedded content-addressed ID now resolves to its own descriptor
+    # (finding 3: descriptors are separated from blobs), and the legacy UUID
+    # descriptor also exists referencing the same shared blob.
     with uow_factory.read_only(project_id) as uow:
         legacy = uow.artifacts.get(legacy_id)
         by_embedded = uow.artifacts.get(estimator_ref["artifact_id"])
+        blob = uow.artifacts.get_blob(estimator_ref["physical_hash"])
     assert legacy is not None
     assert legacy.physical_hash == estimator_ref["physical_hash"]
-    # The embedded ID itself does not exist as a row (legacy canonical differs),
-    # but physical-hash resolution found the canonical artifact above.
-    assert by_embedded is None
+    assert by_embedded is not None, (
+        "The embedded content-addressed ID must resolve to its own descriptor"
+    )
+    assert by_embedded.physical_hash == estimator_ref["physical_hash"]
+    assert blob is not None, "one shared blob must back both descriptors"

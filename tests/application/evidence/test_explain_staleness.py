@@ -105,7 +105,7 @@ def _seed_run_with_evidence(uow, project_id):
 
 def _use_case(uow_factory, project_id):
     def factory():
-        return uow_factory.for_project(project_id)
+        return uow_factory.read_only(project_id)
     return ExplainStaleness(factory)
 
 

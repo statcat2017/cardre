@@ -70,29 +70,27 @@ class SubmitRun:
 
         self._sweep_stale()
 
-        uow2 = self._uow_factory()
-        try:
-            existing = uow2.runs.list_for_plan_version(command.plan_version_id)
-        finally:
-            uow2.close()
-
-        active_statuses = {"created", "queued", "running"}
-        for run in existing:
-            if run.status in active_statuses and not command.force:
-                from cardre.domain.errors import CardreError
-                raise CardreError(
-                    f"Plan version {command.plan_version_id!r} already has "
-                    f"a concurrent run in status {run.status}"
-                )
-
+        # Atomic concurrent-run guard: check + insert happen in one BEGIN
+        # IMMEDIATE transaction, so two concurrent submissions cannot both
+        # observe "no active run" and both create one.
         uow3 = self._uow_factory()
         try:
-            run_id = uow3.runs.create(
+            run_id = uow3.runs.create_if_no_active_run(
                 command.plan_version_id,
                 run_scope=command.run_scope,
                 branch_id=command.branch_id,
                 force=command.force,
             )
+            if run_id is None:
+                from cardre.domain.errors import CardreError
+
+                raise CardreError(
+                    f"Plan version {command.plan_version_id!r} already has "
+                    "a concurrent run",
+                    code="CONCURRENT_RUN",
+                    context={"plan_version_id": command.plan_version_id},
+                    status_code=409,
+                )
             uow3.commit()
         except Exception:
             uow3.rollback()
@@ -105,7 +103,11 @@ class SubmitRun:
             self._execute_run(ExecuteRunCommand(run_id=run_id))
         else:
             try:
-                self._dispatcher.dispatch(RunRequest(run_id=run_id, plan_version_id=command.plan_version_id))
+                self._dispatcher.dispatch(RunRequest(
+                    run_id=run_id,
+                    plan_version_id=command.plan_version_id,
+                    project_id=self._project_id,
+                ))
             except Exception:
                 from cardre.application.runs.finalize_run import FinalizeDiagnostic
                 self._finalize_run(run_id, "failed", diagnostic=FinalizeDiagnostic(

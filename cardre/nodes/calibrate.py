@@ -26,7 +26,7 @@ from sklearn.model_selection import StratifiedKFold
 
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import JsonDict
-from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
 from cardre.domain.evidence.schemas import SCHEMA_CALIBRATION_REPORT, SCHEMA_MODEL_ARTIFACT
 from cardre.nodes.contracts import (
     ArtifactContract,
@@ -186,17 +186,17 @@ class CalibrateProbabilitiesNode(NodeType):
         description=description,
         input_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("train", required=False, kinds=("dataset",)),
-                ArtifactRoleSpec("test", required=False, kinds=("dataset",)),
-                ArtifactRoleSpec("oot", required=False, kinds=("dataset",)),
-                ArtifactRoleSpec("definition", required=False, kinds=("definition",)),
+                ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)),
+                ArtifactRoleSpec("test", required=False, kinds=(RoleKind.DATASET,)),
+                ArtifactRoleSpec("oot", required=False, kinds=(RoleKind.DATASET,)),
+                ArtifactRoleSpec("definition", required=False, kinds=(RoleKind.DEFINITION,)),
                 ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
             ),
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,)),
-                ArtifactRoleSpec("report", kinds=(EvidenceKind.CALIBRATION_REPORT,)),
+                ArtifactRoleSpec("model", kinds=(EvidenceKind.MODEL_ARTIFACT,), media_types=("application/octet-stream", "application/json"), schema_versions=(SCHEMA_MODEL_ARTIFACT,)),
+                ArtifactRoleSpec("report", kinds=(EvidenceKind.CALIBRATION_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_CALIBRATION_REPORT,)),
             ),
         ),
         parameter_schema=None,

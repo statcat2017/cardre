@@ -11,7 +11,7 @@ import numpy as np
 import polars as pl
 from polars.exceptions import ComputeError
 
-from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
 from cardre.domain.evidence.schemas import (
     SCHEMA_FAIRNESS_REPORT,
     SCHEMA_PROXY_RISK_REPORT,
@@ -50,15 +50,15 @@ class FairnessReportNode(NodeType):
         description="Compute group fairness metrics for scored datasets",
         input_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("train", required=False, kinds=("dataset",)),
-                ArtifactRoleSpec("test", required=False, kinds=("dataset",)),
-                ArtifactRoleSpec("oot", required=False, kinds=("dataset",)),
+                ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)),
+                ArtifactRoleSpec("test", required=False, kinds=(RoleKind.DATASET,)),
+                ArtifactRoleSpec("oot", required=False, kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec("definition", required=False, kinds=(EvidenceKind.MODELLING_METADATA,)),
                 ArtifactRoleSpec("model", required=False, kinds=(EvidenceKind.MODEL_ARTIFACT,)),
             ),
         ),
         output_contract=ArtifactContract(
-            roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.FAIRNESS_REPORT,)),),
+            roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.FAIRNESS_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_FAIRNESS_REPORT,)),),
         ),
         parameter_schema=None,
     )
@@ -304,13 +304,13 @@ class ProxyRiskReportNode(NodeType):
         description="Assess model features for sensitive-variable proxy risk",
         input_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("train", required=False, kinds=("dataset",)),
+                ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec("model", required=False, kinds=(EvidenceKind.MODEL_ARTIFACT,)),
                 ArtifactRoleSpec("definition", required=False, kinds=(EvidenceKind.MODELLING_METADATA,)),
             ),
         ),
         output_contract=ArtifactContract(
-            roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.PROXY_RISK_REPORT,)),),
+            roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.PROXY_RISK_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_PROXY_RISK_REPORT,)),),
         ),
         parameter_schema=None,
     )
@@ -502,12 +502,12 @@ class AlternativeDataManifestNode(NodeType):
         description="Record alternative-data provenance, consent, and coverage",
         input_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("train", required=False, kinds=("dataset",)),
+                ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)),
                 ArtifactRoleSpec("definition", required=False, kinds=(EvidenceKind.MODELLING_METADATA,)),
             ),
         ),
         output_contract=ArtifactContract(
-            roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.REPORT_BUNDLE,)),),
+            roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.REPORT_BUNDLE,), media_types=("application/json",), schema_versions=()),),
         ),
         parameter_schema=None,
     )

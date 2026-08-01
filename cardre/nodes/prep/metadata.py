@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
 from cardre.domain.evidence.schemas import SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION
 from cardre.nodes.contracts import (
     ArtifactContract,
@@ -26,8 +26,8 @@ class DefineModellingMetadataNode(NodeType):
         version="1",
         category="transform",
         description="Define modelling metadata including target specification",
-        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)),)),
-        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("definition", required=True, kinds=("definition",)),)),
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)),)),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("definition", required=True, kinds=(EvidenceKind.MODELLING_METADATA, EvidenceKind.SAMPLE_DEFINITION), media_types=("application/json",), schema_versions=(SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION)),)),
         parameter_schema=None,
         optional_dependencies=(),
         tier="launch",
@@ -132,8 +132,8 @@ class DevelopmentSampleDefinitionNode(NodeType):
         version="1",
         category="transform",
         description="Define development sample population and weighting",
-        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)), ArtifactRoleSpec("train", required=False, kinds=("dataset",)), ArtifactRoleSpec("definition", required=False, kinds=("definition",)))),
-        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("definition", required=True, kinds=("definition",)),)),
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("definition", required=False, kinds=(RoleKind.DEFINITION,)))),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("definition", required=True, kinds=(EvidenceKind.MODELLING_METADATA, EvidenceKind.SAMPLE_DEFINITION), media_types=("application/json",), schema_versions=(SCHEMA_MODELLING_METADATA, SCHEMA_SAMPLE_DEFINITION)),)),
         parameter_schema=None,
         optional_dependencies=(),
         tier="launch",

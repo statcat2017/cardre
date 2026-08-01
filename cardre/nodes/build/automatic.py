@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from cardre.domain.binning.definition import SCHEMA_BIN_DEFINITION
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.nodes.build._automatic_params import (
     automatic_binning_parameter_schema,
@@ -40,7 +41,7 @@ class AutomaticBinningNode(NodeType):
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("definition", kinds=(EvidenceKind.BIN_DEFINITION,)),
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.BIN_DEFINITION,), media_types=("application/json",), schema_versions=(SCHEMA_BIN_DEFINITION,)),
                 ArtifactRoleSpec("report", required=False),
             ),
         ),

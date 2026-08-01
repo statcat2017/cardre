@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
-from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.kinds import EvidenceKind, RoleKind
 from cardre.domain.evidence.schemas import SCHEMA_SPLIT_SUMMARY
 from cardre.nodes.contracts import (
     ArtifactContract,
@@ -33,8 +33,8 @@ class ValidateBinaryTargetNode(NodeType):
         version="1",
         category="transform",
         description="Validate binary target column constraints",
-        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)),)),
-        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("report", required=True, kinds=("report",)),)),
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)),)),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.SPLIT_SUMMARY,), media_types=("application/json",), schema_versions=(SCHEMA_SPLIT_SUMMARY,)),)),
         parameter_schema=None,
         optional_dependencies=(),
         tier="launch",
@@ -121,7 +121,7 @@ class ValidateBinaryTargetNode(NodeType):
             role="report",
             kind=EvidenceKind.SPLIT_SUMMARY,
             payload=report,
-            metadata={"source_artifact_id": getattr(input_artifact, "artifact_id", "")},
+            metadata={"source_artifact_id": getattr(input_artifact, "artifact_id", ""), "schema_version": SCHEMA_SPLIT_SUMMARY},
         )
 
         context.outputs.add_metric("is_binary", report["is_binary"])
@@ -133,15 +133,15 @@ class SplitTrainTestOotNode(NodeType):
     version = "2"
     category = "transform"
     input_roles: list[str] = ["input", "definition"]
-    output_roles: list[str] = ["train", "test", "oot"]
+    output_roles: list[str] = ["train", "test", "oot", "report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.split_train_test_oot",
         version="2",
         category="transform",
         description="Split dataset into train/test/oot partitions",
-        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)), ArtifactRoleSpec("definition", required=False, kinds=("definition",)))),
-        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=("dataset",)), ArtifactRoleSpec("test", required=True, kinds=("dataset",)), ArtifactRoleSpec("oot", required=True, kinds=("dataset",)))),
+        input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("definition", required=False, kinds=(RoleKind.DEFINITION,)))),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=(EvidenceKind.MODELLING_METADATA,), media_types=("application/vnd.apache.parquet",), schema_versions=()), ArtifactRoleSpec("test", required=True, kinds=(EvidenceKind.MODELLING_METADATA,), media_types=("application/vnd.apache.parquet",), schema_versions=()), ArtifactRoleSpec("oot", required=True, kinds=(EvidenceKind.MODELLING_METADATA,), media_types=("application/vnd.apache.parquet",), schema_versions=()), ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.SPLIT_SUMMARY,), media_types=("application/json",), schema_versions=(SCHEMA_SPLIT_SUMMARY,)))),
         parameter_schema=None,
         optional_dependencies=(),
         tier="launch",

@@ -45,7 +45,7 @@ class VariableSelectionNode(NodeType):
         ),
         output_contract=ArtifactContract(
             roles=(
-                ArtifactRoleSpec("definition", kinds=(EvidenceKind.SELECTION_DEFINITION,)),
+                ArtifactRoleSpec("definition", kinds=(EvidenceKind.SELECTION_DEFINITION,), media_types=("application/json",), schema_versions=(SCHEMA_SELECTION_DEFINITION,)),
             ),
         ),
         parameter_schema=None,

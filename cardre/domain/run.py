@@ -89,6 +89,7 @@ class Run:
     run_scope: str = "full_plan"
     heartbeat_at: str | None = None
     cancel_requested: bool = False
+    worker_generation: int = 0
     metadata: JsonDict = field(default_factory=dict)
 
     def transition_to(self, new_status: str) -> Run:
@@ -108,6 +109,7 @@ class Run:
             run_scope=self.run_scope,
             heartbeat_at=self.heartbeat_at,
             cancel_requested=self.cancel_requested,
+            worker_generation=self.worker_generation,
             metadata=copy.deepcopy(self.metadata),
         )
 
