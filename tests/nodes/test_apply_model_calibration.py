@@ -25,6 +25,14 @@ class _NullRepo:
         return None
 
 
+class _StubArtifactRepo:
+    def __init__(self, refs: list[ArtifactRef]):
+        self._refs = {r.artifact_id: r for r in refs}
+
+    def get(self, artifact_id):
+        return self._refs.get(artifact_id)
+
+
 def _staged_to_ref(staged: Any) -> ArtifactRef:
     return ArtifactRef(
         artifact_id=staged.provisional_artifact_id,
@@ -229,4 +237,74 @@ def test_apply_model_partial_inputs_pass_input_contract(tmp_path: Path):
         [_staged_to_ref(model_staged), _staged_to_ref(data_staged)],
         node_type="cardre.apply_model",
         step_id="apply-1",
+    )
+
+
+def test_apply_model_partial_inputs_through_step_runner(tmp_path: Path):
+    """A real StepRunner run of apply_model with only model+test must succeed —
+    input AND output contract validation both pass, emitting test + report."""
+    from cardre.application.execution.step_runner import StepRunner
+    from cardre.bootstrap.node_catalogue import build_default_catalogue
+    from cardre.bootstrap.settings import Settings
+    from cardre.domain.run import RunStepStatus
+
+    store = FsArtifactStore(tmp_path)
+    pub = StagingOutputPublisher(store)
+
+    model_staged = pub.publish_json(
+        role="model",
+        kind=EvidenceKind.MODEL_ARTIFACT,
+        payload={
+            "schema_version": SCHEMA_MODEL_ARTIFACT,
+            "model_family": "logistic_regression",
+            "target_column": "target",
+            "target_event_value": "bad",
+            "class_mapping": {"0": "good", "1": "bad"},
+            "probability_column_index": 1,
+            "feature_contract": {"features": ["x"], "transformation_strategy": "raw_numeric"},
+            "model_payload": {"intercept": 0.0, "coefficients": {"x": 1.0}},
+            "training": {"row_count": 3},
+        },
+        metadata={"schema_version": SCHEMA_MODEL_ARTIFACT},
+    )
+    test_staged = pub.publish_table(
+        role="test",
+        kind=EvidenceKind.SCORED_DATASET,
+        frame=pl.DataFrame({"x": [-2.0, 0.0, 2.0]}),
+    )
+    for staged in (model_staged, test_staged):
+        store.finalize(staged)
+
+    model_ref = _staged_to_ref(model_staged)
+    test_ref = _staged_to_ref(test_staged)
+    reader = EvidenceReader(store, _StubArtifactRepo([model_ref, test_ref]), _NullRepo())
+
+    catalogue = build_default_catalogue(Settings(launch_mode=True))
+    runner = StepRunner(
+        catalogue,
+        lambda: FsArtifactStore(tmp_path),
+        lambda: reader,
+    )
+
+    spec = StepSpec(
+        step_id="apply-1",
+        node_type="cardre.apply_model",
+        node_version="2",
+        category="apply",
+        params={},
+        params_hash="params-hash",
+        parent_step_ids=["parent-1"],
+    )
+    result = runner.run_step(
+        "plan-1", "run-1", spec,
+        {"parent-1": [model_ref, test_ref]},
+        {},
+    )
+
+    assert result.status == RunStepStatus.SUCCEEDED, (
+        f"apply_model step must succeed with model+test only: {result.errors}"
+    )
+    produced = {s.role for s in result.staged_artifacts}
+    assert produced == {"test", "report"}, (
+        f"expected test+report outputs, got {sorted(produced)}"
     )

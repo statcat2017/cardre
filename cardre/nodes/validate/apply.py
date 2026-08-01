@@ -495,11 +495,13 @@ __definition__ = NodeDefinition(
         ),
     ),
     output_contract=ArtifactContract(
-        roles=tuple(
-            ArtifactRoleSpec(r, required=True)
-            if r != "report"
-            else ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_WOE_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_WOE_EVIDENCE,))
-            for r in ApplyWoeMappingNode.output_roles
+        roles=(
+            # A partial apply (e.g. only test) emits only that data role plus
+            # the evidence report; the data output roles must be optional.
+            ArtifactRoleSpec("train", required=False),
+            ArtifactRoleSpec("test", required=False),
+            ArtifactRoleSpec("oot", required=False),
+            ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_WOE_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_WOE_EVIDENCE,)),
         ),
     ),
     parameter_schema=None,
@@ -525,14 +527,20 @@ __definition_apply_model = NodeDefinition(
         ),
     ),
     output_contract=ArtifactContract(
-        roles=tuple(
-            ArtifactRoleSpec(r, required=True)
-            if r != "report"
-            else ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_MODEL_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_MODEL_EVIDENCE,))
-            for r in ApplyModelNode.output_roles
+        roles=(
+            ArtifactRoleSpec("train", required=False),
+            ArtifactRoleSpec("test", required=False),
+            ArtifactRoleSpec("oot", required=False),
+            ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_MODEL_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_MODEL_EVIDENCE,)),
         ),
     ),
     parameter_schema=None,
     optional_dependencies=(),
     tier="launch",
 )
+
+# Bind the typed contracts to their classes so StepRunner (which reads
+# ``node.__definition__``) enforces them instead of falling back to the legacy
+# role lists. The definitions are module-level to keep this file readable.
+ApplyWoeMappingNode.__definition__ = __definition__
+ApplyModelNode.__definition__ = __definition_apply_model
