@@ -21,7 +21,7 @@ class ApplyExclusionsNode(NodeType):
     version = "1"
     category = "transform"
     input_roles: list[str] = ["input", "train", "definition"]
-    output_roles: list[str] = ["input", "train"]
+    output_roles: list[str] = ["input", "train", "report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.apply_exclusions",
@@ -29,7 +29,7 @@ class ApplyExclusionsNode(NodeType):
         category="transform",
         description="Apply exclusion rules to filter rows",
         input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)), ArtifactRoleSpec("train", required=False, kinds=("dataset",)), ArtifactRoleSpec("definition", required=False, kinds=("definition",)))),
-        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)), ArtifactRoleSpec("train", required=False, kinds=("dataset",)))),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)), ArtifactRoleSpec("train", required=False, kinds=("dataset",)), ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.EXCLUSION_SUMMARY,)))),
         parameter_schema=None,
         optional_dependencies=(),
         tier="launch",
@@ -129,7 +129,7 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
     version = "1"
     category = "apply"
     input_roles: list[str] = ["train", "test", "oot"]
-    output_roles: list[str] = ["train", "test", "oot"]
+    output_roles: list[str] = ["train", "test", "oot", "report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.explicit_missing_outlier_treatment",
@@ -137,7 +137,7 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
         category="apply",
         description="Apply explicit missing value imputation and outlier capping/floating",
         input_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=("dataset",)), ArtifactRoleSpec("test", required=False, kinds=("dataset",)), ArtifactRoleSpec("oot", required=False, kinds=("dataset",)))),
-        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=("dataset",)), ArtifactRoleSpec("test", required=False, kinds=("dataset",)), ArtifactRoleSpec("oot", required=False, kinds=("dataset",)))),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=("dataset",)), ArtifactRoleSpec("test", required=False, kinds=("dataset",)), ArtifactRoleSpec("oot", required=False, kinds=("dataset",)), ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.EXCLUSION_SUMMARY,)))),
         parameter_schema=None,
         optional_dependencies=(),
         tier="launch",

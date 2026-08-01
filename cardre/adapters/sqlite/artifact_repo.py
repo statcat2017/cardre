@@ -14,12 +14,27 @@ class ArtifactRepo:
         self._conn = conn
 
     def register(self, artifact: ArtifactRef) -> str:
+        """Register an artifact descriptor (and its underlying blob).
+
+        Byte storage and semantic identity are modelled separately. The blob
+        row is keyed by ``physical_hash`` and inserted once (INSERT OR IGNORE);
+        multiple descriptors may reference the same blob. A descriptor is
+        deduplicated only by full semantic identity — same bytes with a
+        different role/type/schema create a *new* descriptor, so a second
+        descriptor never silently adopts the first's type/role/schema.
+        """
+        from cardre.domain.diagnostics import utc_now_iso
+        now = utc_now_iso()
+        self._conn.execute(
+            "INSERT OR IGNORE INTO blobs (physical_hash, storage_key, media_type, size_bytes, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (artifact.physical_hash, artifact.path, artifact.media_type, 0, now),
+        )
         existing = self._conn.execute(
-            "SELECT artifact_id FROM artifacts WHERE physical_hash = ?", (artifact.physical_hash,)
+            "SELECT artifact_id FROM artifacts WHERE artifact_id = ?", (artifact.artifact_id,)
         ).fetchone()
         if existing is not None:
             return str(existing["artifact_id"])
-        from cardre.domain.diagnostics import utc_now_iso
         self._conn.execute(
             "INSERT INTO artifacts (artifact_id, artifact_type, role, storage_key, "
             "physical_hash, logical_hash, media_type, schema_version, created_at, metadata_json) "
@@ -28,10 +43,24 @@ class ArtifactRepo:
              artifact.path, artifact.physical_hash, artifact.logical_hash,
              artifact.media_type,
              artifact.metadata.get("schema_version", ""),
-             artifact.created_at or utc_now_iso(),
+             artifact.created_at or now,
              json.dumps(artifact.metadata)),
         )
         return artifact.artifact_id
+
+    def get_blob(self, physical_hash: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT * FROM blobs WHERE physical_hash = ?", (physical_hash,)
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "physical_hash": row["physical_hash"],
+            "storage_key": row["storage_key"],
+            "media_type": row["media_type"],
+            "size_bytes": int(row["size_bytes"] or 0),
+            "created_at": row["created_at"],
+        }
 
     def get(self, artifact_id: str) -> ArtifactRef | None:
         row = self._conn.execute(

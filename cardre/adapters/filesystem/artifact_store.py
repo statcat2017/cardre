@@ -74,9 +74,57 @@ class FsArtifactStore:
                            kind.split(".")[-1] if "." in kind else kind, metadata)
 
     def publish(self, staged: StagedArtifact) -> Path:
-        dest = self._root / "objects" / staged.physical_hash[:2] / staged.physical_hash
+        """Publish a staged artifact to its content-addressed object path.
+
+        Moves the file out of staging immediately. Callers that need the
+        durable publication protocol (DB commit before the file leaves
+        staging) should use :meth:`dest_path` + :meth:`finalize` instead.
+        """
+        dest = self.dest_path(staged)
         dest.parent.mkdir(parents=True, exist_ok=True)
         staged.staging_path.replace(dest)
+        return dest
+
+    def dest_path(self, staged: StagedArtifact) -> Path:
+        """Compute the content-addressed object path without moving the file."""
+        return self._root / "objects" / staged.physical_hash[:2] / staged.physical_hash
+
+    def object_path(self, physical_hash: str) -> Path:
+        """Compute the object path for a physical hash (idempotent with publish)."""
+        return self._root / "objects" / physical_hash[:2] / physical_hash
+
+    def finalize(self, staged: StagedArtifact) -> Path:
+        """Move a staged file to its object path after the DB mutation is durable.
+
+        Idempotent: if the object already exists (duplicate bytes), the
+        staging file is discarded and the existing object is kept.
+        """
+        dest = self.dest_path(staged)
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            staged.staging_path.replace(dest)
+        elif staged.staging_path.exists():
+            staged.staging_path.unlink()
+        return dest
+
+    def finalize_staged_file(self, staging_source: str, physical_hash: str) -> Path:
+        """Finalize a staged file described by an outbox row (reconciliation).
+
+        Idempotent with :meth:`finalize`: moves the staging file to its
+        content-addressed object path, or verifies the object already exists.
+        """
+        dest = self.object_path(physical_hash)
+        if dest.exists():
+            if staging_source and Path(staging_source).exists():
+                Path(staging_source).unlink()
+            return dest
+        if not staging_source:
+            raise FileNotFoundError(f"object {dest} missing and no staging source recorded")
+        source = Path(staging_source)
+        if not source.exists():
+            raise FileNotFoundError(f"staged file {staging_source} missing; cannot finalize object {dest}")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        source.replace(dest)
         return dest
 
     def read_bytes(self, artifact: object) -> bytes:

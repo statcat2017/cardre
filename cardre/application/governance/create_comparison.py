@@ -84,29 +84,17 @@ class CreateComparison:
             now = utc_now_iso()
 
             comparison_id = str(uuid.uuid4())
-            conn = uow._conn
-            conn.execute(
-                "INSERT INTO branch_comparisons "
-                "(comparison_id, project_id, plan_id, baseline_branch_id, "
-                " comparison_spec_json, created_at, created_reason) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (
-                    comparison_id,
-                    command.project_id,
-                    command.plan_id,
-                    command.baseline_branch_id,
-                    json.dumps(spec),
-                    now,
-                    command.created_reason,
-                ),
+            uow.comparisons.create_comparison_with_id(
+                comparison_id,
+                command.project_id,
+                command.plan_id,
+                command.baseline_branch_id,
+                json.dumps(spec),
+                created_reason=command.created_reason,
             )
 
             for idx, cid in enumerate(command.challenger_branch_ids):
-                conn.execute(
-                    "INSERT OR IGNORE INTO comparison_challenger_branches "
-                    "(comparison_id, branch_id, position) VALUES (?, ?, ?)",
-                    (comparison_id, cid, idx),
-                )
+                uow.comparisons.add_challenger_branch(comparison_id, cid, idx)
 
             uow.commit()
 

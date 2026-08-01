@@ -55,6 +55,40 @@ class RunRepo:
         )
         return run_id
 
+    def create_if_no_active_run(
+        self,
+        plan_version_id: str,
+        run_scope: str = "full_plan",
+        branch_id: str | None = None,
+        force: bool = False,
+        requested_by: str | None = None,
+        request_id: str | None = None,
+    ) -> str | None:
+        """Create a run atomically, returning None if a non-forced submission
+        races an active run.
+
+        The check and insert run inside one transaction (the mutation UoW
+        begins ``BEGIN IMMEDIATE`` eagerly), so two concurrent submissions
+        cannot both observe "no active run" and both insert. The partial
+        unique index on active non-forced runs is a second line of defence.
+        """
+        if not force:
+            row = self._conn.execute(
+                "SELECT run_id FROM runs WHERE plan_version_id = ? "
+                "AND status IN ('created','queued','running') LIMIT 1",
+                (plan_version_id,),
+            ).fetchone()
+            if row is not None:
+                return None
+        return self.create(
+            plan_version_id,
+            run_scope=run_scope,
+            branch_id=branch_id,
+            force=force,
+            requested_by=requested_by,
+            request_id=request_id,
+        )
+
     def get(self, run_id: str) -> Run | None:
         row = self._conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
         if row is None:

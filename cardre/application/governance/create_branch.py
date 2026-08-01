@@ -11,7 +11,6 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from cardre.domain.diagnostics import utc_now_iso
 from cardre.domain.errors import BranchValidationError, GovernanceNotEnabled
 from cardre.domain.plans.graph import remap_step_graph
 from cardre.domain.step import StepSpec
@@ -256,7 +255,6 @@ class CreateBranch:
 
             # --- Transactional writes ---
 
-            now = utc_now_iso()
             new_pv_id = uow.plans.create_version(
                 command.plan_id,
                 clone.new_steps,
@@ -264,31 +262,20 @@ class CreateBranch:
                 is_committed=False,
             )
 
-            conn = uow._conn  # shared connection within this transaction
-            conn.execute(
-                "INSERT INTO plan_branches "
-                "(branch_id, project_id, plan_id, name, description, branch_type, status, "
-                " base_branch_id, base_plan_version_id, head_plan_version_id, "
-                " branch_point_step_id, branch_point_canonical_step_id, "
-                " segment_filter_spec_json, created_reason, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    clone.branch_id,
-                    command.project_id,
-                    command.plan_id,
-                    command.name,
-                    command.description,
-                    command.branch_type,
-                    command.base_branch_id,
-                    head_pv_id,
-                    new_pv_id,
-                    command.branch_point_step_id,
-                    clone.branch_point_canonical_step_id,
-                    segment_filter_json,
-                    command.created_reason,
-                    now,
-                    now,
-                ),
+            uow.branches.create_branch(
+                command.project_id,
+                command.plan_id,
+                command.name,
+                command.branch_type,
+                head_pv_id,
+                new_pv_id,
+                description=command.description,
+                base_branch_id=command.base_branch_id,
+                branch_point_step_id=command.branch_point_step_id,
+                branch_point_canonical_step_id=clone.branch_point_canonical_step_id,
+                segment_filter_spec_json=segment_filter_json,
+                created_reason=command.created_reason,
+                branch_id=clone.branch_id,
             )
 
             for s in clone.new_steps:
@@ -299,23 +286,20 @@ class CreateBranch:
                     else s.step_id
                 )
 
-                conn.execute(
-                    "INSERT INTO branch_step_map "
-                    "(branch_step_map_id, branch_id, plan_version_id, canonical_step_id, step_id, "
-                    " source_branch_id, source_step_id, is_shared_upstream, is_branch_owned, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        str(uuid.uuid4()),
-                        clone.branch_id,
-                        new_pv_id,
-                        s.canonical_step_id,
-                        s.step_id,
-                        command.base_branch_id if (was_duplicated or is_shared) else None,
-                        original_step_id if was_duplicated else (s.step_id if is_shared else None),
-                        1 if is_shared else 0,
-                        0 if is_shared else 1,
-                        now,
+                uow.branches.create_step_map(
+                    clone.branch_id,
+                    new_pv_id,
+                    s.canonical_step_id,
+                    s.step_id,
+                    source_branch_id=(
+                        command.base_branch_id if (was_duplicated or is_shared) else None
                     ),
+                    source_step_id=(
+                        original_step_id if was_duplicated
+                        else (s.step_id if is_shared else None)
+                    ),
+                    is_shared_upstream=is_shared,
+                    is_branch_owned=not is_shared,
                 )
 
             uow.commit()

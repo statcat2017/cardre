@@ -32,7 +32,7 @@ class ApplyWoeMappingNode(NodeType):
     version = "1"
     category = "apply"
     input_roles: list[str] = ["train", "test", "oot", "definition", "report", "scorecard"]
-    output_roles: list[str] = ["train", "test", "oot"]
+    output_roles: list[str] = ["train", "test", "oot", "report"]
 
     VALID_UNMATCHED_POLICIES = {"fill_zero", "warn", "fail"}
 
@@ -236,7 +236,7 @@ class ApplyModelNode(NodeType):
     version = "2"
     category = "apply"
     input_roles: list[str] = ["train", "test", "oot", "model", "scorecard"]
-    output_roles: list[str] = ["train", "test", "oot"]
+    output_roles: list[str] = ["train", "test", "oot", "report"]
 
     _DATA_ROLES = ("train", "test", "oot")
 
@@ -448,7 +448,12 @@ __definition__ = NodeDefinition(
         roles=tuple(ArtifactRoleSpec(r, required=True) for r in ApplyWoeMappingNode.input_roles),
     ),
     output_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ApplyWoeMappingNode.output_roles),
+        roles=tuple(
+            ArtifactRoleSpec(r, required=True)
+            if r != "report"
+            else ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_WOE_EVIDENCE,))
+            for r in ApplyWoeMappingNode.output_roles
+        ),
     ),
     parameter_schema=None,
     optional_dependencies=(),
@@ -464,7 +469,12 @@ __definition_apply_model = NodeDefinition(
         roles=tuple(ArtifactRoleSpec(r, required=True) for r in ApplyModelNode.input_roles),
     ),
     output_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ApplyModelNode.output_roles),
+        roles=tuple(
+            ArtifactRoleSpec(r, required=True)
+            if r != "report"
+            else ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_MODEL_EVIDENCE,))
+            for r in ApplyModelNode.output_roles
+        ),
     ),
     parameter_schema=None,
     optional_dependencies=(),

@@ -1,10 +1,12 @@
 """FinalizeRun — transition run status and publish a canonical manifest.
 
-The run status is transitioned first (compare-and-set). If the transition
-loses (returns False), the manifest is republished with the actual status
-and a ``RunAlreadyFinalised`` error is raised. The manifest is only
-published after the status transition succeeds, ensuring the database
-and manifest always agree.
+The terminal status transition and a manifest publication outbox record are
+persisted in one transaction. The manifest is published to the filesystem
+only after that transaction commits, so a DB commit failure can never leave a
+terminal manifest paired with a non-terminal run row. After publishing, the
+outbox record is marked published; a publish failure is recorded on the
+outbox row (``failed``) and re-raised, and startup reconciliation retries
+incomplete publications.
 """
 
 from __future__ import annotations
@@ -18,7 +20,11 @@ from cardre._version import __version__
 from cardre.application.ports.manifest_publisher import ManifestPublisherPort
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
 from cardre.domain.errors import CardreError
-from cardre.domain.manifest import MANIFEST_VERSION
+from cardre.domain.manifest import (
+    MANIFEST_VERSION,
+    compute_manifest_hash,
+    compute_pathway_hash,
+)
 from cardre.domain.run import RunStatus
 
 
@@ -71,7 +77,38 @@ class FinalizeRun:
             payload = self._build_manifest(
                 run_id, status, manifest_steps, diagnostic, run_record, uow,
             )
+            self._complete_payload_hashes(payload)
+            outbox_id = uow.publications.enqueue_manifest(
+                run_id=run_id,
+                plan_version_id=str(run_record.plan_version_id),
+                payload=payload,
+                manifest_hash=payload["manifest_hash"],
+            )
+
+        # The transaction above committed (terminal run row + outbox record are
+        # durable). Only now do we touch the filesystem. On failure the outbox
+        # row records the durable failure so reconciliation can retry.
+        try:
             self._manifest_publisher.publish(run_id, payload)
+        except Exception as exc:
+            with self._uow_factory() as mark_uow:
+                mark_uow.publications.mark_failed(outbox_id, str(exc))
+                mark_uow.commit()
+            raise
+        else:
+            with self._uow_factory() as mark_uow:
+                mark_uow.publications.mark_published(outbox_id)
+                mark_uow.commit()
+
+    @staticmethod
+    def _complete_payload_hashes(payload: JsonDict) -> None:
+        """Fill pathway_hash and manifest_hash so the outbox stores the same
+        canonical payload the publisher writes."""
+        steps = payload.get("steps", [])
+        if not payload.get("pathway_hash"):
+            payload["pathway_hash"] = compute_pathway_hash(steps)
+        payload["manifest_version"] = MANIFEST_VERSION
+        payload["manifest_hash"] = compute_manifest_hash(payload)
 
     def _build_manifest_steps(self, uow: Any, run_id: str) -> list[JsonDict]:
         run_steps = uow.run_steps.get_for_run(run_id)

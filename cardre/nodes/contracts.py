@@ -131,8 +131,12 @@ class NodeType(ABC):
             version=self.version,
             category=self.category,
             description=self.description or "",
-            input_contract=ArtifactContract(),
-            output_contract=ArtifactContract(),
+            input_contract=ArtifactContract(
+                input_roles=tuple(getattr(self, "input_roles", []) or []),
+            ),
+            output_contract=ArtifactContract(
+                output_roles=tuple(getattr(self, "output_roles", []) or []),
+            ),
             parameter_schema=self.parameter_schema(),
             optional_dependencies=tuple(self.optional_dependencies or []),
             tier="deferred" if self._deferred else "launch",

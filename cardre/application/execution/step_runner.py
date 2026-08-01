@@ -263,15 +263,14 @@ class StepRunner:
         staged: list[StagedArtifact],
         spec: StepSpec,
     ) -> None:
-        required_roles = {
-            rs.role for rs in output_contract.roles if rs.required
-        }
-        if not required_roles:
-            return
-        produced_roles = {s.role for s in staged}
-        missing = required_roles - produced_roles
-        if missing:
-            raise ValueError(
-                f"Step {spec.step_id!r} ({spec.node_type}) missing required "
-                f"output roles: {missing}"
-            )
+        from cardre.application.execution.contract_validation import validate_output_contract
+
+        # Preserve legacy behaviour: nodes with only output_roles lists (no
+        # ArtifactRoleSpec) still pass through the full validator, which treats
+        # them as declared roles without kind/media constraints.
+        validate_output_contract(
+            output_contract,
+            staged,
+            node_type=spec.node_type,
+            step_id=spec.step_id,
+        )

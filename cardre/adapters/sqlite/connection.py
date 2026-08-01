@@ -14,6 +14,7 @@ from cardre.adapters.sqlite.export_repo import ExportRepo
 from cardre.adapters.sqlite.manual_binning_repo import ManualBinningRepo
 from cardre.adapters.sqlite.plan_repo import PlanRepo
 from cardre.adapters.sqlite.project_repo import ProjectRepo
+from cardre.adapters.sqlite.publication_repo import PublicationRepo
 from cardre.adapters.sqlite.report_repo import ReportRepo
 from cardre.adapters.sqlite.run_repo import RunRepo
 from cardre.adapters.sqlite.run_step_repo import RunStepRepo
@@ -68,6 +69,10 @@ class SqliteUnitOfWork:
     @property
     def evidence(self) -> EvidenceRepo:
         return EvidenceRepo(self._conn)
+
+    @property
+    def publications(self) -> PublicationRepo:
+        return PublicationRepo(self._conn)
 
     @property
     def branches(self) -> BranchRepo:
@@ -162,6 +167,10 @@ class SqliteReadOnlyUnitOfWork:
     @property
     def evidence(self) -> EvidenceRepo:
         return EvidenceRepo(self._conn)
+
+    @property
+    def publications(self) -> PublicationRepo:
+        return PublicationRepo(self._conn)
 
     @property
     def branches(self) -> BranchRepo:

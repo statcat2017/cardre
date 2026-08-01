@@ -133,7 +133,7 @@ class SplitTrainTestOotNode(NodeType):
     version = "2"
     category = "transform"
     input_roles: list[str] = ["input", "definition"]
-    output_roles: list[str] = ["train", "test", "oot"]
+    output_roles: list[str] = ["train", "test", "oot", "report"]
 
     __definition__ = NodeDefinition(
         node_type="cardre.split_train_test_oot",
@@ -141,7 +141,7 @@ class SplitTrainTestOotNode(NodeType):
         category="transform",
         description="Split dataset into train/test/oot partitions",
         input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=("dataset",)), ArtifactRoleSpec("definition", required=False, kinds=("definition",)))),
-        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=("dataset",)), ArtifactRoleSpec("test", required=True, kinds=("dataset",)), ArtifactRoleSpec("oot", required=True, kinds=("dataset",)))),
+        output_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=("dataset",)), ArtifactRoleSpec("test", required=True, kinds=("dataset",)), ArtifactRoleSpec("oot", required=True, kinds=("dataset",)), ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.SPLIT_SUMMARY,)))),
         parameter_schema=None,
         optional_dependencies=(),
         tier="launch",

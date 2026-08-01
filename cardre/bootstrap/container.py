@@ -45,9 +45,11 @@ class Container:
     submit_run: Any = None
     execute_run: Any = None
     finalize_run: Any = None
+    async_dispatcher: Any = None
     manifest_publisher_factory: Any = None
     submit_run_factory: Any = None
     execute_run_factory: Any = None
+    reconcile_publications_factory: Any = None
     refresh_comparison_factory: Any = None
     create_branch_factory: Any = None
     create_comparison_factory: Any = None
@@ -128,18 +130,29 @@ def build_container(settings: Settings) -> Container:
             step_runner_factory(project_id),
             finalize_run_factory(project_id),
             lambda: artifact_store_factory(project_id),
+            heartbeat_interval_seconds=settings.heartbeat_watchdog_interval_seconds,
         )
 
-    from cardre.adapters.dispatch.sync_dispatcher import SyncRunDispatcher
+    from cardre.adapters.dispatch.thread_dispatcher import ThreadRunDispatcher
+    from cardre.application.ports.run_dispatcher import RunRequest
+    from cardre.application.runs.execute_run import ExecuteRunCommand
+
+    # One process-owned asynchronous dispatcher shared across all projects.
+    # Its worker resolves the correct project-scoped ExecuteRun from the
+    # request, so no dispatcher is constructed per HTTP request. sync=true
+    # submissions bypass this and execute inline in the request thread.
+    def _dispatch_async(request: RunRequest) -> None:
+        if request.project_id is None:
+            raise RuntimeError("async dispatch request is missing project_id")
+        execute_run_factory(request.project_id)(ExecuteRunCommand(run_id=request.run_id))
+
+    async_dispatcher = ThreadRunDispatcher(_dispatch_async, max_workers=settings.max_workers)
 
     def submit_run_factory(project_id: str) -> SubmitRun:
         exec_run = execute_run_factory(project_id)
-        dispatcher = SyncRunDispatcher(
-            lambda cmd: exec_run(cmd),
-        )
         return SubmitRun(
             lambda: uow_factory.for_project(project_id),
-            dispatcher,
+            async_dispatcher,
             exec_run,
             finalize_run_factory(project_id),
             governance_enabled=settings.governance_enabled,
@@ -160,6 +173,16 @@ def build_container(settings: Settings) -> Container:
         project_root,
         generate_report,
     )
+
+    from cardre.application.runs.reconcile_publications import ReconcilePublications
+
+    def reconcile_publications_factory() -> ReconcilePublications:
+        return ReconcilePublications(
+            uow_factory,
+            registry,
+            artifact_store_factory,
+            manifest_publisher_factory,
+        )
 
     # Governance use cases — built here in the composition root so the API
     # layer only depends on the application/use-case surface and never
@@ -209,6 +232,8 @@ def build_container(settings: Settings) -> Container:
         manifest_publisher_factory=manifest_publisher_factory,
         submit_run_factory=submit_run_factory,
         execute_run_factory=execute_run_factory,
+        async_dispatcher=async_dispatcher,
+        reconcile_publications_factory=reconcile_publications_factory,
         refresh_comparison_factory=refresh_comparison_factory,
         create_branch_factory=create_branch_factory,
         create_comparison_factory=create_comparison_factory,

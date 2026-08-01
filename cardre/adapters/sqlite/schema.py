@@ -99,6 +99,14 @@ CREATE TABLE IF NOT EXISTS run_steps (
     errors_json TEXT NOT NULL DEFAULT '[]'
 );
 
+CREATE TABLE IF NOT EXISTS blobs (
+    physical_hash TEXT PRIMARY KEY,
+    storage_key TEXT NOT NULL,
+    media_type TEXT NOT NULL DEFAULT '',
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS artifacts (
     artifact_id TEXT PRIMARY KEY,
     artifact_type TEXT NOT NULL,
@@ -109,8 +117,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
     media_type TEXT NOT NULL,
     schema_version TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
-    metadata_json TEXT NOT NULL DEFAULT '{}',
-    UNIQUE(physical_hash)
+    metadata_json TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS artifact_lineage (
@@ -293,6 +300,33 @@ CREATE TABLE IF NOT EXISTS manual_binning_reviews (
 );
 """
 
+# Durable publication outbox. Records filesystem publications that must be
+# committed to ``objects/`` (or the manifest export directory) only after the
+# DB mutation they belong to is durable. A row is written atomically with the
+# mutation; the filesystem finalize happens after commit and the row is marked
+# ``published`` (or ``failed`` with an error). Reconciliation on startup
+# retries incomplete rows, so a crash between the DB commit and the filesystem
+# write cannot leave an orphan object or a split-brain manifest.
+PUBLICATION_OUTBOX_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS publication_outbox (
+    outbox_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    plan_version_id TEXT NOT NULL,
+    run_step_id TEXT,
+    kind TEXT NOT NULL CHECK (kind IN ('artifact','manifest')),
+    artifact_id TEXT,
+    physical_hash TEXT,
+    storage_key TEXT,
+    staging_source TEXT,
+    manifest_payload_json TEXT,
+    manifest_hash TEXT,
+    state TEXT NOT NULL CHECK (state IN ('pending','published','failed')),
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
 EXPORTS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS exports (
     export_id TEXT PRIMARY KEY,
@@ -320,6 +354,12 @@ CREATE INDEX IF NOT EXISTS idx_runs_plan_version_status
     ON runs(plan_version_id, status, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_runs_cancel_requested
     ON runs(cancel_requested) WHERE cancel_requested = 1;
+-- Second line of defence for the concurrent-run guard: at most one active
+-- non-forced run per plan version. The application-level check runs inside
+-- one BEGIN IMMEDIATE transaction (create_if_no_active_run); this index
+-- makes the invariant hold even if that check were bypassed.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_runs_one_active_non_forced
+    ON runs(plan_version_id) WHERE force = 0 AND status IN ('created','queued','running');
 CREATE INDEX IF NOT EXISTS idx_run_steps_run_id
     ON run_steps(run_id);
 CREATE INDEX IF NOT EXISTS idx_run_steps_pv_step_status
@@ -376,6 +416,10 @@ CREATE INDEX IF NOT EXISTS idx_champion_assignments_plan_superseded
     ON champion_assignments(plan_id, superseded_at);
 CREATE INDEX IF NOT EXISTS idx_exports_run
     ON exports(run_id);
+CREATE INDEX IF NOT EXISTS idx_publication_outbox_state
+    ON publication_outbox(state, created_at);
+CREATE INDEX IF NOT EXISTS idx_publication_outbox_run
+    ON publication_outbox(run_id);
 """
 
 ALL_TABLES_SQL = (
@@ -384,6 +428,7 @@ ALL_TABLES_SQL = (
     + BRANCH_TABLES_SQL
     + ANNOTATION_TABLES_SQL
     + REVIEW_TABLES_SQL
+    + PUBLICATION_OUTBOX_TABLE_SQL
     + EXPORTS_TABLE_SQL
     + REPORTS_TABLE_SQL
     + INDEXES_SQL
