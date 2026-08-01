@@ -196,17 +196,25 @@ def test_watchdog_renews_lease_during_node_execution(provisioned_project):
     )
     watchdog.start()
     try:
-        time.sleep(0.35)
+        # Poll until a fresh heartbeat appears (bounded deadline) instead of a
+        # single fixed sleep + age assertion, which is timing-flaky on loaded
+        # CI runners. The watchdog renews every ~0.1s; require proof it did.
+        deadline = time.monotonic() + 5.0
+        last_age = timedelta(seconds=10)
+        while time.monotonic() < deadline:
+            with uow_factory.read_only(project_id) as uow:
+                run = uow.runs.get(run_id)
+            assert run is not None and run.heartbeat_at is not None
+            hb_ts = datetime.fromisoformat(run.heartbeat_at.replace("Z", "+00:00"))
+            last_age = datetime.now(UTC) - hb_ts
+            if last_age < timedelta(seconds=0.2):
+                break
+            time.sleep(0.05)
+        assert last_age < timedelta(seconds=0.2), (
+            f"heartbeat not renewed during node: age={last_age}"
+        )
     finally:
         watchdog.stop()
-
-    with uow_factory.read_only(project_id) as uow:
-        run = uow.runs.get(run_id)
-    assert run is not None
-    assert run.heartbeat_at is not None
-    hb_ts = datetime.fromisoformat(run.heartbeat_at.replace("Z", "+00:00"))
-    age = datetime.now(UTC) - hb_ts
-    assert age < timedelta(seconds=1), f"heartbeat not renewed during node: age={age}"
 
 
 def test_cancellation_during_final_node_ends_cancelled(provisioned_project):
