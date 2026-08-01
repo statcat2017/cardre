@@ -105,6 +105,10 @@ def test_finalized_manifest_appears_in_reports_listing(env, tmp_path):
     assert any(r["run_id"] == run_id and r["report_type"] == "manifest" for r in reports), (
         f"reports listing missing manifest for run {run_id}: {reports}"
     )
+    manifest = next(r for r in reports if r["report_type"] == "manifest")
+    assert manifest["created_at"], (
+        f"manifest entry must carry the run's finished_at, got empty: {manifest}"
+    )
 
     # Run-scoped listing includes it too.
     resp_run = client.get(f"/projects/{project_id}/runs/{run_id}/reports")

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from cardre.domain.diagnostics import JsonDict, utc_now_iso
@@ -112,6 +113,28 @@ class Run:
             worker_generation=self.worker_generation,
             metadata=copy.deepcopy(self.metadata),
         )
+
+    def is_stale(self, *, stale_heartbeat_seconds: int, now_ts: float | None = None) -> bool:
+        """A run is stale only if it is running AND its persisted heartbeat is
+        older than the staleness threshold (or absent/malformed).
+
+        A healthy running run with a recent heartbeat is fresh; a running run
+        with no heartbeat is stale; a non-running run is never stale.
+
+        ``now_ts`` is injectable for deterministic tests; defaults to now.
+        """
+        if self.status != RunStatus.RUNNING.value:
+            return False
+        hb = self.heartbeat_at
+        if hb is None:
+            return True
+        if now_ts is None:
+            now_ts = datetime.now(UTC).timestamp()
+        try:
+            hb_ts = datetime.fromisoformat(hb).replace(tzinfo=UTC).timestamp()
+        except (ValueError, TypeError):
+            return True
+        return (now_ts - hb_ts) > stale_heartbeat_seconds
 
 
 @dataclass(frozen=True)

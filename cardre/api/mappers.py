@@ -36,7 +36,7 @@ from cardre.domain.evidence import EvidenceArtifact, EvidenceEdge
 from cardre.domain.manual_binning import ManualBinningReview
 from cardre.domain.plan import Plan, PlanVersion
 from cardre.domain.project import Project
-from cardre.domain.run import Run, RunStatus, RunStep
+from cardre.domain.run import Run, RunStep
 from cardre.domain.step import StepSpec
 
 _DIAGNOSTIC_FIELDS = {"code", "message", "severity", "source", "created_at"}
@@ -53,35 +53,13 @@ def diagnostic_to_response(value: Mapping[str, Any]) -> DiagnosticResponse:
     )
 
 
-_STALE_HEARTBEAT_SECONDS = 300
-
-
-def _is_stale(run: Run, *, stale_heartbeat_seconds: int = _STALE_HEARTBEAT_SECONDS) -> bool:
-    """A run is stale only if it is running AND its persisted heartbeat is
-    older than the staleness threshold. A healthy running run with a recent
-    heartbeat is fresh; a running run with no heartbeat is stale.
-    """
-    if str(run.status) != RunStatus.RUNNING.value:
-        return False
-    hb = run.heartbeat_at
-    if hb is None:
-        return True
-    from datetime import UTC, datetime
-    try:
-        hb_ts = datetime.fromisoformat(hb).replace(tzinfo=UTC).timestamp()
-        now_ts = datetime.now(UTC).timestamp()
-        return (now_ts - hb_ts) > stale_heartbeat_seconds
-    except (ValueError, TypeError):
-        return True
-
-
 def run_to_response(
     run: Run,
     *,
     step_count: int = 0,
     executed_step_ids: list[str] | None = None,
     diagnostics: list[dict[str, Any]] | None = None,
-    stale_heartbeat_seconds: int = _STALE_HEARTBEAT_SECONDS,
+    stale_heartbeat_seconds: int,
 ) -> RunResponse:
     diag_responses = [diagnostic_to_response(d) for d in (diagnostics or [])]
     latest_error = next(
@@ -102,7 +80,7 @@ def run_to_response(
         diagnostics=diag_responses,
         latest_error=latest_error,
         heartbeat_at=run.heartbeat_at,
-        is_stale=_is_stale(run, stale_heartbeat_seconds=stale_heartbeat_seconds),
+        is_stale=run.is_stale(stale_heartbeat_seconds=stale_heartbeat_seconds),
         cancel_requested=run.cancel_requested,
     )
 

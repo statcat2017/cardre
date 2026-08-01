@@ -209,12 +209,13 @@ def test_recent_heartbeat_is_fresh(committed_plan):
         uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
         uow.runs.heartbeat(r1.run_id)
         uow.commit()
-    from cardre.api.mappers import _is_stale
+    from cardre.api.mappers import run_to_response
     with uow_factory.read_only(project_id) as uow:
         run = uow.runs.get(r1.run_id)
     assert run is not None
     assert run.heartbeat_at is not None
-    assert _is_stale(run) is False
+    assert run.is_stale(stale_heartbeat_seconds=300) is False
+    assert run_to_response(run, stale_heartbeat_seconds=300).is_stale is False
 
 
 def test_old_heartbeat_is_stale(committed_plan):
@@ -229,12 +230,13 @@ def test_old_heartbeat_is_stale(committed_plan):
             "UPDATE runs SET heartbeat_at = ? WHERE run_id = ?", (_iso(old), r1.run_id),
         )
         uow.commit()
-    from cardre.api.mappers import _is_stale
+    from cardre.api.mappers import run_to_response
     with uow_factory.read_only(project_id) as uow:
         run = uow.runs.get(r1.run_id)
     assert run is not None
     assert run.status == RunStatus.RUNNING.value
-    assert _is_stale(run) is True
+    assert run.is_stale(stale_heartbeat_seconds=300) is True
+    assert run_to_response(run, stale_heartbeat_seconds=300).is_stale is True
 
 
 def test_running_run_with_no_heartbeat_is_stale(committed_plan):
@@ -247,11 +249,12 @@ def test_running_run_with_no_heartbeat_is_stale(committed_plan):
             "UPDATE runs SET heartbeat_at = NULL WHERE run_id = ?", (r1.run_id,),
         )
         uow.commit()
-    from cardre.api.mappers import _is_stale
+    from cardre.api.mappers import run_to_response
     with uow_factory.read_only(project_id) as uow:
         run = uow.runs.get(r1.run_id)
     assert run is not None
-    assert _is_stale(run) is True
+    assert run.is_stale(stale_heartbeat_seconds=300) is True
+    assert run_to_response(run, stale_heartbeat_seconds=300).is_stale is True
 
 
 def test_terminal_run_is_never_stale(committed_plan):
@@ -261,11 +264,12 @@ def test_terminal_run_is_never_stale(committed_plan):
     with uow_factory.for_project(project_id) as uow:
         uow.runs.transition(r1.run_id, RunStatus.FAILED)
         uow.commit()
-    from cardre.api.mappers import _is_stale
+    from cardre.api.mappers import run_to_response
     with uow_factory.read_only(project_id) as uow:
         run = uow.runs.get(r1.run_id)
     assert run is not None
-    assert _is_stale(run) is False
+    assert run.is_stale(stale_heartbeat_seconds=300) is False
+    assert run_to_response(run, stale_heartbeat_seconds=300).is_stale is False
 
 
 # ---------------------------------------------------------------------------

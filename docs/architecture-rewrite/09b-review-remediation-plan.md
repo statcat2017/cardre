@@ -256,6 +256,7 @@ Replace all subsequent `self._artifact_store_factory()` calls with `artifact_sto
 ## Not Fixed
 
 - **P1-2** (`ExplainStaleness` write UoW) — **false positive**. The route injects `container.uow_factory.read_only(project_id)` which returns `SqliteReadOnlyUnitOfWork` (no `BEGIN IMMEDIATE`). Verified against `routes/evidence.py:27-28` and `connection.py:127-198`.
+- **U3 (deferred)** — `ListReports` scans the filesystem inside a query use case to synthesize manifest entries (`report_queries.py` `list_manifests()`). Cleaner model: register a lightweight manifest descriptor row in the DB at finalization so `ListReports` is a pure DB query. Deferred because it touches the outbox schema and `FinalizeRun`; tracked in `10-thermonuclear-followup-plan.md` §U3.
 
 ## Proof Tests Summary
 
