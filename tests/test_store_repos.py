@@ -36,6 +36,15 @@ class TestRunRepo:
             assert run.status == "created"
             assert run.run_scope == "full_plan"
 
+    def test_run_metadata_roundtrip(self, committed_plan_version):
+        """Run metadata persists and is rehydrated on read (P3-1)."""
+        project_id, _, pv_id, uow_factory, _ = committed_plan_version
+        with uow_factory.for_project(project_id) as uow:
+            run_id = uow.runs.create(pv_id, metadata={"purpose": "test", "source": "manual"})
+            run = uow.runs.get(run_id)
+            assert run is not None
+            assert run.metadata == {"purpose": "test", "source": "manual"}
+
     def test_transition_updates_status(self, committed_plan_version):
         project_id, _, pv_id, uow_factory, _ = committed_plan_version
         with uow_factory.for_project(project_id) as uow:

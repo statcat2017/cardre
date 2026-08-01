@@ -269,6 +269,297 @@ def test_terminal_run_is_never_stale(committed_plan):
 
 
 # ---------------------------------------------------------------------------
+# P1-1: stale sweep must not wedge submissions or kill live workers
+# ---------------------------------------------------------------------------
+
+
+def _submit_with_finalize(uow_factory, project_id):
+    """A SubmitRun wired with a real FinalizeRun so the stale sweep can
+    publish interrupted manifests."""
+    from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+    from cardre.application.runs.finalize_run import FinalizeRun
+    from cardre.application.runs.submit_run import SubmitRun
+
+    root = uow_factory._registry.resolve_root(project_id)
+    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root))
+    return SubmitRun(
+        lambda: uow_factory.for_project(project_id), _NoopDispatcher(), None, finalize,
+        governance_enabled=True, project_id=project_id,
+    )
+
+
+def _set_old_heartbeat(uow_factory, project_id, run_id, age_seconds=400):
+    from datetime import UTC, datetime, timedelta
+    old = datetime.now(UTC) - timedelta(seconds=age_seconds)
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs._conn.execute(
+            "UPDATE runs SET heartbeat_at = ? WHERE run_id = ?",
+            (old.isoformat().replace("+00:00", "Z"), run_id),
+        )
+        uow.commit()
+
+
+def test_sweep_stale_does_not_abort_new_submission(committed_plan):
+    """A stale run that self-finalized before the sweep must not prevent the
+    new submission from being created."""
+    project_id, uow_factory, pv_id = committed_plan
+    submit = _submit_with_finalize(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.commit()
+    _set_old_heartbeat(uow_factory, project_id, r1.run_id)
+    # The run self-finalizes before the sweep runs.
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.SUCCEEDED)
+        uow.commit()
+
+    # A new submission must not be aborted by the stale sweep.
+    r2 = submit(_cmd(pv_id))
+    assert r2.run_id != r1.run_id
+    with uow_factory.read_only(project_id) as uow:
+        runs = uow.runs.list_for_plan_version(pv_id)
+    assert any(r.run_id == r1.run_id and r.status == RunStatus.SUCCEEDED.value for r in runs)
+    assert any(r.run_id == r2.run_id for r in runs)
+
+
+def test_sweep_stale_does_not_interrupt_renewed_heartbeat(committed_plan):
+    """A run whose heartbeat was renewed is not interrupted by the sweep."""
+    project_id, uow_factory, pv_id = committed_plan
+    submit = _submit_with_finalize(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.commit()
+    _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=400)
+    # Worker renews the heartbeat before the sweep.
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.heartbeat(r1.run_id)
+        uow.commit()
+
+    # The renewed run is legitimately active, so a second submission must be
+    # forced; the point is the original run must NOT be interrupted.
+    submit(_cmd(pv_id, force=True))
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.RUNNING.value, "renewed heartbeat must defeat the sweep"
+
+
+def test_sweep_stale_interrupts_truly_stale_run(committed_plan):
+    """A run whose heartbeat expired (and was not renewed) is interrupted, and
+    the interruption is fully durable: RUN_STALE diagnostic, canonical manifest,
+    and manifest outbox record are all produced atomically with the terminal
+    transition (PR 373 review P1)."""
+    project_id, uow_factory, pv_id = committed_plan
+    submit = _submit_with_finalize(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.commit()
+    _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=400)
+
+    submit(_cmd(pv_id))
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.INTERRUPTED.value
+
+    # The interruption must carry its diagnostic, manifest, and outbox record.
+    root = uow_factory._registry.resolve_root(project_id)
+    from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+    publisher = FsManifestPublisher(root)
+    manifest = publisher.read(r1.run_id)
+    assert manifest is not None, "interrupted run must publish a canonical manifest"
+    assert manifest["status"] == "interrupted"
+
+    with uow_factory.read_only(project_id) as uow:
+        diags = uow.runs.get_diagnostics(r1.run_id)
+        assert any(d.get("code") == "RUN_STALE" for d in diags), (
+            "interrupted run must carry the RUN_STALE diagnostic"
+        )
+        outbox = uow.publications.list_by_run(r1.run_id)
+        manifest_rows = [r for r in outbox if r["kind"] == "manifest"]
+        assert manifest_rows, "interrupted run must have a manifest outbox record"
+        assert manifest_rows[0]["state"] == "published"
+
+
+def test_sweep_stale_interrupts_malformed_heartbeat(committed_plan):
+    """A run with an unparsable heartbeat is classified as stale and
+    interrupted atomically (PR 373 review P2), unless the worker renews it."""
+    project_id, uow_factory, pv_id = committed_plan
+    submit = _submit_with_finalize(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs._conn.execute(
+            "UPDATE runs SET heartbeat_at = 'not-a-timestamp' WHERE run_id = ?", (r1.run_id,)
+        )
+        uow.commit()
+
+    submit(_cmd(pv_id))
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.INTERRUPTED.value, "malformed heartbeat must be swept"
+
+    root = uow_factory._registry.resolve_root(project_id)
+    from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+    assert FsManifestPublisher(root).read(r1.run_id) is not None
+
+
+def test_sweep_stale_malformed_heartbeat_defeated_by_renewal(committed_plan):
+    """A malformed heartbeat that is renewed before the sweep must not be
+    interrupted — the compare-and-set fails safely (PR 373 review P2)."""
+    project_id, uow_factory, pv_id = committed_plan
+    submit = _submit_with_finalize(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs._conn.execute(
+            "UPDATE runs SET heartbeat_at = 'not-a-timestamp' WHERE run_id = ?", (r1.run_id,)
+        )
+        uow.commit()
+    # Worker renews the heartbeat before the sweep.
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.heartbeat(r1.run_id)
+        uow.commit()
+
+    submit(_cmd(pv_id, force=True))
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.RUNNING.value, "renewal must defeat the sweep"
+
+
+def _finalize_for(uow_factory, project_id):
+    """A FinalizeRun wired to the real publisher for the project."""
+    from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+    from cardre.application.runs.finalize_run import FinalizeRun
+
+    root = uow_factory._registry.resolve_root(project_id)
+    return FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root))
+
+
+def test_stale_finalization_loses_after_heartbeat_renewal(committed_plan):
+    """A stale finalization whose observed heartbeat was renewed before the
+    compare-and-set loses: no status change, diagnostic, outbox row, or
+    manifest (PR 373 review P2)."""
+    from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+
+    project_id, uow_factory, pv_id = committed_plan
+    r1 = _make_submit(uow_factory, project_id)(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.commit()
+    _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=400)
+    observed = datetime.now(UTC) - timedelta(seconds=400)
+    observed_iso = observed.isoformat().replace("+00:00", "Z")
+    # Worker renews the heartbeat after the sweep observed the old value.
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.heartbeat(r1.run_id)
+        uow.commit()
+
+    from cardre.application.runs.finalize_run import FinalizeDiagnostic
+    _finalize_for(uow_factory, project_id)(r1.run_id, "interrupted",
+        diagnostic=FinalizeDiagnostic(code="RUN_STALE", message="stale"),
+        stale_heartbeat_at=observed_iso)
+
+    root = uow_factory._registry.resolve_root(project_id)
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+        diags = uow.runs.get_diagnostics(r1.run_id)
+        outbox = uow.publications.list_by_run(r1.run_id)
+    assert str(run.status) == RunStatus.RUNNING.value, "renewed heartbeat must defeat the transition"
+    assert not any(d.get("code") == "RUN_STALE" for d in diags), "no false RUN_STALE on lost race"
+    assert outbox == [], "no outbox record on lost stale race"
+    assert FsManifestPublisher(root).read(r1.run_id) is None, "no manifest on lost stale race"
+
+
+def test_stale_finalization_loses_with_observed_null_heartbeat(committed_plan):
+    """A NULL observed heartbeat is distinct from 'stale mode not requested':
+    if the worker renews a NULL heartbeat before the compare-and-set, the
+    transition loses (PR 373 review P1)."""
+    from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+
+    project_id, uow_factory, pv_id = committed_plan
+    r1 = _make_submit(uow_factory, project_id)(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs._conn.execute(
+            "UPDATE runs SET heartbeat_at = NULL WHERE run_id = ?", (r1.run_id,)
+        )
+        uow.commit()
+    # Worker renews the (NULL) heartbeat after the sweep observed it as NULL.
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.heartbeat(r1.run_id)
+        uow.commit()
+
+    from cardre.application.runs.finalize_run import FinalizeDiagnostic
+    _finalize_for(uow_factory, project_id)(r1.run_id, "interrupted",
+        diagnostic=FinalizeDiagnostic(code="RUN_STALE", message="stale"),
+        stale_heartbeat_at=None)
+
+    root = uow_factory._registry.resolve_root(project_id)
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+        diags = uow.runs.get_diagnostics(r1.run_id)
+        outbox = uow.publications.list_by_run(r1.run_id)
+    assert str(run.status) == RunStatus.RUNNING.value, "renewal must defeat NULL-heartbeat sweep"
+    assert not any(d.get("code") == "RUN_STALE" for d in diags), "no false RUN_STALE on lost race"
+    assert outbox == [], "no outbox record on lost stale race"
+    assert FsManifestPublisher(root).read(r1.run_id) is None, "no manifest on lost stale race"
+
+
+def test_stale_finalization_loses_after_terminalization(committed_plan):
+    """If the run terminalizes between stale discovery and stale finalization,
+    the lost compare-and-set must not append a false RUN_STALE diagnostic
+    (PR 373 review P2)."""
+    project_id, uow_factory, pv_id = committed_plan
+    r1 = _make_submit(uow_factory, project_id)(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.commit()
+    _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=400)
+    observed = datetime.now(UTC) - timedelta(seconds=400)
+    observed_iso = observed.isoformat().replace("+00:00", "Z")
+    # The run self-finalizes between discovery and stale finalization.
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.SUCCEEDED)
+        uow.commit()
+
+    from cardre.application.runs.finalize_run import FinalizeDiagnostic
+    _finalize_for(uow_factory, project_id)(r1.run_id, "interrupted",
+        diagnostic=FinalizeDiagnostic(code="RUN_STALE", message="stale"),
+        stale_heartbeat_at=observed_iso)
+
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+        diags = uow.runs.get_diagnostics(r1.run_id)
+    assert str(run.status) == RunStatus.SUCCEEDED.value, "terminalized run must stay terminal"
+    assert not any(d.get("code") == "RUN_STALE" for d in diags), "no false RUN_STALE on lost race"
+
+
+def test_transition_success_requires_worker_generation(committed_plan):
+    """Success finalization must prove lease ownership (P2-1): calling
+    transition_success without a generation is a TypeError."""
+    project_id, uow_factory, pv_id = committed_plan
+    submit = _make_submit(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        gen = uow.runs.begin_worker_generation(r1.run_id)
+        uow.commit()
+
+    with uow_factory.for_project(project_id) as uow:
+        with pytest.raises(TypeError):
+            uow.runs.transition_success(r1.run_id)  # no generation
+        # With the correct generation it succeeds.
+        assert uow.runs.transition_success(r1.run_id, gen) is True
+        uow.commit()
+
+
+# ---------------------------------------------------------------------------
 # Cancellation
 # ---------------------------------------------------------------------------
 

@@ -34,6 +34,11 @@ class FinalizeDiagnostic:
 
 
 class FinalizeRun:
+    # Sentinel distinguishing "stale mode not requested" from "the observed
+    # heartbeat was NULL". NULL is a legitimate stale value, so it must not be
+    # conflated with "no stale mode".
+    _STALE_UNSET = object()
+
     def __init__(
         self,
         uow_factory: Callable[[], Any],
@@ -49,6 +54,7 @@ class FinalizeRun:
         steps: list[dict[str, Any]] | None = None,
         diagnostic: FinalizeDiagnostic | None = None,
         worker_generation: int | None = None,
+        stale_heartbeat_at: Any = _STALE_UNSET,
     ) -> None:
         with self._uow_factory() as uow:
             run_record = uow.runs.get(run_id)
@@ -60,13 +66,15 @@ class FinalizeRun:
                 )
 
             target = RunStatus(status)
+            if target == RunStatus.SUCCEEDED and worker_generation is None:
+                raise TypeError(
+                    "FinalizeRun('succeeded') requires worker_generation: success "
+                    "finalization must prove lease ownership"
+                )
             if target in (RunStatus.FAILED, RunStatus.CANCELLED):
                 expected_from: tuple[RunStatus, ...] = (RunStatus.CREATED, RunStatus.QUEUED, RunStatus.RUNNING)
             else:
                 expected_from = (RunStatus.RUNNING,)
-
-            if diagnostic is not None:
-                uow.runs.append_diagnostic(run_id, {"code": diagnostic.code, "message": diagnostic.message})
 
             if target == RunStatus.SUCCEEDED:
                 # Success must not beat a concurrent cancellation: transition only
@@ -89,11 +97,26 @@ class FinalizeRun:
                             raise RunAlreadyFinalised(run_id, str(actual2.status) if actual2 else "unknown")
                     else:
                         raise RunAlreadyFinalised(run_id, str(actual.status) if actual else "unknown")
+            elif target == RunStatus.INTERRUPTED and stale_heartbeat_at is not FinalizeRun._STALE_UNSET:
+                # Stale-interruption mode: conditionally transition the stale run
+                # only if its heartbeat is still exactly the observed value
+                # (compare-and-set; a NULL heartbeat is a legitimate observed
+                # value). If the worker renewed it or the run already
+                # terminalized, the transition loses and we return silently with
+                # no mutations — no diagnostic, manifest, or outbox record.
+                transitioned = uow.runs.transition_interrupted(run_id, stale_heartbeat_at)
+                if not transitioned:
+                    return
             else:
                 transitioned = uow.runs.transition(run_id, target, expected_from=expected_from)
                 if not transitioned:
                     actual = uow.runs.get(run_id)
                     raise RunAlreadyFinalised(run_id, str(actual.status) if actual else "unknown")
+
+            # Only after a successful conditional transition do we append the
+            # diagnostic, so a lost stale race never commits a false RUN_STALE.
+            if diagnostic is not None:
+                uow.runs.append_diagnostic(run_id, {"code": diagnostic.code, "message": diagnostic.message})
 
             # Invalidate any surviving worker of the old generation: a terminal
             # transition (whether this worker finishing or a stale recovery

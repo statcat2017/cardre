@@ -383,6 +383,144 @@ def test_refresh_comparison_reaches_snapshot_ops_not_conn():
     assert uow.comparisons.latest == ("cmp-1", "snap-1")
 
 
+def test_refresh_comparison_one_finalize_failure_does_not_block_others():
+    """A finalize failure on one comparison artifact must not block the rest
+    (P2-2): the other artifacts are finalized and their outbox rows marked
+    published; the failing one stays pending for reconciliation."""
+    from cardre.application.governance.refresh_comparison import (
+        RefreshComparison,
+        RefreshComparisonCommand,
+    )
+
+    failed_finalize: set[str] = {"challenger-2"}
+
+    class _Writer:
+        def __init__(self):
+            self._i = 0
+
+        def stage_json(self, *args, **kwargs):
+            from cardre.application.ports.artifact_store import StagedArtifact
+
+            self._i += 1
+            challenger = f"challenger-{self._i}"
+            self._challenger = challenger
+            return StagedArtifact(
+                staging_path=Path(f"/tmp/stage/{challenger}"),
+                provisional_artifact_id=f"art:{challenger}:1",
+                physical_hash=f"h{challenger}", logical_hash=f"l{challenger}",
+                media_type="application/json", schema_version="branch_comparison",
+                role="comparison", artifact_type="branch_comparison",
+                metadata={"challenger_branch_id": challenger},
+            )
+
+        def dest_path(self, staged):
+            return Path(f"/tmp/objects/{getattr(self, '_challenger', 'x')}")
+
+        def finalize(self, staged):
+            challenger = staged.metadata.get("challenger_branch_id", "")
+            if challenger in failed_finalize:
+                raise RuntimeError("injected finalize failure")
+            return staged.staging_path
+
+        def publish(self, staged):
+            return staged.staging_path
+
+    class _SnapshotComparisons:
+        def __init__(self):
+            self.artifacts_registered: list[str] = []
+
+        def get_comparison(self, comparison_id) -> dict:
+            return {
+                "project_id": "proj", "plan_id": "plan",
+                "baseline_branch_id": "base-1", "comparison_spec_json": "{}",
+            }
+
+        def get_challenger_branches(self, comparison_id) -> list[dict]:
+            return [
+                {"branch_id": "challenger-1"},
+                {"branch_id": "challenger-2"},
+                {"branch_id": "challenger-3"},
+            ]
+
+        def create_snapshot(self, comparison_id, project_id, plan_id, artifact_id,
+                            readiness_json, *, created_reason=None) -> str:
+            self.artifacts_registered.append(artifact_id)
+            return f"snap-{len(self.artifacts_registered)}"
+
+        def add_snapshot_plan_version(self, snapshot_id, plan_version_id, branch_id=None) -> None:
+            pass
+
+        def set_latest_snapshot(self, comparison_id, snapshot_id, ready=True) -> None:
+            self.latest = (comparison_id, snapshot_id)
+
+    class _ReadinessBranches:
+        def get_branch(self, branch_id) -> dict:
+            return {"branch_id": branch_id, "head_plan_version_id": "pv"}
+
+        def get_step_map(self, branch_id, pv_id) -> list[dict]:
+            return []
+
+    class _ReadinessPlans:
+        def get_plan_id_for_version(self, pv_id) -> str:
+            return "plan"
+
+        def get_version_steps(self, pv_id) -> list:
+            return []
+
+    class _ReadinessRuns:
+        def list_successful_steps_across_plan_ordered(self, plan_id, step_id) -> list:
+            return []
+
+    class _ReadinessRunSteps:
+        def list_successful_steps_ordered(self, plan_version_id, step_id, branch_id=None) -> list:
+            return []
+
+        def get_for_run(self, run_id) -> list:
+            return []
+
+    class _ReadinessArtifacts:
+        def register(self, ref) -> str:
+            return ref.artifact_id
+
+    class _ReadinessPublications:
+        def __init__(self):
+            self.published: list[str] = []
+
+        def enqueue_artifact(self, run_id, plan_version_id, run_step_id, artifact_id,
+                             physical_hash, storage_key, staging_source) -> str:
+            return f"outbox-{artifact_id}"
+
+        def mark_published(self, outbox_id) -> None:
+            self.published.append(outbox_id)
+
+    uow = type("U", (), {
+        "comparisons": _SnapshotComparisons(),
+        "branches": _ReadinessBranches(),
+        "plans": _ReadinessPlans(),
+        "artifacts": _ReadinessArtifacts(),
+        "publications": _ReadinessPublications(),
+        "runs": _ReadinessRuns(),
+        "run_steps": _ReadinessRunSteps(),
+        "commit": lambda self: None,
+        "rollback": lambda self: None,
+        "__enter__": lambda self: self,
+        "__exit__": lambda self, *a: False,
+    })()
+
+    class _Evidence:
+        def find_typed(self, step_map, cs, pv_id, evidence_branch_id, kinds):
+            return {"variables": [], "model_family": "logistic_regression", "model_payload": {}, "roles": {}}
+
+    uc = RefreshComparison(_FakeUoWFactory(uow), _Evidence(), _Writer(), governance_enabled=True)
+    uc._check_readiness = lambda uow, branch_id, pv_id, *, is_baseline=False: []  # type: ignore[method-assign]
+    result = uc(RefreshComparisonCommand(project_id="proj", comparison_id="cmp-1"))
+    assert result.ready is True
+    # challenger-1 and challenger-3 finalized+published; challenger-2 failed.
+    published_ids = uow.publications.published
+    assert len(published_ids) == 2, f"expected 2 published, got {published_ids}"
+    assert not any("challenger-2" in pid for pid in published_ids)
+
+
 # ---------------------------------------------------------------------------
 # 3. Pure comparison builders
 # ---------------------------------------------------------------------------

@@ -27,6 +27,7 @@ class ExecuteRun:
         finalize_run: FinalizeRun,
         artifact_store_factory: Callable[[], Any],
         heartbeat_interval_seconds: float = 75,
+        read_only_factory: Callable[[], Any] | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._node_catalogue = node_catalogue
@@ -34,8 +35,12 @@ class ExecuteRun:
         self._finalize_run = finalize_run
         self._artifact_store_factory = artifact_store_factory
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
+        self._read_only_factory = read_only_factory or uow_factory
 
     def __call__(self, command: ExecuteRunCommand) -> None:
+        # FsArtifactStore is stateless and project-bound — construct once per
+        # run and reuse across all steps (P3-2).
+        self._artifact_store = self._artifact_store_factory()
         uow = self._uow_factory()
         try:
             run = uow.runs.get(command.run_id)
@@ -166,7 +171,7 @@ class ExecuteRun:
                             return
                         raise
 
-                    artifact_store = self._artifact_store_factory()
+                    artifact_store = self._artifact_store
                     output_refs: list[ArtifactRef] = []
                     staged_by_artifact: dict[str, Any] = {}
                     for staged in result.staged_artifacts:
@@ -277,7 +282,7 @@ class ExecuteRun:
                 # DB mutation committed. On failure here the DB already has the
                 # descriptor + outbox row, so reconciliation can retry; the
                 # staging file is not orphaned into objects/.
-                artifact_store = self._artifact_store_factory()
+                artifact_store = self._artifact_store
                 for art_ref in output_refs:
                     staged = staged_by_artifact.get(art_ref.artifact_id)
                     if staged is not None:
@@ -344,64 +349,54 @@ class ExecuteRun:
         from cardre.domain.evidence.schemas import SCHEMA_RUN_SUMMARY
 
         plan_steps: dict[str, Any] = {}
-        pv_uow = self._uow_factory()
+        run_steps = None
+        # All reads happen through one read-only UoW — never a write UoW with
+        # an eager BEGIN IMMEDIATE (R1 invariant, P2-3).
+        summary_uow = self._read_only_factory()
         try:
-            for spec in pv_uow.plans.get_version_steps(pv_id):
+            for spec in summary_uow.plans.get_version_steps(pv_id):
                 plan_steps[spec.step_id] = spec
+            run_steps = summary_uow.run_steps.get_for_run(command.run_id)
+
+            steps_data: list[dict[str, Any]] = []
+            artifacts_data: list[dict[str, Any]] = []
+            seen_artifact_ids: set[str] = set()
+
+            for rs in run_steps:
+                spec = plan_steps.get(rs.step_id)
+                lineage = summary_uow.artifacts.artifacts_for_run_step(rs.run_step_id)
+                input_ids = [a.artifact_id for d, a in lineage if d == "input"]
+                output_ids = [a.artifact_id for d, a in lineage if d == "output"]
+                input_logical_hashes = [a.logical_hash for d, a in lineage if d == "input"]
+                output_logical_hashes = [a.logical_hash for d, a in lineage if d == "output"]
+                steps_data.append({
+                    "step_id": rs.step_id,
+                    "node_type": spec.node_type if spec else "",
+                    "node_version": spec.node_version if spec else "",
+                    "status": rs.status.value,
+                    "params_hash": spec.params_hash if spec else "",
+                    "input_artifact_logical_hashes": input_logical_hashes,
+                    "output_artifact_logical_hashes": output_logical_hashes,
+                    "input_artifact_ids": input_ids,
+                    "output_artifact_ids": output_ids,
+                    "warnings": rs.warnings,
+                    "errors": rs.errors,
+                })
+                for aid in output_ids + input_ids:
+                    if aid not in seen_artifact_ids:
+                        seen_artifact_ids.add(aid)
+                        art = summary_uow.artifacts.get(aid)
+                        if art is not None:
+                            artifacts_data.append({
+                                "artifact_id": art.artifact_id,
+                                "artifact_type": art.artifact_type,
+                                "role": art.role,
+                                "physical_hash": art.physical_hash,
+                                "logical_hash": art.logical_hash,
+                                "media_type": art.media_type,
+                            })
         finally:
-            pv_uow.close()
-
-        ruow = self._uow_factory()
-        try:
-            run_steps = ruow.run_steps.get_for_run(command.run_id)
-        finally:
-            ruow.close()
-
-        steps_data: list[dict[str, Any]] = []
-        artifacts_data: list[dict[str, Any]] = []
-        seen_artifact_ids: set[str] = set()
-
-        for rs in run_steps:
-            spec = plan_steps.get(rs.step_id)
-            lineage_ruow = self._uow_factory()
-            try:
-                lineage = lineage_ruow.artifacts.artifacts_for_run_step(rs.run_step_id)
-            finally:
-                lineage_ruow.close()
-            input_ids = [a.artifact_id for d, a in lineage if d == "input"]
-            output_ids = [a.artifact_id for d, a in lineage if d == "output"]
-            input_logical_hashes = [a.logical_hash for d, a in lineage if d == "input"]
-            output_logical_hashes = [a.logical_hash for d, a in lineage if d == "output"]
-            steps_data.append({
-                "step_id": rs.step_id,
-                "node_type": spec.node_type if spec else "",
-                "node_version": spec.node_version if spec else "",
-                "status": rs.status.value,
-                "params_hash": spec.params_hash if spec else "",
-                "input_artifact_logical_hashes": input_logical_hashes,
-                "output_artifact_logical_hashes": output_logical_hashes,
-                "input_artifact_ids": input_ids,
-                "output_artifact_ids": output_ids,
-                "warnings": rs.warnings,
-                "errors": rs.errors,
-            })
-            for aid in output_ids + input_ids:
-                if aid not in seen_artifact_ids:
-                    seen_artifact_ids.add(aid)
-                    line_ruow = self._uow_factory()
-                    try:
-                        art = line_ruow.artifacts.get(aid)
-                    finally:
-                        line_ruow.close()
-                    if art is not None:
-                        artifacts_data.append({
-                            "artifact_id": art.artifact_id,
-                            "artifact_type": art.artifact_type,
-                            "role": art.role,
-                            "physical_hash": art.physical_hash,
-                            "logical_hash": art.logical_hash,
-                            "media_type": art.media_type,
-                        })
+            summary_uow.close()
 
         summary = {
             "run_id": command.run_id,
@@ -410,7 +405,7 @@ class ExecuteRun:
             "artifacts": artifacts_data,
         }
 
-        artifact_store = self._artifact_store_factory()
+        artifact_store = self._artifact_store
         staged = artifact_store.stage_json(
             role="manifest",
             kind=EvidenceKind.RUN_SUMMARY.value,

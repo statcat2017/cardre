@@ -131,6 +131,7 @@ def build_container(settings: Settings) -> Container:
             finalize_run_factory(project_id),
             lambda: artifact_store_factory(project_id),
             heartbeat_interval_seconds=settings.heartbeat_watchdog_interval_seconds,
+            read_only_factory=lambda: uow_factory.read_only(project_id),
         )
 
     from cardre.adapters.dispatch.thread_dispatcher import ThreadRunDispatcher

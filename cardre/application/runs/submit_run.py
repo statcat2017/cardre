@@ -190,35 +190,54 @@ class SubmitRun:
     def _sweep_stale(self) -> None:
         from datetime import UTC, datetime
 
+        from cardre.domain.run import RunStatus
+
+        now_ts = datetime.now(UTC).timestamp()
+        stale_seconds = 300
+
+        # Identify runs the worker has abandoned: heartbeat absent, malformed,
+        # or older than the stale window. For each, hand the *observed* heartbeat
+        # value to FinalizeRun, which atomically compare-and-sets the terminal
+        # transition, appends the RUN_STALE diagnostic, builds the manifest, and
+        # enqueues its outbox record — all in one transaction.
+        stale_candidates: list[tuple[str, str | None]] = []
         uow = self._uow_factory()
         try:
             all_active = uow.runs.list_for_plan_version()
+            for run in all_active:
+                if run.status != RunStatus.RUNNING.value:
+                    continue
+                hb = run.heartbeat_at
+                is_stale = False
+                if hb is None:
+                    is_stale = True
+                else:
+                    try:
+                        hb_ts = datetime.fromisoformat(hb).replace(tzinfo=UTC).timestamp()
+                        is_stale = (now_ts - hb_ts) > stale_seconds
+                    except (ValueError, TypeError):
+                        # Unparsable heartbeat: Python classifies it as stale, so
+                        # the compare-and-set against the observed value will
+                        # interrupt it unless the worker renews it first.
+                        is_stale = True
+                if is_stale:
+                    stale_candidates.append((run.run_id, hb))
         finally:
             uow.close()
 
-        from cardre.domain.run import RunStatus
-        for run in all_active:
-            if run.status != RunStatus.RUNNING.value:
-                continue
-            hb = run.heartbeat_at
-            is_stale = False
-            if hb is None:
-                is_stale = True
-            else:
-                try:
-                    hb_ts = datetime.fromisoformat(hb).replace(tzinfo=UTC).timestamp()
-                    now_ts = datetime.now(UTC).timestamp()
-                    stale_seconds = 300
-                    is_stale = (now_ts - hb_ts) > stale_seconds
-                except (ValueError, TypeError):
-                    is_stale = True
-            if is_stale:
-                from cardre.application.runs.finalize_run import FinalizeDiagnostic
-                self._finalize_run(
-                    run.run_id,
-                    "interrupted",
-                    diagnostic=FinalizeDiagnostic(
-                        code="RUN_STALE",
-                        message="Run was stale and has been interrupted",
-                    ),
-                )
+        from cardre.application.runs.finalize_run import FinalizeDiagnostic
+
+        for run_id, hb in stale_candidates:
+            # FinalizeRun performs the compare-and-set transition, diagnostic,
+            # manifest build, and outbox enqueue atomically. If the worker
+            # renewed the heartbeat (or the run already terminalized) before
+            # this call, the transition loses and no manifest is produced.
+            self._finalize_run(
+                run_id,
+                "interrupted",
+                diagnostic=FinalizeDiagnostic(
+                    code="RUN_STALE",
+                    message="Run was stale and has been interrupted",
+                ),
+                stale_heartbeat_at=hb,
+            )
