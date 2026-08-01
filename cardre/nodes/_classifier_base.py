@@ -29,7 +29,11 @@ from sklearn.model_selection import StratifiedKFold, cross_validate
 
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.modeling.builders import build_model_artifact
-from cardre.nodes._training_utils import _write_estimator, prepare_supervised_training_data
+from cardre.nodes._training_utils import (
+    _estimator_parts,
+    _model_binary_descriptor_id,
+    prepare_supervised_training_data,
+)
 from cardre.nodes.contracts import NodeContext, NodeResult, NodeType
 
 
@@ -177,9 +181,24 @@ class BaseClassifierNode(NodeType):
                     ),
                 })
 
-        # 7. Persist binary estimator
-        estimator_art = _write_estimator(
-            context.outputs, clf, step_id, context.run_id, self.model_family,
+        # 7. Serialize the binary estimator and precompute its descriptor id so
+        # the JSON model can reference it BEFORE the binary is staged. Publish
+        # order matters: downstream `require("model")`/`first("model")` consumers
+        # select the first model artifact by role, and it must be the parseable
+        # JSON model, not the joblib blob (which the MODEL_ARTIFACT profile
+        # rejects on media type).
+        estimator_bytes, estimator_hash, estimator_metadata = _estimator_parts(
+            clf, step_id, context.run_id, self.model_family,
+        )
+        from types import SimpleNamespace
+
+        estimator_art = SimpleNamespace(
+            artifact_id=None,
+            provisional_artifact_id=_model_binary_descriptor_id(
+                estimator_bytes, estimator_hash, estimator_metadata,
+            ),
+            logical_hash=estimator_hash,
+            physical_hash=estimator_hash,
         )
 
         # 8. Build model artifact
@@ -218,7 +237,7 @@ class BaseClassifierNode(NodeType):
         if hasattr(clf, "feature_importances_") and clf.feature_importances_ is not None:
             model["interpretability"]["native_importance_source"] = "training_data"
 
-        # 9. Write JSON artifact
+        # 9. Write JSON artifact FIRST so role consumers pick it up
         artifact_metadata = {
             "feature_count": len(features),
             "target_column": target_column,
@@ -230,6 +249,17 @@ class BaseClassifierNode(NodeType):
             kind=EvidenceKind.MODEL_ARTIFACT,
             payload=model,
             metadata=artifact_metadata,
+        )
+
+        # 10. Stage the binary estimator SECOND (same descriptor id as the
+        # model's estimator_reference).
+        context.outputs.publish_bytes(
+            role="model",
+            kind=EvidenceKind.MODEL_ARTIFACT,
+            data=estimator_bytes,
+            media_type="application/octet-stream",
+            logical_hash=estimator_hash,
+            metadata=estimator_metadata,
         )
 
         # 10. Build metrics

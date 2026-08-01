@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from cardre.application.ports.artifact_store import StagedArtifact
+from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.evidence.kinds import EvidenceKind, RoleKind, expand_role_kind
 from cardre.nodes.contracts import ArtifactContract
 
@@ -135,4 +136,30 @@ def validate_output_contract(
         )
 
 
-__all__ = ["validate_output_contract"]
+def validate_input_contract(
+    contract: ArtifactContract,
+    input_artifacts: Sequence[ArtifactRef],
+    *,
+    node_type: str = "",
+    step_id: str = "",
+) -> None:
+    """Validate the staged inputs against the declared input contract.
+
+    Enforces that every ``required=True`` input role is present before the node
+    executes. Legacy nodes with only ``input_roles`` lists declare no typed
+    required roles and are unaffected. Nodes that self-enforce via
+    ``InputCollection.require()`` continue to work; this is the framework-level
+    guarantee so nodes that never call ``require()`` (e.g. NoopNode) cannot
+    silently run with missing required inputs.
+    """
+    required_roles = {spec.role for spec in contract.roles if spec.required}
+    present_roles = {a.role for a in input_artifacts}
+    missing = required_roles - present_roles
+    if missing:
+        raise ValueError(
+            f"Step {step_id or '-'} ({node_type or '-'}) missing required input "
+            f"roles: {sorted(missing)}"
+        )
+
+
+__all__ = ["validate_input_contract", "validate_output_contract"]

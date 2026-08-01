@@ -37,6 +37,7 @@ def _load_run(container: Container, project_id: str, run_id: str) -> RunResponse
         step_count=len(steps),
         executed_step_ids=executed,
         diagnostics=diagnostics,
+        stale_heartbeat_seconds=container.settings.stale_heartbeat_seconds,
     )
 
 

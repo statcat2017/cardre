@@ -442,7 +442,9 @@ __definition__ = NodeDefinition(
     category=ValidationMetricsNode.category,
     description="Compute validation metrics (AUC, KS, Gini, precision, recall, F1, G-Mean) at given cutoffs",
     input_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ValidationMetricsNode.input_roles),
+        # No role is hard-required: the node processes whichever datasets are
+        # supplied and gates on presence via params (require_test/require_oot).
+        roles=tuple(ArtifactRoleSpec(r, required=False) for r in ValidationMetricsNode.input_roles),
     ),
     output_contract=ArtifactContract(
         roles=tuple(ArtifactRoleSpec(r, required=True) for r in ValidationMetricsNode.output_roles),

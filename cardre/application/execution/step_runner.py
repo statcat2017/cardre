@@ -120,6 +120,8 @@ class StepRunner:
             )
             input_artifacts = self._filter_input_artifacts(spec, input_roles, resolved)
 
+            self._validate_input_roles(node, input_artifacts, spec)
+
             for pid in spec.parent_step_ids:
                 parent_arts = step_outputs.get(pid, [])
                 input_artifact_ids_by_parent[pid] = [
@@ -271,6 +273,24 @@ class StepRunner:
         validate_output_contract(
             output_contract,
             staged,
+            node_type=spec.node_type,
+            step_id=spec.step_id,
+        )
+
+    def _validate_input_roles(
+        self,
+        node: Any,
+        input_artifacts: list[ArtifactRef],
+        spec: StepSpec,
+    ) -> None:
+        from cardre.application.execution.contract_validation import validate_input_contract
+
+        contract = getattr(node.__definition__, "input_contract", None)
+        if contract is None or not getattr(contract, "roles", ()):
+            return
+        validate_input_contract(
+            contract,
+            input_artifacts,
             node_type=spec.node_type,
             step_id=spec.step_id,
         )

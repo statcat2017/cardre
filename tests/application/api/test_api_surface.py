@@ -217,6 +217,47 @@ def test_run_cancel_running_persists_cancel_requested(app_env, tmp_path):
     assert resp2.json()["cancel_requested"] is True
 
 
+def test_patch_committed_plan_version_returns_409(app_env, tmp_path):
+    """A committed plan version is immutable — PATCH must return 409
+    PLAN_VERSION_IMMUTABLE (F1)."""
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    _, pv_id = seed_committed_plan(container, pid)
+    resp = client.patch(
+        f"/projects/{pid}/plan-versions/{pv_id}",
+        json={"description": "Tampered"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "PLAN_VERSION_IMMUTABLE"
+
+
+def test_patch_draft_plan_version_succeeds(app_env, tmp_path):
+    """Draft versions remain editable."""
+    from cardre.domain.artifacts import json_logical_hash
+    from cardre.domain.step import StepSpec
+
+    client, container = app_env
+    pid, _ = provision(container, tmp_path)
+    with container.uow_factory.for_project(pid) as uow:
+        plan_id = uow.plans.create_plan(pid, "DraftPlan")
+        pv_id = uow.plans.create_version(
+            plan_id,
+            [StepSpec(
+                step_id="s1", node_type="cardre.noop", node_version="1",
+                category="transform", params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+            )],
+            is_committed=False,
+        )
+        uow.commit()
+    resp = client.patch(
+        f"/projects/{pid}/plan-versions/{pv_id}",
+        json={"description": "Draft update"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["description"] == "Draft update"
+
+
 def test_branch_scope_without_branch_id_rejected(app_env, tmp_path):
     client, container = app_env
     pid, _ = provision(container, tmp_path)

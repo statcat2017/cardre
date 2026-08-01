@@ -362,6 +362,263 @@ def test_lost_lease_blocks_output_persistence(provisioned_project):
 
 
 # ---------------------------------------------------------------------------
+# F2 — RunSummary publication must respect the lease fence
+# ---------------------------------------------------------------------------
+
+
+def test_run_summary_not_published_after_stale_recovery(provisioned_project):
+    """The technical-manifest RunSummary artifact must not be published for a
+    run that has already been terminalized (F2).
+
+    The summary is published inside its own transaction that never checked the
+    run lease. Deterministic harness: block the summary's read phase (the only
+    use of ``read_only_factory``), terminalize the run as stale, then release —
+    the summary transaction must refuse to publish for a terminal run.
+    """
+    import uuid
+
+    from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+    from cardre.application.execution.step_runner import StepExecutionResult
+    from cardre.application.runs.execute_run import ExecuteRun, ExecuteRunCommand
+    from cardre.application.runs.finalize_run import FinalizeRun
+    from cardre.domain.run import RunStepStatus
+
+    project_id, uow_factory, _registry, root = provisioned_project
+    with uow_factory.for_project(project_id) as uow:
+        plan_id = uow.plans.create_plan(project_id, "Plan")
+        pv_id = uow.plans.create_version(
+            plan_id,
+            [
+                StepSpec(
+                    step_id="s1", node_type="cardre.noop", node_version="1",
+                    category="transform", params={}, params_hash=json_logical_hash({}),
+                    parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                ),
+                StepSpec(
+                    step_id="s2", node_type="cardre.technical_manifest_export", node_version="1",
+                    category="export", params={}, params_hash=json_logical_hash({}),
+                    parent_step_ids=["s1"], branch_label="", position=1, canonical_step_id="manifest",
+                ),
+            ],
+            is_committed=True,
+        )
+        run_id = uow.runs.create(pv_id)
+        uow.commit()
+
+    finalize = FinalizeRun(
+        lambda: uow_factory.for_project(project_id),
+        type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+    )
+
+    summary_read_started = threading.Event()
+    release_summary_read = threading.Event()
+
+    def blocking_read_only():
+        summary_read_started.set()
+        release_summary_read.wait(timeout=5)
+        return uow_factory.read_only(project_id)
+
+    class _Runner:
+        def run_step(self, pv_id, run_id, step, step_outputs, run_step_records):
+            if step.step_id == "s1":
+                # s1 must produce an output so step_outputs is non-empty and
+                # the summary path is reached for s2.
+                from cardre.domain.artifacts import ArtifactRef
+
+                ref = ArtifactRef(
+                    artifact_id=f"artifact-{uuid.uuid4()}", artifact_type="report",
+                    role="report", path="objects/x", physical_hash="p",
+                    logical_hash="l", media_type="application/json",
+                )
+                step_outputs.setdefault("s1", []).append(ref)
+                return StepExecutionResult(
+                    step_id="s1", node_type="cardre.noop",
+                    status=RunStepStatus.SUCCEEDED, fingerprint={},
+                    input_artifact_ids=[], output_artifact_ids=[ref.artifact_id],
+                    staged_artifacts=[], input_artifact_ids_by_parent={},
+                )
+            return StepExecutionResult(
+                step_id=step.step_id, node_type=step.node_type,
+                status=RunStepStatus.SUCCEEDED,
+                fingerprint={}, input_artifact_ids=[], output_artifact_ids=[],
+                staged_artifacts=[],
+            )
+
+    class _NoopCatalogue:
+        def availability(self, node_type):
+            return type("Av", (), {"available": True})()
+
+    executor = ExecuteRun(
+        lambda: uow_factory.for_project(project_id),
+        _NoopCatalogue(),
+        _Runner(),
+        finalize,
+        lambda: FsArtifactStore(root),
+        heartbeat_interval_seconds=0.1,
+        read_only_factory=blocking_read_only,
+    )
+
+    thread = threading.Thread(target=lambda: executor(ExecuteRunCommand(run_id=run_id)))
+    thread.start()
+    assert summary_read_started.wait(timeout=5), "summary read never started"
+
+    # Terminalize as stale exactly like _sweep_stale does, then release the
+    # summary read so its write transaction proceeds on a terminal run.
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(run_id, RunStatus.INTERRUPTED,
+                            expected_from=(RunStatus.RUNNING,))
+        uow.runs.begin_worker_generation(run_id)
+        uow.commit()
+    release_summary_read.set()
+    thread.join(timeout=5)
+
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(run_id)
+        outbox = uow.publications.list_by_run(run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.INTERRUPTED.value
+    # The summary artifact enqueues with run_step_id=""; any such row after
+    # terminalization is an F2 regression.
+    orphaned = [r for r in outbox if r["kind"] == "artifact" and r["run_step_id"] == ""]
+    assert orphaned == [], (
+        "RunSummary must not be published after the run is terminal"
+    )
+
+
+def test_run_summary_not_published_after_cancellation(provisioned_project):
+    """A cancel landing before the technical-manifest step must prevent the
+    RunSummary from being published (F2)."""
+    from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+    from cardre.application.execution.step_runner import StepExecutionResult
+    from cardre.application.runs.cancel_run import CancelRun, CancelRunCommand
+    from cardre.application.runs.execute_run import ExecuteRun, ExecuteRunCommand
+    from cardre.application.runs.finalize_run import FinalizeRun
+    from cardre.domain.run import RunStepStatus
+
+    project_id, uow_factory, _registry, root = provisioned_project
+    with uow_factory.for_project(project_id) as uow:
+        plan_id = uow.plans.create_plan(project_id, "Plan")
+        pv_id = uow.plans.create_version(
+            plan_id,
+            [
+                StepSpec(
+                    step_id="s1", node_type="cardre.noop", node_version="1",
+                    category="transform", params={}, params_hash=json_logical_hash({}),
+                    parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+                ),
+                StepSpec(
+                    step_id="s2", node_type="cardre.technical_manifest_export", node_version="1",
+                    category="export", params={}, params_hash=json_logical_hash({}),
+                    parent_step_ids=["s1"], branch_label="", position=1, canonical_step_id="manifest",
+                ),
+            ],
+            is_committed=True,
+        )
+        run_id = uow.runs.create(pv_id)
+        uow.commit()
+
+    finalize = FinalizeRun(
+        lambda: uow_factory.for_project(project_id),
+        type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+    )
+
+    release_s1 = threading.Event()
+    s1_done = threading.Event()
+
+    class _BlockingRunner:
+        def run_step(self, pv_id, run_id, step, step_outputs, run_step_records):
+            if step.step_id == "s1":
+                s1_done.set()
+                release_s1.wait(timeout=5)
+            return StepExecutionResult(
+                step_id=step.step_id, node_type=step.node_type,
+                status=RunStepStatus.SUCCEEDED,
+                fingerprint={}, input_artifact_ids=[], output_artifact_ids=[],
+                staged_artifacts=[],
+            )
+
+    class _NoopCatalogue:
+        def availability(self, node_type):
+            return type("Av", (), {"available": True})()
+
+    executor = ExecuteRun(
+        lambda: uow_factory.for_project(project_id),
+        _NoopCatalogue(),
+        _BlockingRunner(),
+        finalize,
+        lambda: FsArtifactStore(root),
+        heartbeat_interval_seconds=0.1,
+    )
+
+    thread = threading.Thread(target=lambda: executor(ExecuteRunCommand(run_id=run_id)))
+    thread.start()
+    assert s1_done.wait(timeout=5), "s1 never started"
+
+    # Cancel while s1 is blocked; the worker must not publish the RunSummary
+    # when it reaches the technical-manifest step.
+    CancelRun(lambda: uow_factory.for_project(project_id))(CancelRunCommand(run_id=run_id))
+    release_s1.set()
+    thread.join(timeout=5)
+
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(run_id)
+        outbox = uow.publications.list_by_run(run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.CANCELLED.value
+    artifact_rows = [r for r in outbox if r["kind"] == "artifact"]
+    assert artifact_rows == [], (
+        "RunSummary must not be published for a cancelled run"
+    )
+
+
+def test_cancelled_created_run_stays_cancelled_through_execute(provisioned_project):
+    """A created run cancelled before the worker claims it must end cancelled
+    even when ExecuteRun would otherwise fail pre-execution validation (the
+    reviewer's F7 scenario)."""
+    from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+    from cardre.application.runs.cancel_run import CancelRun, CancelRunCommand
+    from cardre.application.runs.execute_run import ExecuteRun, ExecuteRunCommand
+
+    project_id, uow_factory, _registry, root = provisioned_project
+    with uow_factory.for_project(project_id) as uow:
+        plan_id = uow.plans.create_plan(project_id, "Plan")
+        pv_id = uow.plans.create_version(
+            plan_id,
+            [StepSpec(
+                step_id="s1", node_type="cardre.noop", node_version="1",
+                category="transform", params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+            )],
+            is_committed=True,
+        )
+        run_id = uow.runs.create(pv_id)  # created, not yet claimed
+        uow.commit()
+
+    CancelRun(lambda: uow_factory.for_project(project_id))(CancelRunCommand(run_id=run_id))
+
+    class _UnavailableCatalogue:
+        def availability(self, node_type):
+            return type("Av", (), {"available": False})()
+
+    executor = ExecuteRun(
+        lambda: uow_factory.for_project(project_id),
+        _UnavailableCatalogue(),
+        None,
+        None,
+        lambda: FsArtifactStore(root),
+        heartbeat_interval_seconds=0.1,
+    )
+    executor(ExecuteRunCommand(run_id=run_id))
+
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.CANCELLED.value, (
+        "pre-claim cancelled run must stay cancelled, not fail"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Finding 5 — concurrent-run guard is atomic
 # ---------------------------------------------------------------------------
 

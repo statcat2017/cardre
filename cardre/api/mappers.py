@@ -56,7 +56,7 @@ def diagnostic_to_response(value: Mapping[str, Any]) -> DiagnosticResponse:
 _STALE_HEARTBEAT_SECONDS = 300
 
 
-def _is_stale(run: Run) -> bool:
+def _is_stale(run: Run, *, stale_heartbeat_seconds: int = _STALE_HEARTBEAT_SECONDS) -> bool:
     """A run is stale only if it is running AND its persisted heartbeat is
     older than the staleness threshold. A healthy running run with a recent
     heartbeat is fresh; a running run with no heartbeat is stale.
@@ -70,7 +70,7 @@ def _is_stale(run: Run) -> bool:
     try:
         hb_ts = datetime.fromisoformat(hb).replace(tzinfo=UTC).timestamp()
         now_ts = datetime.now(UTC).timestamp()
-        return (now_ts - hb_ts) > _STALE_HEARTBEAT_SECONDS
+        return (now_ts - hb_ts) > stale_heartbeat_seconds
     except (ValueError, TypeError):
         return True
 
@@ -81,6 +81,7 @@ def run_to_response(
     step_count: int = 0,
     executed_step_ids: list[str] | None = None,
     diagnostics: list[dict[str, Any]] | None = None,
+    stale_heartbeat_seconds: int = _STALE_HEARTBEAT_SECONDS,
 ) -> RunResponse:
     diag_responses = [diagnostic_to_response(d) for d in (diagnostics or [])]
     latest_error = next(
@@ -101,7 +102,7 @@ def run_to_response(
         diagnostics=diag_responses,
         latest_error=latest_error,
         heartbeat_at=run.heartbeat_at,
-        is_stale=_is_stale(run),
+        is_stale=_is_stale(run, stale_heartbeat_seconds=stale_heartbeat_seconds),
         cancel_requested=run.cancel_requested,
     )
 

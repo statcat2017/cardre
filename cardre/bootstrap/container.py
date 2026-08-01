@@ -56,6 +56,7 @@ class Container:
     assign_champion_factory: Any = None
     list_reports: Any = None
     list_exports: Any = None
+    get_run_manifest: Any = None
 
 
 def build_container(settings: Settings) -> Container:
@@ -177,6 +178,7 @@ def build_container(settings: Settings) -> Container:
             finalize_run_factory(project_id),
             governance_enabled=settings.governance_enabled,
             project_id=project_id,
+            stale_heartbeat_seconds=settings.stale_heartbeat_seconds,
         )
 
     renderer = HtmlReportRenderer()
@@ -233,9 +235,10 @@ def build_container(settings: Settings) -> Container:
     def assign_champion_factory(project_id: str) -> AssignChampion:
         return AssignChampion(uow_factory)
 
-    from cardre.application.reporting.report_queries import ListExports, ListReports
-    list_reports = ListReports(uow_factory)
+    from cardre.application.reporting.report_queries import GetRunManifest, ListExports, ListReports
+    list_reports = ListReports(uow_factory, manifest_publisher_factory)
     list_exports = ListExports(uow_factory)
+    get_run_manifest = GetRunManifest(uow_factory, manifest_publisher_factory)
 
     return Container(
         settings=settings,
@@ -260,4 +263,5 @@ def build_container(settings: Settings) -> Container:
         assign_champion_factory=assign_champion_factory,
         list_reports=list_reports,
         list_exports=list_exports,
+        get_run_manifest=get_run_manifest,
     )

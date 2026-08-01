@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import io
 from typing import Any
 
+import joblib
+import numpy as np
 import polars as pl
 
 from cardre.domain.diagnostics import JsonDict
@@ -336,6 +339,40 @@ class ApplyModelNode(NodeType):
 
                 df = df.with_columns([prob_expr, raw_expr])
 
+                # Runtime calibration: a non-folded calibrator (isotonic,
+                # CV-Platt, non-linear Platt) must transform the raw sigmoid
+                # probabilities before scoring. Folded-linear calibration is
+                # already baked into the coefficients and needs no runtime step.
+                calibration = model.get("calibration") or {}
+                if calibration.get("application_mode") == "runtime_probability_transform":
+                    calibrator_id = calibration.get("calibrator_artifact_id", "")
+                    if not calibrator_id:
+                        raise ValueError(
+                            "Model has calibration block but no calibrator_artifact_id"
+                        )
+                    cal_ref = context.inputs.artifact_ref(calibrator_id)
+                    if cal_ref is None:
+                        raise ValueError(
+                            f"Calibrator artifact {calibrator_id!r} not among step inputs"
+                        )
+                    calibrator_bytes = context.inputs.read_bytes(cal_ref)
+                    calibrator = joblib.load(io.BytesIO(calibrator_bytes))
+                    raw_probs = df["predicted_bad_probability"].to_numpy()
+                    x_cal = np.column_stack([1.0 - raw_probs, raw_probs])
+                    if hasattr(calibrator, "predict_proba"):
+                        cal_probs = calibrator.predict_proba(x_cal)
+                        cal_p = cal_probs[:, 1] if cal_probs.shape[1] > 1 else cal_probs[:, 0]
+                    else:
+                        cal_p = calibrator.predict(raw_probs)
+                    cal_p = np.asarray(cal_p, dtype=np.float64)
+                    cal_log_odds = np.log(
+                        np.clip(cal_p / np.maximum(1 - cal_p, 1e-15), 1e-15, None),
+                    )
+                    df = df.with_columns([
+                        pl.Series("predicted_bad_probability", cal_p, dtype=pl.Float64),
+                        pl.Series("raw_model_output", cal_log_odds, dtype=pl.Float64),
+                    ])
+
                 base_metadata: JsonDict = {
                     "model_artifact_id": model_art.artifact_id,
                     "model_family": "logistic_regression",
@@ -445,14 +482,26 @@ __definition__ = NodeDefinition(
     category=ApplyWoeMappingNode.category,
     description="Apply WOE mapping to transform raw features into WOE values",
     input_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ApplyWoeMappingNode.input_roles),
+        roles=(
+            # Bin definition and WOE table are hard-required (looked up by
+            # kind); data roles and the scorecard role are optional — the node
+            # transforms whichever datasets are supplied.
+            ArtifactRoleSpec("definition", required=True),
+            ArtifactRoleSpec("report", required=True),
+            ArtifactRoleSpec("train", required=False),
+            ArtifactRoleSpec("test", required=False),
+            ArtifactRoleSpec("oot", required=False),
+            ArtifactRoleSpec("scorecard", required=False),
+        ),
     ),
     output_contract=ArtifactContract(
-        roles=tuple(
-            ArtifactRoleSpec(r, required=True)
-            if r != "report"
-            else ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_WOE_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_WOE_EVIDENCE,))
-            for r in ApplyWoeMappingNode.output_roles
+        roles=(
+            # A partial apply (e.g. only test) emits only that data role plus
+            # the evidence report; the data output roles must be optional.
+            ArtifactRoleSpec("train", required=False),
+            ArtifactRoleSpec("test", required=False),
+            ArtifactRoleSpec("oot", required=False),
+            ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_WOE_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_WOE_EVIDENCE,)),
         ),
     ),
     parameter_schema=None,
@@ -466,17 +515,32 @@ __definition_apply_model = NodeDefinition(
     category=ApplyModelNode.category,
     description="Apply a fitted model to score datasets across train/test/oot roles",
     input_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ApplyModelNode.input_roles),
+        roles=(
+            # Only the model is hard-required. Scorecard is optional (the node
+            # scores without it) and each of the three data roles is processed
+            # for whichever datasets the plan supplies.
+            ArtifactRoleSpec("model", required=True),
+            ArtifactRoleSpec("train", required=False),
+            ArtifactRoleSpec("test", required=False),
+            ArtifactRoleSpec("oot", required=False),
+            ArtifactRoleSpec("scorecard", required=False),
+        ),
     ),
     output_contract=ArtifactContract(
-        roles=tuple(
-            ArtifactRoleSpec(r, required=True)
-            if r != "report"
-            else ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_MODEL_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_MODEL_EVIDENCE,))
-            for r in ApplyModelNode.output_roles
+        roles=(
+            ArtifactRoleSpec("train", required=False),
+            ArtifactRoleSpec("test", required=False),
+            ArtifactRoleSpec("oot", required=False),
+            ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_MODEL_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_MODEL_EVIDENCE,)),
         ),
     ),
     parameter_schema=None,
     optional_dependencies=(),
     tier="launch",
 )
+
+# Bind the typed contracts to their classes so StepRunner (which reads
+# ``node.__definition__``) enforces them instead of falling back to the legacy
+# role lists. The definitions are module-level to keep this file readable.
+ApplyWoeMappingNode.__definition__ = __definition__
+ApplyModelNode.__definition__ = __definition_apply_model

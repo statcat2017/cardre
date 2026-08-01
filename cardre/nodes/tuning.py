@@ -14,7 +14,11 @@ from sklearn.tree import DecisionTreeClassifier
 
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.modeling.builders import build_model_artifact
-from cardre.nodes._training_utils import _write_estimator, prepare_supervised_training_data
+from cardre.nodes._training_utils import (
+    _estimator_parts,
+    _model_binary_descriptor_id,
+    prepare_supervised_training_data,
+)
 from cardre.nodes.contracts import NodeContext, NodeResult, NodeType
 from cardre.nodes.parameters import (
     MethodOption,
@@ -278,8 +282,18 @@ class HyperparameterTuningNode(NodeType):
         })
 
         model_family = ESTIMATOR_TO_FAMILY[estimator_type]
-        estimator_art = _write_estimator(
-            context.outputs, best_estimator, step_id, context.run_id, model_family,
+        estimator_bytes, estimator_hash, estimator_metadata = _estimator_parts(
+            best_estimator, step_id, context.run_id, model_family,
+        )
+        from types import SimpleNamespace
+
+        estimator_art = SimpleNamespace(
+            artifact_id=None,
+            provisional_artifact_id=_model_binary_descriptor_id(
+                estimator_bytes, estimator_hash, estimator_metadata,
+            ),
+            logical_hash=estimator_hash,
+            physical_hash=estimator_hash,
         )
 
         model = build_model_artifact(
@@ -351,6 +365,17 @@ class HyperparameterTuningNode(NodeType):
             kind=EvidenceKind.MODEL_ARTIFACT,
             payload=model,
             metadata=artifact_metadata,
+        )
+
+        # Stage the binary estimator AFTER the JSON model so role consumers
+        # (`require("model")` / `first("model")`) select the parseable model.
+        context.outputs.publish_bytes(
+            role="model",
+            kind=EvidenceKind.MODEL_ARTIFACT,
+            data=estimator_bytes,
+            media_type="application/octet-stream",
+            logical_hash=estimator_hash,
+            metadata=estimator_metadata,
         )
 
         metrics: dict[str, Any] = {

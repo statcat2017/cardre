@@ -582,13 +582,14 @@ def test_cancel_persists_cancel_requested_and_preserves_running(committed_plan):
     assert run.status == RunStatus.RUNNING.value
 
 
-def test_cancel_rejects_non_running(committed_plan):
+def test_cancel_rejects_terminal_run(committed_plan):
+    """A terminal (failed) run cannot be cancelled — RUN_NOT_RUNNING."""
     project_id, uow_factory, pv_id = committed_plan
     from cardre.application.runs.cancel_run import CancelRun, CancelRunCommand
     submit = _make_submit(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.FAILED)
+        uow.runs.transition(r1.run_id, RunStatus.FAILED, expected_from=(RunStatus.CREATED,))
         uow.commit()
     cancel = CancelRun(lambda: uow_factory.for_project(project_id))
     with pytest.raises(CardreError) as exc:
@@ -603,6 +604,34 @@ def test_cancel_unknown_returns_not_found(committed_plan):
     with pytest.raises(CardreError) as exc:
         cancel(CancelRunCommand(run_id="nonexistent"))
     assert exc.value.code == "RUN_NOT_FOUND"
+
+
+def test_cancel_created_run_succeeds(committed_plan):
+    """An async-submitted run is created before the worker claims it; a cancel
+    arriving in that window must terminalize it as cancelled instead of
+    RUN_NOT_RUNNING, and must free the concurrent-run guard (F7)."""
+    project_id, uow_factory, pv_id = committed_plan
+    from cardre.application.runs.cancel_run import CancelRun, CancelRunCommand
+    submit = _make_submit(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    # The row is 'created' until ExecuteRun claims it.
+    with uow_factory.read_only(project_id) as uow:
+        assert uow.runs.get(r1.run_id).status == RunStatus.CREATED.value
+
+    cancel = CancelRun(lambda: uow_factory.for_project(project_id))
+    cancel(CancelRunCommand(run_id=r1.run_id))
+
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.CANCELLED.value, (
+        "created run must be terminalized as cancelled"
+    )
+
+    # The concurrent-run guard must be freed: a normal (non-forced) submission
+    # on the same plan version now succeeds.
+    r2 = submit(_cmd(pv_id))
+    assert r2.run_id != r1.run_id
 
 
 def test_cancel_visible_on_subsequent_get(committed_plan):
@@ -626,6 +655,59 @@ def test_cancel_visible_on_subsequent_get(committed_plan):
 # ---------------------------------------------------------------------------
 # 404 for unknown run steps/evidence
 # ---------------------------------------------------------------------------
+
+
+def test_sweep_stale_uses_configured_threshold(committed_plan):
+    """The stale sweep must honour the injected stale_heartbeat_seconds, not a
+    hard-coded 300s window (F6)."""
+    project_id, uow_factory, pv_id = committed_plan
+    from cardre.adapters.filesystem.manifest_publisher import FsManifestPublisher
+    from cardre.application.runs.finalize_run import FinalizeRun
+    from cardre.application.runs.submit_run import SubmitRun
+
+    root = uow_factory._registry.resolve_root(project_id)
+    finalize = FinalizeRun(lambda: uow_factory.for_project(project_id), FsManifestPublisher(root))
+    submit = SubmitRun(
+        lambda: uow_factory.for_project(project_id), _NoopDispatcher(), None, finalize,
+        governance_enabled=True, project_id=project_id,
+        stale_heartbeat_seconds=60,
+    )
+
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.commit()
+    # 120s-old heartbeat: stale under the configured 60s window, fresh under
+    # the hard-coded 300s default.
+    _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=120)
+
+    submit(_cmd(pv_id))
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.INTERRUPTED.value, (
+        "120s-old heartbeat must be swept under a 60s threshold"
+    )
+
+
+def test_sweep_stale_respects_default_when_unconfigured(committed_plan):
+    """With no explicit threshold, the default 300s window still governs."""
+    project_id, uow_factory, pv_id = committed_plan
+    submit = _submit_with_finalize(uow_factory, project_id)
+    r1 = submit(_cmd(pv_id))
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.commit()
+    # 120s-old heartbeat: fresh under the default 300s window.
+    _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=120)
+
+    submit(_cmd(pv_id, force=True))
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(r1.run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.RUNNING.value, (
+        "120s-old heartbeat must NOT be swept under the default 300s window"
+    )
 
 
 def test_run_steps_unknown_run_returns_not_found(committed_plan):

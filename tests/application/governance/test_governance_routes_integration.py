@@ -128,6 +128,76 @@ def test_create_branch_reaches_real_use_case(governance_env, tmp_path):
     assert branch["plan_id"] == plan_id
 
 
+def test_create_branch_persists_description(governance_env, tmp_path):
+    """Client-supplied description must round-trip (F3)."""
+    client, container = governance_env
+    project_id, root = _provision_project(container, tmp_path)
+    plan_id, pv_id = _seed_branchable_plan(container, project_id)
+    resp = client.post(
+        f"/projects/{project_id}/governance/branches",
+        json={
+            "plan_id": plan_id, "name": "seg-desc",
+            "branch_type": "segment_challenger",
+            "base_plan_version_id": pv_id,
+            "head_plan_version_id": pv_id,
+            "branch_point_step_id": "sample-definition",
+            "created_reason": "test",
+            "description": "description-roundtrip",
+            "segment_filter_spec": {"rules": [
+                {"column": "channel", "operator": "==", "value": "online", "reason": "test"},
+            ]},
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    with container.uow_factory.read_only(project_id) as uow:
+        branch = uow.branches.get_branch(resp.json()["branch_id"])
+    assert branch is not None
+    assert branch["description"] == "description-roundtrip"
+
+
+def test_create_branch_head_version_mismatch_rejected(governance_env, tmp_path):
+    """head_plan_version_id that disagrees with the derived head is rejected
+    instead of silently discarded (F3)."""
+    client, container = governance_env
+    project_id, root = _provision_project(container, tmp_path)
+    plan_id, pv_id = _seed_branchable_plan(container, project_id)
+    resp = client.post(
+        f"/projects/{project_id}/governance/branches",
+        json={
+            "plan_id": plan_id, "name": "seg-bad",
+            "branch_type": "segment_challenger",
+            "base_plan_version_id": pv_id,
+            "head_plan_version_id": "some-other-version",
+            "branch_point_step_id": "sample-definition",
+            "created_reason": "test",
+            "segment_filter_spec": {"rules": [
+                {"column": "channel", "operator": "==", "value": "online", "reason": "test"},
+            ]},
+        },
+    )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["detail"]["code"] == "STALE_HEAD_VERSION"
+
+
+def test_create_branch_requires_branch_type(governance_env, tmp_path):
+    """branch_type is required — the old 'challenger' default is never valid
+    and must not silently succeed (F3)."""
+    client, container = governance_env
+    project_id, root = _provision_project(container, tmp_path)
+    plan_id, pv_id = _seed_branchable_plan(container, project_id)
+    resp = client.post(
+        f"/projects/{project_id}/governance/branches",
+        json={
+            "plan_id": plan_id, "name": "seg-missing-type",
+            "base_plan_version_id": pv_id,
+            "head_plan_version_id": pv_id,
+            "branch_point_step_id": "sample-definition",
+            "created_reason": "test",
+        },
+    )
+    assert resp.status_code == 422, resp.text
+
+
 # ---------------------------------------------------------------------------
 # Comparison creation and refresh
 # ---------------------------------------------------------------------------
@@ -271,9 +341,70 @@ def test_champion_assignment_works_through_route(governance_env, tmp_path):
     assert data["assignment"]["champion_branch_id"] == branch_id
 
 
-# ---------------------------------------------------------------------------
-# Manual-binning review list/get/update PATCH semantics
-# ---------------------------------------------------------------------------
+def test_get_champion_plan_level_returns_assignment(governance_env, tmp_path):
+    """GET champion with a plan_id returns the plan-scoped assignment."""
+    client, container = governance_env
+    project_id, root = _provision_project(container, tmp_path)
+    plan_id, pv_id = _seed_branchable_plan(container, project_id)
+    branch_id = _create_branch_via_use_case(container, project_id, plan_id, pv_id)
+
+    # Insert a champion assignment directly for this plan.
+    import sqlite3
+
+    from cardre.domain.diagnostics import utc_now_iso
+    conn = sqlite3.connect(str(root / "project.sqlite"))
+    now = utc_now_iso()
+    conn.execute(
+        "INSERT INTO champion_assignments (champion_assignment_id, project_id, plan_id, "
+        " scope_type, scope_key, champion_branch_id, comparison_id, comparison_snapshot_id, "
+        " comparison_artifact_id, selected_plan_version_id, assigned_reason, assigned_by, assigned_at) "
+        "VALUES (?, ?, ?, 'plan', ?, ?, '', '', '', ?, 'test', NULL, ?)",
+        (str(uuid.uuid4()), project_id, plan_id, plan_id, branch_id, pv_id, now),
+    )
+    conn.commit()
+    conn.close()
+
+    resp = client.get(f"/projects/{project_id}/governance/champion?plan_id={plan_id}")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["assignment"] is not None
+    assert resp.json()["assignment"]["champion_branch_id"] == branch_id
+
+
+def test_get_champion_project_level_returns_assignment(governance_env, tmp_path):
+    """GET champion without plan_id returns the project-scoped assignment —
+    the route must not 422 on a missing plan_id (F3)."""
+    client, container = governance_env
+    project_id, root = _provision_project(container, tmp_path)
+    plan_id, pv_id = _seed_branchable_plan(container, project_id)
+    branch_id = _create_branch_via_use_case(container, project_id, plan_id, pv_id)
+
+    import sqlite3
+
+    from cardre.domain.diagnostics import utc_now_iso
+    conn = sqlite3.connect(str(root / "project.sqlite"))
+    now = utc_now_iso()
+    conn.execute(
+        "INSERT INTO champion_assignments (champion_assignment_id, project_id, plan_id, "
+        " scope_type, scope_key, champion_branch_id, comparison_id, comparison_snapshot_id, "
+        " comparison_artifact_id, selected_plan_version_id, assigned_reason, assigned_by, assigned_at) "
+        "VALUES (?, ?, ?, 'project', ?, ?, '', '', '', ?, 'test', NULL, ?)",
+        (str(uuid.uuid4()), project_id, plan_id, project_id, branch_id, pv_id, now),
+    )
+    conn.commit()
+    conn.close()
+
+    resp = client.get(f"/projects/{project_id}/governance/champion")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["assignment"] is not None
+    assert resp.json()["assignment"]["champion_branch_id"] == branch_id
+
+
+def test_get_champion_no_assignment_returns_none(governance_env, tmp_path):
+    client, container = governance_env
+    project_id, root = _provision_project(container, tmp_path)
+    resp = client.get(f"/projects/{project_id}/governance/champion")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["assignment"] is None
 
 
 def _seed_mb_plan_and_review(container, project_id, status="pending", notes="initial",
@@ -300,6 +431,11 @@ def _seed_mb_plan_and_review(container, project_id, status="pending", notes="ini
         )
         uow.commit()
         return plan_id, pv_id, review.review_id
+
+
+# ---------------------------------------------------------------------------
+# Manual-binning review list/get/update PATCH semantics
+# ---------------------------------------------------------------------------
 
 
 def test_manual_binning_review_list_and_get(governance_env, tmp_path):

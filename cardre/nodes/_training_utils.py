@@ -138,6 +138,60 @@ def prepare_supervised_training_data(
     )
 
 
+def _estimator_parts(
+    clf: Any,
+    step_id: str,
+    run_id: str,
+    model_family: str,
+) -> tuple[bytes, str, dict[str, Any]]:
+    """Serialize a fitted estimator and return ``(bytes, sha256, metadata)``.
+
+    The descriptor id of the eventual staged artifact is deterministic from
+    these parts, so the JSON model artifact can reference the estimator id
+    *before* the binary is staged — letting callers publish the JSON model
+    first (matching the historical role-consumer ordering).
+    """
+    buf = io.BytesIO()
+    joblib.dump(clf, buf)
+    estimator_bytes = buf.getvalue()
+    logical_hash = hashlib.sha256(estimator_bytes).hexdigest()
+    metadata = {
+        "estimator_format": "joblib",
+        "byte_count": len(estimator_bytes),
+        "creating_run_id": run_id,
+        "creating_run_step_id": step_id,
+        "model_family": model_family,
+    }
+    return estimator_bytes, logical_hash, metadata
+
+
+def _model_binary_descriptor_id(
+    data: bytes,
+    logical_hash: str,
+    metadata: dict[str, Any],
+) -> str:
+    """Compute the descriptor id the store will assign to a model-role binary.
+
+    Used for estimator blobs (classifier/tuning nodes) and the calibrator
+    blob so the JSON model artifact can reference the binary's id before it is
+    staged, letting callers publish the JSON model first (matching the
+    historical role-consumer ordering).
+    """
+    from cardre.domain.artifacts import descriptor_id
+
+    kind_value = EvidenceKind.MODEL_ARTIFACT.value
+    return descriptor_id(
+        artifact_type=kind_value.split(".")[-1] if "." in kind_value else kind_value,
+        role="model",
+        media_type="application/octet-stream",
+        kind=kind_value,
+        schema_version=str(metadata.get("schema_version", "")),
+        logical_hash=logical_hash,
+        physical_hash=hashlib.sha256(data).hexdigest(),
+        metadata=metadata,
+    )
+
+
 def _write_estimator(
     outputs: OutputPublisher,
     clf: Any,
@@ -145,20 +199,14 @@ def _write_estimator(
     run_id: str,
     model_family: str,
 ) -> Any:
-    buf = io.BytesIO()
-    joblib.dump(clf, buf)
-    estimator_bytes = buf.getvalue()
+    estimator_bytes, logical_hash, metadata = _estimator_parts(
+        clf, step_id, run_id, model_family,
+    )
     return outputs.publish_bytes(
         role="model",
         kind=EvidenceKind.MODEL_ARTIFACT,
         data=estimator_bytes,
         media_type="application/octet-stream",
-        logical_hash=hashlib.sha256(estimator_bytes).hexdigest(),
-        metadata={
-            "estimator_format": "joblib",
-            "byte_count": len(estimator_bytes),
-            "creating_run_id": run_id,
-            "creating_run_step_id": step_id,
-            "model_family": model_family,
-        },
+        logical_hash=logical_hash,
+        metadata=metadata,
     )
