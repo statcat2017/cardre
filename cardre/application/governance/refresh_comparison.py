@@ -13,6 +13,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from cardre.application.evidence.evidence_resolver import resolve_run_step_evidence
 from cardre.application.evidence.explain_staleness import step_is_stale
+from cardre.application.ports.artifact_store import DurableArtifactWriter
 from cardre.application.reporting.contracts import REQUIRED_STEPS_COMPARISON
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.diagnostics import utc_now_iso
@@ -72,7 +73,7 @@ class RefreshComparison:
         self,
         uow_factory: Any,
         evidence_port: ComparisonEvidencePort,
-        artifact_writer: Any,
+        artifact_writer: DurableArtifactWriter,
         governance_enabled: bool = True,
     ) -> None:
         self._uow_factory = uow_factory

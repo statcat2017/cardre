@@ -39,7 +39,12 @@ class CancelRun:
                         RunStatus.CANCELLED,
                         expected_from=(RunStatus.CREATED, RunStatus.QUEUED),
                     )
-                    if not transitioned:
+                    if transitioned:
+                        # No worker will ever claim this run: clear its durable
+                        # dispatch row so startup reconciliation does not
+                        # redispatch a terminal run.
+                        uow.dispatches.remove(command.run_id)
+                    else:
                         # Raced the worker's claim; it is running now — fall
                         # back to cooperative cancellation.
                         uow.runs.set_cancel_requested(command.run_id)

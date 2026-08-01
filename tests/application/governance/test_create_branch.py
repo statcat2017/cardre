@@ -198,6 +198,43 @@ class TestValidationEdgeCases:
             ))
         assert exc_info.value.code == "BASE_BRANCH_INACTIVE"
 
+    def test_create_branch_rejects_base_branch_from_another_plan(self, provisioned_project):
+        """A branch must never be created on top of a base branch from a
+        different plan — cloning another plan's graph into this plan would
+        forge lineage and head versions."""
+        from cardre.application.governance.create_branch import CreateBranch, CreateBranchCommand
+
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            plan_a = uow.plans.create_plan(project_id, "plan-a")
+            plan_b = uow.plans.create_plan(project_id, "plan-b")
+            pv_a = uow.plans.create_version(plan_a, [], description="va", is_committed=True)
+            pv_b = uow.plans.create_version(plan_b, [], description="vb", is_committed=True)
+            base_b = uow.branches.create_branch(
+                project_id=project_id, plan_id=plan_b, name="Base-B",
+                branch_type="baseline", base_plan_version_id=pv_b,
+                head_plan_version_id=pv_b, created_reason="Base in plan B.",
+            )
+            uow.commit()
+
+        use_case = CreateBranch(uow_factory)
+        with pytest.raises(BranchValidationError) as exc_info:
+            use_case(CreateBranchCommand(
+                project_id=project_id, plan_id=plan_a, name="From-Cross-Plan",
+                branch_type="model_challenger",
+                branch_point_step_id="logistic-regression",
+                base_branch_id=base_b, base_plan_version_id=pv_a,
+                created_reason="Should fail.",
+            ))
+        assert exc_info.value.code == "BASE_BRANCH_SCOPE_MISMATCH"
+
+        # Nothing may be persisted: no new plan version and no new branch.
+        with uow_factory.read_only(project_id) as uow:
+            versions = uow.plans.list_versions(plan_a)
+            branches = uow.branches.list_branches(project_id, plan_a)
+        assert {v.plan_version_id for v in versions} == {pv_a}
+        assert {b["branch_id"] for b in branches} == set()
+
     def test_reject_inference_requires_ttd_sample_domain(self, provisioned_project):
         from cardre.domain.artifacts import json_logical_hash
         from cardre.domain.step import StepSpec

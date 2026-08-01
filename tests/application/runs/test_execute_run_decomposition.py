@@ -165,6 +165,7 @@ def _provision_running_run(tmp_path):
     artifact_store = FsArtifactStore(root / "objects")
     exec_run = ExecuteRun(
         uow_factory=lambda: None,
+        read_only_factory=lambda: None,
         node_catalogue=None,
         step_runner=None,
         finalize_run=None,
@@ -194,7 +195,6 @@ def test_run_summary_publication_closes_all_uows_on_success(tmp_path):
     ctx["exec_run"]._read_only_factory = _spy_read_factory(
         ctx["uow_factory"], ctx["project_id"], captured,
     )
-    ctx["exec_run"]._artifact_store = ctx["artifact_store"]
 
     ref = ctx["exec_run"]._publish_run_summary(
         ExecuteRunCommand(run_id=ctx["run_id"]),
@@ -203,6 +203,7 @@ def test_run_summary_publication_closes_all_uows_on_success(tmp_path):
         step_outputs={},
         run_step_records={},
         worker_generation=ctx["worker_generation"],
+        artifact_store=ctx["artifact_store"],
     )
 
     assert ref is not None
@@ -265,9 +266,100 @@ def test_run_summary_publication_closes_all_uows_on_failure(tmp_path):
             step_outputs={},
             run_step_records={},
             worker_generation=ctx["worker_generation"],
+            artifact_store=ctx["artifact_store"],
         )
 
     assert fail_captured, "expected the mark-published UoW to be opened"
     assert all(spy.closed for spy in fail_captured), (
         "mark UoW leaked its connection on publication failure"
     )
+
+
+def test_initial_reads_and_cancellation_use_read_only_uow(tmp_path):
+    """Pure lifecycle reads must never construct a mutation UoW.
+
+    ExecuteRun's initial run/plan lookup and per-step cancellation checks are
+    reads; routing them through the write factory would eagerly begin
+    ``BEGIN IMMEDIATE`` transactions (R1 invariant, read/mutation split)."""
+    from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+    from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
+    from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
+    from cardre.adapters.system.project_registry import JsonProjectRegistry
+    from cardre.application.runs.execute_run import ExecuteRun, ExecuteRunCommand
+    from cardre.domain.run import RunStatus, RunStepStatus
+
+    registry = JsonProjectRegistry(tmp_path / "registry.json")
+    provisioner = SqliteProjectProvisioner()
+    root = tmp_path / "project"
+    provisioner.initialize(root)
+    uow_factory = SqliteUnitOfWorkFactory(registry)
+    with uow_factory.for_root(root) as uow:
+        project_id = uow.projects.create("Project")
+        plan_id = uow.plans.create_plan(project_id, "Plan")
+        from cardre.domain.step import StepSpec
+
+        pv_id = uow.plans.create_version(
+            plan_id,
+            [StepSpec(
+                step_id="s1", node_type="cardre.noop", node_version="1",
+                category="transform", params={}, params_hash="h",
+                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+            )],
+            is_committed=True,
+        )
+        run_id = uow.runs.create(pv_id)
+        uow.commit()
+    registry.register(project_id, root)
+
+    class _NoopRunner:
+        def run_step(self, *args, **kwargs):
+            return type("R", (), {
+                "status": RunStepStatus.SUCCEEDED, "staged_artifacts": [],
+                "input_artifact_ids": [], "warnings": [], "errors": [],
+                "fingerprint": {}, "parent_run_steps": [],
+                "input_artifact_ids_by_parent": {},
+            })()
+
+    class _NoopCatalogue:
+        def availability(self, node_type):
+            return type("Av", (), {"available": True})()
+
+    from cardre.application.runs.finalize_run import FinalizeRun
+
+    finalize = FinalizeRun(
+        lambda: uow_factory.for_project(project_id),
+        type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+    )
+
+    read_created: list[object] = []
+    write_created: list[object] = []
+
+    def spying_read():
+        uow = uow_factory.read_only(project_id)
+        read_created.append(uow)
+        return uow
+
+    def spying_write():
+        uow = uow_factory.for_project(project_id)
+        write_created.append(uow)
+        return uow
+
+    executor = ExecuteRun(
+        spying_write,
+        spying_read,
+        _NoopCatalogue(),
+        _NoopRunner(),
+        finalize,
+        lambda: FsArtifactStore(root / "objects"),
+        heartbeat_interval_seconds=0.1,
+    )
+    executor(ExecuteRunCommand(run_id=run_id))
+
+    assert read_created, "expected at least one read-only UoW for run/plan lookup"
+    assert all(not isinstance(u, __import__("cardre.adapters.sqlite.connection", fromlist=["SqliteUnitOfWork"]).SqliteUnitOfWork) for u in read_created), (
+        "pure lifecycle reads must not construct SqliteUnitOfWork (BEGIN IMMEDIATE)"
+    )
+
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(run_id)
+    assert run is not None and run.status == RunStatus.SUCCEEDED.value

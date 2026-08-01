@@ -50,6 +50,7 @@ class Container:
     submit_run_factory: Any = None
     execute_run_factory: Any = None
     reconcile_publications_factory: Any = None
+    reconcile_dispatches_factory: Any = None
     refresh_comparison_factory: Any = None
     create_branch_factory: Any = None
     create_comparison_factory: Any = None
@@ -127,12 +128,12 @@ def build_container(settings: Settings) -> Container:
     def execute_run_factory(project_id: str) -> ExecuteRun:
         return ExecuteRun(
             lambda: uow_factory.for_project(project_id),
+            lambda: uow_factory.read_only(project_id),
             node_catalogue,
             step_runner_factory(project_id),
             finalize_run_factory(project_id),
             lambda: artifact_store_factory(project_id),
             heartbeat_interval_seconds=settings.heartbeat_watchdog_interval_seconds,
-            read_only_factory=lambda: uow_factory.read_only(project_id),
         )
 
     from cardre.adapters.dispatch.thread_dispatcher import ThreadRunDispatcher
@@ -206,6 +207,15 @@ def build_container(settings: Settings) -> Container:
             manifest_publisher_factory,
         )
 
+    from cardre.application.runs.reconcile_dispatches import ReconcileDispatches
+
+    def reconcile_dispatches_factory() -> ReconcileDispatches:
+        return ReconcileDispatches(
+            uow_factory,
+            registry,
+            async_dispatcher,
+        )
+
     # Governance use cases — built here in the composition root so the API
     # layer only depends on the application/use-case surface and never
     # imports adapters directly. Each factory closes over a single project.
@@ -257,6 +267,7 @@ def build_container(settings: Settings) -> Container:
         execute_run_factory=execute_run_factory,
         async_dispatcher=async_dispatcher,
         reconcile_publications_factory=reconcile_publications_factory,
+        reconcile_dispatches_factory=reconcile_dispatches_factory,
         refresh_comparison_factory=refresh_comparison_factory,
         create_branch_factory=create_branch_factory,
         create_comparison_factory=create_comparison_factory,

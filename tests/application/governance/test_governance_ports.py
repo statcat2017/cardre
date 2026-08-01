@@ -125,6 +125,7 @@ class _FakeBranches:
             "head_plan_version_id": "pv-challenger",
             "project_id": "proj",
             "plan_id": "plan",
+            "status": "active",
         }
 
     def get_step_map(self, branch_id, pv_id) -> list[dict]:
@@ -137,6 +138,9 @@ class _FakeChampion:
 
 
 class _FakePlans:
+    def get_plan(self, plan_id) -> dict | None:
+        return {"plan_id": plan_id, "project_id": "proj"}
+
     def get_plan_id_for_version(self, pv_id) -> str:
         return "plan"
 

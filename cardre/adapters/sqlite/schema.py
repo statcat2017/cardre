@@ -328,6 +328,18 @@ CREATE TABLE IF NOT EXISTS publication_outbox (
 );
 """
 
+# Durable run-dispatch outbox. A row is committed atomically with run creation
+# so an async submission survives a crash between the DB commit and the
+# in-memory dispatch: startup reconciliation drains pending rows, and the
+# worker atomically removes the row when it claims the run. A crash after the
+# claim leaves a ``running`` run handled by existing stale recovery.
+DISPATCH_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS pending_run_dispatches (
+    run_id TEXT PRIMARY KEY REFERENCES runs(run_id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL
+);
+"""
+
 EXPORTS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS exports (
     export_id TEXT PRIMARY KEY,
@@ -430,6 +442,7 @@ ALL_TABLES_SQL = (
     + ANNOTATION_TABLES_SQL
     + REVIEW_TABLES_SQL
     + PUBLICATION_OUTBOX_TABLE_SQL
+    + DISPATCH_TABLE_SQL
     + EXPORTS_TABLE_SQL
     + REPORTS_TABLE_SQL
     + INDEXES_SQL

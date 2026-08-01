@@ -81,6 +81,35 @@ class CreateComparison:
                         status_code=404,
                     )
 
+            plan = uow.plans.get_plan(command.plan_id)
+            if plan is None:
+                raise CardreError(
+                    f"PLAN_NOT_FOUND: {command.plan_id}",
+                    code="PLAN_NOT_FOUND",
+                    context={"plan_id": command.plan_id},
+                    status_code=404,
+                )
+            pid = plan.project_id if hasattr(plan, "project_id") else plan.get("project_id")
+            if pid != command.project_id:
+                raise CardreError(
+                    f"PLAN_PROJECT_MISMATCH: {command.plan_id}",
+                    code="PLAN_PROJECT_MISMATCH",
+                    context={"plan_id": command.plan_id, "project_id": command.project_id},
+                    status_code=409,
+                )
+
+            self._require_branch_for_plan(
+                baseline, command.baseline_branch_id, command.project_id, command.plan_id,
+                label="baseline",
+            )
+            for cid in command.challenger_branch_ids:
+                challenger = uow.branches.get_branch(cid)
+                if challenger is not None:
+                    self._require_branch_for_plan(
+                        challenger, cid, command.project_id, command.plan_id,
+                        label="challenger",
+                    )
+
             now = utc_now_iso()
 
             comparison_id = str(uuid.uuid4())
@@ -106,3 +135,41 @@ class CreateComparison:
             challenger_branch_ids=command.challenger_branch_ids,
             created_at=now,
         )
+
+    @staticmethod
+    def _require_branch_for_plan(
+        branch: dict[str, Any],
+        branch_id: str,
+        project_id: str,
+        plan_id: str,
+        *,
+        label: str,
+    ) -> None:
+        """Validate that a branch aggregate belongs to the given project and plan.
+
+        A comparison must never aggregate branches from a different plan or
+        project: that would forge cross-plan lineage, snapshots, and champion
+        decisions. Both ownership and active status are enforced here so
+        every comparison reference is a valid, live aggregate member.
+        """
+        if branch.get("project_id") != project_id or branch.get("plan_id") != plan_id:
+            raise CardreError(
+                f"BRANCH_SCOPE_MISMATCH: {branch_id}",
+                code="BRANCH_SCOPE_MISMATCH",
+                context={
+                    "branch_id": branch_id,
+                    "label": label,
+                    "project_id": project_id,
+                    "plan_id": plan_id,
+                    "branch_project_id": branch.get("project_id"),
+                    "branch_plan_id": branch.get("plan_id"),
+                },
+                status_code=409,
+            )
+        if branch.get("status") != "active":
+            raise CardreError(
+                f"BRANCH_NOT_ACTIVE: {branch_id}",
+                code="BRANCH_NOT_ACTIVE",
+                context={"branch_id": branch_id, "label": label, "status": branch.get("status")},
+                status_code=409,
+            )

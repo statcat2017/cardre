@@ -146,12 +146,29 @@ def validate_input_contract(
     """Validate the staged inputs against the declared input contract.
 
     Enforces that every ``required=True`` input role is present before the node
-    executes. Legacy nodes with only ``input_roles`` lists declare no typed
-    required roles and are unaffected. Nodes that self-enforce via
+    executes, and that supplied artifacts satisfy the role's declared media
+    types and versioned schemas when the contract declares them. Evidence-kind
+    enforcement is not possible here because a persisted ``ArtifactRef`` does
+    not carry the staging-kind token (only the versioned schema in metadata).
+
+    Legacy nodes with only ``input_roles`` lists declare no typed required
+    roles and are unaffected. Nodes that self-enforce via
     ``InputCollection.require()`` continue to work; this is the framework-level
     guarantee so nodes that never call ``require()`` (e.g. NoopNode) cannot
     silently run with missing required inputs.
     """
+    specs_by_role = {spec.role: spec for spec in contract.roles}
+    if not specs_by_role:
+        required_roles = set(contract.input_roles_list)
+        present_roles = {a.role for a in input_artifacts}
+        missing = required_roles - present_roles
+        if missing:
+            raise ValueError(
+                f"Step {step_id or '-'} ({node_type or '-'}) missing required input "
+                f"roles: {sorted(missing)}"
+            )
+        return
+
     required_roles = {spec.role for spec in contract.roles if spec.required}
     present_roles = {a.role for a in input_artifacts}
     missing = required_roles - present_roles
@@ -160,6 +177,31 @@ def validate_input_contract(
             f"Step {step_id or '-'} ({node_type or '-'}) missing required input "
             f"roles: {sorted(missing)}"
         )
+
+    # Enforce declared media types and versioned schemas on supplied artifacts.
+    # A role that declares constraints must not accept a wrong-media / wrong-
+    # schema artifact: malformed inputs would otherwise reach node-specific
+    # readers or data parsing and fail confusingly (or, worse, silently).
+    for artifact in input_artifacts:
+        spec = specs_by_role.get(artifact.role)
+        if spec is None:
+            continue
+        allowed_media = set(spec.media_types or ())
+        if allowed_media and artifact.media_type not in allowed_media:
+            raise ValueError(
+                f"Step {step_id or '-'} ({node_type or '-'}) input role "
+                f"{artifact.role!r} has media type {artifact.media_type!r}, "
+                f"but the contract allows {sorted(allowed_media)}"
+            )
+        allowed_schemas = set(spec.schema_versions or ())
+        if allowed_schemas:
+            supplied_schema = str(artifact.metadata.get("schema_version", ""))
+            if supplied_schema not in allowed_schemas:
+                raise ValueError(
+                    f"Step {step_id or '-'} ({node_type or '-'}) input role "
+                    f"{artifact.role!r} has schema version {supplied_schema!r}, "
+                    f"but the contract allows {sorted(allowed_schemas)}"
+                )
 
 
 __all__ = ["validate_input_contract", "validate_output_contract"]

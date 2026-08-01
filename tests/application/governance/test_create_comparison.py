@@ -88,6 +88,53 @@ class TestCreateComparison:
                 challenger_branch_ids=["nonexistent"],
             ))
 
+    def test_create_comparison_rejects_baseline_from_another_plan(self, provisioned_project):
+        """A comparison must not aggregate branches from a different plan."""
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            plan_a = uow.plans.create_plan(project_id, "plan-a")
+            plan_b = uow.plans.create_plan(project_id, "plan-b")
+            pv_a = uow.plans.create_version(plan_a, [], description="va", is_committed=True)
+            pv_b = uow.plans.create_version(plan_b, [], description="vb", is_committed=True)
+            baseline_a = _seed_branch(uow, project_id, plan_a, pv_a, "baseline-a")
+            baseline_b = _seed_branch(uow, project_id, plan_b, pv_b, "baseline-b")
+            uow.commit()
+
+        use_case = CreateComparison(uow_factory)
+        with pytest.raises(CardreError, match="BRANCH_SCOPE_MISMATCH"):
+            use_case(CreateComparisonCommand(
+                project_id=project_id, plan_id=plan_a,
+                baseline_branch_id=baseline_b,  # from plan B
+                challenger_branch_ids=[],
+                created_reason="Test comparison.",
+            ))
+        # Nothing may be persisted.
+        with uow_factory.read_only(project_id) as uow:
+            assert uow.comparisons.list_for_project(project_id) == []
+        assert baseline_a  # sanity: branch exists in plan A
+
+    def test_create_comparison_rejects_challenger_from_another_plan(self, provisioned_project):
+        project_id, uow_factory, _, _ = provisioned_project
+        with uow_factory.for_project(project_id) as uow:
+            plan_a = uow.plans.create_plan(project_id, "plan-a")
+            plan_b = uow.plans.create_plan(project_id, "plan-b")
+            pv_a = uow.plans.create_version(plan_a, [], description="va", is_committed=True)
+            pv_b = uow.plans.create_version(plan_b, [], description="vb", is_committed=True)
+            baseline_a = _seed_branch(uow, project_id, plan_a, pv_a, "baseline-a")
+            challenger_b = _seed_branch(uow, project_id, plan_b, pv_b, "challenger-b")
+            uow.commit()
+
+        use_case = CreateComparison(uow_factory)
+        with pytest.raises(CardreError, match="BRANCH_SCOPE_MISMATCH"):
+            use_case(CreateComparisonCommand(
+                project_id=project_id, plan_id=plan_a,
+                baseline_branch_id=baseline_a,
+                challenger_branch_ids=[challenger_b],
+                created_reason="Test comparison.",
+            ))
+        with uow_factory.read_only(project_id) as uow:
+            assert uow.comparisons.list_for_project(project_id) == []
+
 
 # =========================================================================
 # RefreshComparison

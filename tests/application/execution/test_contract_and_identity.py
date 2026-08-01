@@ -24,9 +24,12 @@ import pytest
 from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
 from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
 from cardre.adapters.system.project_registry import JsonProjectRegistry
-from cardre.application.execution.contract_validation import validate_output_contract
+from cardre.application.execution.contract_validation import (
+    validate_input_contract,
+    validate_output_contract,
+)
 from cardre.application.ports.artifact_store import StagedArtifact
-from cardre.domain.artifacts import json_logical_hash
+from cardre.domain.artifacts import ArtifactRef, json_logical_hash
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.nodes.contracts import ArtifactContract, ArtifactRoleSpec
 
@@ -507,3 +510,65 @@ def test_catalogue_contracts_are_machine_checkable():
                                 "declares kinds but no media_types"
                             )
     assert problems == [], "non-machine-checkable contracts:\n" + "\n".join(problems)
+
+
+# ---------------------------------------------------------------------------
+# Typed input-contract enforcement (Batch 3)
+# ---------------------------------------------------------------------------
+
+
+def _input_ref(*, role: str, media_type: str = "application/json",
+               schema_version: str = "") -> ArtifactRef:
+    return ArtifactRef(
+        artifact_id=f"art-{role}", artifact_type="report", role=role,
+        path="objects/x", physical_hash="p", logical_hash="l",
+        media_type=media_type, metadata={"schema_version": schema_version},
+    )
+
+
+def test_input_wrong_media_type_is_rejected():
+    """A supplied input whose media type violates its role spec fails before
+    the node runs."""
+    contract = ArtifactContract(roles=(
+        ArtifactRoleSpec("model", required=True, media_types=("application/json",)),
+    ))
+    bad = _input_ref(role="model", media_type="application/vnd.apache.parquet")
+    with pytest.raises(ValueError, match="media type"):
+        validate_input_contract(contract, [bad], node_type="test", step_id="s1")
+
+
+def test_input_wrong_schema_version_is_rejected():
+    """A supplied input with a wrong versioned schema fails before the node."""
+    contract = ArtifactContract(roles=(
+        ArtifactRoleSpec("model", required=True,
+                         schema_versions=("cardre.model_artifact.v1",)),
+    ))
+    bad = _input_ref(role="model", schema_version="cardre.model_artifact.v9")
+    with pytest.raises(ValueError, match="schema version"):
+        validate_input_contract(contract, [bad], node_type="test", step_id="s1")
+
+
+def test_input_valid_media_and_schema_passes():
+    contract = ArtifactContract(roles=(
+        ArtifactRoleSpec("model", required=True,
+                         media_types=("application/json",),
+                         schema_versions=("cardre.model_artifact.v1",)),
+        ArtifactRoleSpec("test", required=False),
+    ))
+    ok = _input_ref(role="model", schema_version="cardre.model_artifact.v1")
+    validate_input_contract(contract, [ok], node_type="test", step_id="s1")  # no raise
+
+
+def test_input_missing_required_role_is_rejected():
+    contract = ArtifactContract(roles=(
+        ArtifactRoleSpec("model", required=True),
+    ))
+    with pytest.raises(ValueError, match="missing required input"):
+        validate_input_contract(contract, [], node_type="test", step_id="s1")
+
+
+def test_input_legacy_role_list_still_enforced():
+    """Legacy nodes declaring only input_roles keep required-role presence."""
+    contract = ArtifactContract(input_roles=("model",))
+    with pytest.raises(ValueError, match="missing required input"):
+        validate_input_contract(contract, [], node_type="test", step_id="s1")
