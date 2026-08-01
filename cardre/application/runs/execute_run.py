@@ -96,6 +96,17 @@ class ExecuteRun:
             finally:
                 uow3.close()
         except Exception:
+            # If a cancellation landed while we validated, the run must end
+            # cancelled, not failed (a created/queued run is terminalized by
+            # CancelRun before we reach here; a running run is cooperative).
+            cancel_check_uow = self._uow_factory()
+            try:
+                cancel_check = cancel_check_uow.runs.get(command.run_id)
+            finally:
+                cancel_check_uow.close()
+            if cancel_check is not None and getattr(cancel_check, "cancel_requested", False):
+                self._finalize_run(command.run_id, "cancelled")
+                return
             self._finalize_run(command.run_id, "failed", diagnostic=FinalizeDiagnostic(
                 code="RUN_VALIDATION_FAILED",
                 message="Pre-execution validation failed",

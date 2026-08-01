@@ -30,8 +30,8 @@ from sklearn.model_selection import StratifiedKFold, cross_validate
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.modeling.builders import build_model_artifact
 from cardre.nodes._training_utils import (
-    _estimator_descriptor_id,
     _estimator_parts,
+    _model_binary_descriptor_id,
     prepare_supervised_training_data,
 )
 from cardre.nodes.contracts import NodeContext, NodeResult, NodeType
@@ -194,7 +194,7 @@ class BaseClassifierNode(NodeType):
 
         estimator_art = SimpleNamespace(
             artifact_id=None,
-            provisional_artifact_id=_estimator_descriptor_id(
+            provisional_artifact_id=_model_binary_descriptor_id(
                 estimator_bytes, estimator_hash, estimator_metadata,
             ),
             logical_hash=estimator_hash,

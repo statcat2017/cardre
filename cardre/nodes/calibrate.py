@@ -515,29 +515,35 @@ class CalibrateProbabilitiesNode(NodeType):
         # 8. Build updated model artifact from the original
         model: dict[str, Any] = typed_model.to_dict()
 
-        # 9. Handle serialization and folding
-        calibrator_art_ref = None
+        # 9. Serialize the calibrator and precompute its descriptor id so the
+        # JSON model can reference it before the binary is staged. Publish
+        # order matters: downstream `require("model")`/`first("model")`
+        # consumers select the first model artifact by role, and it must be the
+        # parseable JSON model, not the joblib calibrator blob.
+        calibrator_ref: dict[str, Any] | None = None
         if calibrator is not None:
-            # Serialize calibrator
-            calibrator_bytes = io.BytesIO()
-            joblib.dump(calibrator, calibrator_bytes)
-            serialized_calibrator = calibrator_bytes.getvalue()
-            calibrator_art_ref = context.outputs.publish_bytes(
-                role="model",
-                kind=EvidenceKind.MODEL_ARTIFACT,
-                data=serialized_calibrator,
-                media_type="application/octet-stream",
-                logical_hash=hashlib.sha256(serialized_calibrator).hexdigest(),
-                metadata={
-                    "schema_version": SCHEMA_MODEL_ARTIFACT,
-                    "artifact_subtype": "probability_calibrator",
-                    "method": method,
-                    "estimator_format": "joblib",
-                    "byte_count": len(serialized_calibrator),
-                    "creating_run_id": context.run_id,
-                    "creating_run_step_id": context.runtime.step_id,
-                },
-            )
+            calibrator_buf = io.BytesIO()
+            joblib.dump(calibrator, calibrator_buf)
+            serialized_calibrator = calibrator_buf.getvalue()
+            calibrator_logical_hash = hashlib.sha256(serialized_calibrator).hexdigest()
+            calibrator_metadata = {
+                "schema_version": SCHEMA_MODEL_ARTIFACT,
+                "artifact_subtype": "probability_calibrator",
+                "method": method,
+                "estimator_format": "joblib",
+                "byte_count": len(serialized_calibrator),
+                "creating_run_id": context.run_id,
+                "creating_run_step_id": context.runtime.step_id,
+            }
+            from cardre.nodes._training_utils import _model_binary_descriptor_id
+
+            calibrator_ref = {
+                "provisional_artifact_id": _model_binary_descriptor_id(
+                    serialized_calibrator, calibrator_logical_hash, calibrator_metadata,
+                ),
+                "physical_hash": calibrator_logical_hash,
+                "logical_hash": calibrator_logical_hash,
+            }
 
             if application_mode == "folded_linear_log_odds":
                 model_payload = dict(model.get("model_payload", {}))
@@ -578,15 +584,15 @@ class CalibrateProbabilitiesNode(NodeType):
         )
 
         # 11. Update model artifact with calibration block
-        if calibrator_art_ref is not None:
+        if calibrator_ref is not None:
             model["calibration"] = {
                 "method": method,
                 "application_mode": application_mode,
                 "score_scaling_compatible": score_scaling_compatible,
                 "cross_validated": cross_validated,
-                "calibrator_artifact_id": calibrator_art_ref.provisional_artifact_id,
-                "calibrator_physical_hash": calibrator_art_ref.physical_hash,
-                "calibrator_logical_hash": calibrator_art_ref.logical_hash,
+                "calibrator_artifact_id": calibrator_ref["provisional_artifact_id"],
+                "calibrator_physical_hash": calibrator_ref["physical_hash"],
+                "calibrator_logical_hash": calibrator_ref["logical_hash"],
                 "calibration_report_artifact_id": report_art.provisional_artifact_id,
                 "calibration_report_physical_hash": report_art.physical_hash,
                 "calibration_error": round(calibration_error, 6),
@@ -611,6 +617,9 @@ class CalibrateProbabilitiesNode(NodeType):
             }
         model["schema_version"] = SCHEMA_MODEL_ARTIFACT
 
+        # Publish the JSON model BEFORE the calibrator blob so role consumers
+        # select the parseable model. The blob is staged last with the same
+        # precomputed descriptor id the model's calibration block references.
         context.outputs.publish_json(
             role="model",
             kind=EvidenceKind.MODEL_ARTIFACT,
@@ -621,6 +630,16 @@ class CalibrateProbabilitiesNode(NodeType):
                 "calibration_method": method,
             },
         )
+
+        if calibrator_ref is not None:
+            context.outputs.publish_bytes(
+                role="model",
+                kind=EvidenceKind.MODEL_ARTIFACT,
+                data=serialized_calibrator,
+                media_type="application/octet-stream",
+                logical_hash=calibrator_logical_hash,
+                metadata=calibrator_metadata,
+            )
 
         context.outputs.add_metric("method", method)
         context.outputs.add_metric("calibration_sample", calibration_sample)

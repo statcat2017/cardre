@@ -196,7 +196,9 @@ __definition__ = NodeDefinition(
     category=CutoffAnalysisNode.category,
     description="Analyse approval rate, bad rate, and capture rate across score bands / cutoffs",
     input_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in CutoffAnalysisNode.input_roles),
+        # No role is hard-required: the node analyses whichever datasets are
+        # supplied (train/test/oot) and tolerates missing target metadata.
+        roles=tuple(ArtifactRoleSpec(r, required=False) for r in CutoffAnalysisNode.input_roles),
     ),
     output_contract=ArtifactContract(
         roles=tuple(ArtifactRoleSpec(r, required=True) for r in CutoffAnalysisNode.output_roles),

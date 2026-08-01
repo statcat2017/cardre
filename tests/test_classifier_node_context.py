@@ -45,9 +45,9 @@ class _Outputs:
         self.metrics = {}
 
     def publish_bytes(self, **kwargs):
-        from cardre.nodes._training_utils import _estimator_descriptor_id
+        from cardre.nodes._training_utils import _model_binary_descriptor_id
 
-        artifact_id = _estimator_descriptor_id(
+        artifact_id = _model_binary_descriptor_id(
             kwargs["data"], kwargs["logical_hash"], kwargs["metadata"],
         )
         artifact = SimpleNamespace(

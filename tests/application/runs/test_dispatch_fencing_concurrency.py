@@ -571,6 +571,53 @@ def test_run_summary_not_published_after_cancellation(provisioned_project):
     )
 
 
+def test_cancelled_created_run_stays_cancelled_through_execute(provisioned_project):
+    """A created run cancelled before the worker claims it must end cancelled
+    even when ExecuteRun would otherwise fail pre-execution validation (the
+    reviewer's F7 scenario)."""
+    from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+    from cardre.application.runs.cancel_run import CancelRun, CancelRunCommand
+    from cardre.application.runs.execute_run import ExecuteRun, ExecuteRunCommand
+
+    project_id, uow_factory, _registry, root = provisioned_project
+    with uow_factory.for_project(project_id) as uow:
+        plan_id = uow.plans.create_plan(project_id, "Plan")
+        pv_id = uow.plans.create_version(
+            plan_id,
+            [StepSpec(
+                step_id="s1", node_type="cardre.noop", node_version="1",
+                category="transform", params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+            )],
+            is_committed=True,
+        )
+        run_id = uow.runs.create(pv_id)  # created, not yet claimed
+        uow.commit()
+
+    CancelRun(lambda: uow_factory.for_project(project_id))(CancelRunCommand(run_id=run_id))
+
+    class _UnavailableCatalogue:
+        def availability(self, node_type):
+            return type("Av", (), {"available": False})()
+
+    executor = ExecuteRun(
+        lambda: uow_factory.for_project(project_id),
+        _UnavailableCatalogue(),
+        None,
+        None,
+        lambda: FsArtifactStore(root),
+        heartbeat_interval_seconds=0.1,
+    )
+    executor(ExecuteRunCommand(run_id=run_id))
+
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(run_id)
+    assert run is not None
+    assert str(run.status) == RunStatus.CANCELLED.value, (
+        "pre-claim cancelled run must stay cancelled, not fail"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Finding 5 — concurrent-run guard is atomic
 # ---------------------------------------------------------------------------

@@ -66,6 +66,25 @@ class FsManifestPublisher:
             return None
         return json.loads(path.read_text(encoding="utf-8"))
 
+    def list_manifests(self) -> list[dict[str, str]]:
+        """Return published canonical manifests as ``{run_id, path}`` entries.
+
+        ``path`` is relative to the project root so API clients can resolve it
+        without knowing the filesystem root.
+        """
+        exports_dir = self._root / "exports"
+        if not exports_dir.is_dir():
+            return []
+        entries: list[dict[str, str]] = []
+        for manifest_dir in sorted(exports_dir.glob("manifest-*")):
+            manifest_file = manifest_dir / "manifest.json"
+            if not manifest_file.is_file():
+                continue
+            run_id = manifest_dir.name[len("manifest-"):]
+            rel = manifest_file.relative_to(self._root).as_posix()
+            entries.append({"run_id": run_id, "path": rel})
+        return entries
+
     def verify(self, run_id: str) -> dict[str, Any]:
         """Verify a manifest's self-hash. Returns a result dict.
 

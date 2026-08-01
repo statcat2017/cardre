@@ -165,12 +165,18 @@ def _estimator_parts(
     return estimator_bytes, logical_hash, metadata
 
 
-def _estimator_descriptor_id(
-    estimator_bytes: bytes,
+def _model_binary_descriptor_id(
+    data: bytes,
     logical_hash: str,
     metadata: dict[str, Any],
 ) -> str:
-    """Compute the descriptor id the store will assign to the staged binary."""
+    """Compute the descriptor id the store will assign to a model-role binary.
+
+    Used for estimator blobs (classifier/tuning nodes) and the calibrator
+    blob so the JSON model artifact can reference the binary's id before it is
+    staged, letting callers publish the JSON model first (matching the
+    historical role-consumer ordering).
+    """
     from cardre.domain.artifacts import descriptor_id
 
     kind_value = EvidenceKind.MODEL_ARTIFACT.value
@@ -181,7 +187,7 @@ def _estimator_descriptor_id(
         kind=kind_value,
         schema_version=str(metadata.get("schema_version", "")),
         logical_hash=logical_hash,
-        physical_hash=hashlib.sha256(estimator_bytes).hexdigest(),
+        physical_hash=hashlib.sha256(data).hexdigest(),
         metadata=metadata,
     )
 

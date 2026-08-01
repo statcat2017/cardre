@@ -608,7 +608,8 @@ def test_cancel_unknown_returns_not_found(committed_plan):
 
 def test_cancel_created_run_succeeds(committed_plan):
     """An async-submitted run is created before the worker claims it; a cancel
-    arriving in that window must succeed instead of RUN_NOT_RUNNING (F7)."""
+    arriving in that window must terminalize it as cancelled instead of
+    RUN_NOT_RUNNING, and must free the concurrent-run guard (F7)."""
     project_id, uow_factory, pv_id = committed_plan
     from cardre.application.runs.cancel_run import CancelRun, CancelRunCommand
     submit = _make_submit(uow_factory, project_id)
@@ -623,7 +624,14 @@ def test_cancel_created_run_succeeds(committed_plan):
     with uow_factory.read_only(project_id) as uow:
         run = uow.runs.get(r1.run_id)
     assert run is not None
-    assert run.cancel_requested is True, "cancel must flag a created run"
+    assert str(run.status) == RunStatus.CANCELLED.value, (
+        "created run must be terminalized as cancelled"
+    )
+
+    # The concurrent-run guard must be freed: a normal (non-forced) submission
+    # on the same plan version now succeeds.
+    r2 = submit(_cmd(pv_id))
+    assert r2.run_id != r1.run_id
 
 
 def test_cancel_visible_on_subsequent_get(committed_plan):

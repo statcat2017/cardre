@@ -92,6 +92,36 @@ def test_run_manifest_unknown_run_404(env, tmp_path):
     assert resp.json()["detail"]["code"] == "RUN_NOT_FOUND"
 
 
+def test_finalized_manifest_appears_in_reports_listing(env, tmp_path):
+    """The canonical manifest of a finalized run must appear in GET /reports —
+    the pre-rewrite behaviour the /reports endpoints provided (F10)."""
+    client, container = env
+    project_id, _ = _provision(container, tmp_path)
+    _, _, run_id = _seed_finalized_run(container, project_id)
+
+    resp = client.get(f"/projects/{project_id}/reports")
+    assert resp.status_code == 200, resp.text
+    reports = resp.json()["reports"]
+    assert any(r["run_id"] == run_id and r["report_type"] == "manifest" for r in reports), (
+        f"reports listing missing manifest for run {run_id}: {reports}"
+    )
+
+    # Run-scoped listing includes it too.
+    resp_run = client.get(f"/projects/{project_id}/runs/{run_id}/reports")
+    assert resp_run.status_code == 200, resp_run.text
+    run_reports = resp_run.json()["reports"]
+    assert any(r["run_id"] == run_id and r["report_type"] == "manifest" for r in run_reports)
+
+
+def test_reports_empty_when_no_manifest(env, tmp_path):
+    """A project with no finalized runs (no manifests) still lists empty."""
+    client, container = env
+    project_id, _ = _provision(container, tmp_path)
+    resp = client.get(f"/projects/{project_id}/reports")
+    assert resp.status_code == 200
+    assert resp.json()["reports"] == []
+
+
 def test_run_manifest_missing_manifest_404(env, tmp_path):
     """A run with no published manifest (e.g. a failed seed) returns 404."""
     client, container = env

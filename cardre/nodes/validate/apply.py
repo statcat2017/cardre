@@ -482,7 +482,17 @@ __definition__ = NodeDefinition(
     category=ApplyWoeMappingNode.category,
     description="Apply WOE mapping to transform raw features into WOE values",
     input_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ApplyWoeMappingNode.input_roles),
+        roles=(
+            # Bin definition and WOE table are hard-required (looked up by
+            # kind); data roles and the scorecard role are optional — the node
+            # transforms whichever datasets are supplied.
+            ArtifactRoleSpec("definition", required=True),
+            ArtifactRoleSpec("report", required=True),
+            ArtifactRoleSpec("train", required=False),
+            ArtifactRoleSpec("test", required=False),
+            ArtifactRoleSpec("oot", required=False),
+            ArtifactRoleSpec("scorecard", required=False),
+        ),
     ),
     output_contract=ArtifactContract(
         roles=tuple(
@@ -503,7 +513,16 @@ __definition_apply_model = NodeDefinition(
     category=ApplyModelNode.category,
     description="Apply a fitted model to score datasets across train/test/oot roles",
     input_contract=ArtifactContract(
-        roles=tuple(ArtifactRoleSpec(r, required=True) for r in ApplyModelNode.input_roles),
+        roles=(
+            # Only the model is hard-required. Scorecard is optional (the node
+            # scores without it) and each of the three data roles is processed
+            # for whichever datasets the plan supplies.
+            ArtifactRoleSpec("model", required=True),
+            ArtifactRoleSpec("train", required=False),
+            ArtifactRoleSpec("test", required=False),
+            ArtifactRoleSpec("oot", required=False),
+            ArtifactRoleSpec("scorecard", required=False),
+        ),
     ),
     output_contract=ArtifactContract(
         roles=tuple(

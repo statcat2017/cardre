@@ -29,18 +29,29 @@ class CancelRun:
                     context={"run_id": command.run_id},
                     status_code=404,
                 )
-            # A run that has been submitted but not yet claimed by a worker
-            # (created/queued) is cancellable: flag it so the worker observes
-            # cancel_requested at its first fence and finalizes as cancelled
-            # instead of running.
-            if run.status not in (RunStatus.RUNNING, RunStatus.CREATED, RunStatus.QUEUED):
+            if run.status in (RunStatus.RUNNING, RunStatus.CREATED, RunStatus.QUEUED):
+                if run.status in (RunStatus.CREATED, RunStatus.QUEUED):
+                    # No work has started, so terminalize directly: the worker
+                    # (if it starts) sees a terminal run and exits before
+                    # validation, and the run stops blocking submissions.
+                    transitioned = uow.runs.transition(
+                        command.run_id,
+                        RunStatus.CANCELLED,
+                        expected_from=(RunStatus.CREATED, RunStatus.QUEUED),
+                    )
+                    if not transitioned:
+                        # Raced the worker's claim; it is running now — fall
+                        # back to cooperative cancellation.
+                        uow.runs.set_cancel_requested(command.run_id)
+                else:
+                    uow.runs.set_cancel_requested(command.run_id)
+            else:
                 raise CardreError(
                     f"Run {command.run_id!r} is not running (status={run.status})",
                     code=ErrorCode.RUN_NOT_RUNNING,
                     context={"run_id": command.run_id, "status": run.status},
                     status_code=409,
                 )
-            uow.runs.set_cancel_requested(command.run_id)
             uow.commit()
         except Exception:
             uow.rollback()

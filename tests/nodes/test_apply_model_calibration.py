@@ -186,3 +186,47 @@ def test_apply_model_node_applies_runtime_calibration(tmp_path: Path):
     assert np.allclose(got, expected, atol=1e-6), (
         f"expected calibrated probabilities {expected}, got raw {got}"
     )
+
+
+def test_apply_model_partial_inputs_pass_input_contract(tmp_path: Path):
+    """An unscaled apply-model step with only `model` + `test` (no scorecard,
+    no train/oot) must satisfy ApplyModelNode's input contract — the reviewer
+    scenario that the all-required contract wrongly rejected."""
+    from cardre.application.execution.contract_validation import validate_input_contract
+
+    store = FsArtifactStore(tmp_path)
+    pub = StagingOutputPublisher(store)
+    model_staged = pub.publish_json(
+        role="model",
+        kind=EvidenceKind.MODEL_ARTIFACT,
+        payload={
+            "schema_version": SCHEMA_MODEL_ARTIFACT,
+            "model_family": "logistic_regression",
+            "target_column": "target",
+            "target_event_value": "bad",
+            "class_mapping": {"0": "good", "1": "bad"},
+            "probability_column_index": 1,
+            "feature_contract": {"features": ["x"], "transformation_strategy": "raw_numeric"},
+            "model_payload": {"intercept": 0.0, "coefficients": {"x": 1.0}},
+            "training": {"row_count": 3},
+        },
+        metadata={"schema_version": SCHEMA_MODEL_ARTIFACT},
+    )
+    data_staged = pub.publish_table(
+        role="test",
+        kind=EvidenceKind.SCORED_DATASET,
+        frame=pl.DataFrame({"x": [-2.0, 0.0, 2.0]}),
+    )
+    for staged in (model_staged, data_staged):
+        store.finalize(staged)
+
+    from cardre.nodes.validate.apply import __definition_apply_model
+
+    # The framework-level check must accept model+test only (this is what
+    # StepRunner runs before node.run()).
+    validate_input_contract(
+        __definition_apply_model.input_contract,
+        [_staged_to_ref(model_staged), _staged_to_ref(data_staged)],
+        node_type="cardre.apply_model",
+        step_id="apply-1",
+    )

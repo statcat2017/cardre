@@ -236,7 +236,7 @@ def build_container(settings: Settings) -> Container:
         return AssignChampion(uow_factory)
 
     from cardre.application.reporting.report_queries import GetRunManifest, ListExports, ListReports
-    list_reports = ListReports(uow_factory)
+    list_reports = ListReports(uow_factory, manifest_publisher_factory)
     list_exports = ListExports(uow_factory)
     get_run_manifest = GetRunManifest(uow_factory, manifest_publisher_factory)
 

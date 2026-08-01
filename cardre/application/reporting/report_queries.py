@@ -33,10 +33,21 @@ class ExportItem:
 
 
 class ListReports:
-    """List reports for a project (optionally restricted to one run)."""
+    """List reports for a project (optionally restricted to one run).
 
-    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+    Database-registered reports (from ``GenerateReport``) are combined with a
+    synthesized entry for every published canonical run manifest, so finalized
+    runs remain discoverable through the report listings (pre-rewrite
+    behaviour listed ``manifest-*`` directories directly).
+    """
+
+    def __init__(
+        self,
+        uow_factory: UnitOfWorkFactory,
+        manifest_publisher_factory: Any | None = None,
+    ) -> None:
         self._uow_factory = uow_factory
+        self._manifest_publisher_factory = manifest_publisher_factory
 
     def __call__(self, project_id: str, run_id: str | None = None) -> list[ReportItem]:
         with self._uow_factory.read_only(project_id) as uow:
@@ -52,13 +63,30 @@ class ListReports:
                 rows = uow.reports.list_for_run(run_id)
             else:
                 rows = uow.reports.list_for_project(project_id)
-        return [
+
+        items = [
             ReportItem(
                 report_id=r.report_id, run_id=r.run_id, report_type=r.report_type,
                 path=r.path, created_at=r.created_at,
             )
             for r in rows
         ]
+
+        # Synthesize an entry per canonical manifest. Manifests are not DB rows,
+        # so discovery scans the filesystem (baseline listed manifest-* dirs).
+        if self._manifest_publisher_factory is not None:
+            manifests = self._manifest_publisher_factory(project_id).list_manifests()
+            for m in manifests:
+                if run_id is not None and m["run_id"] != run_id:
+                    continue
+                items.append(ReportItem(
+                    report_id=f"manifest-{m['run_id']}",
+                    run_id=m["run_id"],
+                    report_type="manifest",
+                    path=m["path"],
+                    created_at="",
+                ))
+        return items
 
 
 class ListExports:
