@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from cardre.application.ports.manifest_publisher import ManifestPublisherFactoryPort
 from cardre.application.ports.unit_of_work import UnitOfWorkFactory
 
 
@@ -44,7 +45,7 @@ class ListReports:
     def __init__(
         self,
         uow_factory: UnitOfWorkFactory,
-        manifest_publisher_factory: Any | None = None,
+        manifest_publisher_factory: ManifestPublisherFactoryPort,
     ) -> None:
         self._uow_factory = uow_factory
         self._manifest_publisher_factory = manifest_publisher_factory
@@ -76,6 +77,8 @@ class ListReports:
         # so discovery scans the filesystem (baseline listed manifest-* dirs).
         if self._manifest_publisher_factory is not None:
             manifests = self._manifest_publisher_factory(project_id).list_manifests()
+            manifest_run_ids = [m["run_id"] for m in manifests]
+            finished_at_by_run = self._finished_at_for_runs(project_id, manifest_run_ids)
             for m in manifests:
                 if run_id is not None and m["run_id"] != run_id:
                     continue
@@ -84,9 +87,28 @@ class ListReports:
                     run_id=m["run_id"],
                     report_type="manifest",
                     path=m["path"],
-                    created_at="",
+                    created_at=finished_at_by_run.get(m["run_id"], ""),
                 ))
         return items
+
+    def _finished_at_for_runs(
+        self, project_id: str, run_ids: list[str],
+    ) -> dict[str, str]:
+        """Map run_id -> finished_at for manifest discovery.
+
+        Manifests are published at finalization, so ``finished_at`` is the
+        semantically correct creation timestamp. Runs that no longer resolve
+        keep an empty string rather than fabricating a timestamp.
+        """
+        result: dict[str, str] = {}
+        if not run_ids:
+            return result
+        with self._uow_factory.read_only(project_id) as uow:
+            for run_id in run_ids:
+                run = uow.runs.get(run_id)
+                if run is not None and run.finished_at:
+                    result[run_id] = run.finished_at
+        return result
 
 
 class ListExports:
@@ -118,7 +140,7 @@ class GetRunManifest:
     def __init__(
         self,
         uow_factory: UnitOfWorkFactory,
-        manifest_publisher_factory: Any,
+        manifest_publisher_factory: ManifestPublisherFactoryPort,
     ) -> None:
         self._uow_factory = uow_factory
         self._manifest_publisher_factory = manifest_publisher_factory

@@ -195,7 +195,6 @@ class SubmitRun:
         from cardre.domain.run import RunStatus
 
         now_ts = datetime.now(UTC).timestamp()
-        stale_seconds = self._stale_heartbeat_seconds
 
         # Identify runs the worker has abandoned: heartbeat absent, malformed,
         # or older than the stale window. For each, hand the *observed* heartbeat
@@ -205,25 +204,14 @@ class SubmitRun:
         stale_candidates: list[tuple[str, str | None]] = []
         uow = self._uow_factory()
         try:
-            all_active = uow.runs.list_for_plan_version()
-            for run in all_active:
+            for run in uow.runs.list_for_plan_version():
                 if run.status != RunStatus.RUNNING.value:
                     continue
-                hb = run.heartbeat_at
-                is_stale = False
-                if hb is None:
-                    is_stale = True
-                else:
-                    try:
-                        hb_ts = datetime.fromisoformat(hb).replace(tzinfo=UTC).timestamp()
-                        is_stale = (now_ts - hb_ts) > stale_seconds
-                    except (ValueError, TypeError):
-                        # Unparsable heartbeat: Python classifies it as stale, so
-                        # the compare-and-set against the observed value will
-                        # interrupt it unless the worker renews it first.
-                        is_stale = True
-                if is_stale:
-                    stale_candidates.append((run.run_id, hb))
+                if run.is_stale(
+                    stale_heartbeat_seconds=self._stale_heartbeat_seconds,
+                    now_ts=now_ts,
+                ):
+                    stale_candidates.append((run.run_id, run.heartbeat_at))
         finally:
             uow.close()
 

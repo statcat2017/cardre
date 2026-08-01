@@ -49,3 +49,57 @@ def test_run_step_has_no_artifact_arrays() -> None:
         started_at=utc_now_iso(),
     )
     assert step.status is RunStepStatus.PENDING
+
+
+def _run(status: str = "running", heartbeat_at: str | None = None) -> Run:
+    return Run(
+        run_id="run-1",
+        plan_version_id="pv-1",
+        status=status,
+        started_at=utc_now_iso(),
+        heartbeat_at=heartbeat_at,
+    )
+
+
+def test_non_running_is_never_stale() -> None:
+    assert _run(status="succeeded").is_stale(stale_heartbeat_seconds=300) is False
+
+
+def test_running_no_heartbeat_is_stale() -> None:
+    assert _run(heartbeat_at=None).is_stale(stale_heartbeat_seconds=300) is True
+
+
+def test_running_recent_heartbeat_is_fresh() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    hb = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()
+    assert _run(heartbeat_at=hb).is_stale(stale_heartbeat_seconds=300) is False
+
+
+def test_running_old_heartbeat_is_stale() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    hb = (datetime.now(UTC) - timedelta(seconds=400)).isoformat()
+    assert _run(heartbeat_at=hb).is_stale(stale_heartbeat_seconds=300) is True
+
+
+def test_malformed_heartbeat_is_stale() -> None:
+    assert _run(heartbeat_at="not-a-date").is_stale(stale_heartbeat_seconds=300) is True
+
+
+def test_now_ts_is_injectable_and_deterministic() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    hb = (datetime.now(UTC) - timedelta(seconds=400)).isoformat()
+    run = _run(heartbeat_at=hb)
+    assert run.is_stale(stale_heartbeat_seconds=300, now_ts=1e12) is True
+    assert run.is_stale(stale_heartbeat_seconds=300, now_ts=0.0) is False
+
+
+def test_is_stale_uses_threshold_boundary() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    hb = (datetime.now(UTC) - timedelta(seconds=299)).isoformat()
+    assert _run(heartbeat_at=hb).is_stale(stale_heartbeat_seconds=300) is False
+    hb = (datetime.now(UTC) - timedelta(seconds=301)).isoformat()
+    assert _run(heartbeat_at=hb).is_stale(stale_heartbeat_seconds=300) is True
