@@ -75,6 +75,20 @@ class TechnicalManifestExportNode(NodeType):
             }
             for a in raw_artifacts
         ]
+        # Include the RunSummary input artifact itself. It is a genuinely
+        # persisted, run-linked artifact, but it did not exist when the
+        # summary payload was assembled (``ExecuteRun._publish_run_summary``
+        # registers it after building the summary), so it cannot appear in
+        # ``raw_artifacts``. Record it explicitly so the manifest documents
+        # every run artifact except the manifest index's own output.
+        artifacts_out.append({
+            "artifact_id": getattr(manifest_art, "artifact_id", ""),
+            "artifact_type": getattr(manifest_art, "artifact_type", ""),
+            "role": getattr(manifest_art, "role", ""),
+            "physical_hash": getattr(manifest_art, "physical_hash", ""),
+            "logical_hash": getattr(manifest_art, "logical_hash", ""),
+            "media_type": getattr(manifest_art, "media_type", ""),
+        })
 
         all_warnings: list[dict[str, Any]] = []
         all_errors: list[dict[str, Any]] = []

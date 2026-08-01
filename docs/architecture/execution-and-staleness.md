@@ -23,17 +23,17 @@ The executor enforces role-based access for artifacts:
 
 ## Run Lifecycle
 
-The `RunLifecycle` class (`cardre/execution/run_lifecycle.py`) owns generic run mechanics:
+The `FinalizeRun` use case (`cardre/application/runs/finalize_run.py`) owns generic run mechanics:
 
 - Run creation and `run_id` resolution.
 - Final status setting and manifest artifact writing, combined into one atomic `finalise_run()` call. The terminal status is written via `RunRepository.transition(run_id, RunStatus.X, expected_from=(RunStatus.RUNNING,))` — the single atomic terminal-status writer. Run statuses are modelled by the `RunStatus(StrEnum)` in `cardre/domain/run.py`; callers pass enum members, not bare strings.
 - Manifest payload construction (`build_manifest_payload`) and labelling (`step_action`).
 
-`PlanExecutor` still owns execution semantics: topological ordering, node execution, role and leakage enforcement, and run-step evidence recording. `run_plan_version` returns a typed `PlanExecutionResult` (carrying `has_failure`, `executed_step_ids`, and a `status() -> RunStatus` property) so `RunCoordinator` does not re-query `RunStepRepository.get_for_run` after execution.
+`StepRunner` still owns execution semantics: topological ordering, node execution, role and leakage enforcement, and run-step evidence recording. It returns a typed `StepExecutionResult` (carrying `status`, `input_artifact_ids`, `output_artifact_ids`, and staged artifacts) so `ExecuteRun` does not re-query `RunStepRepository.get_for_run` after execution.
 
 ### Run-step writer seam
 
-The `cardre/execution/run_step_writer.py` module coordinates transaction-scoped persistence for ``run_steps``, ``evidence_edges``, ``evidence_artifacts``, and ``artifact_lineage`` rows. Extracted from ``PlanExecutor._record_run_step``, it keeps the executor focused on orchestration while the writer handles persistence. The writer owns raw ``INSERT`` SQL for ``run_steps`` and ``artifact_lineage``; evidence edge/artifact inserts are delegated to ``EvidenceRepository.insert_edge`` / ``insert_artifact`` to avoid duplicating the insert SQL owned by the repository layer. The writer exposes one function: ``write_run_step``. It requires an active ``IMMEDIATE`` connection and uses ``INSERT OR IGNORE`` for lineage de-duplication.
+The run persistence loop in `cardre/application/runs/execute_run.py` coordinates transaction-scoped persistence for ``run_steps``, ``evidence_edges``, ``evidence_artifacts``, and ``artifact_lineage`` rows. Persistence is delegated to the repository layer (`RunStepRepo`, `EvidenceRepo`, `ArtifactRepo`); the executor focuses on orchestration.
 
 ## Staleness Detection
 

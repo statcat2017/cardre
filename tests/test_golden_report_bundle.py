@@ -68,7 +68,7 @@ NON_DETERMINISTIC_SUFFIXES: set[str] = {
 }
 
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
-_HASH_IN_PATH_RE = re.compile(r"(^|/)v2:[a-f0-9]+|artifacts/[a-f0-9]{16,}")
+_HASH_IN_PATH_RE = re.compile(r"(^|/)(v2|v3):[a-f0-9]+|artifacts/[a-f0-9]{16,}")
 
 
 # Path prefixes whose entire subtree is non-deterministic

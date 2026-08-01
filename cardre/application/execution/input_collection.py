@@ -1,6 +1,6 @@
 """StepInputCollection — InputCollection implementation for node execution.
 
-Wraps an ``EvidenceReader`` and the node's input artifacts to satisfy
+Wraps a ``NodeInputReader`` and the node's input artifacts to satisfy
 the ``InputCollection`` protocol defined in ``cardre/nodes/contracts.py``.
 """
 
@@ -11,7 +11,7 @@ from typing import Any
 
 import polars as pl
 
-from cardre.adapters.evidence.reader import EvidenceReader
+from cardre.application.ports.evidence_reader import NodeInputReader
 from cardre.domain.artifacts import ArtifactRef
 from cardre.domain.evidence.kinds import EvidenceKind
 from cardre.domain.evidence.schemas import SCHEMA_FROZEN_SCORECARD_BUNDLE
@@ -27,12 +27,12 @@ class TargetMeta:
 
 
 class StepInputCollection:
-    """Binds an ``EvidenceReader`` and a list of input ``ArtifactRef``s
+    """Binds a ``NodeInputReader`` and a list of input ``ArtifactRef``s
     to the ``InputCollection`` protocol."""
 
     def __init__(
         self,
-        reader: EvidenceReader,
+        reader: NodeInputReader,
         input_artifacts: list[ArtifactRef],
     ) -> None:
         self._reader = reader

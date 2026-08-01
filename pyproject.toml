@@ -136,9 +136,7 @@ forbidden_modules = [
     "cardre.api",
     "cardre.bootstrap",
 ]
-ignore_imports = [
-    "cardre.application.execution.input_collection -> cardre.adapters.evidence.reader",
-]
+ignore_imports = []
 
 [[tool.importlinter.contracts]]
 name = "Nodes must not import application, adapters, api, or bootstrap"
