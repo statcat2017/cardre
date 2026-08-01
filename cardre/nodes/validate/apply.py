@@ -497,7 +497,7 @@ class ApplyModelNode(NodeType):
         return context.outputs.build_result()
 
 
-_SKLEARN_FAMILIES = {"random_forest", "xgboost", "lightgbm", "catboost", "gradient_boosting", "svm", "mlp", "decision_tree"}
+_SKLEARN_FAMILIES = {"random_forest", "xgboost", "lightgbm", "catboost", "gbdt", "svm", "mlp", "decision_tree"}
 _ENSEMBLE_FAMILIES = {"voting_ensemble", "stacking_ensemble", "blending_ensemble"}
 
 
@@ -517,7 +517,14 @@ def _load_estimator(context: NodeContext, model: dict[str, Any]) -> Any:
             f"apply_model: non-logistic model_family "
             f"{model.get('model_family')!r} requires estimator_reference.artifact_id"
         )
-    ref = context.inputs.artifact_ref(estimator_artifact_id)
+    # Resolve by embedded ID first, falling back to the physical hash. Persistence
+    # deduplicates a freshly staged content-addressed artifact to an older
+    # canonical ID (e.g. a legacy UUID) when the bytes match, so the embedded
+    # provisional ID may no longer be the canonical artifact_id.
+    ref = context.inputs.artifact_ref(
+        estimator_artifact_id,
+        physical_hash=estimator_ref.get("physical_hash"),
+    )
     if ref is None:
         raise ValueError(
             f"apply_model: estimator artifact {estimator_artifact_id!r} not among step inputs"

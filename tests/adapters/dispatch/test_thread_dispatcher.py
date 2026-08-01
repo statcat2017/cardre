@@ -105,22 +105,33 @@ def test_dispatcher_reports_running_then_completed():
     dispatcher.shutdown()
 
 
-def test_dispatcher_enforces_max_workers_bound():
-    """A dispatcher with max_workers=1 rejects a second concurrent dispatch."""
+def test_dispatcher_queues_beyond_max_workers():
+    """A dispatcher with max_workers=1 queues a second dispatch instead of
+    rejecting it, so durable reconciliation never strands a pending run."""
     harness = _BlockingHarness()
     dispatcher = ThreadRunDispatcher(harness.execute, max_workers=1)
 
     harness.events("run-1")
+    harness.events("run-2")
     dispatcher.dispatch(_request("run-1"))
+    harness.wait_started("run-1")
+    # Second dispatch is admitted into the queue (not rejected).
+    dispatcher.dispatch(_request("run-2"))
+    assert dispatcher.active_count == 1
+    assert dispatcher.queued_count == 1
     try:
-        harness.wait_started("run-1")
-        with pytest.raises(RuntimeError) as exc_info:
-            dispatcher.dispatch(_request("run-2"))
-        assert "workers" in str(exc_info.value).lower()
-    finally:
+        assert dispatcher.get_status("run-2") == "completed"  # not yet running
+        # Release the first worker; the queued run must then execute.
         harness.release["run-1"].set()
-        harness.wait_finished("run-1")
-        dispatcher.shutdown()
+        harness.wait_started("run-2")
+        assert dispatcher.get_status("run-2") == "running"
+    finally:
+        for run_id in ("run-1", "run-2"):
+            harness.release[run_id].set()
+        for run_id in ("run-1", "run-2"):
+            harness.wait_finished(run_id)
+    assert sorted(harness.executed) == ["run-1", "run-2"]
+    dispatcher.shutdown()
 
 
 def test_dispatcher_rejects_dispatch_after_shutdown():

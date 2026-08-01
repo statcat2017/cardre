@@ -178,3 +178,134 @@ def test_claim_run_removes_dispatch_row_atomically(tmp_path):
         run = uow.runs.get(run_id)
     assert run is not None and run.status == RunStatus.RUNNING.value
     assert run_id not in pending, "claim must remove the dispatch row"
+
+
+def _seed_pending_run(uow_factory, project_id, pv_id):
+    with uow_factory.for_project(project_id) as uow:
+        run_id = uow.runs.create(pv_id)
+        uow.dispatches.enqueue(run_id)
+        uow.commit()
+    return run_id
+
+
+def _seed_pending_runs_two_plans(uow_factory, project_id):
+    """Create two committed plan versions and one pending run per plan, so the
+    concurrent-run guard does not block the second."""
+    with uow_factory.for_project(project_id) as uow:
+        plan_a = uow.plans.create_plan(project_id, "Plan-A")
+        pv_a = uow.plans.create_version(
+            plan_a, [StepSpec(
+                step_id="s1", node_type="cardre.noop", node_version="1",
+                category="transform", params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+            )],
+            is_committed=True,
+        )
+        plan_b = uow.plans.create_plan(project_id, "Plan-B")
+        pv_b = uow.plans.create_version(
+            plan_b, [StepSpec(
+                step_id="s1", node_type="cardre.noop", node_version="1",
+                category="transform", params={}, params_hash=json_logical_hash({}),
+                parent_step_ids=[], branch_label="", position=0, canonical_step_id="s1",
+            )],
+            is_committed=True,
+        )
+        uow.commit()
+    run_1 = _seed_pending_run(uow_factory, project_id, pv_a)
+    run_2 = _seed_pending_run(uow_factory, project_id, pv_b)
+    return run_1, run_2
+
+
+def test_reconcile_with_full_worker_pool_does_not_strand_pending_runs(tmp_path):
+    """Finding 1: startup reconciliation with max_workers=1 and two pending runs
+    must not permanently strand the second run. The dispatcher queues it and the
+    worker picks it up once capacity frees."""
+    from cardre.adapters.dispatch.thread_dispatcher import ThreadRunDispatcher
+
+    project_id, uow_factory, pv_id, registry, _root = _provision(tmp_path)
+
+    # Two committed runs (different plans) whose in-memory dispatch "crashed".
+    run_1, run_2 = _seed_pending_runs_two_plans(uow_factory, project_id)
+
+    import threading
+    import time
+
+    executed: list[str] = []
+    release = threading.Event()
+    started: list[threading.Event] = []
+
+    def blocking_execute(request: RunRequest) -> None:
+        ev = threading.Event()
+        started.append(ev)
+        ev.set()
+        executed.append(request.run_id)
+        release.wait(timeout=5)
+
+    dispatcher = ThreadRunDispatcher(blocking_execute, max_workers=1)
+    try:
+        ReconcileDispatches(uow_factory, registry, dispatcher)()
+        # First run occupies the sole worker; second is queued, not stranded.
+        assert dispatcher.active_count == 1
+        assert dispatcher.queued_count == 1, "second run must be queued"
+        release.set()
+        deadline = time.monotonic() + 5
+        while len(executed) < 2 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert sorted(executed) == sorted([run_1, run_2]), (
+            f"both runs must execute: {executed}"
+        )
+    finally:
+        release.set()
+        dispatcher.shutdown()
+
+
+def test_finalize_run_clears_dispatch_row_for_preclaim_terminal_run(tmp_path):
+    """Finding 2: FinalizeRun must clear a created run's dispatch row when it
+    terminalizes before claim (dispatch-failure / validation-failure path), so
+    reconciliation never redispatches a terminal run."""
+    from cardre.application.runs.finalize_run import FinalizeRun
+
+    project_id, uow_factory, pv_id, _registry, _root = _provision(tmp_path)
+    run_id = _seed_pending_run(uow_factory, project_id, pv_id)
+
+    finalize = FinalizeRun(
+        lambda: uow_factory.for_project(project_id),
+        type("Pub", (), {"publish": lambda self, run_id, payload: None})(),
+    )
+    # Simulate the async dispatch-failure path: SubmitRun finalizes the created
+    # run as failed with RUN_DISPATCH_FAILED.
+    from cardre.application.runs.finalize_run import FinalizeDiagnostic
+
+    finalize(run_id, "failed", diagnostic=FinalizeDiagnostic(
+        code="RUN_DISPATCH_FAILED", message="Failed to dispatch run",
+    ))
+
+    with uow_factory.read_only(project_id) as uow:
+        run = uow.runs.get(run_id)
+        pending = uow.dispatches.list_pending()
+    assert run is not None and run.status == RunStatus.FAILED.value
+    assert run_id not in pending, "finalize must clear the pre-claim dispatch row"
+
+
+def test_reconcile_clears_terminal_run_row_defensively(tmp_path):
+    """Finding 2 (defense in depth): even if a stale dispatch row survives a
+    terminal transition, reconciliation detects the terminal run and drops the
+    row instead of redispatching it."""
+    project_id, uow_factory, pv_id, registry, _root = _provision(tmp_path)
+    run_id = _seed_pending_run(uow_factory, project_id, pv_id)
+
+    # Manually terminalize WITHOUT clearing the dispatch row (simulating a path
+    # that predates the FinalizeRun fix).
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs.transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.CREATED,))
+        uow.commit()
+
+    dispatcher = _RecordingDispatcher()
+    outcome = ReconcileDispatches(uow_factory, registry, dispatcher)()
+    assert not any(r.run_id == run_id for r in dispatcher.dispatched), (
+        "terminal run must not be redispatched"
+    )
+    with uow_factory.read_only(project_id) as uow:
+        pending = uow.dispatches.list_pending()
+    assert run_id not in pending, "stale dispatch row must be removed"
+    assert any(r.run_id == run_id and r.state == "skipped" for r in outcome.results)

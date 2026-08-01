@@ -8,9 +8,12 @@ estimator binary is resolved through ``InputCollection`` (``artifact_ref`` +
 """
 from __future__ import annotations
 
+import hashlib
+import io
 from pathlib import Path
 from typing import Any
 
+import joblib
 import numpy as np
 import polars as pl
 
@@ -192,3 +195,126 @@ class _TrainInputs:
 
     def artifact_ref(self, artifact_id, *, physical_hash=None):
         return self._ref if artifact_id == self._ref.artifact_id else None
+
+
+def test_gbdt_family_is_supported_for_apply(tmp_path: Path):
+    """Cardre's canonical gradient-boosting family is 'gbdt' (see
+    GradientBoostingClassifierNode.model_family). A fitted gbdt model must reach
+    the sklearn apply branch, not the unsupported-family branch."""
+
+    store = FsArtifactStore(tmp_path)
+    pub = StagingOutputPublisher(store)
+
+    test = pl.DataFrame({"feature": [1.0, 2.0, 3.0, 4.0]})
+    test_staged = pub.publish_table(
+        role="test", kind=EvidenceKind.SCORED_DATASET, frame=test,
+    )
+    store.finalize(test_staged)
+    test_ref = _staged_to_ref(test_staged)
+
+    # Build a minimal gbdt model artifact + estimator binary.
+    from sklearn.ensemble import GradientBoostingClassifier
+
+    gbdt = GradientBoostingClassifier(n_estimators=5, random_state=42)
+    gbdt.fit(np.array([[1.0], [2.0], [3.0], [4.0], [5.0], [6.0]]),
+             np.array([0, 1, 0, 1, 0, 1]))
+
+    buf = io.BytesIO()
+    joblib.dump(gbdt, buf)
+    est_bytes = buf.getvalue()
+
+    est_hash = hashlib.sha256(est_bytes).hexdigest()
+    est_staged = pub.publish_bytes(
+        role="model", kind=EvidenceKind.MODEL_ARTIFACT, data=est_bytes,
+        media_type="application/octet-stream", logical_hash=est_hash,
+        metadata={},
+    )
+    model_staged = pub.publish_json(
+        role="model", kind=EvidenceKind.MODEL_ARTIFACT,
+        payload={
+            "schema_version": "cardre.model_artifact.v1",
+            "model_family": "gbdt",
+            "target_column": "target",
+            "target_event_value": "bad",
+            "class_mapping": {"0": "good", "1": "bad"},
+            "probability_column_index": 1,
+            "feature_contract": {"features": ["feature"], "transformation_strategy": "raw_numeric"},
+            "model_payload": {"intercept": 0.0, "coefficients": {"feature": 0.0}},
+            "training": {"row_count": 6},
+            "estimator_reference": {
+                "artifact_id": est_staged.provisional_artifact_id,
+                "physical_hash": est_hash,
+            },
+        },
+        metadata={"schema_version": "cardre.model_artifact.v1"},
+    )
+    for staged in (model_staged, est_staged):
+        store.finalize(staged)
+    model_ref = _staged_to_ref(model_staged)
+    est_ref = _staged_to_ref(est_staged)
+
+    reader = EvidenceReader(store, _StubArtifactRepo([model_ref, est_ref, test_ref]), _NullRepo())
+    catalogue = build_default_catalogue(Settings(launch_mode=False))
+    runner = StepRunner(catalogue, lambda: FsArtifactStore(tmp_path), lambda: reader)
+
+    apply_spec = StepSpec(
+        step_id="apply-1", node_type="cardre.apply_model",
+        node_version="2", category="apply", params={}, params_hash="h",
+        parent_step_ids=["fit-1", "split-1"], branch_label="", position=1, canonical_step_id="apply",
+    )
+    result = runner.run_step(
+        "plan-1", "run-1", apply_spec,
+        {"fit-1": [model_ref, est_ref], "split-1": [test_ref], "apply-1": []},
+        {},
+    )
+    assert result.status == RunStepStatus.SUCCEEDED, (
+        f"gbdt apply must succeed: {result.errors}"
+    )
+
+
+def test_load_estimator_falls_back_to_physical_hash(tmp_path: Path):
+    """Finding 3: when persistence deduplicates the estimator to a legacy
+    canonical ID, _load_estimator must resolve via the embedded physical hash."""
+    from types import SimpleNamespace
+
+    from sklearn.tree import DecisionTreeClassifier
+
+    from cardre.nodes.validate.apply import _load_estimator
+
+    store = FsArtifactStore(tmp_path)
+    pub = StagingOutputPublisher(store)
+
+    tree = DecisionTreeClassifier(max_depth=1, random_state=42)
+    tree.fit(np.array([[1.0], [2.0], [3.0]]), np.array([0, 1, 0]))
+    buf = io.BytesIO()
+    joblib.dump(tree, buf)
+    est_bytes = buf.getvalue()
+
+    est_hash = hashlib.sha256(est_bytes).hexdigest()
+
+    est_staged = pub.publish_bytes(
+        role="model", kind=EvidenceKind.MODEL_ARTIFACT, data=est_bytes,
+        media_type="application/octet-stream", logical_hash=est_hash, metadata={},
+    )
+    store.finalize(est_staged)
+    est_ref = _staged_to_ref(est_staged)
+
+    # The model JSON embeds a *provisional* content-addressed ID that does NOT
+    # match the canonical ref (deduped to a legacy UUID); only the physical hash
+    # matches.
+    model = {"estimator_reference": {"artifact_id": "legacy-uuid", "physical_hash": est_hash}}
+
+    class _FallbackInputs:
+        def artifact_ref(self, artifact_id, *, physical_hash=None):
+            if physical_hash == est_hash:
+                return est_ref
+            return None
+
+        def read_bytes(self, artifact):
+            return store.read_bytes(artifact)
+
+    loaded = _load_estimator(
+        SimpleNamespace(inputs=_FallbackInputs()),
+        model,
+    )
+    assert isinstance(loaded, DecisionTreeClassifier)

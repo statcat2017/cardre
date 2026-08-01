@@ -46,6 +46,7 @@ class ReconcileDispatches:
     def __call__(self) -> ReconcileDispatchOutcome:
         outcome = ReconcileDispatchOutcome()
         from cardre.application.ports.run_dispatcher import RunRequest
+        from cardre.domain.run import RunStatus
 
         for project_id, root in self._project_registry.list_all().items():
             if not (Path(root) / "project.sqlite").exists():
@@ -56,6 +57,26 @@ class ReconcileDispatches:
             except Exception:
                 continue
             for run_id in pending:
+                # A run terminalized before claim (dispatch failure, validation
+                # failure) must not be redispatched: clear its stale row and
+                # move on. Defense in depth on top of FinalizeRun clearing the
+                # row in the same transaction as the terminal transition.
+                try:
+                    with self._uow_factory.read_only(project_id) as uow:
+                        run = uow.runs.get(run_id)
+                except Exception:
+                    continue
+                if run is not None and run.status not in (
+                    RunStatus.CREATED.value, RunStatus.QUEUED.value,
+                ):
+                    with self._uow_factory.for_project(project_id) as uow:
+                        uow.dispatches.remove(run_id)
+                        uow.commit()
+                    outcome.results.append(ReconcileDispatchResult(
+                        run_id=run_id, project_id=project_id, state="skipped",
+                        error="run is terminal; stale dispatch row removed",
+                    ))
+                    continue
                 try:
                     self._dispatcher.dispatch(RunRequest(
                         run_id=run_id,
@@ -66,10 +87,6 @@ class ReconcileDispatches:
                         run_id=run_id, project_id=project_id, state="dispatched",
                     ))
                 except Exception as exc:
-                    # The dispatcher rejects runs it already has active, and a
-                    # run may have been terminalized meanwhile (its row will be
-                    # removed on claim/cancel). Neither is an error worth
-                    # surfacing at startup.
                     outcome.results.append(ReconcileDispatchResult(
                         run_id=run_id, project_id=project_id, state="skipped",
                         error=str(exc),

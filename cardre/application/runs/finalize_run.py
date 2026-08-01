@@ -123,6 +123,14 @@ class FinalizeRun:
             # interrupting) means no earlier-generation worker may write output.
             uow.runs.begin_worker_generation(run_id)
 
+            # A run terminalized before any worker claimed it (dispatch failure,
+            # pre-execution validation failure, pre-claim cancellation) still
+            # has a durable pending-dispatch row. Clear it in the same
+            # transaction so startup reconciliation does not redispatch a
+            # terminal run on every boot. This is a no-op for runs that already
+            # claimed (their row was removed on claim).
+            uow.dispatches.remove(run_id)
+
             manifest_steps = self._build_manifest_steps(uow, run_id)
             payload = self._build_manifest(
                 run_id, status, manifest_steps, diagnostic, run_record, uow,
