@@ -555,6 +555,8 @@ class ExecuteRun:
         except Exception:
             mark_uow.rollback()
             raise
+        finally:
+            mark_uow.close()
         return summary_ref
 
     @staticmethod

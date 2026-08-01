@@ -194,24 +194,32 @@ def test_watchdog_renews_lease_during_node_execution(provisioned_project):
     watchdog = HeartbeatWatchdog(
         lambda: uow_factory.for_project(project_id), run_id, interval_seconds=0.1,
     )
+    # The run was created with a fresh heartbeat (second precision) before the
+    # watchdog starts. Seed a known-old heartbeat and poll until the persisted
+    # value CHANGES — that proves the watchdog actually renewed it, independent
+    # of subsecond age assertions that whole-second timestamps cannot support.
+    old_heartbeat = (datetime.now(UTC) - timedelta(minutes=5)).replace(microsecond=0).isoformat()
+    with uow_factory.for_project(project_id) as uow:
+        uow.runs._conn.execute(
+            "UPDATE runs SET heartbeat_at = ? WHERE run_id = ?",
+            (old_heartbeat, run_id),
+        )
+        uow.commit()
+
     watchdog.start()
     try:
-        # Poll until a fresh heartbeat appears (bounded deadline) instead of a
-        # single fixed sleep + age assertion, which is timing-flaky on loaded
-        # CI runners. The watchdog renews every ~0.1s; require proof it did.
         deadline = time.monotonic() + 5.0
-        last_age = timedelta(seconds=10)
+        current = old_heartbeat
         while time.monotonic() < deadline:
             with uow_factory.read_only(project_id) as uow:
                 run = uow.runs.get(run_id)
             assert run is not None and run.heartbeat_at is not None
-            hb_ts = datetime.fromisoformat(run.heartbeat_at.replace("Z", "+00:00"))
-            last_age = datetime.now(UTC) - hb_ts
-            if last_age < timedelta(seconds=0.2):
+            current = run.heartbeat_at
+            if current != old_heartbeat:
                 break
             time.sleep(0.05)
-        assert last_age < timedelta(seconds=0.2), (
-            f"heartbeat not renewed during node: age={last_age}"
+        assert current != old_heartbeat, (
+            f"heartbeat was not renewed during node: still {current!r}"
         )
     finally:
         watchdog.stop()

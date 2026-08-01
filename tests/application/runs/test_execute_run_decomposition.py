@@ -94,3 +94,180 @@ def test_persist_step_outputs_extracted() -> None:
 
 def test_execute_steps_extracted() -> None:
     assert _function("_execute_steps").end_lineno - _function("_execute_steps").lineno + 1 > 0
+
+
+# --- UoW lifecycle spies (RunSummary publication must not leak connections) ---
+
+
+class _CloseSpy:
+    """Records close() calls on a real mutation UoW."""
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+        self.closed = False
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def close(self) -> None:
+        self.closed = True
+        self._inner.close()
+
+    def __enter__(self):
+        return self._inner.__enter__()
+
+    def __exit__(self, *exc):
+        self.closed = True
+        return self._inner.__exit__(*exc)
+
+
+def _spy_write_factory(uow_factory, project_id, captured):
+    def factory():
+        spy = _CloseSpy(uow_factory.for_project(project_id))
+        captured.append(spy)
+        return spy
+    return factory
+
+
+def _spy_read_factory(uow_factory, project_id, captured):
+    def factory():
+        spy = _CloseSpy(uow_factory.read_only(project_id))
+        captured.append(spy)
+        return spy
+    return factory
+
+
+def _provision_running_run(tmp_path):
+    """Provision a project with a committed plan and a running run; returns
+    the pieces needed to drive ``ExecuteRun._publish_run_summary``."""
+    from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+    from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
+    from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
+    from cardre.adapters.system.project_registry import JsonProjectRegistry
+    from cardre.application.runs.execute_run import ExecuteRun
+    from cardre.domain.run import RunStatus
+
+    registry = JsonProjectRegistry(tmp_path / "registry.json")
+    provisioner = SqliteProjectProvisioner()
+    root = tmp_path / "project"
+    provisioner.initialize(root)
+    uow_factory = SqliteUnitOfWorkFactory(registry)
+    with uow_factory.for_root(root) as uow:
+        project_id = uow.projects.create("Project")
+        plan_id = uow.plans.create_plan(project_id, "Plan")
+        pv_id = uow.plans.create_version(plan_id, [], is_committed=True)
+        run_id = uow.runs.create(pv_id)
+        uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        worker_generation = uow.runs.begin_worker_generation(run_id)
+        uow.commit()
+    registry.register(project_id, root)
+
+    artifact_store = FsArtifactStore(root / "objects")
+    exec_run = ExecuteRun(
+        uow_factory=lambda: None,
+        node_catalogue=None,
+        step_runner=None,
+        finalize_run=None,
+        artifact_store_factory=lambda: artifact_store,
+    )
+    return {
+        "project_id": project_id,
+        "run_id": run_id,
+        "pv_id": pv_id,
+        "worker_generation": worker_generation,
+        "uow_factory": uow_factory,
+        "artifact_store": artifact_store,
+        "exec_run": exec_run,
+    }
+
+
+def test_run_summary_publication_closes_all_uows_on_success(tmp_path):
+    """_publish_run_summary must close every UoW it opens on the success path
+    (summary read UoW, registration UoW, and mark-published UoW)."""
+    from cardre.application.runs.execute_run import ExecuteRunCommand
+
+    ctx = _provision_running_run(tmp_path)
+    captured: list[_CloseSpy] = []
+    ctx["exec_run"]._uow_factory = _spy_write_factory(
+        ctx["uow_factory"], ctx["project_id"], captured,
+    )
+    ctx["exec_run"]._read_only_factory = _spy_read_factory(
+        ctx["uow_factory"], ctx["project_id"], captured,
+    )
+    ctx["exec_run"]._artifact_store = ctx["artifact_store"]
+
+    ref = ctx["exec_run"]._publish_run_summary(
+        ExecuteRunCommand(run_id=ctx["run_id"]),
+        ctx["pv_id"],
+        run=None,
+        step_outputs={},
+        run_step_records={},
+        worker_generation=ctx["worker_generation"],
+    )
+
+    assert ref is not None
+    assert len(captured) >= 2, "expected summary read + registration + mark UoWs"
+    assert all(spy.closed for spy in captured), (
+        "RunSummary publication leaked a UoW connection (not all closed)"
+    )
+
+
+def test_run_summary_publication_closes_all_uows_on_failure(tmp_path):
+    """If mark_published fails, the mark UoW is rolled back AND closed; the
+    exception propagates."""
+    from cardre.application.runs.execute_run import ExecuteRunCommand
+
+    ctx = _provision_running_run(tmp_path)
+    captured: list[_CloseSpy] = []
+    ctx["exec_run"]._uow_factory = _spy_write_factory(
+        ctx["uow_factory"], ctx["project_id"], captured,
+    )
+    ctx["exec_run"]._read_only_factory = _spy_read_factory(
+        ctx["uow_factory"], ctx["project_id"], captured,
+    )
+    ctx["exec_run"]._artifact_store = ctx["artifact_store"]
+
+    # Inject a publication repo whose mark_published raises.
+    class _FailingPublications:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def mark_published(self, outbox_id):
+            raise RuntimeError("injected mark_published failure")
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    class _FailMarkCloseSpy(_CloseSpy):
+        @property
+        def publications(self):
+            return _FailingPublications(self._inner.publications)
+
+    fail_captured: list[_FailMarkCloseSpy] = []
+
+    def failing_write_factory():
+        spy = _FailMarkCloseSpy(ctx["uow_factory"].for_project(ctx["project_id"]))
+        fail_captured.append(spy)
+        return spy
+
+    ctx["exec_run"]._uow_factory = failing_write_factory
+    ctx["exec_run"]._read_only_factory = _spy_read_factory(
+        ctx["uow_factory"], ctx["project_id"], captured,
+    )
+
+    import pytest as _pytest
+
+    with _pytest.raises(RuntimeError, match="injected mark_published failure"):
+        ctx["exec_run"]._publish_run_summary(
+            ExecuteRunCommand(run_id=ctx["run_id"]),
+            ctx["pv_id"],
+            run=None,
+            step_outputs={},
+            run_step_records={},
+            worker_generation=ctx["worker_generation"],
+        )
+
+    assert fail_captured, "expected the mark-published UoW to be opened"
+    assert all(spy.closed for spy in fail_captured), (
+        "mark UoW leaked its connection on publication failure"
+    )
