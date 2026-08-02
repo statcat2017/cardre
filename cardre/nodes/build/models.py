@@ -345,9 +345,6 @@ class ScoreScalingNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("scorecard", required=True),),
         ),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     @classmethod
@@ -543,9 +540,6 @@ class BuildSummaryReportNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", required=True),),
         ),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:
@@ -643,9 +637,6 @@ class DummyFitNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("definition", required=True),),
         ),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:
@@ -695,9 +686,6 @@ class NoopNode(NodeType):
             ),
         ),
         output_contract=ArtifactContract(roles=()),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:
@@ -718,9 +706,6 @@ __definition_logistic = NodeDefinition(
     output_contract=ArtifactContract(
         roles=(ArtifactRoleSpec("model", required=True),),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 LogisticRegressionNode.__definition__ = __definition_logistic

@@ -30,15 +30,19 @@ class ArtifactContract:
 
 @dataclass(frozen=True)
 class NodeDefinition:
+    """The single contract source for a node.
+
+    Carries identity (node_type, version, category, description) and the
+    typed input/output contracts. Runtime authorities for tier, optional
+    dependencies and parameter schemas live on the ``NodeType`` class and
+    are consumed directly by the catalogue and ``StepRunner``.
+    """
     node_type: str
     version: str
     category: str
     description: str
     input_contract: ArtifactContract
     output_contract: ArtifactContract
-    parameter_schema: NodeParameterSchema | None = None
-    optional_dependencies: tuple[str, ...] = ()
-    tier: str = "launch"
 
 
 @dataclass

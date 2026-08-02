@@ -28,9 +28,6 @@ class ApplyExclusionsNode(NodeType):
         description="Apply exclusion rules to filter rows",
         input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("train", required=False, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("definition", required=False, kinds=(RoleKind.DEFINITION,)))),
         output_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(EvidenceKind.MODELLING_METADATA,), media_types=("application/vnd.apache.parquet",), schema_versions=()), ArtifactRoleSpec("train", required=False, kinds=(EvidenceKind.MODELLING_METADATA,), media_types=("application/vnd.apache.parquet",), schema_versions=()), ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.EXCLUSION_SUMMARY,), media_types=("application/json",), schema_versions=(SCHEMA_EXCLUSION_SUMMARY,)))),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:
@@ -134,9 +131,6 @@ class ExplicitMissingOutlierTreatmentNode(NodeType):
         description="Apply explicit missing value imputation and outlier capping/floating",
         input_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("test", required=False, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("oot", required=False, kinds=(RoleKind.DATASET,)))),
         output_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=(EvidenceKind.MODELLING_METADATA,), media_types=("application/vnd.apache.parquet",), schema_versions=()), ArtifactRoleSpec("test", required=False, kinds=(EvidenceKind.MODELLING_METADATA,), media_types=("application/vnd.apache.parquet",), schema_versions=()), ArtifactRoleSpec("oot", required=False, kinds=(EvidenceKind.MODELLING_METADATA,), media_types=("application/vnd.apache.parquet",), schema_versions=()), ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.EXCLUSION_SUMMARY,), media_types=("application/json",), schema_versions=(SCHEMA_EXCLUSION_SUMMARY,)))),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:

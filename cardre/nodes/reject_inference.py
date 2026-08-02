@@ -50,7 +50,6 @@ class DefineRejectPopulationNode(NodeType):
                 ArtifactRoleSpec("definition", kinds=(EvidenceKind.REJECT_POPULATION_CONFIG,), media_types=("application/json",), schema_versions=(SCHEMA_REJECT_POPULATION_CONFIG,)),
             ),
         ),
-        parameter_schema=None,
     )
 
     @classmethod
@@ -219,7 +218,6 @@ class RejectInferenceNoneNode(NodeType):
                 ArtifactRoleSpec("report", kinds=(EvidenceKind.REJECT_INFERENCE_RESULT,), media_types=("application/json",), schema_versions=(SCHEMA_REJECT_INFERENCE_RESULT,)),
             ),
         ),
-        parameter_schema=None,
     )
 
     @classmethod
@@ -328,7 +326,6 @@ class RejectInferenceAugmentationNode(NodeType):
                 ArtifactRoleSpec("report", kinds=(EvidenceKind.REJECT_INFERENCE_RESULT,), media_types=("application/json",), schema_versions=(SCHEMA_REJECT_INFERENCE_RESULT,)),
             ),
         ),
-        parameter_schema=None,
     )
 
     @classmethod

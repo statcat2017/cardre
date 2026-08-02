@@ -188,9 +188,6 @@ __definition__ = NodeDefinition(
             ArtifactRoleSpec("report", required=True),
         ),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 FeatureSelectionEmbeddedNode.__definition__ = __definition__

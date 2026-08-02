@@ -39,7 +39,6 @@ class ManualBinningNode(NodeType):
                 ArtifactRoleSpec("definition", kinds=(EvidenceKind.BIN_DEFINITION,), media_types=("application/json",), schema_versions=(SCHEMA_BIN_DEFINITION,)),
             ),
         ),
-        parameter_schema=None,
     )
 
     VALID_ACTIONS = {

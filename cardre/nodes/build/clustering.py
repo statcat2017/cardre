@@ -46,7 +46,6 @@ class VariableClusteringNode(NodeType):
                 ArtifactRoleSpec("report"),
             ),
         ),
-        parameter_schema=None,
     )
 
     @classmethod

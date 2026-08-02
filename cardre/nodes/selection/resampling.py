@@ -169,11 +169,11 @@ __definition__ = NodeDefinition(
         ),
     ),
     output_contract=ArtifactContract(
-        roles=(ArtifactRoleSpec("train", required=True),),
+        roles=(
+            ArtifactRoleSpec("train", required=True),
+            ArtifactRoleSpec("report", required=True),
+        ),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 ResampleTrainingDataNode.__definition__ = __definition__

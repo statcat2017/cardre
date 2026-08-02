@@ -33,9 +33,6 @@ class ValidateBinaryTargetNode(NodeType):
         description="Validate binary target column constraints",
         input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)),)),
         output_contract=ArtifactContract(roles=(ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.SPLIT_SUMMARY,), media_types=("application/json",), schema_versions=(SCHEMA_SPLIT_SUMMARY,)),)),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     @classmethod
@@ -138,9 +135,6 @@ class SplitTrainTestOotNode(NodeType):
         description="Split dataset into train/test/oot partitions",
         input_contract=ArtifactContract(roles=(ArtifactRoleSpec("input", required=True, kinds=(RoleKind.DATASET,)), ArtifactRoleSpec("definition", required=False, kinds=(RoleKind.DEFINITION,)))),
         output_contract=ArtifactContract(roles=(ArtifactRoleSpec("train", required=True, kinds=(EvidenceKind.MODELLING_METADATA,), media_types=("application/vnd.apache.parquet",), schema_versions=()), ArtifactRoleSpec("test", required=True, kinds=(EvidenceKind.MODELLING_METADATA,), media_types=("application/vnd.apache.parquet",), schema_versions=()), ArtifactRoleSpec("oot", required=True, kinds=(EvidenceKind.MODELLING_METADATA,), media_types=("application/vnd.apache.parquet",), schema_versions=()), ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.SPLIT_SUMMARY,), media_types=("application/json",), schema_versions=(SCHEMA_SPLIT_SUMMARY,)))),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     @classmethod

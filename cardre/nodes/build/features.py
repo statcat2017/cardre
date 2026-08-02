@@ -55,7 +55,6 @@ class CalculateWoeIvNode(NodeType):
                 ArtifactRoleSpec("report"),
             ),
         ),
-        parameter_schema=None,
     )
 
     @classmethod
@@ -422,7 +421,6 @@ class WoeTransformTrainNode(NodeType):
                 ArtifactRoleSpec("report", kinds=(EvidenceKind.WOE_TRANSFORM_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_WOE_TRANSFORM_EVIDENCE,)),
             ),
         ),
-        parameter_schema=None,
     )
 
     def run(self, context: NodeContext) -> NodeResult:

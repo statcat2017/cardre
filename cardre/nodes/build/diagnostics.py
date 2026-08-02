@@ -62,7 +62,6 @@ class CoefficientSignCheckNode(NodeType):
                 ArtifactRoleSpec("report"),
             ),
         ),
-        parameter_schema=None,
     )
 
     def run(self, context: NodeContext) -> NodeResult:
@@ -174,7 +173,6 @@ class SeparationDiagnosticsNode(NodeType):
                 ArtifactRoleSpec("report"),
             ),
         ),
-        parameter_schema=None,
     )
 
     SEPARATION_COEFFICIENT_THRESHOLD = 10.0
@@ -269,7 +267,6 @@ class VifDiagnosticsNode(NodeType):
                 ArtifactRoleSpec("report"),
             ),
         ),
-        parameter_schema=None,
     )
 
     VIF_WARNING_THRESHOLD = 10.0
@@ -433,7 +430,6 @@ class CalibrationDiagnosticsNode(NodeType):
                 ArtifactRoleSpec("report"),
             ),
         ),
-        parameter_schema=None,
     )
 
     def run(self, context: NodeContext) -> NodeResult:

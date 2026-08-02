@@ -228,9 +228,6 @@ __definition__ = NodeDefinition(
     output_contract=ArtifactContract(
         roles=(ArtifactRoleSpec("report", required=True),),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 ThresholdOptimizationNode.__definition__ = __definition__

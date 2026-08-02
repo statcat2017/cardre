@@ -35,9 +35,6 @@ class TechnicalManifestExportNode(NodeType):
         output_contract=ArtifactContract(roles=(
             ArtifactRoleSpec("manifest", required=True, kinds=(EvidenceKind.TECHNICAL_MANIFEST_INDEX,), media_types=("application/json",), schema_versions=(SCHEMA_TECHNICAL_MANIFEST_INDEX,)),
         )),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:

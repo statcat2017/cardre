@@ -41,7 +41,6 @@ class FrozenScorecardBundleNode(NodeType):
                 ArtifactRoleSpec("scorecard", kinds=(EvidenceKind.FROZEN_SCORECARD_BUNDLE,), media_types=("application/json",), schema_versions=(SCHEMA_FROZEN_SCORECARD_BUNDLE,)),
             ),
         ),
-        parameter_schema=None,
     )
 
     def run(self, context: NodeContext) -> NodeResult:

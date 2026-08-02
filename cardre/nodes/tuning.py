@@ -407,9 +407,6 @@ __definition__ = NodeDefinition(
     output_contract=ArtifactContract(
         roles=(ArtifactRoleSpec("model", required=True),),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 HyperparameterTuningNode.__definition__ = __definition__

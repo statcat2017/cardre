@@ -248,9 +248,6 @@ __definition__ = NodeDefinition(
     output_contract=ArtifactContract(
         roles=(ArtifactRoleSpec("definition", required=True),),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 FeatureSelectionFilterNode.__definition__ = __definition__

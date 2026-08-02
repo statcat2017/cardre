@@ -45,9 +45,6 @@ def _probe_optional_dep(group: str) -> bool:
 def _resolve_tier(cls: type[NodeType]) -> NodeTier:
     if getattr(cls, "_deferred", False):
         return "deferred"
-    definition = getattr(cls, "__definition__", None)
-    if definition is not None and hasattr(definition, "tier"):
-        return definition.tier
     return getattr(cls, "tier", "launch")
 
 

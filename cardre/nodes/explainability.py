@@ -113,8 +113,6 @@ class ModelExplainabilityNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.EXPLAINABILITY_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_EXPLAINABILITY_REPORT,)),),
         ),
-        parameter_schema=None,
-        optional_dependencies=("explain",),
     )
 
     @classmethod
@@ -585,7 +583,6 @@ class ModelLimitationsNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.EXPLAINABILITY_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_EXPLAINABILITY_REPORT,)),),
         ),
-        parameter_schema=None,
     )
 
     @classmethod

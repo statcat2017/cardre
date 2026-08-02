@@ -46,9 +46,6 @@ class ScorecardTableExportNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", required=True),),
         ),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:
@@ -285,9 +282,6 @@ class PythonScoringExportNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", required=True),),
         ),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:
@@ -488,9 +482,6 @@ class SqlScoringExportNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", required=True),),
         ),
-        parameter_schema=None,
-        optional_dependencies=(),
-        tier="launch",
     )
 
     def run(self, context: NodeContext) -> NodeResult:

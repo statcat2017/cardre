@@ -557,9 +557,6 @@ __definition__ = NodeDefinition(
     output_contract=ArtifactContract(
         roles=(ArtifactRoleSpec("model", required=True),),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 __definition_random_forest = NodeDefinition(
@@ -576,9 +573,6 @@ __definition_random_forest = NodeDefinition(
     output_contract=ArtifactContract(
         roles=(ArtifactRoleSpec("model", required=True),),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 __definition_gbdt = NodeDefinition(
@@ -595,9 +589,6 @@ __definition_gbdt = NodeDefinition(
     output_contract=ArtifactContract(
         roles=(ArtifactRoleSpec("model", required=True),),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 DecisionTreeNode.__definition__ = __definition__

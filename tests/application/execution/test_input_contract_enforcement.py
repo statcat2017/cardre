@@ -33,7 +33,6 @@ class _RequiredInputNode(NodeType):
             ),
         ),
         output_contract=ArtifactContract(roles=()),
-        parameter_schema=None,
     )
 
     ran = False

@@ -474,9 +474,6 @@ __definition__ = NodeDefinition(
     output_contract=ArtifactContract(
         roles=(ArtifactRoleSpec("model", required=True),),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 __definition_lightgbm = NodeDefinition(
@@ -493,9 +490,6 @@ __definition_lightgbm = NodeDefinition(
     output_contract=ArtifactContract(
         roles=(ArtifactRoleSpec("model", required=True),),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 __definition_catboost = NodeDefinition(
@@ -512,9 +506,6 @@ __definition_catboost = NodeDefinition(
     output_contract=ArtifactContract(
         roles=(ArtifactRoleSpec("model", required=True),),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 XGBoostClassifierNode.__definition__ = __definition__

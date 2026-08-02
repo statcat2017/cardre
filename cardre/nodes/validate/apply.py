@@ -620,9 +620,6 @@ __definition__ = NodeDefinition(
             ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_WOE_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_WOE_EVIDENCE,)),
         ),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 __definition_apply_model = NodeDefinition(
@@ -650,9 +647,6 @@ __definition_apply_model = NodeDefinition(
             ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.APPLY_MODEL_EVIDENCE,), media_types=("application/json",), schema_versions=(SCHEMA_APPLY_MODEL_EVIDENCE,)),
         ),
     ),
-    parameter_schema=None,
-    optional_dependencies=(),
-    tier="launch",
 )
 
 # Bind the typed contracts to their classes so StepRunner (which reads

@@ -43,7 +43,6 @@ class AutomaticBinningNode(NodeType):
                 ArtifactRoleSpec("report", required=False),
             ),
         ),
-        parameter_schema=automatic_binning_parameter_schema("cardre.automatic_binning", "1"),
     )
 
     @classmethod

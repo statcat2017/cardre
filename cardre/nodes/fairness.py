@@ -58,7 +58,6 @@ class FairnessReportNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.FAIRNESS_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_FAIRNESS_REPORT,)),),
         ),
-        parameter_schema=None,
     )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
@@ -308,7 +307,6 @@ class ProxyRiskReportNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.PROXY_RISK_REPORT,), media_types=("application/json",), schema_versions=(SCHEMA_PROXY_RISK_REPORT,)),),
         ),
-        parameter_schema=None,
     )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
@@ -503,7 +501,6 @@ class AlternativeDataManifestNode(NodeType):
         output_contract=ArtifactContract(
             roles=(ArtifactRoleSpec("report", kinds=(EvidenceKind.REPORT_BUNDLE,), media_types=("application/json",), schema_versions=()),),
         ),
-        parameter_schema=None,
     )
 
     def validate_params(self, params: dict[str, Any]) -> list[str]:
