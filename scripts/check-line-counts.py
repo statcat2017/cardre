@@ -77,14 +77,6 @@ SEAM_WATCHLIST: dict[str, dict[str, Any]] = {
             "comparison snapshot builder extraction",
         ],
     },
-    "cardre/modeling/adapters.py": {
-        "threshold": 1400,
-        "owner": "model application adapter seam",
-        "split_only_on": [
-            "adapter family modules preserve registry contract",
-            "shared scoring/evidence helpers remain single-source",
-        ],
-    },
 }
 
 # ── Temporary line-count debt ────────────────────────────────────────

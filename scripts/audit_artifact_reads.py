@@ -21,17 +21,15 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_APPROVED_MODULES = (
-    "cardre/artifacts.py",
-    "cardre/evidence.py",
-    "cardre/_evidence/",
-    "cardre/modeling/serialization.py",
+    "cardre/domain/evidence/",
+    "cardre/adapters/evidence/",
+    "cardre/adapters/filesystem/artifact_store.py",
 )
 
 ALLOWED_SUPPRESSION_REASONS = {
     "dataset-frame-input",
     "artifact-byte-download",
     "low-level-evidence-parser",
-    "serialization-compatibility-test",
 }
 
 CLASSIFICATIONS = {

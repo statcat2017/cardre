@@ -13,9 +13,4 @@ def utc_now_iso() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
-def parse_iso(value: str) -> datetime:
-    """Parse an ISO-8601 string back to a datetime."""
-    return datetime.fromisoformat(value)
-
-
-__all__ = ["JsonDict", "parse_iso", "utc_now_iso"]
+__all__ = ["JsonDict", "utc_now_iso"]

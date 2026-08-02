@@ -55,6 +55,7 @@ from cardre.domain.evidence.models.sample import (
     SampleDefinition,
     SplitSummary,
 )
+from cardre.domain.evidence.models.threshold import ThresholdOptimization
 from cardre.domain.evidence.models.validation import CutoffAnalysis, ValidationMetrics
 from cardre.domain.evidence.models.woe import IvTable, WoeIvEvidence, WoeTable, WoeTransformEvidence
 from cardre.modeling.schema import ModelArtifactV1
@@ -82,10 +83,6 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, AdapterSpec] = {
     EvidenceKind.CUTOFF_ANALYSIS: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.CUTOFF_ANALYSIS],
         parse=lambda path, art, reader: CutoffAnalysis.from_json(read_json_payload(path), artifact_id=art.artifact_id),
-    ),
-    EvidenceKind.ENSEMBLE_MODEL_ARTIFACT: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.ENSEMBLE_MODEL_ARTIFACT],
-        parse=lambda path, art, reader: ModelArtifactV1.from_dict(read_json_payload(path), artifact_id=art.artifact_id),
     ),
     EvidenceKind.EXCLUSION_SUMMARY: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.EXCLUSION_SUMMARY],
@@ -183,9 +180,9 @@ EVIDENCE_ADAPTERS: dict[EvidenceKind, AdapterSpec] = {
         profile=EVIDENCE_PROFILES[EvidenceKind.TECHNICAL_MANIFEST_INDEX],
         parse=lambda path, art, reader: TechnicalManifestIndex.from_json(read_json_payload(path), artifact_id=art.artifact_id),
     ),
-    EvidenceKind.VALIDATION_EVIDENCE: AdapterSpec(
-        profile=EVIDENCE_PROFILES[EvidenceKind.VALIDATION_EVIDENCE],
-        parse=lambda path, art, reader: ValidationMetrics.from_json(read_json_payload(path), artifact_id=art.artifact_id),
+    EvidenceKind.THRESHOLD_OPTIMIZATION: AdapterSpec(
+        profile=EVIDENCE_PROFILES[EvidenceKind.THRESHOLD_OPTIMIZATION],
+        parse=lambda path, art, reader: ThresholdOptimization.from_json(read_json_payload(path), artifact_id=art.artifact_id),
     ),
     EvidenceKind.VALIDATION_METRICS: AdapterSpec(
         profile=EVIDENCE_PROFILES[EvidenceKind.VALIDATION_METRICS],

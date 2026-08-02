@@ -14,7 +14,6 @@ from cardre.domain.evidence.schemas import (
     SCHEMA_COEFFICIENT_SIGN_DIAGNOSTICS,
     SCHEMA_COMPARISON_ARTIFACT,
     SCHEMA_CUTOFF_ANALYSIS,
-    SCHEMA_ENSEMBLE_MODEL_ARTIFACT,
     SCHEMA_EXCLUSION_SUMMARY,
     SCHEMA_EXPLAINABILITY_REPORT,
     SCHEMA_FAIRNESS_REPORT,
@@ -41,7 +40,7 @@ from cardre.domain.evidence.schemas import (
     SCHEMA_SEPARATION_DIAGNOSTICS,
     SCHEMA_SPLIT_SUMMARY,
     SCHEMA_TECHNICAL_MANIFEST_INDEX,
-    SCHEMA_VALIDATION_EVIDENCE,
+    SCHEMA_THRESHOLD_OPTIMIZATION,
     SCHEMA_VALIDATION_METRICS,
     SCHEMA_VARIABLE_CLUSTERING_EVIDENCE,
     SCHEMA_VIF_DIAGNOSTICS,
@@ -162,12 +161,6 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         schema_version=SCHEMA_MODEL_ARTIFACT,
         required_keys={"model_family"},
     ),
-    EvidenceKind.ENSEMBLE_MODEL_ARTIFACT: _Profile(
-        expected_roles={"model"},
-        expected_artifact_types={"ensemble_model_artifact"},
-        schema_version=SCHEMA_ENSEMBLE_MODEL_ARTIFACT,
-        required_keys={"model_family", "model_payload"},
-    ),
     EvidenceKind.SCORE_SCALING: _Profile(
         expected_roles={"scorecard"},
         expected_artifact_types={"score_scaling"},
@@ -209,11 +202,11 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         schema_version=SCHEMA_APPLY_MODEL_EVIDENCE,
         required_keys={"roles", "model_artifact_id"},
     ),
-    EvidenceKind.VALIDATION_EVIDENCE: _Profile(
+    EvidenceKind.THRESHOLD_OPTIMIZATION: _Profile(
         expected_roles={"report"},
-        expected_artifact_types={"validation_evidence"},
-        schema_version=SCHEMA_VALIDATION_EVIDENCE,
-        required_keys={"roles", "stability", "gates"},
+        expected_artifact_types={"threshold_optimization"},
+        schema_version=SCHEMA_THRESHOLD_OPTIMIZATION,
+        required_keys={"roles", "selected_threshold", "objective"},
     ),
     EvidenceKind.REPORT_BUNDLE: _Profile(
         expected_roles={"report"},

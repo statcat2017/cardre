@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json  # noqa: F401 — imported for monkeypatch compatibility in tests
 import math
 import warnings
 from typing import Any

@@ -23,41 +23,6 @@ class MonotonicStatus(enum.StrEnum):
     insufficient_bins = "insufficient_bins"
 
 
-def check_sparse_bins_ratio(
-    bins: list[dict[str, Any]],
-    threshold: float = 0.05,
-) -> bool:
-    """Return True if any bin holds fewer than `threshold` of total rows."""
-    if not bins:
-        return False
-    total = sum(b.get("count", 0) for b in bins)
-    if total == 0:
-        return False
-    return any(b.get("count", 0) / total < threshold for b in bins)
-
-
-def check_sparse_bins_ratio_count(
-    bins: list[dict[str, Any]],
-    threshold: float = 0.05,
-) -> int:
-    """Count bins below the sparse threshold."""
-    if not bins:
-        return 0
-    total = sum(b.get("count", 0) for b in bins)
-    if total == 0:
-        return 0
-    return sum(1 for b in bins if b.get("count", 0) / total < threshold)
-
-
-def check_zero_cell_bins(bins: list[dict[str, Any]]) -> int:
-    """Count bins where good_count == 0 or bad_count == 0."""
-    count = 0
-    for b in bins:
-        if b.get("good_count") == 0 or b.get("bad_count") == 0:
-            count += 1
-    return count
-
-
 def monotonicity_status(woe_by_bin: dict[str, float] | None) -> MonotonicStatus:
     """Classify WOE monotonicity across bins.
 

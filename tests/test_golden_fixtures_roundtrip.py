@@ -80,12 +80,42 @@ class TestModelArtifactRoundTrip:
             assert obj.base_odds == 50.0
 
         assert obj.bad_class_label == str(data.get("bad_class_label", ""))
-        assert obj.feature_strategy == str(data.get("feature_strategy", ""))
 
     def test_from_dict_rejects_empty(self):
         import pytest
         with pytest.raises(ValueError, match="requires a non-empty 'model_family'"):
             ModelArtifactV1.from_dict({})
+
+    def test_from_dict_requires_feature_contract_features(self):
+        import pytest
+        payload = {
+            "schema_version": "cardre.model_artifact.v1",
+            "model_family": "logistic_regression",
+            "target_column": "y",
+            "target_event_value": "bad",
+            "class_mapping": {"good": "good", "bad": "bad"},
+            "feature_contract": {},
+            "model_payload": {"intercept": 0.0, "coefficients": {}},
+            "training": {"row_count": 100},
+        }
+        with pytest.raises(ValueError, match="features"):
+            ModelArtifactV1.from_dict(payload)
+
+    def test_from_dict_requires_training_row_count(self):
+        import pytest
+        payload = {
+            "schema_version": "cardre.model_artifact.v1",
+            "model_family": "logistic_regression",
+            "target_column": "y",
+            "target_event_value": "bad",
+            "class_mapping": {"good": "good", "bad": "bad"},
+            "probability_column_index": 1,
+            "feature_contract": {"features": ["x"]},
+            "model_payload": {"intercept": 0.0, "coefficients": {"x": 1.0}},
+            "training": {"row_count": 0},
+        }
+        with pytest.raises(ValueError, match="row_count"):
+            ModelArtifactV1.from_dict(payload)
 
     def test_to_dict_round_trip_minimal(self):
         obj = ModelArtifactV1(
