@@ -250,7 +250,7 @@ the renderers only.
 
 ### Scope
 
-Change `cardre/node_parameters.py`, `cardre/application/execution/step_runner.py`, narrow
+Change `cardre/nodes/parameters.py`, `cardre/application/execution/step_runner.py`, narrow
 node contract hooks if required, and parameter tests. Start with one launch
 node and `cardre/nodes/boosting.py`; migrate remaining nodes in follow-ups.
 

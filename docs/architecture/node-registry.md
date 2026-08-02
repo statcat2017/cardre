@@ -1,6 +1,6 @@
-# Node Registry
+# Node Catalogue
 
-The `NodeRegistry` (`cardre/nodes/registry.py`) is the central registry of available node types. Nodes are registered by their `node_type` string identifier (e.g. `"cardre.import_dataset"`) and resolved at plan-execution time.
+The `NodeCatalogue` (`cardre/bootstrap/node_catalogue.py`) is the central registry of available node types. Nodes are registered by their `node_type` string identifier (e.g. `"cardre.import_dataset"`) and resolved at plan-execution time.
 
 ## Node Tiers
 
@@ -13,19 +13,25 @@ Nodes are divided into two tiers controlled by `CARDRE_LAUNCH_MODE`:
 
 ## Registration
 
-Nodes are registered via `NodeRegistry.with_defaults()` which calls `_register_launch_nodes()` and `_register_deferred_nodes()`. Deferred nodes are marked with the `@_deferred` decorator.
+The catalogue is built from `Settings` plus a list of node classes:
 
 ```python
-reg = NodeRegistry.with_defaults()
-reg.list_launch_nodes()   # returns launch-tier node type strings
-reg.list_deferred_nodes() # returns deferred-tier node type strings
+from cardre.bootstrap.node_catalogue import build_default_catalogue
+from cardre.bootstrap.settings import Settings
+
+cat = build_default_catalogue(Settings())
+cat.list_types()          # returns all registered node type strings
+cat.availability("cardre.logistic_regression")  # NodeAvailability
 ```
+
+Deferred nodes are marked with the `@_deferred` decorator or a `deferred` tier in their `NodeDefinition`.
 
 ## Node Interface
 
-Every node type implements the `NodeType` abstract base class (`cardre/nodes/contracts.py`):
+Every node type implements the `NodeType` abstract base class (`cardre/nodes/contracts.py`) and declares exactly one explicit `NodeDefinition` (its single contract source):
 
-- `run(context: ExecutionContext) -> NodeOutput`: execute the node.
+- `__definition__: NodeDefinition`: the node's single typed contract — input/output `ArtifactContract` roles with kinds, media types and versioned schemas.
+- `run(context: NodeContext) -> NodeResult`: execute the node.
 - `validate_params(params: dict) -> list[str]`: validate parameter values at run time.
 - `parameter_schema() -> NodeParameterSchema`: return the parameter schema for UI rendering and plan-time validation.
 
