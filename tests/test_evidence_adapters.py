@@ -211,11 +211,11 @@ def test_artifact_helpers_deduplicate_physical_hash(artifacts: _ProjectArtifacts
 
 # JSON evidence kinds with schema_version + required_keys
 _JSON_KIND_FIXTURES = [
-    (EvidenceKind.BIN_DEFINITION, "definition", "definition",
+    (EvidenceKind.BIN_DEFINITION, "bin_definition", "definition",
      "cardre.bin_definition.v1", {"variables": [{"variable": "age", "bins": []}]}),
-    (EvidenceKind.SELECTION_DEFINITION, "definition", "definition",
+    (EvidenceKind.SELECTION_DEFINITION, "selection_definition", "definition",
      "cardre.selection_definition.v1", {"selected": [{"variable": "age"}]}),
-    (EvidenceKind.MODEL_ARTIFACT, "model", "model",
+    (EvidenceKind.MODEL_ARTIFACT, "model_artifact", "model",
      "cardre.model_artifact.v1", {
          "schema_version": "cardre.model_artifact.v1",
          "model_family": "logistic_regression",
@@ -227,15 +227,15 @@ _JSON_KIND_FIXTURES = [
          "model_payload": {"intercept": 0.0, "coefficients": {"age": 1.5}},
          "training": {"row_count": 100},
      }),
-    (EvidenceKind.SCORE_SCALING, "scorecard", "scorecard",
+    (EvidenceKind.SCORE_SCALING, "score_scaling", "scorecard",
      "cardre.score_scaling.v1", {"factor": 20, "offset": 500}),
-    (EvidenceKind.WOE_IV_EVIDENCE, "report", "report",
+    (EvidenceKind.WOE_IV_EVIDENCE, "woe_iv_evidence", "report",
      "cardre.woe_iv_evidence.v1", {"variables": [{"variable": "age"}]}),
-    (EvidenceKind.VALIDATION_METRICS, "report", "report",
+    (EvidenceKind.VALIDATION_METRICS, "validation_metrics", "report",
      "cardre.validation_metrics.v1", {"roles": {"train": {"auc": 0.75}}, "metrics": {"train": {"auc": 0.75}}, "stability": {}}),
-    (EvidenceKind.CUTOFF_ANALYSIS, "report", "report",
+    (EvidenceKind.CUTOFF_ANALYSIS, "cutoff_analysis", "report",
      "cardre.cutoff_analysis.v1", {"cutoff_tables": {"train": [{"score_cutoff": 100}]}}),
-    (EvidenceKind.COMPARISON_ARTIFACT, "branch_comparison", "comparison",
+    (EvidenceKind.COMPARISON_ARTIFACT, "comparison_artifact", "comparison",
      "cardre.comparison_artifact.v1",
      {"comparison_type": "woe_iv", "baseline_branch_id": "b1", "challenger_branch_id": "b2"}),
 ]
@@ -267,12 +267,12 @@ def test_json_adapter_match_parse_parity(
 def test_bin_definition_match_parity_multiple_artifacts(artifacts: _ProjectArtifacts) -> None:
     """Parity: adapter selects the same artifact from a mixed list as the reader."""
     bin_art = artifacts.write_json(
-        "definition", "definition", "cardre.bin_definition.v1",
+        "bin_definition", "definition", "cardre.bin_definition.v1",
         {"variables": [{"variable": "age", "bins": []}]},
         artifact_id="bin-art",
     )
     sel_art = artifacts.write_json(
-        "definition", "definition", "cardre.selection_definition.v1",
+        "selection_definition", "definition", "cardre.selection_definition.v1",
         {"selected": [{"variable": "age"}]},
         artifact_id="sel-art",
     )
@@ -281,9 +281,9 @@ def test_bin_definition_match_parity_multiple_artifacts(artifacts: _ProjectArtif
 
 
 def test_bin_definition_match_parity_no_schema_version(artifacts: _ProjectArtifacts) -> None:
-    """Parity: artifacts without schema_version match by role/type/media."""
+    """Parity: artifacts with the canonical type match by role/type/media."""
     art = artifacts.write_json(
-        "definition", "definition", "",
+        "bin_definition", "definition", "",
         {"variables": [{"variable": "age", "bins": []}]},
     )
     _assert_match_parity(artifacts, EvidenceKind.BIN_DEFINITION, [art])
@@ -293,7 +293,7 @@ def test_bin_definition_match_parity_no_schema_version(artifacts: _ProjectArtifa
 def test_woe_table_match_parse_parity(artifacts: _ProjectArtifacts) -> None:
     """Parity: WOE_TABLE parquet matching + parsing."""
     art = artifacts.write_parquet(
-        "report", "report", "cardre.woe_table.v1",
+        "woe_table", "report", "cardre.woe_table.v1",
         pl.DataFrame({"variable": ["age", "age"], "bin_id": ["1", "2"], "woe": [0.5, -0.3]}),
         artifact_id="woe-test",
     )
@@ -302,9 +302,9 @@ def test_woe_table_match_parse_parity(artifacts: _ProjectArtifacts) -> None:
 
 
 def test_iv_table_match_parse_parity(artifacts: _ProjectArtifacts) -> None:
-    """Parity: IV_TABLE parquet matching + parsing (no schema_version)."""
+    """Parity: IV_TABLE parquet matching + parsing (canonical type)."""
     art = artifacts.write_parquet(
-        "report", "report", "",
+        "iv_table", "report", "cardre.iv_table.v1",
         pl.DataFrame({"iv": [0.5, 0.3], "variable": ["age", "income"]}),
         artifact_id="iv-test",
     )
@@ -315,7 +315,7 @@ def test_iv_table_match_parse_parity(artifacts: _ProjectArtifacts) -> None:
 def test_scored_dataset_match_parse_parity(artifacts: _ProjectArtifacts) -> None:
     """Parity: SCORED_DATASET parquet (no schema_version, role-based match)."""
     art = artifacts.write_parquet(
-        "dataset", "train", "",
+        "scored_dataset", "train", "",
         pl.DataFrame({"score": [100, 200], "id": ["a", "b"]}),
         artifact_id="scored-test",
     )
@@ -327,7 +327,7 @@ def test_scored_dataset_match_parse_parity(artifacts: _ProjectArtifacts) -> None
 def test_no_match_parity(artifacts: _ProjectArtifacts) -> None:
     """Parity: both adapter and reader return [] when no artifact matches."""
     art = artifacts.write_json(
-        "report", "report", "cardre.cutoff_analysis.v1",
+        "cutoff_analysis", "report", "cardre.cutoff_analysis.v1",
         {"cutoff_tables": {"train": [{"score_cutoff": 100}]}},
     )
     matched = _assert_match_parity(artifacts, EvidenceKind.BIN_DEFINITION, [art])
@@ -338,12 +338,12 @@ def test_no_match_parity(artifacts: _ProjectArtifacts) -> None:
 def test_ambiguous_match_parity(artifacts: _ProjectArtifacts) -> None:
     """Parity: both adapter and reader return multiple candidates for ambiguous input."""
     art1 = artifacts.write_json(
-        "definition", "definition", "",
+        "bin_definition", "definition", "",
         {"variables": [{"variable": "age", "bins": []}]},
         artifact_id="amb1",
     )
     art2 = artifacts.write_json(
-        "definition", "definition", "",
+        "bin_definition", "definition", "",
         {"variables": [{"variable": "income", "bins": []}]},
         artifact_id="amb2",
     )
@@ -367,9 +367,9 @@ def test_schema_version_mismatched_role_type_returns_empty(artifacts: _ProjectAr
 
 
 def test_schema_version_mismatch_falls_through_to_role_type_media(artifacts: _ProjectArtifacts) -> None:
-    """When schema_version doesn't match, fall through to role/type/media matching."""
+    """When schema_version doesn't match, fall through to role/type/media matching (3a behaviour)."""
     art = artifacts.write_json(
-        "definition", "definition", "wrong.schema.v1",
+        "bin_definition", "definition", "wrong.schema.v1",
         {"variables": [{"variable": "age", "bins": []}]},
     )
     spec = get_adapter(EvidenceKind.BIN_DEFINITION)
@@ -381,7 +381,7 @@ def test_schema_version_mismatch_falls_through_to_role_type_media(artifacts: _Pr
 def test_single_candidate_fails_payload_check_returns_empty(artifacts: _ProjectArtifacts) -> None:
     """Single candidate by role/type/media that fails payload check → []."""
     art = artifacts.write_json(
-        "definition", "definition", "",
+        "bin_definition", "definition", "",
         {"wrong_key": "wrong_value"},
     )
     spec = get_adapter(EvidenceKind.BIN_DEFINITION)
@@ -392,12 +392,12 @@ def test_single_candidate_fails_payload_check_returns_empty(artifacts: _ProjectA
 def test_multiple_candidates_skip_payload_check(artifacts: _ProjectArtifacts) -> None:
     """Multiple candidates by role/type/media → payload check skipped → return all."""
     art1 = artifacts.write_json(
-        "definition", "definition", "",
+        "bin_definition", "definition", "",
         {"variables": [{"variable": "age", "bins": []}]},
         artifact_id="cand1",
     )
     art2 = artifacts.write_json(
-        "definition", "definition", "",
+        "bin_definition", "definition", "",
         {"wrong_key": "wrong"},
         artifact_id="cand2",
     )
@@ -410,7 +410,7 @@ def test_exclude_key_filters_artifact(artifacts: _ProjectArtifacts) -> None:
     """BIN_DEFINITION profile has exclude_key='selected'; artifacts with that
     metadata key are excluded from role/type/media matching."""
     art = artifacts.write_json(
-        "definition", "definition", "",
+        "bin_definition", "definition", "",
         {"variables": [{"variable": "age", "bins": []}]},
         artifact_id=str(uuid.uuid4()),
         metadata={"selected": True},
@@ -424,7 +424,7 @@ def test_woe_table_no_schema_wrong_columns_returns_empty(artifacts: _ProjectArti
     """WOE_TABLE without schema_version and wrong columns: single candidate
     fails payload check (required_columns) → returns empty."""
     art = artifacts.write_parquet(
-        "report", "report", "",
+        "woe_table", "report", "",
         pl.DataFrame({"wrong_col": [1, 2]}),
         artifact_id="woe-no-schema-wrong-cols",
     )
@@ -472,9 +472,9 @@ def test_parse_invalid_json_raises(artifacts: _ProjectArtifacts) -> None:
 
 
 def test_iv_table_empty_schema_skips_schema_phase(artifacts: _ProjectArtifacts) -> None:
-    """IV_TABLE has empty schema_version; matching skips to role/type/media."""
+    """IV_TABLE with canonical type matches by role/type/media when schema absent."""
     art = artifacts.write_parquet(
-        "report", "report", "",
+        "iv_table", "report", "",
         pl.DataFrame({"iv": [0.5], "variable": ["age"]}),
         artifact_id="iv-empty-schema",
     )
@@ -486,7 +486,7 @@ def test_iv_table_empty_schema_skips_schema_phase(artifacts: _ProjectArtifacts) 
 def test_scored_dataset_role_based_match(artifacts: _ProjectArtifacts) -> None:
     """SCORED_DATASET matches by role (train/test/oot) + type + media."""
     art = artifacts.write_parquet(
-        "dataset", "train", "",
+        "scored_dataset", "train", "",
         pl.DataFrame({"score": [100], "id": ["a"]}),
         artifact_id="scored-train-edge",
     )

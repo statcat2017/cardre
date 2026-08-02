@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 from cardre.domain.diagnostics import JsonDict
 
-# ReportMode is a string literal type ("branch" | "full_plan"); avoid importing
-# from the legacy cardre.reporting package which is removed in Batch 06.
-ReportMode = str
+ReportMode = Literal["branch", "full_plan"]
 
 
 @dataclass(frozen=True)
@@ -61,10 +60,21 @@ class TechnicalManifestIndex:
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> TechnicalManifestIndex:
+        from cardre.domain.evidence.kinds import EvidenceKind, EvidenceParseError
+        from cardre.domain.evidence.schemas import SCHEMA_TECHNICAL_MANIFEST_INDEX
+        schema_version = data.get("schema_version", "")
+        if schema_version and schema_version != SCHEMA_TECHNICAL_MANIFEST_INDEX:
+            raise EvidenceParseError(
+                f"Unexpected technical manifest schema_version {schema_version!r}",
+                kind=EvidenceKind.TECHNICAL_MANIFEST_INDEX,
+                artifact_id=artifact_id,
+                expected_schema=SCHEMA_TECHNICAL_MANIFEST_INDEX,
+                actual_schema=schema_version,
+            )
         return cls(
             manifests=list(data.get("manifests", [])),
             source_artifact_id=artifact_id,
-            schema_version=data.get("schema_version", ""),
+            schema_version=schema_version or SCHEMA_TECHNICAL_MANIFEST_INDEX,
         )
 
 
@@ -83,6 +93,17 @@ class ComparisonArtifact:
 
     @classmethod
     def from_json(cls, data: JsonDict, artifact_id: str = "") -> ComparisonArtifact:
+        from cardre.domain.evidence.kinds import EvidenceKind, EvidenceParseError
+        from cardre.domain.evidence.schemas import SCHEMA_COMPARISON_ARTIFACT
+        schema_version = data.get("schema_version", "")
+        if schema_version and schema_version != SCHEMA_COMPARISON_ARTIFACT:
+            raise EvidenceParseError(
+                f"Unexpected comparison artifact schema_version {schema_version!r}",
+                kind=EvidenceKind.COMPARISON_ARTIFACT,
+                artifact_id=artifact_id,
+                expected_schema=SCHEMA_COMPARISON_ARTIFACT,
+                actual_schema=schema_version,
+            )
         return cls(
             comparison_type=data.get("comparison_type", ""),
             baseline_branch_id=data.get("baseline_branch_id", ""),
@@ -93,5 +114,5 @@ class ComparisonArtifact:
             cutoff=dict(data.get("cutoff", {})),
             warnings=list(data.get("warnings", [])),
             source_artifact_id=artifact_id,
-            schema_version=data.get("schema_version", ""),
+            schema_version=schema_version or SCHEMA_COMPARISON_ARTIFACT,
         )

@@ -113,6 +113,23 @@ def test_manual_binning_distinct_node():
     assert manual.node_type == "cardre.manual_binning"
 
 
+def test_every_evidence_profile_has_single_canonical_identity():
+    """Each evidence profile declares exactly one role and artifact_type,
+    except SCORED_DATASET which is role-based by design."""
+    from cardre.adapters.evidence.profiles import EVIDENCE_PROFILES
+    from cardre.domain.evidence.kinds import EvidenceKind
+
+    for kind, profile in EVIDENCE_PROFILES.items():
+        if kind is EvidenceKind.SCORED_DATASET:
+            continue
+        assert len(profile.expected_roles) == 1, (
+            f"{kind.value}: multiple roles {sorted(profile.expected_roles)}"
+        )
+        assert len(profile.expected_artifact_types) == 1, (
+            f"{kind.value}: multiple artifact types {sorted(profile.expected_artifact_types)}"
+        )
+
+
 def test_canonical_automatic_binning_has_explicit_method():
     cat = build_default_catalogue(Settings(launch_mode=True))
     steps = build_canonical_scorecard_steps("dummy.csv", cat.resolve)

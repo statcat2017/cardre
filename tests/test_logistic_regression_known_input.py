@@ -135,7 +135,7 @@ def test_logistic_regression_model_artifact_shape(
     meta_staged = store.stage_json("definition", SCHEMA_MODELLING_METADATA, modelling_metadata_payload)
     meta_art = _stage_and_register(
         uow_factory, project_id, store,
-        artifact_id="meta-art-1", artifact_type="definition", role="definition",
+        artifact_id="meta-art-1", artifact_type="modelling_metadata", role="definition",
         media_type="application/json", staged=meta_staged,
         schema_version=SCHEMA_MODELLING_METADATA,
     )

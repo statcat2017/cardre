@@ -161,7 +161,7 @@ class RefreshComparison:
 
                 staged = self._artifact_writer.stage_json(
                     role="comparison",
-                    kind="branch_comparison",
+                    kind=EvidenceKind.COMPARISON_ARTIFACT.value,
                     payload=content,
                     metadata={
                         "comparison_id": command.comparison_id,

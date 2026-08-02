@@ -66,7 +66,7 @@ class RunManifestStep:
 class RunManifest:
     """Canonical run manifest — the immutable execution record."""
 
-    manifest_version: str = MANIFEST_VERSION
+    manifest_version: str
     manifest_hash: str = ""
     run_id: str = ""
     plan_version_id: str = ""
@@ -104,29 +104,6 @@ class RunManifest:
             "steps": [s.to_dict() for s in self.steps],
             "diagnostics": list(self.diagnostics),
         }
-
-    @classmethod
-    def from_dict(cls, data: JsonDict) -> RunManifest:
-        steps = [RunManifestStep(**s) for s in data.get("steps", [])]
-        return cls(
-            manifest_version=data.get("manifest_version", MANIFEST_VERSION),
-            manifest_hash=data.get("manifest_hash", ""),
-            run_id=data.get("run_id", ""),
-            plan_version_id=data.get("plan_version_id", ""),
-            plan_id=data.get("plan_id", ""),
-            project_id=data.get("project_id", ""),
-            branch_id=data.get("branch_id"),
-            started_at=data.get("started_at", ""),
-            finished_at=data.get("finished_at"),
-            status=data.get("status", ""),
-            execution_mode=data.get("execution_mode", "unknown"),
-            cardre_version=data.get("cardre_version", ""),
-            pathway_hash=data.get("pathway_hash", ""),
-            artifact_root=data.get("artifact_root", ""),
-            in_scope_step_ids=list(data.get("in_scope_step_ids", [])),
-            steps=steps,
-            diagnostics=list(data.get("diagnostics", [])),
-        )
 
 
 def compute_manifest_hash(payload: JsonDict) -> str:
