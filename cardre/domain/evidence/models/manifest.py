@@ -7,7 +7,9 @@ from typing import Literal
 
 from cardre.domain.diagnostics import JsonDict
 
-ReportMode = Literal["branch", "full_plan"]
+# Report modes used by the reporting system ("branch" | "champion").
+# Single source of truth; the reporting layer re-exports this constant.
+ReportMode = Literal["branch", "champion"]
 
 
 @dataclass(frozen=True)

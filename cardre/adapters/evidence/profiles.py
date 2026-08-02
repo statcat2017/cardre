@@ -228,7 +228,7 @@ EVIDENCE_PROFILES: dict[EvidenceKind, _Profile] = {
         required_keys={"run_id", "steps"},
     ),
     EvidenceKind.TECHNICAL_MANIFEST_INDEX: _Profile(
-        expected_roles={"report"},
+        expected_roles={"manifest"},
         expected_artifact_types={"technical_manifest_index"},
         schema_version=SCHEMA_TECHNICAL_MANIFEST_INDEX,
         required_keys={"manifests"},

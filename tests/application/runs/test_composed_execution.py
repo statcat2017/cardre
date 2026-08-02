@@ -301,3 +301,29 @@ class TestComposedExecution:
                                     f"manifest={manifest_output}, persisted={persisted_output_logical}"
                                 )
                     break
+
+    def test_technical_manifest_retrievable_through_evidence_reader(self, composed_run):
+        """The technical-manifest output must be retrievable via EvidenceReader
+        as TECHNICAL_MANIFEST_INDEX (role=manifest), proving the profile agrees
+        with its producer."""
+        from cardre.adapters.evidence.reader import EvidenceReader
+        from cardre.adapters.filesystem.artifact_store import FsArtifactStore
+        from cardre.domain.evidence.kinds import EvidenceKind
+
+        project_id, _, _, run_id, uow_factory, root = composed_run
+        store = FsArtifactStore(root)
+        with uow_factory.for_project(project_id) as uow:
+            reader = EvidenceReader(store, uow.artifacts, uow.run_steps)
+            run_steps = uow.run_steps.get_for_run(run_id)
+            rs = next(s for s in run_steps if s.step_id == "technical-manifest")
+            for aid in uow.artifacts.output_artifact_ids_for_run_step(rs.run_step_id):
+                art = uow.artifacts.get(aid)
+                if art is None or art.artifact_type != "technical_manifest_index":
+                    continue
+                found = reader.read_optional(aid, EvidenceKind.TECHNICAL_MANIFEST_INDEX)
+                assert found is not None, (
+                    "technical-manifest output must resolve as TECHNICAL_MANIFEST_INDEX"
+                )
+                assert found.manifests, "technical manifest must carry manifests"
+                return
+        raise AssertionError("no technical-manifest artifact produced in the composed run")
