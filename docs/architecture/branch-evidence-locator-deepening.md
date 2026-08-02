@@ -23,7 +23,6 @@ Change only these production modules:
 
 - `cardre/application/evidence/evidence_resolver.py`
 - `cardre/application/reporting/contracts.py`
-- `cardre/adapters/reporting/_resolve.py`
 
 Add or extend tests only in:
 
@@ -166,9 +165,7 @@ present; the locator owns which evidence is selected.
 
 ### 3. Migrate report collection
 
-File: `cardre/adapters/reporting/_resolve.py`
-
-In `_resolve_run_step`, replace:
+In the reporting collector, replace:
 
 ```python
     branch_id = ref.resolved_branch_id if ref.resolution == "ancestor" else None
@@ -426,8 +423,7 @@ ref.resolved_branch_id if ref.resolution == "ancestor" else None
 get_edges_for_plan_step_branch(...)
 ```
 
-The `ancestor` condition that creates the reporting limitation in
-`cardre/adapters/reporting/_resolve.py` is allowed. It is not evidence selection.
+The `ancestor` condition that creates the reporting limitation is allowed. It is not evidence selection.
 
 ## Verification
 
