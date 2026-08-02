@@ -8,8 +8,8 @@ Nodes are divided into two tiers controlled by `CARDRE_LAUNCH_MODE`:
 
 | Tier | Behaviour | Examples |
 |------|-----------|---------|
-| **launch** | Executable at plan-run time | Logistic regression, decision tree, binning, WOE, import, split, cutoff, validation metrics |
-| **deferred** | Registered for schema display but raise `NodeNotAvailableForLaunch` on instantiation | Gradient boosting, XGBoost, LightGBM, CatBoost, random forest, ensembles, feature selection, hyperparameter tuning, SMOTE, reject inference, fairness, explainability, proxy risk |
+| **launch** | Executable at plan-run time | Logistic regression, binning, WOE, import, split, cutoff, validation metrics |
+| **deferred** | Registered for schema display but raise `NodeNotAvailableForLaunch` on instantiation | Decision tree, gradient boosting, XGBoost, LightGBM, CatBoost, random forest, ensembles, feature selection, hyperparameter tuning, SMOTE, reject inference, fairness, explainability, proxy risk |
 
 ## Registration
 
@@ -24,7 +24,7 @@ cat.list_types()          # returns all registered node type strings
 cat.availability("cardre.logistic_regression")  # NodeAvailability
 ```
 
-Deferred nodes are marked with the `@_deferred` decorator or a `deferred` tier in their `NodeDefinition`.
+Deferred nodes are included in the catalogue's deferred-node list and marked with `_deferred` during catalogue construction.
 
 ## Node Interface
 
