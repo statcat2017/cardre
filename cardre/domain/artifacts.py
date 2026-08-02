@@ -155,20 +155,6 @@ class ArtifactRef:
             "metadata": self.metadata,
         }
 
-    @classmethod
-    def from_dict(cls, data: JsonDict) -> ArtifactRef:
-        return cls(
-            artifact_id=data["artifact_id"],
-            artifact_type=data["artifact_type"],
-            role=data["role"],
-            path=data["path"],
-            physical_hash=data["physical_hash"],
-            logical_hash=data["logical_hash"],
-            media_type=data.get("media_type", "application/octet-stream"),
-            created_at=data.get("created_at", ""),
-            metadata=dict(data.get("metadata", {})),
-        )
-
 
 __all__ = [
     "CHUNK_SIZE",

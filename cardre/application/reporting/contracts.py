@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
 from cardre.domain.evidence.kinds import EvidenceKind
-
-ReportMode = Literal["branch", "champion"]
+from cardre.domain.evidence.models.manifest import ReportMode
 
 REQUIRED_STEPS_BRANCH = [
     "final-woe-iv", "model-fit", "score-scaling", "validation-metrics", "cutoff-analysis",

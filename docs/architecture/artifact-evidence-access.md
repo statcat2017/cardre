@@ -20,7 +20,6 @@ If code only needs bytes, it may stream bytes without interpreting them.
 
 Only these modules may perform direct artifact I/O:
 
-- `cardre/domain/evidence.py`
 - `cardre/domain/evidence/` and `cardre/adapters/evidence/`
 - `cardre/adapters/filesystem/artifact_store.py`
 - `cardre/modeling/serialization.py`
@@ -28,7 +27,6 @@ Only these modules may perform direct artifact I/O:
 Why:
 
 - `cardre/adapters/filesystem/artifact_store.py` owns artifact write helpers and low-level store plumbing.
-- `cardre/domain/evidence.py` exposes typed evidence APIs.
 - `cardre/domain/evidence/` and `cardre/adapters/evidence/` contains the parser, profiles, schemas, and typed models.
 - `cardre/modeling/serialization.py` handles binary estimator IO and integrity checks.
 
