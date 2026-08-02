@@ -151,8 +151,8 @@ class ExecuteRun:
             validate_topology(steps)
             self._assert_nodes_available(steps)
             worker_generation = self._claim_run(command)
-        except Exception:
-            self._finalize_after_pre_exec_failure(command)
+        except Exception as exc:
+            self._finalize_after_pre_exec_failure(command, exc)
             return
         if worker_generation is None:
             return
@@ -193,6 +193,21 @@ class ExecuteRun:
                  for sid in unavailable]
             )
 
+        mismatches: list[dict[str, str]] = []
+        for step in steps:
+            current = self._node_catalogue.resolve(step.node_type).node_definition().version
+            if step.node_version != current:
+                mismatches.append({
+                    "step_id": step.step_id,
+                    "node_type": step.node_type,
+                    "persisted_version": step.node_version,
+                    "current_version": current,
+                })
+        if mismatches:
+            from cardre.domain.errors import NodeVersionMismatchError
+
+            raise NodeVersionMismatchError.from_mismatches(mismatches)
+
     def _claim_run(self, command: ExecuteRunCommand) -> int | None:
         """Transition submitted -> running, begin a worker lease, and
         atomically remove the durable dispatch row.
@@ -211,7 +226,7 @@ class ExecuteRun:
             uow.dispatches.claim(command.run_id)
             return worker_generation
 
-    def _finalize_after_pre_exec_failure(self, command: ExecuteRunCommand) -> None:
+    def _finalize_after_pre_exec_failure(self, command: ExecuteRunCommand, exc: Exception | None = None) -> None:
         # If a cancellation landed while we validated, the run must end
         # cancelled, not failed (a submitted run is terminalized by
         # CancelRun before we reach here; a running run is cooperative).
@@ -220,9 +235,14 @@ class ExecuteRun:
         if cancel_check is not None and getattr(cancel_check, "cancel_requested", False):
             self._finalize_run(command.run_id, "cancelled")
             return
+        code = "RUN_VALIDATION_FAILED"
+        message = "Pre-execution validation failed"
+        if exc is not None:
+            code = getattr(exc, "code", None) or code
+            message = getattr(exc, "message", None) or message
         self._finalize_run(command.run_id, "failed", diagnostic=FinalizeDiagnostic(
-            code="RUN_VALIDATION_FAILED",
-            message="Pre-execution validation failed",
+            code=code,
+            message=message,
         ))
 
     def _is_cancelled(self, command: ExecuteRunCommand) -> bool:

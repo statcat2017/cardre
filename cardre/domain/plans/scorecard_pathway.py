@@ -271,8 +271,8 @@ def build_canonical_scorecard_steps(
             StepSpec(
                 step_id=step_id,
                 node_type=node_type,
-                node_version=node_cls.version,
-                category=node_cls.category,
+                node_version=node_cls.node_definition().version,
+                category=node_cls.node_definition().category,
                 params=params,
                 params_hash=json_logical_hash(params),
                 parent_step_ids=list(parent_step_ids),

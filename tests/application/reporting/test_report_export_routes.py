@@ -23,7 +23,6 @@ from cardre.domain.diagnostics import utc_now_iso
 @pytest.fixture
 def env(monkeypatch, tmp_path):
     monkeypatch.setenv("CARDRE_REGISTRY_PATH", str(tmp_path / "registry.json"))
-    monkeypatch.setenv("CARDRE_ALLOW_RAW_PROJECT_PATH", "1")
     settings = Settings.from_env()
     container = build_container(settings)
     app = create_app(container)

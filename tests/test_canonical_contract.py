@@ -15,13 +15,82 @@ from cardre.bootstrap.node_catalogue import build_default_catalogue
 from cardre.bootstrap.settings import Settings
 from cardre.domain.plans.scorecard_pathway import build_canonical_scorecard_steps
 
+_EXPECTED_NODE_TYPES: frozenset[str] = frozenset({
+    "cardre.alternative_data_manifest",
+    "cardre.apply_exclusions",
+    "cardre.apply_model",
+    "cardre.apply_woe_mapping",
+    "cardre.automatic_binning",
+    "cardre.build_summary_report",
+    "cardre.calculate_woe_iv",
+    "cardre.calibrate_probabilities",
+    "cardre.calibration_diagnostics",
+    "cardre.catboost_classifier",
+    "cardre.coefficient_sign_check",
+    "cardre.cutoff_analysis",
+    "cardre.decision_tree_classifier",
+    "cardre.define_modelling_metadata",
+    "cardre.define_reject_population",
+    "cardre.development_sample_definition",
+    "cardre.explicit_missing_outlier_treatment",
+    "cardre.fairness_report",
+    "cardre.feature_selection_embedded",
+    "cardre.feature_selection_filter",
+    "cardre.freeze_scorecard_bundle",
+    "cardre.gradient_boosting_classifier",
+    "cardre.hyperparameter_tuning",
+    "cardre.import_dataset",
+    "cardre.lightgbm_classifier",
+    "cardre.logistic_regression",
+    "cardre.manual_binning",
+    "cardre.model_explainability",
+    "cardre.model_limitations",
+    "cardre.noop",
+    "cardre.profile_dataset",
+    "cardre.proxy_risk_report",
+    "cardre.random_forest_classifier",
+    "cardre.reject_inference_augmentation",
+    "cardre.reject_inference_none",
+    "cardre.resample_training_data",
+    "cardre.score_scaling",
+    "cardre.scorecard_table_export",
+    "cardre.scoring_export_python",
+    "cardre.scoring_export_sql",
+    "cardre.separation_diagnostics",
+    "cardre.smote_training_data",
+    "cardre.split_train_test_oot",
+    "cardre.technical_manifest_export",
+    "cardre.threshold_optimization",
+    "cardre.validate_binary_target",
+    "cardre.validation_metrics",
+    "cardre.variable_clustering",
+    "cardre.variable_selection",
+    "cardre.vif_diagnostics",
+    "cardre.woe_transform_train",
+    "cardre.xgboost_classifier",
+})
 
-def test_only_one_automatic_binning_node_registered():
+
+def test_catalogue_keys_are_current_supported_set():
     cat = build_default_catalogue(Settings(launch_mode=True))
-    assert cat.has("cardre.automatic_binning")
-    assert not cat.has("cardre.fine_classing")
-    assert not cat.has("cardre.auto_binning_fit")
-    assert not cat.has("cardre.binning")
+    keys = set(cat.list_types())
+    assert keys == _EXPECTED_NODE_TYPES, (
+        "Catalogue key set drifted from the current supported node set. "
+        f"Missing={sorted(_EXPECTED_NODE_TYPES - keys)} "
+        f"Extra={sorted(keys - _EXPECTED_NODE_TYPES)}"
+    )
+
+
+def test_canonical_plan_steps_match_current_node_versions():
+    cat = build_default_catalogue(Settings(launch_mode=True))
+    steps = build_canonical_scorecard_steps("dummy.csv", cat.resolve)
+    for step in steps:
+        node = cat.resolve(step.node_type)
+        current = node.node_definition().version
+        assert step.node_version == current, (
+            f"Step {step.step_id!r} records node_version {step.node_version!r} "
+            f"but {step.node_type!r} is version {current!r}"
+        )
 
 
 def test_manual_binning_distinct_node():

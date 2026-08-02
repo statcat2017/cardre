@@ -38,6 +38,25 @@ class _FakeClock:
         return "2026-01-01T00:00:00Z"
 
 
+def _fake_node(version: str):
+    """Minimal node-class double exposing node_definition().version for pre-exec version checks."""
+    from cardre.nodes.contracts import ArtifactContract, NodeDefinition
+
+    class _FakeNode:
+        @classmethod
+        def node_definition(cls) -> NodeDefinition:
+            return NodeDefinition(
+                node_type="cardre.noop",
+                version=version,
+                category="transform",
+                description="",
+                input_contract=ArtifactContract(),
+                output_contract=ArtifactContract(),
+            )
+
+    return _FakeNode
+
+
 class _BlockingHarness:
     """Runs a blocking ``execute_run`` fake with deterministic events.
 
@@ -273,6 +292,9 @@ def test_cancellation_during_final_node_ends_cancelled(provisioned_project):
         def availability(self, node_type):
             return type("Av", (), {"available": True})()
 
+        def resolve(self, node_type):
+            return _fake_node("1")
+
     executor = ExecuteRun(
         lambda: uow_factory.for_project(project_id),
         lambda: uow_factory.read_only(project_id),
@@ -341,6 +363,9 @@ def test_lost_lease_blocks_output_persistence(provisioned_project):
     class _NoopCatalogue:
         def availability(self, node_type):
             return type("Av", (), {"available": True})()
+
+        def resolve(self, node_type):
+            return _fake_node("1")
 
     persisted = {"count": 0}
 
@@ -502,6 +527,9 @@ def test_run_summary_not_published_after_stale_recovery(provisioned_project):
         def availability(self, node_type):
             return type("Av", (), {"available": True})()
 
+        def resolve(self, node_type):
+            return _fake_node("1")
+
     executor = ExecuteRun(
         lambda: uow_factory.for_project(project_id),
         blocking_read_only,
@@ -595,6 +623,9 @@ def test_run_summary_not_published_after_cancellation(provisioned_project):
     class _NoopCatalogue:
         def availability(self, node_type):
             return type("Av", (), {"available": True})()
+
+        def resolve(self, node_type):
+            return _fake_node("1")
 
     executor = ExecuteRun(
         lambda: uow_factory.for_project(project_id),

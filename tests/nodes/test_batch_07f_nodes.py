@@ -106,6 +106,7 @@ def make_context(inputs: FakeInputs, outputs: FakeOutputs, params: dict[str, Any
         params=params,
         params_hash="hash",
         parent_step_ids=[],
+        canonical_step_id="step",
     )
     return NodeContext(
         run_id="run",

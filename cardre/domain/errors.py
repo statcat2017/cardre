@@ -29,7 +29,7 @@ class ErrorCode(StrEnum):
     REVIEW_NOT_FOUND = "REVIEW_NOT_FOUND"
     MISSING_PROJECT_ID = "MISSING_PROJECT_ID"
     MISSING_PROJECT_PATH = "MISSING_PROJECT_PATH"
-    RAW_PROJECT_PATH_DISABLED = "RAW_PROJECT_PATH_DISABLED"
+    RAW_PROJECT_PATH_DISABLED = "RAW_PROJECT_PATH_DISABLED"  # TODO(PR5): dead — remove
     CONCURRENT_RUN = "CONCURRENT_RUN"
     STORE_ALREADY_EXISTS = "STORE_ALREADY_EXISTS"
     INVALID_PROJECT_PATH = "INVALID_PROJECT_PATH"
@@ -45,6 +45,7 @@ class ErrorCode(StrEnum):
     ARTIFACT_READ_ERROR = "ARTIFACT_READ_ERROR"
     ARTIFACT_WRITE_ERROR = "ARTIFACT_WRITE_ERROR"
     NODE_NOT_AVAILABLE_FOR_LAUNCH = "NODE_NOT_AVAILABLE_FOR_LAUNCH"
+    NODE_VERSION_MISMATCH = "NODE_VERSION_MISMATCH"
     RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH = "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
     BRANCH_VALIDATION_ERROR = "BRANCH_VALIDATION_ERROR"
     OPTIONAL_DEPENDENCY_NOT_INSTALLED = "OPTIONAL_DEPENDENCY_NOT_INSTALLED"
@@ -240,6 +241,54 @@ class NodeNotAvailableForLaunch(CardreError):
     status_code = 400
 
 
+class NodeVersionMismatchError(CardreError):
+    """Raised when a persisted step's node_version differs from the running node's version."""
+    code = "NODE_VERSION_MISMATCH"
+    status_code = 409
+
+    def __init__(self, step_id: str, node_type: str, persisted: str, current: str) -> None:
+        self.step_id = step_id
+        self.node_type = node_type
+        self.persisted_version = persisted
+        self.current_version = current
+        message = (
+            f"Step {step_id!r} ({node_type!r}) recorded node_version {persisted!r} "
+            f"but the current implementation is version {current!r}."
+        )
+        super().__init__(
+            message,
+            context={
+                "step_id": step_id,
+                "node_type": node_type,
+                "persisted_version": persisted,
+                "current_version": current,
+            },
+        )
+
+    @classmethod
+    def from_mismatches(cls, mismatches: list[dict[str, str]]) -> NodeVersionMismatchError:
+        """Build an error covering several mismatched steps (pre-execution validation)."""
+        details = [
+            f"{m['step_id']!r} ({m['node_type']!r}): {m['persisted_version']!r} != {m['current_version']!r}"
+            for m in mismatches
+        ]
+        first = mismatches[0]
+        err = cls(
+            step_id=first["step_id"],
+            node_type=first["node_type"],
+            persisted=first["persisted_version"],
+            current=first["current_version"],
+        )
+        aggregate = (
+            f"{len(mismatches)} step(s) record a node_version that does not match "
+            f"the current implementation: {'; '.join(details)}."
+        )
+        err.args = (aggregate,)
+        err.message = aggregate
+        err.context["mismatches"] = list(mismatches)
+        return err
+
+
 class RunScopeNotAvailableForLaunch(CardreError):
     """Raised when a run scope is disabled for launch (e.g. ``to_node``)."""
     code = "RUN_SCOPE_NOT_AVAILABLE_FOR_LAUNCH"
@@ -281,6 +330,7 @@ __all__ = [
     "MissingInputArtifactError",
     "NodeRoleAccessViolation",
     "NodeNotAvailableForLaunch",
+    "NodeVersionMismatchError",
     "OptionalDependencyNotInstalled",
     "ParameterValidationError",
     "PlanContainsUnavailableNodesError",

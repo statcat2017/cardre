@@ -169,6 +169,7 @@ def test_logistic_regression_model_artifact_shape(
         },
         params_hash="dummy",
         parent_step_ids=[],
+        canonical_step_id="lr-1",
     )
 
     with uow_factory.for_project(project_id) as uow:

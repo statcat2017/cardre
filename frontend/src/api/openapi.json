@@ -2939,8 +2939,7 @@
           },
           "canonical_step_id": {
             "type": "string",
-            "title": "Canonical Step Id",
-            "default": ""
+            "title": "Canonical Step Id"
           },
           "branch_id": {
             "anyOf": [
@@ -2960,7 +2959,8 @@
           "plan_version_id",
           "node_type",
           "node_version",
-          "category"
+          "category",
+          "canonical_step_id"
         ],
         "title": "PlanStepResponse"
       },

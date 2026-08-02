@@ -18,6 +18,25 @@ class _FakeClock:
     def now_iso(self) -> str:
         return "2026-01-01T00:00:00Z"
 
+
+def _fake_node(version: str):
+    """Minimal node-class double exposing node_definition().version for pre-exec version checks."""
+    from cardre.nodes.contracts import ArtifactContract, NodeDefinition
+
+    class _FakeNode:
+        @classmethod
+        def node_definition(cls) -> NodeDefinition:
+            return NodeDefinition(
+                node_type="cardre.noop",
+                version=version,
+                category="transform",
+                description="",
+                input_contract=ArtifactContract(),
+                output_contract=ArtifactContract(),
+            )
+
+    return _FakeNode
+
 EXEC = Path(__file__).resolve().parents[3] / "cardre" / "application" / "runs" / "execute_run.py"
 
 
@@ -328,6 +347,9 @@ def test_initial_reads_and_cancellation_use_read_only_uow(tmp_path):
     class _NoopCatalogue:
         def availability(self, node_type):
             return type("Av", (), {"available": True})()
+
+        def resolve(self, node_type):
+            return _fake_node("1")
 
     from cardre.application.runs.finalize_run import FinalizeRun
 

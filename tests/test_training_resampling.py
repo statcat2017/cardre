@@ -123,6 +123,7 @@ def _make_context(
         params=params,
         params_hash="hash",
         parent_step_ids=[],
+        canonical_step_id="resample-step",
     )
     return NodeContext(
         run_id="run-1",
