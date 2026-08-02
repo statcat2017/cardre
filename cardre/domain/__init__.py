@@ -11,7 +11,7 @@ from cardre.domain.artifacts import (
     relative_path,
     table_logical_hash,
 )
-from cardre.domain.diagnostics import JsonDict, parse_iso, utc_now_iso
+from cardre.domain.diagnostics import JsonDict, utc_now_iso
 from cardre.domain.errors import (
     CardreError,
     Diagnostic,
@@ -66,7 +66,6 @@ __all__ = [
     "StepSpec",
     "json_logical_hash",
     "params_hash",
-    "parse_iso",
     "physical_hash",
     "relative_path",
     "table_logical_hash",

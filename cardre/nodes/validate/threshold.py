@@ -7,6 +7,7 @@ import polars as pl
 
 from cardre.domain.diagnostics import JsonDict
 from cardre.domain.evidence.kinds import EvidenceKind
+from cardre.domain.evidence.schemas import SCHEMA_THRESHOLD_OPTIMIZATION
 from cardre.nodes.contracts import (
     ArtifactContract,
     ArtifactRoleSpec,
@@ -203,9 +204,9 @@ class ThresholdOptimizationNode(NodeType):
         report["selected_threshold"] = selected_threshold
 
         context.outputs.publish_json(
-            role="report",             kind=EvidenceKind.VALIDATION_EVIDENCE,
+            role="report",             kind=EvidenceKind.THRESHOLD_OPTIMIZATION,
             payload=report,
-            metadata={"objective": objective, "selected_threshold": selected_threshold},
+            metadata={"objective": objective, "selected_threshold": selected_threshold, "schema_version": SCHEMA_THRESHOLD_OPTIMIZATION},
         )
 
         context.outputs.add_metric("selected_threshold", selected_threshold)
@@ -226,7 +227,9 @@ __definition__ = NodeDefinition(
         ),
     ),
     output_contract=ArtifactContract(
-        roles=(ArtifactRoleSpec("report", required=True),),
+        roles=(
+            ArtifactRoleSpec("report", required=True, kinds=(EvidenceKind.THRESHOLD_OPTIMIZATION,), media_types=("application/json",), schema_versions=(SCHEMA_THRESHOLD_OPTIMIZATION,)),
+        ),
     ),
 )
 

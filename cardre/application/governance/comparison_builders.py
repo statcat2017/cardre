@@ -106,11 +106,11 @@ def build_model(
 
     lr_b = find_artifact(
         lookup, step_map_baseline, "model-fit", pv_id_baseline, None,
-        (EvidenceKind.MODEL_ARTIFACT, EvidenceKind.ENSEMBLE_MODEL_ARTIFACT),
+        (EvidenceKind.MODEL_ARTIFACT,),
     )
     lr_c = find_artifact(
         lookup, step_map_challenger, "model-fit", pv_id_challenger, branch_id_challenger,
-        (EvidenceKind.MODEL_ARTIFACT, EvidenceKind.ENSEMBLE_MODEL_ARTIFACT),
+        (EvidenceKind.MODEL_ARTIFACT,),
     )
 
     if not lr_b or not lr_c:
@@ -211,11 +211,11 @@ def build_validation(
 
     vm_b = find_artifact(
         lookup, step_map_baseline, "validation-metrics", pv_id_baseline, None,
-        (EvidenceKind.VALIDATION_METRICS, EvidenceKind.VALIDATION_EVIDENCE),
+        (EvidenceKind.VALIDATION_METRICS,),
     )
     vm_c = find_artifact(
         lookup, step_map_challenger, "validation-metrics", pv_id_challenger, branch_id_challenger,
-        (EvidenceKind.VALIDATION_METRICS, EvidenceKind.VALIDATION_EVIDENCE),
+        (EvidenceKind.VALIDATION_METRICS,),
     )
 
     def _roles(payload: dict[str, Any] | None) -> dict[str, Any]:

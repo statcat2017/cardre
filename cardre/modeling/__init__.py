@@ -1,8 +1,8 @@
 """Generic model artifact contract for Cardre.
 
-Provides schema definitions, validation helpers, and legacy-compatibility
-resolvers so that logistic, decision-tree, random-forest, GBDT, and later
-optional boosting models share a common artifact shape.
+Provides the model artifact schema and typed sub-contracts so that
+logistic, decision-tree, random-forest, GBDT, and later optional boosting
+models share a common artifact shape.
 """
 
 from cardre.modeling.schema import (
@@ -12,12 +12,6 @@ from cardre.modeling.schema import (
     ModelArtifactV1,
     PredictionContract,
     TrainingMetadata,
-    estimate_probability_column_index,
-    validate_model_artifact,
-)
-from cardre.modeling.serialization import (
-    read_estimator_artifact,
-    write_estimator_artifact,
 )
 
 __all__ = [
@@ -27,8 +21,4 @@ __all__ = [
     "ModelArtifactV1",
     "PredictionContract",
     "TrainingMetadata",
-    "estimate_probability_column_index",
-    "read_estimator_artifact",
-    "validate_model_artifact",
-    "write_estimator_artifact",
 ]

@@ -38,8 +38,11 @@ class FeatureContract:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FeatureContract:
+        features = data.get("features", [])
+        if not isinstance(features, list) or not features:
+            raise ValueError("FeatureContract requires a non-empty 'features' list")
         return cls(
-            features=list(data.get("features", [])),
+            features=list(features),
             transformation_strategy=data.get("transformation_strategy", "raw_numeric"),
             order_hash=data.get("order_hash", ""),
             dtype_contract=dict(data.get("dtype_contract", {})),
@@ -108,8 +111,11 @@ class TrainingMetadata:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TrainingMetadata:
+        row_count = data.get("row_count", 0)
+        if not isinstance(row_count, int) or row_count <= 0:
+            raise ValueError("TrainingMetadata requires row_count > 0")
         return cls(
-            row_count=data.get("row_count", 0),
+            row_count=row_count,
             params=dict(data.get("params", {})),
             random_seed=data.get("random_seed"),
             package_versions=dict(data.get("package_versions", {})),
@@ -227,7 +233,6 @@ class ModelArtifactV1:
     source_variables: list[str] | None = None
     base_odds_text: str = "50:1"
     bad_class_label: str = ""
-    feature_strategy: str = ""
     warnings: list[dict[str, Any]] = field(default_factory=list)
     source_artifact_id: str = ""
 
@@ -432,58 +437,6 @@ class ModelArtifactV1:
             source_variables=list(data.get("source_variables", [])) or None,
             base_odds_text=str(data.get("base_odds", "50:1")),
             bad_class_label=str(data.get("bad_class_label", "")),
-            feature_strategy="",  # legacy; no longer written
             warnings=list(data.get("warnings", [])),
             source_artifact_id=artifact_id,
         )
-
-
-def estimate_probability_column_index(class_mapping: dict[str, Any], target_event_value: str) -> int:
-    """Infer which probability column represents the target event.
-
-    sklearn's ``predict_proba`` columns follow ``estimator.classes_``.
-    This helper maps the target event value to its position in the
-    class mapping.
-    """
-    if not class_mapping or not target_event_value:
-        return 1
-
-    for idx_str, label in class_mapping.items():
-        if str(label) == str(target_event_value):
-            return int(idx_str)
-    return 1
-
-
-def validate_model_artifact(data: dict[str, Any]) -> list[str]:
-    """Validate a model artifact dict against the v1 contract.
-
-    Returns a list of error messages (empty = valid).
-    """
-    errors: list[str] = []
-
-    if data.get("schema_version") != MODEL_ARTIFACT_SCHEMA_VERSION:
-        errors.append(
-            f"schema_version must be {MODEL_ARTIFACT_SCHEMA_VERSION!r}, "
-            f"got {data.get('schema_version')!r}"
-        )
-
-    required_fields = [
-        "model_family", "target_column", "target_event_value",
-        "class_mapping", "feature_contract",
-    ]
-    for field_name in required_fields:
-        if not data.get(field_name):
-            errors.append(f"Required field {field_name!r} is missing or empty")
-
-    fc = data.get("feature_contract", {})
-    if not fc.get("features"):
-        errors.append("feature_contract.features must be a non-empty list")
-
-    if "probability_column_index" not in data:
-        errors.append("probability_column_index is required")
-
-    training = data.get("training", {})
-    if not training.get("row_count"):
-        errors.append("training.row_count is required")
-
-    return errors

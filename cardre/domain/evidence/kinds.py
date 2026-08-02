@@ -31,7 +31,7 @@ class EvidenceKind(Enum):
     FROZEN_SCORECARD_BUNDLE = "frozen_scorecard_bundle"
     APPLY_WOE_EVIDENCE = "apply_woe_evidence"
     APPLY_MODEL_EVIDENCE = "apply_model_evidence"
-    VALIDATION_EVIDENCE = "validation_evidence"
+    THRESHOLD_OPTIMIZATION = "threshold_optimization"
     REPORT_BUNDLE = "report_bundle"
     RUN_SUMMARY = "run_summary"
     TECHNICAL_MANIFEST_INDEX = "technical_manifest_index"
@@ -39,7 +39,6 @@ class EvidenceKind(Enum):
     FEATURE_SELECTION_EVIDENCE = "feature_selection_evidence"
     RESAMPLING_EVIDENCE = "resampling_evidence"
     HYPERPARAMETER_TUNING_EVIDENCE = "hyperparameter_tuning_evidence"
-    ENSEMBLE_MODEL_ARTIFACT = "ensemble_model_artifact"
     EXPLAINABILITY_REPORT = "explainability_report"
     FAIRNESS_REPORT = "fairness_report"
     PROXY_RISK_REPORT = "proxy_risk_report"
@@ -94,7 +93,7 @@ class RoleKind(Enum):
         EvidenceKind.MODEL_ARTIFACT,
         EvidenceKind.SCORE_SCALING,
         EvidenceKind.VALIDATION_METRICS,
-        EvidenceKind.VALIDATION_EVIDENCE,
+        EvidenceKind.THRESHOLD_OPTIMIZATION,
         EvidenceKind.CUTOFF_ANALYSIS,
         EvidenceKind.SCORED_DATASET,
         EvidenceKind.FROZEN_SCORECARD_BUNDLE,
