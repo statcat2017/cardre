@@ -106,7 +106,7 @@ def test_decision_tree_fit_then_apply_through_step_runner(tmp_path: Path):
 
     # --- Apply through the real StepRunner ---
     reader = EvidenceReader(store, _StubArtifactRepo(fit_refs + [test_ref]), _NullRepo())
-    runner = StepRunner(catalogue, lambda: FsArtifactStore(tmp_path), lambda: reader)
+    runner = StepRunner(catalogue, lambda: FsArtifactStore(tmp_path), lambda: (reader, None))
 
     apply_spec = StepSpec(
         step_id="apply-1", node_type="cardre.apply_model",
@@ -255,7 +255,7 @@ def test_gbdt_family_is_supported_for_apply(tmp_path: Path):
 
     reader = EvidenceReader(store, _StubArtifactRepo([model_ref, est_ref, test_ref]), _NullRepo())
     catalogue = build_default_catalogue(Settings(launch_mode=False))
-    runner = StepRunner(catalogue, lambda: FsArtifactStore(tmp_path), lambda: reader)
+    runner = StepRunner(catalogue, lambda: FsArtifactStore(tmp_path), lambda: (reader, None))
 
     apply_spec = StepSpec(
         step_id="apply-1", node_type="cardre.apply_model",

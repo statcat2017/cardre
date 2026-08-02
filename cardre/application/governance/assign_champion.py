@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from cardre.domain.diagnostics import utc_now_iso
-from cardre.domain.errors import CardreError, GovernanceNotEnabled
+from cardre.domain.errors import CardreError, ErrorCode, GovernanceNotEnabled
 
 
 @dataclass
@@ -117,7 +117,7 @@ class AssignChampion:
                     f"STALE_SNAPSHOT: Branch {command.branch_id} head plan version "
                     f"{branch['head_plan_version_id']} is not in the snapshot source versions {source_pv_ids}. "
                     "Refresh the comparison before assigning champion.",
-                    code="STALE_SNAPSHOT",
+                    code=ErrorCode.STALE_SNAPSHOT,
                     context={"branch_id": command.branch_id, "comparison_id": command.comparison_id},
                     status_code=409,
                 )

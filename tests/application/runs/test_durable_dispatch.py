@@ -297,7 +297,7 @@ def test_reconcile_clears_terminal_run_row_defensively(tmp_path):
     # Manually terminalize WITHOUT clearing the dispatch row (simulating a path
     # that predates the FinalizeRun fix).
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.SUBMITTED,))
         uow.commit()
 
     dispatcher = _RecordingDispatcher()

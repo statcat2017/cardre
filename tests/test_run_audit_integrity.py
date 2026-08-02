@@ -91,7 +91,7 @@ class TestRunAuditIntegrity:
 
     def test_manifest_has_steps_and_hashes(self, audit_run):
         _, _, _, run_id, _, root = audit_run
-        manifest_path = root / "exports" / f"manifest-{run_id}" / "manifest.json"
+        manifest_path = root / "manifests" / "runs" / f"{run_id}.json"
         assert manifest_path.exists()
         manifest = json.loads(manifest_path.read_text())
         assert len(manifest["steps"]) > 0

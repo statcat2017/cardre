@@ -159,7 +159,7 @@ class TestComposedExecution:
     def test_manifest_contains_all_steps(self, composed_run):
         """Canonical manifest has the full step set and identity checks pass."""
         _, _, _, run_id, _, root = composed_run
-        manifest_path = root / "exports" / f"manifest-{run_id}" / "manifest.json"
+        manifest_path = root / "manifests" / "runs" / f"{run_id}.json"
         assert manifest_path.exists(), f"Manifest not found: {manifest_path}"
         manifest = json.loads(manifest_path.read_text())
         assert manifest["run_id"] == run_id
@@ -175,7 +175,7 @@ class TestComposedExecution:
     def test_every_artifact_linked_in_manifest(self, composed_run):
         """Every artifact referenced by a step in the manifest has a lineage record."""
         project_id, _, _, run_id, uow_factory, root = composed_run
-        manifest_path = root / "exports" / f"manifest-{run_id}" / "manifest.json"
+        manifest_path = root / "manifests" / "runs" / f"{run_id}.json"
         manifest = json.loads(manifest_path.read_text())
         manifest_art_ids: set[str] = set()
         for s in manifest["steps"]:

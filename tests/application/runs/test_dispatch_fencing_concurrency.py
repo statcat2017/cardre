@@ -122,7 +122,7 @@ def test_sync_false_returns_promptly_and_worker_runs_independently(provisioned_p
 
     # The route returns promptly with a non-terminal run.
     assert elapsed < 1.0, f"sync=false blocked the request for {elapsed:.2f}s"
-    assert result.status == "created"
+    assert result.status == "submitted"
 
     # The worker starts independently and finishes when released.
     harness.wait_started(result.run_id)
@@ -167,7 +167,7 @@ def test_sync_true_blocks_until_terminal(provisioned_project):
 
     result = submit(_cmd(pv_id, sync=True))
     assert completed["value"] is True, "sync=true returned before execution finished"
-    assert result.status == "created"  # fake executor returns without terminalizing
+    assert result.status == "submitted"  # fake executor returns without terminalizing
     harness.wait_started(result.run_id)
     harness.release[result.run_id].set()
     harness.wait_finished(result.run_id)
@@ -188,7 +188,7 @@ def test_watchdog_renews_lease_during_node_execution(provisioned_project):
         pv_id = uow.plans.create_version(plan_id, [], is_committed=True)
         run_id = uow.runs.create(pv_id)
         uow.runs.transition(run_id, RunStatus.RUNNING,
-                            expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+                            expected_from=(RunStatus.SUBMITTED, RunStatus.SUBMITTED))
         uow.commit()
 
     watchdog = HeartbeatWatchdog(
@@ -714,7 +714,7 @@ def test_concurrent_guard_two_threads_exactly_one_run(provisioned_project):
 
     with uow_factory.read_only(project_id) as uow:
         runs = uow.runs.list_for_plan_version(pv_id)
-    active = [r for r in runs if r.status in ("created", "queued", "running") and not r.force]
+    active = [r for r in runs if r.status in ("submitted", "running") and not r.force]
     assert len(active) == 1, "never more than one active non-forced run"
 
 
@@ -742,7 +742,7 @@ def test_concurrent_guard_force_remains_allowed(provisioned_project):
     with uow_factory.read_only(project_id) as uow:
         runs = uow.runs.list_for_plan_version(pv_id)
     non_forced_active = [
-        r for r in runs if r.status in ("created", "queued", "running") and not r.force
+        r for r in runs if r.status in ("submitted", "running") and not r.force
     ]
     assert len(non_forced_active) == 1
 
@@ -757,4 +757,4 @@ def test_partial_unique_index_exists(provisioned_project):
         ).fetchall()
     assert len(rows) == 1
     assert "WHERE force = 0" in rows[0]["sql"]
-    assert "created" in rows[0]["sql"] and "running" in rows[0]["sql"]
+    assert "submitted" in rows[0]["sql"] and "running" in rows[0]["sql"]

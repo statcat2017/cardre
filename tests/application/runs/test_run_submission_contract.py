@@ -181,7 +181,7 @@ def test_new_submission_does_not_interrupt_healthy_running_run(committed_plan):
     submit = _make_submit(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.runs.heartbeat(r1.run_id)
         uow.commit()
     # Forced submission of a second run does not touch the first.
@@ -206,7 +206,7 @@ def test_recent_heartbeat_is_fresh(committed_plan):
     submit = _make_submit(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.runs.heartbeat(r1.run_id)
         uow.commit()
     from cardre.api.mappers import run_to_response
@@ -224,7 +224,7 @@ def test_old_heartbeat_is_stale(committed_plan):
     r1 = submit(_cmd(pv_id))
     old = datetime.now(UTC) - timedelta(seconds=400)
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         # Set an old heartbeat directly via the repo writer path.
         uow.runs._conn.execute(
             "UPDATE runs SET heartbeat_at = ? WHERE run_id = ?", (_iso(old), r1.run_id),
@@ -244,7 +244,7 @@ def test_running_run_with_no_heartbeat_is_stale(committed_plan):
     submit = _make_submit(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.runs._conn.execute(
             "UPDATE runs SET heartbeat_at = NULL WHERE run_id = ?", (r1.run_id,),
         )
@@ -310,7 +310,7 @@ def test_sweep_stale_does_not_abort_new_submission(committed_plan):
     submit = _submit_with_finalize(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.commit()
     _set_old_heartbeat(uow_factory, project_id, r1.run_id)
     # The run self-finalizes before the sweep runs.
@@ -333,7 +333,7 @@ def test_sweep_stale_does_not_interrupt_renewed_heartbeat(committed_plan):
     submit = _submit_with_finalize(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.commit()
     _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=400)
     # Worker renews the heartbeat before the sweep.
@@ -359,7 +359,7 @@ def test_sweep_stale_interrupts_truly_stale_run(committed_plan):
     submit = _submit_with_finalize(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.commit()
     _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=400)
 
@@ -395,7 +395,7 @@ def test_sweep_stale_interrupts_malformed_heartbeat(committed_plan):
     submit = _submit_with_finalize(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.runs._conn.execute(
             "UPDATE runs SET heartbeat_at = 'not-a-timestamp' WHERE run_id = ?", (r1.run_id,)
         )
@@ -419,7 +419,7 @@ def test_sweep_stale_malformed_heartbeat_defeated_by_renewal(committed_plan):
     submit = _submit_with_finalize(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.runs._conn.execute(
             "UPDATE runs SET heartbeat_at = 'not-a-timestamp' WHERE run_id = ?", (r1.run_id,)
         )
@@ -454,7 +454,7 @@ def test_stale_finalization_loses_after_heartbeat_renewal(committed_plan):
     project_id, uow_factory, pv_id = committed_plan
     r1 = _make_submit(uow_factory, project_id)(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.commit()
     _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=400)
     observed = datetime.now(UTC) - timedelta(seconds=400)
@@ -489,7 +489,7 @@ def test_stale_finalization_loses_with_observed_null_heartbeat(committed_plan):
     project_id, uow_factory, pv_id = committed_plan
     r1 = _make_submit(uow_factory, project_id)(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.runs._conn.execute(
             "UPDATE runs SET heartbeat_at = NULL WHERE run_id = ?", (r1.run_id,)
         )
@@ -522,7 +522,7 @@ def test_stale_finalization_loses_after_terminalization(committed_plan):
     project_id, uow_factory, pv_id = committed_plan
     r1 = _make_submit(uow_factory, project_id)(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.commit()
     _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=400)
     observed = datetime.now(UTC) - timedelta(seconds=400)
@@ -551,7 +551,7 @@ def test_transition_success_requires_worker_generation(committed_plan):
     submit = _make_submit(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         gen = uow.runs.begin_worker_generation(r1.run_id)
         uow.commit()
 
@@ -574,7 +574,7 @@ def test_cancel_persists_cancel_requested_and_preserves_running(committed_plan):
     submit = _make_submit(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.runs.heartbeat(r1.run_id)
         uow.commit()
     cancel = CancelRun(lambda: uow_factory.for_project(project_id))
@@ -593,7 +593,7 @@ def test_cancel_rejects_terminal_run(committed_plan):
     submit = _make_submit(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.FAILED, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.FAILED, expected_from=(RunStatus.SUBMITTED,))
         uow.commit()
     cancel = CancelRun(lambda: uow_factory.for_project(project_id))
     with pytest.raises(CardreError) as exc:
@@ -618,9 +618,9 @@ def test_cancel_created_run_succeeds(committed_plan):
     from cardre.application.runs.cancel_run import CancelRun, CancelRunCommand
     submit = _make_submit(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
-    # The row is 'created' until ExecuteRun claims it.
+    # The row is 'submitted' until ExecuteRun claims it.
     with uow_factory.read_only(project_id) as uow:
-        assert uow.runs.get(r1.run_id).status == RunStatus.CREATED.value
+        assert uow.runs.get(r1.run_id).status == RunStatus.SUBMITTED.value
 
     cancel = CancelRun(lambda: uow_factory.for_project(project_id))
     cancel(CancelRunCommand(run_id=r1.run_id))
@@ -629,7 +629,7 @@ def test_cancel_created_run_succeeds(committed_plan):
         run = uow.runs.get(r1.run_id)
     assert run is not None
     assert str(run.status) == RunStatus.CANCELLED.value, (
-        "created run must be terminalized as cancelled"
+        "submitted run must be terminalized as cancelled"
     )
 
     # The concurrent-run guard must be freed: a normal (non-forced) submission
@@ -645,7 +645,7 @@ def test_cancel_visible_on_subsequent_get(committed_plan):
     submit = _make_submit(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.runs.heartbeat(r1.run_id)
         uow.commit()
     CancelRun(lambda: uow_factory.for_project(project_id))(CancelRunCommand(run_id=r1.run_id))
@@ -679,7 +679,7 @@ def test_sweep_stale_uses_configured_threshold(committed_plan):
 
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.commit()
     # 120s-old heartbeat: stale under the configured 60s window, fresh under
     # the hard-coded 300s default.
@@ -700,7 +700,7 @@ def test_sweep_stale_respects_default_when_unconfigured(committed_plan):
     submit = _submit_with_finalize(uow_factory, project_id)
     r1 = submit(_cmd(pv_id))
     with uow_factory.for_project(project_id) as uow:
-        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(r1.run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.commit()
     # 120s-old heartbeat: fresh under the default 300s window.
     _set_old_heartbeat(uow_factory, project_id, r1.run_id, age_seconds=120)
@@ -747,4 +747,4 @@ def test_run_read_model_hydrates_all_fields(committed_plan):
     assert run.force is True
     assert run.cancel_requested is False
     assert run.heartbeat_at is not None  # create sets heartbeat_at to now
-    assert run.status in (RunStatus.CREATED.value, RunStatus.QUEUED.value)
+    assert run.status in (RunStatus.SUBMITTED.value,)

@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS plan_step_edges (
 CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
     plan_version_id TEXT NOT NULL REFERENCES plan_versions(plan_version_id) ON DELETE CASCADE,
-    status TEXT NOT NULL CHECK (status IN ('created','queued','running','succeeded','failed','cancelled','interrupted')),
+    status TEXT NOT NULL CHECK (status IN ('submitted','running','succeeded','failed','cancelled','interrupted')),
     run_scope TEXT NOT NULL CHECK (run_scope IN ('full_plan','branch')),
     branch_id TEXT,
     force INTEGER NOT NULL DEFAULT 0,
@@ -372,7 +372,7 @@ CREATE INDEX IF NOT EXISTS idx_runs_cancel_requested
 -- one BEGIN IMMEDIATE transaction (create_if_no_active_run); this index
 -- makes the invariant hold even if that check were bypassed.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_runs_one_active_non_forced
-    ON runs(plan_version_id) WHERE force = 0 AND status IN ('created','queued','running');
+    ON runs(plan_version_id) WHERE force = 0 AND status IN ('submitted','running');
 CREATE INDEX IF NOT EXISTS idx_run_steps_run_id
     ON run_steps(run_id);
 CREATE INDEX IF NOT EXISTS idx_run_steps_pv_step_status

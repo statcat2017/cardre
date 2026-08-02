@@ -68,10 +68,10 @@ def seed_run(container, project_id, pv_id, status="succeeded"):
     with container.uow_factory.for_project(project_id) as uow:
         run_id = uow.runs.create(pv_id)
         if status == "succeeded":
-            uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+            uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
             uow.runs.transition(run_id, RunStatus.SUCCEEDED)
         elif status == "running":
-            uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+            uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
             uow.runs.heartbeat(run_id)
         uow.commit()
     return run_id

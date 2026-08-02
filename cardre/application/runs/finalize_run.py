@@ -72,7 +72,7 @@ class FinalizeRun:
                     "finalization must prove lease ownership"
                 )
             if target in (RunStatus.FAILED, RunStatus.CANCELLED):
-                expected_from: tuple[RunStatus, ...] = (RunStatus.CREATED, RunStatus.QUEUED, RunStatus.RUNNING)
+                expected_from: tuple[RunStatus, ...] = (RunStatus.SUBMITTED, RunStatus.RUNNING)
             else:
                 expected_from = (RunStatus.RUNNING,)
 
@@ -90,7 +90,7 @@ class FinalizeRun:
                         target = RunStatus.CANCELLED
                         transitioned = uow.runs.transition(
                             run_id, target,
-                            expected_from=(RunStatus.CREATED, RunStatus.QUEUED, RunStatus.RUNNING),
+                            expected_from=(RunStatus.SUBMITTED, RunStatus.RUNNING),
                         )
                         if not transitioned:
                             actual2 = uow.runs.get(run_id)

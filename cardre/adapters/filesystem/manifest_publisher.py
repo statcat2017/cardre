@@ -1,6 +1,6 @@
 """Filesystem run-manifest publisher.
 
-Writes the canonical manifest to ``exports/manifest-{run_id}/manifest.json``
+Writes the canonical manifest to ``manifests/runs/{run_id}.json``
 using the shared domain serialization and hashing. This is the only adapter
 that should publish canonical manifests.
 """
@@ -41,7 +41,7 @@ class FsManifestPublisher:
         return self._root
 
     def manifest_path(self, run_id: str) -> Path:
-        return self._root / "exports" / f"manifest-{run_id}" / "manifest.json"
+        return self._root / "manifests" / "runs" / f"{run_id}.json"
 
     def publish(self, run_id: str, payload: JsonDict) -> Path:
         manifest_path = self.manifest_path(run_id)
@@ -72,15 +72,12 @@ class FsManifestPublisher:
         ``path`` is relative to the project root so API clients can resolve it
         without knowing the filesystem root.
         """
-        exports_dir = self._root / "exports"
-        if not exports_dir.is_dir():
+        manifests_dir = self._root / "manifests" / "runs"
+        if not manifests_dir.is_dir():
             return []
         entries: list[dict[str, str]] = []
-        for manifest_dir in sorted(exports_dir.glob("manifest-*")):
-            manifest_file = manifest_dir / "manifest.json"
-            if not manifest_file.is_file():
-                continue
-            run_id = manifest_dir.name[len("manifest-"):]
+        for manifest_file in sorted(manifests_dir.glob("*.json")):
+            run_id = manifest_file.stem
             rel = manifest_file.relative_to(self._root).as_posix()
             entries.append({"run_id": run_id, "path": rel})
         return entries

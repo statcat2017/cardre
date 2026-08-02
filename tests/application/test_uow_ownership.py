@@ -83,7 +83,7 @@ def test_failed_step_persistence_leaves_no_partial_rows(tmp_path, fail_point):
         )
         run_id = uow.runs.create(pv_id)
         uow.runs.transition(run_id, RunStatus.RUNNING,
-                            expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+                            expected_from=(RunStatus.SUBMITTED, RunStatus.SUBMITTED))
         uow.commit()
 
     # Persist a minimal step + artifact + lineage + evidence, then force a

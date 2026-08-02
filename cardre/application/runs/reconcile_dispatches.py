@@ -2,7 +2,7 @@
 
 A run's dispatch intent is committed durably in the same transaction as run
 creation. If the process exits after that commit but before the in-memory
-dispatch, the run stays ``created``/``queued`` with a pending dispatch row and
+dispatch, the run stays ``submitted`` with a pending dispatch row and
 blocks normal resubmission of its plan version. On startup this drains pending
 rows through the dispatcher so the run either executes or (if it was
 terminalized meanwhile) simply has its stale row dropped.
@@ -67,7 +67,7 @@ class ReconcileDispatches:
                 except Exception:
                     continue
                 if run is not None and run.status not in (
-                    RunStatus.CREATED.value, RunStatus.QUEUED.value,
+                    RunStatus.SUBMITTED.value,
                 ):
                     with self._uow_factory.for_project(project_id) as uow:
                         uow.dispatches.remove(run_id)

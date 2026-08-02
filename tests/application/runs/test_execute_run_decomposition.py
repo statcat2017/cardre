@@ -157,7 +157,7 @@ def _provision_running_run(tmp_path):
         plan_id = uow.plans.create_plan(project_id, "Plan")
         pv_id = uow.plans.create_version(plan_id, [], is_committed=True)
         run_id = uow.runs.create(pv_id)
-        uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         worker_generation = uow.runs.begin_worker_generation(run_id)
         uow.commit()
     registry.register(project_id, root)

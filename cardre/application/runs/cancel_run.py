@@ -29,15 +29,15 @@ class CancelRun:
                     context={"run_id": command.run_id},
                     status_code=404,
                 )
-            if run.status in (RunStatus.RUNNING, RunStatus.CREATED, RunStatus.QUEUED):
-                if run.status in (RunStatus.CREATED, RunStatus.QUEUED):
+            if run.status in (RunStatus.RUNNING, RunStatus.SUBMITTED):
+                if run.status in (RunStatus.SUBMITTED,):
                     # No work has started, so terminalize directly: the worker
                     # (if it starts) sees a terminal run and exits before
                     # validation, and the run stops blocking submissions.
                     transitioned = uow.runs.transition(
                         command.run_id,
                         RunStatus.CANCELLED,
-                        expected_from=(RunStatus.CREATED, RunStatus.QUEUED),
+                        expected_from=(RunStatus.SUBMITTED,),
                     )
                     if transitioned:
                         # No worker will ever claim this run: clear its durable

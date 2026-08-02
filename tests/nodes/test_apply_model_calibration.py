@@ -284,7 +284,7 @@ def test_apply_model_partial_inputs_through_step_runner(tmp_path: Path):
     runner = StepRunner(
         catalogue,
         lambda: FsArtifactStore(tmp_path),
-        lambda: reader,
+        lambda: (reader, None),
     )
 
     spec = StepSpec(

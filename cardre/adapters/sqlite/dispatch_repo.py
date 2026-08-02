@@ -4,7 +4,7 @@ Records runs whose async submission has been committed durably but not yet
 claimed by a worker. A row is written in the same transaction as run creation;
 the worker atomically removes it when it claims the run. Startup reconciliation
 drains any rows left by a crash between the DB commit and the in-memory
-dispatch, so an async run is never stranded in ``created``/``queued``.
+dispatch, so an async run is never stranded in ``submitted``.
 """
 
 from __future__ import annotations

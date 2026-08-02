@@ -92,16 +92,8 @@ def get_explain_staleness(container: Container = Depends(get_container)) -> Any:
 # Artifacts
 # ---------------------------------------------------------------------------
 
-
-def get_artifact_reader(container: Container = Depends(get_container)) -> Any:
-    from cardre.adapters.filesystem.artifact_store import FsArtifactStore
-
-    def factory(project_id: str):
-        uow = container.uow_factory
-        with uow.read_only(project_id):
-            return FsArtifactStore(container.project_registry.resolve_root(project_id))
-
-    return factory
+# Artifact reading is provided through the Container's artifact_store_factory
+# or via use cases — never through a direct adapter import in the API layer.
 
 
 # ---------------------------------------------------------------------------

@@ -13,14 +13,22 @@ from cardre.adapters.rendering.html_report import HtmlReportRenderer
 from cardre.adapters.reporting.collector import ReportCollector
 from cardre.adapters.sqlite.connection import SqliteUnitOfWorkFactory
 from cardre.adapters.sqlite.project_provisioner import SqliteProjectProvisioner
+from cardre.adapters.system.capability_probe import FilesystemCapabilityProbe
+from cardre.adapters.system.clock import SystemClock
+from cardre.adapters.system.id_generator import UuidGenerator
 from cardre.adapters.system.project_registry import JsonProjectRegistry
 from cardre.application.ports.artifact_store import ArtifactReader
+from cardre.application.ports.capability_probe import CapabilityProbePort
+from cardre.application.ports.clock import ClockPort
 from cardre.application.ports.evidence_reader import EvidenceReaderPort
+from cardre.application.ports.id_generator import IdGeneratorPort
+from cardre.application.ports.node_catalogue import NodeCataloguePort
 from cardre.application.ports.report_collector import ReportCollectorPort
 from cardre.application.ports.unit_of_work import ArtifactRepoPort, RunStepRepoPort
 from cardre.application.projects.create_project import CreateProject
 from cardre.application.projects.get_project import GetProject
 from cardre.application.projects.list_projects import ListProjects
+from cardre.application.projects.resolve_project import ResolveProject
 from cardre.application.reporting.export_audit_pack import ExportAuditPack
 from cardre.application.reporting.generate_report import GenerateReport
 from cardre.application.runs.execute_run import ExecuteRun
@@ -33,13 +41,17 @@ from cardre.bootstrap.settings import Settings
 @dataclass
 class Container:
     settings: Settings
+    clock: ClockPort | None = None
+    id_generator: IdGeneratorPort | None = None
     project_registry: Any = None
     project_provisioner: Any = None
     uow_factory: Any = None
-    node_catalogue: Any = None
+    node_catalogue: NodeCataloguePort | None = None
+    capability_probe: CapabilityProbePort | None = None
     create_project: Any = None
     list_projects: Any = None
     get_project: Any = None
+    resolve_project: Any = None
     generate_report: Any = None
     export_audit_pack: Any = None
     submit_run: Any = None
@@ -65,6 +77,9 @@ def build_container(settings: Settings) -> Container:
     provisioner = SqliteProjectProvisioner()
     uow_factory = SqliteUnitOfWorkFactory(registry)
     node_catalogue = build_default_catalogue(settings)
+    clock = SystemClock()
+    id_generator = UuidGenerator()
+    capability_probe = FilesystemCapabilityProbe()
 
     def project_root(project_id: str) -> Path:
         root = registry.resolve_root(project_id)
@@ -86,11 +101,11 @@ def build_container(settings: Settings) -> Container:
     ) -> EvidenceReaderPort:
         return EvidenceReader(reader, artifacts, run_steps)
 
-    def step_evidence_reader_factory(project_id: str) -> EvidenceReader:
+    def step_evidence_reader_factory(project_id: str) -> tuple[EvidenceReader, Any]:
         """Create an EvidenceReader backed by a read-only UoW.
 
-        The UoW is attached as ``_evidence_uow`` on the reader so the
-        StepRunner can close it after each step.
+        Returns ``(reader, uow)`` so the caller can close the UoW
+        after use — no monkey-patching needed.
         """
         uow = uow_factory.for_root_readonly(project_root(project_id))
         reader = EvidenceReader(
@@ -98,8 +113,7 @@ def build_container(settings: Settings) -> Container:
             uow.artifacts,
             uow.run_steps,
         )
-        reader._evidence_uow = uow  # type: ignore[attr-defined]
-        return reader
+        return reader, uow
 
     def collector_factory(
         reader: EvidenceReaderPort,
@@ -252,6 +266,9 @@ def build_container(settings: Settings) -> Container:
 
     return Container(
         settings=settings,
+        clock=clock,
+        id_generator=id_generator,
+        capability_probe=capability_probe,
         project_registry=registry,
         project_provisioner=provisioner,
         uow_factory=uow_factory,
@@ -259,6 +276,7 @@ def build_container(settings: Settings) -> Container:
         create_project=CreateProject(provisioner, registry, uow_factory),
         list_projects=ListProjects(registry, uow_factory),
         get_project=GetProject(registry, uow_factory),
+        resolve_project=ResolveProject(registry),
         generate_report=generate_report,
         export_audit_pack=export_audit_pack,
         finalize_run=finalize_run_factory,

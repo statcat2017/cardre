@@ -52,12 +52,13 @@ class StepRunner:
         self._node_catalogue = node_catalogue
         self._artifact_store_factory = artifact_store_factory
         self._evidence_reader_factory = evidence_reader_factory
-        self._evidence_uow: Any = None
 
     @staticmethod
-    def _close_evidence_reader(reader: Any) -> None:
+    def _close_evidence_reader(reader_and_uow: Any) -> None:
         """Close the UoW backing this evidence reader, if any."""
-        uow = getattr(reader, "_evidence_uow", None)
+        if reader_and_uow is None:
+            return
+        _reader, uow = reader_and_uow
         if uow is not None:
             import contextlib
             with contextlib.suppress(Exception):
@@ -84,9 +85,10 @@ class StepRunner:
         staged: list[StagedArtifact] = []
 
         evidence_reader = None
+        evidence_uow = None
         artifact_store = self._artifact_store_factory()
         try:
-            evidence_reader = self._evidence_reader_factory()
+            evidence_reader, evidence_uow = self._evidence_reader_factory()
 
             # Resolve inputs from parent step outputs
             resolved = self._resolve_inputs(spec, step_outputs)
@@ -224,7 +226,8 @@ class StepRunner:
             )
 
         finally:
-            self._close_evidence_reader(evidence_reader)
+            if evidence_reader is not None:
+                self._close_evidence_reader((evidence_reader, evidence_uow))
 
     def _resolve_inputs(
         self,

@@ -53,7 +53,7 @@ class RunRepo:
         self._conn.execute(
             "INSERT INTO runs (run_id, plan_version_id, status, run_scope, branch_id, "
             "force, requested_by, request_id, created_at, started_at, heartbeat_at, metadata_json) "
-            "VALUES (?, ?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, 'submitted', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (run_id, plan_version_id, run_scope, branch_id,
              int(force), requested_by, request_id, now, now, now,
              json.dumps(metadata or {}, sort_keys=True)),
@@ -80,7 +80,7 @@ class RunRepo:
         if not force:
             row = self._conn.execute(
                 "SELECT run_id FROM runs WHERE plan_version_id = ? "
-                "AND status IN ('created','queued','running') LIMIT 1",
+                "AND status IN ('submitted','running') LIMIT 1",
                 (plan_version_id,),
             ).fetchone()
             if row is not None:
@@ -183,7 +183,7 @@ class RunRepo:
     def claim_running_lease(self, run_id: str) -> int:
         """Atomically transition to running and issue a fresh worker generation."""
         self.transition(run_id, RunStatus.RUNNING,
-                        expected_from=(RunStatus.CREATED, RunStatus.QUEUED))
+                        expected_from=(RunStatus.SUBMITTED,))
         return self.begin_worker_generation(run_id)
 
     def assert_running_lease(self, run_id: str, generation: int) -> None:
@@ -228,7 +228,7 @@ class RunRepo:
         # finalize as cancelled instead of running.
         self._conn.execute(
             "UPDATE runs SET cancel_requested = 1 "
-            "WHERE run_id = ? AND status IN ('created','queued','running')",
+            "WHERE run_id = ? AND status IN ('submitted','running')",
             (run_id,),
         )
 

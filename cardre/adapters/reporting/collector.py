@@ -192,7 +192,7 @@ class ReportCollector:
                     ))
 
         bundle.reproducibility.run_id = run.run_id
-        manifest_path = self._artifact_reader.root / "exports" / f"manifest-{run.run_id}" / "manifest.json"
+        manifest_path = self._artifact_reader.root / "manifests" / "runs" / f"{run.run_id}.json"
         if not manifest_path.exists():
             limitations.append(Limitation(severity="blocker", code="CANONICAL_MANIFEST_MISSING", message="Canonical run manifest is missing."))
         else:

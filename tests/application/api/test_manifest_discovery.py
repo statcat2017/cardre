@@ -1,7 +1,7 @@
 """F10 — finalized-run manifest must be retrievable through the API.
 
 After a normal completed run, the canonical manifest is written to
-``exports/manifest-{run_id}/manifest.json`` but no HTTP route exposes it —
+``manifests/runs/{run_id}.json`` but no HTTP route exposes it —
 ``/reports`` and ``/exports`` only list DB-registered rows that FinalizeRun
 never writes. This test pins the new ``GET /runs/{run_id}/manifest`` surface.
 """
@@ -57,7 +57,7 @@ def _seed_finalized_run(container, project_id):
             is_committed=True,
         )
         run_id = uow.runs.create(pv_id)
-        uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
         uow.commit()
     container.finalize_run(project_id)(run_id, "succeeded", worker_generation=0)
     return plan_id, pv_id, run_id
@@ -80,7 +80,7 @@ def test_run_manifest_retrievable_via_api(env, tmp_path):
     # It must match what is on disk.
     import json
 
-    disk = json.loads((root / "exports" / f"manifest-{run_id}" / "manifest.json").read_text())
+    disk = json.loads((root / "manifests" / "runs" / f"{run_id}.json").read_text())
     assert disk["manifest_hash"] == data["manifest_hash"]
 
 
@@ -136,7 +136,7 @@ def test_run_manifest_missing_manifest_404(env, tmp_path):
         plan_id = uow.plans.create_plan(project_id, "Plan")
         pv_id = uow.plans.create_version(plan_id, is_committed=True)
         run_id = uow.runs.create(pv_id)
-        uow.runs.transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.CREATED,))
+        uow.runs.transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.SUBMITTED,))
         uow.commit()
 
     resp = client.get(f"/projects/{project_id}/runs/{run_id}/manifest")

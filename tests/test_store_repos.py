@@ -33,7 +33,7 @@ class TestRunRepo:
             run_id = uow.runs.create(pv_id, run_scope="full_plan", force=True)
             run = uow.runs.get(run_id)
             assert run is not None
-            assert run.status == "created"
+            assert run.status == "submitted"
             assert run.run_scope == "full_plan"
 
     def test_run_metadata_roundtrip(self, committed_plan_version):
@@ -49,7 +49,7 @@ class TestRunRepo:
         project_id, _, pv_id, uow_factory, _ = committed_plan_version
         with uow_factory.for_project(project_id) as uow:
             run_id = uow.runs.create(pv_id)
-            assert uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+            assert uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
             assert uow.runs.transition(run_id, RunStatus.INTERRUPTED)
             run = uow.runs.get(run_id)
             assert run.status == "interrupted"
@@ -58,7 +58,7 @@ class TestRunRepo:
         project_id, _, pv_id, uow_factory, _ = committed_plan_version
         with uow_factory.for_project(project_id) as uow:
             run_id = uow.runs.create(pv_id)
-            assert uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+            assert uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
             assert uow.runs.transition(run_id, RunStatus.SUCCEEDED)
             run = uow.runs.get(run_id)
             assert run.status == "succeeded"
@@ -68,7 +68,7 @@ class TestRunRepo:
         project_id, _, pv_id, uow_factory, _ = committed_plan_version
         with uow_factory.for_project(project_id) as uow:
             run_id = uow.runs.create(pv_id)
-            assert uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+            assert uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
             assert uow.runs.transition(run_id, RunStatus.SUCCEEDED)
             assert not uow.runs.transition(run_id, RunStatus.FAILED)
 
@@ -77,13 +77,13 @@ class TestRunRepo:
         with uow_factory.for_project(project_id) as uow:
             run_id = uow.runs.create(pv_id)
             with pytest.raises(ValueError, match="Invalid run state transition"):
-                uow.runs.transition(run_id, RunStatus.CREATED)
+                uow.runs.transition(run_id, RunStatus.SUBMITTED)
 
     def test_transition_expected_from_guards(self, committed_plan_version):
         project_id, _, pv_id, uow_factory, _ = committed_plan_version
         with uow_factory.for_project(project_id) as uow:
             run_id = uow.runs.create(pv_id)
-            assert uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+            assert uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
             assert uow.runs.transition(run_id, RunStatus.SUCCEEDED)
             assert not uow.runs.transition(run_id, RunStatus.FAILED, expected_from=(RunStatus.RUNNING,))
 
@@ -160,7 +160,7 @@ class TestRunRepo:
                 ("step-x", pv_id, "step-x"),
             )
             run_id = uow.runs.create(pv_id)
-            assert uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.CREATED,))
+            assert uow.runs.transition(run_id, RunStatus.RUNNING, expected_from=(RunStatus.SUBMITTED,))
             assert uow.runs.transition(run_id, RunStatus.SUCCEEDED)
             rs_id = str(uuid.uuid4())
             uow._conn.execute(
